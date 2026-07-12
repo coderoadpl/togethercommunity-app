@@ -19,7 +19,7 @@ import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { formatPrice } from '../../lib/format.js';
-import { CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
+import { CardTitle, DataValue, Eyebrow, LedgerHeader } from '../../theme.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -88,7 +88,12 @@ export const MyProductsPage = () => {
                 <ListItemButton component="a" href={`/my/course/${product.id}`} sx={{ px: '0.3rem' }}>
                   <ListItemText
                     primary={product.title}
-                    secondary={`${formatPrice(product.priceCents, product.currency)} · ${product.description}`}
+                    secondary={
+                      <>
+                        <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue> ·{' '}
+                        {product.description}
+                      </>
+                    }
                     slotProps={{ primary: { sx: { fontWeight: 700 } }, secondary: { component: 'p' } }}
                   />
                 </ListItemButton>

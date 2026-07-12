@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../../api.js';
-import { EntryDate } from '../../../theme.js';
+import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 
 const priceFormatter = (priceCents: number, currency: string) =>
   new Intl.NumberFormat(undefined, {
@@ -166,8 +166,8 @@ export const ProductsPanel = () => {
                   secondary={
                     <Stack useFlexGap spacing="0.2rem">
                       <span>
-                        {priceFormatter(product.priceCents, product.currency)} ·{' '}
-                        {product.published ? 'published' : 'draft'}
+                        <DataValue>{priceFormatter(product.priceCents, product.currency)}</DataValue> ·{' '}
+                        {product.published ? <PublishedStatus>published</PublishedStatus> : 'draft'}
                       </span>
                       <EntryDate component="time" dateTime={product.createdAt}>
                         {displayDate(product.createdAt)}

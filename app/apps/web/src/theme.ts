@@ -20,9 +20,13 @@ const FONT_DISPLAY =
 declare module '@mui/material/styles' {
   interface Theme {
     headerRule?: string;
+    numericFontFamily?: string;
+    statusAccent?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
+    numericFontFamily?: string;
+    statusAccent?: string;
   }
 }
 
@@ -69,12 +73,438 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
       return createQuietStudioTheme();
     case 'scoreboard':
       return createScoreboardTheme();
-    case 'material':
     case 'signal-mono':
+      return createSignalMonoTheme();
+    case 'material':
     case 'steady-frame':
       return createPlainTheme(accentHue);
   }
 };
+
+const SIGNAL_FONT_UI =
+  "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const SIGNAL_FONT_MONO = "'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace";
+
+const SIGNAL_BG = '#F5F5F3';
+const SIGNAL_SURFACE = '#FFFFFF';
+const SIGNAL_INK = '#111113';
+const SIGNAL_INK_SOFT = '#5A5A5F';
+const SIGNAL_ACCENT = '#FF5A36';
+const SIGNAL_SUCCESS = '#1C8A5A';
+const SIGNAL_ERROR = '#B3261E';
+const SIGNAL_DIVIDER = '#DCDCD8';
+
+export const createSignalMonoTheme = (): Theme =>
+  createTheme({
+    headerRule: `1px solid ${SIGNAL_DIVIDER}`,
+    numericFontFamily: SIGNAL_FONT_MONO,
+    statusAccent: SIGNAL_ACCENT,
+    palette: {
+      mode: 'light',
+      primary: {
+        main: SIGNAL_INK,
+        dark: SIGNAL_INK,
+        contrastText: SIGNAL_SURFACE,
+      },
+      secondary: {
+        main: SIGNAL_ACCENT,
+        dark: SIGNAL_ACCENT,
+        contrastText: SIGNAL_INK,
+      },
+      success: { main: SIGNAL_SUCCESS, contrastText: SIGNAL_SURFACE },
+      error: { main: SIGNAL_ERROR, contrastText: SIGNAL_SURFACE },
+      background: { default: SIGNAL_BG, paper: SIGNAL_SURFACE },
+      text: { primary: SIGNAL_INK, secondary: SIGNAL_INK_SOFT },
+      divider: SIGNAL_DIVIDER,
+    },
+    shape: { borderRadius: 4 },
+    typography: {
+      fontFamily: SIGNAL_FONT_UI,
+      body1: { fontSize: '0.9375rem', lineHeight: 1.55 },
+      body2: { fontSize: '0.85rem', lineHeight: 1.5 },
+      h1: {
+        fontSize: '2rem',
+        fontWeight: 700,
+        letterSpacing: '-0.035em',
+        lineHeight: 1.12,
+      },
+      h2: {
+        fontSize: '1.125rem',
+        fontWeight: 700,
+        letterSpacing: '-0.02em',
+        lineHeight: 1.3,
+      },
+      overline: {
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        letterSpacing: '0.12em',
+        lineHeight: 1.6,
+        color: SIGNAL_INK_SOFT,
+      },
+      button: {
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        letterSpacing: '0.1em',
+        lineHeight: 1.4,
+        textTransform: 'uppercase',
+      },
+      caption: { fontSize: '0.78rem', lineHeight: 1.5, color: SIGNAL_INK_SOFT },
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            backgroundColor: SIGNAL_BG,
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          },
+          '@keyframes settle': {
+            from: { opacity: 0, transform: 'translateY(0.5rem)' },
+            to: { opacity: 1, transform: 'none' },
+          },
+        },
+      },
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: {
+          root: {
+            borderRadius: 4,
+            padding: '0.62rem 1.1rem',
+            boxShadow: 'none',
+            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
+          },
+          contained: {
+            backgroundColor: SIGNAL_INK,
+            color: SIGNAL_SURFACE,
+            '&:hover': { backgroundColor: SIGNAL_INK, boxShadow: 'none' },
+            '&.MuiButton-colorSecondary': {
+              backgroundColor: SIGNAL_INK,
+              color: SIGNAL_SURFACE,
+              '&:hover': { backgroundColor: SIGNAL_INK },
+            },
+            '&.Mui-disabled': {
+              backgroundColor: SIGNAL_INK,
+              color: SIGNAL_SURFACE,
+              opacity: 0.42,
+            },
+          },
+          outlined: {
+            border: `1px solid ${SIGNAL_INK}`,
+            color: SIGNAL_INK,
+            '&:hover': {
+              border: `1px solid ${SIGNAL_INK}`,
+              backgroundColor: alpha(SIGNAL_INK, 0.05),
+            },
+          },
+          text: {
+            color: SIGNAL_INK,
+            minWidth: 0,
+            padding: '0.2rem 0',
+            borderRadius: 0,
+            borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
+            '&:hover': {
+              backgroundColor: 'transparent',
+              borderBottomColor: SIGNAL_ACCENT,
+            },
+          },
+        },
+      },
+      MuiCard: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            border: `1px solid ${SIGNAL_DIVIDER}`,
+            borderRadius: 4,
+            backgroundImage: 'none',
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiPaper: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: { backgroundImage: 'none', boxShadow: 'none' },
+          rounded: { borderRadius: 4 },
+          outlined: {
+            border: `1px solid ${SIGNAL_DIVIDER}`,
+            borderRadius: 4,
+            boxShadow: 'none',
+            justifySelf: 'start',
+            '&:is(form)': { borderTop: `2px solid ${SIGNAL_ACCENT}` },
+            '&:is(form) .MuiButton-contained': { width: '100%' },
+            '&:is(form) > .MuiStack-root > .MuiTypography-h1': {
+              border: `1px solid ${SIGNAL_DIVIDER}`,
+              borderBottom: 0,
+              padding: '0.85rem 1rem 0.35rem',
+            },
+            '&:is(form) > .MuiStack-root > .MuiTypography-h1 + .MuiTypography-body1': {
+              borderLeft: `1px solid ${SIGNAL_DIVIDER}`,
+              borderRight: `1px solid ${SIGNAL_DIVIDER}`,
+              padding: '0 1rem 0.65rem',
+            },
+            '&:is(form) > .MuiStack-root > .MuiTypography-body1 + .MuiTypography-h2': {
+              border: `1px solid ${SIGNAL_DIVIDER}`,
+              borderTop: 0,
+              padding: '0.65rem 1rem',
+              textAlign: 'right',
+              fontFamily: SIGNAL_FONT_MONO,
+              fontVariantNumeric: 'tabular-nums',
+            },
+          },
+          elevation1: {
+            border: `1px solid ${SIGNAL_DIVIDER}`,
+            borderTop: `2px solid ${SIGNAL_ACCENT}`,
+            borderRadius: 4,
+            boxShadow: 'none',
+          },
+          elevation8: {
+            border: `1px solid ${SIGNAL_DIVIDER}`,
+            borderRadius: 4,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 4,
+            backgroundColor: SIGNAL_SURFACE,
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: SIGNAL_DIVIDER },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SIGNAL_INK_SOFT },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: SIGNAL_INK,
+              borderWidth: 2,
+            },
+          },
+          input: {
+            padding: '0.65rem 0.8rem',
+            fontSize: '0.9375rem',
+            lineHeight: 1.5,
+            '&[type="number"]': {
+              fontFamily: SIGNAL_FONT_MONO,
+              fontVariantNumeric: 'tabular-nums',
+            },
+          },
+        },
+      },
+      MuiFormLabel: {
+        styleOverrides: {
+          root: {
+            color: SIGNAL_INK,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            lineHeight: 1.5,
+            textTransform: 'uppercase',
+            marginBottom: '0.35rem',
+            '&.Mui-focused': { color: SIGNAL_INK },
+          },
+        },
+      },
+      MuiInputBase: {
+        styleOverrides: {
+          input: { '&::placeholder': { color: SIGNAL_INK_SOFT, opacity: 1 } },
+        },
+      },
+      MuiLink: {
+        defaultProps: { underline: 'none' },
+        styleOverrides: {
+          root: {
+            color: SIGNAL_INK,
+            fontWeight: 600,
+            borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
+            '&[aria-current="true"]': { borderBottom: `2px solid ${SIGNAL_ACCENT}` },
+            '&:hover': { borderBottomColor: SIGNAL_ACCENT },
+            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 4,
+            height: 'auto',
+            color: SIGNAL_INK,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+          },
+          label: { padding: '0.22rem 0.55rem' },
+          outlined: { border: `1px solid ${SIGNAL_DIVIDER}`, backgroundColor: SIGNAL_SURFACE },
+        },
+      },
+      MuiToggleButtonGroup: {
+        styleOverrides: {
+          root: {
+            gap: '1.5rem',
+            backgroundColor: SIGNAL_SURFACE,
+            borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
+            '& .MuiToggleButtonGroup-grouped, & .MuiToggleButtonGroup-firstButton, & .MuiToggleButtonGroup-middleButton, & .MuiToggleButtonGroup-lastButton': {
+              border: 0,
+              borderRadius: 0,
+              marginLeft: 0,
+            },
+          },
+        },
+      },
+      MuiToggleButton: {
+        styleOverrides: {
+          root: {
+            border: 0,
+            borderRadius: 0,
+            padding: '0.75rem 0 0.65rem',
+            color: SIGNAL_INK_SOFT,
+            fontFamily: SIGNAL_FONT_UI,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.12em',
+            lineHeight: 1.4,
+            textTransform: 'uppercase',
+            '&:hover': { backgroundColor: 'transparent', color: SIGNAL_INK },
+            '&.Mui-selected': {
+              backgroundColor: 'transparent',
+              color: SIGNAL_INK,
+              boxShadow: `inset 0 -2px 0 ${SIGNAL_ACCENT}`,
+              '&:hover': { backgroundColor: 'transparent' },
+            },
+            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
+          },
+        },
+      },
+      MuiList: {
+        styleOverrides: {
+          root: {
+            paddingTop: 0,
+            paddingBottom: 0,
+            '&:has(.MuiListItemText-secondary > .MuiStack-root)': {
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(16rem, 1fr))',
+            },
+          },
+        },
+      },
+      MuiListItem: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
+            padding: '0.75rem 0.85rem',
+            backgroundColor: SIGNAL_SURFACE,
+            '&:first-of-type': { borderTop: `1px solid ${SIGNAL_DIVIDER}` },
+            '&:has(.MuiListItemText-secondary > .MuiStack-root)': {
+              border: `1px solid ${SIGNAL_DIVIDER}`,
+              borderRadius: 4,
+              marginRight: -1,
+              marginBottom: -1,
+            },
+            '&:has(.MuiListItemText-secondary > .MuiStack-root) .MuiListItemText-primary': {
+              fontWeight: 600,
+            },
+            '&:has(.MuiListItemText-secondary > .MuiStack-root) .MuiListItemText-secondary > .MuiStack-root > span:first-of-type': {
+              fontFamily: SIGNAL_FONT_MONO,
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+            },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 0,
+            color: SIGNAL_INK,
+            '&:hover': { backgroundColor: alpha(SIGNAL_INK, 0.04) },
+            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: -3 },
+            '& .MuiListItemText-secondary': {
+              color: SIGNAL_INK_SOFT,
+            },
+          },
+        },
+      },
+      MuiListItemText: {
+        styleOverrides: { secondary: { color: SIGNAL_INK_SOFT } },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
+            fontSize: '0.8125rem',
+            padding: '0.65rem 0.75rem',
+          },
+          head: {
+            color: SIGNAL_INK,
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            backgroundColor: SIGNAL_BG,
+          },
+          alignRight: {
+            fontFamily: SIGNAL_FONT_MONO,
+            fontVariantNumeric: 'tabular-nums',
+          },
+        },
+      },
+      MuiDivider: {
+        styleOverrides: { root: { borderColor: SIGNAL_DIVIDER } },
+      },
+      MuiAlert: {
+        defaultProps: { severity: 'error', variant: 'outlined' },
+        styleOverrides: {
+          root: {
+            border: `1px solid ${SIGNAL_ERROR}`,
+            borderRadius: 4,
+            backgroundColor: SIGNAL_SURFACE,
+            color: SIGNAL_ERROR,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiAppBar: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            backgroundColor: SIGNAL_SURFACE,
+            color: SIGNAL_INK,
+            borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${SIGNAL_DIVIDER}`,
+            borderRadius: 4,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiAutocomplete: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${SIGNAL_DIVIDER}`,
+            borderRadius: 4,
+            boxShadow: 'none',
+          },
+          option: {
+            '&[aria-selected="true"]': { backgroundColor: alpha(SIGNAL_INK, 0.08) },
+            '&.Mui-focused': { backgroundColor: alpha(SIGNAL_INK, 0.05) },
+          },
+        },
+      },
+      MuiLinearProgress: {
+        styleOverrides: {
+          root: {
+            height: 4,
+            borderRadius: 0,
+            backgroundColor: SIGNAL_DIVIDER,
+          },
+          bar: { borderRadius: 0, backgroundColor: SIGNAL_ACCENT },
+        },
+      },
+    },
+  });
 
 const SCORE_FONT_UI =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
@@ -992,9 +1422,33 @@ export const EntryIndex = styled(Typography)(({ theme }) => ({
   color: theme.palette.primary.dark,
 }));
 
-export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>({
+export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
   whiteSpace: 'nowrap',
-});
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
+
+export const DataValue = styled('span')(({ theme }) => ({
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
+
+export const PublishedStatus = styled('span')(({ theme }) => ({
+  ...(theme.statusAccent === undefined
+    ? {}
+    : {
+        '&::before': {
+          display: 'inline-block',
+          width: 7,
+          height: 7,
+          marginRight: 8,
+          borderRadius: '50%',
+          backgroundColor: theme.statusAccent,
+          content: '""',
+          verticalAlign: 'middle',
+        },
+      }),
+}));
 
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 

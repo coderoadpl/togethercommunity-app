@@ -18,7 +18,7 @@ import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { formatPrice } from '../../lib/format.js';
-import { CardTitle, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { CardTitle, DataValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const CheckoutPage = ({ productId }: { productId: string }) => {
   const offer = useQuery(actions.publicOffer);
@@ -121,7 +121,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           <CardTitle variant="h1">{product.title}</CardTitle>
           <Typography variant="body1">{product.description}</Typography>
           <Typography variant="h2" component="p">
-            {formatPrice(product.priceCents, product.currency)}
+            <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue>
           </Typography>
           <FormControl fullWidth>
             <FormLabel htmlFor="checkout-email">email</FormLabel>

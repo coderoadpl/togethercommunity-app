@@ -23,7 +23,8 @@
     "db:seed": "tsx adapters/db/seed.ts",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "tsx scripts/smoke.ts",
-    "e2e:auth": "tsx scripts/auth-e2e.ts"
+    "e2e:auth": "tsx scripts/auth-e2e.ts",
+    "e2e:poc": "tsx scripts/poc-e2e.ts"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.6.23",

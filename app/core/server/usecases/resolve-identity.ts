@@ -2,7 +2,6 @@ import {
   err,
   forbidden,
   ok,
-  tenantNotFound,
   unauthorized,
   type AppError,
   type Identity,
@@ -10,7 +9,7 @@ import {
 } from '@core/domain/index.js';
 
 import type { AuthenticatedUser, TenantAccessReader, TenantDomainRepository, TenantRepository } from '../ports.js';
-import { resolveTenant, tenantNotFoundMessage } from './resolve-tenant.js';
+import { resolveTenant } from './resolve-tenant.js';
 
 export interface TenantRequestInfo {
   /** Host header, may include a port. */
@@ -54,9 +53,7 @@ export const resolveIdentity = async (
   const member = await deps.tenantAccess.findMember(user.userId, tenant.value.tenant.id);
 
   if (!staffGrant && !member) {
-    return tenant.value.source === 'custom-domain'
-      ? err(forbidden('You do not have access to this tenant'))
-      : err(tenantNotFound(tenantNotFoundMessage(tenant.value.tenant.slug)));
+    return err(forbidden('You do not have access to this tenant'));
   }
 
   return ok({

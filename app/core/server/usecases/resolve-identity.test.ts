@@ -138,7 +138,7 @@ describe('resolveIdentity', () => {
     });
   });
 
-  it('uses the same tenant_not_found message for unknown and inaccessible slug tenants', async () => {
+  it('distinguishes unknown and inaccessible slug tenants', async () => {
     const absent = await resolveIdentity(
       user,
       { host: 'acme.localhost', tenantHeader: null },
@@ -157,6 +157,12 @@ describe('resolveIdentity', () => {
         message: 'No tenant "acme" or you do not have access to it',
       },
     });
-    expect(inaccessible).toEqual(absent);
+    expect(inaccessible).toMatchObject({
+      ok: false,
+      error: {
+        code: 'forbidden',
+        message: 'You do not have access to this tenant',
+      },
+    });
   });
 });

@@ -21,6 +21,6 @@
       "@adapters/*": ["adapters/*"]
     }
   },
-  "include": ["core", "adapters", "apps", "scripts/smoke.ts", "scripts/auth-e2e.ts", "*.config.ts", ".dependency-cruiser.cjs"],
+  "include": ["core", "adapters", "apps", "scripts/smoke.ts", "scripts/auth-e2e.ts", "scripts/poc-e2e.ts", "*.config.ts", ".dependency-cruiser.cjs"],
   "exclude": ["node_modules", "dist"]
 }

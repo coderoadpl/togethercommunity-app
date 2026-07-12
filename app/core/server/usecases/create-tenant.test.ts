@@ -26,7 +26,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
     createTenant: async (input) => {
-      const tenant = { id: input.id, slug: input.slug, name: input.name };
+      const tenant = { id: input.id, slug: input.slug, name: input.name, contentVersion: 1 };
       tenants.push(tenant);
       return tenant;
     },
@@ -64,7 +64,7 @@ describe('createTenant', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { id: 't-new', slug: 'new-co', name: 'New Co' },
+      value: { id: 't-new', slug: 'new-co', name: 'New Co', contentVersion: 1 },
     });
     expect(store.ownerGrants).toEqual([
       {
@@ -77,7 +77,7 @@ describe('createTenant', () => {
   });
 
   it('rejects slug conflicts before creating records', async () => {
-    const store = fakeTenants([{ id: 't-acme', slug: 'acme', name: 'Acme' }]);
+    const store = fakeTenants([{ id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 1 }]);
 
     const result = await createTenant(
       { identity },
@@ -89,7 +89,7 @@ describe('createTenant', () => {
       ok: false,
       error: { code: 'conflict', message: 'Tenant "acme" already exists' },
     });
-    expect(store.tenants).toEqual([{ id: 't-acme', slug: 'acme', name: 'Acme' }]);
+    expect(store.tenants).toEqual([{ id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 1 }]);
     expect(store.ownerGrants).toEqual([]);
   });
 

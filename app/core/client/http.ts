@@ -5,6 +5,7 @@ import {
   looseEnvelopeSchema,
   healthOutputSchema,
   meOutputSchema,
+  publicOfferOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
@@ -96,6 +97,15 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  publicOffer: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicOffer.method,
+      API_ROUTES.publicOffer.path,
+      publicOfferOutputSchema,
+      undefined,
+      signal,
+    ),
   me: (signal?: AbortSignal) =>
     request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, signal),
   listTenants: (signal?: AbortSignal) =>

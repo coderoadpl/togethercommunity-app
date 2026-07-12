@@ -102,6 +102,19 @@ program.command('whoami').description('Current user and active tenant').action(a
   );
 });
 
+const publicCommand = program.command('public').description('Public read-only API');
+
+publicCommand.command('offer').description('Show the public offer').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.publicOffer(), ctx.json, (data) =>
+    data.products.length === 0
+      ? `${data.tenant.name} (${data.tenant.slug}) has no published products`
+      : data.products
+          .map((product) => `- ${product.title}  ${product.priceCents} ${product.currency}  (${product.id})`)
+          .join('\n'),
+  );
+});
+
 const tenant = program.command('tenant').description('Tenant staff access');
 
 tenant.command('list').description('Tenants you administer').action(async () => {

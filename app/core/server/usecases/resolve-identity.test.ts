@@ -8,7 +8,7 @@ import { resolveIdentity } from './resolve-identity.js';
 const user = { userId: 'u1', email: 'demo@example.com', name: 'Demo' };
 
 const acme: Membership = {
-  tenant: { id: 't-acme', slug: 'acme', name: 'Acme Inc' },
+  tenant: { id: 't-acme', slug: 'acme', name: 'Acme Inc', contentVersion: 1 },
   staffRole: 'owner',
 };
 
@@ -39,7 +39,7 @@ const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
   findBySlug: async (slug) => tenantList.find((tenant) => tenant.slug === slug) ?? null,
-  createTenant: async (input) => ({ id: input.id, slug: input.slug, name: input.name }),
+  createTenant: async (input) => ({ id: input.id, slug: input.slug, name: input.name, contentVersion: 1 }),
   createOwnerGrant: async () => undefined,
 });
 

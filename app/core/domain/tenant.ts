@@ -6,6 +6,7 @@ export const tenantSchema = z.object({
   id: z.string(),
   slug: z.string(),
   name: z.string(),
+  contentVersion: z.number().int().positive(),
 });
 
 export type Tenant = z.infer<typeof tenantSchema>;

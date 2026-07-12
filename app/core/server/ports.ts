@@ -7,6 +7,7 @@ import type { Member, Membership, Product, StaffRole, Tenant, TenantDomain } fro
 
 export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
+  listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
   create(tenantId: string, product: Product): Promise<void>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;

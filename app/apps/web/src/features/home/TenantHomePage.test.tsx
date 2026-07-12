@@ -22,7 +22,7 @@ const meWithoutTenant = {
 };
 
 const tenantsBody = {
-  tenants: [{ tenant: { id: 't1', slug: 'acme', name: 'Acme' }, staffRole: 'owner' }],
+  tenants: [{ tenant: { id: 't1', slug: 'acme', name: 'Acme', contentVersion: 1 }, staffRole: 'owner' }],
 };
 
 const renderHomePage = async () => {

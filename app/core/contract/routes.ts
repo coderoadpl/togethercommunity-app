@@ -44,6 +44,23 @@ export const productsListOutputSchema = z.object({
   products: z.array(productSchema),
 });
 
+export const publicOfferOutputSchema = z.object({
+  tenant: z.object({
+    slug: z.string(),
+    name: z.string(),
+  }),
+  contentVersion: z.number().int().positive(),
+  products: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string(),
+      priceCents: z.number().int().nonnegative(),
+      currency: z.string().regex(/^[A-Z]{3}$/),
+    }),
+  ),
+});
+
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
   name: z.string(),
@@ -78,6 +95,7 @@ export const productsPublishOutputSchema = z.object({
  */
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
+  publicOffer: { method: 'GET', path: '/api/public/offer' },
   me: { method: 'GET', path: '/api/me' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
@@ -92,6 +110,7 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
   health: API_ROUTES.health.path,
+  publicOffer: API_ROUTES.publicOffer.path,
   me: API_ROUTES.me.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,

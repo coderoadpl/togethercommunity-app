@@ -80,6 +80,10 @@ export const tenantsScopes = {
   all: () => ['tenants'] as const,
 };
 
+export const publicOfferScopes = {
+  all: () => ['public-offer'] as const,
+};
+
 export const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
@@ -99,6 +103,12 @@ export const tenantsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: tenantsScopes.all(),
     call: ({ signal }) => api.listTenants(signal),
+  });
+
+export const publicOfferQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: publicOfferScopes.all(),
+    call: ({ signal }) => api.publicOffer(signal),
   });
 
 export const createTenantMutation = (api: ApiClient) =>

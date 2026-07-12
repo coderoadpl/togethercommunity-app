@@ -20,6 +20,12 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 export const createProductRepository = (db: Db): ProductRepository => ({
   listByTenant: async (tenantId) =>
     db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt)),
+  listPublishedByTenant: async (tenantId) =>
+    db
+      .select()
+      .from(products)
+      .where(and(eq(products.tenantId, tenantId), eq(products.published, true)))
+      .orderBy(asc(products.createdAt)),
   findById: async (tenantId, id) => {
     const rows = await db
       .select()
@@ -69,7 +75,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
   },
   createTenant: async (input) => {
     await db.insert(tenants).values(input);
-    return { id: input.id, slug: input.slug, name: input.name };
+    return { id: input.id, slug: input.slug, name: input.name, contentVersion: 1 };
   },
   createOwnerGrant: async (input) => {
     await db.insert(tenantAdmins).values({
@@ -88,6 +94,7 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         id: tenants.id,
         slug: tenants.slug,
         name: tenants.name,
+        contentVersion: tenants.contentVersion,
         staffRole: tenantAdmins.role,
       })
       .from(tenantAdmins)
@@ -97,10 +104,13 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
     id: string;
     slug: string;
     name: string;
+    contentVersion: number;
     staffRole: string;
   }): Membership | null => {
     const staffRole = parseStaffRole(row.staffRole);
-    return staffRole ? { tenant: { id: row.id, slug: row.slug, name: row.name }, staffRole } : null;
+    return staffRole
+      ? { tenant: { id: row.id, slug: row.slug, name: row.name, contentVersion: row.contentVersion }, staffRole }
+      : null;
   };
 
   return {

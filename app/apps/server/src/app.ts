@@ -4,6 +4,7 @@ import {
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  publicOfferOutputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
   tenantCreateInputSchema,
@@ -13,6 +14,7 @@ import {
   err,
   internal,
   ok,
+  tenantNotFound,
   unauthorized,
   validation,
   type AppError,
@@ -22,10 +24,12 @@ import {
 import {
   createProduct,
   createTenant,
+  getPublicOffer,
   listMyTenants,
   listProducts,
   publishProduct,
   resolveIdentity,
+  resolveTenant,
   type AuthenticatedUser,
 } from '@core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '@adapters/auth/create-auth.js';
@@ -43,6 +47,24 @@ const respond = <T>(result: Result<T, AppError>): Response => {
     status,
     headers: { 'content-type': 'application/json' },
   });
+};
+
+const publicHeaders = (etag?: string): Headers => {
+  const headers = new Headers({
+    'access-control-allow-origin': '*',
+    'cache-control': 'public, max-age=60',
+  });
+  if (etag) headers.set('etag', etag);
+  return headers;
+};
+
+const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response => {
+  const envelope = toEnvelope(result);
+  if (!envelope.ok) recordAppError(envelope.error);
+  const status = envelope.ok ? 200 : HTTP_STATUS_BY_ERROR_CODE[envelope.error.code];
+  const headers = publicHeaders(etag);
+  headers.set('content-type', 'application/json');
+  return new Response(JSON.stringify(envelope), { status, headers });
 };
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -75,6 +97,35 @@ export const buildApp = (deps: AppDeps) => {
       }),
     ),
   );
+
+  app.options(API_PATHS.publicOffer, () =>
+    new Response(null, {
+      status: 204,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, OPTIONS',
+        'access-control-allow-headers': `${TENANT_HEADER}, if-none-match`,
+        'access-control-max-age': '60',
+      },
+    }),
+  );
+
+  app.get(API_PATHS.publicOffer, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}"`;
+    if (c.req.header('if-none-match') === etag) {
+      return new Response(null, { status: 304, headers: publicHeaders(etag) });
+    }
+
+    const result = await getPublicOffer(tenant.value.tenant, deps);
+    if (!result.ok) return respondPublic(result, etag);
+    const parsed = publicOfferOutputSchema.safeParse(result.value);
+    if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
+    return respondPublic(ok(parsed.data), etag);
+  });
 
   app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) => deps.auth.handler(c.req.raw));
 

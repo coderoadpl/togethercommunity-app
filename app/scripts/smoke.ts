@@ -213,6 +213,19 @@ const productItemSchema = z.object({ id: z.string(), title: z.string(), publishe
 const productsSchema = z.object({ products: z.array(productItemSchema) });
 const createSchema = z.object({ product: productItemSchema });
 const publishSchema = z.object({ product: productItemSchema });
+const publicOfferSchema = z.object({
+  tenant: z.object({ slug: z.string(), name: z.string() }),
+  contentVersion: z.number().int().positive(),
+  products: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string(),
+      priceCents: z.number().int().nonnegative(),
+      currency: z.string(),
+    }),
+  ),
+});
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -301,6 +314,15 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   assert(
     after.products.length === before.products.length + 1,
     `expected exactly one more product (${before.products.length} -> ${after.products.length})`,
+  );
+
+  const publicOffer = publicOfferSchema.parse(
+    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'public', 'offer'], anonHome), 'public offer'),
+  );
+  assert(publicOffer.tenant.slug === 'acme', `public offer selected the wrong tenant: ${publicOffer.tenant.slug}`);
+  assert(
+    publicOffer.products.some((product) => product.id === created.product.id),
+    'the anonymously fetched public offer did not include the newly published product',
   );
 
   expectError(

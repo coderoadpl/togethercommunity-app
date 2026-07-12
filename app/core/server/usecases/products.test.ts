@@ -21,6 +21,8 @@ const fakeRepo = (initial: Product[] = []) => {
   const versions = new Map<string, number>();
   const repo: ProductRepository = {
     listByTenant: async (tenantId) => store.filter((p) => p.tenantId === tenantId),
+    listPublishedByTenant: async (tenantId) =>
+      store.filter((p) => p.tenantId === tenantId && p.published),
     findById: async (tenantId, id) =>
       store.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
     create: async (_tenantId, product) => {

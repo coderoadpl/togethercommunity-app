@@ -23,7 +23,7 @@ import type {
 import type { Env } from './env.js';
 
 export interface AppDeps {
-  auth: Auth;
+  auth: Pick<Auth, 'handler'>;
   authPort: AuthPort;
   products: ProductRepository;
   tenantDomains: TenantDomainRepository;

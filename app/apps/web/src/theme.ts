@@ -24,7 +24,17 @@ export const INK_SOFT = '#5c5348';
 export const LINE = 'rgba(25, 21, 18, 0.14)';
 export const LINE_STRONG = 'rgba(25, 21, 18, 0.55)';
 
-export type ThemeMode = 'logbook' | 'material';
+export const MODES = [
+  { id: 'logbook', label: 'Logbook' },
+  { id: 'material', label: 'Material' },
+  { id: 'quiet-studio', label: 'Quiet Studio' },
+  { id: 'scoreboard', label: 'Scoreboard' },
+  { id: 'signal-mono', label: 'Signal Mono' },
+  { id: 'steady-frame', label: 'Steady Frame' },
+] as const;
+
+export type ThemeModeOption = (typeof MODES)[number];
+export type ThemeMode = ThemeModeOption['id'];
 
 /**
  * Stock Material UI look. Only the per-tenant accent carries over as the
@@ -43,7 +53,7 @@ export const createPlainTheme = (accentHue?: number): Theme =>
   });
 
 export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =>
-  mode === 'material' ? createPlainTheme(accentHue) : createAppTheme(accentHue);
+  mode === 'logbook' ? createAppTheme(accentHue) : createPlainTheme(accentHue);
 
 /**
  * Baseline grid of the logbook theme. The ruled-paper background repeats
@@ -315,11 +325,15 @@ export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>({
 
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 
-export const LedgerHeader = styled(Box)<AsElement>({ borderBottom: `3px double ${LINE_STRONG}` });
+export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({
+  borderBottom: `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
+}));
 
 export const TenantSwatch = styled(Box)(({ theme }) => ({
   backgroundColor: theme.palette.primary.main,
   boxShadow: `0.3rem 0.3rem 0 ${alpha(theme.palette.primary.main, 0.09)}`,
 }));
 
-export const LedgerNav = styled(Stack)<AsElement>({ borderBottom: `1px solid ${LINE}` });
+export const LedgerNav = styled(Stack)<AsElement>(({ theme }) => ({
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));

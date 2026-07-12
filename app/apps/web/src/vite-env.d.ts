@@ -1,3 +1,5 @@
+declare module '*.css';
+
 interface ImportMetaEnv {
   readonly DEV: boolean;
   readonly MODE: string;

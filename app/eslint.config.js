@@ -360,6 +360,11 @@ export default tseslint.config(
             {
               from: ['web-main'],
               allow: [
+                '@fontsource/fraunces',
+                '@fontsource/inter',
+                '@fontsource/jetbrains-mono',
+                '@fontsource/manrope',
+                '@fontsource/space-grotesk',
                 '@mui/material',
                 '@tanstack/react-query',
                 '@tanstack/react-query-devtools',
@@ -391,7 +396,13 @@ export default tseslint.config(
             },
             {
               from: ['web-ui'],
-              allow: ['@mui/material', '@testing-library/react', 'react', 'vitest'],
+              allow: [
+                '@mui/material',
+                '@testing-library/react',
+                '@testing-library/user-event',
+                'react',
+                'vitest',
+              ],
             },
             {
               from: ['web-test'],

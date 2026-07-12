@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ThemeProvider } from '@mui/material';
 
-import { createThemeForMode, type ThemeMode } from './theme.js';
+import { createThemeForMode, MODES, type ThemeMode } from './theme.js';
 
 const STORAGE_KEY = 'together-theme-mode';
 
@@ -12,9 +12,13 @@ const ThemeModeContext = createContext<{ mode: ThemeMode; setMode: (mode: ThemeM
 
 export const useThemeMode = () => useContext(ThemeModeContext);
 
+const isThemeMode = (value: string | null): value is ThemeMode =>
+  MODES.some((option) => option.id === value);
+
 const loadMode = (): ThemeMode => {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'material' ? 'material' : 'logbook';
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return isThemeMode(stored) ? stored : 'logbook';
   } catch {
     return 'logbook';
   }

@@ -1,5 +1,6 @@
 import type {
   Member,
+  MemberWithProductIds,
   Membership,
   Product,
   ProductGrant,
@@ -24,6 +25,7 @@ export interface ProductRepository {
 
 export interface MemberRepository {
   findByEmail(tenantId: string, email: string): Promise<Member | null>;
+  listWithProductIds(tenantId: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
 }
 

@@ -37,6 +37,7 @@ import {
   LedgerHeader,
   TenantSwatch,
 } from '../../theme.js';
+import { MembersPanel } from './members/MembersPanel.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 
 type TenantContext = {
@@ -410,6 +411,8 @@ const CreatorPanel = () => {
         </ToggleButtonGroup>
         {section === 'products' ? (
           <ProductsPanel />
+        ) : section === 'members' ? (
+          <MembersPanel />
         ) : section === 'settings' ? (
           <SecurityPanel />
         ) : (

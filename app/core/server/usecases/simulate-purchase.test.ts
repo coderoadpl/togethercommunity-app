@@ -37,6 +37,7 @@ const fakeMembers = () => {
   const repo: MemberRepository = {
     findByEmail: async (tenantId, email) =>
       store.find((m) => m.tenantId === tenantId && m.email === email) ?? null,
+    listWithProductIds: async () => [],
     create: async (_tenantId, member) => {
       store.push(member);
     },

@@ -14,7 +14,7 @@ import type {
   SimulatePurchaseInput,
   TenantCreateInput,
 } from '@core/contract/index.js';
-import type { NewProductInput } from '@core/domain/index.js';
+import type { MemberExportFormat, NewProductInput } from '@core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -101,6 +101,11 @@ export const myProductsScopes = {
   all: () => ['my-products'] as const,
 };
 
+export const membersScopes = {
+  all: () => ['members'] as const,
+  export: (format: MemberExportFormat) => ['members', 'export', format] as const,
+};
+
 export const authScopes = {
   all: () => ['auth'] as const,
   magicLink: (email: string) => ['auth', 'dev-magic-link', email] as const,
@@ -158,6 +163,20 @@ export const myProductsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: myProductsScopes.all(),
     call: ({ signal }) => api.myProducts(signal),
+  });
+
+export const membersQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: membersScopes.all(),
+    call: ({ signal }) => api.listMembers(signal),
+  });
+
+export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =>
+  defineQuery({
+    queryKey: membersScopes.export(format),
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportMembers(format, signal),
   });
 
 export const simulatePurchaseMutation = (api: ApiClient) =>

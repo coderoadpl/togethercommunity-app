@@ -9,6 +9,8 @@ import {
   createProductMutation,
   enableTwoFactorMutation,
   meQuery,
+  membersQuery,
+  membersExportQuery,
   myProductsInvalidates,
   myProductsQuery,
   productsInvalidates,
@@ -26,6 +28,7 @@ import {
   tenantsQuery,
   verifyTotpMutation,
 } from '@core/client/index.js';
+import type { MemberExportFormat } from '@core/domain/index.js';
 
 /**
  * W3C `traceparent` for the active span, formatted from the OTel facade so FE→BE
@@ -59,6 +62,8 @@ export const actions = {
   publishProduct: publishProductMutation(apiClient),
   productsInvalidates,
   myProducts: myProductsQuery(apiClient),
+  members: membersQuery(apiClient),
+  membersExport: (format: MemberExportFormat) => membersExportQuery(apiClient, format),
   simulatePurchase: simulatePurchaseMutation(apiClient),
   myProductsInvalidates,
   signUp: signUpMutation(authClient),

@@ -53,6 +53,7 @@ const deps = (input: {
     },
     members: {
       findByEmail: async () => null,
+      listWithProductIds: async () => [],
       create: async () => undefined,
     },
     grants: {

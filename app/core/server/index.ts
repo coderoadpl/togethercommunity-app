@@ -7,5 +7,6 @@ export * from './usecases/products.js';
 export * from './usecases/ensure-member.js';
 export * from './usecases/simulate-purchase.js';
 export * from './usecases/my-products.js';
+export * from './usecases/members.js';
 export * from './usecases/tenants.js';
 export * from './usecases/create-tenant.js';

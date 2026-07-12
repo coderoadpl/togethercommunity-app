@@ -1,0 +1,65 @@
+import {
+  err,
+  forbidden,
+  ok,
+  tenantNotFound,
+  type AppError,
+  type MemberExportFile,
+  type MemberExportFormat,
+  type MemberWithProductIds,
+  type Result,
+} from '@core/domain/index.js';
+
+import type { Ctx } from '../context.js';
+import type { MemberRepository } from '../ports.js';
+
+export interface MembersDeps {
+  members: MemberRepository;
+}
+
+const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
+  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage members'));
+  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage members'));
+  return ok(ctx.identity.tenantId);
+};
+
+const quoteCsv = (value: string): string => `"${value.replaceAll('"', '""')}"`;
+
+const CSV_HEADER = ['id', 'email', 'displayName', 'createdAt', 'productIds'];
+
+const toCsv = (members: MemberWithProductIds[]): string =>
+  [
+    CSV_HEADER.map(quoteCsv).join(','),
+    ...members.map((member) =>
+      [member.id, member.email, member.displayName ?? '', member.createdAt, member.productIds.join(';')]
+        .map(quoteCsv)
+        .join(','),
+    ),
+  ].join('\n');
+
+export const listMembers = async (
+  ctx: Ctx,
+  deps: MembersDeps,
+): Promise<Result<MemberWithProductIds[], AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  return ok(await deps.members.listWithProductIds(tenant.value));
+};
+
+export const exportMembers = async (
+  ctx: Ctx,
+  input: { format: MemberExportFormat },
+  deps: MembersDeps,
+): Promise<Result<MemberExportFile, AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+
+  const members = await deps.members.listWithProductIds(tenant.value);
+  const filename = `members-${ctx.identity.tenantSlug ?? tenant.value}.${input.format}`;
+
+  return ok(
+    input.format === 'csv'
+      ? { filename, mimeType: 'text/csv; charset=utf-8', content: toCsv(members) }
+      : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(members) },
+  );
+};

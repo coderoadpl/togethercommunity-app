@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import {
+  memberExportFileSchema,
+  memberWithProductIdsSchema,
   membershipSchema,
   newProductSchema,
   productSchema,
@@ -79,6 +81,12 @@ export const myProductsOutputSchema = z.object({
   ),
 });
 
+export const membersListOutputSchema = z.object({
+  members: z.array(memberWithProductIdsSchema),
+});
+
+export const membersExportOutputSchema = memberExportFileSchema;
+
 export const magicLinkSchema = z.object({
   email: z.string(),
   url: z.string(),
@@ -146,6 +154,8 @@ export const API_ROUTES = {
   productsCreate: { method: 'POST', path: '/api/products' },
   productsPublish: { method: 'POST', path: '/api/products/publish' },
   myProducts: { method: 'GET', path: '/api/my/products' },
+  members: { method: 'GET', path: '/api/members' },
+  membersExport: { method: 'GET', path: '/api/members/export' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
   devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
 } as const;
@@ -163,6 +173,8 @@ export const API_PATHS = {
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,
   myProducts: API_ROUTES.myProducts.path,
+  members: API_ROUTES.members.path,
+  membersExport: API_ROUTES.membersExport.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
   devMagicLink: API_ROUTES.devMagicLink.path,
 } as const;

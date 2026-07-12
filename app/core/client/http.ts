@@ -7,6 +7,8 @@ import {
   devMagicLinkOutputSchema,
   healthOutputSchema,
   meOutputSchema,
+  membersListOutputSchema,
+  membersExportOutputSchema,
   myProductsOutputSchema,
   publicOfferOutputSchema,
   productsCreateOutputSchema,
@@ -22,7 +24,15 @@ import {
   type TenantCreateInput,
   type WriteMethod,
 } from '@core/contract/index.js';
-import { err, internal, ok, type AppError, type NewProductInput, type Result } from '@core/domain/index.js';
+import {
+  err,
+  internal,
+  ok,
+  type AppError,
+  type MemberExportFormat,
+  type NewProductInput,
+  type Result,
+} from '@core/domain/index.js';
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 
@@ -155,6 +165,17 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   myProducts: (signal?: AbortSignal) =>
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
+  listMembers: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.members.method, API_ROUTES.members.path, membersListOutputSchema, undefined, signal),
+  exportMembers: (format: MemberExportFormat, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.membersExport.method,
+      `${API_ROUTES.membersExport.path}?format=${encodeURIComponent(format)}`,
+      membersExportOutputSchema,
+      undefined,
+      signal,
+    ),
   simulatePurchase: (input: SimulatePurchaseInput, signal?: AbortSignal) =>
     request(
       options,

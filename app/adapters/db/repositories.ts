@@ -71,6 +71,25 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .limit(1);
     return rows[0] ?? null;
   },
+  listWithProductIds: async (tenantId) =>
+    db
+      .select({
+        id: members.id,
+        email: members.email,
+        displayName: members.displayName,
+        createdAt: members.createdAt,
+        productIds: sql<
+          string[]
+        >`coalesce(array_agg(${productGrants.productId}) filter (where ${productGrants.productId} is not null), '{}')`,
+      })
+      .from(members)
+      .leftJoin(
+        productGrants,
+        and(eq(productGrants.tenantId, members.tenantId), eq(productGrants.memberId, members.id)),
+      )
+      .where(eq(members.tenantId, tenantId))
+      .groupBy(members.id, members.email, members.displayName, members.createdAt)
+      .orderBy(asc(members.createdAt)),
   create: async (_tenantId, member) => {
     await db.insert(members).values(member);
   },

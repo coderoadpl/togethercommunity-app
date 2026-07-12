@@ -1,9 +1,11 @@
+import { writeFile } from 'node:fs/promises';
+
 import { Command } from 'commander';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '@adapters/auth/client-adapter.js';
 import { createApiClient, type ApiClient } from '@core/client/index.js';
 import { TENANT_HEADER } from '@core/contract/index.js';
-import { err, internal, notFound, ok, validation } from '@core/domain/index.js';
+import { err, internal, memberExportFormatSchema, notFound, ok, validation } from '@core/domain/index.js';
 
 import { loadConfig, saveConfig, type CliConfig } from './config.js';
 import { emit } from './output.js';
@@ -285,6 +287,43 @@ program
       saveConfig({ ...ctx.config, apiUrl: ctx.apiUrl, token: verified.value.token });
     }
     emit(verified, ctx.json, () => `signed in as ${options.email} via magic link`);
+  });
+
+const member = program.command('member').description('Members of the active tenant (staff only)');
+
+member.command('list').description('List members and their granted product ids').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.listMembers(), ctx.json, (data) =>
+    data.members.length === 0
+      ? 'no members'
+      : data.members
+          .map(
+            (m) =>
+              `${m.email}\t${m.displayName ?? ''}\t${m.productIds.length} product(s)\t(${m.id})`,
+          )
+          .join('\n'),
+  );
+});
+
+member
+  .command('export')
+  .description('Export members as CSV or JSON')
+  .requiredOption('--format <format>', 'csv or json')
+  .option('--out <file>', 'write the export to a file instead of stdout')
+  .action(async (options: { format: string; out?: string }) => {
+    const ctx = cliCtx();
+    const format = memberExportFormatSchema.safeParse(options.format);
+    if (!format.success) {
+      emit(err(validation('--format must be "csv" or "json"')), ctx.json, () => '');
+      return;
+    }
+    const result = await ctx.api.exportMembers(format.data);
+    if (result.ok && options.out !== undefined) {
+      await writeFile(options.out, result.value.content);
+    }
+    emit(result, ctx.json, (file) =>
+      options.out !== undefined ? `wrote ${file.filename} to ${options.out}` : file.content,
+    );
   });
 
 const my = program.command('my').description('Your member view of the active tenant');

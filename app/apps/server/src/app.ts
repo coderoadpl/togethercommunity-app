@@ -14,6 +14,7 @@ import {
 import {
   err,
   internal,
+  memberExportFormatSchema,
   ok,
   tenantNotFound,
   unauthorized,
@@ -25,7 +26,9 @@ import {
 import {
   createProduct,
   createTenant,
+  exportMembers,
   getPublicOffer,
+  listMembers,
   listMyProducts,
   listMyTenants,
   listProducts,
@@ -261,6 +264,19 @@ export const buildApp = (deps: AppDeps) => {
           })
         : result,
     );
+  });
+
+  app.get(API_PATHS.members, async (c) => {
+    const result = await listMembers({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ members: result.value }) : result);
+  });
+
+  app.get(API_PATHS.membersExport, async (c) => {
+    const format = memberExportFormatSchema.safeParse(c.req.query('format'));
+    if (!format.success) {
+      return respond(err(validation('Query parameter "format" must be "csv" or "json"')));
+    }
+    return respond(await exportMembers({ identity: c.get('identity') }, { format: format.data }, deps));
   });
 
   app.post(API_PATHS.products, async (c) => {

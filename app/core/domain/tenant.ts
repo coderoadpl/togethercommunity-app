@@ -29,6 +29,28 @@ export const memberSchema = z.object({
 
 export type Member = z.infer<typeof memberSchema>;
 
+export const memberWithProductIdsSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  displayName: z.string().nullable(),
+  createdAt: z.string(),
+  productIds: z.array(z.string()),
+});
+
+export type MemberWithProductIds = z.infer<typeof memberWithProductIdsSchema>;
+
+export const memberExportFormatSchema = z.enum(['csv', 'json']);
+
+export type MemberExportFormat = z.infer<typeof memberExportFormatSchema>;
+
+export const memberExportFileSchema = z.object({
+  filename: z.string(),
+  mimeType: z.string(),
+  content: z.string(),
+});
+
+export type MemberExportFile = z.infer<typeof memberExportFileSchema>;
+
 export const tenantDomainSchema = z.object({
   id: z.string(),
   tenantId: z.string(),

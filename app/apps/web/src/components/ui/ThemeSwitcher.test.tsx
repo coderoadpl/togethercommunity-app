@@ -71,9 +71,19 @@ describe('ThemeSwitcher', () => {
       'Steady Frame',
     ]);
 
-    await user.click(screen.getByRole('option', { name: 'Quiet Studio' }));
+    await user.click(screen.getByRole('option', { name: 'Scoreboard' }));
 
     expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^4:.*Roboto/);
+    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Scoreboard');
+  });
+
+  it('applies the quiet-studio theme when selected', async () => {
+    const user = userEvent.setup();
+    renderSwitcher();
+
+    await selectMode(user, 'Quiet Studio');
+
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^10:'Inter'/);
     expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Quiet Studio');
   });
 

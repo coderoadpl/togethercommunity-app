@@ -134,7 +134,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               required
             />
           </FormControl>
-          <Button type="submit" variant="contained" disabled={simulatePurchase.isPending}>
+          <Button
+            type="submit"
+            variant="contained"
+            color="secondary"
+            disabled={simulatePurchase.isPending}
+          >
             {simulatePurchase.isPending ? 'simulating payment…' : 'Simulate payment (dev)'}
           </Button>
           {simulatePurchase.isError ? (

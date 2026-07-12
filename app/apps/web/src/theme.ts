@@ -17,6 +17,15 @@ const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, mo
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
 
+declare module '@mui/material/styles' {
+  interface Theme {
+    headerRule?: string;
+  }
+  interface ThemeOptions {
+    headerRule?: string;
+  }
+}
+
 export const PAPER = '#f6f2ea';
 export const PAPER_RAISED = '#fdfbf6';
 export const INK = '#191512';
@@ -52,8 +61,294 @@ export const createPlainTheme = (accentHue?: number): Theme =>
     },
   });
 
-export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =>
-  mode === 'logbook' ? createAppTheme(accentHue) : createPlainTheme(accentHue);
+export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme => {
+  switch (mode) {
+    case 'logbook':
+      return createAppTheme(accentHue);
+    case 'quiet-studio':
+      return createQuietStudioTheme();
+    case 'material':
+    case 'scoreboard':
+    case 'signal-mono':
+    case 'steady-frame':
+      return createPlainTheme(accentHue);
+  }
+};
+
+const STUDIO_FONT_UI =
+  "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const STUDIO_FONT_EDITORIAL = "'Fraunces', 'Iowan Old Style', Georgia, serif";
+
+const STUDIO_BG = '#FAFAF8';
+const STUDIO_SURFACE = '#FFFFFF';
+const STUDIO_INK = '#1C1B1A';
+const STUDIO_INK_SOFT = '#59564F';
+const STUDIO_PRIMARY = '#3730A3';
+const STUDIO_PRIMARY_DARK = '#2A2482';
+const STUDIO_ACCENT = '#C9622A';
+const STUDIO_ACCENT_FILL = '#B0511E';
+const STUDIO_ACCENT_FILL_DARK = '#96431A';
+const STUDIO_SUCCESS = '#1F7A46';
+const STUDIO_ERROR = '#B3261E';
+const STUDIO_DIVIDER = '#E7E5E0';
+const STUDIO_INPUT_BORDER = '#D8D5CD';
+const STUDIO_SHADOW_REST = '0 1px 2px rgba(20, 18, 15, 0.04)';
+const STUDIO_SHADOW_FLOAT = '0 12px 28px rgba(20, 18, 15, 0.08)';
+
+export const createQuietStudioTheme = (): Theme =>
+  createTheme({
+    headerRule: `1px solid ${STUDIO_DIVIDER}`,
+    palette: {
+      mode: 'light',
+      primary: {
+        main: STUDIO_PRIMARY,
+        dark: STUDIO_PRIMARY_DARK,
+        contrastText: STUDIO_SURFACE,
+      },
+      secondary: {
+        main: STUDIO_ACCENT_FILL,
+        light: STUDIO_ACCENT,
+        dark: STUDIO_ACCENT_FILL_DARK,
+        contrastText: STUDIO_SURFACE,
+      },
+      success: { main: STUDIO_SUCCESS },
+      error: { main: STUDIO_ERROR },
+      background: { default: STUDIO_BG, paper: STUDIO_SURFACE },
+      text: { primary: STUDIO_INK, secondary: STUDIO_INK_SOFT },
+      divider: STUDIO_DIVIDER,
+    },
+    shape: { borderRadius: 10 },
+    typography: {
+      fontFamily: STUDIO_FONT_UI,
+      body1: { fontSize: '0.9375rem', lineHeight: 1.55 },
+      body2: { fontSize: '0.85rem', lineHeight: 1.55 },
+      h1: {
+        fontFamily: STUDIO_FONT_EDITORIAL,
+        fontSize: '1.9rem',
+        fontWeight: 500,
+        letterSpacing: '-0.01em',
+        lineHeight: 1.25,
+      },
+      h2: { fontSize: '1.1rem', fontWeight: 600, lineHeight: 1.4 },
+      overline: {
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        letterSpacing: '0.08em',
+        lineHeight: 1.7,
+        color: STUDIO_INK_SOFT,
+      },
+      button: {
+        fontSize: '0.9rem',
+        fontWeight: 600,
+        letterSpacing: 0,
+        textTransform: 'none',
+      },
+      caption: { fontSize: '0.78rem', lineHeight: 1.5, color: STUDIO_INK_SOFT },
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            backgroundColor: STUDIO_BG,
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          },
+          '@keyframes settle': {
+            from: { opacity: 0, transform: 'translateY(0.5rem)' },
+            to: { opacity: 1, transform: 'none' },
+          },
+        },
+      },
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: {
+          root: { borderRadius: 10, padding: '0.55rem 1.25rem' },
+          contained: {
+            boxShadow: STUDIO_SHADOW_REST,
+            '&:hover': { boxShadow: STUDIO_SHADOW_FLOAT },
+          },
+          outlined: {
+            borderColor: alpha(STUDIO_INK, 0.22),
+            color: STUDIO_INK,
+            '&:hover': {
+              borderColor: alpha(STUDIO_INK, 0.38),
+              backgroundColor: alpha(STUDIO_INK, 0.03),
+            },
+          },
+          text: {
+            color: STUDIO_PRIMARY,
+            '&:hover': { backgroundColor: alpha(STUDIO_PRIMARY, 0.06) },
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: { backgroundImage: 'none' },
+          rounded: { borderRadius: 16 },
+          outlined: {
+            border: 'none',
+            boxShadow: `${STUDIO_SHADOW_REST}, ${STUDIO_SHADOW_FLOAT}`,
+          },
+          elevation1: { boxShadow: STUDIO_SHADOW_REST },
+          elevation8: { boxShadow: STUDIO_SHADOW_FLOAT },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 10,
+            backgroundColor: STUDIO_SURFACE,
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: STUDIO_INPUT_BORDER },
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: alpha(STUDIO_INK, 0.35),
+            },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: STUDIO_PRIMARY,
+              borderWidth: 2,
+            },
+          },
+          input: { padding: '0.65rem 0.85rem', fontSize: '0.9375rem', lineHeight: 1.55 },
+        },
+      },
+      MuiFormLabel: {
+        styleOverrides: {
+          root: {
+            fontSize: '0.8rem',
+            fontWeight: 500,
+            lineHeight: 1.5,
+            color: STUDIO_INK_SOFT,
+            marginBottom: '0.35rem',
+            '&.Mui-focused': { color: STUDIO_INK },
+          },
+        },
+      },
+      MuiInputBase: {
+        styleOverrides: {
+          input: {
+            '&::placeholder': { color: STUDIO_INK_SOFT, opacity: 0.75 },
+          },
+        },
+      },
+      MuiLink: {
+        defaultProps: { underline: 'hover' },
+        styleOverrides: {
+          root: {
+            color: STUDIO_PRIMARY,
+            fontWeight: 500,
+            '&[aria-current="true"]': { fontWeight: 600 },
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: { borderRadius: 8, fontWeight: 500 },
+          outlined: {
+            borderColor: alpha(STUDIO_PRIMARY, 0.25),
+            color: STUDIO_PRIMARY,
+            backgroundColor: alpha(STUDIO_PRIMARY, 0.08),
+          },
+        },
+      },
+      MuiToggleButtonGroup: {
+        styleOverrides: {
+          root: {
+            gap: '0.4rem',
+            '& .MuiToggleButtonGroup-grouped, & .MuiToggleButtonGroup-firstButton, & .MuiToggleButtonGroup-middleButton, & .MuiToggleButtonGroup-lastButton':
+              {
+                border: 0,
+                borderRadius: 10,
+                marginLeft: 0,
+              },
+          },
+        },
+      },
+      MuiToggleButton: {
+        styleOverrides: {
+          root: {
+            border: 0,
+            borderRadius: 10,
+            textTransform: 'none',
+            fontFamily: STUDIO_FONT_UI,
+            fontSize: '0.9rem',
+            fontWeight: 500,
+            lineHeight: 1.4,
+            padding: '0.5rem 1rem',
+            color: STUDIO_INK_SOFT,
+            '&:hover': { backgroundColor: alpha(STUDIO_INK, 0.05) },
+            '&.Mui-selected': {
+              backgroundColor: alpha(STUDIO_PRIMARY, 0.08),
+              color: STUDIO_PRIMARY,
+              fontWeight: 600,
+              '&:hover': { backgroundColor: alpha(STUDIO_PRIMARY, 0.12) },
+            },
+          },
+        },
+      },
+      MuiList: {
+        styleOverrides: {
+          root: { paddingTop: 0, paddingBottom: 0 },
+        },
+      },
+      MuiListItem: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px solid ${STUDIO_DIVIDER}`,
+            paddingTop: '0.75rem',
+            paddingBottom: '0.75rem',
+            '&:last-of-type': { borderBottom: 'none' },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 10,
+            '&:hover': { backgroundColor: alpha(STUDIO_PRIMARY, 0.05) },
+          },
+        },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px solid ${STUDIO_DIVIDER}`,
+            fontSize: '0.875rem',
+          },
+          head: {
+            color: STUDIO_INK_SOFT,
+            fontWeight: 600,
+            fontSize: '0.75rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          },
+        },
+      },
+      MuiAlert: {
+        defaultProps: { severity: 'error' },
+        styleOverrides: {
+          root: { borderRadius: 10 },
+        },
+      },
+      MuiAppBar: {
+        styleOverrides: {
+          root: {
+            backgroundColor: STUDIO_SURFACE,
+            color: STUDIO_INK,
+            boxShadow: STUDIO_SHADOW_REST,
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: { borderRadius: 16, boxShadow: STUDIO_SHADOW_FLOAT },
+        },
+      },
+      MuiAutocomplete: {
+        styleOverrides: {
+          paper: { borderRadius: 12, boxShadow: STUDIO_SHADOW_FLOAT },
+        },
+      },
+    },
+  });
 
 /**
  * Baseline grid of the logbook theme. The ruled-paper background repeats
@@ -326,7 +621,7 @@ export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>({
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 
 export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({
-  borderBottom: `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
+  borderBottom: theme.headerRule ?? `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
 }));
 
 export const TenantSwatch = styled(Box)(({ theme }) => ({

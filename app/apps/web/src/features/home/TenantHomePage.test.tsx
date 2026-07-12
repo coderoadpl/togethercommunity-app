@@ -36,16 +36,18 @@ const renderHomePage = async () => {
 };
 
 describe('TenantHomePage', () => {
-  it('shows the tenant name and placeholder when a tenant is resolved', async () => {
+  it('shows the creator panel when a staff tenant is resolved', async () => {
     server.use(
       http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
       http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
+      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
     );
 
     await renderHomePage();
 
     expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
-    expect(screen.getByText(/the creator panel arrives in a later stage/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Products' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'New product' })).toBeInTheDocument();
   });
 
   it('falls back to the tenant picker when no tenant is selected', async () => {

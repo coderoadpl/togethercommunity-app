@@ -1,17 +1,23 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 import {
   Alert,
   Box,
   Button,
   Chip,
   Container,
+  FormControl,
+  FormLabel,
+  Link,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
+  OutlinedInput,
   Paper,
   Stack,
   ThemeProvider,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +37,25 @@ import {
   LedgerHeader,
   TenantSwatch,
 } from '../../theme.js';
+import { ProductsPanel } from './products/ProductsPanel.js';
+
+type TenantContext = {
+  id: string;
+  slug: string;
+  name: string;
+  staffRole: 'owner' | 'admin' | null;
+  memberId: string | null;
+};
+
+type CreatorSection = 'products' | 'sales' | 'members' | 'integrations' | 'settings';
+
+const creatorSections: { id: CreatorSection; label: string }[] = [
+  { id: 'products', label: 'Products' },
+  { id: 'sales', label: 'Sales' },
+  { id: 'members', label: 'Members' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'settings', label: 'Settings' },
+];
 
 export const TenantHomePage = () => {
   const navigate = useNavigate();
@@ -69,11 +94,30 @@ export const TenantHomePage = () => {
 
 const PickTenant = () => {
   const tenants = useQuery(actions.tenants);
+  const [name, setName] = useState('');
+  const [slugInput, setSlugInput] = useState('');
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const slugPreview = slugInput || name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  const createTenant = useMutation({
+    ...actions.createTenant,
+    onSuccess: async (data) => {
+      setCreatedSlug(data.tenant.slug);
+      await queryClient.invalidateQueries();
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    createTenant.mutate({ name, slug: slugPreview });
+  };
+
   return (
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
       <Paper
         variant="outlined"
-        sx={{ width: '100%', maxWidth: '23rem', px: '1.8rem', pt: '2rem', pb: '1.6rem' }}
+        sx={{ width: '100%', maxWidth: '29rem', px: '1.8rem', pt: '2rem', pb: '1.6rem' }}
       >
         <CardTitle variant="h1">Choose a tenant</CardTitle>
         <Eyebrow variant="overline" component="p">
@@ -97,6 +141,43 @@ const PickTenant = () => {
             </ListItem>
           ))}
         </List>
+        <Box component="form" onSubmit={submit} sx={{ mt: '1.5rem', display: 'grid', gap: '1rem' }}>
+          <Typography variant="h2" component="h2">
+            Create a tenant
+          </Typography>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="tenant-name">name</FormLabel>
+            <OutlinedInput
+              id="tenant-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="tenant-slug">slug</FormLabel>
+            <OutlinedInput
+              id="tenant-slug"
+              value={slugInput}
+              placeholder={slugPreview}
+              onChange={(event) => setSlugInput(event.target.value)}
+            />
+          </FormControl>
+          <Typography variant="caption" component="p">
+            {slugPreview ? tenantUrl(slugPreview) : 'Enter a name to preview the tenant URL.'}
+          </Typography>
+          <Button type="submit" variant="contained" disabled={createTenant.isPending || !slugPreview}>
+            {createTenant.isPending ? 'creating tenant…' : 'create tenant'}
+          </Button>
+          {createTenant.isError ? (
+            <Alert>
+              {createTenant.error instanceof ApiError
+                ? createTenant.error.appError.message
+                : createTenant.error.message}
+            </Alert>
+          ) : null}
+          {createdSlug ? <Link href={tenantUrl(createdSlug)}>Open {tenantUrl(createdSlug)}</Link> : null}
+        </Box>
       </Paper>
     </Box>
   );
@@ -106,7 +187,7 @@ const TenantHome = ({
   tenant,
   email,
 }: {
-  tenant: { id: string; slug: string; name: string; staffRole: string | null; memberId: string | null };
+  tenant: TenantContext;
   email: string;
 }) => {
   const queryClient = useQueryClient();
@@ -146,15 +227,57 @@ const TenantHome = ({
           </Stack>
         </LedgerHeader>
 
-        <Box component="section" sx={{ mt: '48px' }}>
-          <Typography variant="h2" component="h2" sx={{ mb: '24px' }}>
-            Your workspace
-          </Typography>
-          <Typography variant="h2" component="p" sx={{ py: '24px' }}>
-            — the creator panel arrives in a later stage —
-          </Typography>
-        </Box>
+        {tenant.staffRole ? <CreatorPanel /> : <MemberArea />}
       </Container>
     </ThemeProvider>
   );
 };
+
+const CreatorPanel = () => {
+  const [section, setSection] = useState<CreatorSection>('products');
+
+  const changeSection = (_event: MouseEvent<HTMLElement>, value: CreatorSection | null) => {
+    if (value) setSection(value);
+  };
+
+  return (
+    <Box component="section" sx={{ mt: '48px' }}>
+      <Stack useFlexGap spacing="1.5rem">
+        <ToggleButtonGroup
+          exclusive
+          value={section}
+          onChange={changeSection}
+          aria-label="Creator sections"
+          sx={{ flexWrap: 'wrap' }}
+        >
+          {creatorSections.map((item) => (
+            <ToggleButton key={item.id} value={item.id}>
+              {item.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        {section === 'products' ? (
+          <ProductsPanel />
+        ) : (
+          <Paper elevation={1} sx={{ p: '1.5rem' }}>
+            <Typography variant="h2" component="h2">
+              {creatorSections.find((item) => item.id === section)?.label}
+            </Typography>
+            <Typography variant="body1" sx={{ mt: '1rem' }}>
+              Coming soon.
+            </Typography>
+          </Paper>
+        )}
+      </Stack>
+    </Box>
+  );
+};
+
+const MemberArea = () => (
+  <Box component="section" sx={{ mt: '48px' }}>
+    <Typography variant="h2" component="h2" sx={{ mb: '24px' }}>
+      Member area
+    </Typography>
+    <Link href="#my-products">My products</Link>
+  </Box>
+);

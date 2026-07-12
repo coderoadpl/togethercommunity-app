@@ -3,6 +3,7 @@ import { context, trace } from '@opentelemetry/api';
 import { createBetterAuthClientAdapter } from '@adapters/auth/client-adapter.js';
 import {
   createApiClient,
+  createTenantMutation,
   createProductMutation,
   meQuery,
   myProductsInvalidates,
@@ -42,6 +43,7 @@ const authClient = createBetterAuthClientAdapter('');
 export const actions = {
   me: meQuery(apiClient),
   tenants: tenantsQuery(apiClient),
+  createTenant: createTenantMutation(apiClient),
   products: productsQuery(apiClient),
   createProduct: createProductMutation(apiClient),
   publishProduct: publishProductMutation(apiClient),

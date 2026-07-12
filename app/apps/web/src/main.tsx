@@ -18,6 +18,7 @@ import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
+import { RegisterRoute } from './routes/register.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
@@ -46,8 +47,13 @@ const loginRoute = createRoute({
   path: '/login',
   component: LoginRoute,
 });
+const registerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/register',
+  component: RegisterRoute,
+});
 
-const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, loginRoute]) });
+const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, loginRoute, registerRoute]) });
 
 declare module '@tanstack/react-router' {
   interface Register {

@@ -17,16 +17,17 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
-export const LoginPage = () => {
+export const RegisterPage = () => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const signIn = useMutation({
-    ...actions.signIn,
+  const signUp = useMutation({
+    ...actions.signUp,
     onSuccess: async () => {
       await queryClient.invalidateQueries();
       await navigate({ to: '/' });
@@ -35,7 +36,7 @@ export const LoginPage = () => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    signIn.mutate({ email, password });
+    signUp.mutate({ name, email, password });
   };
 
   return (
@@ -57,13 +58,23 @@ export const LoginPage = () => {
           Together
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          sign in · tenant {window.location.hostname}
+          create account · tenant {window.location.hostname}
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-email">email</FormLabel>
+            <FormLabel htmlFor="register-name">name</FormLabel>
             <OutlinedInput
-              id="login-email"
+              id="register-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              autoComplete="name"
+              required
+            />
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="register-email">email</FormLabel>
+            <OutlinedInput
+              id="register-email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -72,13 +83,13 @@ export const LoginPage = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-password">password</FormLabel>
+            <FormLabel htmlFor="register-password">password</FormLabel>
             <OutlinedInput
-              id="login-password"
+              id="register-password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
+              autoComplete="new-password"
               required
             />
           </FormControl>
@@ -86,24 +97,20 @@ export const LoginPage = () => {
             type="submit"
             variant="contained"
             fullWidth
-            disabled={signIn.isPending}
+            disabled={signUp.isPending}
             sx={{ mt: '0.4rem' }}
           >
-            {signIn.isPending ? 'signing in…' : 'sign in'}
+            {signUp.isPending ? 'creating account…' : 'create account'}
           </Button>
         </Stack>
-        {signIn.isError ? (
+        {signUp.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
-            {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
+            {signUp.error instanceof ApiError ? signUp.error.appError.message : signUp.error.message}
           </Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-          demo account: <DemoValue>creator@together.dev</DemoValue> /{' '}
-          <DemoValue>demo1234</DemoValue>
-        </FinePrint>
         <FinePrint variant="caption" component="p">
-          New here? <Link href="/register">Create an account</Link>
+          Already have an account? <Link href="/login">Sign in</Link>
         </FinePrint>
       </Paper>
     </Box>

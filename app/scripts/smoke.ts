@@ -209,9 +209,10 @@ const errEnvelope = z.object({
 const envelope = z.discriminatedUnion('ok', [okEnvelope, errEnvelope]);
 
 const healthSchema = z.object({ status: z.string(), database: z.string(), version: z.string() });
-const todoItemSchema = z.object({ id: z.string(), title: z.string() });
-const todosSchema = z.object({ todos: z.array(todoItemSchema) });
-const addSchema = z.object({ todo: todoItemSchema });
+const productItemSchema = z.object({ id: z.string(), title: z.string(), published: z.boolean() });
+const productsSchema = z.object({ products: z.array(productItemSchema) });
+const createSchema = z.object({ product: productItemSchema });
+const publishSchema = z.object({ product: productItemSchema });
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -264,31 +265,47 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
     'login',
   );
 
-  const before = todosSchema.parse(
-    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'todo', 'list'], authedHome), 'todo list (before)'),
+  const before = productsSchema.parse(
+    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'list'], authedHome), 'product list (before)'),
   );
 
-  const title = `smoke check ${randomUUID()}`;
-  const added = addSchema.parse(
-    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'todo', 'add', title], authedHome), 'todo add'),
+  const title = `smoke product ${randomUUID()}`;
+  const created = createSchema.parse(
+    expectOk(
+      await cli(
+        ['--json', '--api-url', url, '--tenant', 'acme', 'product', 'create', '--title', title, '--price-cents', '1234'],
+        authedHome,
+      ),
+      'product create',
+    ),
   );
-  assert(added.todo.title === title, `todo add echoed the wrong title: ${added.todo.title}`);
+  assert(created.product.title === title, `product create echoed the wrong title: ${created.product.title}`);
+  assert(created.product.published === false, 'a newly created product should start as a draft');
 
-  const after = todosSchema.parse(
-    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'todo', 'list'], authedHome), 'todo list (after)'),
+  const published = publishSchema.parse(
+    expectOk(
+      await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'publish', created.product.id], authedHome),
+      'product publish',
+    ),
+  );
+  assert(published.product.published === true, 'publish should mark the product as published');
+
+  const after = productsSchema.parse(
+    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'list'], authedHome), 'product list (after)'),
+  );
+  const listed = after.products.find((product) => product.id === created.product.id);
+  assert(
+    listed !== undefined && listed.published,
+    'the published product did not appear as published in the second list',
   );
   assert(
-    after.todos.some((todo) => todo.id === added.todo.id),
-    'the added todo did not appear in the second list',
-  );
-  assert(
-    after.todos.length === before.todos.length + 1,
-    `expected exactly one more todo (${before.todos.length} -> ${after.todos.length})`,
+    after.products.length === before.products.length + 1,
+    `expected exactly one more product (${before.products.length} -> ${after.products.length})`,
   );
 
   expectError(
-    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'todo', 'list'], anonHome),
-    'unauthorized todo list',
+    await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'list'], anonHome),
+    'unauthorized product list',
     EXIT_CODE_BY_ERROR_CODE.unauthorized,
     'unauthorized',
   );

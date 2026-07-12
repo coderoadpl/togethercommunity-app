@@ -2,10 +2,10 @@ import { z } from 'zod';
 
 import {
   membershipSchema,
-  newTodoSchema,
+  newProductSchema,
+  productSchema,
   staffRoleSchema,
   tenantSchema,
-  todoSchema,
 } from '@core/domain/index.js';
 
 /**
@@ -40,8 +40,8 @@ export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
 });
 
-export const todoListOutputSchema = z.object({
-  todos: z.array(todoSchema),
+export const productsListOutputSchema = z.object({
+  products: z.array(productSchema),
 });
 
 export const tenantCreateInputSchema = z.object({
@@ -55,10 +55,20 @@ export const tenantCreateOutputSchema = z.object({
   tenant: tenantSchema,
 });
 
-export const todoCreateInputSchema = newTodoSchema;
+export const productsCreateInputSchema = newProductSchema;
 
-export const todoCreateOutputSchema = z.object({
-  todo: todoSchema,
+export const productsCreateOutputSchema = z.object({
+  product: productSchema,
+});
+
+export const productsPublishInputSchema = z.object({
+  id: z.string().min(1),
+});
+
+export type ProductsPublishInput = z.input<typeof productsPublishInputSchema>;
+
+export const productsPublishOutputSchema = z.object({
+  product: productSchema,
 });
 
 /**
@@ -71,8 +81,9 @@ export const API_ROUTES = {
   me: { method: 'GET', path: '/api/me' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
-  todos: { method: 'GET', path: '/api/todos' },
-  todosCreate: { method: 'POST', path: '/api/todos' },
+  products: { method: 'GET', path: '/api/products' },
+  productsCreate: { method: 'POST', path: '/api/products' },
+  productsPublish: { method: 'POST', path: '/api/products/publish' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -83,7 +94,8 @@ export const API_PATHS = {
   health: API_ROUTES.health.path,
   me: API_ROUTES.me.path,
   tenants: API_ROUTES.tenants.path,
-  todos: API_ROUTES.todos.path,
+  products: API_ROUTES.products.path,
+  productsPublish: API_ROUTES.productsPublish.path,
 } as const;
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */

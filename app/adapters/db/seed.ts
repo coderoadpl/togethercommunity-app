@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createAuth } from '@adapters/auth/create-auth.js';
 
 import { createDb } from './client.js';
-import { members, tenantAdmins, tenantDomains, tenants, todos, user } from './schema.js';
+import { members, products, tenantAdmins, tenantDomains, tenants, user } from './schema.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ??
@@ -111,31 +111,37 @@ await db
   ])
   .onConflictDoNothing();
 
-const studioCreator = creatorUserIds.get('tenant-studio') ?? '';
-const acmeCreator = creatorUserIds.get('tenant-acme') ?? '';
-
 await db
-  .insert(todos)
+  .insert(products)
   .values([
     {
-      id: crypto.randomUUID(),
+      id: 'product-studio-kurs-101',
       tenantId: 'tenant-studio',
-      title: 'Wdrożyć walking skeleton na produkcję',
-      createdBy: studioCreator,
+      title: 'Kurs Together 101',
+      description: '',
+      priceCents: 19900,
+      currency: 'PLN',
+      published: true,
       createdAt: nowIso,
     },
     {
-      id: crypto.randomUUID(),
+      id: 'product-studio-warsztat',
       tenantId: 'tenant-studio',
-      title: 'Sprawdzić izolację danych między tenantami',
-      createdBy: studioCreator,
+      title: 'Warsztat scenariuszowy',
+      description: '',
+      priceCents: 49900,
+      currency: 'PLN',
+      published: false,
       createdAt: nowIso,
     },
     {
-      id: crypto.randomUUID(),
+      id: 'product-acme-course',
       tenantId: 'tenant-acme',
-      title: 'Acme: przygotować prezentację architektury',
-      createdBy: acmeCreator,
+      title: 'Acme Course',
+      description: '',
+      priceCents: 9900,
+      currency: 'PLN',
+      published: true,
       createdAt: nowIso,
     },
   ])

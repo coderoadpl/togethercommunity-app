@@ -3,25 +3,45 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { staffRoleSchema, type Membership, type StaffRole } from '@core/domain/index.js';
 import type {
   HealthPort,
+  ProductRepository,
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
-  TodoRepository,
 } from '@core/server/index.js';
 
 import type { Db } from './client.js';
-import { members, tenantAdmins, tenantDomains, tenants, todos } from './schema.js';
+import { members, products, tenantAdmins, tenantDomains, tenants } from './schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
   const parsed = staffRoleSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 };
 
-export const createTodoRepository = (db: Db): TodoRepository => ({
+export const createProductRepository = (db: Db): ProductRepository => ({
   listByTenant: async (tenantId) =>
-    db.select().from(todos).where(eq(todos.tenantId, tenantId)).orderBy(asc(todos.createdAt)),
-  create: async (todo) => {
-    await db.insert(todos).values(todo);
+    db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt)),
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(products)
+      .where(and(eq(products.tenantId, tenantId), eq(products.id, id)))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+  create: async (_tenantId, product) => {
+    await db.insert(products).values(product);
+  },
+  setPublished: async (tenantId, id, published) => {
+    await db
+      .update(products)
+      .set({ published })
+      .where(and(eq(products.tenantId, tenantId), eq(products.id, id)));
+  },
+  bumpContentVersion: async (tenantId) => {
+    await db
+      .update(tenants)
+      .set({ contentVersion: sql`${tenants.contentVersion} + 1` })
+      .where(eq(tenants.id, tenantId));
   },
 });
 

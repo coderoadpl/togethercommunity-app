@@ -166,7 +166,7 @@ export const createAppTheme = (accentHue = 24): Theme => {
               '& .MuiTypography-body2': { wordBreak: 'break-word' },
             },
           },
-          // Inline surfaces (add-todo form): lighter offset shadow. Whole-pixel
+          // Inline surfaces (inline forms/panels): lighter offset shadow. Whole-pixel
           // border so the height stays on the grid at every devicePixelRatio.
           elevation: {
             border: `1px solid ${LINE_STRONG}`,

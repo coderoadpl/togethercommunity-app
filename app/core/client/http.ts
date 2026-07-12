@@ -5,16 +5,18 @@ import {
   looseEnvelopeSchema,
   healthOutputSchema,
   meOutputSchema,
+  productsCreateOutputSchema,
+  productsListOutputSchema,
+  productsPublishOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
-  todoCreateOutputSchema,
-  todoListOutputSchema,
   type HttpMethod,
+  type ProductsPublishInput,
   type ReadMethod,
   type TenantCreateInput,
   type WriteMethod,
 } from '@core/contract/index.js';
-import { err, internal, ok, type AppError, type NewTodo, type Result } from '@core/domain/index.js';
+import { err, internal, ok, type AppError, type NewProductInput, type Result } from '@core/domain/index.js';
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 
@@ -107,10 +109,26 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
-  listTodos: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.todos.method, API_ROUTES.todos.path, todoListOutputSchema, undefined, signal),
-  addTodo: (input: NewTodo, signal?: AbortSignal) =>
-    request(options, API_ROUTES.todosCreate.method, API_ROUTES.todosCreate.path, todoCreateOutputSchema, input, signal),
+  listProducts: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.products.method, API_ROUTES.products.path, productsListOutputSchema, undefined, signal),
+  createProduct: (input: NewProductInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productsCreate.method,
+      API_ROUTES.productsCreate.path,
+      productsCreateOutputSchema,
+      input,
+      signal,
+    ),
+  publishProduct: (input: ProductsPublishInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productsPublish.method,
+      API_ROUTES.productsPublish.path,
+      productsPublishOutputSchema,
+      input,
+      signal,
+    ),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

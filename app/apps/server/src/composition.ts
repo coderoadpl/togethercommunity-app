@@ -3,10 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { createDb } from '@adapters/db/client.js';
 import {
   createHealthPort,
+  createProductRepository,
   createTenantAccessReader,
   createTenantDomainRepository,
   createTenantRepository,
-  createTodoRepository,
 } from '@adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import type {
@@ -14,10 +14,10 @@ import type {
   Clock,
   HealthPort,
   IdGenerator,
+  ProductRepository,
   TenantAccessReader,
   TenantDomainRepository,
   TenantRepository,
-  TodoRepository,
 } from '@core/server/index.js';
 
 import type { Env } from './env.js';
@@ -25,7 +25,7 @@ import type { Env } from './env.js';
 export interface AppDeps {
   auth: Auth;
   authPort: AuthPort;
-  todos: TodoRepository;
+  products: ProductRepository;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
   tenantAccess: TenantAccessReader;
@@ -70,7 +70,7 @@ export const createDeps = (env: Env): AppDeps => {
   return {
     auth,
     authPort: createAuthPort(auth),
-    todos: createTodoRepository(db),
+    products: createProductRepository(db),
     tenantDomains,
     tenants: createTenantRepository(db),
     tenantAccess: createTenantAccessReader(db),

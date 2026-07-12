@@ -2,15 +2,16 @@ import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '@adapters/auth/client-adapter.js';
 import {
-  addTodoInvalidates,
-  addTodoMutation,
   createApiClient,
+  createProductMutation,
   meQuery,
+  productsInvalidates,
+  productsQuery,
+  publishProductMutation,
   signInMutation,
   signOutMutation,
   signUpMutation,
   tenantsQuery,
-  todosQuery,
 } from '@core/client/index.js';
 
 /**
@@ -37,9 +38,10 @@ const authClient = createBetterAuthClientAdapter('');
 export const actions = {
   me: meQuery(apiClient),
   tenants: tenantsQuery(apiClient),
-  todos: todosQuery(apiClient),
-  addTodo: addTodoMutation(apiClient),
-  addTodoInvalidates,
+  products: productsQuery(apiClient),
+  createProduct: createProductMutation(apiClient),
+  publishProduct: publishProductMutation(apiClient),
+  productsInvalidates,
   signUp: signUpMutation(authClient),
   signIn: signInMutation(authClient),
   signOut: signOutMutation(authClient),

@@ -1,13 +1,16 @@
-import type { Member, Membership, StaffRole, Tenant, TenantDomain, Todo } from '@core/domain/index.js';
+import type { Member, Membership, Product, StaffRole, Tenant, TenantDomain } from '@core/domain/index.js';
 
 /**
  * Ports: interfaces the core depends on, implemented in `adapters/`.
  * The core never knows which database, auth provider or platform sits behind them.
  */
 
-export interface TodoRepository {
-  listByTenant(tenantId: string): Promise<Todo[]>;
-  create(todo: Todo): Promise<void>;
+export interface ProductRepository {
+  listByTenant(tenantId: string): Promise<Product[]>;
+  findById(tenantId: string, id: string): Promise<Product | null>;
+  create(tenantId: string, product: Product): Promise<void>;
+  setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
+  bumpContentVersion(tenantId: string): Promise<void>;
 }
 
 export interface TenantDomainRepository {

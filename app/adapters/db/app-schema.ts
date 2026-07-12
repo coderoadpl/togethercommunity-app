@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable(
   'tenants',
@@ -7,6 +7,7 @@ export const tenants = pgTable(
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
     createdAt: text('created_at').notNull(),
+    contentVersion: integer('content_version').notNull().default(1),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );
@@ -47,19 +48,22 @@ export const members = pgTable(
   ],
 );
 
-export const todos = pgTable(
-  'todos',
+export const products = pgTable(
+  'products',
   {
     id: text('id').primaryKey(),
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
-    createdBy: text('created_by').notNull(),
+    description: text('description').notNull(),
+    priceCents: integer('price_cents').notNull(),
+    currency: text('currency').notNull(),
+    published: boolean('published').notNull().default(false),
     // ISO 8601 string; the domain speaks ISO strings, not driver-specific Dates.
     createdAt: text('created_at').notNull(),
   },
-  (table) => [index('todos_tenantId_idx').on(table.tenantId)],
+  (table) => [index('products_tenantId_idx').on(table.tenantId)],
 );
 
 export const tenantDomains = pgTable(

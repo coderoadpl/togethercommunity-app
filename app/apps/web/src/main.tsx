@@ -16,8 +16,8 @@ import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
+import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
-import { TodosRoute } from './routes/todos.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
@@ -39,7 +39,7 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: TodosRoute,
+  component: HomeRoute,
 });
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,

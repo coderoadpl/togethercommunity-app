@@ -4,9 +4,10 @@ import {
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  productsCreateInputSchema,
+  productsPublishInputSchema,
   tenantCreateInputSchema,
   toEnvelope,
-  todoCreateInputSchema,
 } from '@core/contract/index.js';
 import {
   err,
@@ -19,10 +20,11 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import {
-  addTodo,
+  createProduct,
   createTenant,
   listMyTenants,
-  listTodos,
+  listProducts,
+  publishProduct,
   resolveIdentity,
   type AuthenticatedUser,
 } from '@core/server/index.js';
@@ -133,19 +135,29 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ tenants: result.value }) : result);
   });
 
-  app.get(API_PATHS.todos, async (c) => {
-    const result = await listTodos({ identity: c.get('identity') }, deps);
-    return respond(result.ok ? ok({ todos: result.value }) : result);
+  app.get(API_PATHS.products, async (c) => {
+    const result = await listProducts({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ products: result.value }) : result);
   });
 
-  app.post(API_PATHS.todos, async (c) => {
+  app.post(API_PATHS.products, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
-    const parsed = todoCreateInputSchema.safeParse(body);
+    const parsed = productsCreateInputSchema.safeParse(body);
     if (!parsed.success) {
-      return respond(err(validation('Invalid todo payload', parsed.error.flatten())));
+      return respond(err(validation('Invalid product payload', parsed.error.flatten())));
     }
-    const result = await addTodo({ identity: c.get('identity') }, parsed.data, deps);
-    return respond(result.ok ? ok({ todo: result.value }) : result);
+    const result = await createProduct({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productsPublish, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productsPublishInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid publish payload', parsed.error.flatten())));
+    }
+    const result = await publishProduct({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ product: result.value }) : result);
   });
 
   return app;

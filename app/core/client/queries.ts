@@ -9,8 +9,8 @@ import type {
   QueryKey,
 } from '@tanstack/query-core';
 
-import type { TenantCreateInput } from '@core/contract/index.js';
-import type { NewTodo } from '@core/domain/index.js';
+import type { ProductsPublishInput, TenantCreateInput } from '@core/contract/index.js';
+import type { NewProductInput } from '@core/domain/index.js';
 
 import type { AuthClientPort } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -80,9 +80,9 @@ export const tenantsScopes = {
   all: () => ['tenants'] as const,
 };
 
-export const todosScopes = {
-  all: () => ['todos'] as const,
-  lists: () => ['todos', 'list'] as const,
+export const productsScopes = {
+  all: () => ['products'] as const,
+  lists: () => ['products', 'list'] as const,
 };
 
 export const authScopes = {
@@ -107,20 +107,26 @@ export const createTenantMutation = (api: ApiClient) =>
     call: (input: TenantCreateInput) => api.createTenant(input),
   });
 
-export const todosQuery = (api: ApiClient) =>
+export const productsQuery = (api: ApiClient) =>
   defineQuery({
-    queryKey: todosScopes.lists(),
-    call: ({ signal }) => api.listTodos(signal),
+    queryKey: productsScopes.lists(),
+    call: ({ signal }) => api.listProducts(signal),
   });
 
-export const addTodoMutation = (api: ApiClient) =>
+export const createProductMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...todosScopes.all(), 'create'],
-    call: (input: NewTodo) => api.addTodo(input),
+    mutationKey: [...productsScopes.all(), 'create'],
+    call: (input: NewProductInput) => api.createProduct(input),
   });
 
-/** The invalidation filter `addTodoMutation` applies after it settles. */
-export const addTodoInvalidates = () => ({ queryKey: todosScopes.lists() });
+export const publishProductMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productsScopes.all(), 'publish'],
+    call: (input: ProductsPublishInput) => api.publishProduct(input),
+  });
+
+/** The invalidation filter product mutations apply after they settle. */
+export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

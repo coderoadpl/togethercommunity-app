@@ -151,24 +151,57 @@ tenant
     emit(ok(membership), ctx.json, (m) => `active tenant: ${m.tenant.name} (${m.tenant.slug})`);
   });
 
-const todo = program.command('todo').description('Todos in the active tenant');
+const product = program.command('product').description('Products in the active tenant');
 
-todo.command('list').description('List todos').action(async () => {
+product.command('list').description('List products').action(async () => {
   const ctx = cliCtx();
-  emit(await ctx.api.listTodos(), ctx.json, (data) =>
-    data.todos.length === 0
-      ? 'no todos'
-      : data.todos.map((t) => `- ${t.title}  (${t.id.slice(0, 8)})`).join('\n'),
+  emit(await ctx.api.listProducts(), ctx.json, (data) =>
+    data.products.length === 0
+      ? 'no products'
+      : data.products
+          .map(
+            (p) =>
+              `- ${p.title}  ${p.priceCents} ${p.currency}  [${p.published ? 'published' : 'draft'}]  (${p.id.slice(0, 8)})`,
+          )
+          .join('\n'),
   );
 });
 
-todo
-  .command('add <title...>')
-  .description('Add a todo')
-  .action(async (titleWords: string[]) => {
+product
+  .command('create')
+  .description('Create a product in the active tenant')
+  .requiredOption('--title <title>')
+  .requiredOption('--price-cents <cents>', 'price in integer cents')
+  .option('--currency <currency>', '3-letter uppercase currency code')
+  .option('--description <description>')
+  .action(
+    async (options: {
+      title: string;
+      priceCents: string;
+      currency?: string;
+      description?: string;
+    }) => {
+      const ctx = cliCtx();
+      emit(
+        await ctx.api.createProduct({
+          title: options.title,
+          priceCents: Number(options.priceCents),
+          ...(options.currency === undefined ? {} : { currency: options.currency }),
+          ...(options.description === undefined ? {} : { description: options.description }),
+        }),
+        ctx.json,
+        (data) => `created: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+      );
+    },
+  );
+
+product
+  .command('publish <id>')
+  .description('Publish a product')
+  .action(async (id: string) => {
     const ctx = cliCtx();
-    emit(await ctx.api.addTodo({ title: titleWords.join(' ') }), ctx.json, (data) =>
-      `added: ${data.todo.title} (${data.todo.id.slice(0, 8)})`,
+    emit(await ctx.api.publishProduct({ id }), ctx.json, (data) =>
+      `published: ${data.product.title} (${data.product.id.slice(0, 8)})`,
     );
   });
 

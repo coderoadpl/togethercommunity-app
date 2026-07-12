@@ -8,6 +8,13 @@
       "when": 1783810260456,
       "tag": "0000_spicy_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783826229572,
+      "tag": "0001_complete_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

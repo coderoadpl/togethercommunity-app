@@ -35,9 +35,9 @@ const buildProbeApp = () => {
     recordException(error);
     return new Response(JSON.stringify(err(internal())), { status: 500 });
   });
-  app.get('/api/todos', (c) => {
+  app.get('/api/products', (c) => {
     c.set('identity', identity);
-    return c.json({ ok: true, data: { todos: [] } });
+    return c.json({ ok: true, data: { products: [] } });
   });
   app.get('/api/boom', () => {
     throw new Error('kaboom');
@@ -68,13 +68,13 @@ afterAll(async () => {
 
 describe('telemetryMiddleware', () => {
   it('emits exactly one wide event per request with the expected attributes', async () => {
-    const response = await buildProbeApp().request('/api/todos');
+    const response = await buildProbeApp().request('/api/products');
     expect(response.status).toBe(200);
 
     const span = await soleSpan();
-    expect(span.name).toBe('GET /api/todos');
+    expect(span.name).toBe('GET /api/products');
     expect(span.attributes['http.request.method']).toBe('GET');
-    expect(span.attributes['url.path']).toBe('/api/todos');
+    expect(span.attributes['url.path']).toBe('/api/products');
     expect(span.attributes['http.response.status_code']).toBe(200);
     expect(typeof span.attributes['http.server.duration_ms']).toBe('number');
     expect(span.attributes['app.user.id']).toBe('user-1');
@@ -84,7 +84,7 @@ describe('telemetryMiddleware', () => {
 
   it('continues an incoming W3C traceparent as the same trace', async () => {
     const traceId = '0af7651916cd43dd8448eb211c80319c';
-    await buildProbeApp().request('/api/todos', {
+    await buildProbeApp().request('/api/products', {
       headers: { traceparent: `00-${traceId}-b7ad6b7169203331-01` },
     });
 

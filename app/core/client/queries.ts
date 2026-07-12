@@ -16,7 +16,7 @@ import type {
 } from '@core/contract/index.js';
 import type { NewProductInput } from '@core/domain/index.js';
 
-import type { AuthClientPort } from './auth-port.js';
+import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
 
 /**
@@ -88,6 +88,10 @@ export const publicOfferScopes = {
   all: () => ['public-offer'] as const,
 };
 
+export const authConfigScopes = {
+  all: () => ['auth-config'] as const,
+};
+
 export const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
@@ -118,6 +122,12 @@ export const publicOfferQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: publicOfferScopes.all(),
     call: ({ signal }) => api.publicOffer(signal),
+  });
+
+export const authConfigQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: authConfigScopes.all(),
+    call: ({ signal }) => api.authConfig(signal),
   });
 
 export const createTenantMutation = (api: ApiClient) =>
@@ -194,4 +204,34 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-out'],
     call: () => auth.signOut(),
+  });
+
+export const registerPasskeyMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'register-passkey'],
+    call: (input: { name: string }) => auth.registerPasskey(input.name),
+  });
+
+export const signInWithPasskeyMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, void> =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'sign-in-passkey'],
+    call: () => auth.signInWithPasskey(),
+  });
+
+export const enableTwoFactorMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'enable-two-factor'],
+    call: (input: { password: string }) => auth.enableTwoFactor(input.password),
+  });
+
+export const verifyTotpMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'verify-totp'],
+    call: (input: { code: string }) => auth.verifyTotp(input.code),
+  });
+
+export const signInWithGoogleMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'sign-in-google'],
+    call: () => auth.signInWithGoogle(),
   });

@@ -4,6 +4,11 @@ export interface AuthSessionResult {
   token: string | null;
 }
 
+export interface TwoFactorEnrollment {
+  totpURI: string;
+  backupCodes: string[];
+}
+
 /**
  * Client-side auth port. Web (and future mobile/Electron) programs against
  * this interface; the Better Auth client adapter implements it.
@@ -15,4 +20,9 @@ export interface AuthClientPort {
   signIn(input: { email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   requestMagicLink(input: { email: string; callbackURL: string }): Promise<WriteResult<void>>;
   signOut(): Promise<WriteResult<void>>;
+  registerPasskey(name: string): Promise<WriteResult<void>>;
+  signInWithPasskey(): Promise<WriteResult<AuthSessionResult>>;
+  enableTwoFactor(password: string): Promise<WriteResult<TwoFactorEnrollment>>;
+  verifyTotp(code: string): Promise<WriteResult<AuthSessionResult>>;
+  signInWithGoogle(): Promise<WriteResult<void>>;
 }

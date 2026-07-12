@@ -8,7 +8,18 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LoginPage } from './LoginPage.js';
 
+const stubAuthConfig = () =>
+  server.use(
+    http.get('*/api/public/auth-config', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { googleEnabled: false, passkeysEnabled: true, totpEnabled: true },
+      }),
+    ),
+  );
+
 const renderLoginPage = async () => {
+  stubAuthConfig();
   const rootRoute = createRootRoute({ component: LoginPage });
   const router = createRouter({
     routeTree: rootRoute,

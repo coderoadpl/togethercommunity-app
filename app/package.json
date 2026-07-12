@@ -22,9 +22,11 @@
     "db:migrate": "tsx adapters/db/migrate.ts",
     "db:seed": "tsx adapters/db/seed.ts",
     "cli": "tsx apps/cli/src/main.ts",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "e2e:auth": "tsx scripts/auth-e2e.ts"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.6.23",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@hono/node-server": "^1.17.1",
@@ -71,6 +73,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.1",
     "msw": "^2.15.0",
+    "otplib": "^13.4.1",
     "pixelmatch": "^7.2.0",
     "playwright-core": "^1.61.1",
     "pngjs": "^7.0.0",

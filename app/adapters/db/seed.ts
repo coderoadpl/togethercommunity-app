@@ -18,6 +18,7 @@ const auth = createAuth(db, {
   trustedOrigins: () => ['http://localhost:48730'],
   secureCookies: false,
   exposeMagicLinks: false,
+  google: null,
 });
 
 const PASSWORD = 'demo1234';

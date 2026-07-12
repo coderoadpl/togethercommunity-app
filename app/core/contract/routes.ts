@@ -21,6 +21,12 @@ export const healthOutputSchema = z.object({
   database: z.enum(['up', 'down']),
 });
 
+export const authConfigOutputSchema = z.object({
+  googleEnabled: z.boolean(),
+  passkeysEnabled: z.boolean(),
+  totpEnabled: z.boolean(),
+});
+
 export const meOutputSchema = z.object({
   userId: z.string(),
   email: z.string(),
@@ -132,6 +138,7 @@ export const productsPublishOutputSchema = z.object({
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
+  authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
@@ -150,6 +157,7 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 export const API_PATHS = {
   health: API_ROUTES.health.path,
   publicOffer: API_ROUTES.publicOffer.path,
+  authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,

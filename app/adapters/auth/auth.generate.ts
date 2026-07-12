@@ -3,9 +3,10 @@
  * `adapters/db/auth-schema.ts`. Never connects to a database. The runtime
  * auth instance lives in `create-auth.ts`; keep the plugin list in sync.
  */
+import { passkey } from '@better-auth/passkey';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { bearer, magicLink } from 'better-auth/plugins';
+import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 
@@ -16,5 +17,10 @@ export const auth = betterAuth({
   ),
   secret: 'generate-only-secret',
   emailAndPassword: { enabled: true },
-  plugins: [bearer(), magicLink({ sendMagicLink: async () => undefined })],
+  plugins: [
+    bearer(),
+    magicLink({ sendMagicLink: async () => undefined }),
+    passkey(),
+    twoFactor(),
+  ],
 });

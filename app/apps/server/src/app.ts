@@ -135,6 +135,27 @@ export const buildApp = (deps: AppDeps) => {
     return respondPublic(ok(parsed.data), etag);
   });
 
+  app.options(API_PATHS.authConfig, () =>
+    new Response(null, {
+      status: 204,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, OPTIONS',
+        'access-control-max-age': '60',
+      },
+    }),
+  );
+
+  app.get(API_PATHS.authConfig, () =>
+    respondPublic(
+      ok({
+        googleEnabled: deps.authConfig.googleEnabled,
+        passkeysEnabled: true,
+        totpEnabled: true,
+      }),
+    ),
+  );
+
   app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) => deps.auth.handler(c.req.raw));
 
   app.post(API_PATHS.tenants, async (c) => {

@@ -27,6 +27,8 @@ export const LoginPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const authConfig = useQuery(actions.authConfig);
+
   const signIn = useMutation({
     ...actions.signIn,
     onSuccess: async () => {
@@ -34,6 +36,16 @@ export const LoginPage = () => {
       await navigate({ to: '/' });
     },
   });
+
+  const signInWithPasskey = useMutation({
+    ...actions.signInWithPasskey,
+    onSuccess: async () => {
+      queryClient.clear();
+      await navigate({ to: '/' });
+    },
+  });
+
+  const signInWithGoogle = useMutation(actions.signInWithGoogle);
 
   const requestMagicLink = useMutation({
     ...actions.requestMagicLink,
@@ -86,6 +98,7 @@ export const LoginPage = () => {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               autoComplete="email"
+              inputProps={{ 'data-testid': 'login-email' }}
               required
             />
           </FormControl>
@@ -97,6 +110,7 @@ export const LoginPage = () => {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
+              inputProps={{ 'data-testid': 'login-password' }}
               required
             />
           </FormControl>
@@ -105,6 +119,7 @@ export const LoginPage = () => {
             variant="contained"
             fullWidth
             disabled={signIn.isPending}
+            data-testid="signin-submit"
             sx={{ mt: '0.4rem' }}
           >
             {signIn.isPending ? 'signing in…' : 'sign in'}
@@ -113,6 +128,35 @@ export const LoginPage = () => {
         {signIn.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
             {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
+          </Alert>
+        ) : null}
+        <Stack useFlexGap spacing="0.6rem" sx={{ mt: '0.9rem' }}>
+          <Button
+            data-testid="signin-passkey"
+            variant="outlined"
+            fullWidth
+            disabled={signInWithPasskey.isPending}
+            onClick={() => signInWithPasskey.mutate()}
+          >
+            {signInWithPasskey.isPending ? 'signing in…' : 'Sign in with passkey'}
+          </Button>
+          {authConfig.data?.googleEnabled ? (
+            <Button
+              data-testid="continue-google"
+              variant="outlined"
+              fullWidth
+              disabled={signInWithGoogle.isPending}
+              onClick={() => signInWithGoogle.mutate()}
+            >
+              Continue with Google
+            </Button>
+          ) : null}
+        </Stack>
+        {signInWithPasskey.isError ? (
+          <Alert sx={{ mt: '0.6rem' }}>
+            {signInWithPasskey.error instanceof ApiError
+              ? signInWithPasskey.error.appError.message
+              : signInWithPasskey.error.message}
           </Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />

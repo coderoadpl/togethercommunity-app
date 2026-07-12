@@ -2,10 +2,12 @@ import { context, trace } from '@opentelemetry/api';
 
 import { createBetterAuthClientAdapter } from '@adapters/auth/client-adapter.js';
 import {
+  authConfigQuery,
   createApiClient,
   createTenantMutation,
   devMagicLinkQuery,
   createProductMutation,
+  enableTwoFactorMutation,
   meQuery,
   myProductsInvalidates,
   myProductsQuery,
@@ -13,12 +15,16 @@ import {
   publicOfferQuery,
   productsQuery,
   publishProductMutation,
+  registerPasskeyMutation,
   requestMagicLinkMutation,
   signInMutation,
+  signInWithGoogleMutation,
+  signInWithPasskeyMutation,
   signOutMutation,
   signUpMutation,
   simulatePurchaseMutation,
   tenantsQuery,
+  verifyTotpMutation,
 } from '@core/client/index.js';
 
 /**
@@ -45,6 +51,7 @@ const authClient = createBetterAuthClientAdapter('');
 export const actions = {
   me: meQuery(apiClient),
   publicOffer: publicOfferQuery(apiClient),
+  authConfig: authConfigQuery(apiClient),
   tenants: tenantsQuery(apiClient),
   createTenant: createTenantMutation(apiClient),
   products: productsQuery(apiClient),
@@ -59,4 +66,9 @@ export const actions = {
   requestMagicLink: requestMagicLinkMutation(authClient),
   devMagicLink: (email: string) => devMagicLinkQuery(apiClient, email),
   signOut: signOutMutation(authClient),
+  registerPasskey: registerPasskeyMutation(authClient),
+  signInWithPasskey: signInWithPasskeyMutation(authClient),
+  enableTwoFactor: enableTwoFactorMutation(authClient),
+  verifyTotp: verifyTotpMutation(authClient),
+  signInWithGoogle: signInWithGoogleMutation(authClient),
 };

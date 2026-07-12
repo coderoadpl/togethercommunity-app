@@ -1,14 +1,20 @@
+import { passkeyClient } from '@better-auth/passkey/client';
 import { createAuthClient } from 'better-auth/client';
-import { magicLinkClient } from 'better-auth/client/plugins';
+import { magicLinkClient, twoFactorClient } from 'better-auth/client/plugins';
 import { z } from 'zod';
 
-import type { AuthClientPort, AuthSessionResult } from '@core/client/index.js';
-import { appError, err, ok, type AppError, type Result } from '@core/domain/index.js';
+import type { AuthClientPort, AuthSessionResult, TwoFactorEnrollment } from '@core/client/index.js';
+import { appError, err, ok, validation, type AppError, type Result } from '@core/domain/index.js';
 
 /** CLI-only extension of the client auth port: it can verify a magic-link token headlessly. */
 export interface CliAuthAdapter extends AuthClientPort {
   verifyMagicLinkToken(token: string): Promise<Result<AuthSessionResult, AppError>>;
 }
+
+const twoFactorEnrollmentSchema = z.object({
+  totpURI: z.string(),
+  backupCodes: z.array(z.string()),
+});
 
 type SignUpInput = Parameters<AuthClientPort['signUp']>[0];
 type SignInInput = Parameters<AuthClientPort['signIn']>[0];
@@ -78,7 +84,7 @@ const postCliAuth = async (
 export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort => {
   const client = createAuthClient({
     baseURL: baseUrl === '' ? undefined : baseUrl,
-    plugins: [magicLinkClient()],
+    plugins: [magicLinkClient(), passkeyClient(), twoFactorClient()],
   });
 
   return {
@@ -95,6 +101,19 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
     requestMagicLink: async ({ email, callbackURL }) =>
       toResult(undefined, (await client.signIn.magicLink({ email, callbackURL })).error),
     signOut: async () => toResult(undefined, (await client.signOut()).error),
+    registerPasskey: async (name) =>
+      toResult(undefined, (await client.passkey.addPasskey({ name })).error),
+    signInWithPasskey: async () => toResult({ token: null }, (await client.signIn.passkey()).error),
+    enableTwoFactor: async (password) => {
+      const response = await client.twoFactor.enable({ password });
+      if (response.error) return toResult<TwoFactorEnrollment>({ totpURI: '', backupCodes: [] }, response.error);
+      const parsed = twoFactorEnrollmentSchema.safeParse(response.data);
+      if (!parsed.success) return err(appError('internal', 'Two-factor enrollment response did not match the contract'));
+      return ok(parsed.data);
+    },
+    verifyTotp: async (code) => toResult({ token: null }, (await client.twoFactor.verifyTotp({ code })).error),
+    signInWithGoogle: async () =>
+      toResult(undefined, (await client.signIn.social({ provider: 'google' })).error),
   };
 };
 
@@ -136,10 +155,39 @@ const verifyMagicLinkToken = async (
   return ok({ token: sessionToken });
 };
 
+const verifyTotpCli = async (
+  baseUrl: string,
+  code: string,
+  onToken: (token: string) => void,
+): Promise<Result<AuthSessionResult, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/two-factor/verify-totp', baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: baseUrl },
+      body: JSON.stringify({ code }),
+      credentials: 'include',
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error verifying TOTP code: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
+  const token = response.headers.get('set-auth-token');
+  if (token) onToken(token);
+  return ok({ token });
+};
+
+const notSupportedInCli = validation('This authentication method is not supported in the CLI');
+
 export const createCliAuthAdapter = (baseUrl: string, onToken: (token: string) => void): CliAuthAdapter => ({
   signUp: (input) => postCliAuth(baseUrl, '/api/auth/sign-up/email', input, onToken),
   signIn: (input) => postCliAuth(baseUrl, '/api/auth/sign-in/email', input, onToken),
   requestMagicLink: (input) => postCliMagicLink(baseUrl, input),
   signOut: async () => ok(undefined),
+  registerPasskey: async () => err(notSupportedInCli),
+  signInWithPasskey: async () => err(notSupportedInCli),
+  enableTwoFactor: async () => err(notSupportedInCli),
+  verifyTotp: (code) => verifyTotpCli(baseUrl, code, onToken),
+  signInWithGoogle: async () => err(notSupportedInCli),
   verifyMagicLinkToken: (token) => verifyMagicLinkToken(baseUrl, token, onToken),
 });

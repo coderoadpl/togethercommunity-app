@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
+import { passkey } from '@better-auth/passkey';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { bearer, magicLink } from 'better-auth/plugins';
+import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 
 import type { AuthPort } from '@core/server/index.js';
@@ -19,6 +20,8 @@ export interface AuthSettings {
   secureCookies: boolean;
   /** Dev-only: persist issued magic links into dev_magic_links (no mailer in the PoC). */
   exposeMagicLinks: boolean;
+  /** Google OAuth credentials; the provider is wired only when both are present. */
+  google: { clientId: string; clientSecret: string } | null;
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
@@ -30,6 +33,9 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
     emailAndPassword: { enabled: true },
+    ...(settings.google
+      ? { socialProviders: { google: settings.google } }
+      : {}),
     plugins: [
       bearer(),
       magicLink({
@@ -44,6 +50,8 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
             });
         },
       }),
+      passkey(),
+      twoFactor(),
     ],
     advanced: {
       useSecureCookies: settings.secureCookies,

@@ -33,6 +33,10 @@ export interface DevEndpoints {
   exposeMagicLinks: boolean;
 }
 
+export interface AuthConfig {
+  googleEnabled: boolean;
+}
+
 export interface AppDeps {
   auth: Pick<Auth, 'handler'>;
   authPort: AuthPort;
@@ -49,6 +53,7 @@ export interface AppDeps {
   baseDomain: string;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
+  authConfig: AuthConfig;
 }
 
 /**
@@ -58,6 +63,11 @@ export interface AppDeps {
 export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+
+  const google =
+    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+      ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
+      : null;
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
@@ -74,6 +84,7 @@ export const createDeps = (env: Env): AppDeps => {
     baseDomain: env.APP_BASE_DOMAIN,
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
+    google,
     trustedOrigins: async () => {
       const domains = await tenantDomains.listVerifiedDomains();
       return [
@@ -103,5 +114,6 @@ export const createDeps = (env: Env): AppDeps => {
       simulatedPayments: env.SIMULATED_PAYMENTS,
       exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     },
+    authConfig: { googleEnabled: google !== null },
   };
 };

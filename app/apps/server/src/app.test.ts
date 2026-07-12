@@ -100,6 +100,7 @@ const deps = (input: {
     baseDomain: 'localhost',
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
+    authConfig: { googleEnabled: false },
   };
 };
 
@@ -183,5 +184,30 @@ describe('public offer route', () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+  });
+});
+
+describe('public auth-config route', () => {
+  it('reports Google disabled with public CORS headers when no credentials are configured', async () => {
+    const app = buildApp(deps());
+
+    const response = await app.request(API_PATHS.authConfig);
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(body).toMatchObject({
+      ok: true,
+      data: { googleEnabled: false, passkeysEnabled: true, totpEnabled: true },
+    });
+  });
+
+  it('reports Google enabled when the composition provides credentials', async () => {
+    const app = buildApp({ ...deps(), authConfig: { googleEnabled: true } });
+
+    const response = await app.request(API_PATHS.authConfig);
+    const body: unknown = await response.json();
+
+    expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
 });

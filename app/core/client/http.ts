@@ -3,6 +3,7 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   looseEnvelopeSchema,
+  authConfigOutputSchema,
   devMagicLinkOutputSchema,
   healthOutputSchema,
   meOutputSchema,
@@ -107,6 +108,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.publicOffer.method,
       API_ROUTES.publicOffer.path,
       publicOfferOutputSchema,
+      undefined,
+      signal,
+    ),
+  authConfig: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.authConfig.method,
+      API_ROUTES.authConfig.path,
+      authConfigOutputSchema,
       undefined,
       signal,
     ),

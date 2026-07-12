@@ -213,7 +213,9 @@ const TenantHome = ({
             sx={{ flexWrap: 'wrap', alignItems: 'baseline', columnGap: '1rem', rowGap: '0.6rem' }}
           >
             <TenantSwatch aria-hidden sx={{ width: '0.85rem', height: '0.85rem' }} />
-            <Typography variant="h1">{tenant.name}</Typography>
+            <Typography variant="h1" data-testid="tenant-name">
+              {tenant.name}
+            </Typography>
             <HeaderMeta variant="overline">{window.location.hostname}</HeaderMeta>
             <Box sx={{ flex: 1 }} />
             <Chip variant="outlined" label={tenant.staffRole ?? 'member'} />
@@ -221,7 +223,12 @@ const TenantHome = ({
           <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
             <HeaderMetaBreak variant="overline">{email}</HeaderMetaBreak>
             <Box sx={{ flex: 1 }} />
-            <Button variant="text" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
+            <Button
+              variant="text"
+              disabled={signOut.isPending}
+              data-testid="sign-out"
+              onClick={() => signOut.mutate()}
+            >
               sign out
             </Button>
           </Stack>
@@ -249,6 +256,135 @@ const MemberHomeRedirect = () => {
   );
 };
 
+const mutationErrorMessage = (error: Error): string =>
+  error instanceof ApiError ? error.appError.message : error.message;
+
+const SecurityPanel = () => {
+  const [passkeyName, setPasskeyName] = useState('');
+  const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+
+  const registerPasskey = useMutation(actions.registerPasskey);
+  const enableTwoFactor = useMutation(actions.enableTwoFactor);
+  const verifyTotp = useMutation(actions.verifyTotp);
+
+  const addPasskey = (event: FormEvent) => {
+    event.preventDefault();
+    registerPasskey.mutate({ name: passkeyName.trim() || 'My passkey' });
+  };
+
+  const enrollTwoFactor = (event: FormEvent) => {
+    event.preventDefault();
+    enableTwoFactor.mutate({ password });
+  };
+
+  const submitTotp = (event: FormEvent) => {
+    event.preventDefault();
+    verifyTotp.mutate({ code: totpCode.trim() });
+  };
+
+  return (
+    <Paper elevation={1} sx={{ p: '1.5rem' }}>
+      <Stack useFlexGap spacing="1.75rem">
+        <Typography variant="h2" component="h2">
+          Security
+        </Typography>
+
+        <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
+          <Eyebrow variant="overline" component="h3">
+            Passkeys
+          </Eyebrow>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="passkey-name">passkey name</FormLabel>
+            <OutlinedInput
+              id="passkey-name"
+              value={passkeyName}
+              onChange={(event) => setPasskeyName(event.target.value)}
+              inputProps={{ 'data-testid': 'passkey-name' }}
+              placeholder="My passkey"
+            />
+          </FormControl>
+          <Button type="submit" variant="outlined" data-testid="add-passkey" disabled={registerPasskey.isPending}>
+            {registerPasskey.isPending ? 'adding passkey…' : 'Add passkey'}
+          </Button>
+          {registerPasskey.isSuccess ? (
+            <Typography variant="caption" component="p" data-testid="passkey-added">
+              Passkey added.
+            </Typography>
+          ) : null}
+          {registerPasskey.isError ? <Alert>{mutationErrorMessage(registerPasskey.error)}</Alert> : null}
+        </Box>
+
+        <Box component="form" onSubmit={enrollTwoFactor} sx={{ display: 'grid', gap: '0.8rem' }}>
+          <Eyebrow variant="overline" component="h3">
+            Two-factor authentication
+          </Eyebrow>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="enable-2fa-password">account password</FormLabel>
+            <OutlinedInput
+              id="enable-2fa-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              inputProps={{ 'data-testid': 'enable-2fa-password' }}
+              autoComplete="current-password"
+            />
+          </FormControl>
+          <Button type="submit" variant="outlined" data-testid="enable-2fa" disabled={enableTwoFactor.isPending}>
+            {enableTwoFactor.isPending ? 'enabling…' : 'Enable two-factor'}
+          </Button>
+          {enableTwoFactor.isError ? <Alert>{mutationErrorMessage(enableTwoFactor.error)}</Alert> : null}
+        </Box>
+
+        {enableTwoFactor.data ? (
+          <Box sx={{ display: 'grid', gap: '0.8rem' }}>
+            <Eyebrow variant="overline" component="h3">
+              Scan or copy this key
+            </Eyebrow>
+            <FormControl fullWidth>
+              <FormLabel htmlFor="totp-uri">otpauth URI</FormLabel>
+              <OutlinedInput
+                id="totp-uri"
+                readOnly
+                value={enableTwoFactor.data.totpURI}
+                inputProps={{ 'data-testid': 'totp-uri' }}
+              />
+            </FormControl>
+            <Box component="ul" sx={{ display: 'grid', gap: '0.2rem', pl: '1.2rem', m: 0 }}>
+              {enableTwoFactor.data.backupCodes.map((code) => (
+                <Typography key={code} component="li" variant="caption">
+                  {code}
+                </Typography>
+              ))}
+            </Box>
+            <Box component="form" onSubmit={submitTotp} sx={{ display: 'grid', gap: '0.8rem' }}>
+              <FormControl fullWidth>
+                <FormLabel htmlFor="verify-totp-code">authenticator code</FormLabel>
+                <OutlinedInput
+                  id="verify-totp-code"
+                  value={totpCode}
+                  onChange={(event) => setTotpCode(event.target.value)}
+                  inputProps={{ 'data-testid': 'verify-totp-code' }}
+                  autoComplete="one-time-code"
+                />
+              </FormControl>
+              <Button type="submit" variant="contained" data-testid="verify-totp" disabled={verifyTotp.isPending}>
+                {verifyTotp.isPending ? 'verifying…' : 'Verify code'}
+              </Button>
+              {verifyTotp.isSuccess ? (
+                <Typography variant="caption" component="p" data-testid="totp-verified">
+                  Two-factor authentication is on.
+                </Typography>
+              ) : null}
+              {verifyTotp.isError ? <Alert>{mutationErrorMessage(verifyTotp.error)}</Alert> : null}
+            </Box>
+          </Box>
+        ) : null}
+      </Stack>
+    </Paper>
+  );
+};
+
 const CreatorPanel = () => {
   const [section, setSection] = useState<CreatorSection>('products');
 
@@ -267,13 +403,15 @@ const CreatorPanel = () => {
           sx={{ flexWrap: 'wrap' }}
         >
           {creatorSections.map((item) => (
-            <ToggleButton key={item.id} value={item.id}>
+            <ToggleButton key={item.id} value={item.id} data-testid={`section-${item.id}`}>
               {item.label}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
         {section === 'products' ? (
           <ProductsPanel />
+        ) : section === 'settings' ? (
+          <SecurityPanel />
         ) : (
           <Paper elevation={1} sx={{ p: '1.5rem' }}>
             <Typography variant="h2" component="h2">

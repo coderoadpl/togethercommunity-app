@@ -55,6 +55,7 @@ const deps = (input: {
       findByEmail: async () => null,
       listWithProductIds: async () => [],
       create: async () => undefined,
+      updateEmail: async () => null,
       delete: async () => false,
     },
     grants: {
@@ -70,6 +71,9 @@ const deps = (input: {
           userId: purchase.userId,
           email: purchase.email,
           displayName: null,
+          tags: [],
+          marketingConsents: {},
+          externalCustomerIds: {},
           createdAt: purchase.createdAt,
         },
         grantCreated: true,

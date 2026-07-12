@@ -25,6 +25,9 @@ export const ensureMember = async (
     userId,
     email: normalizedEmail,
     displayName: null,
+    tags: [],
+    marketingConsents: {},
+    externalCustomerIds: {},
     createdAt: deps.clock.nowIso(),
   };
   await deps.members.create(tenantId, member);

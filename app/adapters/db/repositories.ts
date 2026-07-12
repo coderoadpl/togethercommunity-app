@@ -87,6 +87,9 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         id: members.id,
         email: members.email,
         displayName: members.displayName,
+        tags: members.tags,
+        marketingConsents: members.marketingConsents,
+        externalCustomerIds: members.externalCustomerIds,
         createdAt: members.createdAt,
         productIds: sql<
           string[]
@@ -98,7 +101,15 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         and(eq(productGrants.tenantId, members.tenantId), eq(productGrants.memberId, members.id)),
       )
       .where(eq(members.tenantId, tenantId))
-      .groupBy(members.id, members.email, members.displayName, members.createdAt)
+      .groupBy(
+        members.id,
+        members.email,
+        members.displayName,
+        members.tags,
+        members.marketingConsents,
+        members.externalCustomerIds,
+        members.createdAt,
+      )
       .orderBy(asc(members.createdAt)),
   create: async (tenantId, member) => {
     await db
@@ -109,9 +120,20 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         userId: member.userId,
         email: member.email,
         displayName: member.displayName,
+        tags: member.tags,
+        marketingConsents: member.marketingConsents,
+        externalCustomerIds: member.externalCustomerIds,
         createdAt: member.createdAt,
       })
       .onConflictDoNothing({ target: [members.tenantId, members.userId] });
+  },
+  updateEmail: async (tenantId, memberId, email) => {
+    const rows = await db
+      .update(members)
+      .set({ email })
+      .where(and(eq(members.tenantId, tenantId), eq(members.id, memberId)))
+      .returning();
+    return rows[0] ?? null;
   },
   delete: async (tenantId, memberId) => {
     const rows = await db
@@ -186,6 +208,9 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
           userId: input.userId,
           email: input.email,
           displayName: null,
+          tags: [],
+          marketingConsents: {},
+          externalCustomerIds: {},
           createdAt: input.createdAt,
         })
         .onConflictDoNothing({ target: [members.tenantId, members.userId] });

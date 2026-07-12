@@ -322,29 +322,132 @@ export default tseslint.config(
       'boundaries/external': [
         'error',
         {
-          default: 'allow',
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [
             {
-              from: ['core-domain', 'core-contract', 'core-server'],
-              disallow: ['react', 'react-dom', 'hono', 'drizzle-orm', 'better-auth', 'pg', 'commander'],
-              message: 'Core stays pure TypeScript: no frameworks, servers or drivers (PRD §3.1)',
+              from: ['core-domain', 'core-contract'],
+              allow: ['zod'],
             },
             {
               from: ['core-client'],
-              disallow: ['react', 'react-dom', 'hono', 'drizzle-orm', 'better-auth', 'pg'],
-              message: 'core/client is framework-agnostic (PRD §3.1)',
+              allow: ['@tanstack/query-core', 'zod'],
             },
             {
-              from: ['web-lib'],
-              disallow: ['react', 'react-dom'],
-              message: 'web-lib is pure TypeScript: no react (frontend-lint-plan Phase 2)',
+              from: ['adapter-db'],
+              allow: ['@neondatabase/serverless', 'drizzle-orm', 'pg'],
+            },
+            {
+              from: ['adapter-auth'],
+              allow: ['@better-auth/passkey', 'better-auth', 'drizzle-orm', 'node:crypto', 'pg', 'zod'],
+            },
+            {
+              from: ['app-server'],
+              allow: [
+                '@hono/node-server',
+                '@opentelemetry/api',
+                '@opentelemetry/exporter-trace-otlp-http',
+                '@opentelemetry/resources',
+                '@opentelemetry/sdk-trace-base',
+                '@opentelemetry/sdk-trace-node',
+                '@opentelemetry/semantic-conventions',
+                'hono',
+                'node:crypto',
+                'vitest',
+                'zod',
+              ],
+            },
+            {
+              from: ['web-main'],
+              allow: [
+                '@mui/material',
+                '@tanstack/react-query',
+                '@tanstack/react-query-devtools',
+                '@tanstack/react-router',
+                'react',
+                'react-dom',
+              ],
+            },
+            {
+              from: ['web-api'],
+              allow: ['@opentelemetry/api'],
+            },
+            {
+              from: ['web-routes'],
+              allow: ['@tanstack/react-router'],
+            },
+            {
+              from: ['web-features'],
+              allow: [
+                '@mui/material',
+                '@tanstack/react-query',
+                '@tanstack/react-router',
+                '@testing-library/react',
+                '@testing-library/user-event',
+                'msw',
+                'react',
+                'vitest',
+              ],
             },
             {
               from: ['web-ui'],
-              disallow: ['@tanstack/react-query', '@tanstack/react-router'],
-              message:
-                'components/ui is presentational: no TanStack Query/Router (frontend-lint-plan Phase 2)',
+              allow: ['@mui/material', '@testing-library/react', 'react', 'vitest'],
             },
+            {
+              from: ['web-test'],
+              allow: [
+                '@tanstack/react-query',
+                '@testing-library/jest-dom',
+                '@testing-library/react',
+                'msw',
+                'react',
+                'vitest',
+              ],
+            },
+            {
+              from: ['web-theme'],
+              allow: ['@mui/material', 'react'],
+            },
+            {
+              from: ['app-web'],
+              allow: [
+                '@mui/material',
+                '@opentelemetry/api',
+                '@sentry/react',
+                '@tanstack/react-query',
+                '@testing-library/react',
+                '@vitejs/plugin-react',
+                'node:url',
+                'react',
+                'vite',
+                'vitest',
+              ],
+            },
+            {
+              from: ['app-cli'],
+              allow: ['commander', 'node:fs', 'node:fs/promises', 'node:os', 'node:path', 'zod'],
+            },
+            {
+              from: ['config'],
+              allow: ['@vitejs/plugin-react', 'drizzle-kit', 'node:url', 'vite', 'vitest'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['core/**/*.test.ts', 'core/**/*.test.tsx'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            { from: ['core-domain', 'core-contract'], allow: ['vitest', 'zod'] },
+            { from: ['core-client'], allow: ['@tanstack/query-core', 'vitest', 'zod'] },
+            { from: ['core-server'], allow: ['vitest'] },
           ],
         },
       ],

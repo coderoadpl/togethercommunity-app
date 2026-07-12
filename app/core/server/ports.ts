@@ -27,6 +27,7 @@ export interface MemberRepository {
   findByEmail(tenantId: string, email: string): Promise<Member | null>;
   listWithProductIds(tenantId: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
+  updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
   delete(tenantId: string, memberId: string): Promise<boolean>;
 }
 

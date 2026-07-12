@@ -8,7 +8,13 @@ import {
   type Result,
 } from '@core/domain/index.js';
 
-import type { AuthenticatedUser, TenantAccessReader, TenantDomainRepository, TenantRepository } from '../ports.js';
+import type {
+  AuthenticatedUser,
+  MemberRepository,
+  TenantAccessReader,
+  TenantDomainRepository,
+  TenantRepository,
+} from '../ports.js';
 import { resolveTenant } from './resolve-tenant.js';
 
 export interface TenantRequestInfo {
@@ -21,6 +27,7 @@ export interface TenantRequestInfo {
 export interface ResolveIdentityDeps {
   tenantDomains: TenantDomainRepository;
   tenantAccess: TenantAccessReader;
+  members: MemberRepository;
   tenants: TenantRepository;
   /** e.g. "localhost" in dev, "together.com" in prod. */
   baseDomain: string;
@@ -50,7 +57,12 @@ export const resolveIdentity = async (
   if (!tenant.value) return ok(base);
 
   const staffGrant = await deps.tenantAccess.findStaffGrant(user.userId, { tenantId: tenant.value.tenant.id });
-  const member = await deps.tenantAccess.findMember(user.userId, tenant.value.tenant.id);
+  let member = await deps.tenantAccess.findMember(user.userId, tenant.value.tenant.id);
+
+  if (member && member.email !== user.email) {
+    const refreshedMember = await deps.members.updateEmail(tenant.value.tenant.id, member.id, user.email);
+    member = refreshedMember ?? { ...member, email: user.email };
+  }
 
   if (!staffGrant && !member) {
     return err(forbidden('You do not have access to this tenant'));

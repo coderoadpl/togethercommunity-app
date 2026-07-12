@@ -29,6 +29,13 @@
       "when": 1783830136086,
       "tag": "0003_superb_medusa",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783865154961,
+      "tag": "0004_aspiring_shocker",
+      "breakpoints": true
     }
   ]
 }

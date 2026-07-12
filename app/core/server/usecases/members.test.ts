@@ -31,6 +31,9 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
   id: input.id,
   email: input.email ?? `${input.id}@together.dev`,
   displayName: input.displayName ?? null,
+  tags: input.tags ?? [],
+  marketingConsents: input.marketingConsents ?? {},
+  externalCustomerIds: input.externalCustomerIds ?? {},
   createdAt: input.createdAt ?? '2026-07-12T00:00:00.000Z',
   productIds: input.productIds ?? [],
 });
@@ -39,6 +42,7 @@ const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRep
   findByEmail: async (): Promise<Member | null> => null,
   create: async () => undefined,
   listWithProductIds: async (tenantId) => byTenant[tenantId] ?? [],
+  updateEmail: async () => null,
   delete: async (tenantId, memberId) => {
     const members = byTenant[tenantId] ?? [];
     const index = members.findIndex((member) => member.id === memberId);
@@ -116,6 +120,9 @@ describe('exportMembers', () => {
           id: 'm1',
           email: 'jane@together.dev',
           displayName: 'Doe, "Jane"',
+          tags: ['vip', 'trial'],
+          marketingConsents: { email: true },
+          externalCustomerIds: { stripe: 'cus_123' },
           createdAt: '2026-07-12T09:00:00.000Z',
           productIds: ['p1', 'p2'],
         }),
@@ -127,8 +134,12 @@ describe('exportMembers', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
-    expect(lines[0]).toBe('"id","email","displayName","createdAt","productIds"');
-    expect(lines[1]).toBe('"m1","jane@together.dev","Doe, ""Jane""","2026-07-12T09:00:00.000Z","p1;p2"');
+    expect(lines[0]).toBe(
+      '"id","email","displayName","tags","marketingConsents","externalCustomerIds","createdAt","productIds"',
+    );
+    expect(lines[1]).toBe(
+      '"m1","jane@together.dev","Doe, ""Jane""","vip;trial","{""email"":true}","{""stripe"":""cus_123""}","2026-07-12T09:00:00.000Z","p1;p2"',
+    );
     expect(result.value.filename).toBe('members-acme.csv');
     expect(result.value.mimeType).toContain('text/csv');
   });
@@ -140,6 +151,8 @@ describe('exportMembers', () => {
           id: 'm1',
           email: '=cmd@together.dev',
           displayName: '+SUM(1,1)',
+          tags: ['@tag'],
+          externalCustomerIds: { crm: '=abc' },
         }),
       ],
     });
@@ -148,7 +161,9 @@ describe('exportMembers', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.content.split('\n')[1]).toContain('"\'=cmd@together.dev","\'+SUM(1,1)"');
+    expect(result.value.content.split('\n')[1]).toContain(
+      '"\'=cmd@together.dev","\'+SUM(1,1)","\'@tag","{}","{""crm"":""=abc""}"',
+    );
   });
 
   it('serializes the JSON array', async () => {

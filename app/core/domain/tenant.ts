@@ -24,6 +24,9 @@ export const memberSchema = z.object({
   userId: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
+  tags: z.array(z.string()),
+  marketingConsents: z.record(z.boolean()),
+  externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
 });
 
@@ -33,6 +36,9 @@ export const memberWithProductIdsSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   displayName: z.string().nullable(),
+  tags: z.array(z.string()),
+  marketingConsents: z.record(z.boolean()),
+  externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
   productIds: z.array(z.string()),
 });

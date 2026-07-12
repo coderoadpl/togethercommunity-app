@@ -1,4 +1,19 @@
-/** Second, independent enforcement of PRD §3.2 — including vendor lock bans. */
+const external = 'node_modules';
+const coreDomainExternal = 'node_modules/zod(/|$)';
+const coreContractExternal = 'node_modules/zod(/|$)';
+const coreClientExternal = 'node_modules/(@tanstack/query-core|zod)(/|$)';
+const coreClientTestExternal = 'node_modules/(@tanstack/query-core|zod|vitest)(/|$)';
+const coreServerTestExternal = 'node_modules/vitest(/|$)';
+const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
+const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
+const appServerExternal =
+  'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
+const webExternal =
+  'node_modules/(@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|msw|react|react-dom|vite|vitest)(/|$)';
+const cliExternal = 'node_modules/(commander|zod)(/|$)';
+const scriptsExternal =
+  'node_modules/(@core/contract|@adapters/auth|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
+
 module.exports = {
   forbidden: [
     { name: 'no-circular', severity: 'error', from: {}, to: { circular: true } },
@@ -56,6 +71,78 @@ module.exports = {
       severity: 'error',
       from: { path: '^core' },
       to: { path: 'node_modules/(hono|react|react-dom|drizzle-orm|better-auth|pg|commander)(/|$)' },
+    },
+    {
+      name: 'core-domain-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/domain' },
+      to: { path: external, pathNot: coreDomainExternal },
+    },
+    {
+      name: 'core-contract-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/contract' },
+      to: { path: external, pathNot: coreContractExternal },
+    },
+    {
+      name: 'core-client-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/client', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: coreClientExternal },
+    },
+    {
+      name: 'core-client-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/client/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: coreClientTestExternal },
+    },
+    {
+      name: 'core-server-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/server', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external },
+    },
+    {
+      name: 'core-server-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/server/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: coreServerTestExternal },
+    },
+    {
+      name: 'adapter-db-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/db' },
+      to: { path: external, pathNot: adapterDbExternal },
+    },
+    {
+      name: 'adapter-auth-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/auth' },
+      to: { path: external, pathNot: adapterAuthExternal },
+    },
+    {
+      name: 'app-server-external-allowlist',
+      severity: 'error',
+      from: { path: '^apps/server' },
+      to: { path: external, pathNot: appServerExternal },
+    },
+    {
+      name: 'app-web-external-allowlist',
+      severity: 'error',
+      from: { path: '^apps/web' },
+      to: { path: external, pathNot: webExternal },
+    },
+    {
+      name: 'app-cli-external-allowlist',
+      severity: 'error',
+      from: { path: '^apps/cli' },
+      to: { path: external, pathNot: cliExternal },
+    },
+    {
+      name: 'scripts-external-allowlist',
+      severity: 'error',
+      from: { path: '^scripts' },
+      to: { path: external, pathNot: scriptsExternal },
     },
     {
       name: 'web-ui-is-presentational',

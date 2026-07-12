@@ -18,6 +18,9 @@ const member: Member = {
   userId: 'u1',
   email: 'demo@example.com',
   displayName: 'Demo',
+  tags: [],
+  marketingConsents: {},
+  externalCustomerIds: {},
   createdAt: '2026-07-11T00:00:00.000Z',
 };
 
@@ -54,6 +57,22 @@ const deps = (
   tenantRows: Tenant[] = [acme.tenant],
 ) => ({
   tenantAccess: fakeTenantAccess(memberships, memberRows),
+  members: {
+    findByEmail: async () => null,
+    listWithProductIds: async () => [],
+    create: async () => undefined,
+    updateEmail: async (tenantId: string, memberId: string, email: string) => {
+      const existing = memberRows.find(
+        (candidate) => candidate.tenantId === tenantId && candidate.id === memberId,
+      );
+      if (!existing) return null;
+      const refreshed = { ...existing, email };
+      const index = memberRows.indexOf(existing);
+      memberRows[index] = refreshed;
+      return refreshed;
+    },
+    delete: async () => false,
+  },
   tenants: fakeTenants(tenantRows),
   tenantDomains: fakeDomains(domains),
   baseDomain: 'localhost',
@@ -116,6 +135,23 @@ describe('resolveIdentity', () => {
       ok: true,
       value: { tenantId: 't-acme', staffRole: null, memberId: 'member-acme' },
     });
+  });
+
+  it('refreshes a stale member email snapshot', async () => {
+    const staleMember = { ...member, email: 'old@example.com' };
+    const memberRows = [staleMember];
+
+    const result = await resolveIdentity(
+      user,
+      { host: 'acme.localhost:4711', tenantHeader: null },
+      deps([], [], memberRows),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { tenantId: 't-acme', memberId: 'member-acme' },
+    });
+    expect(memberRows[0]?.email).toBe('demo@example.com');
   });
 
   it('returns tenant-less identity on the bare base domain', async () => {

@@ -29,7 +29,19 @@ const neutralizeFormula = (value: string): string =>
 
 const quoteCsv = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 
-const CSV_HEADER = ['id', 'email', 'displayName', 'createdAt', 'productIds'];
+const serializeRecord = (value: Record<string, boolean> | Record<string, string>): string =>
+  JSON.stringify(value);
+
+const CSV_HEADER = [
+  'id',
+  'email',
+  'displayName',
+  'tags',
+  'marketingConsents',
+  'externalCustomerIds',
+  'createdAt',
+  'productIds',
+];
 
 const toCsv = (members: MemberWithProductIds[]): string =>
   [
@@ -39,6 +51,9 @@ const toCsv = (members: MemberWithProductIds[]): string =>
         member.id,
         neutralizeFormula(member.email),
         neutralizeFormula(member.displayName ?? ''),
+        neutralizeFormula(member.tags.join(';')),
+        neutralizeFormula(serializeRecord(member.marketingConsents)),
+        neutralizeFormula(serializeRecord(member.externalCustomerIds)),
         member.createdAt,
         member.productIds.join(';'),
       ]

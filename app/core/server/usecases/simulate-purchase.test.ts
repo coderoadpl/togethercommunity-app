@@ -40,6 +40,9 @@ const fakePurchases = () => {
           userId: input.userId,
           email: input.email,
           displayName: null,
+          tags: [],
+          marketingConsents: {},
+          externalCustomerIds: {},
           createdAt: input.createdAt,
         };
         store.push(member);

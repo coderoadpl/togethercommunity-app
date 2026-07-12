@@ -227,9 +227,25 @@ const TenantHome = ({
           </Stack>
         </LedgerHeader>
 
-        {tenant.staffRole ? <CreatorPanel /> : <MemberArea />}
+        {tenant.staffRole ? <CreatorPanel /> : <MemberHomeRedirect />}
       </Container>
     </ThemeProvider>
+  );
+};
+
+const MemberHomeRedirect = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    void navigate({ to: '/my' });
+  }, [navigate]);
+
+  return (
+    <Box component="section" sx={{ mt: '48px' }}>
+      <Typography variant="h2" component="p">
+        opening your products…
+      </Typography>
+    </Box>
   );
 };
 
@@ -272,12 +288,3 @@ const CreatorPanel = () => {
     </Box>
   );
 };
-
-const MemberArea = () => (
-  <Box component="section" sx={{ mt: '48px' }}>
-    <Typography variant="h2" component="h2" sx={{ mb: '24px' }}>
-      Member area
-    </Typography>
-    <Link href="#my-products">My products</Link>
-  </Box>
-);

@@ -1,0 +1,102 @@
+import { useEffect } from 'react';
+import {
+  Alert,
+  Box,
+  Container,
+  Link,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+
+import { ApiError } from '@core/client/index.js';
+
+import { actions } from '../../api.js';
+import { formatPrice } from '../../lib/format.js';
+import { CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
+
+const isUnauthorized = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'unauthorized';
+
+const isForbidden = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'forbidden';
+
+export const MyProductsPage = () => {
+  const products = useQuery(actions.myProducts);
+  const navigate = useNavigate();
+  const unauthorized = isUnauthorized(products.error);
+
+  useEffect(() => {
+    if (unauthorized) void navigate({ to: '/login' });
+  }, [navigate, unauthorized]);
+
+  if (products.isPending) {
+    return (
+      <Container sx={{ maxWidth: '44rem', py: 6 }}>
+        <Typography variant="h2" component="p">
+          loading your products…
+        </Typography>
+      </Container>
+    );
+  }
+
+  if (unauthorized) return null;
+
+  if (products.isError) {
+    return (
+      <Container sx={{ maxWidth: '44rem', py: 6 }}>
+        <Alert>
+          {isForbidden(products.error)
+            ? 'This account has staff access here, but no member profile yet.'
+            : products.error.message}
+        </Alert>
+      </Container>
+    );
+  }
+
+  return (
+    <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', pb: '6rem' }}>
+      <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
+          <Typography variant="h1">My products</Typography>
+          <Box sx={{ flex: 1 }} />
+          <Link href="/">Home</Link>
+        </Stack>
+        <Eyebrow variant="overline" component="p">
+          course library
+        </Eyebrow>
+      </LedgerHeader>
+
+      <Box component="section" sx={{ mt: '48px' }}>
+        {products.data.products.length === 0 ? (
+          <Paper elevation={1} sx={{ p: '1.5rem' }}>
+            <CardTitle variant="h1">No products yet</CardTitle>
+            <Typography variant="body1" sx={{ mt: '1rem' }}>
+              Products you buy will appear here.
+            </Typography>
+          </Paper>
+        ) : (
+          <List disablePadding>
+            {products.data.products.map((product) => (
+              <ListItem key={product.id} disablePadding>
+                <ListItemButton component="a" href={`/my/course/${product.id}`} sx={{ px: '0.3rem' }}>
+                  <ListItemText
+                    primary={product.title}
+                    secondary={`${formatPrice(product.priceCents, product.currency)} · ${product.description}`}
+                    slotProps={{ primary: { sx: { fontWeight: 700 } }, secondary: { component: 'p' } }}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </Box>
+    </Container>
+  );
+};

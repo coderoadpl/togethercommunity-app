@@ -4,11 +4,13 @@ import { createBetterAuthClientAdapter } from '@adapters/auth/client-adapter.js'
 import {
   createApiClient,
   createTenantMutation,
+  devMagicLinkQuery,
   createProductMutation,
   meQuery,
   myProductsInvalidates,
   myProductsQuery,
   productsInvalidates,
+  publicOfferQuery,
   productsQuery,
   publishProductMutation,
   requestMagicLinkMutation,
@@ -42,6 +44,7 @@ const authClient = createBetterAuthClientAdapter('');
  */
 export const actions = {
   me: meQuery(apiClient),
+  publicOffer: publicOfferQuery(apiClient),
   tenants: tenantsQuery(apiClient),
   createTenant: createTenantMutation(apiClient),
   products: productsQuery(apiClient),
@@ -54,5 +57,6 @@ export const actions = {
   signUp: signUpMutation(authClient),
   signIn: signInMutation(authClient),
   requestMagicLink: requestMagicLinkMutation(authClient),
+  devMagicLink: (email: string) => devMagicLinkQuery(apiClient, email),
   signOut: signOutMutation(authClient),
 };

@@ -1,0 +1,59 @@
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+import { screen } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import type { ReactNode } from 'react';
+import { describe, expect, it } from 'vitest';
+
+import { renderWithProviders } from '../../test/render.js';
+import { server } from '../../test/server.js';
+import { CoursePage } from './CoursePage.js';
+import { MyProductsPage } from './MyProductsPage.js';
+
+const productsBody = {
+  products: [
+    {
+      id: 'course-1',
+      title: 'Intro Course',
+      description: 'Start here.',
+      priceCents: 4900,
+      currency: 'PLN',
+    },
+  ],
+};
+
+const renderPage = async (component: () => ReactNode, path: string) => {
+  const rootRoute = createRootRoute({ component });
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
+describe('member pages', () => {
+  it('lists my products with course links', async () => {
+    server.use(
+      http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+    );
+
+    await renderPage(MyProductsPage, '/my');
+
+    expect(await screen.findByRole('heading', { name: 'My products' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Intro Course/ })).toHaveAttribute(
+      'href',
+      '/my/course/course-1',
+    );
+  });
+
+  it('renders the course stub for a purchased product', async () => {
+    server.use(
+      http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+    );
+
+    await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
+
+    expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Course content coming soon' })).toBeInTheDocument();
+  });
+});

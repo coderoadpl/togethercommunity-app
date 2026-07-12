@@ -99,6 +99,7 @@ export const myProductsScopes = {
 
 export const authScopes = {
   all: () => ['auth'] as const,
+  magicLink: (email: string) => ['auth', 'dev-magic-link', email] as const,
 };
 
 export const meQuery = (api: ApiClient) =>
@@ -153,6 +154,12 @@ export const simulatePurchaseMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...myProductsScopes.all(), 'simulate-purchase'],
     call: (input: SimulatePurchaseInput) => api.simulatePurchase(input),
+  });
+
+export const devMagicLinkQuery = (api: ApiClient, email: string) =>
+  defineQuery({
+    queryKey: authScopes.magicLink(email),
+    call: ({ signal }) => api.devMagicLink(email, signal),
   });
 
 /** The invalidation filter product mutations apply after they settle. */

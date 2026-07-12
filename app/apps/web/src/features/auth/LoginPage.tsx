@@ -11,7 +11,7 @@ import {
   Paper,
   Stack,
 } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '@core/client/index.js';
@@ -22,6 +22,8 @@ import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [magicEmail, setMagicEmail] = useState('');
+  const [requestedMagicEmail, setRequestedMagicEmail] = useState('');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -33,17 +35,33 @@ export const LoginPage = () => {
     },
   });
 
+  const requestMagicLink = useMutation({
+    ...actions.requestMagicLink,
+    onSuccess: (_data, variables) => {
+      setRequestedMagicEmail(variables.email);
+    },
+  });
+
+  const devMagicLink = useQuery({
+    ...actions.devMagicLink(requestedMagicEmail),
+    enabled: requestedMagicEmail.length > 0,
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     signIn.mutate({ email, password });
+  };
+
+  const submitMagicLink = (event: FormEvent) => {
+    event.preventDefault();
+    setRequestedMagicEmail('');
+    requestMagicLink.mutate({ email: magicEmail, callbackURL: `${window.location.origin}/my` });
   };
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
       <Paper
         variant="outlined"
-        component="form"
-        onSubmit={submit}
         sx={{
           width: '100%',
           maxWidth: '23rem',
@@ -59,7 +77,7 @@ export const LoginPage = () => {
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
           sign in · tenant {window.location.hostname}
         </Eyebrow>
-        <Stack useFlexGap spacing="1rem">
+        <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="login-email">email</FormLabel>
             <OutlinedInput
@@ -96,6 +114,43 @@ export const LoginPage = () => {
           <Alert sx={{ mt: '0.6rem' }}>
             {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
           </Alert>
+        ) : null}
+        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
+        <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
+          <FormControl fullWidth>
+            <FormLabel htmlFor="magic-link-email">magic link email</FormLabel>
+            <OutlinedInput
+              id="magic-link-email"
+              type="email"
+              value={magicEmail}
+              onChange={(event) => setMagicEmail(event.target.value)}
+              autoComplete="email"
+              required
+            />
+          </FormControl>
+          <Button type="submit" variant="text" disabled={requestMagicLink.isPending}>
+            {requestMagicLink.isPending ? 'sending magic link…' : 'Send me a magic link'}
+          </Button>
+        </Stack>
+        {requestMagicLink.isError ? (
+          <Alert sx={{ mt: '0.6rem' }}>
+            {requestMagicLink.error instanceof ApiError
+              ? requestMagicLink.error.appError.message
+              : requestMagicLink.error.message}
+          </Alert>
+        ) : null}
+        {requestedMagicEmail ? (
+          <FinePrint variant="caption" component="p" sx={{ mt: '0.8rem' }}>
+            {devMagicLink.isPending ? 'fetching dev magic link…' : 'Magic link requested.'}
+          </FinePrint>
+        ) : null}
+        {devMagicLink.data?.magicLink ? (
+          <FinePrint variant="caption" component="p" sx={{ mt: '0.4rem' }}>
+            <Link href={devMagicLink.data.magicLink.url}>Open magic link</Link>
+          </FinePrint>
+        ) : null}
+        {devMagicLink.isError ? (
+          <Alert sx={{ mt: '0.6rem' }}>{devMagicLink.error.message}</Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>

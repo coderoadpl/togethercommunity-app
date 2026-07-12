@@ -16,8 +16,10 @@ import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
+import { CheckoutRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
+import { CourseRoute, MyProductsRoute } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
@@ -47,13 +49,37 @@ const loginRoute = createRoute({
   path: '/login',
   component: LoginRoute,
 });
+const checkoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/checkout/$productId',
+  component: CheckoutRoute,
+});
+const myProductsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/my',
+  component: MyProductsRoute,
+});
+const courseRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/my/course/$productId',
+  component: CourseRoute,
+});
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
   component: RegisterRoute,
 });
 
-const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, loginRoute, registerRoute]) });
+const router = createRouter({
+  routeTree: rootRoute.addChildren([
+    indexRoute,
+    loginRoute,
+    checkoutRoute,
+    myProductsRoute,
+    courseRoute,
+    registerRoute,
+  ]),
+});
 
 declare module '@tanstack/react-router' {
   interface Register {

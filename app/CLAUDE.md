@@ -11,8 +11,9 @@ architecture spec is normative).
   tree matches `package-lock.json`, drops+recreates an isolated
   `together_smoke` database (never touches your dev-seeded data), migrates
   and seeds it, boots the real server (`entry.node.ts`) on an ephemeral port and
-  drives health → sign-in → todos through the CLI, asserting taxonomy exit codes
-  (including unauthorized = exit 3). Assumes `npm run db:up`. Runs in ~5s.
+  drives health → sign-in → products → simulated purchase → magic-link sign-in
+  through the CLI, asserting taxonomy exit codes (including unauthorized =
+  exit 3). Assumes `npm run db:up`. Runs in ~5s.
 
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
@@ -41,7 +42,7 @@ npm run db:up && npm run db:migrate && npm run db:seed
 npm run dev:server &          # port 48730
 npm run --silent cli -- --json health
 npm run --silent cli -- login --email creator2@together.dev --password demo1234
-npm run --silent cli -- --tenant acme todo list
+npm run --silent cli -- --tenant acme product list
 ```
 
 `--json` prints exactly one JSON envelope on stdout; exit codes come from

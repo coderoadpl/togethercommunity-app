@@ -67,13 +67,391 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
       return createAppTheme(accentHue);
     case 'quiet-studio':
       return createQuietStudioTheme();
-    case 'material':
     case 'scoreboard':
+      return createScoreboardTheme();
+    case 'material':
     case 'signal-mono':
     case 'steady-frame':
       return createPlainTheme(accentHue);
   }
 };
+
+const SCORE_FONT_UI =
+  "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const SCORE_FONT_DISPLAY = "'Space Grotesk', 'Inter', sans-serif";
+
+const SCORE_BG = '#F7F5F2';
+const SCORE_SURFACE = '#FFFFFF';
+const SCORE_INK = '#0B0B0C';
+const SCORE_INK_SOFT = '#55524C';
+const SCORE_ACCENT = '#FFC42B';
+const SCORE_SUCCESS = '#1B8A5A';
+const SCORE_ERROR = '#B3261E';
+const SCORE_DIVIDER = '#111111';
+const SCORE_SHADOW = `3px 3px 0 ${SCORE_INK}`;
+
+export const createScoreboardTheme = (): Theme =>
+  createTheme({
+    headerRule: `2px solid ${SCORE_DIVIDER}`,
+    palette: {
+      mode: 'light',
+      primary: {
+        main: SCORE_INK,
+        dark: SCORE_INK,
+        contrastText: SCORE_SURFACE,
+      },
+      secondary: {
+        main: SCORE_ACCENT,
+        dark: SCORE_ACCENT,
+        contrastText: SCORE_INK,
+      },
+      success: { main: SCORE_SUCCESS, contrastText: SCORE_INK },
+      error: { main: SCORE_ERROR, contrastText: SCORE_SURFACE },
+      background: { default: SCORE_BG, paper: SCORE_SURFACE },
+      text: { primary: SCORE_INK, secondary: SCORE_INK_SOFT },
+      divider: SCORE_DIVIDER,
+    },
+    shape: { borderRadius: 8 },
+    typography: {
+      fontFamily: SCORE_FONT_UI,
+      body1: { fontSize: '0.9375rem', lineHeight: 1.55 },
+      body2: { fontSize: '0.85rem', lineHeight: 1.5 },
+      h1: {
+        fontFamily: SCORE_FONT_DISPLAY,
+        fontSize: '1.875rem',
+        fontWeight: 700,
+        letterSpacing: '-0.025em',
+        lineHeight: 1.15,
+        fontVariantNumeric: 'tabular-nums',
+      },
+      h2: {
+        fontFamily: SCORE_FONT_DISPLAY,
+        fontSize: '1.125rem',
+        fontWeight: 700,
+        letterSpacing: '-0.015em',
+        lineHeight: 1.3,
+        fontVariantNumeric: 'tabular-nums',
+      },
+      overline: {
+        fontFamily: SCORE_FONT_UI,
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        lineHeight: 1.6,
+        color: SCORE_INK_SOFT,
+      },
+      button: {
+        fontFamily: SCORE_FONT_UI,
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        lineHeight: 1.4,
+        textTransform: 'uppercase',
+      },
+      caption: { fontSize: '0.78rem', lineHeight: 1.5, color: SCORE_INK_SOFT },
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            backgroundColor: SCORE_BG,
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          },
+          '@keyframes settle': {
+            from: { opacity: 0, transform: 'translateY(0.5rem)' },
+            to: { opacity: 1, transform: 'none' },
+          },
+        },
+      },
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: {
+          root: { borderRadius: 8, padding: '0.6rem 1.15rem' },
+          contained: {
+            backgroundColor: SCORE_INK,
+            color: SCORE_SURFACE,
+            fontFamily: SCORE_FONT_DISPLAY,
+            fontWeight: 600,
+            '&:hover': { backgroundColor: SCORE_INK },
+            '&.Mui-disabled': {
+              backgroundColor: SCORE_INK,
+              color: SCORE_SURFACE,
+              opacity: 0.42,
+            },
+            '&.MuiButton-colorSecondary': {
+              backgroundColor: SCORE_INK,
+              color: SCORE_SURFACE,
+              '&:hover': { backgroundColor: SCORE_INK },
+            },
+          },
+          outlined: {
+            border: `1.5px solid ${SCORE_INK}`,
+            color: SCORE_INK,
+            '&:hover': {
+              border: `1.5px solid ${SCORE_INK}`,
+              backgroundColor: alpha(SCORE_INK, 0.05),
+            },
+          },
+          text: {
+            color: SCORE_INK,
+            borderRadius: 0,
+            borderBottom: `1.5px solid ${SCORE_INK}`,
+            padding: '0.15rem 0',
+            minWidth: 0,
+            '&:hover': { backgroundColor: 'transparent', borderBottomWidth: 3 },
+          },
+        },
+      },
+      MuiPaper: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: { backgroundImage: 'none' },
+          rounded: { borderRadius: 8 },
+          outlined: {
+            border: `2px solid ${SCORE_INK}`,
+            borderRadius: 12,
+            boxShadow: 'none',
+          },
+          elevation1: {
+            border: `1.5px solid ${SCORE_INK}`,
+            borderRadius: 8,
+            boxShadow: 'none',
+          },
+          elevation8: {
+            border: `2px solid ${SCORE_INK}`,
+            borderRadius: 12,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 4,
+            backgroundColor: SCORE_SURFACE,
+            '& .MuiOutlinedInput-notchedOutline': {
+              borderColor: SCORE_INK,
+              borderWidth: 1.5,
+            },
+            '&:hover .MuiOutlinedInput-notchedOutline': {
+              borderColor: SCORE_INK,
+              borderWidth: 2,
+            },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: SCORE_INK,
+              borderWidth: 2,
+            },
+          },
+          input: { padding: '0.65rem 0.8rem', fontSize: '0.9375rem', lineHeight: 1.5 },
+        },
+      },
+      MuiFormLabel: {
+        styleOverrides: {
+          root: {
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            lineHeight: 1.5,
+            color: SCORE_INK,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            marginBottom: '0.35rem',
+            '&.Mui-focused': { color: SCORE_INK },
+          },
+        },
+      },
+      MuiInputBase: {
+        styleOverrides: {
+          input: { '&::placeholder': { color: SCORE_INK_SOFT, opacity: 1 } },
+        },
+      },
+      MuiLink: {
+        defaultProps: { underline: 'none' },
+        styleOverrides: {
+          root: {
+            color: SCORE_INK,
+            fontWeight: 600,
+            borderBottom: `1.5px solid ${SCORE_INK}`,
+            '&[aria-current="true"]': { borderBottomWidth: 3 },
+            '&:hover': { borderBottomWidth: 3 },
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 6,
+            height: 'auto',
+            color: SCORE_INK,
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          },
+          label: { padding: '0.2rem 0.55rem' },
+          outlined: { border: `1.5px solid ${SCORE_INK}`, backgroundColor: SCORE_SURFACE },
+          colorSecondary: {
+            backgroundColor: SCORE_ACCENT,
+            color: SCORE_INK,
+            border: `1.5px solid ${SCORE_INK}`,
+            boxShadow: SCORE_SHADOW,
+          },
+        },
+      },
+      MuiToggleButtonGroup: {
+        styleOverrides: {
+          root: {
+            gap: '1.25rem',
+            borderBottom: `2px solid ${SCORE_INK}`,
+            '& .MuiToggleButtonGroup-grouped, & .MuiToggleButtonGroup-firstButton, & .MuiToggleButtonGroup-middleButton, & .MuiToggleButtonGroup-lastButton': {
+              border: 0,
+              borderRadius: 0,
+              marginLeft: 0,
+            },
+          },
+        },
+      },
+      MuiToggleButton: {
+        styleOverrides: {
+          root: {
+            border: 0,
+            borderRadius: 0,
+            padding: '0.65rem 0 0.55rem',
+            color: SCORE_INK_SOFT,
+            fontFamily: SCORE_FONT_UI,
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            lineHeight: 1.4,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            '&:hover': { backgroundColor: 'transparent', color: SCORE_INK },
+            '&.Mui-selected': {
+              backgroundColor: 'transparent',
+              color: SCORE_INK,
+              boxShadow: `inset 0 -3px 0 ${SCORE_INK}`,
+              '&:hover': { backgroundColor: 'transparent' },
+            },
+          },
+        },
+      },
+      MuiList: {
+        styleOverrides: { root: { paddingTop: 0, paddingBottom: 0 } },
+      },
+      MuiListItem: {
+        styleOverrides: {
+          root: {
+            border: `1.5px solid ${SCORE_INK}`,
+            borderRadius: 8,
+            marginBottom: '0.75rem',
+            padding: '0.85rem 1rem',
+            backgroundColor: SCORE_SURFACE,
+            '&:hover': { boxShadow: SCORE_SHADOW, transform: 'translate(-1px, -1px)' },
+            '& .MuiListItemText-primary': {
+              fontFamily: SCORE_FONT_DISPLAY,
+              fontWeight: 700,
+            },
+            '& .MuiListItemText-secondary > .MuiStack-root > span:first-of-type': {
+              fontFamily: SCORE_FONT_DISPLAY,
+              fontWeight: 600,
+              fontVariantNumeric: 'tabular-nums',
+            },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 6,
+            color: SCORE_INK,
+            '&:hover': { backgroundColor: alpha(SCORE_INK, 0.05) },
+          },
+        },
+      },
+      MuiListItemText: {
+        styleOverrides: {
+          secondary: { color: SCORE_INK_SOFT },
+        },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px dashed ${SCORE_INK}`,
+            fontSize: '0.85rem',
+          },
+          head: {
+            color: SCORE_INK,
+            fontWeight: 600,
+            fontSize: '0.72rem',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          },
+          alignRight: {
+            fontFamily: SCORE_FONT_DISPLAY,
+            fontWeight: 600,
+            fontVariantNumeric: 'tabular-nums',
+          },
+        },
+      },
+      MuiDivider: {
+        styleOverrides: { root: { borderColor: SCORE_INK, borderStyle: 'dashed' } },
+      },
+      MuiAlert: {
+        defaultProps: { severity: 'error', variant: 'outlined' },
+        styleOverrides: {
+          root: {
+            border: `1.5px solid ${SCORE_ERROR}`,
+            borderRadius: 4,
+            backgroundColor: SCORE_SURFACE,
+            color: SCORE_ERROR,
+          },
+        },
+      },
+      MuiAppBar: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            backgroundColor: SCORE_BG,
+            color: SCORE_INK,
+            borderBottom: `2px solid ${SCORE_INK}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            border: `2px solid ${SCORE_INK}`,
+            borderRadius: 12,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiAutocomplete: {
+        styleOverrides: {
+          paper: {
+            border: `1.5px solid ${SCORE_INK}`,
+            borderRadius: 4,
+            boxShadow: 'none',
+          },
+          option: {
+            '&[aria-selected="true"]': { backgroundColor: alpha(SCORE_INK, 0.08) },
+            '&.Mui-focused': { backgroundColor: alpha(SCORE_INK, 0.05) },
+          },
+        },
+      },
+      MuiLinearProgress: {
+        styleOverrides: {
+          root: {
+            height: 6,
+            border: `1.5px solid ${SCORE_INK}`,
+            borderRadius: 6,
+            backgroundColor: SCORE_SURFACE,
+          },
+          bar: { borderRadius: 0, backgroundColor: SCORE_ACCENT },
+        },
+      },
+    },
+  });
 
 const STUDIO_FONT_UI =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";

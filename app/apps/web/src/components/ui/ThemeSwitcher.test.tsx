@@ -56,7 +56,7 @@ describe('ThemeSwitcher', () => {
     expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Material');
   });
 
-  it('offers every registered mode and applies the material base for new modes', async () => {
+  it('offers every registered mode and applies the scoreboard theme', async () => {
     const user = userEvent.setup();
     renderSwitcher();
 
@@ -73,7 +73,7 @@ describe('ThemeSwitcher', () => {
 
     await user.click(screen.getByRole('option', { name: 'Scoreboard' }));
 
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^4:.*Roboto/);
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^8:'Inter'/);
     expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Scoreboard');
   });
 

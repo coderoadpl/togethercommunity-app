@@ -22,11 +22,13 @@ declare module '@mui/material/styles' {
     headerRule?: string;
     numericFontFamily?: string;
     statusAccent?: string;
+    moneyColor?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
     numericFontFamily?: string;
     statusAccent?: string;
+    moneyColor?: string;
   }
 }
 
@@ -75,8 +77,9 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
       return createScoreboardTheme();
     case 'signal-mono':
       return createSignalMonoTheme();
-    case 'material':
     case 'steady-frame':
+      return createSteadyFrameTheme();
+    case 'material':
       return createPlainTheme(accentHue);
   }
 };
@@ -501,6 +504,362 @@ export const createSignalMonoTheme = (): Theme =>
             backgroundColor: SIGNAL_DIVIDER,
           },
           bar: { borderRadius: 0, backgroundColor: SIGNAL_ACCENT },
+        },
+      },
+    },
+  });
+
+const FRAME_FONT_UI =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const FRAME_FONT_HEADING =
+  "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const FRAME_FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', monospace";
+
+const FRAME_BG = '#F7F6F3';
+const FRAME_SURFACE = '#FFFFFF';
+const FRAME_PRIMARY = '#274C77';
+const FRAME_PRIMARY_DARK = '#1F3D60';
+const FRAME_ACCENT = '#A05A0C';
+const FRAME_SUCCESS = '#1E7B34';
+const FRAME_ERROR = '#B3261E';
+const FRAME_INK = '#1C2B33';
+const FRAME_INK_SOFT = '#52606D';
+const FRAME_DIVIDER = '#E3E0DA';
+const FRAME_SHADOW = '0 8px 24px rgba(28, 43, 51, 0.12)';
+const FRAME_PRIMARY_TINT = 'rgba(39, 76, 119, 0.1)';
+
+export const createSteadyFrameTheme = (): Theme =>
+  createTheme({
+    headerRule: `1px solid ${FRAME_DIVIDER}`,
+    numericFontFamily: FRAME_FONT_HEADING,
+    statusAccent: FRAME_SUCCESS,
+    moneyColor: FRAME_ACCENT,
+    palette: {
+      mode: 'light',
+      primary: {
+        main: FRAME_PRIMARY,
+        dark: FRAME_PRIMARY_DARK,
+        contrastText: FRAME_SURFACE,
+      },
+      secondary: {
+        main: FRAME_PRIMARY,
+        dark: FRAME_PRIMARY_DARK,
+        contrastText: FRAME_SURFACE,
+      },
+      success: { main: FRAME_SUCCESS, contrastText: FRAME_SURFACE },
+      error: { main: FRAME_ERROR, contrastText: FRAME_SURFACE },
+      background: { default: FRAME_BG, paper: FRAME_SURFACE },
+      text: { primary: FRAME_INK, secondary: FRAME_INK_SOFT },
+      divider: FRAME_DIVIDER,
+    },
+    shape: { borderRadius: 8 },
+    typography: {
+      fontFamily: FRAME_FONT_UI,
+      body1: { fontSize: '0.9375rem', lineHeight: 1.55 },
+      body2: { fontSize: '0.85rem', lineHeight: 1.5 },
+      h1: {
+        fontFamily: FRAME_FONT_HEADING,
+        fontSize: '1.75rem',
+        fontWeight: 700,
+        letterSpacing: '-0.01em',
+        lineHeight: 1.2,
+      },
+      h2: {
+        fontFamily: FRAME_FONT_HEADING,
+        fontSize: '1.375rem',
+        fontWeight: 600,
+        letterSpacing: '-0.005em',
+        lineHeight: 1.3,
+      },
+      h3: {
+        fontFamily: FRAME_FONT_HEADING,
+        fontSize: '1.0625rem',
+        fontWeight: 600,
+        lineHeight: 1.4,
+      },
+      overline: {
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        letterSpacing: '0.06em',
+        lineHeight: 1.7,
+        color: FRAME_INK_SOFT,
+      },
+      button: {
+        fontSize: '0.9rem',
+        fontWeight: 600,
+        letterSpacing: 0,
+        textTransform: 'none',
+      },
+      caption: { fontSize: '0.8125rem', lineHeight: 1.5, color: FRAME_INK_SOFT },
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            backgroundColor: FRAME_BG,
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          },
+          code: { fontFamily: FRAME_FONT_MONO },
+          '@keyframes settle': {
+            from: { opacity: 0, transform: 'translateY(0.5rem)' },
+            to: { opacity: 1, transform: 'none' },
+          },
+        },
+      },
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            padding: '0.55rem 1.2rem',
+            boxShadow: 'none',
+            '&:hover': { boxShadow: 'none' },
+            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
+          },
+          contained: {
+            '&.Mui-disabled': {
+              backgroundColor: FRAME_PRIMARY,
+              color: FRAME_SURFACE,
+              opacity: 0.42,
+            },
+          },
+          outlined: {
+            border: `1px solid ${alpha(FRAME_PRIMARY, 0.4)}`,
+            color: FRAME_PRIMARY,
+            '&:hover': {
+              border: `1px solid ${FRAME_PRIMARY}`,
+              backgroundColor: FRAME_PRIMARY_TINT,
+            },
+          },
+          text: {
+            color: FRAME_PRIMARY,
+            '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.06) },
+          },
+        },
+      },
+      MuiPaper: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: { backgroundImage: 'none', boxShadow: 'none' },
+          rounded: { borderRadius: 10 },
+          outlined: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            borderRadius: 12,
+            boxShadow: 'none',
+          },
+          elevation1: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            borderRadius: 10,
+            boxShadow: 'none',
+          },
+          elevation8: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            borderRadius: 10,
+            boxShadow: FRAME_SHADOW,
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            backgroundColor: FRAME_SURFACE,
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: FRAME_DIVIDER },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: FRAME_INK_SOFT },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: FRAME_PRIMARY,
+              borderWidth: 2,
+            },
+          },
+          input: {
+            padding: '0.6rem 0.8rem',
+            fontSize: '0.9375rem',
+            lineHeight: 1.5,
+            '&[type="number"]': { fontFamily: FRAME_FONT_HEADING, fontVariantNumeric: 'tabular-nums' },
+          },
+        },
+      },
+      MuiFormLabel: {
+        styleOverrides: {
+          root: {
+            color: FRAME_INK_SOFT,
+            fontSize: '0.8125rem',
+            fontWeight: 600,
+            lineHeight: 1.5,
+            marginBottom: '0.35rem',
+            '&.Mui-focused': { color: FRAME_PRIMARY },
+          },
+        },
+      },
+      MuiInputBase: {
+        styleOverrides: {
+          input: { '&::placeholder': { color: FRAME_INK_SOFT, opacity: 1 } },
+        },
+      },
+      MuiLink: {
+        defaultProps: { underline: 'hover' },
+        styleOverrides: {
+          root: {
+            color: FRAME_PRIMARY,
+            fontWeight: 600,
+            '&[aria-current="true"]': { fontWeight: 700 },
+            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 999,
+            height: 'auto',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+          },
+          label: { padding: '0.22rem 0.66rem' },
+          outlined: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            color: FRAME_INK_SOFT,
+            backgroundColor: FRAME_SURFACE,
+          },
+        },
+      },
+      MuiToggleButtonGroup: {
+        styleOverrides: {
+          root: {
+            gap: '0.4rem',
+            '& .MuiToggleButtonGroup-grouped, & .MuiToggleButtonGroup-firstButton, & .MuiToggleButtonGroup-middleButton, & .MuiToggleButtonGroup-lastButton': {
+              border: 0,
+              borderRadius: 8,
+              marginLeft: 0,
+            },
+          },
+        },
+      },
+      MuiToggleButton: {
+        styleOverrides: {
+          root: {
+            border: 0,
+            borderRadius: 8,
+            padding: '0.5rem 1rem',
+            color: FRAME_INK_SOFT,
+            fontFamily: FRAME_FONT_UI,
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            lineHeight: 1.4,
+            textTransform: 'none',
+            '&:hover': { backgroundColor: alpha(FRAME_INK, 0.05) },
+            '&.Mui-selected': {
+              backgroundColor: FRAME_PRIMARY_TINT,
+              color: FRAME_PRIMARY,
+              '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.16) },
+            },
+            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
+          },
+        },
+      },
+      MuiList: {
+        styleOverrides: { root: { paddingTop: 0, paddingBottom: 0 } },
+      },
+      MuiListItem: {
+        styleOverrides: {
+          root: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            borderRadius: 10,
+            marginBottom: '0.75rem',
+            padding: '0.85rem 1rem',
+            backgroundColor: FRAME_SURFACE,
+            transition: 'border-color 0.15s ease',
+            '&:hover': { borderColor: FRAME_PRIMARY },
+            '&:last-of-type': { marginBottom: 0 },
+            '& .MuiListItemText-primary': { fontFamily: FRAME_FONT_HEADING, fontWeight: 600 },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 10,
+            color: FRAME_INK,
+            '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.05) },
+            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: -2 },
+            '& .MuiListItemText-secondary': { color: FRAME_INK_SOFT },
+          },
+        },
+      },
+      MuiListItemText: {
+        styleOverrides: { secondary: { color: FRAME_INK_SOFT } },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px solid ${FRAME_DIVIDER}`,
+            fontSize: '0.85rem',
+            padding: '0.65rem 0.75rem',
+          },
+          head: {
+            color: FRAME_INK_SOFT,
+            fontWeight: 600,
+            fontSize: '0.72rem',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            backgroundColor: FRAME_BG,
+          },
+          alignRight: { fontFamily: FRAME_FONT_HEADING, fontVariantNumeric: 'tabular-nums' },
+        },
+      },
+      MuiDivider: {
+        styleOverrides: { root: { borderColor: FRAME_DIVIDER } },
+      },
+      MuiAlert: {
+        defaultProps: { severity: 'error', variant: 'outlined' },
+        styleOverrides: {
+          root: {
+            border: `1px solid ${FRAME_ERROR}`,
+            borderRadius: 8,
+            backgroundColor: FRAME_SURFACE,
+            color: FRAME_ERROR,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiAppBar: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            backgroundColor: FRAME_SURFACE,
+            color: FRAME_INK,
+            borderBottom: `1px solid ${FRAME_DIVIDER}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            borderRadius: 12,
+            boxShadow: FRAME_SHADOW,
+          },
+        },
+      },
+      MuiAutocomplete: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${FRAME_DIVIDER}`,
+            borderRadius: 10,
+            boxShadow: FRAME_SHADOW,
+          },
+          option: {
+            '&[aria-selected="true"]': { backgroundColor: FRAME_PRIMARY_TINT },
+            '&.Mui-focused': { backgroundColor: alpha(FRAME_PRIMARY, 0.05) },
+          },
+        },
+      },
+      MuiLinearProgress: {
+        styleOverrides: {
+          root: { height: 4, borderRadius: 999, backgroundColor: FRAME_DIVIDER },
+          bar: { borderRadius: 999, backgroundColor: FRAME_PRIMARY },
         },
       },
     },
@@ -1431,6 +1790,7 @@ export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>((
 export const DataValue = styled('span')(({ theme }) => ({
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+  color: theme.moneyColor,
 }));
 
 export const PublishedStatus = styled('span')(({ theme }) => ({

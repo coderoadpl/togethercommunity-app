@@ -5,6 +5,7 @@ import type {
   DevMagicLinkReader,
   HealthPort,
   MemberRepository,
+  PurchaseRepository,
   ProductGrantRepository,
   ProductRepository,
   TenantAccessReader,
@@ -45,8 +46,17 @@ export const createProductRepository = (db: Db): ProductRepository => ({
       .limit(1);
     return rows[0] ?? null;
   },
-  create: async (_tenantId, product) => {
-    await db.insert(products).values(product);
+  create: async (tenantId, product) => {
+    await db.insert(products).values({
+      id: product.id,
+      tenantId,
+      title: product.title,
+      description: product.description,
+      priceCents: product.priceCents,
+      currency: product.currency,
+      published: product.published,
+      createdAt: product.createdAt,
+    });
   },
   setPublished: async (tenantId, id, published) => {
     await db
@@ -90,8 +100,25 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .where(eq(members.tenantId, tenantId))
       .groupBy(members.id, members.email, members.displayName, members.createdAt)
       .orderBy(asc(members.createdAt)),
-  create: async (_tenantId, member) => {
-    await db.insert(members).values(member);
+  create: async (tenantId, member) => {
+    await db
+      .insert(members)
+      .values({
+        id: member.id,
+        tenantId,
+        userId: member.userId,
+        email: member.email,
+        displayName: member.displayName,
+        createdAt: member.createdAt,
+      })
+      .onConflictDoNothing({ target: [members.tenantId, members.userId] });
+  },
+  delete: async (tenantId, memberId) => {
+    const rows = await db
+      .delete(members)
+      .where(and(eq(members.tenantId, tenantId), eq(members.id, memberId)))
+      .returning({ id: members.id });
+    return rows.length > 0;
   },
 });
 
@@ -110,8 +137,22 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
       .limit(1);
     return rows[0] ?? null;
   },
-  createGrant: async (_tenantId, grant) => {
-    await db.insert(productGrants).values(grant);
+  createGrant: async (tenantId, grant) => {
+    const rows = await db
+      .insert(productGrants)
+      .values({
+        id: grant.id,
+        tenantId,
+        memberId: grant.memberId,
+        productId: grant.productId,
+        source: grant.source,
+        createdAt: grant.createdAt,
+      })
+      .onConflictDoNothing({
+        target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
+      })
+      .returning({ id: productGrants.id });
+    return rows.length > 0;
   },
   listGrantedProducts: async (tenantId, memberId) =>
     db
@@ -126,9 +167,54 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         createdAt: products.createdAt,
       })
       .from(productGrants)
-      .innerJoin(products, eq(productGrants.productId, products.id))
+      .innerJoin(
+        products,
+        and(eq(productGrants.productId, products.id), eq(products.tenantId, tenantId)),
+      )
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, memberId)))
       .orderBy(asc(productGrants.createdAt)),
+});
+
+export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
+  createMemberGrant: async (input) =>
+    db.transaction(async (tx) => {
+      await tx
+        .insert(members)
+        .values({
+          id: input.memberId,
+          tenantId: input.tenantId,
+          userId: input.userId,
+          email: input.email,
+          displayName: null,
+          createdAt: input.createdAt,
+        })
+        .onConflictDoNothing({ target: [members.tenantId, members.userId] });
+
+      const memberRows = await tx
+        .select()
+        .from(members)
+        .where(and(eq(members.tenantId, input.tenantId), eq(members.userId, input.userId)))
+        .limit(1);
+      const member = memberRows[0];
+      if (!member) throw new Error('Member create/read failed inside purchase transaction');
+
+      const grantRows = await tx
+        .insert(productGrants)
+        .values({
+          id: input.grantId,
+          tenantId: input.tenantId,
+          memberId: member.id,
+          productId: input.productId,
+          source: 'simulated',
+          createdAt: input.createdAt,
+        })
+        .onConflictDoNothing({
+          target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
+        })
+        .returning({ id: productGrants.id });
+
+      return { member, grantCreated: grantRows.length > 0 };
+    }),
 });
 
 export const createDevMagicLinkReader = (db: Db): DevMagicLinkReader => ({
@@ -176,6 +262,22 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       role: input.staffRole,
     });
   },
+  createTenantWithOwnerGrant: async (input) =>
+    db.transaction(async (tx) => {
+      await tx.insert(tenants).values(input.tenant);
+      await tx.insert(tenantAdmins).values({
+        id: input.ownerGrant.id,
+        tenantId: input.tenant.id,
+        userId: input.ownerGrant.userId,
+        role: input.ownerGrant.staffRole,
+      });
+      return {
+        id: input.tenant.id,
+        slug: input.tenant.slug,
+        name: input.tenant.name,
+        contentVersion: 1,
+      };
+    }),
 });
 
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {

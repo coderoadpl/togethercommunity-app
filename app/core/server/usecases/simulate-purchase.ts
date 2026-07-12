@@ -1,14 +1,13 @@
 import {
   err,
+  normalizeEmail,
   notFound,
   ok,
   type AppError,
-  type ProductGrant,
   type Result,
 } from '@core/domain/index.js';
 
-import type { ProductGrantRepository, ProductRepository } from '../ports.js';
-import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
+import type { AuthPort, Clock, IdGenerator, ProductRepository, PurchaseRepository } from '../ports.js';
 
 export interface SimulatePurchaseResult {
   memberId: string;
@@ -16,9 +15,12 @@ export interface SimulatePurchaseResult {
   alreadyOwned: boolean;
 }
 
-export interface SimulatePurchaseDeps extends EnsureMemberDeps {
+export interface SimulatePurchaseDeps {
   products: ProductRepository;
-  grants: ProductGrantRepository;
+  purchases: PurchaseRepository;
+  authPort: AuthPort;
+  ids: IdGenerator;
+  clock: Clock;
 }
 
 export const simulatePurchase = async (
@@ -32,22 +34,17 @@ export const simulatePurchase = async (
     return err(notFound(`No published product "${productId}" in this tenant`));
   }
 
-  const member = await ensureMember(tenantId, email, deps);
-  if (!member.ok) return member;
+  const normalizedEmail = normalizeEmail(email);
+  const { userId } = await deps.authPort.ensureUser(normalizedEmail);
 
-  const existingGrant = await deps.grants.findGrant(tenantId, member.value.id, productId);
-  if (existingGrant) {
-    return ok({ memberId: member.value.id, productId, alreadyOwned: true });
-  }
-
-  const grant: ProductGrant = {
-    id: deps.ids.nextId(),
+  const purchase = await deps.purchases.createMemberGrant({
     tenantId,
-    memberId: member.value.id,
+    userId,
+    email: normalizedEmail,
+    memberId: deps.ids.nextId(),
+    grantId: deps.ids.nextId(),
     productId,
-    source: 'simulated',
     createdAt: deps.clock.nowIso(),
-  };
-  await deps.grants.createGrant(tenantId, grant);
-  return ok({ memberId: member.value.id, productId, alreadyOwned: false });
+  });
+  return ok({ memberId: purchase.member.id, productId, alreadyOwned: !purchase.grantCreated });
 };

@@ -326,6 +326,14 @@ member
     );
   });
 
+member
+  .command('remove <memberId>')
+  .description('Remove a member and tenant-scoped grants without deleting the account')
+  .action(async (memberId: string) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.removeMember({ memberId }), ctx.json, (data) => `removed member: ${data.memberId}`);
+  });
+
 const my = program.command('my').description('Your member view of the active tenant');
 
 my

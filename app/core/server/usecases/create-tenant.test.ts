@@ -33,6 +33,22 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
     createOwnerGrant: async (input) => {
       ownerGrants.push(input);
     },
+    createTenantWithOwnerGrant: async (input) => {
+      const tenant = {
+        id: input.tenant.id,
+        slug: input.tenant.slug,
+        name: input.tenant.name,
+        contentVersion: 1,
+      };
+      tenants.push(tenant);
+      ownerGrants.push({
+        id: input.ownerGrant.id,
+        tenantId: input.tenant.id,
+        userId: input.ownerGrant.userId,
+        staffRole: input.ownerGrant.staffRole,
+      });
+      return tenant;
+    },
   };
 
   return { repo, tenants, ownerGrants };

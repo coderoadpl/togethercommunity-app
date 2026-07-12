@@ -27,12 +27,25 @@ export interface MemberRepository {
   findByEmail(tenantId: string, email: string): Promise<Member | null>;
   listWithProductIds(tenantId: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
+  delete(tenantId: string, memberId: string): Promise<boolean>;
 }
 
 export interface ProductGrantRepository {
   findGrant(tenantId: string, memberId: string, productId: string): Promise<ProductGrant | null>;
-  createGrant(tenantId: string, grant: ProductGrant): Promise<void>;
+  createGrant(tenantId: string, grant: ProductGrant): Promise<boolean>;
   listGrantedProducts(tenantId: string, memberId: string): Promise<Product[]>;
+}
+
+export interface PurchaseRepository {
+  createMemberGrant(input: {
+    tenantId: string;
+    userId: string;
+    email: string;
+    memberId: string;
+    grantId: string;
+    productId: string;
+    createdAt: string;
+  }): Promise<{ member: Member; grantCreated: boolean }>;
 }
 
 /** Dev-only sink so tests and the CLI can read magic links without a mailer. */
@@ -63,6 +76,14 @@ export interface TenantRepository {
     userId: string;
     staffRole: Extract<StaffRole, 'owner'>;
   }): Promise<void>;
+  createTenantWithOwnerGrant(input: {
+    tenant: { id: string; slug: string; name: string; createdAt: string };
+    ownerGrant: {
+      id: string;
+      userId: string;
+      staffRole: Extract<StaffRole, 'owner'>;
+    };
+  }): Promise<Tenant>;
 }
 
 export interface TenantAccessReader {

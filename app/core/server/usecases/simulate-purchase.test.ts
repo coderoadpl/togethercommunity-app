@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Member, Product, ProductGrant } from '@core/domain/index.js';
 
-import type {
-  AuthPort,
-  MemberRepository,
-  ProductGrantRepository,
-  ProductRepository,
-} from '../ports.js';
+import type { AuthPort, ProductRepository, PurchaseRepository } from '../ports.js';
 import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
 
 const product = (id: string, tenantId: string, published: boolean): Product => ({
@@ -32,32 +27,42 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
   bumpContentVersion: async () => undefined,
 });
 
-const fakeMembers = () => {
+const fakePurchases = () => {
   const store: Member[] = [];
-  const repo: MemberRepository = {
-    findByEmail: async (tenantId, email) =>
-      store.find((m) => m.tenantId === tenantId && m.email === email) ?? null,
-    listWithProductIds: async () => [],
-    create: async (_tenantId, member) => {
-      store.push(member);
+  const grants: ProductGrant[] = [];
+  const repo: PurchaseRepository = {
+    createMemberGrant: async (input) => {
+      let member = store.find((m) => m.tenantId === input.tenantId && m.userId === input.userId);
+      if (!member) {
+        member = {
+          id: input.memberId,
+          tenantId: input.tenantId,
+          userId: input.userId,
+          email: input.email,
+          displayName: null,
+          createdAt: input.createdAt,
+        };
+        store.push(member);
+      }
+      const existingGrant = grants.find(
+        (g) =>
+          g.tenantId === input.tenantId &&
+          g.memberId === member.id &&
+          g.productId === input.productId,
+      );
+      if (existingGrant) return { member, grantCreated: false };
+      grants.push({
+        id: input.grantId,
+        tenantId: input.tenantId,
+        memberId: member.id,
+        productId: input.productId,
+        source: 'simulated',
+        createdAt: input.createdAt,
+      });
+      return { member, grantCreated: true };
     },
   };
-  return { repo, store };
-};
-
-const fakeGrants = () => {
-  const store: ProductGrant[] = [];
-  const repo: ProductGrantRepository = {
-    findGrant: async (tenantId, memberId, productId) =>
-      store.find(
-        (g) => g.tenantId === tenantId && g.memberId === memberId && g.productId === productId,
-      ) ?? null,
-    createGrant: async (_tenantId, grant) => {
-      store.push(grant);
-    },
-    listGrantedProducts: async () => [],
-  };
-  return { repo, store };
+  return { repo, members: store, grants };
 };
 
 const fakeAuth = (): AuthPort => ({
@@ -76,13 +81,11 @@ const seqIds = (ids: string[]): { nextId: () => string } => ({
 
 const deps = (
   products: ProductRepository,
-  members: MemberRepository,
-  grants: ProductGrantRepository,
+  purchases: PurchaseRepository,
   ids: string[],
 ): SimulatePurchaseDeps => ({
   products,
-  members,
-  grants,
+  purchases,
   authPort: fakeAuth(),
   ids: seqIds(ids),
   clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
@@ -91,9 +94,8 @@ const deps = (
 describe('simulatePurchase', () => {
   it('provisions exactly one member and one grant when run twice', async () => {
     const products = fakeProducts([product('p1', 't-acme', true)]);
-    const members = fakeMembers();
-    const grants = fakeGrants();
-    const d = deps(products, members.repo, grants.repo, ['member-1', 'grant-1']);
+    const purchases = fakePurchases();
+    const d = deps(products, purchases.repo, ['member-1', 'grant-1', 'member-2', 'grant-2']);
 
     const first = await simulatePurchase('t-acme', 'buyer@together.dev', 'p1', d);
     expect(first).toMatchObject({ ok: true, value: { alreadyOwned: false } });
@@ -101,8 +103,8 @@ describe('simulatePurchase', () => {
     const second = await simulatePurchase('t-acme', 'buyer@together.dev', 'p1', d);
     expect(second).toMatchObject({ ok: true, value: { alreadyOwned: true } });
 
-    expect(members.store).toHaveLength(1);
-    expect(grants.store).toHaveLength(1);
+    expect(purchases.members).toHaveLength(1);
+    expect(purchases.grants).toHaveLength(1);
     expect(first.ok && second.ok && first.value.memberId).toBe(
       second.ok ? second.value.memberId : '',
     );
@@ -110,29 +112,27 @@ describe('simulatePurchase', () => {
 
   it('returns not_found for an unpublished product', async () => {
     const products = fakeProducts([product('p1', 't-acme', false)]);
-    const members = fakeMembers();
-    const grants = fakeGrants();
+    const purchases = fakePurchases();
 
     const result = await simulatePurchase(
       't-acme',
       'buyer@together.dev',
       'p1',
-      deps(products, members.repo, grants.repo, ['member-1', 'grant-1']),
+      deps(products, purchases.repo, ['member-1', 'grant-1']),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(members.store).toHaveLength(0);
+    expect(purchases.members).toHaveLength(0);
   });
 
   it('returns not_found for a product owned by another tenant', async () => {
     const products = fakeProducts([product('p1', 't-other', true)]);
-    const members = fakeMembers();
-    const grants = fakeGrants();
+    const purchases = fakePurchases();
 
     const result = await simulatePurchase(
       't-acme',
       'buyer@together.dev',
       'p1',
-      deps(products, members.repo, grants.repo, ['member-1', 'grant-1']),
+      deps(products, purchases.repo, ['member-1', 'grant-1']),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });

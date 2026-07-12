@@ -87,6 +87,16 @@ export const membersListOutputSchema = z.object({
 
 export const membersExportOutputSchema = memberExportFileSchema;
 
+export const memberRemoveInputSchema = z.object({
+  memberId: z.string().min(1),
+});
+
+export type MemberRemoveInput = z.input<typeof memberRemoveInputSchema>;
+
+export const memberRemoveOutputSchema = z.object({
+  memberId: z.string(),
+});
+
 export const magicLinkSchema = z.object({
   email: z.string(),
   url: z.string(),
@@ -156,6 +166,7 @@ export const API_ROUTES = {
   myProducts: { method: 'GET', path: '/api/my/products' },
   members: { method: 'GET', path: '/api/members' },
   membersExport: { method: 'GET', path: '/api/members/export' },
+  memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
   devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
 } as const;
@@ -175,6 +186,7 @@ export const API_PATHS = {
   myProducts: API_ROUTES.myProducts.path,
   members: API_ROUTES.members.path,
   membersExport: API_ROUTES.membersExport.path,
+  memberRemove: API_ROUTES.memberRemove.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
   devMagicLink: API_ROUTES.devMagicLink.path,
 } as const;

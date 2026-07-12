@@ -1,6 +1,7 @@
 import {
   err,
   forbidden,
+  notFound,
   ok,
   tenantNotFound,
   type AppError,
@@ -23,6 +24,9 @@ const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
   return ok(ctx.identity.tenantId);
 };
 
+const neutralizeFormula = (value: string): string =>
+  /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+
 const quoteCsv = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 
 const CSV_HEADER = ['id', 'email', 'displayName', 'createdAt', 'productIds'];
@@ -31,7 +35,13 @@ const toCsv = (members: MemberWithProductIds[]): string =>
   [
     CSV_HEADER.map(quoteCsv).join(','),
     ...members.map((member) =>
-      [member.id, member.email, member.displayName ?? '', member.createdAt, member.productIds.join(';')]
+      [
+        member.id,
+        neutralizeFormula(member.email),
+        neutralizeFormula(member.displayName ?? ''),
+        member.createdAt,
+        member.productIds.join(';'),
+      ]
         .map(quoteCsv)
         .join(','),
     ),
@@ -62,4 +72,17 @@ export const exportMembers = async (
       ? { filename, mimeType: 'text/csv; charset=utf-8', content: toCsv(members) }
       : { filename, mimeType: 'application/json; charset=utf-8', content: JSON.stringify(members) },
   );
+};
+
+export const removeMember = async (
+  ctx: Ctx,
+  input: { memberId: string },
+  deps: MembersDeps,
+): Promise<Result<{ memberId: string }, AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+
+  const removed = await deps.members.delete(tenant.value, input.memberId);
+  if (!removed) return err(notFound(`No member "${input.memberId}" in this tenant`));
+  return ok({ memberId: input.memberId });
 };

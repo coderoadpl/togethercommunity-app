@@ -10,6 +10,7 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  MemberRemoveInput,
   ProductsPublishInput,
   SimulatePurchaseInput,
   TenantCreateInput,
@@ -179,6 +180,12 @@ export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =
     call: ({ signal }) => api.exportMembers(format, signal),
   });
 
+export const removeMemberMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'remove'],
+    call: (input: MemberRemoveInput) => api.removeMember(input),
+  });
+
 export const simulatePurchaseMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...myProductsScopes.all(), 'simulate-purchase'],
@@ -196,6 +203,8 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });
 
 /** The invalidation filter a simulated purchase applies after it settles. */
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
+
+export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

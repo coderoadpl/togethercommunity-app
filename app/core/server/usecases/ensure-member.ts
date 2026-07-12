@@ -1,4 +1,4 @@
-import { ok, type AppError, type Member, type Result } from '@core/domain/index.js';
+import { normalizeEmail, ok, type AppError, type Member, type Result } from '@core/domain/index.js';
 
 import type { AuthPort, Clock, IdGenerator, MemberRepository } from '../ports.js';
 
@@ -14,18 +14,20 @@ export const ensureMember = async (
   email: string,
   deps: EnsureMemberDeps,
 ): Promise<Result<Member, AppError>> => {
-  const existing = await deps.members.findByEmail(tenantId, email);
+  const normalizedEmail = normalizeEmail(email);
+  const existing = await deps.members.findByEmail(tenantId, normalizedEmail);
   if (existing) return ok(existing);
 
-  const { userId } = await deps.authPort.ensureUser(email);
+  const { userId } = await deps.authPort.ensureUser(normalizedEmail);
   const member: Member = {
     id: deps.ids.nextId(),
     tenantId,
     userId,
-    email,
+    email: normalizedEmail,
     displayName: null,
     createdAt: deps.clock.nowIso(),
   };
   await deps.members.create(tenantId, member);
-  return ok(member);
+  const stored = await deps.members.findByEmail(tenantId, normalizedEmail);
+  return ok(stored ?? member);
 };

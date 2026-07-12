@@ -29,7 +29,7 @@ const granted: Product = {
 
 const grants = (products: Product[]): ProductGrantRepository => ({
   findGrant: async () => null,
-  createGrant: async () => undefined,
+  createGrant: async () => true,
   listGrantedProducts: async () => products,
 });
 

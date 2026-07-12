@@ -5,6 +5,7 @@ import {
   createDevMagicLinkReader,
   createHealthPort,
   createMemberRepository,
+  createPurchaseRepository,
   createProductGrantRepository,
   createProductRepository,
   createTenantAccessReader,
@@ -19,6 +20,7 @@ import type {
   HealthPort,
   IdGenerator,
   MemberRepository,
+  PurchaseRepository,
   ProductGrantRepository,
   ProductRepository,
   TenantAccessReader,
@@ -43,6 +45,7 @@ export interface AppDeps {
   products: ProductRepository;
   members: MemberRepository;
   grants: ProductGrantRepository;
+  purchases: PurchaseRepository;
   devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
@@ -101,6 +104,7 @@ export const createDeps = (env: Env): AppDeps => {
     products: createProductRepository(db),
     members: createMemberRepository(db),
     grants: createProductGrantRepository(db),
+    purchases: createPurchaseRepository(db),
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
     tenants: createTenantRepository(db),

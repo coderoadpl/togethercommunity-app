@@ -33,18 +33,19 @@ export const createTenant = async (
   const existing = await deps.tenants.findBySlug(slug);
   if (existing) return err(appError('conflict', `Tenant "${slug}" already exists`));
 
-  const tenant = await deps.tenants.createTenant({
-    id: deps.ids.nextId(),
-    slug,
-    name,
-    createdAt: deps.clock.nowIso(),
-  });
-
-  await deps.tenants.createOwnerGrant({
-    id: deps.ids.nextId(),
-    tenantId: tenant.id,
-    userId: ctx.identity.userId,
-    staffRole: 'owner',
+  const tenantId = deps.ids.nextId();
+  const tenant = await deps.tenants.createTenantWithOwnerGrant({
+    tenant: {
+      id: tenantId,
+      slug,
+      name,
+      createdAt: deps.clock.nowIso(),
+    },
+    ownerGrant: {
+      id: deps.ids.nextId(),
+      userId: ctx.identity.userId,
+      staffRole: 'owner',
+    },
   });
 
   return ok(tenant);

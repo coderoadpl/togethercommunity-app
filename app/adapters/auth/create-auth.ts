@@ -6,6 +6,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 
+import { normalizeEmail } from '@core/domain/index.js';
 import type { AuthPort } from '@core/server/index.js';
 import type { Db } from '@adapters/db/client.js';
 import { devMagicLinks, user } from '@adapters/db/schema.js';
@@ -84,25 +85,36 @@ export const createAuthPort = (auth: Auth, db: Db): AuthPort => ({
     };
   },
   ensureUser: async (email) => {
-    const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
+    const normalizedEmail = normalizeEmail(email);
+    const existing = await db.select().from(user).where(eq(user.email, normalizedEmail)).limit(1);
     const found = existing[0];
     if (found) return { userId: found.id, created: false };
 
     const id = randomUUID();
     const now = new Date();
-    await db.insert(user).values({
-      id,
-      name: nameFromEmail(email),
-      email,
-      emailVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return { userId: id, created: true };
+    const inserted = await db
+      .insert(user)
+      .values({
+        id,
+        name: nameFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        emailVerified: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({ target: user.email })
+      .returning({ userId: user.id });
+    const insertedUser = inserted[0];
+    if (insertedUser) return { userId: insertedUser.userId, created: true };
+
+    const afterConflict = await db.select({ id: user.id }).from(user).where(eq(user.email, normalizedEmail)).limit(1);
+    const existingAfterConflict = afterConflict[0];
+    if (!existingAfterConflict) throw new Error('User create/read failed after email conflict');
+    return { userId: existingAfterConflict.id, created: false };
   },
   requestMagicLink: async ({ email, callbackURL }) => {
     await auth.api.signInMagicLink({
-      body: { email, callbackURL },
+      body: { email: normalizeEmail(email), callbackURL },
       headers: new Headers(),
     });
   },

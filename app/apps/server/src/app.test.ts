@@ -55,11 +55,25 @@ const deps = (input: {
       findByEmail: async () => null,
       listWithProductIds: async () => [],
       create: async () => undefined,
+      delete: async () => false,
     },
     grants: {
       findGrant: async () => null,
-      createGrant: async () => undefined,
+      createGrant: async () => true,
       listGrantedProducts: async () => [],
+    },
+    purchases: {
+      createMemberGrant: async (purchase) => ({
+        member: {
+          id: purchase.memberId,
+          tenantId: purchase.tenantId,
+          userId: purchase.userId,
+          email: purchase.email,
+          displayName: null,
+          createdAt: purchase.createdAt,
+        },
+        grantCreated: true,
+      }),
     },
     devMagicLinks: {
       findByEmail: async () => null,
@@ -88,6 +102,12 @@ const deps = (input: {
         contentVersion: 1,
       }),
       createOwnerGrant: async () => undefined,
+      createTenantWithOwnerGrant: async (tenant) => ({
+        id: tenant.tenant.id,
+        slug: tenant.tenant.slug,
+        name: tenant.tenant.name,
+        contentVersion: 1,
+      }),
     },
     tenantAccess: {
       listTenantsForStaff: async () => memberships,
@@ -117,7 +137,8 @@ describe('public offer route', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
-    expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(response.headers.get('cache-control')).toBe('public, no-cache');
+    expect(response.headers.get('vary')).toBe(`Host, ${TENANT_HEADER}`);
     expect(response.headers.get('etag')).toBe('W/"offer-t-acme-4"');
     expect(body).toMatchObject({
       ok: true,
@@ -172,6 +193,8 @@ describe('public offer route', () => {
     const body: unknown = await response.json();
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('etag')).toBeNull();
     expect(body).toMatchObject({
       ok: false,
       error: { code: 'tenant_not_found' },

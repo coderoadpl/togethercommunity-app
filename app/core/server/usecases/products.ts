@@ -58,7 +58,6 @@ export const createProduct = async (
     createdAt: deps.clock.nowIso(),
   };
   await deps.products.create(tenant.value, product);
-  await deps.products.bumpContentVersion(tenant.value);
   return ok(product);
 };
 

@@ -88,7 +88,7 @@ describe('products use-cases', () => {
     expect(created).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
-  it('validates input and stamps tenant + defaults on create, bumping the version', async () => {
+  it('validates input and stamps tenant + defaults on draft create', async () => {
     const { repo, store, versions } = fakeRepo();
 
     const invalid = await createProduct(
@@ -108,7 +108,7 @@ describe('products use-cases', () => {
       value: { tenantId: 't-acme', title: 'Course', priceCents: 4900, currency: 'PLN', published: false },
     });
     expect(store).toHaveLength(1);
-    expect(versions.get('t-acme')).toBe(2);
+    expect(versions.has('t-acme')).toBe(false);
   });
 
   it('publishes a draft product and bumps the version', async () => {

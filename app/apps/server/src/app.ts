@@ -4,6 +4,7 @@ import {
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  memberRemoveInputSchema,
   publicOfferOutputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
@@ -33,6 +34,7 @@ import {
   listMyTenants,
   listProducts,
   publishProduct,
+  removeMember,
   resolveIdentity,
   resolveTenant,
   simulatePurchase,
@@ -55,20 +57,28 @@ const respond = <T>(result: Result<T, AppError>): Response => {
   });
 };
 
-const publicHeaders = (etag?: string): Headers => {
+const publicOkHeaders = (etag?: string): Headers => {
   const headers = new Headers({
     'access-control-allow-origin': '*',
-    'cache-control': 'public, max-age=60',
+    'cache-control': 'public, no-cache',
+    vary: `Host, ${TENANT_HEADER}`,
   });
   if (etag) headers.set('etag', etag);
   return headers;
 };
 
+const publicErrorHeaders = (): Headers =>
+  new Headers({
+    'access-control-allow-origin': '*',
+    'cache-control': 'no-store',
+    vary: `Host, ${TENANT_HEADER}`,
+  });
+
 const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response => {
   const envelope = toEnvelope(result);
   if (!envelope.ok) recordAppError(envelope.error);
   const status = envelope.ok ? 200 : HTTP_STATUS_BY_ERROR_CODE[envelope.error.code];
-  const headers = publicHeaders(etag);
+  const headers = envelope.ok ? publicOkHeaders(etag) : publicErrorHeaders();
   headers.set('content-type', 'application/json');
   return new Response(JSON.stringify(envelope), { status, headers });
 };
@@ -128,7 +138,7 @@ export const buildApp = (deps: AppDeps) => {
 
     const etag = `W/"offer-${tenant.value.tenant.id}-${tenant.value.tenant.contentVersion}"`;
     if (c.req.header('if-none-match') === etag) {
-      return new Response(null, { status: 304, headers: publicHeaders(etag) });
+      return new Response(null, { status: 304, headers: publicOkHeaders(etag) });
     }
 
     const result = await getPublicOffer(tenant.value.tenant, deps);
@@ -277,6 +287,12 @@ export const buildApp = (deps: AppDeps) => {
       return respond(err(validation('Query parameter "format" must be "csv" or "json"')));
     }
     return respond(await exportMembers({ identity: c.get('identity') }, { format: format.data }, deps));
+  });
+
+  app.delete(API_PATHS.memberRemove, async (c) => {
+    const parsed = memberRemoveInputSchema.safeParse({ memberId: c.req.param('memberId') });
+    if (!parsed.success) return respond(err(validation('Invalid member id', parsed.error.flatten())));
+    return respond(await removeMember({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.post(API_PATHS.products, async (c) => {

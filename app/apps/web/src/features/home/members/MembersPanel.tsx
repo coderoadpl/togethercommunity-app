@@ -13,7 +13,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat } from '@core/domain/index.js';
@@ -32,6 +32,12 @@ export const MembersPanel = () => {
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState<MemberExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const removeMember = useMutation({
+    ...actions.removeMember,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.membersInvalidates());
+    },
+  });
 
   const download = async (format: MemberExportFormat) => {
     setExporting(format);
@@ -96,6 +102,7 @@ export const MembersPanel = () => {
                   <TableCell>Name</TableCell>
                   <TableCell align="right">Products</TableCell>
                   <TableCell>Created</TableCell>
+                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -109,6 +116,16 @@ export const MembersPanel = () => {
                         {displayDate(member.createdAt)}
                       </EntryDate>
                     </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        color="error"
+                        disabled={removeMember.isPending}
+                        onClick={() => removeMember.mutate({ memberId: member.id })}
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -117,6 +134,7 @@ export const MembersPanel = () => {
         )}
 
         {exportError !== null ? <Alert>{exportError}</Alert> : null}
+        {removeMember.isError ? <Alert>{errorMessage(removeMember.error)}</Alert> : null}
       </Stack>
     </Paper>
   );

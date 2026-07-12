@@ -4,5 +4,8 @@ export * from './usecases/resolve-identity.js';
 export * from './usecases/resolve-tenant.js';
 export * from './usecases/public-offer.js';
 export * from './usecases/products.js';
+export * from './usecases/ensure-member.js';
+export * from './usecases/simulate-purchase.js';
+export * from './usecases/my-products.js';
 export * from './usecases/tenants.js';
 export * from './usecases/create-tenant.js';

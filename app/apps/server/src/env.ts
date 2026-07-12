@@ -14,6 +14,14 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  SIMULATED_PAYMENTS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  AUTH_DEV_EXPOSE_MAGIC_LINKS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   WEB_DIST_DIR: z.string().default('dist/web'),
 });
 

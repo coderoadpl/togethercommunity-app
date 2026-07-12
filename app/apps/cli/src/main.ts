@@ -1,10 +1,9 @@
 import { Command } from 'commander';
 
-import { createCliAuthAdapter } from '@adapters/auth/client-adapter.js';
-import type { AuthClientPort } from '@core/client/index.js';
+import { createCliAuthAdapter, type CliAuthAdapter } from '@adapters/auth/client-adapter.js';
 import { createApiClient, type ApiClient } from '@core/client/index.js';
 import { TENANT_HEADER } from '@core/contract/index.js';
-import { err, internal, notFound, ok } from '@core/domain/index.js';
+import { err, internal, notFound, ok, validation } from '@core/domain/index.js';
 
 import { loadConfig, saveConfig, type CliConfig } from './config.js';
 import { emit } from './output.js';
@@ -18,7 +17,7 @@ const program = new Command('together')
 interface CliCtx {
   config: CliConfig;
   api: ApiClient;
-  auth: AuthClientPort;
+  auth: CliAuthAdapter;
   apiUrl: string;
   tenant: string | null;
   json: boolean;
@@ -215,6 +214,92 @@ product
     const ctx = cliCtx();
     emit(await ctx.api.publishProduct({ id }), ctx.json, (data) =>
       `published: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+    );
+  });
+
+program
+  .command('simulate-purchase')
+  .description('Simulate a purchase (dev endpoint): grant a product to a buyer email')
+  .requiredOption('--email <email>')
+  .requiredOption('--product <id>')
+  .action(async (options: { email: string; product: string }) => {
+    const ctx = cliCtx();
+    if (!ctx.tenant) {
+      emit(err(validation('Select a tenant with --tenant to simulate a purchase')), ctx.json, () => '');
+      return;
+    }
+    emit(
+      await ctx.api.simulatePurchase({ email: options.email, productId: options.product }),
+      ctx.json,
+      (data) => {
+        const status = data.alreadyOwned ? 'already owned' : 'granted';
+        const link = data.magicLink ? `\nmagic link: ${data.magicLink.url}` : '';
+        return `${status}: product ${data.productId} for member ${data.memberId}${link}`;
+      },
+    );
+  });
+
+const dev = program.command('dev').description('Dev-only endpoints');
+
+dev
+  .command('magic-link')
+  .description('Show the latest dev magic link for an email')
+  .requiredOption('--email <email>')
+  .action(async (options: { email: string }) => {
+    const ctx = cliCtx();
+    emit(await ctx.api.devMagicLink(options.email), ctx.json, (data) =>
+      data.magicLink ? data.magicLink.url : 'no magic link stored for this email',
+    );
+  });
+
+program
+  .command('login-magic')
+  .description('Sign in via magic link through the dev endpoints')
+  .requiredOption('--email <email>')
+  .action(async (options: { email: string }) => {
+    const ctx = cliCtx();
+    const requested = await ctx.auth.requestMagicLink({ email: options.email, callbackURL: ctx.apiUrl });
+    if (!requested.ok) {
+      emit(requested, ctx.json, () => '');
+      return;
+    }
+    const link = await ctx.api.devMagicLink(options.email);
+    if (!link.ok || !link.value.magicLink) {
+      emit(
+        err(
+          validation(
+            'Dev magic-link endpoint returned no link; enable SIMULATED_PAYMENTS and AUTH_DEV_EXPOSE_MAGIC_LINKS',
+          ),
+        ),
+        ctx.json,
+        () => '',
+      );
+      return;
+    }
+    const verified = await ctx.auth.verifyMagicLinkToken(link.value.magicLink.token);
+    if (verified.ok && !verified.value.token) {
+      emit(err(internal('Magic-link verification returned no session token')), ctx.json, () => '');
+      return;
+    }
+    if (verified.ok && verified.value.token) {
+      saveConfig({ ...ctx.config, apiUrl: ctx.apiUrl, token: verified.value.token });
+    }
+    emit(verified, ctx.json, () => `signed in as ${options.email} via magic link`);
+  });
+
+const my = program.command('my').description('Your member view of the active tenant');
+
+my
+  .command('products')
+  .description('Products you have been granted')
+  .action(async () => {
+    const ctx = cliCtx();
+    emit(await ctx.api.myProducts(), ctx.json, (data) =>
+      data.products.length === 0
+        ? 'no products'
+        : data.products
+            .map((p) => `- ${p.title}  ${p.priceCents} ${p.currency}  (${p.id.slice(0, 8)})`)
+            .join('\n'),
     );
   });
 

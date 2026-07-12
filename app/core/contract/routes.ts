@@ -61,6 +61,42 @@ export const publicOfferOutputSchema = z.object({
   ),
 });
 
+export const myProductsOutputSchema = z.object({
+  products: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      description: z.string(),
+      priceCents: z.number().int().nonnegative(),
+      currency: z.string().regex(/^[A-Z]{3}$/),
+    }),
+  ),
+});
+
+export const magicLinkSchema = z.object({
+  email: z.string(),
+  url: z.string(),
+  token: z.string(),
+});
+
+export const simulatePurchaseInputSchema = z.object({
+  email: z.string().email(),
+  productId: z.string().min(1),
+});
+
+export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
+
+export const simulatePurchaseOutputSchema = z.object({
+  memberId: z.string(),
+  productId: z.string(),
+  alreadyOwned: z.boolean(),
+  magicLink: magicLinkSchema.nullable(),
+});
+
+export const devMagicLinkOutputSchema = z.object({
+  magicLink: magicLinkSchema.nullable(),
+});
+
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
   name: z.string(),
@@ -102,6 +138,9 @@ export const API_ROUTES = {
   products: { method: 'GET', path: '/api/products' },
   productsCreate: { method: 'POST', path: '/api/products' },
   productsPublish: { method: 'POST', path: '/api/products/publish' },
+  myProducts: { method: 'GET', path: '/api/my/products' },
+  devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
+  devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -115,6 +154,9 @@ export const API_PATHS = {
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,
+  myProducts: API_ROUTES.myProducts.path,
+  devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
+  devMagicLink: API_ROUTES.devMagicLink.path,
 } as const;
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */

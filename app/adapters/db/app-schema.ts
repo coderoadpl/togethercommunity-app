@@ -66,6 +66,40 @@ export const products = pgTable(
   (table) => [index('products_tenantId_idx').on(table.tenantId)],
 );
 
+export const productGrants = pgTable(
+  'product_grants',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    source: text('source', { enum: ['simulated', 'manual'] }).notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('product_grants_tenantId_idx').on(table.tenantId),
+    index('product_grants_memberId_idx').on(table.memberId),
+    uniqueIndex('product_grants_tenant_member_product_uidx').on(
+      table.tenantId,
+      table.memberId,
+      table.productId,
+    ),
+  ],
+);
+
+export const devMagicLinks = pgTable('dev_magic_links', {
+  email: text('email').primaryKey(),
+  url: text('url').notNull(),
+  token: text('token').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const tenantDomains = pgTable(
   'tenant_domains',
   {

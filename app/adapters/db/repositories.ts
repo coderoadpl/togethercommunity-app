@@ -2,7 +2,10 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 
 import { staffRoleSchema, type Membership, type StaffRole } from '@core/domain/index.js';
 import type {
+  DevMagicLinkReader,
   HealthPort,
+  MemberRepository,
+  ProductGrantRepository,
   ProductRepository,
   TenantAccessReader,
   TenantDomainRepository,
@@ -10,7 +13,15 @@ import type {
 } from '@core/server/index.js';
 
 import type { Db } from './client.js';
-import { members, products, tenantAdmins, tenantDomains, tenants } from './schema.js';
+import {
+  devMagicLinks,
+  members,
+  productGrants,
+  products,
+  tenantAdmins,
+  tenantDomains,
+  tenants,
+} from './schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
   const parsed = staffRoleSchema.safeParse(raw);
@@ -48,6 +59,67 @@ export const createProductRepository = (db: Db): ProductRepository => ({
       .update(tenants)
       .set({ contentVersion: sql`${tenants.contentVersion} + 1` })
       .where(eq(tenants.id, tenantId));
+  },
+});
+
+export const createMemberRepository = (db: Db): MemberRepository => ({
+  findByEmail: async (tenantId, email) => {
+    const rows = await db
+      .select()
+      .from(members)
+      .where(and(eq(members.tenantId, tenantId), eq(members.email, email)))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+  create: async (_tenantId, member) => {
+    await db.insert(members).values(member);
+  },
+});
+
+export const createProductGrantRepository = (db: Db): ProductGrantRepository => ({
+  findGrant: async (tenantId, memberId, productId) => {
+    const rows = await db
+      .select()
+      .from(productGrants)
+      .where(
+        and(
+          eq(productGrants.tenantId, tenantId),
+          eq(productGrants.memberId, memberId),
+          eq(productGrants.productId, productId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  },
+  createGrant: async (_tenantId, grant) => {
+    await db.insert(productGrants).values(grant);
+  },
+  listGrantedProducts: async (tenantId, memberId) =>
+    db
+      .select({
+        id: products.id,
+        tenantId: products.tenantId,
+        title: products.title,
+        description: products.description,
+        priceCents: products.priceCents,
+        currency: products.currency,
+        published: products.published,
+        createdAt: products.createdAt,
+      })
+      .from(productGrants)
+      .innerJoin(products, eq(productGrants.productId, products.id))
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, memberId)))
+      .orderBy(asc(productGrants.createdAt)),
+});
+
+export const createDevMagicLinkReader = (db: Db): DevMagicLinkReader => ({
+  findByEmail: async (email) => {
+    const rows = await db
+      .select({ email: devMagicLinks.email, url: devMagicLinks.url, token: devMagicLinks.token })
+      .from(devMagicLinks)
+      .where(eq(devMagicLinks.email, email))
+      .limit(1);
+    return rows[0] ?? null;
   },
 });
 

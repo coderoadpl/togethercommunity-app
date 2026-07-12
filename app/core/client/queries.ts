@@ -9,7 +9,11 @@ import type {
   QueryKey,
 } from '@tanstack/query-core';
 
-import type { ProductsPublishInput, TenantCreateInput } from '@core/contract/index.js';
+import type {
+  ProductsPublishInput,
+  SimulatePurchaseInput,
+  TenantCreateInput,
+} from '@core/contract/index.js';
 import type { NewProductInput } from '@core/domain/index.js';
 
 import type { AuthClientPort } from './auth-port.js';
@@ -89,6 +93,10 @@ export const productsScopes = {
   lists: () => ['products', 'list'] as const,
 };
 
+export const myProductsScopes = {
+  all: () => ['my-products'] as const,
+};
+
 export const authScopes = {
   all: () => ['auth'] as const,
 };
@@ -135,8 +143,23 @@ export const publishProductMutation = (api: ApiClient) =>
     call: (input: ProductsPublishInput) => api.publishProduct(input),
   });
 
+export const myProductsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: myProductsScopes.all(),
+    call: ({ signal }) => api.myProducts(signal),
+  });
+
+export const simulatePurchaseMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...myProductsScopes.all(), 'simulate-purchase'],
+    call: (input: SimulatePurchaseInput) => api.simulatePurchase(input),
+  });
+
 /** The invalidation filter product mutations apply after they settle. */
 export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });
+
+/** The invalidation filter a simulated purchase applies after it settles. */
+export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any
@@ -152,6 +175,12 @@ export const signInMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-in'],
     call: (input: { email: string; password: string }) => auth.signIn(input),
+  });
+
+export const requestMagicLinkMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'magic-link'],
+    call: (input: { email: string; callbackURL: string }) => auth.requestMagicLink(input),
   });
 
 export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>

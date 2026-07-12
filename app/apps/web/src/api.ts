@@ -5,12 +5,16 @@ import {
   createApiClient,
   createProductMutation,
   meQuery,
+  myProductsInvalidates,
+  myProductsQuery,
   productsInvalidates,
   productsQuery,
   publishProductMutation,
+  requestMagicLinkMutation,
   signInMutation,
   signOutMutation,
   signUpMutation,
+  simulatePurchaseMutation,
   tenantsQuery,
 } from '@core/client/index.js';
 
@@ -42,7 +46,11 @@ export const actions = {
   createProduct: createProductMutation(apiClient),
   publishProduct: publishProductMutation(apiClient),
   productsInvalidates,
+  myProducts: myProductsQuery(apiClient),
+  simulatePurchase: simulatePurchaseMutation(apiClient),
+  myProductsInvalidates,
   signUp: signUpMutation(authClient),
   signIn: signInMutation(authClient),
+  requestMagicLink: requestMagicLinkMutation(authClient),
   signOut: signOutMutation(authClient),
 };

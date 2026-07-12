@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
 import {
+  createDevMagicLinkReader,
   createHealthPort,
+  createMemberRepository,
+  createProductGrantRepository,
   createProductRepository,
   createTenantAccessReader,
   createTenantDomainRepository,
@@ -12,8 +15,11 @@ import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-aut
 import type {
   AuthPort,
   Clock,
+  DevMagicLinkReader,
   HealthPort,
   IdGenerator,
+  MemberRepository,
+  ProductGrantRepository,
   ProductRepository,
   TenantAccessReader,
   TenantDomainRepository,
@@ -22,10 +28,18 @@ import type {
 
 import type { Env } from './env.js';
 
+export interface DevEndpoints {
+  simulatedPayments: boolean;
+  exposeMagicLinks: boolean;
+}
+
 export interface AppDeps {
   auth: Pick<Auth, 'handler'>;
   authPort: AuthPort;
   products: ProductRepository;
+  members: MemberRepository;
+  grants: ProductGrantRepository;
+  devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
   tenantAccess: TenantAccessReader;
@@ -33,6 +47,8 @@ export interface AppDeps {
   ids: IdGenerator;
   clock: Clock;
   baseDomain: string;
+  appBaseUrl: string;
+  devEndpoints: DevEndpoints;
 }
 
 /**
@@ -57,6 +73,7 @@ export const createDeps = (env: Env): AppDeps => {
     baseUrl: env.APP_BASE_URL,
     baseDomain: env.APP_BASE_DOMAIN,
     secureCookies: env.SECURE_COOKIES,
+    exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     trustedOrigins: async () => {
       const domains = await tenantDomains.listVerifiedDomains();
       return [
@@ -69,8 +86,11 @@ export const createDeps = (env: Env): AppDeps => {
 
   return {
     auth,
-    authPort: createAuthPort(auth),
+    authPort: createAuthPort(auth, db),
     products: createProductRepository(db),
+    members: createMemberRepository(db),
+    grants: createProductGrantRepository(db),
+    devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
     tenants: createTenantRepository(db),
     tenantAccess: createTenantAccessReader(db),
@@ -78,5 +98,10 @@ export const createDeps = (env: Env): AppDeps => {
     ids: { nextId: () => randomUUID() },
     clock: { nowIso: () => new Date().toISOString() },
     baseDomain: env.APP_BASE_DOMAIN,
+    appBaseUrl: env.APP_BASE_URL,
+    devEndpoints: {
+      simulatedPayments: env.SIMULATED_PAYMENTS,
+      exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
+    },
   };
 };

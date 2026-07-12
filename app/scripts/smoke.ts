@@ -152,6 +152,8 @@ const bootServer = async (
       APP_BASE_URL: `http://localhost:${port}`,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: webDistDir,
+      SIMULATED_PAYMENTS: 'true',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
     },
   });
   let logs = '';
@@ -225,6 +227,16 @@ const publicOfferSchema = z.object({
       currency: z.string(),
     }),
   ),
+});
+const magicLinkSchema = z.object({ email: z.string(), url: z.string(), token: z.string() });
+const simulatePurchaseSchema = z.object({
+  memberId: z.string(),
+  productId: z.string(),
+  alreadyOwned: z.boolean(),
+  magicLink: magicLinkSchema.nullable(),
+});
+const myProductsSchema = z.object({
+  products: z.array(z.object({ id: z.string(), title: z.string() })),
 });
 
 const readEnvelope = (result: Run, label: string): unknown => {
@@ -330,6 +342,47 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
     'unauthorized product list',
     EXIT_CODE_BY_ERROR_CODE.unauthorized,
     'unauthorized',
+  );
+
+  const buyerHome = mkdtempSync(join(tmpdir(), 'smoke-buyer-'));
+  homes.push(buyerHome);
+  const buyerEmail = 'buyer+smoke@together.dev';
+
+  const purchase = simulatePurchaseSchema.parse(
+    expectOk(
+      await cli(
+        ['--json', '--api-url', url, '--tenant', 'acme', 'simulate-purchase', '--email', buyerEmail, '--product', created.product.id],
+        buyerHome,
+      ),
+      'simulate purchase',
+    ),
+  );
+  assert(purchase.alreadyOwned === false, 'first simulated purchase should not report already-owned');
+  assert(purchase.magicLink !== null, 'simulated purchase should expose a magic link when enabled');
+
+  const repeat = simulatePurchaseSchema.parse(
+    expectOk(
+      await cli(
+        ['--json', '--api-url', url, '--tenant', 'acme', 'simulate-purchase', '--email', buyerEmail, '--product', created.product.id],
+        buyerHome,
+      ),
+      'simulate purchase (repeat)',
+    ),
+  );
+  assert(repeat.alreadyOwned === true, 'a repeated simulated purchase should be idempotent (already owned)');
+  assert(repeat.memberId === purchase.memberId, 'the repeated purchase should resolve the same member');
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', buyerEmail], buyerHome),
+    'login via magic link',
+  );
+
+  const mine = myProductsSchema.parse(
+    expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'my', 'products'], buyerHome), 'my products'),
+  );
+  assert(
+    mine.products.some((product) => product.id === created.product.id),
+    'the granted product did not appear in the buyer\'s "my products" list',
   );
 };
 

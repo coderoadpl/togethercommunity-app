@@ -7,6 +7,7 @@ import {
   publicOfferOutputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
+  simulatePurchaseInputSchema,
   tenantCreateInputSchema,
   toEnvelope,
 } from '@core/contract/index.js';
@@ -25,11 +26,13 @@ import {
   createProduct,
   createTenant,
   getPublicOffer,
+  listMyProducts,
   listMyTenants,
   listProducts,
   publishProduct,
   resolveIdentity,
   resolveTenant,
+  simulatePurchase,
   type AuthenticatedUser,
 } from '@core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '@adapters/auth/create-auth.js';
@@ -65,6 +68,11 @@ const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response 
   const headers = publicHeaders(etag);
   headers.set('content-type', 'application/json');
   return new Response(JSON.stringify(envelope), { status, headers });
+};
+
+const issueMagicLink = async (deps: AppDeps, email: string) => {
+  await deps.authPort.requestMagicLink({ email, callbackURL: deps.appBaseUrl });
+  return deps.devMagicLinks.findByEmail(email);
 };
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -141,6 +149,32 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ tenant: result.value }) : result);
   });
 
+  if (deps.devEndpoints.simulatedPayments) {
+    app.post(API_PATHS.devSimulatePurchase, async (c) => {
+      const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+      if (!tenant.ok) return respond(tenant);
+      if (!tenant.value) return respond(err(tenantNotFound()));
+
+      const body: unknown = await c.req.json().catch(() => null);
+      const parsed = simulatePurchaseInputSchema.safeParse(body);
+      if (!parsed.success) return respond(err(validation('Invalid purchase payload', parsed.error.flatten())));
+
+      const result = await simulatePurchase(tenant.value.tenant.id, parsed.data.email, parsed.data.productId, deps);
+      if (!result.ok) return respond(result);
+
+      const magicLink = deps.devEndpoints.exposeMagicLinks
+        ? await issueMagicLink(deps, parsed.data.email)
+        : null;
+      return respond(ok({ ...result.value, magicLink }));
+    });
+
+    app.get(API_PATHS.devMagicLink, async (c) => {
+      const email = c.req.query('email');
+      if (!email) return respond(err(validation('Missing "email" query parameter')));
+      return respond(ok({ magicLink: await deps.devMagicLinks.findByEmail(email) }));
+    });
+  }
+
   // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
@@ -189,6 +223,23 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.products, async (c) => {
     const result = await listProducts({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ products: result.value }) : result);
+  });
+
+  app.get(API_PATHS.myProducts, async (c) => {
+    const result = await listMyProducts({ identity: c.get('identity') }, deps);
+    return respond(
+      result.ok
+        ? ok({
+            products: result.value.map((product) => ({
+              id: product.id,
+              title: product.title,
+              description: product.description,
+              priceCents: product.priceCents,
+              currency: product.currency,
+            })),
+          })
+        : result,
+    );
   });
 
   app.post(API_PATHS.products, async (c) => {

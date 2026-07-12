@@ -3,17 +3,21 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   looseEnvelopeSchema,
+  devMagicLinkOutputSchema,
   healthOutputSchema,
   meOutputSchema,
+  myProductsOutputSchema,
   publicOfferOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
+  simulatePurchaseOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
   type HttpMethod,
   type ProductsPublishInput,
   type ReadMethod,
+  type SimulatePurchaseInput,
   type TenantCreateInput,
   type WriteMethod,
 } from '@core/contract/index.js';
@@ -137,6 +141,26 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.productsPublish.path,
       productsPublishOutputSchema,
       input,
+      signal,
+    ),
+  myProducts: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
+  simulatePurchase: (input: SimulatePurchaseInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.devSimulatePurchase.method,
+      API_ROUTES.devSimulatePurchase.path,
+      simulatePurchaseOutputSchema,
+      input,
+      signal,
+    ),
+  devMagicLink: (email: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.devMagicLink.method,
+      `${API_ROUTES.devMagicLink.path}?email=${encodeURIComponent(email)}`,
+      devMagicLinkOutputSchema,
+      undefined,
       signal,
     ),
 });

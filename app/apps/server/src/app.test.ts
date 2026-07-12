@@ -48,6 +48,20 @@ const deps = (input: {
         if (!input.authenticated) throw new Error('Public route must not authenticate');
         return null;
       },
+      ensureUser: async () => ({ userId: 'user-id', created: true }),
+      requestMagicLink: async () => undefined,
+    },
+    members: {
+      findByEmail: async () => null,
+      create: async () => undefined,
+    },
+    grants: {
+      findGrant: async () => null,
+      createGrant: async () => undefined,
+      listGrantedProducts: async () => [],
+    },
+    devMagicLinks: {
+      findByEmail: async () => null,
     },
     products: {
       listByTenant: async (tenantId) => products.filter((candidate) => candidate.tenantId === tenantId),
@@ -84,6 +98,8 @@ const deps = (input: {
     ids: { nextId: () => 'id' },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     baseDomain: 'localhost',
+    appBaseUrl: 'http://localhost:48730',
+    devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
   };
 };
 

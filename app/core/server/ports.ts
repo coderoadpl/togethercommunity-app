@@ -69,13 +69,6 @@ export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 export interface TenantRepository {
   findById(tenantId: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
-  createTenant(input: { id: string; slug: string; name: string; createdAt: string }): Promise<Tenant>;
-  createOwnerGrant(input: {
-    id: string;
-    tenantId: string;
-    userId: string;
-    staffRole: Extract<StaffRole, 'owner'>;
-  }): Promise<void>;
   createTenantWithOwnerGrant(input: {
     tenant: { id: string; slug: string; name: string; createdAt: string };
     ownerGrant: {

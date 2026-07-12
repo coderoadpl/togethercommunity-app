@@ -16,8 +16,6 @@ const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
   findBySlug: async (slug) => tenantList.find((tenant) => tenant.slug === slug) ?? null,
-  createTenant: async (input) => ({ id: input.id, slug: input.slug, name: input.name, contentVersion: 1 }),
-  createOwnerGrant: async () => undefined,
   createTenantWithOwnerGrant: async (input) => ({
     id: input.tenant.id,
     slug: input.tenant.slug,

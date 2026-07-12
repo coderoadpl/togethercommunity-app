@@ -116,6 +116,13 @@ publicCommand.command('offer').description('Show the public offer').action(async
   );
 });
 
+publicCommand.command('auth-config').description('Show public auth configuration').action(async () => {
+  const ctx = cliCtx();
+  emit(await ctx.api.authConfig(), ctx.json, (data) =>
+    `google=${data.googleEnabled ? 'enabled' : 'disabled'} passkeys=${data.passkeysEnabled ? 'enabled' : 'disabled'}`,
+  );
+});
+
 const tenant = program.command('tenant').description('Tenant staff access');
 
 tenant.command('list').description('Tenants you administer').action(async () => {

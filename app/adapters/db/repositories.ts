@@ -250,18 +250,6 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
-  createTenant: async (input) => {
-    await db.insert(tenants).values(input);
-    return { id: input.id, slug: input.slug, name: input.name, contentVersion: 1 };
-  },
-  createOwnerGrant: async (input) => {
-    await db.insert(tenantAdmins).values({
-      id: input.id,
-      tenantId: input.tenantId,
-      userId: input.userId,
-      role: input.staffRole,
-    });
-  },
   createTenantWithOwnerGrant: async (input) =>
     db.transaction(async (tx) => {
       await tx.insert(tenants).values(input.tenant);

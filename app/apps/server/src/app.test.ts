@@ -95,13 +95,6 @@ const deps = (input: {
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
-      createTenant: async (tenant) => ({
-        id: tenant.id,
-        slug: tenant.slug,
-        name: tenant.name,
-        contentVersion: 1,
-      }),
-      createOwnerGrant: async () => undefined,
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,

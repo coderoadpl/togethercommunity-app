@@ -1874,3 +1874,61 @@ export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ them
     boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.18)}`,
   },
 }));
+
+export const LessonMediaFrame = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  width: '100%',
+  overflow: 'hidden',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.default,
+}));
+
+export const LessonMediaIframe = styled('iframe')({
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  border: 0,
+  display: 'block',
+});
+
+export const LessonPlaceholder = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textAlign: 'center',
+  minHeight: '9rem',
+  padding: '2rem',
+  border: `1px dashed ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  color: theme.palette.text.secondary,
+  backgroundColor: theme.palette.background.default,
+}));
+
+export const LessonHtmlContent = styled(Box)(({ theme }) => ({
+  overflowWrap: 'anywhere',
+  '& img': { maxWidth: '100%', height: 'auto' },
+  '& iframe': { maxWidth: '100%' },
+  '& a': { color: theme.palette.primary.main },
+  '& pre': {
+    overflowX: 'auto',
+    padding: '0.75rem',
+    borderRadius: theme.shape.borderRadius,
+    backgroundColor: alpha(theme.palette.text.primary, 0.05),
+  },
+}));
+
+export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
+  borderTop: `1px solid ${theme.palette.divider}`,
+}));
+
+export const LessonBlockIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.1rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const LockedStateIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '3rem',
+  color: theme.palette.text.disabled,
+}));

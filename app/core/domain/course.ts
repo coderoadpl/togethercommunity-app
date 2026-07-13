@@ -27,6 +27,7 @@ const videoLessonBlockSchema = z
     type: z.literal('video'),
     storageKey: z.string().min(1),
     streamVideoId: z.string().min(1),
+    streamLibraryId: z.string().min(1).optional(),
     streamCollectionId: z.string().min(1).optional(),
   })
   .strict();

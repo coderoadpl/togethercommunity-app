@@ -396,6 +396,7 @@ export default tseslint.config(
                 '@tanstack/react-router',
                 '@testing-library/react',
                 '@testing-library/user-event',
+                'dompurify',
                 'msw',
                 'react',
                 'vitest',

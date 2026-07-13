@@ -9,7 +9,6 @@ import {
   welcomeSetPassword,
   type AppError,
   type M2mEnrollInput,
-  type ProductGrant,
   type Result,
   type Tenant,
   type TenantApiKey,
@@ -24,6 +23,7 @@ import type {
   TenantApiKeyRepository,
 } from '../ports.js';
 import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
+import { createOrRenewGrant } from './grant-window.js';
 
 export interface ApiKeyAuthDeps {
   tenantApiKeys: TenantApiKeyRepository;
@@ -58,9 +58,6 @@ export interface M2mEnrollResult {
   magicLink: { email: string; url: string; token: string } | null;
 }
 
-const isActive = (grant: ProductGrant, now: string): boolean =>
-  grant.startsAt <= now && (grant.expiresAt === null || grant.expiresAt >= now);
-
 export const m2mEnroll = async (
   tenant: Pick<Tenant, 'id' | 'name'>,
   input: M2mEnrollInput,
@@ -77,39 +74,11 @@ export const m2mEnroll = async (
   const member = await ensureMember(tenant.id, parsed.data.email, deps);
   if (!member.ok) return member;
 
-  const now = deps.clock.nowIso();
-  const newExpiresAt = parsed.data.expiresAt ?? null;
-  const existing = await deps.grants.findGrant(tenant.id, member.value.id, parsed.data.productId);
-
-  let grantId: string;
-  let renewed: boolean;
-  if (existing && isActive(existing, now)) {
-    await deps.grants.setGrantWindow(tenant.id, existing.id, {
-      startsAt: existing.startsAt,
-      expiresAt: newExpiresAt,
-    });
-    grantId = existing.id;
-    renewed = true;
-  } else if (existing) {
-    await deps.grants.setGrantWindow(tenant.id, existing.id, { startsAt: now, expiresAt: newExpiresAt });
-    grantId = existing.id;
-    renewed = false;
-  } else {
-    const grant: ProductGrant = {
-      id: deps.ids.nextId(),
-      tenantId: tenant.id,
-      memberId: member.value.id,
-      productId: parsed.data.productId,
-      source: 'manual',
-      startsAt: now,
-      expiresAt: newExpiresAt,
-      legacyId: null,
-      createdAt: now,
-    };
-    await deps.grants.createGrant(tenant.id, grant);
-    grantId = grant.id;
-    renewed = false;
-  }
+  const { grantId, renewed } = await createOrRenewGrant(
+    tenant.id,
+    { memberId: member.value.id, productId: parsed.data.productId, expiresAt: parsed.data.expiresAt ?? null },
+    deps,
+  );
 
   const language = parsed.data.language ?? 'pl';
   let magicLink: M2mEnrollResult['magicLink'] = null;

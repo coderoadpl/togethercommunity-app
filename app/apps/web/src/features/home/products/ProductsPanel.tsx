@@ -3,11 +3,10 @@ import {
   Alert,
   Box,
   Button,
+  Collapse,
+  Divider,
   FormControl,
   FormLabel,
-  List,
-  ListItem,
-  ListItemText,
   OutlinedInput,
   Paper,
   Stack,
@@ -16,9 +15,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
+import type { Product } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
+import { ProductAccessEditor } from './ProductAccessEditor.js';
 
 const priceFormatter = (priceCents: number, currency: string) =>
   new Intl.NumberFormat(undefined, {
@@ -27,6 +28,66 @@ const priceFormatter = (priceCents: number, currency: string) =>
   }).format(priceCents / 100);
 
 const displayDate = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
+
+const ProductRow = ({ product }: { product: Product }) => {
+  const queryClient = useQueryClient();
+  const [showAccess, setShowAccess] = useState(false);
+
+  const publishProduct = useMutation({
+    ...actions.publishProduct,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.productsInvalidates());
+    },
+  });
+
+  const accessCount = product.accessItems.length;
+
+  return (
+    <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="product-row">
+      <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <Typography variant="h2" component="h3">
+          {product.title}
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        {product.published ? null : (
+          <Button
+            variant="text"
+            disabled={publishProduct.isPending}
+            onClick={() => publishProduct.mutate({ id: product.id })}
+          >
+            publish
+          </Button>
+        )}
+      </Stack>
+      <Stack useFlexGap spacing="0.2rem">
+        <span>
+          <DataValue>{priceFormatter(product.priceCents, product.currency)}</DataValue> ·{' '}
+          {product.published ? <PublishedStatus>published</PublishedStatus> : 'draft'} ·{' '}
+          <DataValue>{accessCount}</DataValue> access item{accessCount === 1 ? '' : 's'}
+        </span>
+        <EntryDate component="time" dateTime={product.createdAt}>
+          {displayDate(product.createdAt)}
+        </EntryDate>
+      </Stack>
+      <Box>
+        <Button size="small" variant="text" onClick={() => setShowAccess((open) => !open)}>
+          {showAccess ? 'hide access' : 'edit access'}
+        </Button>
+      </Box>
+      <Collapse in={showAccess} unmountOnExit>
+        <Divider sx={{ mb: '0.75rem' }} />
+        <ProductAccessEditor product={product} />
+      </Collapse>
+      {publishProduct.isError ? (
+        <Alert>
+          {publishProduct.error instanceof ApiError
+            ? publishProduct.error.appError.message
+            : publishProduct.error.message}
+        </Alert>
+      ) : null}
+    </Paper>
+  );
+};
 
 export const ProductsPanel = () => {
   const products = useQuery(actions.products);
@@ -49,11 +110,6 @@ export const ProductsPanel = () => {
       setCurrency('PLN');
       await invalidateProducts();
     },
-  });
-
-  const publishProduct = useMutation({
-    ...actions.publishProduct,
-    onSuccess: invalidateProducts,
   });
 
   const submit = (event: FormEvent) => {
@@ -144,48 +200,12 @@ export const ProductsPanel = () => {
         ) : products.data.products.length === 0 ? (
           <Typography variant="body1">No products yet.</Typography>
         ) : (
-          <List disablePadding>
+          <Stack useFlexGap spacing="1rem">
             {products.data.products.map((product) => (
-              <ListItem
-                key={product.id}
-                secondaryAction={
-                  product.published ? null : (
-                    <Button
-                      variant="text"
-                      disabled={publishProduct.isPending}
-                      onClick={() => publishProduct.mutate({ id: product.id })}
-                    >
-                      publish
-                    </Button>
-                  )
-                }
-              >
-                <ListItemText
-                  primary={product.title}
-                  slotProps={{ secondary: { component: 'div' } }}
-                  secondary={
-                    <Stack useFlexGap spacing="0.2rem">
-                      <span>
-                        <DataValue>{priceFormatter(product.priceCents, product.currency)}</DataValue> ·{' '}
-                        {product.published ? <PublishedStatus>published</PublishedStatus> : 'draft'}
-                      </span>
-                      <EntryDate component="time" dateTime={product.createdAt}>
-                        {displayDate(product.createdAt)}
-                      </EntryDate>
-                    </Stack>
-                  }
-                />
-              </ListItem>
+              <ProductRow key={product.id} product={product} />
             ))}
-          </List>
+          </Stack>
         )}
-        {publishProduct.isError ? (
-          <Alert sx={{ mt: '1rem' }}>
-            {publishProduct.error instanceof ApiError
-              ? publishProduct.error.appError.message
-              : publishProduct.error.message}
-          </Alert>
-        ) : null}
       </Box>
     </Stack>
   );

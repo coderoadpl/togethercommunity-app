@@ -67,6 +67,7 @@ const harness = (options: {
   };
 
   const grantsRepo: ProductGrantRepository = {
+    findById: async (_t, id) => grants.find((g) => g.id === id) ?? null,
     findGrant: async (_t, memberId, productId) =>
       grants.find((g) => g.memberId === memberId && g.productId === productId) ?? null,
     createGrant: async (_t, grant) => {
@@ -80,11 +81,14 @@ const harness = (options: {
       grant.expiresAt = window.expiresAt;
       return grant;
     },
+    revokeGrant: async () => null,
+    listForMemberWithProductNames: async () => [],
     listActiveForMember: async () => [],
     listGrantedProducts: async () => [],
   };
 
   const membersRepo: MemberRepository = {
+    findById: async (_t, id) => members.find((m) => m.id === id) ?? null,
     findByEmail: async (_t, email) => members.find((m) => m.email === email) ?? null,
     listWithProductIds: async () => [],
     create: async (_t, m) => {

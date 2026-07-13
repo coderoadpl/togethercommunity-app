@@ -59,6 +59,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
     bumpContentVersion: async () => undefined,
   };
   const membersRepo: MemberRepository = {
+    findById: async (_t, id) => members.find((m) => m.id === id) ?? null,
     findByEmail: async (_t, email) => members.find((m) => m.email === email) ?? null,
     listWithProductIds: async () => [],
     create: async (_t, m) => {
@@ -68,6 +69,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
     delete: async () => false,
   };
   const grantsRepo: ProductGrantRepository = {
+    findById: async (_t, id) => grants.find((g) => g.id === id) ?? null,
     findGrant: async () => null,
     createGrant: async (_t, grant) => {
       if (grants.some((g) => g.memberId === grant.memberId && g.productId === grant.productId)) return false;
@@ -75,6 +77,8 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
       return true;
     },
     setGrantWindow: async () => null,
+    revokeGrant: async () => null,
+    listForMemberWithProductNames: async () => [],
     listActiveForMember: async () => [],
     listGrantedProducts: async () => [],
   };

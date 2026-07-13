@@ -6,6 +6,7 @@ import {
   courseModuleSchema,
   courseSchema,
   memberCourseProgressSchema,
+  memberGrantSchema,
   productGrantSchema,
   productSchema,
   staffRoleSchema,
@@ -14,6 +15,7 @@ import {
   type CourseLesson,
   type CourseModule,
   type MemberCourseProgress,
+  type MemberGrant,
   type Membership,
   type Product,
   type ProductGrant,
@@ -76,6 +78,8 @@ const parseCourse = (course: Course): Course => courseSchema.parse(course);
 
 const parseProgress = (progress: MemberCourseProgress): MemberCourseProgress =>
   memberCourseProgressSchema.parse(progress);
+
+const parseMemberGrant = (grant: MemberGrant): MemberGrant => memberGrantSchema.parse(grant);
 
 const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
 
@@ -388,6 +392,14 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
 });
 
 export const createMemberRepository = (db: Db): MemberRepository => ({
+  findById: async (tenantId, memberId) => {
+    const rows = await db
+      .select()
+      .from(members)
+      .where(and(eq(members.tenantId, tenantId), eq(members.id, memberId)))
+      .limit(1);
+    return rows[0] ?? null;
+  },
   findByEmail: async (tenantId, email) => {
     const rows = await db
       .select()
@@ -460,6 +472,15 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
 });
 
 export const createProductGrantRepository = (db: Db): ProductGrantRepository => ({
+  findById: async (tenantId, grantId) => {
+    const rows = await db
+      .select()
+      .from(productGrants)
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseGrant(row) : null;
+  },
   findGrant: async (tenantId, memberId, productId) => {
     const rows = await db
       .select()
@@ -504,6 +525,32 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     const row = rows[0];
     return row ? parseGrant(row) : null;
   },
+  revokeGrant: async (tenantId, grantId, expiresAt) => {
+    const rows = await db
+      .update(productGrants)
+      .set({ expiresAt })
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseGrant(row) : null;
+  },
+  listForMemberWithProductNames: async (tenantId, memberId, now) =>
+    (
+      await db
+        .select({
+          id: productGrants.id,
+          productId: productGrants.productId,
+          productName: products.title,
+          startsAt: productGrants.startsAt,
+          expiresAt: productGrants.expiresAt,
+          source: productGrants.source,
+          active: sql<boolean>`(${productGrants.startsAt}::timestamptz <= ${now}::timestamptz and (${productGrants.expiresAt} is null or ${productGrants.expiresAt}::timestamptz >= ${now}::timestamptz))`,
+        })
+        .from(productGrants)
+        .innerJoin(products, and(eq(productGrants.productId, products.id), eq(products.tenantId, tenantId)))
+        .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, memberId)))
+        .orderBy(asc(productGrants.createdAt))
+    ).map(parseMemberGrant),
   listActiveForMember: async (tenantId, memberId, now) =>
     (
       await db

@@ -55,6 +55,7 @@ const deps = (input: {
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
     },
     members: {
+      findById: async () => null,
       findByEmail: async () => null,
       listWithProductIds: async () => [],
       create: async () => undefined,
@@ -62,9 +63,12 @@ const deps = (input: {
       delete: async () => false,
     },
     grants: {
+      findById: async () => null,
       findGrant: async () => null,
       createGrant: async () => true,
       setGrantWindow: async () => null,
+      revokeGrant: async () => null,
+      listForMemberWithProductNames: async () => [],
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
     },

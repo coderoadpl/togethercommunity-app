@@ -5,6 +5,7 @@ import type {
   CourseModule,
   EmailMessage,
   Member,
+  MemberGrant,
   MemberCourseProgress,
   MemberWithProductIds,
   Membership,
@@ -72,6 +73,7 @@ export interface MemberCourseProgressRepository {
 }
 
 export interface MemberRepository {
+  findById(tenantId: string, memberId: string): Promise<Member | null>;
   findByEmail(tenantId: string, email: string): Promise<Member | null>;
   listWithProductIds(tenantId: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
@@ -80,6 +82,7 @@ export interface MemberRepository {
 }
 
 export interface ProductGrantRepository {
+  findById(tenantId: string, grantId: string): Promise<ProductGrant | null>;
   findGrant(tenantId: string, memberId: string, productId: string): Promise<ProductGrant | null>;
   createGrant(tenantId: string, grant: ProductGrant): Promise<boolean>;
   setGrantWindow(
@@ -87,6 +90,8 @@ export interface ProductGrantRepository {
     grantId: string,
     window: { startsAt: string; expiresAt: string | null },
   ): Promise<ProductGrant | null>;
+  revokeGrant(tenantId: string, grantId: string, expiresAt: string): Promise<ProductGrant | null>;
+  listForMemberWithProductNames(tenantId: string, memberId: string, now: string): Promise<MemberGrant[]>;
   listActiveForMember(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
   listGrantedProducts(tenantId: string, memberId: string): Promise<Product[]>;
 }

@@ -9,6 +9,8 @@ import {
   apiKeyRevokeInputSchema,
   courseCreateInputSchema,
   courseUpdateInputSchema,
+  grantCreateInputSchema,
+  grantRevokeInputSchema,
   lessonCompleteInputSchema,
   lessonCreateInputSchema,
   lessonUpdateInputSchema,
@@ -60,8 +62,10 @@ import {
   getNextLesson,
   getProgress,
   getPublicOffer,
+  grantProductToMember,
   listCourses,
   listLessons,
+  listMemberGrants,
   listMembers,
   listModules,
   listMyCourses,
@@ -72,6 +76,7 @@ import {
   publishProduct,
   removeMember,
   resolveIdentity,
+  revokeGrant,
   resolveTenant,
   simulatePurchase,
   updateCourse,
@@ -376,10 +381,28 @@ export const buildApp = (deps: AppDeps) => {
     return respond(await exportMembers({ identity: c.get('identity') }, { format: format.data }, deps));
   });
 
+  app.get(API_PATHS.memberGrants, async (c) => {
+    const result = await listMemberGrants({ identity: c.get('identity') }, c.req.param('memberId'), deps);
+    return respond(result.ok ? ok({ grants: result.value }) : result);
+  });
+
   app.delete(API_PATHS.memberRemove, async (c) => {
     const parsed = memberRemoveInputSchema.safeParse({ memberId: c.req.param('memberId') });
     if (!parsed.success) return respond(err(validation('Invalid member id', parsed.error.flatten())));
     return respond(await removeMember({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.grantsCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = grantCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid grant payload', parsed.error.flatten())));
+    return respond(await grantProductToMember({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.delete(API_PATHS.grantRevoke, async (c) => {
+    const parsed = grantRevokeInputSchema.safeParse({ grantId: c.req.param('grantId') });
+    if (!parsed.success) return respond(err(validation('Invalid grant id', parsed.error.flatten())));
+    return respond(await revokeGrant({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.apiKeys, async (c) => {

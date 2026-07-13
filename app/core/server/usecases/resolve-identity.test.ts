@@ -58,6 +58,7 @@ const deps = (
 ) => ({
   tenantAccess: fakeTenantAccess(memberships, memberRows),
   members: {
+    findById: async () => null,
     findByEmail: async () => null,
     listWithProductIds: async () => [],
     create: async () => undefined,

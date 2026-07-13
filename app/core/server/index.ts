@@ -7,6 +7,8 @@ export * from './usecases/products.js';
 export * from './usecases/ensure-member.js';
 export * from './usecases/simulate-purchase.js';
 export * from './usecases/dev-grant.js';
+export * from './usecases/grant-window.js';
+export * from './usecases/grants.js';
 export * from './usecases/api-keys.js';
 export * from './usecases/m2m-enroll.js';
 export * from './usecases/my-products.js';

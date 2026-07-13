@@ -7,9 +7,12 @@ import {
   courseSchema,
   courseStructureWithAccessSchema,
   createApiKeyInputSchema,
+  grantProductToMemberInputSchema,
   m2mEnrollInputSchema,
   memberExportFileSchema,
+  memberGrantSchema,
   memberWithProductIdsSchema,
+  revokeGrantInputSchema,
   membershipSchema,
   newCourseLessonSchema,
   newCourseModuleSchema,
@@ -113,6 +116,29 @@ export type MemberRemoveInput = z.input<typeof memberRemoveInputSchema>;
 
 export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
+});
+
+export const memberGrantsOutputSchema = z.object({
+  grants: z.array(memberGrantSchema),
+});
+
+export const grantCreateInputSchema = grantProductToMemberInputSchema;
+
+export type GrantCreateInput = z.input<typeof grantCreateInputSchema>;
+
+export const grantCreateOutputSchema = z.object({
+  memberId: z.string(),
+  grantId: z.string(),
+  renewed: z.boolean(),
+});
+
+export const grantRevokeInputSchema = revokeGrantInputSchema;
+
+export type GrantRevokeInput = z.input<typeof grantRevokeInputSchema>;
+
+export const grantRevokeOutputSchema = z.object({
+  grantId: z.string(),
+  expiresAt: z.string().datetime(),
 });
 
 export const magicLinkSchema = z.object({
@@ -346,7 +372,10 @@ export const API_ROUTES = {
   myProducts: { method: 'GET', path: '/api/my/products' },
   members: { method: 'GET', path: '/api/members' },
   membersExport: { method: 'GET', path: '/api/members/export' },
+  memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
+  grantsCreate: { method: 'POST', path: '/api/grants' },
+  grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
   devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
   devEmail: { method: 'GET', path: '/api/dev/email' },
@@ -389,7 +418,10 @@ export const API_PATHS = {
   myProducts: API_ROUTES.myProducts.path,
   members: API_ROUTES.members.path,
   membersExport: API_ROUTES.membersExport.path,
+  memberGrants: API_ROUTES.memberGrants.path,
   memberRemove: API_ROUTES.memberRemove.path,
+  grantsCreate: API_ROUTES.grantsCreate.path,
+  grantRevoke: API_ROUTES.grantRevoke.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
   devMagicLink: API_ROUTES.devMagicLink.path,
   devEmail: API_ROUTES.devEmail.path,

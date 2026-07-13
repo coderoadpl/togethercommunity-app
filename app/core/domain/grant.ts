@@ -18,6 +18,32 @@ export const productGrantSchema = z.object({
 
 export type ProductGrant = z.infer<typeof productGrantSchema>;
 
+export const memberGrantSchema = z.object({
+  id: z.string(),
+  productId: z.string(),
+  productName: z.string(),
+  startsAt: z.string().datetime(),
+  expiresAt: z.string().datetime().nullable(),
+  source: grantSourceSchema,
+  active: z.boolean(),
+});
+
+export type MemberGrant = z.infer<typeof memberGrantSchema>;
+
+export const grantProductToMemberInputSchema = z.object({
+  memberId: z.string().min(1),
+  productId: z.string().min(1),
+  expiresAt: z.string().datetime().nullable().optional(),
+});
+
+export type GrantProductToMemberInput = z.input<typeof grantProductToMemberInputSchema>;
+
+export const revokeGrantInputSchema = z.object({
+  grantId: z.string().min(1),
+});
+
+export type RevokeGrantInput = z.input<typeof revokeGrantInputSchema>;
+
 export const devGrantInputSchema = z.object({
   email: z.string().email(),
   productId: z.string().min(1),

@@ -39,6 +39,7 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
 });
 
 const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRepository => ({
+  findById: async (): Promise<Member | null> => null,
   findByEmail: async (): Promise<Member | null> => null,
   create: async () => undefined,
   listWithProductIds: async (tenantId) => byTenant[tenantId] ?? [],

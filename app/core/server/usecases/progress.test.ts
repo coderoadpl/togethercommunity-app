@@ -124,9 +124,12 @@ const modulesRepo = (rows: CourseModule[]): CourseModuleRepository => ({
 });
 
 const grantsRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRepository => ({
+  findById: async (_t, id) => grants.find((g) => g.id === id) ?? null,
   findGrant: async () => null,
   createGrant: async () => true,
   setGrantWindow: async () => null,
+  revokeGrant: async () => null,
+  listForMemberWithProductNames: async () => [],
   listActiveForMember: async (tenantId, memberId, now) =>
     grants.filter(
       (g) =>

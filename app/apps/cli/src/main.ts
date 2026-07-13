@@ -894,6 +894,64 @@ member
     }),
   );
 
+const grant = program.command('grant').description('Product grants for members (staff only)');
+
+const grantCreateOptionsSchema = z.object({
+  member: z.string().min(1),
+  product: z.string().min(1),
+  expiresAt: z.string().datetime().optional(),
+});
+
+grant
+  .command('list <memberId>')
+  .description('List a member grants with product name, window, source and active flag')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [memberId]) => {
+      emit(await ctx.api.listMemberGrants(memberId), ctx.json, (data) =>
+        data.grants.length === 0
+          ? 'no grants'
+          : data.grants
+              .map(
+                (g) =>
+                  `${g.active ? 'active ' : 'expired'}\t${g.productName}\t${g.startsAt} → ${g.expiresAt ?? 'perpetual'}\t${g.source}\t(${g.id})`,
+              )
+              .join('\n'),
+      );
+    }),
+  );
+
+grant
+  .command('create')
+  .description('Grant a product to a member (create-or-renew) with an optional expiry')
+  .requiredOption('--member <memberId>')
+  .requiredOption('--product <productId>')
+  .option('--expires-at <iso>', 'ISO datetime when the grant expires')
+  .action(
+    withInput(z.tuple([grantCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.grantProductToMember({
+          memberId: options.member,
+          productId: options.product,
+          ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
+        }),
+        ctx.json,
+        (data) =>
+          `${data.renewed ? 'renewed' : 'granted'}: grant ${data.grantId} for member ${data.memberId}`,
+      );
+    }),
+  );
+
+grant
+  .command('revoke <grantId>')
+  .description('Revoke a grant by setting its expiry to now')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [grantId]) => {
+      emit(await ctx.api.revokeGrant({ grantId }), ctx.json, (data) =>
+        `revoked grant ${data.grantId} (expires ${data.expiresAt})`,
+      );
+    }),
+  );
+
 const apiKey = program.command('api-key').description('Tenant API keys for M2M enrollment (owner only)');
 
 apiKey.command('list').description('List API keys (no secrets)').action(

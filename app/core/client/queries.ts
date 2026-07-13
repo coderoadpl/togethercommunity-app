@@ -14,6 +14,8 @@ import type {
   ApiKeyRevokeInput,
   CourseCreateInput,
   CourseUpdateInput,
+  GrantCreateInput,
+  GrantRevokeInput,
   LastViewedInput,
   LessonCompleteInput,
   LessonCreateInput,
@@ -117,6 +119,7 @@ export const myProductsScopes = {
 export const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
+  grants: (memberId: string) => ['members', 'grants', memberId] as const,
 };
 
 export const authScopes = {
@@ -223,6 +226,24 @@ export const removeMemberMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...membersScopes.all(), 'remove'],
     call: (input: MemberRemoveInput) => api.removeMember(input),
+  });
+
+export const memberGrantsQuery = (api: ApiClient, memberId: string) =>
+  defineQuery({
+    queryKey: membersScopes.grants(memberId),
+    call: ({ signal }) => api.listMemberGrants(memberId, signal),
+  });
+
+export const grantProductToMemberMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'grant'],
+    call: (input: GrantCreateInput) => api.grantProductToMember(input),
+  });
+
+export const revokeGrantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'revoke-grant'],
+    call: (input: GrantRevokeInput) => api.revokeGrant(input),
   });
 
 export const simulatePurchaseMutation = (api: ApiClient) =>
@@ -385,6 +406,8 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
+
+export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: membersScopes.grants(memberId) });
 
 /** Invalidation filter progress mutations apply to refresh a course's tree. */
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });

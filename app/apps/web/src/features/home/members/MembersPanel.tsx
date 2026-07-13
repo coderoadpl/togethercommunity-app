@@ -16,10 +16,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
-import type { MemberExportFormat } from '@core/domain/index.js';
+import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { EntryDate } from '../../../theme.js';
+import { MemberDetail } from './MemberDetail.js';
 
 const displayDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
@@ -30,6 +31,7 @@ const errorMessage = (error: unknown): string =>
 export const MembersPanel = () => {
   const members = useQuery(actions.members);
   const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<MemberExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const removeMember = useMutation({
@@ -56,6 +58,10 @@ export const MembersPanel = () => {
       setExporting(null);
     }
   };
+
+  const selected: MemberWithProductIds | null =
+    members.data?.members.find((member) => member.id === selectedId) ?? null;
+  if (selected) return <MemberDetail member={selected} onBack={() => setSelectedId(null)} />;
 
   return (
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -117,14 +123,19 @@ export const MembersPanel = () => {
                       </EntryDate>
                     </TableCell>
                     <TableCell align="right">
-                      <Button
-                        size="small"
-                        color="error"
-                        disabled={removeMember.isPending}
-                        onClick={() => removeMember.mutate({ memberId: member.id })}
-                      >
-                        Remove
-                      </Button>
+                      <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                        <Button size="small" onClick={() => setSelectedId(member.id)}>
+                          Manage
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          disabled={removeMember.isPending}
+                          onClick={() => removeMember.mutate({ memberId: member.id })}
+                        >
+                          Remove
+                        </Button>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}

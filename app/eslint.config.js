@@ -521,6 +521,21 @@ export default tseslint.config(
     },
   },
   {
+    files: ['adapters/db/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            { from: ['adapter-db'], allow: ['@neondatabase/serverless', 'drizzle-orm', 'pg', 'vitest'] },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: {
       '@tanstack/query': tanstackQuery,

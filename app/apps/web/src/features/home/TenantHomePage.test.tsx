@@ -42,6 +42,9 @@ describe('TenantHomePage', () => {
       http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
       http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
       http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+      http.get('/api/products/access-issues', () =>
+        HttpResponse.json({ ok: true, data: { issues: [] } }),
+      ),
     );
 
     await renderHomePage();

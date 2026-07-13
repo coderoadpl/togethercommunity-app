@@ -3,10 +3,14 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Collapse,
   Divider,
   FormControl,
   FormLabel,
+  List,
+  ListItem,
+  ListItemText,
   OutlinedInput,
   Paper,
   Stack,
@@ -15,7 +19,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
-import type { Product } from '@core/domain/index.js';
+import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -23,7 +27,37 @@ import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
 
-const ProductRow = ({ product }: { product: Product }) => {
+const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
+  const t = useTranslations();
+  const rows: { label: string; ids: string[] }[] = [
+    { label: t.products.missingCoursesLabel, ids: issue.missingCourseIds },
+    { label: t.products.missingModulesLabel, ids: issue.missingModuleIds },
+    { label: t.products.missingLessonsLabel, ids: issue.missingLessonIds },
+  ].filter((row) => row.ids.length > 0);
+
+  return (
+    <Box data-testid="product-access-issues">
+      <Typography variant="overline" component="h4">
+        {t.products.accessIssuesHeading}
+      </Typography>
+      <List disablePadding dense>
+        {rows.map((row) => (
+          <ListItem key={row.label} disableGutters>
+            <ListItemText primary={`${row.label}: ${row.ids.join(', ')}`} />
+          </ListItem>
+        ))}
+      </List>
+    </Box>
+  );
+};
+
+const ProductRow = ({
+  product,
+  issue,
+}: {
+  product: Product;
+  issue?: ProductAccessIssues | undefined;
+}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
@@ -44,6 +78,9 @@ const ProductRow = ({ product }: { product: Product }) => {
         <Typography variant="h2" component="h3">
           {product.title}
         </Typography>
+        {issue ? (
+          <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
+        ) : null}
         <Box sx={{ flex: 1 }} />
         {product.published ? null : (
           <Button
@@ -65,6 +102,7 @@ const ProductRow = ({ product }: { product: Product }) => {
           {formatDate(product.createdAt, language)}
         </EntryDate>
       </Stack>
+      {issue ? <AccessIssues issue={issue} /> : null}
       <Box>
         <Button size="small" variant="text" onClick={() => setShowAccess((open) => !open)}>
           {showAccess ? t.products.hideAccess : t.products.editAccess}
@@ -88,6 +126,7 @@ const ProductRow = ({ product }: { product: Product }) => {
 export const ProductsPanel = () => {
   const t = useTranslations();
   const products = useQuery(actions.products);
+  const accessIssues = useQuery(actions.productAccessIssues);
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -199,7 +238,11 @@ export const ProductsPanel = () => {
         ) : (
           <Stack useFlexGap spacing="1rem">
             {products.data.products.map((product) => (
-              <ProductRow key={product.id} product={product} />
+              <ProductRow
+                key={product.id}
+                product={product}
+                issue={accessIssues.data?.issues.find((entry) => entry.productId === product.id)}
+              />
             ))}
           </Stack>
         )}

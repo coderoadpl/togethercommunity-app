@@ -2,23 +2,47 @@ import { z } from 'zod';
 
 export const currencySchema = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a 3-letter uppercase code');
 
-export const accessItemSchema = z
+const courseAccessItemSchema = z
   .object({
+    level: z.literal('course'),
     courseId: z.string().min(1),
-    courseLevelAccess: z.boolean(),
-    moduleIds: z.array(z.string().min(1)),
-    lessonIds: z.array(z.string().min(1)),
+    excludedModuleIds: z.array(z.string().min(1)).optional(),
   })
-  .refine(
-    (item) =>
-      !item.courseLevelAccess || (item.moduleIds.length === 0 && item.lessonIds.length === 0),
-    {
-      message: 'Course-level access cannot include moduleIds or lessonIds',
-      path: ['courseLevelAccess'],
-    },
-  );
+  .strict();
+
+const modulesAccessItemSchema = z
+  .object({
+    level: z.literal('modules'),
+    courseId: z.string().min(1),
+    moduleIds: z.array(z.string().min(1)).min(1, 'Select at least one module'),
+  })
+  .strict();
+
+const lessonsAccessItemSchema = z
+  .object({
+    level: z.literal('lessons'),
+    courseId: z.string().min(1),
+    lessonIds: z.array(z.string().min(1)).min(1, 'Select at least one lesson'),
+  })
+  .strict();
+
+export const accessItemSchema = z.discriminatedUnion('level', [
+  courseAccessItemSchema,
+  modulesAccessItemSchema,
+  lessonsAccessItemSchema,
+]);
 
 export type AccessItem = z.infer<typeof accessItemSchema>;
+
+export const productAccessIssuesSchema = z.object({
+  productId: z.string(),
+  productTitle: z.string(),
+  missingCourseIds: z.array(z.string()),
+  missingModuleIds: z.array(z.string()),
+  missingLessonIds: z.array(z.string()),
+});
+
+export type ProductAccessIssues = z.infer<typeof productAccessIssuesSchema>;
 
 export const productSchema = z.object({
   id: z.string(),

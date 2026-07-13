@@ -5,6 +5,7 @@ const coreClientExternal = 'node_modules/(@tanstack/query-core|zod)(/|$)';
 const coreClientTestExternal = 'node_modules/(@tanstack/query-core|zod|vitest)(/|$)';
 const coreServerTestExternal = 'node_modules/vitest(/|$)';
 const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
+const adapterDbTestExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg|vitest)(/|$)';
 const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
 const adapterAuthTestExternal =
   'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';
@@ -122,8 +123,14 @@ module.exports = {
     {
       name: 'adapter-db-external-allowlist',
       severity: 'error',
-      from: { path: '^adapters/db' },
+      from: { path: '^adapters/db', pathNot: '\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterDbExternal },
+    },
+    {
+      name: 'adapter-db-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/db/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterDbTestExternal },
     },
     {
       name: 'adapter-auth-external-allowlist',

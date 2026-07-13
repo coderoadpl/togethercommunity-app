@@ -19,6 +19,7 @@ import {
   newCourseSchema,
   newProductSchema,
   nextLessonSchema,
+  productAccessIssuesSchema,
   productSchema,
   progressViewSchema,
   staffRoleSchema,
@@ -212,6 +213,10 @@ export const productsAccessItemsOutputSchema = z.object({
   product: productSchema,
 });
 
+export const productsAccessIssuesOutputSchema = z.object({
+  issues: z.array(productAccessIssuesSchema),
+});
+
 export const coursesListOutputSchema = z.object({
   courses: z.array(courseSchema),
 });
@@ -351,6 +356,7 @@ export const API_ROUTES = {
   productsCreate: { method: 'POST', path: '/api/products' },
   productsPublish: { method: 'POST', path: '/api/products/publish' },
   productsAccessItems: { method: 'POST', path: '/api/products/access-items' },
+  productsAccessIssues: { method: 'GET', path: '/api/products/access-issues' },
   courses: { method: 'GET', path: '/api/courses' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
@@ -398,6 +404,7 @@ export const API_PATHS = {
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,
   productsAccessItems: API_ROUTES.productsAccessItems.path,
+  productsAccessIssues: API_ROUTES.productsAccessIssues.path,
   courses: API_ROUTES.courses.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,
   modules: API_ROUTES.modules.path,

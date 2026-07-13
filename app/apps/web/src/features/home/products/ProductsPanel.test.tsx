@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { Product } from '@core/domain/index.js';
+import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -25,11 +25,12 @@ const initialProducts: Product[] = [
   },
 ];
 
-const renderProductsPanel = () => {
+const renderProductsPanel = (issues: ProductAccessIssues[] = []) => {
   let products = [...initialProducts];
 
   server.use(
     http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products } })),
+    http.get('/api/products/access-issues', () => HttpResponse.json({ ok: true, data: { issues } })),
     http.post('/api/products', () => {
       const product: Product = {
         id: 'product-2',
@@ -82,5 +83,22 @@ describe('ProductsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
 
     expect(await screen.findByText('New Workshop')).toBeInTheDocument();
+  });
+
+  it('flags products whose access items point at missing content', async () => {
+    renderProductsPanel([
+      {
+        productId: 'draft-1',
+        productTitle: 'Draft Course',
+        missingCourseIds: ['ghost-course'],
+        missingModuleIds: [],
+        missingLessonIds: ['ghost-lesson'],
+      },
+    ]);
+
+    expect(await screen.findByText('Draft Course')).toBeInTheDocument();
+    expect(await screen.findByText(pl.products.accessIssuesChip)).toBeInTheDocument();
+    expect(screen.getByText(`${pl.products.missingCoursesLabel}: ghost-course`)).toBeInTheDocument();
+    expect(screen.getByText(`${pl.products.missingLessonsLabel}: ghost-lesson`)).toBeInTheDocument();
   });
 });

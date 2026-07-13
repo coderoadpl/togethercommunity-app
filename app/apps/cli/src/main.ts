@@ -374,7 +374,7 @@ product
   .requiredOption('--price-cents <cents>', 'price in integer cents')
   .option('--currency <currency>', '3-letter uppercase currency code')
   .option('--description <description>')
-  .option('--access-items <json>', 'inline JSON array of access items')
+  .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .action(
     withInput(z.tuple([productCreateOptionsSchema]), async (ctx, [options]) => {
       let accessItems: z.output<typeof productAccessItemsInlineSchema> | undefined;
@@ -419,7 +419,7 @@ product
 product
   .command('access-items <id>')
   .description('Replace a product access items (course/module/lesson grants)')
-  .option('--data <json>', 'inline JSON array of access items')
+  .option('--data <json>', 'inline JSON access items union array (level: course|modules|lessons)')
   .option('--json-file <path>', 'path to a JSON file with the access items array')
   .action(
     withInput(z.tuple([z.string().min(1), jsonSourceOptionsSchema]), async (ctx, [id, options]) => {
@@ -439,6 +439,33 @@ product
       }
       emit(await ctx.api.updateProductAccessItems(input.value), ctx.json, (data) =>
         `updated access items: ${data.product.title} (${data.product.accessItems.length} item(s))`,
+      );
+    }),
+  );
+
+product
+  .command('access-issues')
+  .description('List products whose access items point at missing courses, modules or lessons')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.listProductAccessIssues(), ctx.json, (data) =>
+        data.issues.length === 0
+          ? 'no access issues'
+          : data.issues
+              .map((issue) => {
+                const parts: string[] = [];
+                if (issue.missingCourseIds.length > 0) {
+                  parts.push(`courses: ${issue.missingCourseIds.join(', ')}`);
+                }
+                if (issue.missingModuleIds.length > 0) {
+                  parts.push(`modules: ${issue.missingModuleIds.join(', ')}`);
+                }
+                if (issue.missingLessonIds.length > 0) {
+                  parts.push(`lessons: ${issue.missingLessonIds.join(', ')}`);
+                }
+                return `- ${issue.productTitle} (${issue.productId.slice(0, 8)})  missing ${parts.join('; ')}`;
+              })
+              .join('\n'),
       );
     }),
   );

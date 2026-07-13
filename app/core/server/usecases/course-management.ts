@@ -299,18 +299,32 @@ export const updateProductAccessItems = async (
   }
 
   for (const item of parsed.data.accessItems) {
-    const modules = await deps.modules.findByIds(tenant.value, unique(item.moduleIds));
-    if (modules.length !== unique(item.moduleIds).length) {
-      return err(validation('Product access items may only reference existing modules'));
-    }
-    if (modules.some((module) => !module.courseIds.includes(item.courseId))) {
-      return err(validation('Product access moduleIds must belong to the item courseId'));
-    }
-
-    const lessonIds = unique(item.lessonIds);
-    const lessons = await deps.lessons.findByIds(tenant.value, lessonIds);
-    if (lessons.length !== lessonIds.length) {
-      return err(validation('Product access items may only reference existing lessons'));
+    if (item.level === 'modules') {
+      const moduleIds = unique(item.moduleIds);
+      const modules = await deps.modules.findByIds(tenant.value, moduleIds);
+      if (modules.length !== moduleIds.length) {
+        return err(validation('Product access items may only reference existing modules'));
+      }
+      if (modules.some((module) => !module.courseIds.includes(item.courseId))) {
+        return err(validation('Product access moduleIds must belong to the item courseId'));
+      }
+    } else if (item.level === 'lessons') {
+      const lessonIds = unique(item.lessonIds);
+      const lessons = await deps.lessons.findByIds(tenant.value, lessonIds);
+      if (lessons.length !== lessonIds.length) {
+        return err(validation('Product access items may only reference existing lessons'));
+      }
+    } else {
+      const excludedModuleIds = unique(item.excludedModuleIds ?? []);
+      if (excludedModuleIds.length > 0) {
+        const modules = await deps.modules.findByIds(tenant.value, excludedModuleIds);
+        if (modules.length !== excludedModuleIds.length) {
+          return err(validation('Product access items may only reference existing modules'));
+        }
+        if (modules.some((module) => !module.courseIds.includes(item.courseId))) {
+          return err(validation('Product access excludedModuleIds must belong to the item courseId'));
+        }
+      }
     }
   }
 

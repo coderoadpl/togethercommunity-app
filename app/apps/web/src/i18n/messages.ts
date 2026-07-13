@@ -124,6 +124,11 @@ export interface Messages {
     accessItemNoun: (params: { count: number }) => string;
     hideAccess: string;
     editAccess: string;
+    accessIssuesChip: string;
+    accessIssuesHeading: string;
+    missingCoursesLabel: string;
+    missingModulesLabel: string;
+    missingLessonsLabel: string;
   };
   access: {
     loading: string;
@@ -143,7 +148,12 @@ export interface Messages {
     save: string;
     saved: string;
     unknownCourse: string;
+    proMode: string;
+    addFullCourse: string;
+    exclusionsLabel: string;
+    noModulesToExclude: string;
     wholeCourseSummary: (params: { course: string }) => string;
+    wholeCourseExceptSummary: (params: { course: string; count: number }) => string;
     modulesSummary: (params: { count: number; course: string }) => string;
     lessonsSummary: (params: { count: number; course: string }) => string;
   };

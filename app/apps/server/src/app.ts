@@ -70,6 +70,7 @@ import {
   listModules,
   listMyCourses,
   listMyProducts,
+  listProductAccessIssues,
   listMyTenants,
   listProducts,
   markLessonCompleted,
@@ -453,6 +454,11 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await updateProductAccessItems({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
+  app.get(API_PATHS.productsAccessIssues, async (c) => {
+    const result = await listProductAccessIssues({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ issues: result.value }) : result);
   });
 
   app.get(API_PATHS.courses, async (c) => {

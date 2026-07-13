@@ -147,14 +147,11 @@ const c1 = course('c1');
 const c2 = course('c2');
 const lessons = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6'].map(lesson);
 
-const pCourse = product('p-course', [
-  { courseId: 'c1', courseLevelAccess: true, moduleIds: [], lessonIds: [] },
-]);
-const pModule = product('p-module', [
-  { courseId: 'c1', courseLevelAccess: false, moduleIds: ['m1'], lessonIds: [] },
-]);
-const pLesson = product('p-lesson', [
-  { courseId: 'c1', courseLevelAccess: false, moduleIds: [], lessonIds: ['l4'] },
+const pCourse = product('p-course', [{ level: 'course', courseId: 'c1' }]);
+const pModule = product('p-module', [{ level: 'modules', courseId: 'c1', moduleIds: ['m1'] }]);
+const pLesson = product('p-lesson', [{ level: 'lessons', courseId: 'c1', lessonIds: ['l4'] }]);
+const pCourseExceptM2 = product('p-course-except-m2', [
+  { level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] },
 ]);
 
 const clock: Clock = { nowIso: () => NOW };
@@ -248,7 +245,7 @@ describe('resolveMemberEntitlements', () => {
     );
     expect(result).toEqual({
       ok: true,
-      value: [{ courseId: 'c1', courseLevelAccess: true, moduleIds: [], lessonIds: [] }],
+      value: [{ level: 'course', courseId: 'c1' }],
     });
   });
 
@@ -358,6 +355,62 @@ describe('isLessonAccessible — 3-tier semantics', () => {
       ok: false,
       error: { code: 'tenant_not_found' },
     });
+  });
+});
+
+describe('isLessonAccessible — course-level exclusions', () => {
+  const active = (productId: string, id = 'g1'): ProductGrant =>
+    grant(id, productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z');
+
+  it('a course grant with an excluded module locks that module but not the rest', async () => {
+    const d = deps([active('p-course-except-m2')], [pCourseExceptM2]);
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({ ok: true });
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('a second module-level grant overrides the exclusion', async () => {
+    const d = deps(
+      [active('p-course-except-m2'), active('p-module-m2', 'g2')],
+      [pCourseExceptM2, product('p-module-m2', [{ level: 'modules', courseId: 'c1', moduleIds: ['m2'] }])],
+    );
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({ ok: true });
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({ ok: true });
+  });
+
+  it('ignores dangling ids without crashing or granting', async () => {
+    const dangling = product('p-dangling', [
+      { level: 'course', courseId: 'ghost-course' },
+      { level: 'modules', courseId: 'c1', moduleIds: ['ghost-module'] },
+      { level: 'lessons', courseId: 'c1', lessonIds: ['ghost-lesson'] },
+    ]);
+    const d = deps([active('p-dangling')], [dangling]);
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+});
+
+describe('getCourseStructureWithAccess — course-level exclusions', () => {
+  const active = (productId: string): ProductGrant[] => [
+    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+  ];
+
+  it('renders an excluded module as not-accessible and the course as partially-accessible', async () => {
+    const result = await getCourseStructureWithAccess(
+      ctx({}),
+      'c1',
+      deps(active('p-course-except-m2'), [pCourseExceptM2]),
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.accessStatus).toBe('partially-accessible');
+    const modA = nn(result.value.modules[0]);
+    const modB = nn(result.value.modules[1]);
+    expect(modA.accessStatus).toBe('fully-accessible');
+    expect(modB.accessStatus).toBe('not-accessible');
   });
 });
 

@@ -83,7 +83,7 @@ const pCourse: Product = {
   priceCents: 0,
   currency: 'PLN',
   published: true,
-  accessItems: [{ courseId: 'c1', courseLevelAccess: true, moduleIds: [], lessonIds: [] }],
+  accessItems: [{ level: 'course', courseId: 'c1' }],
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 };

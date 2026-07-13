@@ -497,7 +497,7 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
   );
 
   const accessItems = (moduleId: string): string =>
-    JSON.stringify([{ courseId: course.course.id, courseLevelAccess: false, moduleIds: [moduleId], lessonIds: [] }]);
+    JSON.stringify([{ level: 'modules', courseId: course.course.id, moduleIds: [moduleId] }]);
   const productOne = createSchema.parse(
     expectOk(
       await acme(['product', 'create', '--title', `Access M1 ${randomUUID()}`, '--price-cents', '1000', '--access-items', accessItems(moduleOne.module.id)], creatorHome),
@@ -628,9 +628,7 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
     ),
     'm2m flow: create module',
   );
-  const accessItems = JSON.stringify([
-    { courseId: course.course.id, courseLevelAccess: true, moduleIds: [], lessonIds: [] },
-  ]);
+  const accessItems = JSON.stringify([{ level: 'course', courseId: course.course.id }]);
   const product = createSchema.parse(
     expectOk(
       await acme(['product', 'create', '--title', `M2M access ${randomUUID()}`, '--price-cents', '1000', '--access-items', accessItems], creatorHome),

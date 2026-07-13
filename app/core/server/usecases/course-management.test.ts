@@ -328,7 +328,7 @@ describe('course management use-cases', () => {
       { identity: identity('t-acme', 'owner') },
       {
         id: 'p1',
-        accessItems: [{ courseId: 'c1', courseLevelAccess: false, moduleIds: ['m1'], lessonIds: [] }],
+        accessItems: [{ level: 'modules', courseId: 'c1', moduleIds: ['m1'] }],
       },
       d,
     );
@@ -338,13 +338,43 @@ describe('course management use-cases', () => {
       { identity: identity('t-acme', 'owner') },
       {
         id: 'p1',
-        accessItems: [{ courseId: 'c2', courseLevelAccess: false, moduleIds: ['m1'], lessonIds: ['l1'] }],
+        accessItems: [
+          { level: 'modules', courseId: 'c2', moduleIds: ['m1'] },
+          { level: 'lessons', courseId: 'c2', lessonIds: ['l1'] },
+        ],
       },
       d,
     );
     expect(valid).toMatchObject({ ok: true });
     expect(products[0]?.accessItems).toEqual([
-      { courseId: 'c2', courseLevelAccess: false, moduleIds: ['m1'], lessonIds: ['l1'] },
+      { level: 'modules', courseId: 'c2', moduleIds: ['m1'] },
+      { level: 'lessons', courseId: 'c2', lessonIds: ['l1'] },
+    ]);
+  });
+
+  it('rejects a course item whose excludedModuleIds do not belong to the course', async () => {
+    const products = [product('p1', 't-acme')];
+    const d = deps({
+      courses: [course('c1', 't-acme'), course('c2', 't-acme')],
+      modules: [module('m1', 't-acme', ['c2'])],
+      products,
+    });
+
+    const invalid = await updateProductAccessItems(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1', accessItems: [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }] },
+      d,
+    );
+    expect(invalid).toMatchObject({ ok: false, error: { code: 'validation' } });
+
+    const valid = await updateProductAccessItems(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1', accessItems: [{ level: 'course', courseId: 'c2', excludedModuleIds: ['m1'] }] },
+      d,
+    );
+    expect(valid).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual([
+      { level: 'course', courseId: 'c2', excludedModuleIds: ['m1'] },
     ]);
   });
 

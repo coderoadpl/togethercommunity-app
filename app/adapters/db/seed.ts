@@ -490,7 +490,7 @@ const demoProducts: ProductDef[] = [
     title: 'Kurs JavaScript - pełny dostęp',
     description: 'Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.',
     priceCents: 39900,
-    accessItems: [{ courseId: 'course-js', courseLevelAccess: true, moduleIds: [], lessonIds: [] }],
+    accessItems: [{ level: 'course', courseId: 'course-js' }],
   },
   {
     id: 'product-react-full',
@@ -498,7 +498,7 @@ const demoProducts: ProductDef[] = [
     title: 'React w praktyce - pełny dostęp',
     description: 'Pełny dostęp do kursu React w praktyce.',
     priceCents: 49900,
-    accessItems: [{ courseId: 'course-react', courseLevelAccess: true, moduleIds: [], lessonIds: [] }],
+    accessItems: [{ level: 'course', courseId: 'course-react' }],
   },
   {
     id: 'product-js-dom-module',
@@ -506,9 +506,7 @@ const demoProducts: ProductDef[] = [
     title: 'Pakiet: moduł DOM',
     description: 'Dostęp wyłącznie do modułu DOM z kursu JavaScript.',
     priceCents: 9900,
-    accessItems: [
-      { courseId: 'course-js', courseLevelAccess: false, moduleIds: ['module-js-dom'], lessonIds: [] },
-    ],
+    accessItems: [{ level: 'modules', courseId: 'course-js', moduleIds: ['module-js-dom'] }],
   },
   {
     id: 'product-free-preview',
@@ -518,15 +516,13 @@ const demoProducts: ProductDef[] = [
     priceCents: 0,
     accessItems: [
       {
+        level: 'lessons',
         courseId: 'course-js',
-        courseLevelAccess: false,
-        moduleIds: [],
         lessonIds: ['lesson-js-zmienne-1', 'lesson-js-dom-1', 'lesson-js-projekt-1'],
       },
       {
+        level: 'lessons',
         courseId: 'course-react',
-        courseLevelAccess: false,
-        moduleIds: [],
         lessonIds: ['lesson-react-jsx-1', 'lesson-react-hooks-1'],
       },
     ],
@@ -537,9 +533,7 @@ const demoProducts: ProductDef[] = [
     title: 'Akademia - dostęp roczny',
     description: 'Roczny dostęp do kursu Samodzielna nauka programowania.',
     priceCents: 29900,
-    accessItems: [
-      { courseId: 'course-akademia', courseLevelAccess: true, moduleIds: [], lessonIds: [] },
-    ],
+    accessItems: [{ level: 'course', courseId: 'course-akademia' }],
   },
 ];
 

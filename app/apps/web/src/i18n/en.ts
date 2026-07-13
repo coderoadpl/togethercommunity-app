@@ -121,6 +121,11 @@ export const en: Messages = {
     accessItemNoun: ({ count }) => plural(count, 'access item', 'access items'),
     hideAccess: 'hide access',
     editAccess: 'edit access',
+    accessIssuesChip: 'dangling references',
+    accessIssuesHeading: 'Dangling access references',
+    missingCoursesLabel: 'missing courses',
+    missingModulesLabel: 'missing modules',
+    missingLessonsLabel: 'missing lessons',
   },
   access: {
     loading: 'loading access data…',
@@ -140,7 +145,17 @@ export const en: Messages = {
     save: 'save access',
     saved: 'saved',
     unknownCourse: 'unknown course',
+    proMode: 'advanced mode',
+    addFullCourse: 'add full course access',
+    exclusionsLabel: 'excluded modules',
+    noModulesToExclude: 'No modules attached to this course to exclude.',
     wholeCourseSummary: ({ course }) => format('Whole course {course}', { course }),
+    wholeCourseExceptSummary: ({ course, count }) =>
+      format('Whole course {course} except {count} {noun}', {
+        course,
+        count,
+        noun: plural(count, 'module', 'modules'),
+      }),
     modulesSummary: ({ count, course }) =>
       format('{count} {noun} of {course}', { count, noun: plural(count, 'module', 'modules'), course }),
     lessonsSummary: ({ count, course }) =>

@@ -16,6 +16,7 @@ import type {
 
 export interface AccessLookup {
   courseLevel: Set<string>;
+  excludedModuleIds: Set<string>;
   moduleIds: Set<string>;
   lessonIds: Set<string>;
 }
@@ -23,30 +24,55 @@ export interface AccessLookup {
 export const aggregateAccessItems = (products: Product[]): AccessItem[] =>
   products.flatMap((product) => product.accessItems);
 
+const intersect = (a: Set<string>, b: Set<string>): Set<string> => {
+  const out = new Set<string>();
+  for (const id of a) if (b.has(id)) out.add(id);
+  return out;
+};
+
 export const buildAccessLookup = (items: AccessItem[]): AccessLookup => {
   const courseLevel = new Set<string>();
   const moduleIds = new Set<string>();
   const lessonIds = new Set<string>();
+  const perCourseExclusions = new Map<string, Set<string>>();
+
   for (const item of items) {
-    if (item.courseLevelAccess) courseLevel.add(item.courseId);
-    for (const moduleId of item.moduleIds) moduleIds.add(moduleId);
-    for (const lessonId of item.lessonIds) lessonIds.add(lessonId);
+    if (item.level === 'course') {
+      courseLevel.add(item.courseId);
+      const excluded = new Set(item.excludedModuleIds ?? []);
+      const current = perCourseExclusions.get(item.courseId);
+      perCourseExclusions.set(item.courseId, current ? intersect(current, excluded) : excluded);
+    } else if (item.level === 'modules') {
+      for (const moduleId of item.moduleIds) moduleIds.add(moduleId);
+    } else {
+      for (const lessonId of item.lessonIds) lessonIds.add(lessonId);
+    }
   }
-  return { courseLevel, moduleIds, lessonIds };
+
+  const excludedModuleIds = new Set<string>();
+  for (const excluded of perCourseExclusions.values()) {
+    for (const moduleId of excluded) if (!moduleIds.has(moduleId)) excludedModuleIds.add(moduleId);
+  }
+
+  return { courseLevel, excludedModuleIds, moduleIds, lessonIds };
 };
 
 /** A lookup that grants everything within a single course (staff / owner view). */
 export const fullCourseLookup = (courseId: string): AccessLookup => ({
   courseLevel: new Set([courseId]),
+  excludedModuleIds: new Set(),
   moduleIds: new Set(),
   lessonIds: new Set(),
 });
+
+const courseGrantsModule = (lookup: AccessLookup, courseId: string, moduleId: string): boolean =>
+  lookup.courseLevel.has(courseId) && !lookup.excludedModuleIds.has(moduleId);
 
 export const isLessonAccessibleByLookup = (
   lookup: AccessLookup,
   location: { courseId: string; moduleId: string; lessonId: string },
 ): boolean =>
-  lookup.courseLevel.has(location.courseId) ||
+  courseGrantsModule(lookup, location.courseId, location.moduleId) ||
   lookup.moduleIds.has(location.moduleId) ||
   lookup.lessonIds.has(location.lessonId);
 
@@ -128,10 +154,9 @@ export const buildCourseStructure = (
   lookup: AccessLookup,
   completedLessonIds: Set<string>,
 ): CourseStructureWithAccess => {
-  const courseGranted = lookup.courseLevel.has(course.id);
-
   const structureModules = modulesForCourse(course, modules).map((module) => {
-    const moduleGranted = courseGranted || lookup.moduleIds.has(module.id);
+    const moduleGranted =
+      courseGrantsModule(lookup, course.id, module.id) || lookup.moduleIds.has(module.id);
 
     const structureChapters = module.chapters.map((chapter) => {
       const lessons = chapter.contents.map((content) => {
@@ -176,9 +201,7 @@ export const buildCourseStructure = (
   return {
     courseId: course.id,
     name: course.name,
-    accessStatus: courseGranted
-      ? 'fully-accessible'
-      : rollUpAccess(allLessons.map((lesson) => lesson.accessStatus)),
+    accessStatus: rollUpAccess(structureModules.map((module) => module.accessStatus)),
     completionStatus: rollUpCompletion(allLessons.map((lesson) => lesson.completionStatus)),
     modules: structureModules,
   };

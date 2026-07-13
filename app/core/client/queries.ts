@@ -110,6 +110,7 @@ export const authConfigScopes = {
 export const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
+  issues: () => ['products', 'issues'] as const,
 };
 
 export const myProductsScopes = {
@@ -324,6 +325,12 @@ export const updateProductAccessItemsMutation = (api: ApiClient) =>
     call: (input: ProductsAccessItemsInput) => api.updateProductAccessItems(input),
   });
 
+export const productAccessIssuesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: productsScopes.issues(),
+    call: ({ signal }) => api.listProductAccessIssues(signal),
+  });
+
 export const studentCoursesQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: studentScopes.courses(),
@@ -400,7 +407,7 @@ export const modulesInvalidates = () => ({ queryKey: modulesScopes.all() });
 export const lessonsInvalidates = () => ({ queryKey: lessonsScopes.all() });
 
 /** The invalidation filter product mutations apply after they settle. */
-export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });
+export const productsInvalidates = () => ({ queryKey: productsScopes.all() });
 
 /** The invalidation filter a simulated purchase applies after it settles. */
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });

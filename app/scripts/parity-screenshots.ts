@@ -293,12 +293,8 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
   ]);
 
   const accessItems = JSON.stringify([
-    {
-      courseId,
-      courseLevelAccess: false,
-      moduleIds: [gettingStartedId],
-      lessonIds: [componentsLessonId],
-    },
+    { level: 'modules', courseId, moduleIds: [gettingStartedId] },
+    { level: 'lessons', courseId, lessonIds: [componentsLessonId] },
   ]);
   const product = productCreatedSchema.parse(
     await cliData(
@@ -312,9 +308,9 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
 
   const mixedProductTitle = 'React Fundamentals - tiered access';
   const mixedAccessItems = JSON.stringify([
-    { courseId, courseLevelAccess: false, moduleIds: [gettingStartedId, coreConceptsId], lessonIds: [] },
-    { courseId, courseLevelAccess: false, moduleIds: [], lessonIds: [componentsLessonId] },
-    { courseId, courseLevelAccess: true, moduleIds: [], lessonIds: [] },
+    { level: 'modules', courseId, moduleIds: [gettingStartedId, coreConceptsId] },
+    { level: 'lessons', courseId, lessonIds: [componentsLessonId] },
+    { level: 'course', courseId },
   ]);
   const mixedProduct = productCreatedSchema.parse(
     await cliData(

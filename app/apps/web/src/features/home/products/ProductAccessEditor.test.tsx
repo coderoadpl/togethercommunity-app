@@ -81,13 +81,13 @@ const setup = (): { bodies: unknown[] } => {
 };
 
 describe('ProductAccessEditor', () => {
-  it('builds a course-level access payload', async () => {
+  it('Easy mode builds a course-level access payload in one click', async () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);
 
     await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
-    await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.addFullCourse }));
 
     expect(await screen.findByText(pl.access.wholeCourseSummary({ course: 'Launch Kit' }))).toBeInTheDocument();
 
@@ -96,14 +96,15 @@ describe('ProductAccessEditor', () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
       id: 'product-1',
-      accessItems: [{ courseId: 'course-1', courseLevelAccess: true, moduleIds: [], lessonIds: [] }],
+      accessItems: [{ level: 'course', courseId: 'course-1' }],
     });
   });
 
-  it('builds a lesson-level access payload', async () => {
+  it('Pro mode builds a lesson-level access payload', async () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);
 
+    await userEvent.click(await screen.findByLabelText(pl.access.proMode));
     await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
     await userEvent.click(screen.getByRole('button', { name: pl.access.selectedLessons }));
@@ -119,7 +120,30 @@ describe('ProductAccessEditor', () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
       id: 'product-1',
-      accessItems: [{ courseId: 'course-1', courseLevelAccess: false, moduleIds: [], lessonIds: ['lesson-1'] }],
+      accessItems: [{ level: 'lessons', courseId: 'course-1', lessonIds: ['lesson-1'] }],
+    });
+  });
+
+  it('Pro mode builds a course-level access payload with excluded modules', async () => {
+    const { bodies } = setup();
+    renderWithProviders(<ProductAccessEditor product={product} />);
+
+    await userEvent.click(await screen.findByLabelText(pl.access.proMode));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Module One' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));
+
+    expect(
+      await screen.findByText(pl.access.wholeCourseExceptSummary({ course: 'Launch Kit', count: 1 })),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toEqual({
+      id: 'product-1',
+      accessItems: [{ level: 'course', courseId: 'course-1', excludedModuleIds: ['module-1'] }],
     });
   });
 });

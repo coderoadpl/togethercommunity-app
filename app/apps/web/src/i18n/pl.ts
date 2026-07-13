@@ -127,6 +127,11 @@ export const pl: Messages = {
     accessItemNoun: ({ count }) => plural(count, 'pozycja dostępu', 'pozycje dostępu', 'pozycji dostępu'),
     hideAccess: 'ukryj dostęp',
     editAccess: 'edytuj dostęp',
+    accessIssuesChip: 'nieprawidłowe odwołania',
+    accessIssuesHeading: 'Nieprawidłowe odwołania w dostępie',
+    missingCoursesLabel: 'brakujące kursy',
+    missingModulesLabel: 'brakujące moduły',
+    missingLessonsLabel: 'brakujące lekcje',
   },
   access: {
     loading: 'ładowanie danych o dostępie…',
@@ -146,7 +151,17 @@ export const pl: Messages = {
     save: 'zapisz dostęp',
     saved: 'zapisano',
     unknownCourse: 'nieznany kurs',
+    proMode: 'tryb zaawansowany',
+    addFullCourse: 'dodaj pełny dostęp do kursu',
+    exclusionsLabel: 'wyłączone moduły',
+    noModulesToExclude: 'Do tego kursu nie podpięto żadnych modułów do wyłączenia.',
     wholeCourseSummary: ({ course }) => format('Cały kurs {course}', { course }),
+    wholeCourseExceptSummary: ({ course, count }) =>
+      format('Cały kurs {course} bez {count} {noun}', {
+        course,
+        count,
+        noun: plural(count, 'modułu', 'modułów', 'modułów'),
+      }),
     modulesSummary: ({ count, course }) =>
       format('{count} {noun} kursu {course}', {
         count,

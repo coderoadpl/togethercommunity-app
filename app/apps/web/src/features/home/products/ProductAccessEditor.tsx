@@ -13,6 +13,7 @@ import {
   MenuItem,
   Select,
   Stack,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
@@ -32,10 +33,13 @@ const courseName = (courses: Course[], courseId: string, t: Messages): string =>
 
 const accessItemSummary = (item: AccessItem, courses: Course[], t: Messages): string => {
   const course = courseName(courses, item.courseId, t);
-  if (item.courseLevelAccess) return t.access.wholeCourseSummary({ course });
-  if (item.lessonIds.length > 0) {
-    return t.access.lessonsSummary({ count: item.lessonIds.length, course });
+  if (item.level === 'course') {
+    const excluded = item.excludedModuleIds ?? [];
+    return excluded.length > 0
+      ? t.access.wholeCourseExceptSummary({ course, count: excluded.length })
+      : t.access.wholeCourseSummary({ course });
   }
+  if (item.level === 'lessons') return t.access.lessonsSummary({ count: item.lessonIds.length, course });
   return t.access.modulesSummary({ count: item.moduleIds.length, course });
 };
 
@@ -63,10 +67,12 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
   const lessons = useQuery(actions.lessons);
 
   const [items, setItems] = useState<AccessItem[]>(product.accessItems);
+  const [pro, setPro] = useState(false);
   const [courseId, setCourseId] = useState('');
   const [level, setLevel] = useState<AccessLevel>('course');
   const [moduleIds, setModuleIds] = useState<string[]>([]);
   const [lessonIds, setLessonIds] = useState<string[]>([]);
+  const [excludedModuleIds, setExcludedModuleIds] = useState<string[]>([]);
 
   const save = useMutation({
     ...actions.updateProductAccessItems,
@@ -80,12 +86,14 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
     setLevel('course');
     setModuleIds([]);
     setLessonIds([]);
+    setExcludedModuleIds([]);
   };
 
   const pickCourse = (nextCourseId: string) => {
     setCourseId(nextCourseId);
     setModuleIds([]);
     setLessonIds([]);
+    setExcludedModuleIds([]);
   };
 
   const availableModules = useMemo(
@@ -99,22 +107,35 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
     return lessons.data.lessons.filter((lesson) => ids.has(lesson.id));
   }, [lessons.data, modules.data, courseId]);
 
-  const draftValid =
+  const appendItem = (item: AccessItem) => {
+    setItems([...items, item]);
+    resetDraft();
+  };
+
+  const addFullCourse = () => {
+    if (!courseId) return;
+    appendItem({ level: 'course', courseId });
+  };
+
+  const proDraftValid =
     courseId !== '' &&
     (level === 'course' ||
       (level === 'modules' && moduleIds.length > 0) ||
       (level === 'lessons' && lessonIds.length > 0));
 
-  const addItem = () => {
-    if (!draftValid) return;
-    const item: AccessItem = {
-      courseId,
-      courseLevelAccess: level === 'course',
-      moduleIds: level === 'modules' ? moduleIds : [],
-      lessonIds: level === 'lessons' ? lessonIds : [],
-    };
-    setItems([...items, item]);
-    resetDraft();
+  const addProItem = () => {
+    if (!proDraftValid) return;
+    if (level === 'modules') {
+      appendItem({ level: 'modules', courseId, moduleIds });
+    } else if (level === 'lessons') {
+      appendItem({ level: 'lessons', courseId, lessonIds });
+    } else {
+      appendItem({
+        level: 'course',
+        courseId,
+        ...(excludedModuleIds.length > 0 ? { excludedModuleIds } : {}),
+      });
+    }
   };
 
   const removeItem = (index: number) => setItems(items.filter((_item, position) => position !== index));
@@ -127,6 +148,28 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
   if (lessons.isError) return <MutationError error={lessons.error} />;
 
   const dirty = JSON.stringify(items) !== JSON.stringify(product.accessItems);
+
+  const courseSelect = (
+    <FormControl size="small" fullWidth>
+      <FormLabel htmlFor={`access-course-${product.id}`}>{t.access.courseLabel}</FormLabel>
+      <Select
+        id={`access-course-${product.id}`}
+        displayEmpty
+        value={courseId}
+        onChange={(event) => pickCourse(event.target.value)}
+        inputProps={{ 'aria-label': `access course ${product.id}` }}
+      >
+        <MenuItem value="">
+          <em>{t.access.selectCourse}</em>
+        </MenuItem>
+        {courses.data.courses.map((course) => (
+          <MenuItem key={course.id} value={course.id}>
+            {course.name}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  );
 
   return (
     <Stack useFlexGap spacing="1rem" data-testid={`access-editor-${product.id}`}>
@@ -156,101 +199,131 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
         )}
       </Box>
 
-      <Box sx={{ display: 'grid', gap: '0.75rem' }}>
-        <FormControl size="small" fullWidth>
-          <FormLabel htmlFor={`access-course-${product.id}`}>{t.access.courseLabel}</FormLabel>
-          <Select
-            id={`access-course-${product.id}`}
-            displayEmpty
-            value={courseId}
-            onChange={(event) => pickCourse(event.target.value)}
-            inputProps={{ 'aria-label': `access course ${product.id}` }}
-          >
-            <MenuItem value="">
-              <em>{t.access.selectCourse}</em>
-            </MenuItem>
-            {courses.data.courses.map((course) => (
-              <MenuItem key={course.id} value={course.id}>
-                {course.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        {courseId ? (
-          <ToggleButtonGroup
-            exclusive
+      <FormControlLabel
+        control={
+          <Switch
             size="small"
-            value={level}
-            onChange={(_event, value: AccessLevel | null) => {
-              if (value) setLevel(value);
+            checked={pro}
+            onChange={(event) => {
+              setPro(event.target.checked);
+              resetDraft();
             }}
-            aria-label="access level"
-          >
-            <ToggleButton value="course" data-testid="level-course">
-              {t.access.wholeCourse}
-            </ToggleButton>
-            <ToggleButton value="modules" data-testid="level-modules">
-              {t.access.selectedModules}
-            </ToggleButton>
-            <ToggleButton value="lessons" data-testid="level-lessons">
-              {t.access.selectedLessons}
-            </ToggleButton>
-          </ToggleButtonGroup>
-        ) : null}
+          />
+        }
+        label={t.access.proMode}
+      />
 
-        {courseId && level === 'modules' ? (
-          <Box role="group" aria-label="modules" sx={{ display: 'grid', gap: '0.2rem' }}>
-            <FormLabel component="div">{t.access.modulesLabel}</FormLabel>
-            {availableModules.length === 0 ? (
-              <Typography variant="body2">{t.access.noModulesInCourse}</Typography>
-            ) : (
-              availableModules.map((module) => (
-                <FormControlLabel
-                  key={module.id}
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={moduleIds.includes(module.id)}
-                      onChange={() => setModuleIds(toggle(moduleIds, module.id))}
-                    />
-                  }
-                  label={module.name}
-                />
-              ))
-            )}
+      {pro ? (
+        <Box sx={{ display: 'grid', gap: '0.75rem' }}>
+          {courseSelect}
+
+          {courseId ? (
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={level}
+              onChange={(_event, value: AccessLevel | null) => {
+                if (value) setLevel(value);
+              }}
+              aria-label="access level"
+            >
+              <ToggleButton value="course" data-testid="level-course">
+                {t.access.wholeCourse}
+              </ToggleButton>
+              <ToggleButton value="modules" data-testid="level-modules">
+                {t.access.selectedModules}
+              </ToggleButton>
+              <ToggleButton value="lessons" data-testid="level-lessons">
+                {t.access.selectedLessons}
+              </ToggleButton>
+            </ToggleButtonGroup>
+          ) : null}
+
+          {courseId && level === 'course' ? (
+            <Box role="group" aria-label="exclusions" sx={{ display: 'grid', gap: '0.2rem' }}>
+              <FormLabel component="div">{t.access.exclusionsLabel}</FormLabel>
+              {availableModules.length === 0 ? (
+                <Typography variant="body2">{t.access.noModulesToExclude}</Typography>
+              ) : (
+                availableModules.map((module) => (
+                  <FormControlLabel
+                    key={module.id}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={excludedModuleIds.includes(module.id)}
+                        onChange={() => setExcludedModuleIds(toggle(excludedModuleIds, module.id))}
+                      />
+                    }
+                    label={module.name}
+                  />
+                ))
+              )}
+            </Box>
+          ) : null}
+
+          {courseId && level === 'modules' ? (
+            <Box role="group" aria-label="modules" sx={{ display: 'grid', gap: '0.2rem' }}>
+              <FormLabel component="div">{t.access.modulesLabel}</FormLabel>
+              {availableModules.length === 0 ? (
+                <Typography variant="body2">{t.access.noModulesInCourse}</Typography>
+              ) : (
+                availableModules.map((module) => (
+                  <FormControlLabel
+                    key={module.id}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={moduleIds.includes(module.id)}
+                        onChange={() => setModuleIds(toggle(moduleIds, module.id))}
+                      />
+                    }
+                    label={module.name}
+                  />
+                ))
+              )}
+            </Box>
+          ) : null}
+
+          {courseId && level === 'lessons' ? (
+            <Box role="group" aria-label="lessons" sx={{ display: 'grid', gap: '0.2rem' }}>
+              <FormLabel component="div">{t.access.lessonsLabel}</FormLabel>
+              {availableLessons.length === 0 ? (
+                <Typography variant="body2">{t.access.noLessonsInCourse}</Typography>
+              ) : (
+                availableLessons.map((lesson) => (
+                  <FormControlLabel
+                    key={lesson.id}
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={lessonIds.includes(lesson.id)}
+                        onChange={() => setLessonIds(toggle(lessonIds, lesson.id))}
+                      />
+                    }
+                    label={lesson.name}
+                  />
+                ))
+              )}
+            </Box>
+          ) : null}
+
+          <Box>
+            <Button size="small" variant="outlined" disabled={!proDraftValid} onClick={addProItem}>
+              {t.access.addItem}
+            </Button>
           </Box>
-        ) : null}
-
-        {courseId && level === 'lessons' ? (
-          <Box role="group" aria-label="lessons" sx={{ display: 'grid', gap: '0.2rem' }}>
-            <FormLabel component="div">{t.access.lessonsLabel}</FormLabel>
-            {availableLessons.length === 0 ? (
-              <Typography variant="body2">{t.access.noLessonsInCourse}</Typography>
-            ) : (
-              availableLessons.map((lesson) => (
-                <FormControlLabel
-                  key={lesson.id}
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={lessonIds.includes(lesson.id)}
-                      onChange={() => setLessonIds(toggle(lessonIds, lesson.id))}
-                    />
-                  }
-                  label={lesson.name}
-                />
-              ))
-            )}
-          </Box>
-        ) : null}
-
-        <Box>
-          <Button size="small" variant="outlined" disabled={!draftValid} onClick={addItem}>
-            {t.access.addItem}
-          </Button>
         </Box>
-      </Box>
+      ) : (
+        <Box sx={{ display: 'grid', gap: '0.75rem' }}>
+          {courseSelect}
+          <Box>
+            <Button size="small" variant="outlined" disabled={!courseId} onClick={addFullCourse}>
+              {t.access.addFullCourse}
+            </Button>
+          </Box>
+        </Box>
+      )}
 
       <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Button

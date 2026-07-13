@@ -29,6 +29,7 @@ import {
   myProductsOutputSchema,
   nextLessonOutputSchema,
   productsAccessItemsOutputSchema,
+  productsAccessIssuesOutputSchema,
   progressOutputSchema,
   publicOfferOutputSchema,
   productsCreateOutputSchema,
@@ -285,6 +286,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.productsAccessItems.path,
       productsAccessItemsOutputSchema,
       input,
+      signal,
+    ),
+  listProductAccessIssues: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productsAccessIssues.method,
+      API_ROUTES.productsAccessIssues.path,
+      productsAccessIssuesOutputSchema,
+      undefined,
       signal,
     ),
   listCourses: (signal?: AbortSignal) =>

@@ -224,6 +224,14 @@ export const devMagicLinks = pgTable('dev_magic_links', {
   createdAt: text('created_at').notNull(),
 });
 
+export const devEmails = pgTable('dev_emails', {
+  to: text('to').primaryKey(),
+  subject: text('subject').notNull(),
+  html: text('html').notNull(),
+  text: text('text').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const tenantDomains = pgTable(
   'tenant_domains',
   {

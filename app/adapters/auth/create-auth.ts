@@ -6,8 +6,8 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { eq } from 'drizzle-orm';
 
-import { normalizeEmail } from '@core/domain/index.js';
-import type { AuthPort } from '@core/server/index.js';
+import { magicLink as magicLinkTemplate, normalizeEmail } from '@core/domain/index.js';
+import type { AuthPort, EmailPort } from '@core/server/index.js';
 import type { Db } from '@adapters/db/client.js';
 import { devMagicLinks, user } from '@adapters/db/schema.js';
 
@@ -21,14 +21,23 @@ export interface AuthSettings {
   secureCookies: boolean;
   /** Dev-only: persist issued magic links into dev_magic_links (no mailer in the PoC). */
   exposeMagicLinks: boolean;
+  email: EmailPort;
+  defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
-export const createAuth = (db: Db, settings: AuthSettings) =>
-  betterAuth({
+interface MagicLinkDeliveryContext {
+  tenantName: string;
+  language: string;
+}
+
+export const createAuth = (db: Db, settings: AuthSettings) => {
+  const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
+
+  const auth = betterAuth({
     database: drizzleAdapter(db, { provider: 'pg' }),
     secret: settings.secret,
     baseURL: settings.baseUrl,
@@ -41,14 +50,24 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
       bearer(),
       magicLink({
         sendMagicLink: async ({ email, url, token }) => {
-          if (!settings.exposeMagicLinks) return;
-          await db
-            .insert(devMagicLinks)
-            .values({ email, url, token, createdAt: new Date().toISOString() })
-            .onConflictDoUpdate({
-              target: devMagicLinks.email,
-              set: { url, token, createdAt: new Date().toISOString() },
-            });
+          const normalizedEmail = normalizeEmail(email);
+          const context = deliveryContexts.get(normalizedEmail) ?? {
+            tenantName: settings.defaultTenantName,
+            language: 'pl',
+          };
+          deliveryContexts.delete(normalizedEmail);
+          const message = magicLinkTemplate(context.language, { tenantName: context.tenantName, url });
+          const sent = await settings.email.send({ to: normalizedEmail, ...message });
+          if (!sent.ok) throw new Error(sent.error.message);
+          if (settings.exposeMagicLinks) {
+            await db
+              .insert(devMagicLinks)
+              .values({ email: normalizedEmail, url, token, createdAt: new Date().toISOString() })
+              .onConflictDoUpdate({
+                target: devMagicLinks.email,
+                set: { url, token, createdAt: new Date().toISOString() },
+              });
+          }
         },
       }),
       passkey(),
@@ -63,6 +82,13 @@ export const createAuth = (db: Db, settings: AuthSettings) =>
         : { crossSubDomainCookies: { enabled: true, domain: `.${settings.baseDomain}` } }),
     },
   });
+  return {
+    ...auth,
+    setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
+      deliveryContexts.set(normalizeEmail(email), context);
+    },
+  };
+};
 
 export type Auth = ReturnType<typeof createAuth>;
 
@@ -112,9 +138,14 @@ export const createAuthPort = (auth: Auth, db: Db): AuthPort => ({
     if (!existingAfterConflict) throw new Error('User create/read failed after email conflict');
     return { userId: existingAfterConflict.id, created: false };
   },
-  requestMagicLink: async ({ email, callbackURL }) => {
+  requestMagicLink: async ({ email, callbackURL, tenantName, language }) => {
+    const normalizedEmail = normalizeEmail(email);
+    auth.setMagicLinkDeliveryContext(normalizedEmail, {
+      tenantName: tenantName ?? 'Together',
+      language: language ?? 'pl',
+    });
     await auth.api.signInMagicLink({
-      body: { email: normalizeEmail(email), callbackURL },
+      body: { email: normalizedEmail, callbackURL },
       headers: new Headers(),
     });
   },

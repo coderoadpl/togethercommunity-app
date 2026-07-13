@@ -43,6 +43,13 @@
       "when": 1783942718774,
       "tag": "0005_broad_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783946157633,
+      "tag": "0006_right_ezekiel_stane",
+      "breakpoints": true
     }
   ]
 }

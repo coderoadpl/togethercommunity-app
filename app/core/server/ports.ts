@@ -1,13 +1,16 @@
 import type {
+  AppError,
   Course,
   CourseLesson,
   CourseModule,
+  EmailMessage,
   Member,
   MemberCourseProgress,
   MemberWithProductIds,
   Membership,
   Product,
   ProductGrant,
+  Result,
   StaffRole,
   Tenant,
   TenantDomain,
@@ -94,6 +97,10 @@ export interface PurchaseRepository {
   }): Promise<{ member: Member; grantCreated: boolean }>;
 }
 
+export interface EmailPort {
+  send(message: { to: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
+}
+
 /** Dev-only sink so tests and the CLI can read magic links without a mailer. */
 export interface DevMagicLink {
   email: string;
@@ -103,6 +110,18 @@ export interface DevMagicLink {
 
 export interface DevMagicLinkReader {
   findByEmail(email: string): Promise<DevMagicLink | null>;
+}
+
+export interface DevEmail {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface DevEmailReader {
+  findByRecipient(to: string): Promise<DevEmail | null>;
 }
 
 export interface TenantDomainRepository {
@@ -143,8 +162,13 @@ export interface AuthPort {
   getAuthenticatedUser(requestHeaders: Headers): Promise<AuthenticatedUser | null>;
   /** Find-or-create a passwordless provider user for this email. Idempotent. */
   ensureUser(email: string): Promise<{ userId: string; created: boolean }>;
-  /** Trigger a magic-link email (dev: routed to the DevMagicLink sink). */
-  requestMagicLink(input: { email: string; callbackURL: string }): Promise<void>;
+  /** Trigger a magic-link email through the configured EmailPort. */
+  requestMagicLink(input: {
+    email: string;
+    callbackURL: string;
+    tenantName?: string;
+    language?: string;
+  }): Promise<void>;
 }
 
 export interface HealthPort {

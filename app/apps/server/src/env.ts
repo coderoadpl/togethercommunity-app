@@ -25,6 +25,8 @@ const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    EMAIL_PROVIDER: z.enum(['ses', 'dev']).default('dev'),
+    EMAIL_FROM: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     WEB_DIST_DIR: z.string().default('dist/web'),
@@ -51,6 +53,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['AUTH_DEV_EXPOSE_MAGIC_LINKS'],
         message: 'AUTH_DEV_EXPOSE_MAGIC_LINKS cannot be enabled in production',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'ses' && !env.EMAIL_FROM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_FROM'],
+        message: 'EMAIL_FROM must be set when EMAIL_PROVIDER=ses',
       });
     }
   });

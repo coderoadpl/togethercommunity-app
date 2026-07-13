@@ -6,6 +6,9 @@ const coreClientTestExternal = 'node_modules/(@tanstack/query-core|zod|vitest)(/
 const coreServerTestExternal = 'node_modules/vitest(/|$)';
 const adapterDbExternal = 'node_modules/(@neondatabase/serverless|drizzle-orm|pg)(/|$)';
 const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
+const adapterEmailExternal = 'node_modules/@aws-sdk/client-ses(/|$)';
+const adapterEmailTestExternal = 'node_modules/(@aws-sdk/client-ses|vitest)(/|$)';
+const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appServerExternal =
   'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
 const webExternal =
@@ -75,8 +78,14 @@ module.exports = {
     {
       name: 'core-domain-external-allowlist',
       severity: 'error',
-      from: { path: '^core/domain' },
+      from: { path: '^core/domain', pathNot: '\\.test\\.tsx?$' },
       to: { path: external, pathNot: coreDomainExternal },
+    },
+    {
+      name: 'core-domain-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/domain/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: coreDomainTestExternal },
     },
     {
       name: 'core-contract-external-allowlist',
@@ -119,6 +128,18 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/auth' },
       to: { path: external, pathNot: adapterAuthExternal },
+    },
+    {
+      name: 'adapter-email-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/email', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterEmailExternal },
+    },
+    {
+      name: 'adapter-email-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/email/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterEmailTestExternal },
     },
     {
       name: 'app-server-external-allowlist',

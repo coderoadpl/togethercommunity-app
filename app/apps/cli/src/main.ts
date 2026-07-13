@@ -742,6 +742,18 @@ dev
   );
 
 dev
+  .command('email')
+  .description('Show the latest dev-stored email for a recipient')
+  .requiredOption('--to <email>')
+  .action(
+    withInput(z.tuple([z.object({ to: z.string().email() })]), async (ctx, [options]) => {
+      emit(await ctx.api.devEmail(options.to), ctx.json, (data) =>
+        data.email ? data.email.text : 'no email stored for this recipient',
+      );
+    }),
+  );
+
+dev
   .command('grant')
   .description('Grant a product to a member with an optional time box (dev endpoint)')
   .requiredOption('--email <email>')

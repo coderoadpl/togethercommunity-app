@@ -113,8 +113,8 @@ const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response 
   return new Response(JSON.stringify(envelope), { status, headers });
 };
 
-const issueMagicLink = async (deps: AppDeps, email: string) => {
-  await deps.authPort.requestMagicLink({ email, callbackURL: deps.appBaseUrl });
+const issueMagicLink = async (deps: AppDeps, email: string, tenantName: string) => {
+  await deps.authPort.requestMagicLink({ email, callbackURL: deps.appBaseUrl, tenantName });
   return deps.devMagicLinks.findByEmail(email);
 };
 
@@ -234,9 +234,8 @@ export const buildApp = (deps: AppDeps) => {
       const result = await simulatePurchase(tenant.value.tenant.id, parsed.data.email, parsed.data.productId, deps);
       if (!result.ok) return respond(result);
 
-      const magicLink = deps.devEndpoints.exposeMagicLinks
-        ? await issueMagicLink(deps, parsed.data.email)
-        : null;
+      const issuedMagicLink = await issueMagicLink(deps, parsed.data.email, tenant.value.tenant.name);
+      const magicLink = deps.devEndpoints.exposeMagicLinks ? issuedMagicLink : null;
       return respond(ok({ ...result.value, magicLink }));
     });
 
@@ -244,6 +243,12 @@ export const buildApp = (deps: AppDeps) => {
       const email = c.req.query('email');
       if (!email) return respond(err(validation('Missing "email" query parameter')));
       return respond(ok({ magicLink: await deps.devMagicLinks.findByEmail(email) }));
+    });
+
+    app.get(API_PATHS.devEmail, async (c) => {
+      const to = c.req.query('to');
+      if (!to) return respond(err(validation('Missing "to" query parameter')));
+      return respond(ok({ email: await deps.devEmails.findByRecipient(to) }));
     });
 
     app.post(API_PATHS.devGrant, async (c) => {

@@ -136,6 +136,18 @@ export const devMagicLinkOutputSchema = z.object({
   magicLink: magicLinkSchema.nullable(),
 });
 
+export const devEmailSchema = z.object({
+  to: z.string(),
+  subject: z.string(),
+  html: z.string(),
+  text: z.string(),
+  createdAt: z.string(),
+});
+
+export const devEmailOutputSchema = z.object({
+  email: devEmailSchema.nullable(),
+});
+
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
   name: z.string(),
@@ -290,6 +302,7 @@ export const API_ROUTES = {
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
   devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
+  devEmail: { method: 'GET', path: '/api/dev/email' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -326,6 +339,7 @@ export const API_PATHS = {
   memberRemove: API_ROUTES.memberRemove.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
   devMagicLink: API_ROUTES.devMagicLink.path,
+  devEmail: API_ROUTES.devEmail.path,
 } as const;
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */

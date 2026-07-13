@@ -82,6 +82,12 @@ const deps = (input: {
         grantCreated: true,
       }),
     },
+    email: {
+      send: async () => ({ ok: true, value: { messageId: null } }),
+    },
+    devEmails: {
+      findByRecipient: async () => null,
+    },
     devMagicLinks: {
       findByEmail: async () => null,
     },

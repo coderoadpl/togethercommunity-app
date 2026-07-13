@@ -5,6 +5,7 @@ import {
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
+  createDevEmailReader,
   createDevMagicLinkReader,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -17,12 +18,16 @@ import {
   createTenantRepository,
 } from '@adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
+import { createDevEmailPort } from '@adapters/email/dev.js';
+import { createSesEmailPort } from '@adapters/email/ses.js';
 import type {
   AuthPort,
   Clock,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  DevEmailReader,
+  EmailPort,
   DevMagicLinkReader,
   HealthPort,
   IdGenerator,
@@ -58,6 +63,8 @@ export interface AppDeps {
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   purchases: PurchaseRepository;
+  email: EmailPort;
+  devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
@@ -78,6 +85,10 @@ export interface AppDeps {
 export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+  const email =
+    env.EMAIL_PROVIDER === 'ses'
+      ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
+      : createDevEmailPort(db);
 
   const google =
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
@@ -99,6 +110,8 @@ export const createDeps = (env: Env): AppDeps => {
     baseDomain: env.APP_BASE_DOMAIN,
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
+    email,
+    defaultTenantName: 'Together',
     google,
     trustedOrigins: async () => {
       const domains = await tenantDomains.listVerifiedDomains();
@@ -121,6 +134,8 @@ export const createDeps = (env: Env): AppDeps => {
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
     purchases: createPurchaseRepository(db),
+    email,
+    devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
     tenants: createTenantRepository(db),

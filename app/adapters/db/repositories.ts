@@ -22,6 +22,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  DevEmailReader,
   DevMagicLinkReader,
   HealthPort,
   MemberRepository,
@@ -39,6 +40,7 @@ import {
   courseLessons,
   courseModules,
   courses,
+  devEmails,
   devMagicLinks,
   memberCourseProgress,
   members,
@@ -582,6 +584,13 @@ export const createDevMagicLinkReader = (db: Db): DevMagicLinkReader => ({
       .from(devMagicLinks)
       .where(eq(devMagicLinks.email, email))
       .limit(1);
+    return rows[0] ?? null;
+  },
+});
+
+export const createDevEmailReader = (db: Db): DevEmailReader => ({
+  findByRecipient: async (to) => {
+    const rows = await db.select().from(devEmails).where(eq(devEmails.to, to)).limit(1);
     return rows[0] ?? null;
   },
 });

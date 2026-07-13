@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 
 import { createAuth } from '@adapters/auth/create-auth.js';
+import { createDevEmailPort } from '@adapters/email/dev.js';
 
 import { createDb } from './client.js';
 import { members, products, tenantAdmins, tenantDomains, tenants, user } from './schema.js';
@@ -18,6 +19,8 @@ const auth = createAuth(db, {
   trustedOrigins: () => ['http://localhost:48730'],
   secureCookies: false,
   exposeMagicLinks: false,
+  email: createDevEmailPort(db),
+  defaultTenantName: 'Together',
   google: null,
 });
 

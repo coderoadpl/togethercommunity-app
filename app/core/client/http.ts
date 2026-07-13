@@ -8,6 +8,7 @@ import {
   courseStructureOutputSchema,
   coursesListOutputSchema,
   devGrantOutputSchema,
+  devEmailOutputSchema,
   devMagicLinkOutputSchema,
   healthOutputSchema,
   lessonOutputSchema,
@@ -224,6 +225,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.devMagicLink.method,
       `${API_ROUTES.devMagicLink.path}?email=${encodeURIComponent(email)}`,
       devMagicLinkOutputSchema,
+      undefined,
+      signal,
+    ),
+  devEmail: (to: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.devEmail.method,
+      `${API_ROUTES.devEmail.path}?to=${encodeURIComponent(to)}`,
+      devEmailOutputSchema,
       undefined,
       signal,
     ),

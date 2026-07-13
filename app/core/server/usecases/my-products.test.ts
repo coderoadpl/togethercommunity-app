@@ -24,12 +24,15 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   published: true,
+  accessItems: [],
+  legacyId: null,
   createdAt: '2026-07-12T00:00:00.000Z',
 };
 
 const grants = (products: Product[]): ProductGrantRepository => ({
   findGrant: async () => null,
   createGrant: async () => true,
+  listActiveForMember: async () => [],
   listGrantedProducts: async () => products,
 });
 

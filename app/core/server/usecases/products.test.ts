@@ -28,6 +28,12 @@ const fakeRepo = (initial: Product[] = []) => {
     create: async (_tenantId, product) => {
       store.push(product);
     },
+    updateAccessItems: async (tenantId, id, accessItems) => {
+      const product = store.find((p) => p.tenantId === tenantId && p.id === id);
+      if (!product) return null;
+      product.accessItems = accessItems;
+      return product;
+    },
     setPublished: async (tenantId, id, published) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
       if (product) product.published = published;
@@ -59,6 +65,8 @@ const draft = (id: string, tenantId: string, published = false): Product => ({
   priceCents: 1000,
   currency: 'PLN',
   published,
+  accessItems: [],
+  legacyId: null,
   createdAt: '2026-07-01T00:00:00.000Z',
 });
 

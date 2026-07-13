@@ -21,6 +21,8 @@ const product = (input: {
   priceCents: 1000,
   currency: 'PLN',
   published: input.published,
+  accessItems: [],
+  legacyId: null,
   createdAt: '2026-07-12T00:00:00.000Z',
 });
 
@@ -61,6 +63,7 @@ const deps = (input: {
     grants: {
       findGrant: async () => null,
       createGrant: async () => true,
+      listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
     },
     purchases: {
@@ -89,8 +92,44 @@ const deps = (input: {
       findById: async (tenantId, id) =>
         products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
       create: async () => undefined,
+      updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,
+    },
+    courses: {
+      list: async () => [],
+      findById: async () => null,
+      findByIds: async () => [],
+      create: async () => undefined,
+      update: async () => null,
+      delete: async () => false,
+    },
+    modules: {
+      list: async () => [],
+      findById: async () => null,
+      findByIds: async () => [],
+      create: async () => undefined,
+      update: async () => null,
+      delete: async () => false,
+    },
+    lessons: {
+      list: async () => [],
+      findById: async () => null,
+      findByIds: async () => [],
+      create: async () => undefined,
+      update: async () => null,
+      delete: async () => false,
+    },
+    progress: {
+      findOrCreate: async (_tenantId, input) => ({
+        id: input.id,
+        tenantId: _tenantId,
+        memberId: input.memberId,
+        courseId: input.courseId,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      }),
+      update: async (_tenantId, progress) => progress,
     },
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,

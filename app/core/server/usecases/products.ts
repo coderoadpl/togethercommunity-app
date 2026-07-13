@@ -55,6 +55,8 @@ export const createProduct = async (
     priceCents: parsed.data.priceCents,
     currency: parsed.data.currency,
     published: false,
+    accessItems: parsed.data.accessItems,
+    legacyId: null,
     createdAt: deps.clock.nowIso(),
   };
   await deps.products.create(tenant.value, product);

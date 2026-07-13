@@ -18,6 +18,8 @@ const initialProducts: Product[] = [
     priceCents: 2500,
     currency: 'PLN',
     published: false,
+    accessItems: [],
+    legacyId: null,
     createdAt: '2026-07-12T10:00:00.000Z',
   },
 ];
@@ -36,6 +38,8 @@ const renderProductsPanel = () => {
         priceCents: 4900,
         currency: 'EUR',
         published: false,
+        accessItems: [],
+        legacyId: null,
         createdAt: '2026-07-12T11:00:00.000Z',
       };
       products = [...products, product];

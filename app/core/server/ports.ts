@@ -1,5 +1,9 @@
 import type {
+  Course,
+  CourseLesson,
+  CourseModule,
   Member,
+  MemberCourseProgress,
   MemberWithProductIds,
   Membership,
   Product,
@@ -19,8 +23,44 @@ export interface ProductRepository {
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
   create(tenantId: string, product: Product): Promise<void>;
+  updateAccessItems(tenantId: string, id: string, accessItems: Product['accessItems']): Promise<Product | null>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
+}
+
+export interface CourseRepository {
+  list(tenantId: string): Promise<Course[]>;
+  findById(tenantId: string, id: string): Promise<Course | null>;
+  findByIds(tenantId: string, ids: string[]): Promise<Course[]>;
+  create(tenantId: string, course: Course): Promise<void>;
+  update(tenantId: string, course: Course): Promise<Course | null>;
+  delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface CourseModuleRepository {
+  list(tenantId: string): Promise<CourseModule[]>;
+  findById(tenantId: string, id: string): Promise<CourseModule | null>;
+  findByIds(tenantId: string, ids: string[]): Promise<CourseModule[]>;
+  create(tenantId: string, module: CourseModule): Promise<void>;
+  update(tenantId: string, module: CourseModule): Promise<CourseModule | null>;
+  delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface CourseLessonRepository {
+  list(tenantId: string): Promise<CourseLesson[]>;
+  findById(tenantId: string, id: string): Promise<CourseLesson | null>;
+  findByIds(tenantId: string, ids: string[]): Promise<CourseLesson[]>;
+  create(tenantId: string, lesson: CourseLesson): Promise<void>;
+  update(tenantId: string, lesson: CourseLesson): Promise<CourseLesson | null>;
+  delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface MemberCourseProgressRepository {
+  findOrCreate(
+    tenantId: string,
+    input: { id: string; memberId: string; courseId: string; now: string },
+  ): Promise<MemberCourseProgress>;
+  update(tenantId: string, progress: MemberCourseProgress): Promise<MemberCourseProgress | null>;
 }
 
 export interface MemberRepository {
@@ -34,6 +74,7 @@ export interface MemberRepository {
 export interface ProductGrantRepository {
   findGrant(tenantId: string, memberId: string, productId: string): Promise<ProductGrant | null>;
   createGrant(tenantId: string, grant: ProductGrant): Promise<boolean>;
+  listActiveForMember(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
   listGrantedProducts(tenantId: string, memberId: string): Promise<Product[]>;
 }
 

@@ -20,6 +20,8 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   priceCents: 1000,
   currency: 'PLN',
   published,
+  accessItems: [],
+  legacyId: null,
   createdAt: '2026-07-12T00:00:00.000Z',
 });
 
@@ -30,6 +32,7 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
   findById: async (tenantId, id) =>
     initial.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
   create: async () => undefined,
+  updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,
 });

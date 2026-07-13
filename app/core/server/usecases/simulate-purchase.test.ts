@@ -13,6 +13,8 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   priceCents: 1000,
   currency: 'PLN',
   published,
+  accessItems: [],
+  legacyId: null,
   createdAt: '2026-07-12T00:00:00.000Z',
 });
 
@@ -23,6 +25,7 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
   findById: async (tenantId, id) =>
     initial.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
   create: async () => undefined,
+  updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,
 });
@@ -60,6 +63,9 @@ const fakePurchases = () => {
         memberId: member.id,
         productId: input.productId,
         source: 'simulated',
+        startsAt: input.createdAt,
+        expiresAt: null,
+        legacyId: null,
         createdAt: input.createdAt,
       });
       return { member, grantCreated: true };

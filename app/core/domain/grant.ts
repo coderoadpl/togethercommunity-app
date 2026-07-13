@@ -10,7 +10,10 @@ export const productGrantSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
   source: grantSourceSchema,
-  createdAt: z.string(),
+  startsAt: z.string().datetime(),
+  expiresAt: z.string().datetime().nullable(),
+  legacyId: z.string().nullable(),
+  createdAt: z.string().datetime(),
 });
 
 export type ProductGrant = z.infer<typeof productGrantSchema>;

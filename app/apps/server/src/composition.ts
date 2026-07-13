@@ -2,8 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
 import {
+  createCourseLessonRepository,
+  createCourseModuleRepository,
+  createCourseRepository,
   createDevMagicLinkReader,
   createHealthPort,
+  createMemberCourseProgressRepository,
   createMemberRepository,
   createPurchaseRepository,
   createProductGrantRepository,
@@ -16,9 +20,13 @@ import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-aut
 import type {
   AuthPort,
   Clock,
+  CourseLessonRepository,
+  CourseModuleRepository,
+  CourseRepository,
   DevMagicLinkReader,
   HealthPort,
   IdGenerator,
+  MemberCourseProgressRepository,
   MemberRepository,
   PurchaseRepository,
   ProductGrantRepository,
@@ -43,7 +51,11 @@ export interface AppDeps {
   auth: Pick<Auth, 'handler'>;
   authPort: AuthPort;
   products: ProductRepository;
+  courses: CourseRepository;
+  modules: CourseModuleRepository;
+  lessons: CourseLessonRepository;
   members: MemberRepository;
+  progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   purchases: PurchaseRepository;
   devMagicLinks: DevMagicLinkReader;
@@ -102,7 +114,11 @@ export const createDeps = (env: Env): AppDeps => {
     auth,
     authPort: createAuthPort(auth, db),
     products: createProductRepository(db),
+    courses: createCourseRepository(db),
+    modules: createCourseModuleRepository(db),
+    lessons: createCourseLessonRepository(db),
     members: createMemberRepository(db),
+    progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
     purchases: createPurchaseRepository(db),
     devMagicLinks: createDevMagicLinkReader(db),

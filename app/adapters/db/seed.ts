@@ -124,6 +124,7 @@ await db
       priceCents: 19900,
       currency: 'PLN',
       published: true,
+      accessItems: [],
       createdAt: nowIso,
     },
     {
@@ -134,6 +135,7 @@ await db
       priceCents: 49900,
       currency: 'PLN',
       published: false,
+      accessItems: [],
       createdAt: nowIso,
     },
     {
@@ -144,6 +146,7 @@ await db
       priceCents: 9900,
       currency: 'PLN',
       published: true,
+      accessItems: [],
       createdAt: nowIso,
     },
   ])

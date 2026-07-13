@@ -202,6 +202,7 @@ export default tseslint.config(
         { type: 'web-lib', pattern: 'apps/web/src/lib/**', mode: 'full' },
         { type: 'web-test', pattern: 'apps/web/src/test/**', mode: 'full' },
         { type: 'web-theme', pattern: 'apps/web/src/theme*', mode: 'full' },
+        { type: 'web-i18n', pattern: 'apps/web/src/i18n/**', mode: 'full' },
         { type: 'app-web', pattern: 'apps/web/**', mode: 'full' },
         { type: 'app-cli', pattern: 'apps/cli/**', mode: 'full' },
         { type: 'config', pattern: '*.config.ts', mode: 'full' },
@@ -270,6 +271,7 @@ export default tseslint.config(
                 'web-ui',
                 'web-lib',
                 'web-theme',
+                'web-i18n',
                 'app-web',
                 'core-domain',
                 'core-contract',
@@ -293,6 +295,7 @@ export default tseslint.config(
                 'web-ui',
                 'web-lib',
                 'web-theme',
+                'web-i18n',
                 'web-test',
                 'core-domain',
                 'core-contract',
@@ -305,7 +308,7 @@ export default tseslint.config(
             },
             {
               from: ['web-ui'],
-              allow: ['web-ui', 'web-lib', 'web-theme'],
+              allow: ['web-ui', 'web-lib', 'web-theme', 'web-i18n'],
             },
             {
               from: ['web-lib'],
@@ -313,7 +316,11 @@ export default tseslint.config(
             },
             {
               from: ['web-theme'],
-              allow: ['web-theme'],
+              allow: ['web-theme', 'core-domain'],
+            },
+            {
+              from: ['web-i18n'],
+              allow: ['web-i18n', 'web-theme', 'core-domain'],
             },
             {
               from: ['app-cli'],
@@ -426,6 +433,10 @@ export default tseslint.config(
             {
               from: ['web-theme'],
               allow: ['@mui/material', 'react'],
+            },
+            {
+              from: ['web-i18n'],
+              allow: ['react', 'vitest'],
             },
             {
               from: ['app-web'],

@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
-export const transactionalLanguageSchema = z.enum(['pl', 'en']);
+import { languageSchema, type Language } from './language.js';
 
-export type TransactionalLanguage = z.output<typeof transactionalLanguageSchema>;
+export const transactionalLanguageSchema = languageSchema;
+
+export type TransactionalLanguage = Language;
 
 export const emailMessageSchema = z.object({
   subject: z.string().min(1),

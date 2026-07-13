@@ -17,10 +17,12 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const CheckoutPage = ({ productId }: { productId: string }) => {
+  const t = useTranslations();
   const offer = useQuery(actions.publicOffer);
   const [email, setEmail] = useState('');
   const [purchaseComplete, setPurchaseComplete] = useState(false);
@@ -43,7 +45,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
         <Typography variant="h2" component="p">
-          loading checkout…
+          {t.checkout.loading}
         </Typography>
       </Container>
     );
@@ -69,9 +71,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>
             {offer.data.tenant.name}
           </Eyebrow>
-          <CardTitle variant="h1">This product is not available</CardTitle>
+          <CardTitle variant="h1">{t.checkout.unavailableTitle}</CardTitle>
           <Typography variant="body1" sx={{ mt: '1rem' }}>
-            The checkout link may be old, or the product may still be a draft.
+            {t.checkout.unavailableBody}
           </Typography>
         </Paper>
       </Box>
@@ -86,16 +88,14 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             Together
           </Wordmark>
           <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>
-            payment simulated
+            {t.checkout.paymentSimulatedEyebrow}
           </Eyebrow>
           <Stack useFlexGap spacing="1rem">
-            <CardTitle variant="h1">You have access</CardTitle>
+            <CardTitle variant="h1">{t.checkout.accessGrantedTitle}</CardTitle>
             <Typography variant="body1">{product.title}</Typography>
-            {magicLinkUrl ? <Link href={magicLinkUrl}>Open your course</Link> : null}
+            {magicLinkUrl ? <Link href={magicLinkUrl}>{t.checkout.openCourse}</Link> : null}
             <FinePrint variant="caption" component="p">
-              {magicLinkUrl
-                ? 'In production, Together would send this link by email.'
-                : 'The purchase was simulated, but no dev magic link is exposed.'}
+              {magicLinkUrl ? t.checkout.productionNote : t.checkout.noMagicLinkNote}
             </FinePrint>
           </Stack>
         </Paper>
@@ -115,7 +115,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           Together
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>
-          checkout · {offer.data.tenant.name}
+          {t.checkout.eyebrow({ tenant: offer.data.tenant.name })}
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{product.title}</CardTitle>
@@ -124,7 +124,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue>
           </Typography>
           <FormControl fullWidth>
-            <FormLabel htmlFor="checkout-email">email</FormLabel>
+            <FormLabel htmlFor="checkout-email">{t.checkout.emailLabel}</FormLabel>
             <OutlinedInput
               id="checkout-email"
               type="email"
@@ -140,7 +140,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             color="secondary"
             disabled={simulatePurchase.isPending}
           >
-            {simulatePurchase.isPending ? 'simulating payment…' : 'Simulate payment (dev)'}
+            {simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.submitIdle}
           </Button>
           {simulatePurchase.isError ? (
             <Alert>

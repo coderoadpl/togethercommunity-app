@@ -46,11 +46,11 @@ describe('CheckoutPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('email'), 'buyer@together.dev');
-    await userEvent.click(screen.getByRole('button', { name: 'Simulate payment (dev)' }));
+    await userEvent.type(screen.getByLabelText('e-mail'), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: 'Symuluj płatność (dev)' }));
 
-    const link = await screen.findByRole('link', { name: 'Open your course' });
+    const link = await screen.findByRole('link', { name: 'Otwórz swój kurs' });
     expect(link).toHaveAttribute('href', 'https://acme.test/magic');
-    expect(screen.getByText(/production/i)).toBeInTheDocument();
+    expect(screen.getByText(/produkcyjnej/i)).toBeInTheDocument();
   });
 });

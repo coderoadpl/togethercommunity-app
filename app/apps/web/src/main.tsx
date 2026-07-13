@@ -40,7 +40,9 @@ import {
 } from '@tanstack/react-router';
 
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
+import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
 import { ThemeSwitcher } from './components/ui/ThemeSwitcher.js';
+import { LanguageProvider } from './i18n/index.js';
 import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
@@ -68,6 +70,7 @@ const ReactQueryDevtools = lazy(() =>
 const rootRoute = createRootRoute({
   component: () => (
     <>
+      <LanguageSwitcher />
       <ThemeSwitcher />
       <Outlet />
     </>
@@ -148,18 +151,20 @@ if (!container) throw new Error('Missing #root element');
 createRoot(container).render(
   <StrictMode>
     <ThemeModeProvider>
-      <CssBaseline />
-      <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
-        <QueryClientProvider client={queryClient}>
-          <RefreshSnackbar />
-          <RouterProvider router={router} />
-          {import.meta.env.DEV ? (
-            <Suspense fallback={null}>
-              <ReactQueryDevtools />
-            </Suspense>
-          ) : null}
-        </QueryClientProvider>
-      </ErrorBoundary>
+      <LanguageProvider>
+        <CssBaseline />
+        <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
+          <QueryClientProvider client={queryClient}>
+            <RefreshSnackbar />
+            <RouterProvider router={router} />
+            {import.meta.env.DEV ? (
+              <Suspense fallback={null}>
+                <ReactQueryDevtools />
+              </Suspense>
+            ) : null}
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </LanguageProvider>
     </ThemeModeProvider>
   </StrictMode>,
 );

@@ -295,6 +295,28 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
 });
 
 export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgressRepository => ({
+  findByMemberAndCourse: async (tenantId, input) => {
+    const rows = await db
+      .select()
+      .from(memberCourseProgress)
+      .where(
+        and(
+          eq(memberCourseProgress.tenantId, tenantId),
+          eq(memberCourseProgress.memberId, input.memberId),
+          eq(memberCourseProgress.courseId, input.courseId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? parseProgress({
+          ...row,
+          lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+          lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+          lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+        })
+      : null;
+  },
   findOrCreate: async (tenantId, input) => {
     await db
       .insert(memberCourseProgress)

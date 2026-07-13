@@ -1,0 +1,519 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  computeCourseModuleName,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
+  type Identity,
+  type MemberCourseProgress,
+  type Product,
+  type ProductGrant,
+} from '@core/domain/index.js';
+
+import type { Ctx } from '../context.js';
+import type {
+  Clock,
+  CourseLessonRepository,
+  CourseModuleRepository,
+  CourseRepository,
+  MemberCourseProgressRepository,
+  ProductGrantRepository,
+} from '../ports.js';
+import {
+  getCourseStructureWithAccess,
+  getNextLesson,
+  isLessonAccessible,
+  listMyCourses,
+  resolveMemberEntitlements,
+  type CourseAccessDeps,
+} from './entitlements.js';
+
+const NOW = '2026-06-01T00:00:00.000Z';
+
+const nn = <T>(value: T | undefined): T => {
+  if (value === undefined) throw new Error('unexpected undefined');
+  return value;
+};
+
+const identity = (over: Partial<Identity>): Identity => ({
+  userId: 'u1',
+  email: 'member@together.dev',
+  name: 'Member',
+  tenantId: 't1',
+  tenantSlug: 'acme',
+  tenantName: 'Acme',
+  staffRole: null,
+  memberId: 'mem1',
+  ...over,
+});
+
+const ctx = (over: Partial<Identity>): Ctx => ({ identity: identity(over) });
+
+const lesson = (id: string): CourseLesson => ({
+  id,
+  tenantId: 't1',
+  name: `Lesson ${id}`,
+  contents: [],
+  legacyId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+});
+
+const module = (
+  id: string,
+  createdAt: string,
+  chapters: CourseModule['chapters'],
+  courseIds: string[],
+): CourseModule => ({
+  id,
+  tenantId: 't1',
+  courseIds,
+  title: `Module ${id}`,
+  prefix: null,
+  name: computeCourseModuleName(null, `Module ${id}`),
+  chapters,
+  legacyId: null,
+  createdAt,
+});
+
+const course = (id: string): Course => ({
+  id,
+  tenantId: 't1',
+  name: `Course ${id}`,
+  description: '',
+  imageUrl: null,
+  legacyId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+});
+
+const product = (id: string, accessItems: Product['accessItems']): Product => ({
+  id,
+  tenantId: 't1',
+  title: `Product ${id}`,
+  description: '',
+  priceCents: 0,
+  currency: 'PLN',
+  published: true,
+  accessItems,
+  legacyId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+});
+
+const grant = (
+  id: string,
+  productId: string,
+  startsAt: string,
+  expiresAt: string | null,
+): ProductGrant => ({
+  id,
+  tenantId: 't1',
+  memberId: 'mem1',
+  productId,
+  source: 'manual',
+  startsAt,
+  expiresAt,
+  legacyId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+});
+
+// Course c1: module m1 (ch1:[l1,l2], ch2:[l3]) then module m2 (ch3:[l4,l5], ch4:[l6]).
+const m1 = module(
+  'm1',
+  '2026-01-01T00:00:00.000Z',
+  [
+    { id: 'ch1', name: 'Chapter 1', contents: [
+      { id: 'c-l1', name: 'C L1', lessonId: 'l1' },
+      { id: 'c-l2', name: 'C L2', lessonId: 'l2' },
+    ] },
+    { id: 'ch2', name: 'Chapter 2', contents: [{ id: 'c-l3', name: 'C L3', lessonId: 'l3' }] },
+  ],
+  ['c1'],
+);
+const m2 = module(
+  'm2',
+  '2026-02-01T00:00:00.000Z',
+  [
+    { id: 'ch3', name: 'Chapter 3', contents: [
+      { id: 'c-l4', name: 'C L4', lessonId: 'l4' },
+      { id: 'c-l5', name: 'C L5', lessonId: 'l5' },
+    ] },
+    { id: 'ch4', name: 'Chapter 4', contents: [{ id: 'c-l6', name: 'C L6', lessonId: 'l6' }] },
+  ],
+  ['c1'],
+);
+
+const c1 = course('c1');
+const c2 = course('c2');
+const lessons = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6'].map(lesson);
+
+const pCourse = product('p-course', [
+  { courseId: 'c1', courseLevelAccess: true, moduleIds: [], lessonIds: [] },
+]);
+const pModule = product('p-module', [
+  { courseId: 'c1', courseLevelAccess: false, moduleIds: ['m1'], lessonIds: [] },
+]);
+const pLesson = product('p-lesson', [
+  { courseId: 'c1', courseLevelAccess: false, moduleIds: [], lessonIds: ['l4'] },
+]);
+
+const clock: Clock = { nowIso: () => NOW };
+
+const coursesRepo = (rows: Course[]): CourseRepository => ({
+  list: async () => rows,
+  findById: async (_t, id) => rows.find((r) => r.id === id) ?? null,
+  findByIds: async (_t, ids) => rows.filter((r) => ids.includes(r.id)),
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+});
+
+const modulesRepo = (rows: CourseModule[]): CourseModuleRepository => ({
+  list: async () => rows,
+  findById: async (_t, id) => rows.find((r) => r.id === id) ?? null,
+  findByIds: async (_t, ids) => rows.filter((r) => ids.includes(r.id)),
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+});
+
+const lessonsRepo = (rows: CourseLesson[]): CourseLessonRepository => ({
+  list: async () => rows,
+  findById: async (_t, id) => rows.find((r) => r.id === id) ?? null,
+  findByIds: async (_t, ids) => rows.filter((r) => ids.includes(r.id)),
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+});
+
+const grantsRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRepository => ({
+  findGrant: async () => null,
+  createGrant: async () => true,
+  listActiveForMember: async (tenantId, memberId, now) =>
+    grants.filter(
+      (g) =>
+        g.tenantId === tenantId &&
+        g.memberId === memberId &&
+        g.startsAt <= now &&
+        (g.expiresAt === null || g.expiresAt >= now),
+    ),
+  listGrantedProducts: async (tenantId, memberId) => {
+    const ids = new Set(
+      grants.filter((g) => g.tenantId === tenantId && g.memberId === memberId).map((g) => g.productId),
+    );
+    return products.filter((p) => p.tenantId === tenantId && ids.has(p.id));
+  },
+});
+
+const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressRepository => ({
+  findByMemberAndCourse: async (tenantId, input) =>
+    rows.find(
+      (r) => r.tenantId === tenantId && r.memberId === input.memberId && r.courseId === input.courseId,
+    ) ?? null,
+  findOrCreate: async (tenantId, input) => ({
+    id: input.id,
+    tenantId,
+    memberId: input.memberId,
+    courseId: input.courseId,
+    completedLessonIds: [],
+    updatedAt: input.now,
+  }),
+  update: async (_t, progress) => progress,
+});
+
+const deps = (
+  grants: ProductGrant[],
+  products: Product[],
+  courses: Course[] = [c1],
+  modules: CourseModule[] = [m1, m2],
+  progress: MemberCourseProgress[] = [],
+): CourseAccessDeps => ({
+  grants: grantsRepo(grants, products),
+  courses: coursesRepo(courses),
+  modules: modulesRepo(modules),
+  lessons: lessonsRepo(lessons),
+  progress: progressRepo(progress),
+  clock,
+});
+
+describe('resolveMemberEntitlements', () => {
+  it('aggregates access items from active grants', async () => {
+    const result = await resolveMemberEntitlements(
+      ctx({}),
+      deps([grant('g1', 'p-course', '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z')], [pCourse]),
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: [{ courseId: 'c1', courseLevelAccess: true, moduleIds: [], lessonIds: [] }],
+    });
+  });
+
+  it('ignores expired grants', async () => {
+    const result = await resolveMemberEntitlements(
+      ctx({}),
+      deps([grant('g1', 'p-course', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')], [pCourse]),
+    );
+    expect(result).toEqual({ ok: true, value: [] });
+  });
+
+  it('ignores future-dated grants', async () => {
+    const result = await resolveMemberEntitlements(
+      ctx({}),
+      deps([grant('g1', 'p-course', '2026-12-01T00:00:00.000Z', null)], [pCourse]),
+    );
+    expect(result).toEqual({ ok: true, value: [] });
+  });
+
+  it('honours perpetual grants (null expiresAt)', async () => {
+    const result = await resolveMemberEntitlements(
+      ctx({}),
+      deps([grant('g1', 'p-module', '2026-01-01T00:00:00.000Z', null)], [pModule]),
+    );
+    expect(result).toMatchObject({ ok: true, value: [{ moduleIds: ['m1'] }] });
+  });
+
+  it('forbids staff without a member row', async () => {
+    const result = await resolveMemberEntitlements(
+      ctx({ memberId: null, staffRole: 'owner' }),
+      deps([], []),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('requires a resolved tenant', async () => {
+    const result = await resolveMemberEntitlements(ctx({ tenantId: null }), deps([], []));
+    expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+  });
+});
+
+describe('isLessonAccessible — 3-tier semantics', () => {
+  const active = (productId: string): ProductGrant[] => [
+    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+  ];
+
+  it('course-level grant unlocks every lesson', async () => {
+    const d = deps(active('p-course'), [pCourse]);
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({ ok: true });
+    expect(await isLessonAccessible(ctx({}), 'l6', d)).toMatchObject({ ok: true });
+  });
+
+  it('module-level grant unlocks only that module', async () => {
+    const d = deps(active('p-module'), [pModule]);
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({ ok: true });
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('lesson-level grant unlocks only that lesson', async () => {
+    const d = deps(active('p-lesson'), [pLesson]);
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({ ok: true });
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('staff are always accessible without any grant', async () => {
+    const d = deps([], []);
+    expect(await isLessonAccessible(ctx({ staffRole: 'admin', memberId: null }), 'l1', d)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('a member with no grant is forbidden', async () => {
+    const d = deps([], []);
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('expired and future grants do not grant access', async () => {
+    const expired = deps(
+      [grant('g1', 'p-course', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')],
+      [pCourse],
+    );
+    const future = deps([grant('g1', 'p-course', '2026-12-01T00:00:00.000Z', null)], [pCourse]);
+    expect(await isLessonAccessible(ctx({}), 'l1', expired)).toMatchObject({ ok: false });
+    expect(await isLessonAccessible(ctx({}), 'l1', future)).toMatchObject({ ok: false });
+  });
+
+  it('unknown lesson is not found', async () => {
+    const d = deps(active('p-course'), [pCourse]);
+    expect(await isLessonAccessible(ctx({}), 'nope', d)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+
+  it('anonymous (no tenant) is tenant_not_found', async () => {
+    const d = deps([], []);
+    expect(await isLessonAccessible(ctx({ tenantId: null, memberId: null }), 'l1', d)).toMatchObject({
+      ok: false,
+      error: { code: 'tenant_not_found' },
+    });
+  });
+});
+
+describe('getCourseStructureWithAccess', () => {
+  const active = (productId: string): ProductGrant[] => [
+    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+  ];
+
+  it('always returns the full syllabus regardless of access', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], []));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.modules.map((m) => m.id)).toEqual(['m1', 'm2']);
+    const mod0 = nn(result.value.modules[0]);
+    expect(mod0.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2']);
+    const ch0 = nn(mod0.chapters[0]);
+    expect(ch0.lessons.map((l) => l.lessonId)).toEqual(['l1', 'l2']);
+    expect(nn(ch0.lessons[0]).name).toBe('Lesson l1');
+  });
+
+  it('marks everything not-accessible for a member with no grant', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], []));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.accessStatus).toBe('not-accessible');
+    expect(result.value.modules.every((m) => m.accessStatus === 'not-accessible')).toBe(true);
+  });
+
+  it('marks everything fully-accessible under a course-level grant', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps(active('p-course'), [pCourse]));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.accessStatus).toBe('fully-accessible');
+    expect(result.value.modules.every((m) => m.accessStatus === 'fully-accessible')).toBe(true);
+  });
+
+  it('module-level access makes the course partially-accessible', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps(active('p-module'), [pModule]));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.accessStatus).toBe('partially-accessible');
+    const modA = nn(result.value.modules[0]);
+    const modB = nn(result.value.modules[1]);
+    expect(modA.accessStatus).toBe('fully-accessible');
+    expect(modB.accessStatus).toBe('not-accessible');
+    expect(modA.chapters.every((c) => c.accessStatus === 'fully-accessible')).toBe(true);
+    expect(modB.chapters.every((c) => c.accessStatus === 'not-accessible')).toBe(true);
+  });
+
+  it('lesson-level access makes the containing chapter and module partially-accessible', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps(active('p-lesson'), [pLesson]));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.accessStatus).toBe('partially-accessible');
+    const modB = nn(result.value.modules[1]);
+    expect(modB.accessStatus).toBe('partially-accessible');
+    const ch3 = nn(modB.chapters[0]);
+    expect(ch3.accessStatus).toBe('partially-accessible');
+    expect(nn(ch3.lessons[0]).accessStatus).toBe('fully-accessible');
+    expect(nn(ch3.lessons[1]).accessStatus).toBe('not-accessible');
+  });
+
+  it('staff see the full course as fully-accessible', async () => {
+    const result = await getCourseStructureWithAccess(
+      ctx({ staffRole: 'owner', memberId: null }),
+      'c1',
+      deps([], []),
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.accessStatus).toBe('fully-accessible');
+  });
+
+  it('rolls completion up from lessons through chapters, modules and course', async () => {
+    const progress: MemberCourseProgress = {
+      id: 'pr1',
+      tenantId: 't1',
+      memberId: 'mem1',
+      courseId: 'c1',
+      completedLessonIds: ['l1', 'l2', 'l3'],
+      updatedAt: NOW,
+    };
+    const result = await getCourseStructureWithAccess(
+      ctx({}),
+      'c1',
+      deps(active('p-course'), [pCourse], [c1], [m1, m2], [progress]),
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.completionStatus).toBe('partially-completed');
+    const modA = nn(result.value.modules[0]);
+    const modB = nn(result.value.modules[1]);
+    expect(modA.completionStatus).toBe('fully-completed');
+    expect(modB.completionStatus).toBe('not-completed');
+    expect(nn(modA.chapters[0]).completionStatus).toBe('fully-completed');
+  });
+
+  it('a single completed lesson makes its chapter partially-completed', async () => {
+    const progress: MemberCourseProgress = {
+      id: 'pr1',
+      tenantId: 't1',
+      memberId: 'mem1',
+      courseId: 'c1',
+      completedLessonIds: ['l1'],
+      updatedAt: NOW,
+    };
+    const result = await getCourseStructureWithAccess(
+      ctx({}),
+      'c1',
+      deps(active('p-course'), [pCourse], [c1], [m1, m2], [progress]),
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(nn(nn(result.value.modules[0]).chapters[0]).completionStatus).toBe('partially-completed');
+  });
+
+  it('unknown course is not found', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'nope', deps([], []));
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
+describe('listMyCourses', () => {
+  const active = (productId: string): ProductGrant[] => [
+    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+  ];
+
+  it('returns courses with at least partial access', async () => {
+    const result = await listMyCourses(ctx({}), deps(active('p-module'), [pModule], [c1, c2]));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.map((c) => c.id)).toEqual(['c1']);
+  });
+
+  it('excludes courses with no access', async () => {
+    const result = await listMyCourses(ctx({}), deps([], [], [c1, c2]));
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value).toEqual([]);
+  });
+
+  it('staff see every course', async () => {
+    const result = await listMyCourses(
+      ctx({ staffRole: 'admin', memberId: null }),
+      deps([], [], [c1, c2]),
+    );
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.map((c) => c.id)).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('getNextLesson', () => {
+  const d = deps([], []);
+
+  it('returns the following lesson within a chapter', async () => {
+    expect(await getNextLesson(ctx({}), 'l1', d)).toEqual({ ok: true, value: { id: 'l2', name: 'Lesson l2' } });
+  });
+
+  it('crosses chapter and module boundaries', async () => {
+    // l3 is the last lesson of module m1; l4 is the first of module m2.
+    expect(await getNextLesson(ctx({}), 'l3', d)).toEqual({ ok: true, value: { id: 'l4', name: 'Lesson l4' } });
+  });
+
+  it('returns null at the very end of the course', async () => {
+    expect(await getNextLesson(ctx({}), 'l6', d)).toEqual({ ok: true, value: null });
+  });
+
+  it('unknown lesson is not found', async () => {
+    expect(await getNextLesson(ctx({}), 'nope', d)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+});

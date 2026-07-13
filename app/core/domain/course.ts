@@ -130,6 +130,102 @@ export const memberCourseProgressSchema = z.object({
 
 export type MemberCourseProgress = z.infer<typeof memberCourseProgressSchema>;
 
+export const accessStatusSchema = z.enum([
+  'not-accessible',
+  'partially-accessible',
+  'fully-accessible',
+]);
+
+export type AccessStatus = z.infer<typeof accessStatusSchema>;
+
+export const completionStatusSchema = z.enum([
+  'not-completed',
+  'partially-completed',
+  'fully-completed',
+]);
+
+export type CompletionStatus = z.infer<typeof completionStatusSchema>;
+
+export const courseStructureLessonSchema = z.object({
+  contentId: z.string(),
+  lessonId: z.string(),
+  name: z.string(),
+  accessStatus: accessStatusSchema,
+  completionStatus: completionStatusSchema,
+});
+
+export type CourseStructureLesson = z.infer<typeof courseStructureLessonSchema>;
+
+export const courseStructureChapterSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  accessStatus: accessStatusSchema,
+  completionStatus: completionStatusSchema,
+  lessons: z.array(courseStructureLessonSchema),
+});
+
+export type CourseStructureChapter = z.infer<typeof courseStructureChapterSchema>;
+
+export const courseStructureModuleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  accessStatus: accessStatusSchema,
+  completionStatus: completionStatusSchema,
+  chapters: z.array(courseStructureChapterSchema),
+});
+
+export type CourseStructureModule = z.infer<typeof courseStructureModuleSchema>;
+
+export const courseStructureWithAccessSchema = z.object({
+  courseId: z.string(),
+  name: z.string(),
+  accessStatus: accessStatusSchema,
+  completionStatus: completionStatusSchema,
+  modules: z.array(courseStructureModuleSchema),
+});
+
+export type CourseStructureWithAccess = z.infer<typeof courseStructureWithAccessSchema>;
+
+export const nextLessonSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+  })
+  .nullable();
+
+export type NextLesson = z.infer<typeof nextLessonSchema>;
+
+export const progressViewSchema = z.object({
+  courseId: z.string(),
+  completedLessonIds: z.array(z.string()),
+  lastViewedLessonId: z.string().optional(),
+  lastViewedModuleId: z.string().optional(),
+  lastViewedChapterId: z.string().optional(),
+});
+
+export type ProgressView = z.infer<typeof progressViewSchema>;
+
+export const courseIdInputSchema = z.object({
+  courseId: z.string().min(1),
+});
+
+export type CourseIdInput = z.input<typeof courseIdInputSchema>;
+
+export const lessonIdInputSchema = z.object({
+  lessonId: z.string().min(1),
+});
+
+export type LessonIdInput = z.input<typeof lessonIdInputSchema>;
+
+export const updateLastViewedInputSchema = z.object({
+  courseId: z.string().min(1),
+  lessonId: z.string().min(1).optional(),
+  moduleId: z.string().min(1).optional(),
+  chapterId: z.string().min(1).optional(),
+});
+
+export type UpdateLastViewedInput = z.input<typeof updateLastViewedInputSchema>;
+
 export const newCourseSchema = z.object({
   name: requiredNameSchema,
   description: z.string().default(''),

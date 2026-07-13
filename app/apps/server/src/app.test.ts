@@ -121,6 +121,7 @@ const deps = (input: {
       delete: async () => false,
     },
     progress: {
+      findByMemberAndCourse: async () => null,
       findOrCreate: async (_tenantId, input) => ({
         id: input.id,
         tenantId: _tenantId,

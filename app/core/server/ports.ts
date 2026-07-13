@@ -56,6 +56,10 @@ export interface CourseLessonRepository {
 }
 
 export interface MemberCourseProgressRepository {
+  findByMemberAndCourse(
+    tenantId: string,
+    input: { memberId: string; courseId: string },
+  ): Promise<MemberCourseProgress | null>;
   findOrCreate(
     tenantId: string,
     input: { id: string; memberId: string; courseId: string; now: string },

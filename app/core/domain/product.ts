@@ -40,6 +40,8 @@ export const productAccessIssuesSchema = z.object({
   missingCourseIds: z.array(z.string()),
   missingModuleIds: z.array(z.string()),
   missingLessonIds: z.array(z.string()),
+  unreachableModuleIds: z.array(z.string()),
+  unreachableLessonIds: z.array(z.string()),
 });
 
 export type ProductAccessIssues = z.infer<typeof productAccessIssuesSchema>;

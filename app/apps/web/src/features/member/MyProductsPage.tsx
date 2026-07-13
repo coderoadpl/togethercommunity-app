@@ -21,6 +21,7 @@ import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, Eyebrow, LedgerHeader } from '../../theme.js';
+import { MemberAccountMenu } from './MemberAccountMenu.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -68,9 +69,10 @@ export const MyProductsPage = () => {
           <Box sx={{ flex: 1 }} />
           <Link href="/my">{t.student.myCourses}</Link>
           <Link href="/">{t.common.home}</Link>
+          <MemberAccountMenu />
         </Stack>
         <Eyebrow variant="overline" component="p">
-          {t.student.courseLibrary}
+          {t.student.productsLibrary}
         </Eyebrow>
       </LedgerHeader>
 

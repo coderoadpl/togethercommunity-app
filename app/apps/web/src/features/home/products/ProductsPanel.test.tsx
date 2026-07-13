@@ -93,6 +93,8 @@ describe('ProductsPanel', () => {
         missingCourseIds: ['ghost-course'],
         missingModuleIds: [],
         missingLessonIds: ['ghost-lesson'],
+        unreachableModuleIds: [],
+        unreachableLessonIds: ['detached-lesson'],
       },
     ]);
 
@@ -100,5 +102,8 @@ describe('ProductsPanel', () => {
     expect(await screen.findByText(pl.products.accessIssuesChip)).toBeInTheDocument();
     expect(screen.getByText(`${pl.products.missingCoursesLabel}: ghost-course`)).toBeInTheDocument();
     expect(screen.getByText(`${pl.products.missingLessonsLabel}: ghost-lesson`)).toBeInTheDocument();
+    expect(
+      screen.getByText(`${pl.products.unreachableLessonsLabel}: detached-lesson`),
+    ).toBeInTheDocument();
   });
 });

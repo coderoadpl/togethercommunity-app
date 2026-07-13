@@ -92,6 +92,14 @@ const okStructure = () =>
     HttpResponse.json({ ok: true, data: { structure } }),
   );
 
+const okStructureFullyCompleted = () =>
+  http.get('/api/student/courses/:courseId/structure', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { structure: { ...structure, completionStatus: 'fully-completed' } },
+    }),
+  );
+
 const okProgress = (completedLessonIds: string[] = []) =>
   http.get('/api/student/progress', () =>
     HttpResponse.json({ ok: true, data: { progress: progress(completedLessonIds) } }),
@@ -241,9 +249,16 @@ describe('LessonPlayerPage', () => {
     expect(nextLink).toHaveTextContent('Advanced Variables');
     unmount();
 
-    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    server.use(okNext(null), okStructureFullyCompleted(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     expect(await screen.findByTestId('course-completed')).toHaveTextContent(pl.lesson.courseCompleted);
+  });
+
+  it('does not show the completion chip at the last lesson when the course is not finished', async () => {
+    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+    await screen.findByTestId('mark-complete');
+    expect(screen.queryByTestId('course-completed')).not.toBeInTheDocument();
   });
 
   it('renders a full-page locked state on a 403 envelope without upsell', async () => {

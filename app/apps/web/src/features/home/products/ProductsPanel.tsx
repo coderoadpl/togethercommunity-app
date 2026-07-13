@@ -33,6 +33,8 @@ const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
     { label: t.products.missingCoursesLabel, ids: issue.missingCourseIds },
     { label: t.products.missingModulesLabel, ids: issue.missingModuleIds },
     { label: t.products.missingLessonsLabel, ids: issue.missingLessonIds },
+    { label: t.products.unreachableModulesLabel, ids: issue.unreachableModuleIds },
+    { label: t.products.unreachableLessonsLabel, ids: issue.unreachableLessonIds },
   ].filter((row) => row.ids.length > 0);
 
   return (

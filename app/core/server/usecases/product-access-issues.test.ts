@@ -137,6 +137,45 @@ describe('listProductAccessIssues', () => {
     expect(result).toEqual({ ok: true, value: [] });
   });
 
+  it('flags granted content that exists but is unreachable in the referenced course tree', async () => {
+    const lesson = (id: string): CourseLesson => ({
+      id,
+      tenantId: 't1',
+      name: `Lesson ${id}`,
+      contents: [],
+      legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const attachedModule: CourseModule = {
+      ...module('m1', ['c1']),
+      chapters: [{ id: 'ch1', name: 'Chapter', contents: [{ id: 'e1', name: 'L1', lessonId: 'l1' }] }],
+    };
+    const deps = repos(
+      [
+        product('p1', [
+          { level: 'lessons', courseId: 'c1', lessonIds: ['l1', 'l2'] },
+          { level: 'modules', courseId: 'c1', moduleIds: ['m1', 'm2'] },
+        ]),
+      ],
+      [course('c1')],
+      [attachedModule, module('m2', ['c-other'])],
+      [lesson('l1'), lesson('l2')],
+    );
+    const result = await listProductAccessIssues(ctx('t1', 'owner'), deps);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value).toEqual([
+      {
+        productId: 'p1',
+        productTitle: 'Product p1',
+        missingCourseIds: [],
+        missingModuleIds: [],
+        missingLessonIds: [],
+        unreachableModuleIds: ['m2'],
+        unreachableLessonIds: ['l2'],
+      },
+    ]);
+  });
+
   it('reports dangling course, module, lesson and excluded-module references', async () => {
     const deps = repos(
       [
@@ -160,6 +199,8 @@ describe('listProductAccessIssues', () => {
         missingCourseIds: ['ghost-course'],
         missingModuleIds: ['ghost-module', 'missing-module'],
         missingLessonIds: ['missing-lesson'],
+        unreachableModuleIds: [],
+        unreachableLessonIds: [],
       },
     ]);
   });

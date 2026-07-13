@@ -47,6 +47,7 @@ export interface Messages {
     passkeyIdle: string;
     passkeyPending: string;
     continueWithGoogle: string;
+    forgotPassword: string;
     magicLinkEmailLabel: string;
     magicLinkIdle: string;
     magicLinkPending: string;
@@ -136,6 +137,8 @@ export interface Messages {
     missingCoursesLabel: string;
     missingModulesLabel: string;
     missingLessonsLabel: string;
+    unreachableModulesLabel: string;
+    unreachableLessonsLabel: string;
   };
   access: {
     loading: string;
@@ -276,6 +279,7 @@ export interface Messages {
     myCourses: string;
     myProducts: string;
     courseLibrary: string;
+    productsLibrary: string;
     loadingCourses: string;
     noCourses: string;
     coursesWillAppear: string;

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import { createAuth } from '@adapters/auth/create-auth.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
@@ -744,7 +744,14 @@ await db
       createdAt: nextIso(),
     })),
   )
-  .onConflictDoNothing();
+  .onConflictDoUpdate({
+    target: courses.id,
+    set: {
+      name: sql`excluded.name`,
+      description: sql`excluded.description`,
+      imageUrl: sql`excluded.image_url`,
+    },
+  });
 
 const lessonTenant: Record<string, string> = {};
 for (const lesson of studioLessons) lessonTenant[lesson.id] = 'tenant-studio';
@@ -761,7 +768,13 @@ await db
       createdAt: nextIso(),
     })),
   )
-  .onConflictDoNothing();
+  .onConflictDoUpdate({
+    target: courseLessons.id,
+    set: {
+      name: sql`excluded.name`,
+      contents: sql`excluded.contents`,
+    },
+  });
 
 const moduleTenant: Record<string, string> = { 'course-js': 'tenant-studio', 'course-react': 'tenant-studio', 'course-akademia': 'tenant-akademia' };
 
@@ -778,7 +791,15 @@ await db
       createdAt: nextIso(),
     })),
   )
-  .onConflictDoNothing();
+  .onConflictDoUpdate({
+    target: courseModules.id,
+    set: {
+      courseIds: sql`excluded.course_ids`,
+      title: sql`excluded.title`,
+      prefix: sql`excluded.prefix`,
+      chapters: sql`excluded.chapters`,
+    },
+  });
 
 await db
   .insert(members)
@@ -856,7 +877,16 @@ await db
       createdAt: nextIso(),
     })),
   )
-  .onConflictDoNothing();
+  .onConflictDoUpdate({
+    target: products.id,
+    set: {
+      title: sql`excluded.title`,
+      description: sql`excluded.description`,
+      priceCents: sql`excluded.price_cents`,
+      published: sql`excluded.published`,
+      accessItems: sql`excluded.access_items`,
+    },
+  });
 
 const memberSpecs: MemberSpec[] = [];
 const grantSpecs: GrantSpec[] = [];

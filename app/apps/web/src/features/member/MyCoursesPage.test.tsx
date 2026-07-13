@@ -41,6 +41,12 @@ const renderPage = async (node: ReactNode) => {
 describe('MyCoursesPage', () => {
   it('lists accessible courses with a completion state and a link to the course', async () => {
     server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { userId: 'u1', email: 'free@together.dev', name: 'Free', tenant: null },
+        }),
+      ),
       http.get('/api/student/courses', () =>
         HttpResponse.json({ ok: true, data: { courses } }),
       ),
@@ -72,6 +78,12 @@ describe('MyCoursesPage', () => {
 
   it('shows an empty state when no courses are accessible', async () => {
     server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { userId: 'u1', email: 'free@together.dev', name: 'Free', tenant: null },
+        }),
+      ),
       http.get('/api/student/courses', () =>
         HttpResponse.json({ ok: true, data: { courses: [] } }),
       ),

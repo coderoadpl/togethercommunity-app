@@ -357,7 +357,9 @@ export const LessonPlayerPage = ({
           <Box sx={{ flex: 1 }} />
           {next.isSuccess &&
             (nextLesson === null ? (
-              <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
+              structure.data?.structure.completionStatus === 'fully-completed' ? (
+                <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
+              ) : null
             ) : (
               <Link href={nextHref ?? ''} data-testid="next-lesson">
                 {t.lesson.next({ name: nextLesson.name })}

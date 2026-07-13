@@ -36,6 +36,12 @@ describe('member pages', () => {
   it('lists my products with course links', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { userId: 'u1', email: 'free@together.dev', name: 'Free', tenant: null },
+        }),
+      ),
     );
 
     await renderPage(MyProductsPage, '/my');

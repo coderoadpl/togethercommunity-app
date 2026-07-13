@@ -9,6 +9,7 @@ import type { CompletionStatus, Course } from '@core/domain/index.js';
 import { actions } from '../../api.js';
 import { useTranslations, type Messages } from '../../i18n/index.js';
 import { CardTitle, CourseCardRoot, Eyebrow, LedgerHeader } from '../../theme.js';
+import { MemberAccountMenu } from './MemberAccountMenu.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -95,6 +96,7 @@ export const MyCoursesPage = () => {
           <Box sx={{ flex: 1 }} />
           <Link href="/my/products">{t.student.myProducts}</Link>
           <Link href="/">{t.common.home}</Link>
+          <MemberAccountMenu />
         </Stack>
         <Eyebrow variant="overline" component="p">
           {t.student.courseLibrary}

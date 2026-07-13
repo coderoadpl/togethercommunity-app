@@ -4,22 +4,43 @@ import {
   API_ROUTES,
   looseEnvelopeSchema,
   authConfigOutputSchema,
+  courseOutputSchema,
+  courseStructureOutputSchema,
+  coursesListOutputSchema,
+  devGrantOutputSchema,
   devMagicLinkOutputSchema,
   healthOutputSchema,
+  lessonOutputSchema,
   meOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
   membersExportOutputSchema,
+  moduleOutputSchema,
   myProductsOutputSchema,
+  nextLessonOutputSchema,
+  productsAccessItemsOutputSchema,
+  progressOutputSchema,
   publicOfferOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
   simulatePurchaseOutputSchema,
+  studentCoursesOutputSchema,
+  studentLessonOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
+  type CourseCreateInput,
+  type CourseUpdateInput,
   type HttpMethod,
+  type LastViewedInput,
+  type LessonCompleteInput,
+  type LessonCreateInput,
+  type LessonUpdateInput,
   type MemberRemoveInput,
+  type ModuleAttachInput,
+  type ModuleCreateInput,
+  type ModuleUpdateInput,
+  type ProductsAccessItemsInput,
   type ProductsPublishInput,
   type ReadMethod,
   type SimulatePurchaseInput,
@@ -31,6 +52,7 @@ import {
   internal,
   ok,
   type AppError,
+  type DevGrantInput,
   type MemberExportFormat,
   type NewProductInput,
   type Result,
@@ -205,6 +227,96 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  updateProductAccessItems: (input: ProductsAccessItemsInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productsAccessItems.method,
+      API_ROUTES.productsAccessItems.path,
+      productsAccessItemsOutputSchema,
+      input,
+      signal,
+    ),
+  listCourses: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.courses.method, API_ROUTES.courses.path, coursesListOutputSchema, undefined, signal),
+  createCourse: (input: CourseCreateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.coursesCreate.method, API_ROUTES.coursesCreate.path, courseOutputSchema, input, signal),
+  updateCourse: (input: CourseUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.coursesUpdate.method, API_ROUTES.coursesUpdate.path, courseOutputSchema, input, signal),
+  createModule: (input: ModuleCreateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.modulesCreate.method, API_ROUTES.modulesCreate.path, moduleOutputSchema, input, signal),
+  updateModule: (input: ModuleUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.modulesUpdate.method, API_ROUTES.modulesUpdate.path, moduleOutputSchema, input, signal),
+  attachModuleToCourse: (input: ModuleAttachInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.modulesAttach.method, API_ROUTES.modulesAttach.path, moduleOutputSchema, input, signal),
+  createLesson: (input: LessonCreateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessonsCreate.method, API_ROUTES.lessonsCreate.path, lessonOutputSchema, input, signal),
+  updateLesson: (input: LessonUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessonsUpdate.method, API_ROUTES.lessonsUpdate.path, lessonOutputSchema, input, signal),
+  studentCourses: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentCourses.method,
+      API_ROUTES.studentCourses.path,
+      studentCoursesOutputSchema,
+      undefined,
+      signal,
+    ),
+  studentCourseStructure: (courseId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentCourseStructure.method,
+      API_ROUTES.studentCourseStructure.path.replace(':courseId', encodeURIComponent(courseId)),
+      courseStructureOutputSchema,
+      undefined,
+      signal,
+    ),
+  studentLesson: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLesson.method,
+      API_ROUTES.studentLesson.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      studentLessonOutputSchema,
+      undefined,
+      signal,
+    ),
+  completeLesson: (input: LessonCompleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLessonComplete.method,
+      API_ROUTES.studentLessonComplete.path,
+      progressOutputSchema,
+      input,
+      signal,
+    ),
+  nextLesson: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLessonNext.method,
+      `${API_ROUTES.studentLessonNext.path}?lessonId=${encodeURIComponent(lessonId)}`,
+      nextLessonOutputSchema,
+      undefined,
+      signal,
+    ),
+  updateLastViewed: (input: LastViewedInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLastViewed.method,
+      API_ROUTES.studentLastViewed.path,
+      progressOutputSchema,
+      input,
+      signal,
+    ),
+  studentProgress: (courseId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentProgress.method,
+      `${API_ROUTES.studentProgress.path}?courseId=${encodeURIComponent(courseId)}`,
+      progressOutputSchema,
+      undefined,
+      signal,
+    ),
+  devGrant: (input: DevGrantInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.devGrant.method, API_ROUTES.devGrant.path, devGrantOutputSchema, input, signal),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

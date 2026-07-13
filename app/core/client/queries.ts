@@ -10,12 +10,22 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  CourseCreateInput,
+  CourseUpdateInput,
+  LastViewedInput,
+  LessonCompleteInput,
+  LessonCreateInput,
+  LessonUpdateInput,
   MemberRemoveInput,
+  ModuleAttachInput,
+  ModuleCreateInput,
+  ModuleUpdateInput,
+  ProductsAccessItemsInput,
   ProductsPublishInput,
   SimulatePurchaseInput,
   TenantCreateInput,
 } from '@core/contract/index.js';
-import type { MemberExportFormat, NewProductInput } from '@core/domain/index.js';
+import type { DevGrantInput, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -112,6 +122,28 @@ export const authScopes = {
   magicLink: (email: string) => ['auth', 'dev-magic-link', email] as const,
 };
 
+export const coursesScopes = {
+  all: () => ['courses'] as const,
+  lists: () => ['courses', 'list'] as const,
+};
+
+export const modulesScopes = {
+  all: () => ['modules'] as const,
+};
+
+export const lessonsScopes = {
+  all: () => ['lessons'] as const,
+};
+
+export const studentScopes = {
+  all: () => ['student'] as const,
+  courses: () => ['student', 'courses'] as const,
+  courseStructure: (courseId: string) => ['student', 'course-structure', courseId] as const,
+  lesson: (lessonId: string) => ['student', 'lesson', lessonId] as const,
+  nextLesson: (lessonId: string) => ['student', 'next-lesson', lessonId] as const,
+  progress: (courseId: string) => ['student', 'progress', courseId] as const,
+};
+
 export const meQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: meScopes.all(),
@@ -196,6 +228,108 @@ export const devMagicLinkQuery = (api: ApiClient, email: string) =>
   defineQuery({
     queryKey: authScopes.magicLink(email),
     call: ({ signal }) => api.devMagicLink(email, signal),
+  });
+
+export const coursesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: coursesScopes.lists(),
+    call: ({ signal }) => api.listCourses(signal),
+  });
+
+export const createCourseMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...coursesScopes.all(), 'create'],
+    call: (input: CourseCreateInput) => api.createCourse(input),
+  });
+
+export const updateCourseMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...coursesScopes.all(), 'update'],
+    call: (input: CourseUpdateInput) => api.updateCourse(input),
+  });
+
+export const createModuleMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...modulesScopes.all(), 'create'],
+    call: (input: ModuleCreateInput) => api.createModule(input),
+  });
+
+export const updateModuleMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...modulesScopes.all(), 'update'],
+    call: (input: ModuleUpdateInput) => api.updateModule(input),
+  });
+
+export const attachModuleMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...modulesScopes.all(), 'attach'],
+    call: (input: ModuleAttachInput) => api.attachModuleToCourse(input),
+  });
+
+export const createLessonMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'create'],
+    call: (input: LessonCreateInput) => api.createLesson(input),
+  });
+
+export const updateLessonMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'update'],
+    call: (input: LessonUpdateInput) => api.updateLesson(input),
+  });
+
+export const updateProductAccessItemsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productsScopes.all(), 'access-items'],
+    call: (input: ProductsAccessItemsInput) => api.updateProductAccessItems(input),
+  });
+
+export const studentCoursesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: studentScopes.courses(),
+    call: ({ signal }) => api.studentCourses(signal),
+  });
+
+export const courseStructureQuery = (api: ApiClient, courseId: string) =>
+  defineQuery({
+    queryKey: studentScopes.courseStructure(courseId),
+    call: ({ signal }) => api.studentCourseStructure(courseId, signal),
+  });
+
+export const studentLessonQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: studentScopes.lesson(lessonId),
+    call: ({ signal }) => api.studentLesson(lessonId, signal),
+  });
+
+export const nextLessonQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: studentScopes.nextLesson(lessonId),
+    call: ({ signal }) => api.nextLesson(lessonId, signal),
+  });
+
+export const studentProgressQuery = (api: ApiClient, courseId: string) =>
+  defineQuery({
+    queryKey: studentScopes.progress(courseId),
+    call: ({ signal }) => api.studentProgress(courseId, signal),
+  });
+
+export const completeLessonMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...studentScopes.all(), 'complete-lesson'],
+    call: (input: LessonCompleteInput) => api.completeLesson(input),
+  });
+
+export const updateLastViewedMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...studentScopes.all(), 'last-viewed'],
+    call: (input: LastViewedInput) => api.updateLastViewed(input),
+  });
+
+export const devGrantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['dev', 'grant'],
+    call: (input: DevGrantInput) => api.devGrant(input),
   });
 
 /** The invalidation filter product mutations apply after they settle. */

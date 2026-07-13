@@ -21,6 +21,7 @@ import type {
   ProductGrantRepository,
 } from '../ports.js';
 import {
+  getAccessibleLesson,
   getCourseStructureWithAccess,
   getNextLesson,
   isLessonAccessible,
@@ -491,6 +492,38 @@ describe('listMyCourses', () => {
     );
     if (!result.ok) throw new Error('expected ok');
     expect(result.value.map((c) => c.id)).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('getAccessibleLesson', () => {
+  const active = (productId: string): ProductGrant[] => [
+    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+  ];
+
+  it('returns the lesson with its contents when accessible', async () => {
+    const result = await getAccessibleLesson(ctx({}), 'l1', deps(active('p-module'), [pModule]));
+    expect(result).toMatchObject({ ok: true, value: { id: 'l1', name: 'Lesson l1' } });
+  });
+
+  it('is forbidden when the lesson is outside the granted module', async () => {
+    const result = await getAccessibleLesson(ctx({}), 'l4', deps(active('p-module'), [pModule]));
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('is forbidden once the only grant has expired', async () => {
+    const expired = deps(
+      [grant('g1', 'p-course', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')],
+      [pCourse],
+    );
+    expect(await getAccessibleLesson(ctx({}), 'l1', expired)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('lets staff read any lesson without a grant', async () => {
+    const result = await getAccessibleLesson(ctx({ staffRole: 'owner', memberId: null }), 'l6', deps([], []));
+    expect(result).toMatchObject({ ok: true, value: { id: 'l6' } });
   });
 });
 

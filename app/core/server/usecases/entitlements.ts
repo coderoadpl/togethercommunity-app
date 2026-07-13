@@ -134,6 +134,21 @@ export const isLessonAccessible = async (
   return accessible ? ok(undefined) : err(forbidden('This lesson is not accessible'));
 };
 
+export const getAccessibleLesson = async (
+  ctx: Ctx,
+  lessonId: string,
+  deps: CourseAccessDeps,
+): Promise<Result<CourseLesson, AppError>> => {
+  const access = await isLessonAccessible(ctx, lessonId, deps);
+  if (!access.ok) return access;
+
+  const tenant = requireTenant(ctx);
+  if (!tenant.ok) return tenant;
+  const lesson = await deps.lessons.findById(tenant.value, lessonId);
+  if (!lesson) return err(notFound(`No lesson "${lessonId}" in this tenant`));
+  return ok(lesson);
+};
+
 export const getCourseStructureWithAccess = async (
   ctx: Ctx,
   courseId: string,

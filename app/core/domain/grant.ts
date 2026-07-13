@@ -17,3 +17,12 @@ export const productGrantSchema = z.object({
 });
 
 export type ProductGrant = z.infer<typeof productGrantSchema>;
+
+export const devGrantInputSchema = z.object({
+  email: z.string().email(),
+  productId: z.string().min(1),
+  startsAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+});
+
+export type DevGrantInput = z.input<typeof devGrantInputSchema>;

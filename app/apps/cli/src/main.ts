@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import { Command } from 'commander';
 import { z, type ZodTypeAny } from 'zod';
@@ -7,13 +7,22 @@ import { createCliAuthAdapter, type CliAuthAdapter } from '@adapters/auth/client
 import { createApiClient, type ApiClient } from '@core/client/index.js';
 import { TENANT_HEADER } from '@core/contract/index.js';
 import {
+  accessItemSchema,
   currencySchema,
+  devGrantInputSchema,
   err,
   internal,
   memberExportFormatSchema,
+  newCourseLessonSchema,
+  newCourseModuleSchema,
   notFound,
   ok,
+  updateCourseLessonInputSchema,
+  updateCourseModuleInputSchema,
+  updateLastViewedInputSchema,
+  updateProductAccessItemsInputSchema,
   validation,
+  type AccessStatus,
   type AppError,
   type Result,
 } from '@core/domain/index.js';
@@ -56,6 +65,7 @@ const productCreateOptionsSchema = z.object({
   priceCents: centsSchema,
   currency: currencySchema.optional(),
   description: z.string().optional(),
+  accessItems: z.string().optional(),
 });
 const simulatePurchaseOptionsSchema = z.object({
   email: z.string().email(),
@@ -66,6 +76,67 @@ const memberExportOptionsSchema = z.object({
   out: z.string().min(1).optional(),
 });
 const noOptionsSchema = z.object({});
+
+const jsonSourceOptionsSchema = z.object({
+  data: z.string().optional(),
+  jsonFile: z.string().min(1).optional(),
+});
+
+const courseCreateOptionsSchema = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().optional(),
+  imageUrl: z.string().url().optional(),
+  legacyId: z.string().min(1).optional(),
+});
+const courseUpdateOptionsSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  description: z.string().optional(),
+  imageUrl: z.string().url().optional(),
+});
+const moduleAttachOptionsSchema = z.object({
+  course: z.string().min(1),
+  module: z.string().min(1),
+});
+const productAccessItemsInlineSchema = z.array(accessItemSchema);
+const lastViewedOptionsSchema = z.object({
+  course: z.string().min(1),
+  lesson: z.string().min(1).optional(),
+  module: z.string().min(1).optional(),
+  chapter: z.string().min(1).optional(),
+});
+const devGrantOptionsSchema = z.object({
+  email: z.string().email(),
+  product: z.string().min(1),
+  startsAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional(),
+});
+
+const readJsonPayload = async (
+  inline: string | undefined,
+  file: string | undefined,
+): Promise<Result<unknown, AppError>> => {
+  const provided = [inline, file].filter((value) => value !== undefined).length;
+  if (provided === 0) return err(validation('Provide the payload with --json <inline> or --json-file <path>'));
+  if (provided > 1) return err(validation('Provide only one of --json or --json-file'));
+  let raw: string;
+  if (file !== undefined) {
+    try {
+      raw = await readFile(file, 'utf8');
+    } catch (cause) {
+      return err(validation(`Could not read JSON file "${file}": ${String(cause)}`));
+    }
+  } else {
+    raw = inline ?? '';
+  }
+  try {
+    return ok(JSON.parse(raw));
+  } catch (cause) {
+    return err(validation(`Invalid JSON payload: ${String(cause)}`));
+  }
+};
+
+const accessGlyph = (status: AccessStatus): string =>
+  status === 'fully-accessible' ? 'open' : status === 'partially-accessible' ? 'partial' : 'locked';
 
 const slugFromName = (name: string): string =>
   name
@@ -293,14 +364,30 @@ product
   .requiredOption('--price-cents <cents>', 'price in integer cents')
   .option('--currency <currency>', '3-letter uppercase currency code')
   .option('--description <description>')
+  .option('--access-items <json>', 'inline JSON array of access items')
   .action(
     withInput(z.tuple([productCreateOptionsSchema]), async (ctx, [options]) => {
+      let accessItems: z.output<typeof productAccessItemsInlineSchema> | undefined;
+      if (options.accessItems !== undefined) {
+        const payload = await readJsonPayload(options.accessItems, undefined);
+        if (!payload.ok) {
+          emit(payload, ctx.json, () => '');
+          return;
+        }
+        const parsed = parsedInput(productAccessItemsInlineSchema, payload.value, 'Invalid access items');
+        if (!parsed.ok) {
+          emit(parsed, ctx.json, () => '');
+          return;
+        }
+        accessItems = parsed.value;
+      }
       emit(
         await ctx.api.createProduct({
           title: options.title,
           priceCents: options.priceCents,
           ...(options.currency === undefined ? {} : { currency: options.currency }),
           ...(options.description === undefined ? {} : { description: options.description }),
+          ...(accessItems === undefined ? {} : { accessItems }),
         }),
         ctx.json,
         (data) => `created: ${data.product.title} (${data.product.id.slice(0, 8)})`,
@@ -315,6 +402,304 @@ product
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       emit(await ctx.api.publishProduct({ id }), ctx.json, (data) =>
         `published: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+product
+  .command('access-items <id>')
+  .description('Replace a product access items (course/module/lesson grants)')
+  .option('--data <json>', 'inline JSON array of access items')
+  .option('--json-file <path>', 'path to a JSON file with the access items array')
+  .action(
+    withInput(z.tuple([z.string().min(1), jsonSourceOptionsSchema]), async (ctx, [id, options]) => {
+      const payload = await readJsonPayload(options.data, options.jsonFile);
+      if (!payload.ok) {
+        emit(payload, ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(
+        updateProductAccessItemsInputSchema,
+        { id, accessItems: payload.value },
+        'Invalid access items payload',
+      );
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.updateProductAccessItems(input.value), ctx.json, (data) =>
+        `updated access items: ${data.product.title} (${data.product.accessItems.length} item(s))`,
+      );
+    }),
+  );
+
+const course = program.command('course').description('Courses in the active tenant (staff only)');
+
+course.command('list').description('List courses').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listCourses(), ctx.json, (data) =>
+      data.courses.length === 0
+        ? 'no courses'
+        : data.courses.map((item) => `- ${item.name}  (${item.id.slice(0, 8)})`).join('\n'),
+    );
+  }),
+);
+
+course
+  .command('create')
+  .description('Create a course')
+  .requiredOption('--name <name>')
+  .option('--description <description>')
+  .option('--image-url <url>')
+  .option('--legacy-id <id>')
+  .action(
+    withInput(z.tuple([courseCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createCourse({
+          name: options.name,
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+          ...(options.legacyId === undefined ? {} : { legacyId: options.legacyId }),
+        }),
+        ctx.json,
+        (data) => `created course: ${data.course.name} (${data.course.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+course
+  .command('update <id>')
+  .description('Update a course')
+  .option('--name <name>')
+  .option('--description <description>')
+  .option('--image-url <url>')
+  .action(
+    withInput(z.tuple([z.string().min(1), courseUpdateOptionsSchema]), async (ctx, [id, options]) => {
+      emit(
+        await ctx.api.updateCourse({
+          id,
+          ...(options.name === undefined ? {} : { name: options.name }),
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+        }),
+        ctx.json,
+        (data) => `updated course: ${data.course.name} (${data.course.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+const moduleCommand = program.command('module').description('Course modules (staff only)');
+
+moduleCommand
+  .command('create')
+  .description('Create a module (chapters via --data inline JSON or --json-file)')
+  .option('--data <json>', 'inline JSON module payload')
+  .option('--json-file <path>', 'path to a JSON file with the module payload')
+  .action(
+    withInput(z.tuple([jsonSourceOptionsSchema]), async (ctx, [options]) => {
+      const payload = await readJsonPayload(options.data, options.jsonFile);
+      if (!payload.ok) {
+        emit(payload, ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(newCourseModuleSchema, payload.value, 'Invalid module payload');
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.createModule(input.value), ctx.json, (data) =>
+        `created module: ${data.module.name} (${data.module.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+moduleCommand
+  .command('update')
+  .description('Update a module (chapters via --data inline JSON or --json-file)')
+  .option('--data <json>', 'inline JSON module payload (must include id)')
+  .option('--json-file <path>', 'path to a JSON file with the module payload')
+  .action(
+    withInput(z.tuple([jsonSourceOptionsSchema]), async (ctx, [options]) => {
+      const payload = await readJsonPayload(options.data, options.jsonFile);
+      if (!payload.ok) {
+        emit(payload, ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(updateCourseModuleInputSchema, payload.value, 'Invalid module update payload');
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.updateModule(input.value), ctx.json, (data) =>
+        `updated module: ${data.module.name} (${data.module.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+moduleCommand
+  .command('attach')
+  .description('Attach a module to a course')
+  .requiredOption('--course <courseId>')
+  .requiredOption('--module <moduleId>')
+  .action(
+    withInput(z.tuple([moduleAttachOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.attachModuleToCourse({ courseId: options.course, moduleId: options.module }),
+        ctx.json,
+        (data) => `attached module ${data.module.id.slice(0, 8)} to course ${options.course.slice(0, 8)}`,
+      );
+    }),
+  );
+
+const lesson = program.command('lesson').description('Course lessons (staff only)');
+
+lesson
+  .command('create')
+  .description('Create a lesson (contents via --data inline JSON or --json-file)')
+  .option('--data <json>', 'inline JSON lesson payload')
+  .option('--json-file <path>', 'path to a JSON file with the lesson payload')
+  .action(
+    withInput(z.tuple([jsonSourceOptionsSchema]), async (ctx, [options]) => {
+      const payload = await readJsonPayload(options.data, options.jsonFile);
+      if (!payload.ok) {
+        emit(payload, ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(newCourseLessonSchema, payload.value, 'Invalid lesson payload');
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.createLesson(input.value), ctx.json, (data) =>
+        `created lesson: ${data.lesson.name} (${data.lesson.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+lesson
+  .command('update')
+  .description('Update a lesson (contents via --data inline JSON or --json-file)')
+  .option('--data <json>', 'inline JSON lesson payload (must include id)')
+  .option('--json-file <path>', 'path to a JSON file with the lesson payload')
+  .action(
+    withInput(z.tuple([jsonSourceOptionsSchema]), async (ctx, [options]) => {
+      const payload = await readJsonPayload(options.data, options.jsonFile);
+      if (!payload.ok) {
+        emit(payload, ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(updateCourseLessonInputSchema, payload.value, 'Invalid lesson update payload');
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.updateLesson(input.value), ctx.json, (data) =>
+        `updated lesson: ${data.lesson.name} (${data.lesson.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+const student = program.command('student').description('Your student view of the active tenant');
+
+student.command('courses').description('Courses you can access').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.studentCourses(), ctx.json, (data) =>
+      data.courses.length === 0
+        ? 'no accessible courses'
+        : data.courses.map((item) => `- ${item.name}  (${item.id.slice(0, 8)})`).join('\n'),
+    );
+  }),
+);
+
+student
+  .command('structure <courseId>')
+  .description('Course structure with 3-state access and completion')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
+      emit(await ctx.api.studentCourseStructure(courseId), ctx.json, (data) => {
+        const lines = [`${data.structure.name} [${accessGlyph(data.structure.accessStatus)}]`];
+        for (const structModule of data.structure.modules) {
+          lines.push(`  ${structModule.name} [${accessGlyph(structModule.accessStatus)}]`);
+          for (const chapter of structModule.chapters) {
+            for (const structLesson of chapter.lessons) {
+              lines.push(`    - ${structLesson.name} [${accessGlyph(structLesson.accessStatus)}]`);
+            }
+          }
+        }
+        return lines.join('\n');
+      });
+    }),
+  );
+
+student
+  .command('lesson <lessonId>')
+  .description('Fetch a lesson with its contents (forbidden when locked)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
+      emit(await ctx.api.studentLesson(lessonId), ctx.json, (data) =>
+        `${data.lesson.name} (${data.lesson.contents.length} block(s))`,
+      );
+    }),
+  );
+
+student
+  .command('complete <lessonId>')
+  .description('Mark a lesson completed')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
+      emit(await ctx.api.completeLesson({ lessonId }), ctx.json, (data) =>
+        `completed ${data.progress.completedLessonIds.length} lesson(s) in course ${data.progress.courseId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+student
+  .command('next <lessonId>')
+  .description('Next lesson after the given lesson')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
+      emit(await ctx.api.nextLesson(lessonId), ctx.json, (data) =>
+        data.next ? `next: ${data.next.name} (${data.next.id.slice(0, 8)})` : 'no next lesson',
+      );
+    }),
+  );
+
+student
+  .command('progress <courseId>')
+  .description('Your progress in a course')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [courseId]) => {
+      emit(await ctx.api.studentProgress(courseId), ctx.json, (data) =>
+        `${data.progress.completedLessonIds.length} completed; last lesson ${data.progress.lastViewedLessonId ?? 'none'}`,
+      );
+    }),
+  );
+
+student
+  .command('last-viewed')
+  .description('Record the last-viewed position in a course')
+  .requiredOption('--course <courseId>')
+  .option('--lesson <lessonId>')
+  .option('--module <moduleId>')
+  .option('--chapter <chapterId>')
+  .action(
+    withInput(z.tuple([lastViewedOptionsSchema]), async (ctx, [options]) => {
+      const input = parsedInput(
+        updateLastViewedInputSchema,
+        {
+          courseId: options.course,
+          ...(options.lesson === undefined ? {} : { lessonId: options.lesson }),
+          ...(options.module === undefined ? {} : { moduleId: options.module }),
+          ...(options.chapter === undefined ? {} : { chapterId: options.chapter }),
+        },
+        'Invalid last-viewed payload',
+      );
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.updateLastViewed(input.value), ctx.json, (data) =>
+        `last viewed lesson ${data.progress.lastViewedLessonId ?? 'none'} in course ${data.progress.courseId.slice(0, 8)}`,
       );
     }),
   );
@@ -353,6 +738,41 @@ dev
       emit(await ctx.api.devMagicLink(options.email), ctx.json, (data) =>
         data.magicLink ? data.magicLink.url : 'no magic link stored for this email',
       );
+    }),
+  );
+
+dev
+  .command('grant')
+  .description('Grant a product to a member with an optional time box (dev endpoint)')
+  .requiredOption('--email <email>')
+  .requiredOption('--product <id>')
+  .option('--starts-at <iso>', 'ISO datetime when the grant becomes active')
+  .option('--expires-at <iso>', 'ISO datetime when the grant expires')
+  .action(
+    withInput(z.tuple([devGrantOptionsSchema]), async (ctx, [options]) => {
+      if (!ctx.tenant) {
+        emit(err(validation('Select a tenant with --tenant to grant a product')), ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(
+        devGrantInputSchema,
+        {
+          email: options.email,
+          productId: options.product,
+          ...(options.startsAt === undefined ? {} : { startsAt: options.startsAt }),
+          ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
+        },
+        'Invalid grant payload',
+      );
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.devGrant(input.value), ctx.json, (data) => {
+        const status = data.granted ? 'granted' : 'already granted';
+        const box = data.expiresAt ? ` (expires ${data.expiresAt})` : '';
+        return `${status}: product ${data.productId} for member ${data.memberId}${box}`;
+      });
     }),
   );
 

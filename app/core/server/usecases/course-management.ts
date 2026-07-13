@@ -19,6 +19,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type Product,
   type Result,
   type UpdateProductAccessItemsInput,
 } from '@core/domain/index.js';
@@ -264,7 +265,7 @@ export const updateProductAccessItems = async (
   ctx: Ctx,
   input: UpdateProductAccessItemsInput,
   deps: CourseManagementDeps,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<Product, AppError>> => {
   const tenant = requireStaffTenant(ctx);
   if (!tenant.ok) return tenant;
   const parsed = updateProductAccessItemsInputSchema.safeParse(input);
@@ -295,6 +296,6 @@ export const updateProductAccessItems = async (
     }
   }
 
-  await deps.products.updateAccessItems(tenant.value, product.id, parsed.data.accessItems);
-  return ok(undefined);
+  const updated = await deps.products.updateAccessItems(tenant.value, product.id, parsed.data.accessItems);
+  return updated ? ok(updated) : err(notFound(`No product "${parsed.data.id}" in this tenant`));
 };

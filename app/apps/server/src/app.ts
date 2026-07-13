@@ -4,7 +4,17 @@ import {
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  courseCreateInputSchema,
+  courseUpdateInputSchema,
+  lessonCompleteInputSchema,
+  lessonCreateInputSchema,
+  lessonUpdateInputSchema,
+  lastViewedInputSchema,
   memberRemoveInputSchema,
+  moduleAttachInputSchema,
+  moduleCreateInputSchema,
+  moduleUpdateInputSchema,
+  productsAccessItemsInputSchema,
   publicOfferOutputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
@@ -13,6 +23,7 @@ import {
   toEnvelope,
 } from '@core/contract/index.js';
 import {
+  devGrantInputSchema,
   err,
   internal,
   memberExportFormatSchema,
@@ -22,22 +33,41 @@ import {
   validation,
   type AppError,
   type Identity,
+  type MemberCourseProgress,
+  type ProgressView,
   type Result,
 } from '@core/domain/index.js';
 import {
+  attachModuleToCourse,
+  createCourse,
+  createLesson,
+  createModule,
   createProduct,
   createTenant,
+  devGrantProduct,
   exportMembers,
+  getAccessibleLesson,
+  getCourseStructureWithAccess,
+  getNextLesson,
+  getProgress,
   getPublicOffer,
+  listCourses,
   listMembers,
+  listMyCourses,
   listMyProducts,
   listMyTenants,
   listProducts,
+  markLessonCompleted,
   publishProduct,
   removeMember,
   resolveIdentity,
   resolveTenant,
   simulatePurchase,
+  updateCourse,
+  updateLastViewed,
+  updateLesson,
+  updateModule,
+  updateProductAccessItems,
   type AuthenticatedUser,
 } from '@core/server/index.js';
 import { BETTER_AUTH_API_PATH_PATTERN } from '@adapters/auth/create-auth.js';
@@ -87,6 +117,14 @@ const issueMagicLink = async (deps: AppDeps, email: string) => {
   await deps.authPort.requestMagicLink({ email, callbackURL: deps.appBaseUrl });
   return deps.devMagicLinks.findByEmail(email);
 };
+
+const toProgressView = (progress: MemberCourseProgress): ProgressView => ({
+  courseId: progress.courseId,
+  completedLessonIds: progress.completedLessonIds,
+  lastViewedLessonId: progress.lastViewedLessonId,
+  lastViewedModuleId: progress.lastViewedModuleId,
+  lastViewedChapterId: progress.lastViewedChapterId,
+});
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   userId: user.userId,
@@ -207,6 +245,18 @@ export const buildApp = (deps: AppDeps) => {
       if (!email) return respond(err(validation('Missing "email" query parameter')));
       return respond(ok({ magicLink: await deps.devMagicLinks.findByEmail(email) }));
     });
+
+    app.post(API_PATHS.devGrant, async (c) => {
+      const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+      if (!tenant.ok) return respond(tenant);
+      if (!tenant.value) return respond(err(tenantNotFound()));
+
+      const body: unknown = await c.req.json().catch(() => null);
+      const parsed = devGrantInputSchema.safeParse(body);
+      if (!parsed.success) return respond(err(validation('Invalid grant payload', parsed.error.flatten())));
+
+      return respond(await devGrantProduct(tenant.value.tenant.id, parsed.data, deps));
+    });
   }
 
   // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
@@ -313,6 +363,126 @@ export const buildApp = (deps: AppDeps) => {
     }
     const result = await publishProduct({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productsAccessItems, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productsAccessItemsInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid product access items payload', parsed.error.flatten())));
+    }
+    const result = await updateProductAccessItems({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
+  app.get(API_PATHS.courses, async (c) => {
+    const result = await listCourses({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ courses: result.value }) : result);
+  });
+
+  app.post(API_PATHS.courses, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = courseCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid course payload', parsed.error.flatten())));
+    const result = await createCourse({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ course: result.value }) : result);
+  });
+
+  app.post(API_PATHS.coursesUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = courseUpdateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid course update payload', parsed.error.flatten())));
+    const result = await updateCourse({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ course: result.value }) : result);
+  });
+
+  app.post(API_PATHS.modulesCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = moduleCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid module payload', parsed.error.flatten())));
+    const result = await createModule({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ module: result.value }) : result);
+  });
+
+  app.post(API_PATHS.modulesUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = moduleUpdateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid module update payload', parsed.error.flatten())));
+    const result = await updateModule({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ module: result.value }) : result);
+  });
+
+  app.post(API_PATHS.modulesAttach, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = moduleAttachInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid module attach payload', parsed.error.flatten())));
+    const result = await attachModuleToCourse({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ module: result.value }) : result);
+  });
+
+  app.post(API_PATHS.lessonsCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lessonCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid lesson payload', parsed.error.flatten())));
+    const result = await createLesson({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ lesson: result.value }) : result);
+  });
+
+  app.post(API_PATHS.lessonsUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lessonUpdateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid lesson update payload', parsed.error.flatten())));
+    const result = await updateLesson({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ lesson: result.value }) : result);
+  });
+
+  app.get(API_PATHS.studentCourses, async (c) => {
+    const result = await listMyCourses({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ courses: result.value }) : result);
+  });
+
+  app.get(API_PATHS.studentCourseStructure, async (c) => {
+    const result = await getCourseStructureWithAccess(
+      { identity: c.get('identity') },
+      c.req.param('courseId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ structure: result.value }) : result);
+  });
+
+  app.post(API_PATHS.studentLessonComplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lessonCompleteInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid lesson completion payload', parsed.error.flatten())));
+    const result = await markLessonCompleted({ identity: c.get('identity') }, parsed.data.lessonId, deps);
+    return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
+  });
+
+  app.post(API_PATHS.studentLastViewed, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lastViewedInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid last-viewed payload', parsed.error.flatten())));
+    const result = await updateLastViewed({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
+  });
+
+  app.get(API_PATHS.studentLessonNext, async (c) => {
+    const lessonId = c.req.query('lessonId');
+    if (lessonId === undefined) return respond(err(validation('Missing "lessonId" query parameter')));
+    const result = await getNextLesson({ identity: c.get('identity') }, lessonId, deps);
+    return respond(result.ok ? ok({ next: result.value }) : result);
+  });
+
+  app.get(API_PATHS.studentProgress, async (c) => {
+    const courseId = c.req.query('courseId');
+    if (courseId === undefined) return respond(err(validation('Missing "courseId" query parameter')));
+    const result = await getProgress({ identity: c.get('identity') }, courseId, deps);
+    return respond(result.ok ? ok({ progress: result.value }) : result);
+  });
+
+  app.get(API_PATHS.studentLesson, async (c) => {
+    const result = await getAccessibleLesson({ identity: c.get('identity') }, c.req.param('lessonId'), deps);
+    return respond(result.ok ? ok({ lesson: result.value }) : result);
   });
 
   return app;

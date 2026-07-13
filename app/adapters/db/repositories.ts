@@ -9,6 +9,7 @@ import {
   productGrantSchema,
   productSchema,
   staffRoleSchema,
+  tenantApiKeySchema,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -17,6 +18,7 @@ import {
   type Product,
   type ProductGrant,
   type StaffRole,
+  type TenantApiKey,
 } from '@core/domain/index.js';
 import type {
   CourseLessonRepository,
@@ -31,6 +33,7 @@ import type {
   ProductGrantRepository,
   ProductRepository,
   TenantAccessReader,
+  TenantApiKeyRepository,
   TenantDomainRepository,
   TenantRepository,
 } from '@core/server/index.js';
@@ -47,6 +50,7 @@ import {
   productGrants,
   products,
   tenantAdmins,
+  tenantApiKeys,
   tenantDomains,
   tenants,
 } from './schema.js';
@@ -72,6 +76,8 @@ const parseCourse = (course: Course): Course => courseSchema.parse(course);
 
 const parseProgress = (progress: MemberCourseProgress): MemberCourseProgress =>
   memberCourseProgressSchema.parse(progress);
+
+const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
 
 export const createProductRepository = (db: Db): ProductRepository => ({
   listByTenant: async (tenantId) =>
@@ -489,6 +495,15 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
       .returning({ id: productGrants.id });
     return rows.length > 0;
   },
+  setGrantWindow: async (tenantId, grantId, window) => {
+    const rows = await db
+      .update(productGrants)
+      .set({ startsAt: window.startsAt, expiresAt: window.expiresAt })
+      .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseGrant(row) : null;
+  },
   listActiveForMember: async (tenantId, memberId, now) =>
     (
       await db
@@ -527,6 +542,57 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, memberId)))
         .orderBy(asc(productGrants.createdAt))
     ).map(parseProduct),
+});
+
+export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => ({
+  listByTenant: async (tenantId) =>
+    (
+      await db
+        .select()
+        .from(tenantApiKeys)
+        .where(eq(tenantApiKeys.tenantId, tenantId))
+        .orderBy(asc(tenantApiKeys.createdAt))
+    ).map(parseApiKey),
+  create: async (tenantId, apiKey) => {
+    await db.insert(tenantApiKeys).values({
+      id: apiKey.id,
+      tenantId,
+      name: apiKey.name,
+      keyHash: apiKey.keyHash,
+      createdAt: apiKey.createdAt,
+      revokedAt: apiKey.revokedAt,
+    });
+  },
+  findActiveByHash: async (tenantId, keyHash) => {
+    const rows = await db
+      .select()
+      .from(tenantApiKeys)
+      .where(
+        and(
+          eq(tenantApiKeys.tenantId, tenantId),
+          eq(tenantApiKeys.keyHash, keyHash),
+          sql`${tenantApiKeys.revokedAt} is null`,
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row ? parseApiKey(row) : null;
+  },
+  revoke: async (tenantId, id, revokedAt) => {
+    const rows = await db
+      .update(tenantApiKeys)
+      .set({ revokedAt })
+      .where(
+        and(
+          eq(tenantApiKeys.tenantId, tenantId),
+          eq(tenantApiKeys.id, id),
+          sql`${tenantApiKeys.revokedAt} is null`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseApiKey(row) : null;
+  },
 });
 
 export const createPurchaseRepository = (db: Db): PurchaseRepository => ({

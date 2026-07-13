@@ -74,6 +74,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
       grants.push(grant);
       return true;
     },
+    setGrantWindow: async () => null,
     listActiveForMember: async () => [],
     listGrantedProducts: async () => [],
   };
@@ -81,6 +82,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
     getAuthenticatedUser: async () => null,
     ensureUser: async () => ({ userId: 'u-new', created: true }),
     requestMagicLink: async () => undefined,
+    createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
   };
   const ids: IdGenerator = { nextId: () => `id-${(seq += 1)}` };
   const clock: Clock = { nowIso: () => NOW };

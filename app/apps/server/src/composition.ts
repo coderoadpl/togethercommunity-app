@@ -14,13 +14,16 @@ import {
   createProductGrantRepository,
   createProductRepository,
   createTenantAccessReader,
+  createTenantApiKeyRepository,
   createTenantDomainRepository,
   createTenantRepository,
 } from '@adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
+import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
 import type {
+  ApiKeyCrypto,
   AuthPort,
   Clock,
   CourseLessonRepository,
@@ -37,6 +40,7 @@ import type {
   ProductGrantRepository,
   ProductRepository,
   TenantAccessReader,
+  TenantApiKeyRepository,
   TenantDomainRepository,
   TenantRepository,
 } from '@core/server/index.js';
@@ -63,6 +67,8 @@ export interface AppDeps {
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   purchases: PurchaseRepository;
+  tenantApiKeys: TenantApiKeyRepository;
+  apiKeyCrypto: ApiKeyCrypto;
   email: EmailPort;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -134,6 +140,8 @@ export const createDeps = (env: Env): AppDeps => {
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
     purchases: createPurchaseRepository(db),
+    tenantApiKeys: createTenantApiKeyRepository(db),
+    apiKeyCrypto: createApiKeyCrypto(),
     email,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),

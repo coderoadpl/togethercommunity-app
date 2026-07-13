@@ -277,6 +277,16 @@ const devGrantSchema = z.object({
   granted: z.boolean(),
   expiresAt: z.string().nullable(),
 });
+const apiKeyCreateSchema = z.object({
+  apiKey: z.object({ id: z.string(), name: z.string(), revokedAt: z.string().nullable() }),
+  secret: z.string(),
+});
+const m2mEnrollSchema = z.object({
+  memberId: z.string(),
+  grantId: z.string(),
+  renewed: z.boolean(),
+  magicLink: magicLinkSchema.nullable(),
+});
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -581,6 +591,95 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
   );
 };
 
+const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-m2m-creator-'));
+  const studentHome = mkdtempSync(join(tmpdir(), 'smoke-m2m-student-'));
+  homes.push(creatorHome, studentHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const acme = (args: string[], home: string): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'acme', ...args], home);
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo1234'], creatorHome),
+    'm2m flow: creator login',
+  );
+
+  const embed = JSON.stringify({ type: 'embed', embedUrl: 'https://example.com/embed/m2m' });
+  const lesson = lessonSchema.parse(
+    expectOk(
+      await acme(['lesson', 'create', '--data', `{"name":"M2M lesson","contents":[${embed}]}`], creatorHome),
+      'm2m flow: create lesson',
+    ),
+  );
+  const course = courseSchema.parse(
+    expectOk(await acme(['course', 'create', '--name', `M2M course ${randomUUID()}`], creatorHome), 'm2m flow: create course'),
+  );
+  const chapter = JSON.stringify({
+    id: randomUUID(),
+    name: 'M2M chapter',
+    contents: [{ id: randomUUID(), name: 'M2M chapter', lessonId: lesson.lesson.id }],
+  });
+  expectOk(
+    await acme(
+      ['module', 'create', '--data', `{"courseIds":["${course.course.id}"],"title":"M2M module","chapters":[${chapter}]}`],
+      creatorHome,
+    ),
+    'm2m flow: create module',
+  );
+  const accessItems = JSON.stringify([
+    { courseId: course.course.id, courseLevelAccess: true, moduleIds: [], lessonIds: [] },
+  ]);
+  const product = createSchema.parse(
+    expectOk(
+      await acme(['product', 'create', '--title', `M2M access ${randomUUID()}`, '--price-cents', '1000', '--access-items', accessItems], creatorHome),
+      'm2m flow: create product',
+    ),
+  );
+  expectOk(await acme(['product', 'publish', product.product.id], creatorHome), 'm2m flow: publish product');
+
+  const key = apiKeyCreateSchema.parse(
+    expectOk(await acme(['api-key', 'create', 'CI enrollment key'], creatorHome), 'm2m flow: create api key'),
+  );
+  assert(key.secret.length > 0, 'the created API key should expose a one-time secret');
+
+  const m2mEmail = 'm2m-student@together.dev';
+  const enrolled = m2mEnrollSchema.parse(
+    expectOk(
+      await acme(['m2m', 'enroll', '--api-key', key.secret, '--email', m2mEmail, '--product', product.product.id], studentHome),
+      'm2m flow: enroll member',
+    ),
+  );
+  assert(enrolled.renewed === false, 'the first enrollment should create a grant, not renew');
+
+  const renewed = m2mEnrollSchema.parse(
+    expectOk(
+      await acme(['m2m', 'enroll', '--api-key', key.secret, '--email', m2mEmail, '--product', product.product.id], studentHome),
+      'm2m flow: renew member',
+    ),
+  );
+  assert(renewed.renewed === true, 'a repeated enrollment of an active grant should renew');
+  assert(renewed.grantId === enrolled.grantId, 'the renewal should target the same grant');
+
+  expectError(
+    await acme(['m2m', 'enroll', '--api-key', 'wrong-secret', '--email', m2mEmail, '--product', product.product.id], studentHome),
+    'm2m flow: wrong api key rejected',
+    EXIT_CODE_BY_ERROR_CODE.unauthorized,
+    'unauthorized',
+  );
+
+  expectOk(await cli(['--json', '--api-url', url, 'login-magic', '--email', m2mEmail], studentHome), 'm2m flow: member login');
+
+  const courses = studentCoursesSchema.parse(
+    expectOk(await acme(['student', 'courses'], studentHome), 'm2m flow: student courses'),
+  );
+  assert(
+    courses.courses.some((item) => item.id === course.course.id),
+    'the enrolled member should see the granted course in their course list',
+  );
+};
+
 const startedAt = Date.now();
 const homes: string[] = [];
 let server: ChildProcess | null = null;
@@ -599,6 +698,8 @@ try {
   await driveCli(port, homes);
   console.log('smoke: driving the student surface...');
   await driveStudentFlow(port, homes);
+  console.log('smoke: driving the M2M enrollment surface...');
+  await driveM2mFlow(port, homes);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

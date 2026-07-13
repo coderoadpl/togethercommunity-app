@@ -5,18 +5,20 @@ import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '@adapters/auth/client-adapter.js';
 import { createApiClient, type ApiClient } from '@core/client/index.js';
-import { TENANT_HEADER } from '@core/contract/index.js';
+import { API_KEY_HEADER, TENANT_HEADER } from '@core/contract/index.js';
 import {
   accessItemSchema,
   currencySchema,
   devGrantInputSchema,
   err,
   internal,
+  m2mEnrollInputSchema,
   memberExportFormatSchema,
   newCourseLessonSchema,
   newCourseModuleSchema,
   notFound,
   ok,
+  transactionalLanguageSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
@@ -109,6 +111,14 @@ const devGrantOptionsSchema = z.object({
   product: z.string().min(1),
   startsAt: z.string().datetime().optional(),
   expiresAt: z.string().datetime().optional(),
+});
+const m2mEnrollOptionsSchema = z.object({
+  apiKey: z.string().min(1),
+  email: z.string().email(),
+  product: z.string().min(1),
+  expiresAt: z.string().datetime().optional(),
+  language: transactionalLanguageSchema.optional(),
+  skipEmail: z.boolean().optional(),
 });
 
 const readJsonPayload = async (
@@ -861,6 +871,87 @@ member
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [memberId]) => {
       emit(await ctx.api.removeMember({ memberId }), ctx.json, (data) => `removed member: ${data.memberId}`);
+    }),
+  );
+
+const apiKey = program.command('api-key').description('Tenant API keys for M2M enrollment (owner only)');
+
+apiKey.command('list').description('List API keys (no secrets)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listApiKeys(), ctx.json, (data) =>
+      data.apiKeys.length === 0
+        ? 'no API keys'
+        : data.apiKeys
+            .map((k) => `${k.name}\t${k.revokedAt ? 'revoked' : 'active'}\t(${k.id})`)
+            .join('\n'),
+    );
+  }),
+);
+
+apiKey
+  .command('create <name...>')
+  .description('Create an API key; the secret is shown once')
+  .action(
+    withInput(z.tuple([z.array(z.string().min(1)).min(1), noOptionsSchema]), async (ctx, [nameWords]) => {
+      emit(await ctx.api.createApiKey({ name: nameWords.join(' ') }), ctx.json, (data) =>
+        `created API key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,
+      );
+    }),
+  );
+
+apiKey
+  .command('revoke <id>')
+  .description('Revoke an API key')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.revokeApiKey({ id }), ctx.json, (data) =>
+        `revoked API key ${data.apiKey.name} (${data.apiKey.id})`,
+      );
+    }),
+  );
+
+const m2m = program.command('m2m').description('Machine-to-machine enrollment (API-key auth)');
+
+m2m
+  .command('enroll')
+  .description('Enroll a member into a product via a tenant API key')
+  .requiredOption('--api-key <secret>')
+  .requiredOption('--email <email>')
+  .requiredOption('--product <id>')
+  .option('--expires-at <iso>', 'ISO datetime when the grant expires')
+  .option('--language <language>', 'email language (pl or en)')
+  .option('--skip-email', 'do not send the enrollment email')
+  .action(
+    withInput(z.tuple([m2mEnrollOptionsSchema]), async (ctx, [options]) => {
+      if (!ctx.tenant) {
+        emit(err(validation('Select a tenant with --tenant to enroll a member')), ctx.json, () => '');
+        return;
+      }
+      const input = parsedInput(
+        m2mEnrollInputSchema,
+        {
+          email: options.email,
+          productId: options.product,
+          ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
+          ...(options.language === undefined ? {} : { language: options.language }),
+          ...(options.skipEmail === true ? { doNotSendEmail: true } : {}),
+        },
+        'Invalid enrollment payload',
+      );
+      if (!input.ok) {
+        emit(input, ctx.json, () => '');
+        return;
+      }
+      const tenant = ctx.tenant;
+      const api = createApiClient({
+        baseUrl: ctx.apiUrl,
+        headers: () => ({ [TENANT_HEADER]: tenant, [API_KEY_HEADER]: options.apiKey }),
+      });
+      emit(await api.m2mEnroll(input.value), ctx.json, (data) => {
+        const status = data.renewed ? 'renewed' : 'enrolled';
+        const link = data.magicLink ? `\nmagic link: ${data.magicLink.url}` : '';
+        return `${status}: grant ${data.grantId} for member ${data.memberId}${link}`;
+      });
     }),
   );
 

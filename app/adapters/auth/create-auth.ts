@@ -32,10 +32,13 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 interface MagicLinkDeliveryContext {
   tenantName: string;
   language: string;
+  /** 'email' sends a magic-link email; 'capture' returns the URL without sending. */
+  mode: 'email' | 'capture';
 }
 
 export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
+  const capturedLinks = new Map<string, { url: string; token: string }>();
 
   const auth = betterAuth({
     database: drizzleAdapter(db, { provider: 'pg' }),
@@ -54,11 +57,16 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           const context = deliveryContexts.get(normalizedEmail) ?? {
             tenantName: settings.defaultTenantName,
             language: 'pl',
+            mode: 'email' as const,
           };
           deliveryContexts.delete(normalizedEmail);
-          const message = magicLinkTemplate(context.language, { tenantName: context.tenantName, url });
-          const sent = await settings.email.send({ to: normalizedEmail, ...message });
-          if (!sent.ok) throw new Error(sent.error.message);
+          if (context.mode === 'capture') {
+            capturedLinks.set(normalizedEmail, { url, token });
+          } else {
+            const message = magicLinkTemplate(context.language, { tenantName: context.tenantName, url });
+            const sent = await settings.email.send({ to: normalizedEmail, ...message });
+            if (!sent.ok) throw new Error(sent.error.message);
+          }
           if (settings.exposeMagicLinks) {
             await db
               .insert(devMagicLinks)
@@ -86,6 +94,12 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     ...auth,
     setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
       deliveryContexts.set(normalizeEmail(email), context);
+    },
+    consumeCapturedMagicLink: (email: string) => {
+      const normalizedEmail = normalizeEmail(email);
+      const captured = capturedLinks.get(normalizedEmail) ?? null;
+      capturedLinks.delete(normalizedEmail);
+      return captured;
     },
   };
 };
@@ -143,10 +157,22 @@ export const createAuthPort = (auth: Auth, db: Db): AuthPort => ({
     auth.setMagicLinkDeliveryContext(normalizedEmail, {
       tenantName: tenantName ?? 'Together',
       language: language ?? 'pl',
+      mode: 'email',
     });
     await auth.api.signInMagicLink({
       body: { email: normalizedEmail, callbackURL },
       headers: new Headers(),
     });
+  },
+  createEnrollmentMagicLink: async ({ email, callbackURL, tenantName, language }) => {
+    const normalizedEmail = normalizeEmail(email);
+    auth.setMagicLinkDeliveryContext(normalizedEmail, { tenantName, language, mode: 'capture' });
+    await auth.api.signInMagicLink({
+      body: { email: normalizedEmail, callbackURL },
+      headers: new Headers(),
+    });
+    const captured = auth.consumeCapturedMagicLink(normalizedEmail);
+    if (!captured) throw new Error('Magic-link generation did not capture a URL');
+    return { url: captured.url };
   },
 });

@@ -124,6 +124,24 @@ export const productGrants = pgTable(
   ],
 );
 
+export const tenantApiKeys = pgTable(
+  'tenant_api_keys',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull(),
+    createdAt: text('created_at').notNull(),
+    revokedAt: text('revoked_at'),
+  },
+  (table) => [
+    index('tenant_api_keys_tenantId_idx').on(table.tenantId),
+    uniqueIndex('tenant_api_keys_key_hash_uidx').on(table.keyHash),
+  ],
+);
+
 export const courses = pgTable(
   'courses',
   {

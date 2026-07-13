@@ -6,6 +6,8 @@ import {
   courseModuleSchema,
   courseSchema,
   courseStructureWithAccessSchema,
+  createApiKeyInputSchema,
+  m2mEnrollInputSchema,
   memberExportFileSchema,
   memberWithProductIdsSchema,
   membershipSchema,
@@ -17,6 +19,7 @@ import {
   productSchema,
   progressViewSchema,
   staffRoleSchema,
+  tenantApiKeyPublicSchema,
   tenantSchema,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
@@ -264,6 +267,40 @@ export const devGrantOutputSchema = z.object({
   expiresAt: z.string().datetime().nullable(),
 });
 
+export const apiKeysListOutputSchema = z.object({
+  apiKeys: z.array(tenantApiKeyPublicSchema),
+});
+
+export const apiKeyCreateInputSchema = createApiKeyInputSchema;
+
+export type ApiKeyCreateInput = z.input<typeof apiKeyCreateInputSchema>;
+
+export const apiKeyCreateOutputSchema = z.object({
+  apiKey: tenantApiKeyPublicSchema,
+  secret: z.string(),
+});
+
+export const apiKeyRevokeInputSchema = z.object({
+  id: z.string().min(1),
+});
+
+export type ApiKeyRevokeInput = z.input<typeof apiKeyRevokeInputSchema>;
+
+export const apiKeyRevokeOutputSchema = z.object({
+  apiKey: tenantApiKeyPublicSchema,
+});
+
+export const m2mEnrollRequestSchema = m2mEnrollInputSchema;
+
+export type M2mEnrollRequest = z.input<typeof m2mEnrollRequestSchema>;
+
+export const m2mEnrollOutputSchema = z.object({
+  memberId: z.string(),
+  grantId: z.string(),
+  renewed: z.boolean(),
+  magicLink: magicLinkSchema.nullable(),
+});
+
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
  * writes at the type level (CQRS partition). Safe GETs are queries; unsafe
@@ -303,6 +340,10 @@ export const API_ROUTES = {
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
   devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
   devEmail: { method: 'GET', path: '/api/dev/email' },
+  apiKeys: { method: 'GET', path: '/api/api-keys' },
+  apiKeysCreate: { method: 'POST', path: '/api/api-keys' },
+  apiKeyRevoke: { method: 'DELETE', path: '/api/api-keys/:id' },
+  m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -340,7 +381,13 @@ export const API_PATHS = {
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
   devMagicLink: API_ROUTES.devMagicLink.path,
   devEmail: API_ROUTES.devEmail.path,
+  apiKeys: API_ROUTES.apiKeys.path,
+  apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
+  m2mEnroll: API_ROUTES.m2mEnroll.path,
 } as const;
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */
 export const TENANT_HEADER = 'x-tenant';
+
+/** Header carrying a tenant API-key secret for the M2M enroll endpoint. */
+export const API_KEY_HEADER = 'x-api-key';

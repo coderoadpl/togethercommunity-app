@@ -13,6 +13,7 @@ import type {
   Result,
   StaffRole,
   Tenant,
+  TenantApiKey,
   TenantDomain,
 } from '@core/domain/index.js';
 
@@ -81,8 +82,26 @@ export interface MemberRepository {
 export interface ProductGrantRepository {
   findGrant(tenantId: string, memberId: string, productId: string): Promise<ProductGrant | null>;
   createGrant(tenantId: string, grant: ProductGrant): Promise<boolean>;
+  setGrantWindow(
+    tenantId: string,
+    grantId: string,
+    window: { startsAt: string; expiresAt: string | null },
+  ): Promise<ProductGrant | null>;
   listActiveForMember(tenantId: string, memberId: string, now: string): Promise<ProductGrant[]>;
   listGrantedProducts(tenantId: string, memberId: string): Promise<Product[]>;
+}
+
+export interface TenantApiKeyRepository {
+  listByTenant(tenantId: string): Promise<TenantApiKey[]>;
+  create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
+  findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
+  revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
+}
+
+/** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */
+export interface ApiKeyCrypto {
+  generateSecret(): string;
+  hash(secret: string): string;
 }
 
 export interface PurchaseRepository {
@@ -169,6 +188,17 @@ export interface AuthPort {
     tenantName?: string;
     language?: string;
   }): Promise<void>;
+  /**
+   * Generate a magic-link URL for enrollment WITHOUT sending the default
+   * magic-link email — the enroll use-case sends its own welcome email instead.
+   * The dev link store is still populated when magic-link exposure is enabled.
+   */
+  createEnrollmentMagicLink(input: {
+    email: string;
+    callbackURL: string;
+    tenantName: string;
+    language: string;
+  }): Promise<{ url: string }>;
 }
 
 export interface HealthPort {

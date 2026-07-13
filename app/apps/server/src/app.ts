@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 
 import {
+  API_KEY_HEADER,
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
+  apiKeyCreateInputSchema,
+  apiKeyRevokeInputSchema,
   courseCreateInputSchema,
   courseUpdateInputSchema,
   lessonCompleteInputSchema,
@@ -11,6 +14,7 @@ import {
   lessonUpdateInputSchema,
   lastViewedInputSchema,
   memberRemoveInputSchema,
+  m2mEnrollRequestSchema,
   moduleAttachInputSchema,
   moduleCreateInputSchema,
   moduleUpdateInputSchema,
@@ -39,13 +43,18 @@ import {
 } from '@core/domain/index.js';
 import {
   attachModuleToCourse,
+  authenticateApiKey,
   createCourse,
   createLesson,
   createModule,
   createProduct,
   createTenant,
+  createTenantApiKey,
   devGrantProduct,
   exportMembers,
+  listTenantApiKeys,
+  m2mEnroll,
+  revokeTenantApiKey,
   getAccessibleLesson,
   getCourseStructureWithAccess,
   getNextLesson,
@@ -264,6 +273,27 @@ export const buildApp = (deps: AppDeps) => {
     });
   }
 
+  app.post(API_PATHS.m2mEnroll, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respond(tenant);
+    if (!tenant.value) return respond(err(tenantNotFound()));
+
+    const presentedKey = c.req.header(API_KEY_HEADER);
+    if (presentedKey === undefined) return respond(err(unauthorized('Missing API key')));
+    const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);
+    if (!authed.ok) return respond(authed);
+
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = m2mEnrollRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid enrollment payload', parsed.error.flatten())));
+
+    const result = await m2mEnroll(tenant.value.tenant, parsed.data, {
+      ...deps,
+      exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
+    });
+    return respond(result);
+  });
+
   // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
@@ -348,6 +378,26 @@ export const buildApp = (deps: AppDeps) => {
     const parsed = memberRemoveInputSchema.safeParse({ memberId: c.req.param('memberId') });
     if (!parsed.success) return respond(err(validation('Invalid member id', parsed.error.flatten())));
     return respond(await removeMember({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.apiKeys, async (c) => {
+    const result = await listTenantApiKeys({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ apiKeys: result.value }) : result);
+  });
+
+  app.post(API_PATHS.apiKeys, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = apiKeyCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid API key payload', parsed.error.flatten())));
+    const result = await createTenantApiKey({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ apiKey: result.value.apiKey, secret: result.value.secret }) : result);
+  });
+
+  app.delete(API_PATHS.apiKeyRevoke, async (c) => {
+    const parsed = apiKeyRevokeInputSchema.safeParse({ id: c.req.param('id') });
+    if (!parsed.success) return respond(err(validation('Invalid API key id', parsed.error.flatten())));
+    const result = await revokeTenantApiKey({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ apiKey: result.value }) : result);
   });
 
   app.post(API_PATHS.products, async (c) => {

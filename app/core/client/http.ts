@@ -3,6 +3,9 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   looseEnvelopeSchema,
+  apiKeyCreateOutputSchema,
+  apiKeyRevokeOutputSchema,
+  apiKeysListOutputSchema,
   authConfigOutputSchema,
   courseOutputSchema,
   courseStructureOutputSchema,
@@ -12,6 +15,7 @@ import {
   devMagicLinkOutputSchema,
   healthOutputSchema,
   lessonOutputSchema,
+  m2mEnrollOutputSchema,
   meOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
@@ -30,6 +34,8 @@ import {
   studentLessonOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
+  type ApiKeyCreateInput,
+  type ApiKeyRevokeInput,
   type CourseCreateInput,
   type CourseUpdateInput,
   type HttpMethod,
@@ -37,6 +43,7 @@ import {
   type LessonCompleteInput,
   type LessonCreateInput,
   type LessonUpdateInput,
+  type M2mEnrollRequest,
   type MemberRemoveInput,
   type ModuleAttachInput,
   type ModuleCreateInput,
@@ -327,6 +334,28 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   devGrant: (input: DevGrantInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.devGrant.method, API_ROUTES.devGrant.path, devGrantOutputSchema, input, signal),
+  listApiKeys: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path, apiKeysListOutputSchema, undefined, signal),
+  createApiKey: (input: ApiKeyCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeysCreate.method,
+      API_ROUTES.apiKeysCreate.path,
+      apiKeyCreateOutputSchema,
+      input,
+      signal,
+    ),
+  revokeApiKey: (input: ApiKeyRevokeInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.apiKeyRevoke.method,
+      API_ROUTES.apiKeyRevoke.path.replace(':id', encodeURIComponent(input.id)),
+      apiKeyRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
+  m2mEnroll: (input: M2mEnrollRequest, signal?: AbortSignal) =>
+    request(options, API_ROUTES.m2mEnroll.method, API_ROUTES.m2mEnroll.path, m2mEnrollOutputSchema, input, signal),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

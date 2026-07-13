@@ -32,6 +32,7 @@ const granted: Product = {
 const grants = (products: Product[]): ProductGrantRepository => ({
   findGrant: async () => null,
   createGrant: async () => true,
+  setGrantWindow: async () => null,
   listActiveForMember: async () => [],
   listGrantedProducts: async () => products,
 });

@@ -10,6 +10,8 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
+  ApiKeyCreateInput,
+  ApiKeyRevokeInput,
   CourseCreateInput,
   CourseUpdateInput,
   LastViewedInput,
@@ -120,6 +122,11 @@ export const membersScopes = {
 export const authScopes = {
   all: () => ['auth'] as const,
   magicLink: (email: string) => ['auth', 'dev-magic-link', email] as const,
+};
+
+export const apiKeysScopes = {
+  all: () => ['api-keys'] as const,
+  lists: () => ['api-keys', 'list'] as const,
 };
 
 export const coursesScopes = {
@@ -331,6 +338,26 @@ export const devGrantMutation = (api: ApiClient) =>
     mutationKey: ['dev', 'grant'],
     call: (input: DevGrantInput) => api.devGrant(input),
   });
+
+export const apiKeysQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: apiKeysScopes.lists(),
+    call: ({ signal }) => api.listApiKeys(signal),
+  });
+
+export const createApiKeyMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...apiKeysScopes.all(), 'create'],
+    call: (input: ApiKeyCreateInput) => api.createApiKey(input),
+  });
+
+export const revokeApiKeyMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...apiKeysScopes.all(), 'revoke'],
+    call: (input: ApiKeyRevokeInput) => api.revokeApiKey(input),
+  });
+
+export const apiKeysInvalidates = () => ({ queryKey: apiKeysScopes.lists() });
 
 /** The invalidation filter product mutations apply after they settle. */
 export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });

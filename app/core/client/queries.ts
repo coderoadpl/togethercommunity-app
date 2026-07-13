@@ -367,6 +367,9 @@ export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() }
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 
+/** Invalidation filter progress mutations apply to refresh a course's tree. */
+export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
+
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any
  * other action — never hand-rolled pending/error state around a port call.

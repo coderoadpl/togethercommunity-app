@@ -66,6 +66,7 @@ export const MyProductsPage = () => {
         <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
           <Typography variant="h1">My products</Typography>
           <Box sx={{ flex: 1 }} />
+          <Link href="/my">My courses</Link>
           <Link href="/">Home</Link>
         </Stack>
         <Eyebrow variant="overline" component="p">

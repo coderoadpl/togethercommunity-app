@@ -48,7 +48,13 @@ import { renderRootErrorFallback } from './RootErrorFallback.js';
 import { CheckoutRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
-import { CourseRoute, MyProductsRoute } from './routes/member.js';
+import {
+  CourseRoute,
+  CourseStructureRoute,
+  LessonPlayerRoute,
+  MyCoursesRoute,
+  MyProductsRoute,
+} from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
@@ -83,15 +89,30 @@ const checkoutRoute = createRoute({
   path: '/checkout/$productId',
   component: CheckoutRoute,
 });
-const myProductsRoute = createRoute({
+const myCoursesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/my',
+  component: MyCoursesRoute,
+});
+const myProductsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/my/products',
   component: MyProductsRoute,
 });
 const courseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/my/course/$productId',
   component: CourseRoute,
+});
+const courseStructureRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/my/courses/$courseId',
+  component: CourseStructureRoute,
+});
+const lessonPlayerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/my/courses/$courseId/lessons/$lessonId',
+  component: LessonPlayerRoute,
 });
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -104,8 +125,11 @@ const router = createRouter({
     indexRoute,
     loginRoute,
     checkoutRoute,
+    myCoursesRoute,
     myProductsRoute,
     courseRoute,
+    courseStructureRoute,
+    lessonPlayerRoute,
     registerRoute,
   ]),
 });

@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Stack, Typography } from '@mui/material';
+import { Box, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -1823,4 +1823,54 @@ export const TenantSwatch = styled(Box)(({ theme }) => ({
 
 export const LedgerNav = styled(Stack)<AsElement>(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const AccessLockIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.05rem',
+  color: theme.palette.text.disabled,
+}));
+
+export const AccessLockOpenIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.05rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const CompletionCheckIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.15rem',
+  color: theme.palette.success.main,
+}));
+
+export const CompletionPartialIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.15rem',
+  color: theme.palette.success.main,
+}));
+
+export const SearchHighlight = styled('mark')(({ theme }) => ({
+  backgroundColor: alpha(theme.palette.primary.main, 0.28),
+  color: 'inherit',
+  borderRadius: 2,
+  padding: '0 1px',
+}));
+
+export const TreeModuleTitle = styled(Typography)({ fontSize: '1.02rem', fontWeight: 700 });
+
+export const TreeChapterTitle = styled(Typography)({ fontSize: '0.92rem', fontWeight: 600 });
+
+export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.15rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ theme }) => ({
+  display: 'block',
+  height: '100%',
+  textDecoration: 'none',
+  color: 'inherit',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+  '&:hover': {
+    borderColor: alpha(theme.palette.primary.main, 0.55),
+    boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.18)}`,
+  },
 }));

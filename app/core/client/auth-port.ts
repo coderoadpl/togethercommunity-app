@@ -18,7 +18,7 @@ export interface TwoFactorEnrollment {
 export interface AuthClientPort {
   signUp(input: { name: string; email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   signIn(input: { email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
-  requestMagicLink(input: { email: string; callbackURL: string }): Promise<WriteResult<void>>;
+  requestMagicLink(input: { email: string; callbackURL: string; language?: string }): Promise<WriteResult<void>>;
   signOut(): Promise<WriteResult<void>>;
   registerPasskey(name: string): Promise<WriteResult<void>>;
   signInWithPasskey(): Promise<WriteResult<AuthSessionResult>>;

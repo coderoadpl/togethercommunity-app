@@ -17,12 +17,13 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const CheckoutPage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const offer = useQuery(actions.publicOffer);
   const [email, setEmail] = useState('');
   const [purchaseComplete, setPurchaseComplete] = useState(false);
@@ -38,7 +39,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    simulatePurchase.mutate({ email, productId });
+    simulatePurchase.mutate({ email, productId, language });
   };
 
   if (offer.isPending) {

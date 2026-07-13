@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 
 import {
   API_KEY_HEADER,
@@ -32,6 +33,8 @@ import {
   devGrantInputSchema,
   err,
   internal,
+  languageSchema,
+  MAGIC_LINK_LANGUAGE_HEADER,
   memberExportFormatSchema,
   ok,
   tenantNotFound,
@@ -86,8 +89,9 @@ import {
   updateModule,
   updateProductAccessItems,
   type AuthenticatedUser,
+  type TenantSource,
 } from '@core/server/index.js';
-import { BETTER_AUTH_API_PATH_PATTERN } from '@adapters/auth/create-auth.js';
+import { BETTER_AUTH_API_PATH_PATTERN, BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
@@ -130,10 +134,38 @@ const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response 
   return new Response(JSON.stringify(envelope), { status, headers });
 };
 
-const issueMagicLink = async (deps: AppDeps, email: string, tenantName: string) => {
-  await deps.authPort.requestMagicLink({ email, callbackURL: deps.appBaseUrl, tenantName });
-  return deps.devMagicLinks.findByEmail(email);
+/**
+ * The base URL the magic-link verify page must live on. Sessions are per-domain
+ * cookie worlds (ADR-0002), so a link requested from a tenant subdomain or custom
+ * domain must verify on that same host; only the X-Tenant header flow (and hostless
+ * server-internal calls) fall back to APP_BASE_URL.
+ */
+const magicLinkBaseUrl = (
+  hostHeader: string,
+  forwardedProto: string | null,
+  source: TenantSource,
+  appBaseUrl: string,
+): string => {
+  if (source === 'tenant-header' || hostHeader === '') return appBaseUrl;
+  const proto = forwardedProto ?? new URL(appBaseUrl).protocol.replace(':', '');
+  return `${proto}://${hostHeader}`;
 };
+
+const issueMagicLink = async (
+  deps: AppDeps,
+  input: { email: string; tenantName: string; language: string; baseUrl: string },
+) => {
+  await deps.authPort.requestMagicLink({
+    email: input.email,
+    callbackURL: input.baseUrl,
+    tenantName: input.tenantName,
+    language: input.language,
+    baseUrl: input.baseUrl,
+  });
+  return deps.devMagicLinks.findByEmail(input.email);
+};
+
+const magicLinkRequestBodySchema = z.object({ email: z.string().email() });
 
 const toProgressView = (progress: MemberCourseProgress): ProgressView => ({
   courseId: progress.courseId,
@@ -224,6 +256,36 @@ export const buildApp = (deps: AppDeps) => {
     ),
   );
 
+  // Set the magic-link delivery context (tenant name, language, host) before Better
+  // Auth generates the verify URL, so browser sign-ins land back on their own domain.
+  app.post(BETTER_AUTH_MAGIC_LINK_PATH, async (c) => {
+    const rawBody = await c.req.text();
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      payload = null;
+    }
+    const parsedBody = magicLinkRequestBodySchema.safeParse(payload);
+    if (parsedBody.success) {
+      const host = c.req.header('host') ?? '';
+      const forwardedProto = c.req.header('x-forwarded-proto') ?? null;
+      const tenant = await resolveTenant(host, c.req.header(TENANT_HEADER) ?? null, deps);
+      const resolved = tenant.ok ? tenant.value : null;
+      const source: TenantSource = resolved?.source ?? 'subdomain';
+      const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
+      deps.auth.setMagicLinkDeliveryContext(parsedBody.data.email, {
+        ...(resolved ? { tenantName: resolved.tenant.name } : {}),
+        language: headerLanguage.success ? headerLanguage.data : 'pl',
+        mode: 'email',
+        baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
+      });
+    }
+    return deps.auth.handler(
+      new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
+    );
+  });
+
   app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) => deps.auth.handler(c.req.raw));
 
   app.post(API_PATHS.tenants, async (c) => {
@@ -251,7 +313,18 @@ export const buildApp = (deps: AppDeps) => {
       const result = await simulatePurchase(tenant.value.tenant.id, parsed.data.email, parsed.data.productId, deps);
       if (!result.ok) return respond(result);
 
-      const issuedMagicLink = await issueMagicLink(deps, parsed.data.email, tenant.value.tenant.name);
+      const baseUrl = magicLinkBaseUrl(
+        c.req.header('host') ?? '',
+        c.req.header('x-forwarded-proto') ?? null,
+        tenant.value.source,
+        deps.appBaseUrl,
+      );
+      const issuedMagicLink = await issueMagicLink(deps, {
+        email: parsed.data.email,
+        tenantName: tenant.value.tenant.name,
+        language: parsed.data.language,
+        baseUrl,
+      });
       const magicLink = deps.devEndpoints.exposeMagicLinks ? issuedMagicLink : null;
       return respond(ok({ ...result.value, magicLink }));
     });

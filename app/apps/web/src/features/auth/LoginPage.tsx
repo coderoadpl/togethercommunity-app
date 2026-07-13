@@ -17,11 +17,12 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { useLanguage, useTranslations } from '../../i18n/index.js';
 import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const LoginPage = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [magicEmail, setMagicEmail] = useState('');
@@ -69,7 +70,7 @@ export const LoginPage = () => {
   const submitMagicLink = (event: FormEvent) => {
     event.preventDefault();
     setRequestedMagicEmail('');
-    requestMagicLink.mutate({ email: magicEmail, callbackURL: `${window.location.origin}/my` });
+    requestMagicLink.mutate({ email: magicEmail, callbackURL: `${window.location.origin}/my`, language });
   };
 
   return (

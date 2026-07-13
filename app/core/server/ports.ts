@@ -192,6 +192,8 @@ export interface AuthPort {
     callbackURL: string;
     tenantName?: string;
     language?: string;
+    /** Host-derived base URL so the verify link lands on the requesting tenant domain. */
+    baseUrl?: string;
   }): Promise<void>;
   /**
    * Generate a magic-link URL for enrollment WITHOUT sending the default

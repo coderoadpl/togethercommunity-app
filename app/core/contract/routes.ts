@@ -8,6 +8,7 @@ import {
   courseStructureWithAccessSchema,
   createApiKeyInputSchema,
   grantProductToMemberInputSchema,
+  languageSchema,
   m2mEnrollInputSchema,
   memberExportFileSchema,
   memberGrantSchema,
@@ -151,6 +152,7 @@ export const magicLinkSchema = z.object({
 export const simulatePurchaseInputSchema = z.object({
   email: z.string().email(),
   productId: z.string().min(1),
+  language: languageSchema.default('pl'),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;

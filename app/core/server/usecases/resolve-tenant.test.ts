@@ -55,11 +55,11 @@ describe('resolveTenant', () => {
 
     await expect(resolveTenant('acme.localhost:48730', null, deps)).resolves.toMatchObject({
       ok: true,
-      value: { tenant: { id: 't-acme' }, source: 'slug' },
+      value: { tenant: { id: 't-acme' }, source: 'subdomain' },
     });
     await expect(resolveTenant('localhost:48730', 'globex', deps)).resolves.toMatchObject({
       ok: true,
-      value: { tenant: { id: 't-globex' }, source: 'slug' },
+      value: { tenant: { id: 't-globex' }, source: 'tenant-header' },
     });
   });
 

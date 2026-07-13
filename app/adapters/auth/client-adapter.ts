@@ -4,7 +4,15 @@ import { magicLinkClient, twoFactorClient } from 'better-auth/client/plugins';
 import { z } from 'zod';
 
 import type { AuthClientPort, AuthSessionResult, TwoFactorEnrollment } from '@core/client/index.js';
-import { appError, err, ok, validation, type AppError, type Result } from '@core/domain/index.js';
+import {
+  appError,
+  err,
+  MAGIC_LINK_LANGUAGE_HEADER,
+  ok,
+  validation,
+  type AppError,
+  type Result,
+} from '@core/domain/index.js';
 
 /** CLI-only extension of the client auth port: it can verify a magic-link token headlessly. */
 export interface CliAuthAdapter extends AuthClientPort {
@@ -98,8 +106,16 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       const response = await client.signIn.email({ email, password });
       return toResult({ token }, response.error);
     },
-    requestMagicLink: async ({ email, callbackURL }) =>
-      toResult(undefined, (await client.signIn.magicLink({ email, callbackURL })).error),
+    requestMagicLink: async ({ email, callbackURL, language }) =>
+      toResult(
+        undefined,
+        (
+          await client.signIn.magicLink(
+            { email, callbackURL },
+            language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
+          )
+        ).error,
+      ),
     signOut: async () => toResult(undefined, (await client.signOut()).error),
     registerPasskey: async (name) =>
       toResult(undefined, (await client.passkey.addPasskey({ name })).error),

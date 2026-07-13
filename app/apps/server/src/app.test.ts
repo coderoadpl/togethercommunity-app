@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { API_PATHS, TENANT_HEADER } from '@core/contract/index.js';
+import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
 import type { AppDeps } from './composition.js';
 import { buildApp } from './app.js';
-import type { Member, Membership, Product, Tenant, TenantDomain } from '@core/domain/index.js';
+import {
+  MAGIC_LINK_LANGUAGE_HEADER,
+  type Member,
+  type Membership,
+  type Product,
+  type Tenant,
+  type TenantDomain,
+} from '@core/domain/index.js';
 
 const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
 const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };
@@ -44,6 +53,7 @@ const deps = (input: {
   return {
     auth: {
       handler: async () => new Response(null, { status: 404 }),
+      setMagicLinkDeliveryContext: () => undefined,
     },
     authPort: {
       getAuthenticatedUser: async () => {
@@ -292,5 +302,131 @@ describe('public auth-config route', () => {
     const body: unknown = await response.json();
 
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
+  });
+});
+
+type RequestMagicLinkInput = Parameters<AppDeps['authPort']['requestMagicLink']>[0];
+type DeliveryContext = Parameters<AppDeps['auth']['setMagicLinkDeliveryContext']>[1];
+
+interface Captured {
+  request: RequestMagicLinkInput | null;
+  context: { email: string; context: DeliveryContext } | null;
+}
+
+const capturingApp = (): { app: ReturnType<typeof buildApp>; captured: Captured } => {
+  const captured: Captured = { request: null, context: null };
+  const base = deps();
+  const app = buildApp({
+    ...base,
+    authPort: {
+      ...base.authPort,
+      requestMagicLink: async (input) => {
+        captured.request = input;
+      },
+    },
+    auth: {
+      ...base.auth,
+      setMagicLinkDeliveryContext: (email, context) => {
+        captured.context = { email, context };
+      },
+    },
+    devMagicLinks: {
+      findByEmail: async (email) =>
+        captured.request?.baseUrl === undefined
+          ? null
+          : {
+              email,
+              url: `${captured.request.baseUrl}/magic/verify?token=tok`,
+              token: 'tok',
+            },
+    },
+    devEndpoints: { simulatedPayments: true, exposeMagicLinks: true },
+  });
+  return { app, captured };
+};
+
+const purchase = (
+  app: ReturnType<typeof buildApp>,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+) =>
+  app.request(API_PATHS.devSimulatePurchase, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+
+describe('tenant-host magic links on checkout', () => {
+  it('builds the verify link on the requesting tenant subdomain', async () => {
+    const { app, captured } = capturingApp();
+
+    const response = await purchase(
+      app,
+      { host: 'acme.localhost:48730' },
+      { email: 'buyer@together.dev', productId: 'acme-published', language: 'en' },
+    );
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(captured.request?.baseUrl).toBe('http://acme.localhost:48730');
+    expect(captured.request?.callbackURL).toBe('http://acme.localhost:48730');
+    expect(captured.request?.language).toBe('en');
+    const parsed = z.object({ data: z.object({ magicLink: z.object({ url: z.string() }) }) }).parse(body);
+    expect(parsed.data.magicLink.url).toBe('http://acme.localhost:48730/magic/verify?token=tok');
+    expect(new URL(parsed.data.magicLink.url).host).toBe('acme.localhost:48730');
+  });
+
+  it('keeps the base host when the tenant comes from the x-tenant header', async () => {
+    const { app, captured } = capturingApp();
+
+    const response = await purchase(
+      app,
+      { host: 'localhost:48730', [TENANT_HEADER]: 'globex' },
+      { email: 'buyer@together.dev', productId: 'globex-published' },
+    );
+
+    expect(response.status).toBe(200);
+    expect(captured.request?.baseUrl).toBe('http://localhost:48730');
+    expect(captured.request?.language).toBe('pl');
+  });
+});
+
+describe('tenant-host magic links on login', () => {
+  it('sets the tenant name, language and host from the subdomain request', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'acme.localhost:48730',
+        [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+      },
+      body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://acme.localhost:48730/my' }),
+    });
+
+    expect(captured.context?.email).toBe('login@together.dev');
+    expect(captured.context?.context).toMatchObject({
+      tenantName: 'Acme',
+      language: 'en',
+      mode: 'email',
+      baseUrl: 'http://acme.localhost:48730',
+    });
+  });
+
+  it('falls back to Polish and the base host on the bare domain', async () => {
+    const { app, captured } = capturingApp();
+
+    await app.request(BETTER_AUTH_MAGIC_LINK_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: 'localhost:48730' },
+      body: JSON.stringify({ email: 'login@together.dev', callbackURL: 'http://localhost:48730/my' }),
+    });
+
+    expect(captured.context?.context).toMatchObject({
+      language: 'pl',
+      baseUrl: 'http://localhost:48730',
+    });
+    expect(captured.context?.context.tenantName).toBeUndefined();
   });
 });

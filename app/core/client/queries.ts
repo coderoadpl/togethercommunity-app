@@ -438,7 +438,7 @@ export const signInMutation = (auth: AuthClientPort) =>
 export const requestMagicLinkMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'magic-link'],
-    call: (input: { email: string; callbackURL: string }) => auth.requestMagicLink(input),
+    call: (input: { email: string; callbackURL: string; language?: string }) => auth.requestMagicLink(input),
   });
 
 export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>

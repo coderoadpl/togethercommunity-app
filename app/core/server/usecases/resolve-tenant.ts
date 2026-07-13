@@ -15,7 +15,7 @@ export interface ResolveTenantDeps {
   baseDomain: string;
 }
 
-export type TenantSource = 'custom-domain' | 'slug';
+export type TenantSource = 'custom-domain' | 'subdomain' | 'tenant-header';
 
 export interface ResolvedTenant {
   tenant: Tenant;
@@ -40,11 +40,13 @@ export const resolveTenant = async (
     return tenant ? ok({ tenant, source: 'custom-domain' }) : err(tenantNotFound('Tenant domain is not attached'));
   }
 
-  const slug = subdomainOf(host, deps.baseDomain) ?? tenantHeader?.toLowerCase() ?? null;
+  const subdomain = subdomainOf(host, deps.baseDomain);
+  const slug = subdomain ?? tenantHeader?.toLowerCase() ?? null;
   if (!slug) return ok(null);
 
   const tenant = await deps.tenants.findBySlug(slug);
-  return tenant ? ok({ tenant, source: 'slug' }) : err(tenantNotFound(tenantNotFoundMessage(slug)));
+  if (!tenant) return err(tenantNotFound(tenantNotFoundMessage(slug)));
+  return ok({ tenant, source: subdomain ? 'subdomain' : 'tenant-header' });
 };
 
 const subdomainOf = (host: string, baseDomain: string): string | null => {

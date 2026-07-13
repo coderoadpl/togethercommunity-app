@@ -30,12 +30,28 @@ export interface AuthSettings {
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
-interface MagicLinkDeliveryContext {
-  tenantName: string;
+export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
+
+export interface MagicLinkDeliveryContext {
+  tenantName?: string;
   language: string;
   /** 'email' sends a magic-link email; 'capture' returns the URL without sending. */
   mode: 'email' | 'capture';
+  /** Host-derived base URL: the verify link is rebased onto this so it lands on the requesting domain. */
+  baseUrl?: string;
 }
+
+const rebaseUrl = (rawUrl: string, base: string): string => {
+  try {
+    const target = new URL(base);
+    const rebased = new URL(rawUrl);
+    rebased.protocol = target.protocol;
+    rebased.host = target.host;
+    return rebased.toString();
+  } catch {
+    return rawUrl;
+  }
+};
 
 export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
@@ -56,25 +72,26 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         sendMagicLink: async ({ email, url, token }) => {
           const normalizedEmail = normalizeEmail(email);
           const context = deliveryContexts.get(normalizedEmail) ?? {
-            tenantName: settings.defaultTenantName,
             language: 'pl',
             mode: 'email' as const,
           };
           deliveryContexts.delete(normalizedEmail);
+          const tenantName = context.tenantName ?? settings.defaultTenantName;
+          const deliveredUrl = context.baseUrl ? rebaseUrl(url, context.baseUrl) : url;
           if (context.mode === 'capture') {
-            capturedLinks.set(normalizedEmail, { url, token });
+            capturedLinks.set(normalizedEmail, { url: deliveredUrl, token });
           } else {
-            const message = magicLinkTemplate(context.language, { tenantName: context.tenantName, url });
+            const message = magicLinkTemplate(context.language, { tenantName, url: deliveredUrl });
             const sent = await settings.email.send({ to: normalizedEmail, ...message });
             if (!sent.ok) throw new Error(sent.error.message);
           }
           if (settings.exposeMagicLinks) {
             await db
               .insert(devMagicLinks)
-              .values({ email: normalizedEmail, url, token, createdAt: new Date().toISOString() })
+              .values({ email: normalizedEmail, url: deliveredUrl, token, createdAt: new Date().toISOString() })
               .onConflictDoUpdate({
                 target: devMagicLinks.email,
-                set: { url, token, createdAt: new Date().toISOString() },
+                set: { url: deliveredUrl, token, createdAt: new Date().toISOString() },
               });
           }
         },
@@ -153,12 +170,13 @@ export const createAuthPort = (auth: Auth, db: Db): AuthPort => ({
     if (!existingAfterConflict) throw new Error('User create/read failed after email conflict');
     return { userId: existingAfterConflict.id, created: false };
   },
-  requestMagicLink: async ({ email, callbackURL, tenantName, language }) => {
+  requestMagicLink: async ({ email, callbackURL, tenantName, language, baseUrl }) => {
     const normalizedEmail = normalizeEmail(email);
     auth.setMagicLinkDeliveryContext(normalizedEmail, {
       tenantName: tenantName ?? 'Together',
       language: language ?? 'pl',
       mode: 'email',
+      ...(baseUrl ? { baseUrl } : {}),
     });
     await auth.api.signInMagicLink({
       body: { email: normalizedEmail, callbackURL },

@@ -103,6 +103,17 @@ const embed = (videoId: string): LessonBlock => ({
 const html = (body: string): LessonBlock => ({ type: 'html', html: body });
 const link = (url: string, description: string): LessonBlock => ({ type: 'link', url, description });
 const pdf = (pdfUrl: string, name: string): LessonBlock => ({ type: 'pdf', pdfUrl, name });
+const video = (streamLibraryId: string, streamVideoId: string): LessonBlock => ({
+  type: 'video',
+  storageKey: `${streamLibraryId}/${streamVideoId}`,
+  streamVideoId,
+  streamLibraryId,
+});
+
+// Publicly embeddable Bunny Stream demo (the player bunny.net embeds on its own
+// marketing blog); renders for anyone via iframe.mediadelivery.net/embed/<lib>/<video>.
+const BUNNY_DEMO_LIBRARY_ID = '197133';
+const BUNNY_DEMO_VIDEO_ID = 'dc48a09e-d9bb-420a-83d7-72dc2304c034';
 
 const SAMPLE_PDF = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
 
@@ -113,6 +124,16 @@ interface LessonDef {
 }
 
 const studioLessons: LessonDef[] = [
+  {
+    id: 'lesson-js-demo-video',
+    name: 'Demo wideo (Bunny Stream)',
+    contents: [
+      video(BUNNY_DEMO_LIBRARY_ID, BUNNY_DEMO_VIDEO_ID),
+      html(
+        '<h3>Odtwarzacz wideo Bunny Stream</h3><p>Ta lekcja pokazuje prawdziwy strumień wideo z Bunny Stream osadzony w odtwarzaczu platformy. Materiały wideo w Together serwujemy przez Bunny Stream — szybki, globalny hosting wideo z adaptacyjną jakością (HLS).</p><p>Aby dodać własne nagranie, wgraj je do swojej biblioteki Bunny Stream i wklej identyfikatory biblioteki oraz wideo w edytorze lekcji.</p>',
+      ),
+    ],
+  },
   {
     id: 'lesson-js-zmienne-1',
     name: 'Deklarowanie zmiennych',
@@ -323,6 +344,11 @@ const studioModules: ModuleDef[] = [
     title: 'Podstawy',
     chapters: [
       {
+        id: 'chapter-js-demo',
+        name: 'Wprowadzenie',
+        contents: [content('lesson-js-demo-video', 'Demo wideo (Bunny Stream)')],
+      },
+      {
         id: 'chapter-js-zmienne',
         name: 'Zmienne i typy',
         contents: [
@@ -518,7 +544,7 @@ const demoProducts: ProductDef[] = [
       {
         level: 'lessons',
         courseId: 'course-js',
-        lessonIds: ['lesson-js-zmienne-1', 'lesson-js-dom-1', 'lesson-js-projekt-1'],
+        lessonIds: ['lesson-js-demo-video', 'lesson-js-zmienne-1', 'lesson-js-dom-1', 'lesson-js-projekt-1'],
       },
       {
         level: 'lessons',

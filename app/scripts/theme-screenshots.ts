@@ -17,6 +17,7 @@ const webDistDir = join(rootDir, 'dist/web');
 const outputDir = join(rootDir, 'tasks/theme-screenshots');
 
 const themeStorageKey = 'together-theme-mode';
+const languageStorageKey = 'together-language';
 const checkoutProductId = 'product-studio-kurs-101';
 const minPngBytes = 20 * 1024;
 
@@ -160,14 +161,15 @@ const newModeContext = async (
 ): Promise<BrowserContext> => {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
   await context.addInitScript(
-    ([key, value]) => {
+    ([themeKey, themeValue, langKey]) => {
       try {
-        window.localStorage.setItem(key, value);
+        window.localStorage.setItem(themeKey, themeValue);
+        window.localStorage.setItem(langKey, 'en');
       } catch {
         // storage disabled — the choice simply won't persist
       }
     },
-    [themeStorageKey, mode] as const,
+    [themeStorageKey, mode, languageStorageKey] as const,
   );
   return context;
 };

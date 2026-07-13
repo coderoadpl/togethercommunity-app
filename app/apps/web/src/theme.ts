@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ListItemButton, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -474,6 +474,16 @@ export const createSignalMonoTheme = (): Theme =>
           },
         },
       },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: SIGNAL_SURFACE,
+            backgroundImage: 'none',
+            borderRight: `1px solid ${SIGNAL_DIVIDER}`,
+            boxShadow: 'none',
+          },
+        },
+      },
       MuiDialog: {
         styleOverrides: {
           paper: {
@@ -830,6 +840,16 @@ export const createSteadyFrameTheme = (): Theme =>
             backgroundColor: FRAME_SURFACE,
             color: FRAME_INK,
             borderBottom: `1px solid ${FRAME_DIVIDER}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: FRAME_SURFACE,
+            backgroundImage: 'none',
+            borderRight: `1px solid ${FRAME_DIVIDER}`,
             boxShadow: 'none',
           },
         },
@@ -1206,6 +1226,16 @@ export const createScoreboardTheme = (): Theme =>
           },
         },
       },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: SCORE_SURFACE,
+            backgroundImage: 'none',
+            borderRight: `2px solid ${SCORE_INK}`,
+            boxShadow: 'none',
+          },
+        },
+      },
       MuiDialog: {
         styleOverrides: {
           paper: {
@@ -1504,6 +1534,16 @@ export const createQuietStudioTheme = (): Theme =>
           },
         },
       },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: STUDIO_SURFACE,
+            backgroundImage: 'none',
+            borderRight: `1px solid ${STUDIO_DIVIDER}`,
+            boxShadow: STUDIO_SHADOW_REST,
+          },
+        },
+      },
       MuiDialog: {
         styleOverrides: {
           paper: { borderRadius: 16, boxShadow: STUDIO_SHADOW_FLOAT },
@@ -1758,6 +1798,29 @@ export const createAppTheme = (accentHue = 24): Theme => {
           },
         },
       },
+      MuiAppBar: {
+        defaultProps: { elevation: 0, color: 'transparent' },
+        styleOverrides: {
+          root: {
+            backgroundColor: PAPER_RAISED,
+            backgroundImage: 'none',
+            color: INK,
+            border: 'none',
+            borderBottom: `1.5px solid ${LINE_STRONG}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: PAPER_RAISED,
+            backgroundImage: 'none',
+            borderRight: `1.5px solid ${LINE_STRONG}`,
+            boxShadow: 'none',
+          },
+        },
+      },
     },
   });
 };
@@ -1823,6 +1886,43 @@ export const TenantSwatch = styled(Box)(({ theme }) => ({
 
 export const LedgerNav = styled(Stack)<AsElement>(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const AppBarTitle = styled(Typography)<AsElement>({
+  fontSize: '1.05rem',
+  fontWeight: 700,
+  lineHeight: 1.2,
+});
+
+export const AppBarWordmark = styled(Typography)<AsElement>({
+  fontSize: '0.68rem',
+  letterSpacing: '0.16em',
+  textTransform: 'uppercase',
+  opacity: 0.62,
+});
+
+export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });
+
+/**
+ * Sidebar section entry. The selected state derives entirely from the active
+ * theme's primary token (tint fill + accent rail + accent text), so it reads
+ * coherently across all six modes without any hard-coded color.
+ */
+export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
+  borderRadius: theme.shape.borderRadius,
+  marginBottom: 2,
+  paddingTop: 8,
+  paddingBottom: 8,
+  color: theme.palette.text.secondary,
+  '& .MuiListItemIcon-root': { color: 'inherit', minWidth: 34 },
+  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.06) },
+  '&.Mui-selected': {
+    color: theme.palette.primary.main,
+    backgroundColor: alpha(theme.palette.primary.main, 0.1),
+    boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
+    '& .MuiListItemIcon-root': { color: theme.palette.primary.main },
+    '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.16) },
+  },
 }));
 
 export const AccessLockIcon = styled(SvgIcon)(({ theme }) => ({

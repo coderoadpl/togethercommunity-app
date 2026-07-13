@@ -86,6 +86,13 @@ export const en: Messages = {
     aria: 'Creator sections',
     comingSoon: 'Coming soon.',
   },
+  panel: {
+    navigation: 'Panel navigation',
+    openNavigation: 'Open navigation',
+    closeNavigation: 'Close navigation',
+    accountMenu: 'Account menu',
+    signedInAs: 'Signed in as',
+  },
   security: {
     heading: 'Security',
     passkeys: 'Passkeys',

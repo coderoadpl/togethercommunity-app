@@ -237,6 +237,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
       throw new E2eFailure(`passkey registration did not confirm. alert=${String(alert)}\n${String(cause)}`);
     }
 
+    await page.getByTestId('user-menu').click();
     await page.getByTestId('sign-out').click();
     await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 15000 });
 

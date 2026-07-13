@@ -39,6 +39,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 
+import { AppChromeProvider } from './components/ui/app-chrome.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
 import { ThemeSwitcher } from './components/ui/ThemeSwitcher.js';
@@ -152,18 +153,20 @@ createRoot(container).render(
   <StrictMode>
     <ThemeModeProvider>
       <LanguageProvider>
-        <CssBaseline />
-        <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
-          <QueryClientProvider client={queryClient}>
-            <RefreshSnackbar />
-            <RouterProvider router={router} />
-            {import.meta.env.DEV ? (
-              <Suspense fallback={null}>
-                <ReactQueryDevtools />
-              </Suspense>
-            ) : null}
-          </QueryClientProvider>
-        </ErrorBoundary>
+        <AppChromeProvider>
+          <CssBaseline />
+          <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
+            <QueryClientProvider client={queryClient}>
+              <RefreshSnackbar />
+              <RouterProvider router={router} />
+              {import.meta.env.DEV ? (
+                <Suspense fallback={null}>
+                  <ReactQueryDevtools />
+                </Suspense>
+              ) : null}
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </AppChromeProvider>
       </LanguageProvider>
     </ThemeModeProvider>
   </StrictMode>,

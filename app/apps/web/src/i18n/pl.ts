@@ -92,6 +92,13 @@ export const pl: Messages = {
     aria: 'Sekcje panelu twórcy',
     comingSoon: 'Już wkrótce.',
   },
+  panel: {
+    navigation: 'Nawigacja panelu',
+    openNavigation: 'Otwórz nawigację',
+    closeNavigation: 'Zamknij nawigację',
+    accountMenu: 'Menu konta',
+    signedInAs: 'Zalogowano jako',
+  },
   security: {
     heading: 'Bezpieczeństwo',
     passkeys: 'Klucze dostępu',

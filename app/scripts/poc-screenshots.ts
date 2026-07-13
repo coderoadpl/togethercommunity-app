@@ -212,6 +212,7 @@ const captureBuyerJourney = async (
 
   await magicLink.click();
   await page.waitForURL('**/my', { timeout: 20000 });
+  await page.goto(`${studioBaseUrl}/my/products`, { waitUntil: 'load' });
   await page.getByRole('heading', { name: 'My products' }).waitFor({ state: 'visible', timeout: 20000 });
   await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '06-member-my-products.png');
@@ -246,11 +247,22 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const viewport = { width: 1440, height: 900 };
 
-  const creatorContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  const pinEnglish = async (context: BrowserContext): Promise<BrowserContext> => {
+    await context.addInitScript(() => {
+      try {
+        window.localStorage.setItem('together-language', 'en');
+      } catch {
+        // storage disabled — the choice simply won't persist
+      }
+    });
+    return context;
+  };
+
+  const creatorContext = await pinEnglish(await browser.newContext({ viewport, deviceScaleFactor: 2 }));
   await captureCreatorPanel(creatorContext, studioBaseUrl);
   await creatorContext.close();
 
-  const buyerContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  const buyerContext = await pinEnglish(await browser.newContext({ viewport, deviceScaleFactor: 2 }));
   await captureBuyerJourney(buyerContext, studioBaseUrl, productId);
   await buyerContext.close();
 

@@ -89,6 +89,13 @@ export interface Messages {
     aria: string;
     comingSoon: string;
   };
+  panel: {
+    navigation: string;
+    openNavigation: string;
+    closeNavigation: string;
+    accountMenu: string;
+    signedInAs: string;
+  };
   security: {
     heading: string;
     passkeys: string;

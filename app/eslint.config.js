@@ -478,6 +478,24 @@ export default tseslint.config(
     },
   },
   {
+    files: ['adapters/auth/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            {
+              from: ['adapter-auth'],
+              allow: ['@better-auth/passkey', 'better-auth', 'drizzle-orm', 'node:crypto', 'pg', 'vitest', 'zod'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['adapters/email/**/*.test.{ts,tsx}'],
     rules: {
       'boundaries/external': [

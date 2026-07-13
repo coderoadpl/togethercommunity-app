@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 
 import { magicLink as magicLinkTemplate, normalizeEmail } from '@core/domain/index.js';
 import type { AuthPort, EmailPort } from '@core/server/index.js';
+import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
 import type { Db } from '@adapters/db/client.js';
 import { devMagicLinks, user } from '@adapters/db/schema.js';
 
@@ -45,7 +46,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
-    emailAndPassword: { enabled: true },
+    emailAndPassword: { enabled: true, password: { verify: verifyPasswordWithLegacyFallback } },
     ...(settings.google
       ? { socialProviders: { google: settings.google } }
       : {}),

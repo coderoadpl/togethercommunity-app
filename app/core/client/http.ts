@@ -15,12 +15,14 @@ import {
   devMagicLinkOutputSchema,
   healthOutputSchema,
   lessonOutputSchema,
+  lessonsListOutputSchema,
   m2mEnrollOutputSchema,
   meOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
   membersExportOutputSchema,
   moduleOutputSchema,
+  modulesListOutputSchema,
   myProductsOutputSchema,
   nextLessonOutputSchema,
   productsAccessItemsOutputSchema,
@@ -259,12 +261,16 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.coursesCreate.method, API_ROUTES.coursesCreate.path, courseOutputSchema, input, signal),
   updateCourse: (input: CourseUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.coursesUpdate.method, API_ROUTES.coursesUpdate.path, courseOutputSchema, input, signal),
+  listModules: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.modules.method, API_ROUTES.modules.path, modulesListOutputSchema, undefined, signal),
   createModule: (input: ModuleCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.modulesCreate.method, API_ROUTES.modulesCreate.path, moduleOutputSchema, input, signal),
   updateModule: (input: ModuleUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.modulesUpdate.method, API_ROUTES.modulesUpdate.path, moduleOutputSchema, input, signal),
   attachModuleToCourse: (input: ModuleAttachInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.modulesAttach.method, API_ROUTES.modulesAttach.path, moduleOutputSchema, input, signal),
+  listLessons: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.lessons.method, API_ROUTES.lessons.path, lessonsListOutputSchema, undefined, signal),
   createLesson: (input: LessonCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.lessonsCreate.method, API_ROUTES.lessonsCreate.path, lessonOutputSchema, input, signal),
   updateLesson: (input: LessonUpdateInput, signal?: AbortSignal) =>

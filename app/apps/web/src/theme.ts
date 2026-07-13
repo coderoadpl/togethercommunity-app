@@ -1764,7 +1764,7 @@ export const createAppTheme = (accentHue = 24): Theme => {
 
 type AsElement = { component?: ElementType };
 
-export const CardTitle = styled(Typography)({ fontSize: '1.6rem' });
+export const CardTitle = styled(Typography)<AsElement>({ fontSize: '1.6rem' });
 
 export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
 
@@ -1852,9 +1852,9 @@ export const SearchHighlight = styled('mark')(({ theme }) => ({
   padding: '0 1px',
 }));
 
-export const TreeModuleTitle = styled(Typography)({ fontSize: '1.02rem', fontWeight: 700 });
+export const TreeModuleTitle = styled(Typography)<AsElement>({ fontSize: '1.02rem', fontWeight: 700 });
 
-export const TreeChapterTitle = styled(Typography)({ fontSize: '0.92rem', fontWeight: 600 });
+export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92rem', fontWeight: 600 });
 
 export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.15rem',

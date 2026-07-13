@@ -89,6 +89,24 @@ export const listCourses = async (
   return ok(await deps.courses.list(tenant.value));
 };
 
+export const listModules = async (
+  ctx: Ctx,
+  deps: CourseManagementDeps,
+): Promise<Result<CourseModule[], AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  return ok(await deps.modules.list(tenant.value));
+};
+
+export const listLessons = async (
+  ctx: Ctx,
+  deps: CourseManagementDeps,
+): Promise<Result<CourseLesson[], AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  return ok(await deps.lessons.list(tenant.value));
+};
+
 export const createCourse = async (
   ctx: Ctx,
   input: unknown,

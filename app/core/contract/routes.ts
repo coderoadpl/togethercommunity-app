@@ -190,6 +190,14 @@ export const coursesListOutputSchema = z.object({
   courses: z.array(courseSchema),
 });
 
+export const modulesListOutputSchema = z.object({
+  modules: z.array(courseModuleSchema),
+});
+
+export const lessonsListOutputSchema = z.object({
+  lessons: z.array(courseLessonSchema),
+});
+
 export const courseCreateInputSchema = newCourseSchema;
 
 export type CourseCreateInput = z.input<typeof courseCreateInputSchema>;
@@ -320,9 +328,11 @@ export const API_ROUTES = {
   courses: { method: 'GET', path: '/api/courses' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
+  modules: { method: 'GET', path: '/api/modules' },
   modulesCreate: { method: 'POST', path: '/api/modules' },
   modulesUpdate: { method: 'POST', path: '/api/modules/update' },
   modulesAttach: { method: 'POST', path: '/api/modules/attach' },
+  lessons: { method: 'GET', path: '/api/lessons' },
   lessonsCreate: { method: 'POST', path: '/api/lessons' },
   lessonsUpdate: { method: 'POST', path: '/api/lessons/update' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
@@ -361,9 +371,11 @@ export const API_PATHS = {
   productsAccessItems: API_ROUTES.productsAccessItems.path,
   courses: API_ROUTES.courses.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,
+  modules: API_ROUTES.modules.path,
   modulesCreate: API_ROUTES.modulesCreate.path,
   modulesUpdate: API_ROUTES.modulesUpdate.path,
   modulesAttach: API_ROUTES.modulesAttach.path,
+  lessons: API_ROUTES.lessons.path,
   lessonsCreate: API_ROUTES.lessonsCreate.path,
   lessonsUpdate: API_ROUTES.lessonsUpdate.path,
   studentCourses: API_ROUTES.studentCourses.path,

@@ -500,6 +500,16 @@ course
 
 const moduleCommand = program.command('module').description('Course modules (staff only)');
 
+moduleCommand.command('list').description('List modules').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listModules(), ctx.json, (data) =>
+      data.modules.length === 0
+        ? 'no modules'
+        : data.modules.map((item) => `- ${item.name}  (${item.id.slice(0, 8)})`).join('\n'),
+    );
+  }),
+);
+
 moduleCommand
   .command('create')
   .description('Create a module (chapters via --data inline JSON or --json-file)')
@@ -562,6 +572,16 @@ moduleCommand
   );
 
 const lesson = program.command('lesson').description('Course lessons (staff only)');
+
+lesson.command('list').description('List lessons').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listLessons(), ctx.json, (data) =>
+      data.lessons.length === 0
+        ? 'no lessons'
+        : data.lessons.map((item) => `- ${item.name}  (${item.id.slice(0, 8)})`).join('\n'),
+    );
+  }),
+);
 
 lesson
   .command('create')

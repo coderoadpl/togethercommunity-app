@@ -61,7 +61,9 @@ import {
   getProgress,
   getPublicOffer,
   listCourses,
+  listLessons,
   listMembers,
+  listModules,
   listMyCourses,
   listMyProducts,
   listMyTenants,
@@ -451,6 +453,11 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ course: result.value }) : result);
   });
 
+  app.get(API_PATHS.modules, async (c) => {
+    const result = await listModules({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ modules: result.value }) : result);
+  });
+
   app.post(API_PATHS.modulesCreate, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = moduleCreateInputSchema.safeParse(body);
@@ -473,6 +480,11 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid module attach payload', parsed.error.flatten())));
     const result = await attachModuleToCourse({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ module: result.value }) : result);
+  });
+
+  app.get(API_PATHS.lessons, async (c) => {
+    const result = await listLessons({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ lessons: result.value }) : result);
   });
 
   app.post(API_PATHS.lessonsCreate, async (c) => {

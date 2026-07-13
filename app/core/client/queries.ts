@@ -255,6 +255,18 @@ export const updateCourseMutation = (api: ApiClient) =>
     call: (input: CourseUpdateInput) => api.updateCourse(input),
   });
 
+export const modulesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: modulesScopes.all(),
+    call: ({ signal }) => api.listModules(signal),
+  });
+
+export const lessonsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: lessonsScopes.all(),
+    call: ({ signal }) => api.listLessons(signal),
+  });
+
 export const createModuleMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...modulesScopes.all(), 'create'],
@@ -358,6 +370,13 @@ export const revokeApiKeyMutation = (api: ApiClient) =>
   });
 
 export const apiKeysInvalidates = () => ({ queryKey: apiKeysScopes.lists() });
+
+/** Invalidation filters for the course tree editor (courses, modules, lessons). */
+export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });
+
+export const modulesInvalidates = () => ({ queryKey: modulesScopes.all() });
+
+export const lessonsInvalidates = () => ({ queryKey: lessonsScopes.all() });
 
 /** The invalidation filter product mutations apply after they settle. */
 export const productsInvalidates = () => ({ queryKey: productsScopes.lists() });

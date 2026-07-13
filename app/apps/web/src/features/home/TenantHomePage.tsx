@@ -37,6 +37,7 @@ import {
   LedgerHeader,
   TenantSwatch,
 } from '../../theme.js';
+import { CoursesPanel } from './courses/CoursesPanel.js';
 import { MembersPanel } from './members/MembersPanel.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 
@@ -48,10 +49,11 @@ type TenantContext = {
   memberId: string | null;
 };
 
-type CreatorSection = 'products' | 'sales' | 'members' | 'integrations' | 'settings';
+type CreatorSection = 'products' | 'courses' | 'sales' | 'members' | 'integrations' | 'settings';
 
 const creatorSections: { id: CreatorSection; label: string }[] = [
   { id: 'products', label: 'Products' },
+  { id: 'courses', label: 'Courses' },
   { id: 'sales', label: 'Sales' },
   { id: 'members', label: 'Members' },
   { id: 'integrations', label: 'Integrations' },
@@ -411,6 +413,8 @@ const CreatorPanel = () => {
         </ToggleButtonGroup>
         {section === 'products' ? (
           <ProductsPanel />
+        ) : section === 'courses' ? (
+          <CoursesPanel />
         ) : section === 'members' ? (
           <MembersPanel />
         ) : section === 'settings' ? (

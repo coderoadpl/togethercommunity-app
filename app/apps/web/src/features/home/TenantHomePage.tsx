@@ -26,6 +26,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue, tenantUrl } from '../../lib/tenant.js';
 import { useThemeMode } from '../../theme-mode.js';
 import {
@@ -51,17 +52,21 @@ type TenantContext = {
 
 type CreatorSection = 'products' | 'courses' | 'sales' | 'members' | 'integrations' | 'settings';
 
-const creatorSections: { id: CreatorSection; label: string }[] = [
-  { id: 'products', label: 'Products' },
-  { id: 'courses', label: 'Courses' },
-  { id: 'sales', label: 'Sales' },
-  { id: 'members', label: 'Members' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'settings', label: 'Settings' },
+const creatorSectionIds: CreatorSection[] = [
+  'products',
+  'courses',
+  'sales',
+  'members',
+  'integrations',
+  'settings',
 ];
+
+const roleLabel = (t: Messages, role: 'owner' | 'admin' | null): string =>
+  role === 'owner' ? t.tenant.roleOwner : role === 'admin' ? t.tenant.roleAdmin : t.tenant.roleMember;
 
 export const TenantHomePage = () => {
   const navigate = useNavigate();
+  const t = useTranslations();
   const me = useQuery(actions.me);
 
   const unauthorized = me.error instanceof ApiError && me.error.appError.code === 'unauthorized';
@@ -74,7 +79,7 @@ export const TenantHomePage = () => {
     return (
       <Container sx={{ maxWidth: '44rem' }}>
         <Typography variant="h2" component="p" sx={{ py: 6 }}>
-          opening the workspace…
+          {t.tenant.openingWorkspace}
         </Typography>
       </Container>
     );
@@ -96,6 +101,7 @@ export const TenantHomePage = () => {
 };
 
 const PickTenant = () => {
+  const t = useTranslations();
   const tenants = useQuery(actions.tenants);
   const [name, setName] = useState('');
   const [slugInput, setSlugInput] = useState('');
@@ -122,13 +128,13 @@ const PickTenant = () => {
         variant="outlined"
         sx={{ width: '100%', maxWidth: '29rem', px: '1.8rem', pt: '2rem', pb: '1.6rem' }}
       >
-        <CardTitle variant="h1">Choose a tenant</CardTitle>
+        <CardTitle variant="h1">{t.tenant.choose}</CardTitle>
         <Eyebrow variant="overline" component="p">
-          every tenant lives on its own domain
+          {t.tenant.eachOwnDomain}
         </Eyebrow>
         {tenants.isPending ? (
           <Typography variant="h2" component="p" sx={{ py: 2 }}>
-            loading…
+            {t.tenant.loading}
           </Typography>
         ) : null}
         <List sx={{ mt: '1.2rem' }} disablePadding>
@@ -146,10 +152,10 @@ const PickTenant = () => {
         </List>
         <Box component="form" onSubmit={submit} sx={{ mt: '1.5rem', display: 'grid', gap: '1rem' }}>
           <Typography variant="h2" component="h2">
-            Create a tenant
+            {t.tenant.create}
           </Typography>
           <FormControl fullWidth>
-            <FormLabel htmlFor="tenant-name">name</FormLabel>
+            <FormLabel htmlFor="tenant-name">{t.tenant.nameLabel}</FormLabel>
             <OutlinedInput
               id="tenant-name"
               value={name}
@@ -158,7 +164,7 @@ const PickTenant = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="tenant-slug">slug</FormLabel>
+            <FormLabel htmlFor="tenant-slug">{t.tenant.slugLabel}</FormLabel>
             <OutlinedInput
               id="tenant-slug"
               value={slugInput}
@@ -167,10 +173,10 @@ const PickTenant = () => {
             />
           </FormControl>
           <Typography variant="caption" component="p">
-            {slugPreview ? tenantUrl(slugPreview) : 'Enter a name to preview the tenant URL.'}
+            {slugPreview ? tenantUrl(slugPreview) : t.tenant.enterNameToPreview}
           </Typography>
           <Button type="submit" variant="contained" disabled={createTenant.isPending || !slugPreview}>
-            {createTenant.isPending ? 'creating tenant…' : 'create tenant'}
+            {createTenant.isPending ? t.tenant.creating : t.tenant.createButton}
           </Button>
           {createTenant.isError ? (
             <Alert>
@@ -179,7 +185,9 @@ const PickTenant = () => {
                 : createTenant.error.message}
             </Alert>
           ) : null}
-          {createdSlug ? <Link href={tenantUrl(createdSlug)}>Open {tenantUrl(createdSlug)}</Link> : null}
+          {createdSlug ? (
+            <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>
+          ) : null}
         </Box>
       </Paper>
     </Box>
@@ -195,6 +203,7 @@ const TenantHome = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const t = useTranslations();
   const { mode } = useThemeMode();
   const theme = useMemo(() => createThemeForMode(mode, tenantHue(tenant.slug)), [mode, tenant.slug]);
 
@@ -221,7 +230,7 @@ const TenantHome = ({
             </Typography>
             <HeaderMeta variant="overline">{window.location.hostname}</HeaderMeta>
             <Box sx={{ flex: 1 }} />
-            <Chip variant="outlined" label={tenant.staffRole ?? 'member'} />
+            <Chip variant="outlined" label={roleLabel(t, tenant.staffRole)} />
           </Stack>
           <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
             <HeaderMetaBreak variant="overline">{email}</HeaderMetaBreak>
@@ -232,7 +241,7 @@ const TenantHome = ({
               data-testid="sign-out"
               onClick={() => signOut.mutate()}
             >
-              sign out
+              {t.tenant.signOut}
             </Button>
           </Stack>
         </LedgerHeader>
@@ -245,6 +254,7 @@ const TenantHome = ({
 
 const MemberHomeRedirect = () => {
   const navigate = useNavigate();
+  const t = useTranslations();
 
   useEffect(() => {
     void navigate({ to: '/my' });
@@ -253,7 +263,7 @@ const MemberHomeRedirect = () => {
   return (
     <Box component="section" sx={{ mt: '48px' }}>
       <Typography variant="h2" component="p">
-        opening your products…
+        {t.tenant.openingProducts}
       </Typography>
     </Box>
   );
@@ -263,6 +273,7 @@ const mutationErrorMessage = (error: Error): string =>
   error instanceof ApiError ? error.appError.message : error.message;
 
 const SecurityPanel = () => {
+  const t = useTranslations();
   const [passkeyName, setPasskeyName] = useState('');
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
@@ -273,7 +284,7 @@ const SecurityPanel = () => {
 
   const addPasskey = (event: FormEvent) => {
     event.preventDefault();
-    registerPasskey.mutate({ name: passkeyName.trim() || 'My passkey' });
+    registerPasskey.mutate({ name: passkeyName.trim() || t.security.defaultPasskeyName });
   };
 
   const enrollTwoFactor = (event: FormEvent) => {
@@ -290,29 +301,29 @@ const SecurityPanel = () => {
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
       <Stack useFlexGap spacing="1.75rem">
         <Typography variant="h2" component="h2">
-          Security
+          {t.security.heading}
         </Typography>
 
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <Eyebrow variant="overline" component="h3">
-            Passkeys
+            {t.security.passkeys}
           </Eyebrow>
           <FormControl fullWidth>
-            <FormLabel htmlFor="passkey-name">passkey name</FormLabel>
+            <FormLabel htmlFor="passkey-name">{t.security.passkeyNameLabel}</FormLabel>
             <OutlinedInput
               id="passkey-name"
               value={passkeyName}
               onChange={(event) => setPasskeyName(event.target.value)}
               inputProps={{ 'data-testid': 'passkey-name' }}
-              placeholder="My passkey"
+              placeholder={t.security.defaultPasskeyName}
             />
           </FormControl>
           <Button type="submit" variant="outlined" data-testid="add-passkey" disabled={registerPasskey.isPending}>
-            {registerPasskey.isPending ? 'adding passkey…' : 'Add passkey'}
+            {registerPasskey.isPending ? t.security.addingPasskey : t.security.addPasskey}
           </Button>
           {registerPasskey.isSuccess ? (
             <Typography variant="caption" component="p" data-testid="passkey-added">
-              Passkey added.
+              {t.security.passkeyAdded}
             </Typography>
           ) : null}
           {registerPasskey.isError ? <Alert>{mutationErrorMessage(registerPasskey.error)}</Alert> : null}
@@ -320,10 +331,10 @@ const SecurityPanel = () => {
 
         <Box component="form" onSubmit={enrollTwoFactor} sx={{ display: 'grid', gap: '0.8rem' }}>
           <Eyebrow variant="overline" component="h3">
-            Two-factor authentication
+            {t.security.twoFactor}
           </Eyebrow>
           <FormControl fullWidth>
-            <FormLabel htmlFor="enable-2fa-password">account password</FormLabel>
+            <FormLabel htmlFor="enable-2fa-password">{t.security.accountPasswordLabel}</FormLabel>
             <OutlinedInput
               id="enable-2fa-password"
               type="password"
@@ -334,7 +345,7 @@ const SecurityPanel = () => {
             />
           </FormControl>
           <Button type="submit" variant="outlined" data-testid="enable-2fa" disabled={enableTwoFactor.isPending}>
-            {enableTwoFactor.isPending ? 'enabling…' : 'Enable two-factor'}
+            {enableTwoFactor.isPending ? t.security.enabling : t.security.enableTwoFactor}
           </Button>
           {enableTwoFactor.isError ? <Alert>{mutationErrorMessage(enableTwoFactor.error)}</Alert> : null}
         </Box>
@@ -342,10 +353,10 @@ const SecurityPanel = () => {
         {enableTwoFactor.data ? (
           <Box sx={{ display: 'grid', gap: '0.8rem' }}>
             <Eyebrow variant="overline" component="h3">
-              Scan or copy this key
+              {t.security.scanOrCopyKey}
             </Eyebrow>
             <FormControl fullWidth>
-              <FormLabel htmlFor="totp-uri">otpauth URI</FormLabel>
+              <FormLabel htmlFor="totp-uri">{t.security.otpauthUriLabel}</FormLabel>
               <OutlinedInput
                 id="totp-uri"
                 readOnly
@@ -362,7 +373,7 @@ const SecurityPanel = () => {
             </Box>
             <Box component="form" onSubmit={submitTotp} sx={{ display: 'grid', gap: '0.8rem' }}>
               <FormControl fullWidth>
-                <FormLabel htmlFor="verify-totp-code">authenticator code</FormLabel>
+                <FormLabel htmlFor="verify-totp-code">{t.security.authenticatorCodeLabel}</FormLabel>
                 <OutlinedInput
                   id="verify-totp-code"
                   value={totpCode}
@@ -372,11 +383,11 @@ const SecurityPanel = () => {
                 />
               </FormControl>
               <Button type="submit" variant="contained" data-testid="verify-totp" disabled={verifyTotp.isPending}>
-                {verifyTotp.isPending ? 'verifying…' : 'Verify code'}
+                {verifyTotp.isPending ? t.security.verifying : t.security.verifyCode}
               </Button>
               {verifyTotp.isSuccess ? (
                 <Typography variant="caption" component="p" data-testid="totp-verified">
-                  Two-factor authentication is on.
+                  {t.security.twoFactorOn}
                 </Typography>
               ) : null}
               {verifyTotp.isError ? <Alert>{mutationErrorMessage(verifyTotp.error)}</Alert> : null}
@@ -389,6 +400,7 @@ const SecurityPanel = () => {
 };
 
 const CreatorPanel = () => {
+  const t = useTranslations();
   const [section, setSection] = useState<CreatorSection>('products');
 
   const changeSection = (_event: MouseEvent<HTMLElement>, value: CreatorSection | null) => {
@@ -402,12 +414,12 @@ const CreatorPanel = () => {
           exclusive
           value={section}
           onChange={changeSection}
-          aria-label="Creator sections"
+          aria-label={t.sections.aria}
           sx={{ flexWrap: 'wrap' }}
         >
-          {creatorSections.map((item) => (
-            <ToggleButton key={item.id} value={item.id} data-testid={`section-${item.id}`}>
-              {item.label}
+          {creatorSectionIds.map((id) => (
+            <ToggleButton key={id} value={id} data-testid={`section-${id}`}>
+              {t.sections[id]}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -422,10 +434,10 @@ const CreatorPanel = () => {
         ) : (
           <Paper elevation={1} sx={{ p: '1.5rem' }}>
             <Typography variant="h2" component="h2">
-              {creatorSections.find((item) => item.id === section)?.label}
+              {t.sections[section]}
             </Typography>
             <Typography variant="body1" sx={{ mt: '1rem' }}>
-              Coming soon.
+              {t.sections.comingSoon}
             </Typography>
           </Paper>
         )}

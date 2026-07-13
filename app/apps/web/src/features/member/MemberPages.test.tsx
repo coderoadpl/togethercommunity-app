@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CoursePage } from './CoursePage.js';
@@ -39,7 +40,7 @@ describe('member pages', () => {
 
     await renderPage(MyProductsPage, '/my');
 
-    expect(await screen.findByRole('heading', { name: 'My products' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.student.myProducts })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Intro Course/ })).toHaveAttribute(
       'href',
       '/my/course/course-1',
@@ -54,6 +55,6 @@ describe('member pages', () => {
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Course content coming soon' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.student.courseContentComingSoon })).toBeInTheDocument();
   });
 });

@@ -259,7 +259,7 @@ export default tseslint.config(
             },
             {
               from: ['app-web'],
-              allow: ['core-domain', 'core-contract', 'core-client', 'adapter-auth', 'app-web'],
+              allow: ['core-domain', 'core-contract', 'core-client', 'adapter-auth', 'app-web', 'web-i18n'],
             },
             {
               from: ['web-main'],

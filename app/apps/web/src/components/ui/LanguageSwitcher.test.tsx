@@ -2,7 +2,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
+import { en } from '../../i18n/en.js';
 import { LanguageProvider, useTranslations } from '../../i18n/index.js';
+import { pl } from '../../i18n/pl.js';
 import { LanguageSwitcher } from './LanguageSwitcher.js';
 
 /**
@@ -38,11 +40,11 @@ describe('LanguageSwitcher', () => {
     renderSwitcher();
 
     expect(screen.getByTestId('language-switcher')).toBeInTheDocument();
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent('Symuluj płatność (dev)');
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(pl.checkout.submitIdle);
 
     await user.click(screen.getByRole('button', { name: 'en' }));
 
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent('Simulate payment (dev)');
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitIdle);
   });
 
   it('restores the persisted language on a fresh mount', async () => {
@@ -50,10 +52,10 @@ describe('LanguageSwitcher', () => {
     const first = renderSwitcher();
 
     await user.click(screen.getByRole('button', { name: 'en' }));
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent('Simulate payment (dev)');
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitIdle);
     first.unmount();
 
     renderSwitcher();
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent('Simulate payment (dev)');
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitIdle);
   });
 });

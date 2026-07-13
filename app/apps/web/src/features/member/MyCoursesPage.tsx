@@ -7,6 +7,7 @@ import { ApiError } from '@core/client/index.js';
 import type { CompletionStatus, Course } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations, type Messages } from '../../i18n/index.js';
 import { CardTitle, CourseCardRoot, Eyebrow, LedgerHeader } from '../../theme.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -15,13 +16,15 @@ const isUnauthorized = (error: Error | null) =>
 const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
 
-const COMPLETION_LABEL: Record<CompletionStatus, string> = {
-  'not-completed': 'Not started',
-  'partially-completed': 'In progress',
-  'fully-completed': 'Completed',
-};
+const completionLabel = (t: Messages, status: CompletionStatus): string =>
+  status === 'fully-completed'
+    ? t.student.completionCompleted
+    : status === 'partially-completed'
+      ? t.student.completionInProgress
+      : t.student.completionNotStarted;
 
 const CompletionChip = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
   if (!structure.data) return null;
   const status = structure.data.structure.completionStatus;
@@ -30,7 +33,7 @@ const CompletionChip = ({ courseId }: { courseId: string }) => {
       size="small"
       variant="outlined"
       color={status === 'fully-completed' ? 'success' : 'default'}
-      label={COMPLETION_LABEL[status]}
+      label={completionLabel(t, status)}
       data-testid={`completion-${courseId}`}
     />
   );
@@ -53,6 +56,7 @@ const CourseCard = ({ course }: { course: Course }) => (
 );
 
 export const MyCoursesPage = () => {
+  const t = useTranslations();
   const courses = useQuery(actions.studentCourses);
   const navigate = useNavigate();
   const unauthorized = isUnauthorized(courses.error);
@@ -65,7 +69,7 @@ export const MyCoursesPage = () => {
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Typography variant="h2" component="p">
-          loading your courses…
+          {t.student.loadingCourses}
         </Typography>
       </Container>
     );
@@ -77,9 +81,7 @@ export const MyCoursesPage = () => {
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Alert>
-          {isForbidden(courses.error)
-            ? 'This account has staff access here, but no member profile yet.'
-            : courses.error.message}
+          {isForbidden(courses.error) ? t.student.staffNoMember : courses.error.message}
         </Alert>
       </Container>
     );
@@ -89,22 +91,22 @@ export const MyCoursesPage = () => {
     <Container disableGutters sx={{ maxWidth: '52rem !important', px: '1.25rem', pb: '6rem' }}>
       <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">My courses</Typography>
+          <Typography variant="h1">{t.student.myCourses}</Typography>
           <Box sx={{ flex: 1 }} />
-          <Link href="/my/products">My products</Link>
-          <Link href="/">Home</Link>
+          <Link href="/my/products">{t.student.myProducts}</Link>
+          <Link href="/">{t.common.home}</Link>
         </Stack>
         <Eyebrow variant="overline" component="p">
-          course library
+          {t.student.courseLibrary}
         </Eyebrow>
       </LedgerHeader>
 
       <Box component="section" sx={{ mt: '2.5rem' }}>
         {courses.data.courses.length === 0 ? (
           <Paper elevation={1} sx={{ p: '1.5rem' }}>
-            <CardTitle variant="h1">No courses yet</CardTitle>
+            <CardTitle variant="h1">{t.student.noCourses}</CardTitle>
             <Typography variant="body1" sx={{ mt: '1rem' }}>
-              Courses you gain access to will appear here.
+              {t.student.coursesWillAppear}
             </Typography>
           </Paper>
         ) : (

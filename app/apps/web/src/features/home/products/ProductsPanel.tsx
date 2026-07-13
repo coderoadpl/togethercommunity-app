@@ -18,18 +18,14 @@ import { ApiError } from '@core/client/index.js';
 import type { Product } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useLanguage, useTranslations } from '../../../i18n/index.js';
+import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
 
-const priceFormatter = (priceCents: number, currency: string) =>
-  new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency,
-  }).format(priceCents / 100);
-
-const displayDate = (value: string) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
-
 const ProductRow = ({ product }: { product: Product }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [showAccess, setShowAccess] = useState(false);
 
@@ -55,23 +51,23 @@ const ProductRow = ({ product }: { product: Product }) => {
             disabled={publishProduct.isPending}
             onClick={() => publishProduct.mutate({ id: product.id })}
           >
-            publish
+            {t.products.publish}
           </Button>
         )}
       </Stack>
       <Stack useFlexGap spacing="0.2rem">
         <span>
-          <DataValue>{priceFormatter(product.priceCents, product.currency)}</DataValue> ·{' '}
-          {product.published ? <PublishedStatus>published</PublishedStatus> : 'draft'} ·{' '}
-          <DataValue>{accessCount}</DataValue> access item{accessCount === 1 ? '' : 's'}
+          <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue> ·{' '}
+          {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
+          <DataValue>{accessCount}</DataValue> {t.products.accessItemNoun({ count: accessCount })}
         </span>
         <EntryDate component="time" dateTime={product.createdAt}>
-          {displayDate(product.createdAt)}
+          {formatDate(product.createdAt, language)}
         </EntryDate>
       </Stack>
       <Box>
         <Button size="small" variant="text" onClick={() => setShowAccess((open) => !open)}>
-          {showAccess ? 'hide access' : 'edit access'}
+          {showAccess ? t.products.hideAccess : t.products.editAccess}
         </Button>
       </Box>
       <Collapse in={showAccess} unmountOnExit>
@@ -90,6 +86,7 @@ const ProductRow = ({ product }: { product: Product }) => {
 };
 
 export const ProductsPanel = () => {
+  const t = useTranslations();
   const products = useQuery(actions.products);
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
@@ -131,11 +128,11 @@ export const ProductsPanel = () => {
         sx={{ p: '1rem', display: 'grid', gap: '1rem' }}
       >
         <Typography variant="h2" component="h2">
-          New product
+          {t.products.newProduct}
         </Typography>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="product-title">title</FormLabel>
+            <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
             <OutlinedInput
               id="product-title"
               value={title}
@@ -144,7 +141,7 @@ export const ProductsPanel = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="product-description">description</FormLabel>
+            <FormLabel htmlFor="product-description">{t.common.description}</FormLabel>
             <OutlinedInput
               id="product-description"
               value={description}
@@ -155,7 +152,7 @@ export const ProductsPanel = () => {
           </FormControl>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
             <FormControl fullWidth>
-              <FormLabel htmlFor="product-price">price in cents</FormLabel>
+              <FormLabel htmlFor="product-price">{t.products.priceInCents}</FormLabel>
               <OutlinedInput
                 id="product-price"
                 type="number"
@@ -166,7 +163,7 @@ export const ProductsPanel = () => {
               />
             </FormControl>
             <FormControl fullWidth>
-              <FormLabel htmlFor="product-currency">currency</FormLabel>
+              <FormLabel htmlFor="product-currency">{t.products.currencyLabel}</FormLabel>
               <OutlinedInput
                 id="product-currency"
                 value={currency}
@@ -177,7 +174,7 @@ export const ProductsPanel = () => {
             </FormControl>
           </Stack>
           <Button type="submit" variant="contained" disabled={createProduct.isPending}>
-            {createProduct.isPending ? 'creating…' : 'create product'}
+            {createProduct.isPending ? t.products.creating : t.products.create}
           </Button>
         </Stack>
         {createProduct.isError ? (
@@ -191,14 +188,14 @@ export const ProductsPanel = () => {
 
       <Box component="section">
         <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
-          Products
+          {t.products.heading}
         </Typography>
         {products.isPending ? (
-          <Typography variant="body1">loading products…</Typography>
+          <Typography variant="body1">{t.products.loading}</Typography>
         ) : products.isError ? (
           <Alert>{products.error.message}</Alert>
         ) : products.data.products.length === 0 ? (
-          <Typography variant="body1">No products yet.</Typography>
+          <Typography variant="body1">{t.products.empty}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
             {products.data.products.map((product) => (

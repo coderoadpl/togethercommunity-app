@@ -20,11 +20,10 @@ import type {
   CourseStructureWithAccess,
 } from '@core/domain/index.js';
 
+import { useTranslations } from '../../i18n/index.js';
 import { TreeChapterTitle, TreeModuleTitle } from '../../theme.js';
 import { Highlighted } from './highlight.js';
 import { Caret, CompletionFull, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
-
-const LOCKED_TOOLTIP = 'Content locked';
 
 const AccessMark = ({ status }: { status: AccessStatus }) => {
   if (status === 'not-accessible') return <LockClosed />;
@@ -69,6 +68,7 @@ const LessonRow = ({
   courseId: string;
   search: string;
 }) => {
+  const t = useTranslations();
   const label = <Highlighted text={lesson.name} query={search} />;
   const marks = (
     <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem' }}>
@@ -79,7 +79,7 @@ const LessonRow = ({
 
   if (lesson.accessStatus === 'not-accessible') {
     return (
-      <Tooltip title={LOCKED_TOOLTIP}>
+      <Tooltip title={t.courseTree.lockedTooltip}>
         <Box component="span" sx={{ display: 'block' }}>
           <ListItemButton
             disabled
@@ -198,6 +198,7 @@ export const CourseTree = ({
   courseId: string;
   structure: CourseStructureWithAccess;
 }) => {
+  const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -222,20 +223,20 @@ export const CourseTree = ({
   return (
     <Box>
       <FormControl fullWidth sx={{ mb: '1rem' }}>
-        <FormLabel htmlFor="lesson-search">Search lessons</FormLabel>
+        <FormLabel htmlFor="lesson-search">{t.courseTree.searchLessons}</FormLabel>
         <OutlinedInput
           id="lesson-search"
           size="small"
           value={rawSearch}
           onChange={(event) => setRawSearch(event.target.value)}
-          placeholder="Filter by lesson name"
-          inputProps={{ 'data-testid': 'lesson-search', 'aria-label': 'Search lessons' }}
+          placeholder={t.courseTree.filterPlaceholder}
+          inputProps={{ 'data-testid': 'lesson-search', 'aria-label': t.courseTree.searchLessons }}
         />
       </FormControl>
 
       {modules.length === 0 ? (
         <Box sx={{ px: '0.75rem', py: '1rem' }} data-testid="tree-no-results">
-          <TreeChapterTitle>No lessons match your search.</TreeChapterTitle>
+          <TreeChapterTitle>{t.courseTree.noMatches}</TreeChapterTitle>
         </Box>
       ) : (
         <List disablePadding component="ul" sx={{ m: 0, p: 0 }} data-testid="course-tree">

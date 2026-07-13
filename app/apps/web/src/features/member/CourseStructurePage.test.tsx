@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CourseStructureWithAccess } from '@core/domain/index.js';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CourseStructurePage } from './CourseStructurePage.js';
@@ -192,6 +193,6 @@ describe('CourseStructurePage', () => {
     );
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
-    expect(await screen.findByRole('heading', { name: 'Course not found' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.courseTree.courseNotFound })).toBeInTheDocument();
   });
 });

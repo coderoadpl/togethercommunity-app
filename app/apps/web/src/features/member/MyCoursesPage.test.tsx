@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Course } from '@core/domain/index.js';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MyCoursesPage } from './MyCoursesPage.js';
@@ -61,12 +62,12 @@ describe('MyCoursesPage', () => {
 
     await renderPage(<MyCoursesPage />);
 
-    expect(await screen.findByRole('heading', { name: 'My courses' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.student.myCourses })).toBeInTheDocument();
     const card = screen.getByTestId('course-card-course-1');
     expect(card).toHaveAttribute('href', '/my/courses/course-1');
     expect(screen.getByText('Start from zero.')).toBeInTheDocument();
-    expect(await screen.findByTestId('completion-course-1')).toHaveTextContent('In progress');
-    expect(screen.getByRole('link', { name: 'My products' })).toHaveAttribute('href', '/my/products');
+    expect(await screen.findByTestId('completion-course-1')).toHaveTextContent(pl.student.completionInProgress);
+    expect(screen.getByRole('link', { name: pl.student.myProducts })).toHaveAttribute('href', '/my/products');
   });
 
   it('shows an empty state when no courses are accessible', async () => {
@@ -78,6 +79,6 @@ describe('MyCoursesPage', () => {
 
     await renderPage(<MyCoursesPage />);
 
-    expect(await screen.findByRole('heading', { name: 'No courses yet' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.student.noCourses })).toBeInTheDocument();
   });
 });

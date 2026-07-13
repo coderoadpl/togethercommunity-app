@@ -18,6 +18,7 @@ import type {
   NextLesson,
 } from '@core/domain/index.js';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LessonPlayerPage } from './LessonPlayerPage.js';
@@ -127,7 +128,7 @@ describe('LessonPlayerPage', () => {
       'src',
       'https://cdn.example.com/slides.pdf',
     );
-    expect(screen.getByRole('link', { name: 'Open PDF in new tab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: pl.lesson.openPdf })).toHaveAttribute(
       'href',
       'https://cdn.example.com/slides.pdf',
     );
@@ -176,7 +177,7 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByTestId('lesson-video-placeholder')).toHaveTextContent(
-      'Video pointer present - streaming not configured',
+      pl.lesson.videoPlaceholder,
     );
     expect(screen.queryByTestId('lesson-video')).not.toBeInTheDocument();
   });
@@ -242,7 +243,7 @@ describe('LessonPlayerPage', () => {
 
     server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
-    expect(await screen.findByTestId('course-completed')).toHaveTextContent('Course completed');
+    expect(await screen.findByTestId('course-completed')).toHaveTextContent(pl.lesson.courseCompleted);
   });
 
   it('renders a full-page locked state on a 403 envelope without upsell', async () => {
@@ -259,13 +260,13 @@ describe('LessonPlayerPage', () => {
     );
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    expect(await screen.findByRole('heading', { name: 'Content locked' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.lesson.contentLocked })).toBeInTheDocument();
     expect(screen.getByTestId('locked-state-icon')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to course' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: pl.lesson.backToCourse })).toHaveAttribute(
       'href',
       '/my/courses/course-1',
     );
-    expect(screen.getByRole('link', { name: 'Browse courses' })).toHaveAttribute('href', '/my');
+    expect(screen.getByRole('link', { name: pl.lesson.browseCourses })).toHaveAttribute('href', '/my');
     expect(screen.queryByText(/upgrade|enroll|subscription|price/i)).not.toBeInTheDocument();
   });
 

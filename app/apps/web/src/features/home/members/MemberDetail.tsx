@@ -25,16 +25,22 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { MemberGrant, MemberWithProductIds } from '@core/domain/index.js';
+import type { GrantSource, MemberGrant, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
-import { displayDate, MutationError } from '../courses/feedback.js';
+import { MutationError } from '../courses/feedback.js';
 
 const toIsoOrNull = (localValue: string): string | null =>
   localValue.trim() === '' ? null : new Date(localValue).toISOString();
 
+const grantSourceLabel = (source: GrantSource, t: Messages): string =>
+  source === 'manual' ? t.members.sourceManual : t.members.sourceSimulated;
+
 const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () => Promise<void> }) => {
+  const t = useTranslations();
   const products = useQuery(actions.products);
   const [productId, setProductId] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -57,11 +63,11 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
   return (
     <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }}>
       <Typography variant="h2" component="h3">
-        Grant a product
+        {t.members.grantProduct}
       </Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }} size="small">
-          <FormLabel htmlFor="grant-product">product</FormLabel>
+          <FormLabel htmlFor="grant-product">{t.members.productLabel}</FormLabel>
           <Select
             id="grant-product"
             displayEmpty
@@ -70,7 +76,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
             inputProps={{ 'aria-label': 'grant product' }}
           >
             <MenuItem value="">
-              <em>select a product</em>
+              <em>{t.members.selectProduct}</em>
             </MenuItem>
             {(products.data?.products ?? []).map((product) => (
               <MenuItem key={product.id} value={product.id}>
@@ -80,7 +86,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
           </Select>
         </FormControl>
         <FormControl sx={{ flex: 1 }} size="small">
-          <FormLabel htmlFor="grant-expiry">expires at (optional)</FormLabel>
+          <FormLabel htmlFor="grant-expiry">{t.members.expiresOptional}</FormLabel>
           <OutlinedInput
             id="grant-expiry"
             type="datetime-local"
@@ -90,7 +96,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
           />
         </FormControl>
         <Button type="submit" variant="contained" disabled={grant.isPending || !productId}>
-          {grant.isPending ? 'granting…' : 'grant'}
+          {grant.isPending ? t.members.granting : t.members.grant}
         </Button>
       </Stack>
       {grant.isError ? <MutationError error={grant.error} /> : null}
@@ -107,6 +113,7 @@ const RenewControl = ({
   memberId: string;
   onRenewed: () => Promise<void>;
 }) => {
+  const t = useTranslations();
   const [open, setOpen] = useState(false);
   const [expiresAt, setExpiresAt] = useState('');
 
@@ -122,7 +129,7 @@ const RenewControl = ({
   if (!open) {
     return (
       <Button size="small" variant="text" onClick={() => setOpen(true)}>
-        renew
+        {t.members.renew}
       </Button>
     );
   }
@@ -142,13 +149,15 @@ const RenewControl = ({
         disabled={renew.isPending}
         onClick={() => renew.mutate({ memberId, productId: grant.productId, expiresAt: toIsoOrNull(expiresAt) })}
       >
-        save
+        {t.common.save}
       </Button>
     </Stack>
   );
 };
 
 export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds; onBack: () => void }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
   const grants = useQuery(actions.memberGrants(member.id));
   const [revoking, setRevoking] = useState<MemberGrant | null>(null);
@@ -172,7 +181,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
     <Stack useFlexGap spacing="1.5rem">
       <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
         <Button variant="text" onClick={onBack}>
-          ← all members
+          {t.members.allMembersBack}
         </Button>
         <Typography variant="h2" component="h2">
           {member.email}
@@ -180,9 +189,9 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
       </Stack>
 
       <Typography variant="body2">
-        Joined{' '}
+        {t.members.joined}{' '}
         <EntryDate component="time" dateTime={member.createdAt}>
-          {displayDate(member.createdAt)}
+          {formatDate(member.createdAt, language)}
         </EntryDate>
       </Typography>
 
@@ -190,24 +199,24 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
 
       <Box component="section">
         <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
-          Granted products
+          {t.members.grantedProducts}
         </Typography>
         {grants.isPending ? (
-          <Typography variant="body1">loading grants…</Typography>
+          <Typography variant="body1">{t.members.loadingGrants}</Typography>
         ) : grants.isError ? (
           <MutationError error={grants.error} />
         ) : grants.data.grants.length === 0 ? (
-          <Typography variant="body1">No grants yet.</Typography>
+          <Typography variant="body1">{t.members.noGrants}</Typography>
         ) : (
           <TableContainer>
-            <Table size="small" aria-label="Granted products">
+            <Table size="small" aria-label={t.members.grantedProducts}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Product</TableCell>
-                  <TableCell>Window</TableCell>
-                  <TableCell>Source</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <TableCell>{t.members.colProduct}</TableCell>
+                  <TableCell>{t.members.colWindow}</TableCell>
+                  <TableCell>{t.members.colSource}</TableCell>
+                  <TableCell>{t.members.colStatus}</TableCell>
+                  <TableCell align="right">{t.members.colActions}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -215,22 +224,22 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
                   <TableRow key={grant.id} data-testid="grant-row">
                     <TableCell>{grant.productName}</TableCell>
                     <TableCell>
-                      {displayDate(grant.startsAt)} –{' '}
-                      {grant.expiresAt === null ? 'perpetual' : displayDate(grant.expiresAt)}
+                      {formatDate(grant.startsAt, language)} –{' '}
+                      {grant.expiresAt === null ? t.members.perpetual : formatDate(grant.expiresAt, language)}
                     </TableCell>
-                    <TableCell>{grant.source}</TableCell>
+                    <TableCell>{grantSourceLabel(grant.source, t)}</TableCell>
                     <TableCell>
                       <Chip
                         variant="outlined"
                         color={grant.active ? 'success' : 'default'}
-                        label={grant.active ? 'active' : 'expired'}
+                        label={grant.active ? t.members.active : t.members.expired}
                       />
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
                         <Button size="small" variant="text" color="error" onClick={() => setRevoking(grant)}>
-                          revoke
+                          {t.members.revoke}
                         </Button>
                       </Stack>
                     </TableCell>
@@ -244,16 +253,15 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
       </Box>
 
       <Dialog open={revoking !== null} onClose={() => setRevoking(null)}>
-        <DialogTitle>Revoke access</DialogTitle>
+        <DialogTitle>{t.members.revokeAccess}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Revoke {revoking?.productName} for {member.email}? The grant expires immediately; the member keeps their
-            account.
+            {t.members.revokeConfirm({ product: revoking?.productName ?? '', email: member.email })}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button variant="text" onClick={() => setRevoking(null)}>
-            cancel
+            {t.common.cancel}
           </Button>
           <Button
             variant="contained"
@@ -263,7 +271,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
               if (revoking) revoke.mutate({ grantId: revoking.id });
             }}
           >
-            {revoke.isPending ? 'revoking…' : 'revoke'}
+            {revoke.isPending ? t.members.revoking : t.members.revoke}
           </Button>
         </DialogActions>
       </Dialog>

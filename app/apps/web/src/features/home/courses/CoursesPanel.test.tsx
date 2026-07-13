@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { updateCourseModuleInputSchema, type Course, type CourseLesson, type CourseModule } from '@core/domain/index.js';
 
+import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { CoursesPanel } from './CoursesPanel.js';
@@ -66,9 +67,9 @@ describe('CoursesPanel courses tab', () => {
 
     expect(await screen.findByText('Launch Kit')).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('name'), 'Growth Course');
-    await userEvent.type(screen.getByLabelText('description'), 'Grow fast');
-    await userEvent.click(screen.getByRole('button', { name: 'create course' }));
+    await userEvent.type(screen.getByLabelText(pl.common.name), 'Growth Course');
+    await userEvent.type(screen.getByLabelText(pl.common.description), 'Grow fast');
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
 
     expect(await screen.findByText('Growth Course')).toBeInTheDocument();
   });
@@ -91,8 +92,8 @@ describe('CoursesPanel courses tab', () => {
 
     renderWithProviders(<CoursesPanel />);
 
-    await userEvent.type(screen.getByLabelText('name'), 'X');
-    await userEvent.click(screen.getByRole('button', { name: 'create course' }));
+    await userEvent.type(screen.getByLabelText(pl.common.name), 'X');
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
 
     expect(await screen.findByText('Name is required')).toBeInTheDocument();
   });
@@ -117,17 +118,17 @@ describe('CoursesPanel courses tab', () => {
 
     renderWithProviders(<CoursesPanel />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'manage' }));
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
 
-    await userEvent.type(await screen.findByLabelText('new chapter name'), 'Chapter One');
-    await userEvent.click(screen.getByRole('button', { name: 'add chapter' }));
+    await userEvent.type(await screen.findByLabelText(pl.courses.newChapterName), 'Chapter One');
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.addChapter }));
 
     expect(await screen.findByDisplayValue('Chapter One')).toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: 'Intro lesson' }));
-    await userEvent.type(screen.getByLabelText('display name'), 'Watch this');
-    await userEvent.click(screen.getByRole('button', { name: 'add lesson' }));
+    await userEvent.type(screen.getByLabelText(pl.courses.displayName), 'Watch this');
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.addLesson }));
 
     expect(await screen.findByText('Watch this')).toBeInTheDocument();
     await waitFor(() => {

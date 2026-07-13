@@ -18,6 +18,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, Eyebrow, LedgerHeader } from '../../theme.js';
 
@@ -28,6 +29,7 @@ const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
 
 export const MyProductsPage = () => {
+  const t = useTranslations();
   const products = useQuery(actions.myProducts);
   const navigate = useNavigate();
   const unauthorized = isUnauthorized(products.error);
@@ -40,7 +42,7 @@ export const MyProductsPage = () => {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
         <Typography variant="h2" component="p">
-          loading your products…
+          {t.student.loadingProducts}
         </Typography>
       </Container>
     );
@@ -52,9 +54,7 @@ export const MyProductsPage = () => {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
         <Alert>
-          {isForbidden(products.error)
-            ? 'This account has staff access here, but no member profile yet.'
-            : products.error.message}
+          {isForbidden(products.error) ? t.student.staffNoMember : products.error.message}
         </Alert>
       </Container>
     );
@@ -64,22 +64,22 @@ export const MyProductsPage = () => {
     <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', pb: '6rem' }}>
       <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">My products</Typography>
+          <Typography variant="h1">{t.student.myProducts}</Typography>
           <Box sx={{ flex: 1 }} />
-          <Link href="/my">My courses</Link>
-          <Link href="/">Home</Link>
+          <Link href="/my">{t.student.myCourses}</Link>
+          <Link href="/">{t.common.home}</Link>
         </Stack>
         <Eyebrow variant="overline" component="p">
-          course library
+          {t.student.courseLibrary}
         </Eyebrow>
       </LedgerHeader>
 
       <Box component="section" sx={{ mt: '48px' }}>
         {products.data.products.length === 0 ? (
           <Paper elevation={1} sx={{ p: '1.5rem' }}>
-            <CardTitle variant="h1">No products yet</CardTitle>
+            <CardTitle variant="h1">{t.student.noProducts}</CardTitle>
             <Typography variant="body1" sx={{ mt: '1rem' }}>
-              Products you buy will appear here.
+              {t.student.productsWillAppear}
             </Typography>
           </Paper>
         ) : (

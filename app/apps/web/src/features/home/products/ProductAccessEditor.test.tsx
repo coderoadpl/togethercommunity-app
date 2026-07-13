@@ -11,6 +11,7 @@ import {
   type Product,
 } from '@core/domain/index.js';
 
+import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
@@ -86,11 +87,11 @@ describe('ProductAccessEditor', () => {
 
     await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
-    await userEvent.click(screen.getByRole('button', { name: 'add access item' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));
 
-    expect(await screen.findByText('Whole course Launch Kit')).toBeInTheDocument();
+    expect(await screen.findByText(pl.access.wholeCourseSummary({ course: 'Launch Kit' }))).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'save access' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({
@@ -105,13 +106,15 @@ describe('ProductAccessEditor', () => {
 
     await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Selected lessons' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.selectedLessons }));
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Intro lesson' }));
-    await userEvent.click(screen.getByRole('button', { name: 'add access item' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));
 
-    expect(await screen.findByText('1 lesson of Launch Kit')).toBeInTheDocument();
+    expect(
+      await screen.findByText(pl.access.lessonsSummary({ count: 1, course: 'Launch Kit' })),
+    ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'save access' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.access.save }));
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toEqual({

@@ -6,6 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations } from '../../i18n/index.js';
 import { CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
 import { CourseTree } from './CourseTree.js';
 
@@ -19,6 +20,7 @@ const isNotFound = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'not_found';
 
 export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
   const navigate = useNavigate();
   const unauthorized = isUnauthorized(structure.error);
@@ -31,7 +33,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Typography variant="h2" component="p">
-          loading course…
+          {t.courseTree.loadingCourse}
         </Typography>
       </Container>
     );
@@ -44,17 +46,17 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Paper elevation={1} sx={{ p: '1.5rem' }}>
           <CardTitle variant="h1">
-            {isNotFound(structure.error) ? 'Course not found' : 'Course unavailable'}
+            {isNotFound(structure.error) ? t.courseTree.courseNotFound : t.courseTree.courseUnavailable}
           </CardTitle>
           <Typography variant="body1" sx={{ mt: '1rem' }}>
             {isForbidden(structure.error)
-              ? 'This account has staff access here, but no member profile yet.'
+              ? t.student.staffNoMember
               : isNotFound(structure.error)
-                ? 'This course is not in your library.'
+                ? t.courseTree.courseNotInLibrary
                 : structure.error.message}
           </Typography>
           <Box sx={{ mt: '1rem' }}>
-            <Link href="/my">Back to my courses</Link>
+            <Link href="/my">{t.courseTree.backToMyCourses}</Link>
           </Box>
         </Paper>
       </Container>
@@ -69,16 +71,16 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
         <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
           <Typography variant="h1">{course.name}</Typography>
           <Box sx={{ flex: 1 }} />
-          <Link href="/my">My courses</Link>
+          <Link href="/my">{t.student.myCourses}</Link>
         </Stack>
         <Eyebrow variant="overline" component="p">
-          course syllabus
+          {t.courseTree.courseSyllabus}
         </Eyebrow>
       </LedgerHeader>
 
       <Box component="section" sx={{ mt: '2.5rem' }}>
         {course.modules.length === 0 ? (
-          <Alert>This course has no published content yet.</Alert>
+          <Alert>{t.courseTree.noPublishedContent}</Alert>
         ) : (
           <CourseTree courseId={courseId} structure={course} />
         )}

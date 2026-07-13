@@ -18,6 +18,7 @@ import { ApiError } from '@core/client/index.js';
 import type { LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations, type Messages } from '../../i18n/index.js';
 import {
   CardTitle,
   Eyebrow,
@@ -47,12 +48,19 @@ const BLOCK_RANK: Record<LessonBlock['type'], number> = {
   link: 4,
 };
 
-const BLOCK_LABEL: Record<LessonBlock['type'], string> = {
-  video: 'video',
-  pdf: 'document',
-  embed: 'embed',
-  html: 'reading',
-  link: 'link',
+const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
+  switch (type) {
+    case 'video':
+      return t.lesson.labelVideo;
+    case 'pdf':
+      return t.lesson.labelDocument;
+    case 'embed':
+      return t.lesson.labelEmbed;
+    case 'html':
+      return t.lesson.labelReading;
+    case 'link':
+      return t.lesson.labelLink;
+  }
 };
 
 const sortBlocks = (blocks: readonly LessonBlock[]): LessonBlock[] =>
@@ -62,11 +70,12 @@ const sortBlocks = (blocks: readonly LessonBlock[]): LessonBlock[] =>
     .map((entry) => entry.block);
 
 const BlockBody = ({ block }: { block: LessonBlock }) => {
+  const t = useTranslations();
   if (block.type === 'video') {
     if (block.streamLibraryId === undefined) {
       return (
         <LessonPlaceholder data-testid="lesson-video-placeholder">
-          Video pointer present - streaming not configured
+          {t.lesson.videoPlaceholder}
         </LessonPlaceholder>
       );
     }
@@ -75,7 +84,7 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
         <LessonMediaIframe
           data-testid="lesson-video"
           src={`https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`}
-          title="Lesson video"
+          title={t.lesson.videoTitle}
           allow={VIDEO_ALLOW}
           allowFullScreen
         />
@@ -90,7 +99,7 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
           <LessonMediaIframe
             data-testid="lesson-pdf"
             src={block.pdfUrl}
-            title={block.name ?? 'Lesson PDF'}
+            title={block.name ?? t.lesson.pdfTitle}
           />
         </LessonMediaFrame>
         <Box>
@@ -101,7 +110,7 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
             rel="noopener noreferrer"
             variant="outlined"
           >
-            Open PDF in new tab
+            {t.lesson.openPdf}
           </Button>
         </Box>
       </Stack>
@@ -114,7 +123,7 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
         <LessonMediaIframe
           data-testid="lesson-embed"
           src={block.embedUrl}
-          title="Embedded content"
+          title={t.lesson.embedTitle}
           allow={VIDEO_ALLOW}
           allowFullScreen
         />
@@ -152,25 +161,28 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
   );
 };
 
-const LockedView = ({ courseId }: { courseId: string }) => (
-  <Container sx={{ maxWidth: '52rem', py: 6 }}>
-    <Paper elevation={1} sx={{ p: '2.5rem' }}>
-      <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'center' }}>
-        <LockedState />
-        <CardTitle variant="h1">Content locked</CardTitle>
-        <Typography variant="body1">You don&apos;t have access to this lesson yet.</Typography>
-        <Stack direction="row" useFlexGap sx={{ columnGap: '1rem', mt: '0.5rem' }}>
-          <Button component="a" href={`/my/courses/${courseId}`} variant="contained">
-            Back to course
-          </Button>
-          <Button component="a" href="/my" variant="outlined">
-            Browse courses
-          </Button>
+const LockedView = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
+  return (
+    <Container sx={{ maxWidth: '52rem', py: 6 }}>
+      <Paper elevation={1} sx={{ p: '2.5rem' }}>
+        <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'center' }}>
+          <LockedState />
+          <CardTitle variant="h1">{t.lesson.contentLocked}</CardTitle>
+          <Typography variant="body1">{t.lesson.noAccessYet}</Typography>
+          <Stack direction="row" useFlexGap sx={{ columnGap: '1rem', mt: '0.5rem' }}>
+            <Button component="a" href={`/my/courses/${courseId}`} variant="contained">
+              {t.lesson.backToCourse}
+            </Button>
+            <Button component="a" href="/my" variant="outlined">
+              {t.lesson.browseCourses}
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
-    </Paper>
-  </Container>
-);
+      </Paper>
+    </Container>
+  );
+};
 
 export const LessonPlayerPage = ({
   courseId,
@@ -179,6 +191,7 @@ export const LessonPlayerPage = ({
   courseId: string;
   lessonId: string;
 }) => {
+  const t = useTranslations();
   const lesson = useQuery(actions.studentLesson(lessonId));
   const structure = useQuery(actions.courseStructure(courseId));
   const progress = useQuery(actions.studentProgress(courseId));
@@ -236,7 +249,7 @@ export const LessonPlayerPage = ({
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Typography variant="h2" component="p">
-          loading lesson…
+          {t.lesson.loading}
         </Typography>
       </Container>
     );
@@ -249,12 +262,12 @@ export const LessonPlayerPage = ({
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Paper elevation={1} sx={{ p: '1.5rem' }}>
-          <CardTitle variant="h1">Lesson unavailable</CardTitle>
+          <CardTitle variant="h1">{t.lesson.unavailable}</CardTitle>
           <Typography variant="body1" sx={{ mt: '1rem' }}>
             {lesson.error.message}
           </Typography>
           <Box sx={{ mt: '1rem' }}>
-            <Link href={`/my/courses/${courseId}`}>Back to course</Link>
+            <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
           </Box>
         </Paper>
       </Container>
@@ -292,23 +305,23 @@ export const LessonPlayerPage = ({
         <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
           <Typography variant="h1">{lesson.data.lesson.name}</Typography>
           <Box sx={{ flex: 1 }} />
-          <Link href={`/my/courses/${courseId}`}>Back to course</Link>
+          <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
         </Stack>
         <Eyebrow variant="overline" component="p">
-          lesson
+          {t.lesson.eyebrow}
         </Eyebrow>
       </LedgerHeader>
 
       <Stack component="section" useFlexGap spacing="1.5rem" sx={{ mt: '2.5rem' }}>
         {blocks.length === 0 ? (
           <Paper elevation={1} sx={{ p: '1.5rem' }}>
-            <Typography variant="body1">This lesson has no content yet.</Typography>
+            <Typography variant="body1">{t.lesson.noContent}</Typography>
           </Paper>
         ) : (
           blocks.map((block, index) => (
             <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
               <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-                {BLOCK_LABEL[block.type]}
+                {blockLabel(t, block.type)}
               </Eyebrow>
               <BlockBody block={block} />
             </Paper>
@@ -329,7 +342,7 @@ export const LessonPlayerPage = ({
             disabled={completed || complete.isPending}
             startIcon={completed ? <CompletionFull /> : undefined}
           >
-            {completed ? 'Completed' : 'Mark as completed'}
+            {completed ? t.lesson.completed : t.lesson.markCompleted}
           </Button>
           {nextHref !== null && (
             <Button
@@ -338,16 +351,16 @@ export const LessonPlayerPage = ({
               onClick={continueToNext}
               disabled={complete.isPending}
             >
-              Complete &amp; continue
+              {t.lesson.completeContinue}
             </Button>
           )}
           <Box sx={{ flex: 1 }} />
           {next.isSuccess &&
             (nextLesson === null ? (
-              <Chip data-testid="course-completed" label="Course completed" />
+              <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
             ) : (
               <Link href={nextHref ?? ''} data-testid="next-lesson">
-                Next: {nextLesson.name}
+                {t.lesson.next({ name: nextLesson.name })}
               </Link>
             ))}
         </Stack>

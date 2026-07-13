@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { RegisterPage } from './RegisterPage.js';
@@ -42,10 +43,10 @@ describe('RegisterPage', () => {
     server.use(http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })));
 
     await renderRegisterPage();
-    await userEvent.type(screen.getByLabelText('name'), 'New Creator');
-    await userEvent.type(screen.getByLabelText('email'), 'new@together.dev');
-    await userEvent.type(screen.getByLabelText('password'), 'demo1234');
-    await userEvent.click(screen.getByRole('button', { name: 'create account' }));
+    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo1234');
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
   });

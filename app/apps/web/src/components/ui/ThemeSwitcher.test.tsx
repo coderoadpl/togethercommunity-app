@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { ThemeSwitcher } from './ThemeSwitcher.js';
 
@@ -38,7 +39,7 @@ const renderSwitcher = () =>
   );
 
 const selectMode = async (user: ReturnType<typeof userEvent.setup>, label: string) => {
-  await user.click(screen.getByRole('combobox', { name: 'Theme' }));
+  await user.click(screen.getByRole('combobox', { name: pl.common.theme }));
   await user.click(await screen.findByRole('option', { name: label }));
 };
 
@@ -53,14 +54,14 @@ describe('ThemeSwitcher', () => {
     await selectMode(user, 'Material');
 
     expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^4:.*Roboto/);
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Material');
+    expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Material');
   });
 
   it('offers every registered mode and applies the scoreboard theme', async () => {
     const user = userEvent.setup();
     renderSwitcher();
 
-    await user.click(screen.getByRole('combobox', { name: 'Theme' }));
+    await user.click(screen.getByRole('combobox', { name: pl.common.theme }));
     const labels = (await screen.findAllByRole('option')).map((option) => option.textContent);
     expect(labels).toEqual([
       'Logbook',
@@ -74,7 +75,7 @@ describe('ThemeSwitcher', () => {
     await user.click(screen.getByRole('option', { name: 'Scoreboard' }));
 
     expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^8:'Inter'/);
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Scoreboard');
+    expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Scoreboard');
   });
 
   it('applies the quiet-studio theme when selected', async () => {
@@ -84,18 +85,18 @@ describe('ThemeSwitcher', () => {
     await selectMode(user, 'Quiet Studio');
 
     expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^10:'Inter'/);
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Quiet Studio');
+    expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Quiet Studio');
   });
 
   it('restores the persisted mode on a fresh mount', async () => {
     const user = userEvent.setup();
     const first = renderSwitcher();
     await selectMode(user, 'Signal Mono');
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Signal Mono');
+    expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Signal Mono');
     first.unmount();
 
     renderSwitcher();
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('Signal Mono');
+    expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Signal Mono');
     expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^4:/);
   });
 });

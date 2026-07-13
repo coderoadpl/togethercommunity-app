@@ -22,20 +22,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AccessItem, Course, CourseModule, Product } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useTranslations, type Messages } from '../../../i18n/index.js';
 import { MutationError } from '../courses/feedback.js';
 
 type AccessLevel = 'course' | 'modules' | 'lessons';
 
-const courseName = (courses: Course[], courseId: string): string =>
-  courses.find((course) => course.id === courseId)?.name ?? 'unknown course';
+const courseName = (courses: Course[], courseId: string, t: Messages): string =>
+  courses.find((course) => course.id === courseId)?.name ?? t.access.unknownCourse;
 
-const accessItemSummary = (item: AccessItem, courses: Course[]): string => {
-  const name = courseName(courses, item.courseId);
-  if (item.courseLevelAccess) return `Whole course ${name}`;
+const accessItemSummary = (item: AccessItem, courses: Course[], t: Messages): string => {
+  const course = courseName(courses, item.courseId, t);
+  if (item.courseLevelAccess) return t.access.wholeCourseSummary({ course });
   if (item.lessonIds.length > 0) {
-    return `${item.lessonIds.length} lesson${item.lessonIds.length === 1 ? '' : 's'} of ${name}`;
+    return t.access.lessonsSummary({ count: item.lessonIds.length, course });
   }
-  return `${item.moduleIds.length} module${item.moduleIds.length === 1 ? '' : 's'} of ${name}`;
+  return t.access.modulesSummary({ count: item.moduleIds.length, course });
 };
 
 const courseModules = (modules: CourseModule[], courseId: string): CourseModule[] =>
@@ -55,6 +56,7 @@ const toggle = (values: string[], id: string): string[] =>
   values.includes(id) ? values.filter((value) => value !== id) : [...values, id];
 
 export const ProductAccessEditor = ({ product }: { product: Product }) => {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const courses = useQuery(actions.courses);
   const modules = useQuery(actions.modules);
@@ -118,7 +120,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
   const removeItem = (index: number) => setItems(items.filter((_item, position) => position !== index));
 
   if (courses.isPending || modules.isPending || lessons.isPending) {
-    return <Typography variant="body2">loading access data…</Typography>;
+    return <Typography variant="body2">{t.access.loading}</Typography>;
   }
   if (courses.isError) return <MutationError error={courses.error} />;
   if (modules.isError) return <MutationError error={modules.error} />;
@@ -130,10 +132,10 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
     <Stack useFlexGap spacing="1rem" data-testid={`access-editor-${product.id}`}>
       <Box>
         <Typography variant="overline" component="h4">
-          Access
+          {t.access.heading}
         </Typography>
         {items.length === 0 ? (
-          <Typography variant="body2">No access items — this product grants nothing yet.</Typography>
+          <Typography variant="body2">{t.access.empty}</Typography>
         ) : (
           <List disablePadding dense>
             {items.map((item, index) => (
@@ -143,11 +145,11 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
                 data-testid="access-item"
                 secondaryAction={
                   <Button size="small" variant="text" color="error" onClick={() => removeItem(index)}>
-                    remove
+                    {t.common.remove}
                   </Button>
                 }
               >
-                <ListItemText primary={accessItemSummary(item, courses.data.courses)} />
+                <ListItemText primary={accessItemSummary(item, courses.data.courses, t)} />
               </ListItem>
             ))}
           </List>
@@ -156,7 +158,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
 
       <Box sx={{ display: 'grid', gap: '0.75rem' }}>
         <FormControl size="small" fullWidth>
-          <FormLabel htmlFor={`access-course-${product.id}`}>course</FormLabel>
+          <FormLabel htmlFor={`access-course-${product.id}`}>{t.access.courseLabel}</FormLabel>
           <Select
             id={`access-course-${product.id}`}
             displayEmpty
@@ -165,7 +167,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
             inputProps={{ 'aria-label': `access course ${product.id}` }}
           >
             <MenuItem value="">
-              <em>select a course</em>
+              <em>{t.access.selectCourse}</em>
             </MenuItem>
             {courses.data.courses.map((course) => (
               <MenuItem key={course.id} value={course.id}>
@@ -186,22 +188,22 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
             aria-label="access level"
           >
             <ToggleButton value="course" data-testid="level-course">
-              Whole course
+              {t.access.wholeCourse}
             </ToggleButton>
             <ToggleButton value="modules" data-testid="level-modules">
-              Selected modules
+              {t.access.selectedModules}
             </ToggleButton>
             <ToggleButton value="lessons" data-testid="level-lessons">
-              Selected lessons
+              {t.access.selectedLessons}
             </ToggleButton>
           </ToggleButtonGroup>
         ) : null}
 
         {courseId && level === 'modules' ? (
           <Box role="group" aria-label="modules" sx={{ display: 'grid', gap: '0.2rem' }}>
-            <FormLabel component="div">modules</FormLabel>
+            <FormLabel component="div">{t.access.modulesLabel}</FormLabel>
             {availableModules.length === 0 ? (
-              <Typography variant="body2">No modules attached to this course.</Typography>
+              <Typography variant="body2">{t.access.noModulesInCourse}</Typography>
             ) : (
               availableModules.map((module) => (
                 <FormControlLabel
@@ -222,9 +224,9 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
 
         {courseId && level === 'lessons' ? (
           <Box role="group" aria-label="lessons" sx={{ display: 'grid', gap: '0.2rem' }}>
-            <FormLabel component="div">lessons</FormLabel>
+            <FormLabel component="div">{t.access.lessonsLabel}</FormLabel>
             {availableLessons.length === 0 ? (
-              <Typography variant="body2">No lessons in this course yet.</Typography>
+              <Typography variant="body2">{t.access.noLessonsInCourse}</Typography>
             ) : (
               availableLessons.map((lesson) => (
                 <FormControlLabel
@@ -245,7 +247,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
 
         <Box>
           <Button size="small" variant="outlined" disabled={!draftValid} onClick={addItem}>
-            add access item
+            {t.access.addItem}
           </Button>
         </Box>
       </Box>
@@ -256,9 +258,9 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
           disabled={!dirty || save.isPending}
           onClick={() => save.mutate({ id: product.id, accessItems: items })}
         >
-          {save.isPending ? 'saving…' : 'save access'}
+          {save.isPending ? t.access.saving : t.access.save}
         </Button>
-        {save.isSuccess && !dirty ? <Chip label="saved" variant="outlined" color="success" /> : null}
+        {save.isSuccess && !dirty ? <Chip label={t.access.saved} variant="outlined" color="success" /> : null}
       </Stack>
 
       {save.isError ? <MutationError error={save.error} /> : null}

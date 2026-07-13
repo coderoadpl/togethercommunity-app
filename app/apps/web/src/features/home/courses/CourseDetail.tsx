@@ -20,11 +20,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Chapter, Course, CourseLesson, CourseModule } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useTranslations, type Messages } from '../../../i18n/index.js';
 import { CardTitle, Eyebrow, TreeChapterTitle, TreeModuleTitle } from '../../../theme.js';
 import { MutationError, newId } from './feedback.js';
 
-const lessonName = (lessons: CourseLesson[], lessonId: string): string =>
-  lessons.find((lesson) => lesson.id === lessonId)?.name ?? 'unknown lesson';
+const lessonName = (lessons: CourseLesson[], lessonId: string, t: Messages): string =>
+  lessons.find((lesson) => lesson.id === lessonId)?.name ?? t.courses.unknownLesson;
 
 const ChapterEditor = ({
   chapter,
@@ -43,6 +44,7 @@ const ChapterEditor = ({
   onRemoveContent: (contentId: string) => void;
   pending: boolean;
 }) => {
+  const t = useTranslations();
   const [name, setName] = useState(chapter.name);
   const [contentName, setContentName] = useState('');
   const [lessonId, setLessonId] = useState('');
@@ -58,7 +60,7 @@ const ChapterEditor = ({
   return (
     <Paper variant="outlined" sx={{ p: '0.9rem', display: 'grid', gap: '0.75rem' }}>
       <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        <TreeChapterTitle component="span">chapter</TreeChapterTitle>
+        <TreeChapterTitle component="span">{t.courses.chapterLabel}</TreeChapterTitle>
         <OutlinedInput
           size="small"
           value={name}
@@ -71,16 +73,16 @@ const ChapterEditor = ({
           disabled={pending || name.trim().length === 0 || name.trim() === chapter.name}
           onClick={() => onRename(name.trim())}
         >
-          rename
+          {t.courses.rename}
         </Button>
         <Box sx={{ flex: 1 }} />
         <Button size="small" variant="text" color="error" disabled={pending} onClick={onRemove}>
-          remove chapter
+          {t.courses.removeChapter}
         </Button>
       </Stack>
 
       {chapter.contents.length === 0 ? (
-        <Typography variant="caption">No lessons in this chapter yet.</Typography>
+        <Typography variant="caption">{t.courses.noLessonsInChapter}</Typography>
       ) : (
         <List disablePadding dense>
           {chapter.contents.map((content) => (
@@ -95,11 +97,11 @@ const ChapterEditor = ({
                   disabled={pending}
                   onClick={() => onRemoveContent(content.id)}
                 >
-                  remove
+                  {t.common.remove}
                 </Button>
               }
             >
-              <ListItemText primary={content.name} secondary={lessonName(lessons, content.lessonId)} />
+              <ListItemText primary={content.name} secondary={lessonName(lessons, content.lessonId, t)} />
             </ListItem>
           ))}
         </List>
@@ -108,7 +110,7 @@ const ChapterEditor = ({
       <Box component="form" onSubmit={submitContent} sx={{ display: 'grid', gap: '0.5rem' }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.5rem">
           <FormControl sx={{ minWidth: '12rem', flex: 1 }} size="small">
-            <FormLabel htmlFor={`content-lesson-${chapter.id}`}>lesson</FormLabel>
+            <FormLabel htmlFor={`content-lesson-${chapter.id}`}>{t.courses.lessonLabel}</FormLabel>
             <Select
               id={`content-lesson-${chapter.id}`}
               displayEmpty
@@ -117,7 +119,7 @@ const ChapterEditor = ({
               inputProps={{ 'aria-label': `content lesson ${chapter.id}` }}
             >
               <MenuItem value="">
-                <em>select a lesson</em>
+                <em>{t.courses.selectLesson}</em>
               </MenuItem>
               {lessons.map((lesson) => (
                 <MenuItem key={lesson.id} value={lesson.id}>
@@ -127,7 +129,7 @@ const ChapterEditor = ({
             </Select>
           </FormControl>
           <FormControl sx={{ flex: 1 }} size="small">
-            <FormLabel htmlFor={`content-name-${chapter.id}`}>display name</FormLabel>
+            <FormLabel htmlFor={`content-name-${chapter.id}`}>{t.courses.displayName}</FormLabel>
             <OutlinedInput
               id={`content-name-${chapter.id}`}
               size="small"
@@ -143,7 +145,7 @@ const ChapterEditor = ({
             variant="outlined"
             disabled={pending || !lessonId || contentName.trim().length === 0}
           >
-            add lesson
+            {t.courses.addLesson}
           </Button>
         </Box>
       </Box>
@@ -152,6 +154,7 @@ const ChapterEditor = ({
 };
 
 const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: CourseLesson[] }) => {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(module.title);
   const [prefix, setPrefix] = useState(module.prefix ?? '');
@@ -205,7 +208,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
       <TreeModuleTitle component="h3">{module.name}</TreeModuleTitle>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }} size="small">
-          <FormLabel htmlFor={`module-title-${module.id}`}>title</FormLabel>
+          <FormLabel htmlFor={`module-title-${module.id}`}>{t.products.titleLabel}</FormLabel>
           <OutlinedInput
             id={`module-title-${module.id}`}
             size="small"
@@ -214,7 +217,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
           />
         </FormControl>
         <FormControl sx={{ flex: 1 }} size="small">
-          <FormLabel htmlFor={`module-prefix-${module.id}`}>prefix</FormLabel>
+          <FormLabel htmlFor={`module-prefix-${module.id}`}>{t.courses.prefixLabel}</FormLabel>
           <OutlinedInput
             id={`module-prefix-${module.id}`}
             size="small"
@@ -227,7 +230,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
           disabled={pending || title.trim().length === 0 || (title.trim() === module.title && (prefix.trim() || null) === module.prefix)}
           onClick={renameModule}
         >
-          save module
+          {t.courses.saveModule}
         </Button>
       </Stack>
 
@@ -235,10 +238,10 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
 
       <Stack useFlexGap spacing="0.75rem">
         <Eyebrow variant="overline" component="h4">
-          Chapters
+          {t.courses.chaptersHeading}
         </Eyebrow>
         {module.chapters.length === 0 ? (
-          <Typography variant="caption">No chapters yet.</Typography>
+          <Typography variant="caption">{t.courses.noChapters}</Typography>
         ) : (
           module.chapters.map((chapter) => (
             <ChapterEditor
@@ -256,7 +259,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
         <Box component="form" onSubmit={addChapter}>
           <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-end' }}>
             <FormControl sx={{ flex: 1 }} size="small">
-              <FormLabel htmlFor={`new-chapter-${module.id}`}>new chapter name</FormLabel>
+              <FormLabel htmlFor={`new-chapter-${module.id}`}>{t.courses.newChapterName}</FormLabel>
               <OutlinedInput
                 id={`new-chapter-${module.id}`}
                 size="small"
@@ -265,7 +268,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
               />
             </FormControl>
             <Button type="submit" variant="outlined" disabled={pending || chapterName.trim().length === 0}>
-              add chapter
+              {t.courses.addChapter}
             </Button>
           </Stack>
         </Box>
@@ -277,6 +280,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
 };
 
 const CreateModuleForm = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [prefix, setPrefix] = useState('');
@@ -298,11 +302,11 @@ const CreateModuleForm = ({ courseId }: { courseId: string }) => {
   return (
     <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }}>
       <Typography variant="h2" component="h3">
-        New module
+        {t.courses.newModule}
       </Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }}>
-          <FormLabel htmlFor="new-module-title">title</FormLabel>
+          <FormLabel htmlFor="new-module-title">{t.products.titleLabel}</FormLabel>
           <OutlinedInput
             id="new-module-title"
             value={title}
@@ -311,11 +315,11 @@ const CreateModuleForm = ({ courseId }: { courseId: string }) => {
           />
         </FormControl>
         <FormControl sx={{ flex: 1 }}>
-          <FormLabel htmlFor="new-module-prefix">prefix</FormLabel>
+          <FormLabel htmlFor="new-module-prefix">{t.courses.prefixLabel}</FormLabel>
           <OutlinedInput id="new-module-prefix" value={prefix} onChange={(event) => setPrefix(event.target.value)} />
         </FormControl>
         <Button type="submit" variant="contained" disabled={createModule.isPending || title.trim().length === 0}>
-          {createModule.isPending ? 'creating…' : 'create module'}
+          {createModule.isPending ? t.courses.creatingModule : t.courses.createModule}
         </Button>
       </Stack>
       {createModule.isError ? <MutationError error={createModule.error} /> : null}
@@ -324,6 +328,7 @@ const CreateModuleForm = ({ courseId }: { courseId: string }) => {
 };
 
 const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: CourseModule[] }) => {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const [moduleId, setModuleId] = useState('');
 
@@ -346,11 +351,11 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
   return (
     <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }}>
       <Typography variant="h2" component="h3">
-        Attach existing module
+        {t.courses.attachExisting}
       </Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }}>
-          <FormLabel htmlFor="attach-module">module</FormLabel>
+          <FormLabel htmlFor="attach-module">{t.courses.moduleLabel}</FormLabel>
           <Select
             id="attach-module"
             displayEmpty
@@ -359,7 +364,7 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
             inputProps={{ 'aria-label': 'attach module' }}
           >
             <MenuItem value="">
-              <em>select a module</em>
+              <em>{t.courses.selectModule}</em>
             </MenuItem>
             {modules.map((module) => (
               <MenuItem key={module.id} value={module.id}>
@@ -369,7 +374,7 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
           </Select>
         </FormControl>
         <Button type="submit" variant="outlined" disabled={attachModule.isPending || !moduleId}>
-          {attachModule.isPending ? 'attaching…' : 'attach module'}
+          {attachModule.isPending ? t.courses.attaching : t.courses.attachModule}
         </Button>
       </Stack>
       {attachModule.isError ? <MutationError error={attachModule.error} /> : null}
@@ -378,11 +383,12 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
 };
 
 export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () => void }) => {
+  const t = useTranslations();
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
 
   if (modules.isPending || lessons.isPending) {
-    return <Typography variant="body1">loading course…</Typography>;
+    return <Typography variant="body1">{t.courses.loadingCourse}</Typography>;
   }
   if (modules.isError) return <MutationError error={modules.error} />;
   if (lessons.isError) return <MutationError error={lessons.error} />;
@@ -394,7 +400,7 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
     <Stack useFlexGap spacing="1.5rem">
       <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
         <Button variant="text" onClick={onBack}>
-          ← all courses
+          {t.courses.allCourses}
         </Button>
         <CardTitle variant="h1" component="h2">
           {course.name}
@@ -406,10 +412,10 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
 
       <Box component="section">
         <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
-          Modules
+          {t.courses.modulesHeading}
         </Typography>
         {attached.length === 0 ? (
-          <Typography variant="body1">No modules in this course yet.</Typography>
+          <Typography variant="body1">{t.courses.noModulesInCourse}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
             {attached.map((module) => (

@@ -20,8 +20,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { formatDate } from '../../../lib/format.js';
 import { Eyebrow } from '../../../theme.js';
-import { displayDate, errorMessage, MutationError } from './feedback.js';
+import { errorMessage, MutationError } from './feedback.js';
 
 type BlockType = LessonBlock['type'];
 
@@ -32,13 +34,22 @@ type BlockDraft =
   | { type: 'link'; url: string; description: string }
   | { type: 'html'; html: string };
 
-const blockTypes: { value: BlockType; label: string }[] = [
-  { value: 'video', label: 'Video' },
-  { value: 'embed', label: 'Embed' },
-  { value: 'pdf', label: 'PDF' },
-  { value: 'link', label: 'Link' },
-  { value: 'html', label: 'HTML' },
-];
+const BLOCK_TYPE_ORDER: BlockType[] = ['video', 'embed', 'pdf', 'link', 'html'];
+
+const blockTypeLabel = (t: Messages, value: BlockType): string => {
+  switch (value) {
+    case 'video':
+      return t.lessons.typeVideo;
+    case 'embed':
+      return t.lessons.typeEmbed;
+    case 'pdf':
+      return t.lessons.typePdf;
+    case 'link':
+      return t.lessons.typeLink;
+    case 'html':
+      return t.lessons.typeHtml;
+  }
+};
 
 const emptyBlock = (type: BlockType): BlockDraft => {
   switch (type) {
@@ -97,11 +108,14 @@ const toBlock = (draft: BlockDraft): unknown => {
   }
 };
 
-const parseBlocks = (drafts: BlockDraft[]): { ok: true; blocks: LessonBlock[] } | { ok: false; message: string } => {
+const parseBlocks = (
+  drafts: BlockDraft[],
+  t: Messages,
+): { ok: true; blocks: LessonBlock[] } | { ok: false; message: string } => {
   const blocks: LessonBlock[] = [];
   for (const draft of drafts) {
     const parsed = lessonBlockSchema.safeParse(toBlock(draft));
-    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? 'Invalid lesson blocks' };
+    if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? t.lessons.invalidBlocks };
     blocks.push(parsed.data);
   }
   return { ok: true, blocks };
@@ -168,6 +182,7 @@ const BlockFields = ({
 };
 
 const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: () => void }) => {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const [name, setName] = useState(lesson?.name ?? '');
   const [blocks, setBlocks] = useState<BlockDraft[]>(lesson ? lesson.contents.map(toDraft) : []);
@@ -202,7 +217,7 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setValidationError(null);
-    const parsed = parseBlocks(blocks);
+    const parsed = parseBlocks(blocks, t);
     if (!parsed.ok) {
       setValidationError(parsed.message);
       return;
@@ -214,19 +229,19 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
   return (
     <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1.25rem', display: 'grid', gap: '1rem' }}>
       <Typography variant="h2" component="h3">
-        {lesson ? 'Edit lesson' : 'New lesson'}
+        {lesson ? t.lessons.editLesson : t.lessons.newLesson}
       </Typography>
       <FormControl fullWidth>
-        <FormLabel htmlFor="lesson-name">name</FormLabel>
+        <FormLabel htmlFor="lesson-name">{t.common.name}</FormLabel>
         <OutlinedInput id="lesson-name" value={name} onChange={(event) => setName(event.target.value)} required />
       </FormControl>
 
       <Divider />
       <Eyebrow variant="overline" component="h4">
-        Content blocks
+        {t.lessons.contentBlocks}
       </Eyebrow>
       {blocks.length === 0 ? (
-        <Typography variant="caption">No blocks yet.</Typography>
+        <Typography variant="caption">{t.lessons.noBlocks}</Typography>
       ) : (
         <Stack useFlexGap spacing="0.9rem">
           {blocks.map((block, index) => (
@@ -240,7 +255,7 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
                   size="small"
                   variant="text"
                   disabled={index === 0}
-                  aria-label={`move block ${index} up`}
+                  aria-label={t.lessons.moveUp({ index })}
                   onClick={() => moveBlock(index, -1)}
                 >
                   ↑
@@ -249,7 +264,7 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
                   size="small"
                   variant="text"
                   disabled={index === blocks.length - 1}
-                  aria-label={`move block ${index} down`}
+                  aria-label={t.lessons.moveDown({ index })}
                   onClick={() => moveBlock(index, 1)}
                 >
                   ↓
@@ -258,10 +273,10 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
                   size="small"
                   variant="text"
                   color="error"
-                  aria-label={`remove block ${index}`}
+                  aria-label={t.lessons.removeBlock({ index })}
                   onClick={() => removeBlock(index)}
                 >
-                  remove
+                  {t.common.remove}
                 </Button>
               </Stack>
               <BlockFields draft={block} index={index} onChange={(next) => changeBlock(index, next)} />
@@ -272,32 +287,34 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
 
       <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl size="small" sx={{ minWidth: '10rem' }}>
-          <FormLabel htmlFor="add-block-type">block type</FormLabel>
+          <FormLabel htmlFor="add-block-type">{t.lessons.blockTypeLabel}</FormLabel>
           <Select
             id="add-block-type"
             value={addType}
-            onChange={(event) => setAddType(blockTypes.find((item) => item.value === event.target.value)?.value ?? 'video')}
-            inputProps={{ 'aria-label': 'block type' }}
+            onChange={(event) =>
+              setAddType(BLOCK_TYPE_ORDER.find((value) => value === event.target.value) ?? 'video')
+            }
+            inputProps={{ 'aria-label': t.lessons.blockTypeLabel }}
           >
-            {blockTypes.map((item) => (
-              <MenuItem key={item.value} value={item.value}>
-                {item.label}
+            {BLOCK_TYPE_ORDER.map((value) => (
+              <MenuItem key={value} value={value}>
+                {blockTypeLabel(t, value)}
               </MenuItem>
             ))}
           </Select>
         </FormControl>
         <Button variant="outlined" onClick={() => setBlocks([...blocks, emptyBlock(addType)])}>
-          add block
+          {t.lessons.addBlock}
         </Button>
       </Stack>
 
       <Stack direction="row" useFlexGap spacing="0.75rem">
         <Button type="submit" variant="contained" disabled={pending || name.trim().length === 0}>
-          {pending ? 'saving…' : lesson ? 'save lesson' : 'create lesson'}
+          {pending ? t.lessons.saving : lesson ? t.lessons.saveLesson : t.lessons.createLesson}
         </Button>
         {lesson ? (
           <Button variant="text" onClick={onDone} disabled={pending}>
-            cancel
+            {t.common.cancel}
           </Button>
         ) : null}
       </Stack>
@@ -309,6 +326,8 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
 };
 
 export const LessonsSection = () => {
+  const t = useTranslations();
+  const { language } = useLanguage();
   const lessons = useQuery(actions.lessons);
   const [editing, setEditing] = useState<CourseLesson | null>(null);
 
@@ -318,16 +337,16 @@ export const LessonsSection = () => {
 
       <Box component="section">
         <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
-          Lessons
+          {t.lessons.heading}
         </Typography>
         {lessons.isPending ? (
-          <Typography variant="body1">loading lessons…</Typography>
+          <Typography variant="body1">{t.lessons.loading}</Typography>
         ) : lessons.isError ? (
           <Typography variant="body1" role="alert">
             {errorMessage(lessons.error)}
           </Typography>
         ) : lessons.data.lessons.length === 0 ? (
-          <Typography variant="body1">No lessons yet.</Typography>
+          <Typography variant="body1">{t.lessons.empty}</Typography>
         ) : (
           <List disablePadding>
             {lessons.data.lessons.map((lesson) => (
@@ -336,7 +355,7 @@ export const LessonsSection = () => {
                 data-testid="lesson-row"
                 secondaryAction={
                   <Button variant="text" onClick={() => setEditing(lesson)}>
-                    edit
+                    {t.lessons.edit}
                   </Button>
                 }
               >
@@ -344,8 +363,8 @@ export const LessonsSection = () => {
                   primary={lesson.name}
                   secondary={
                     <>
-                      {lesson.contents.length} block{lesson.contents.length === 1 ? '' : 's'} ·{' '}
-                      {displayDate(lesson.createdAt)}
+                      {lesson.contents.length} {t.lessons.blockNoun({ count: lesson.contents.length })} ·{' '}
+                      {formatDate(lesson.createdAt, language)}
                     </>
                   }
                 />

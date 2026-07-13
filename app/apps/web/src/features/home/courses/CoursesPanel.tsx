@@ -19,12 +19,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Course } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useLanguage, useTranslations } from '../../../i18n/index.js';
+import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
 import { CourseDetail } from './CourseDetail.js';
-import { displayDate, MutationError } from './feedback.js';
+import { MutationError } from './feedback.js';
 import { LessonsSection } from './LessonsSection.js';
 
 const CreateCourseForm = () => {
+  const t = useTranslations();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -52,14 +55,14 @@ const CreateCourseForm = () => {
   return (
     <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '1rem' }}>
       <Typography variant="h2" component="h3">
-        New course
+        {t.courses.newCourse}
       </Typography>
       <FormControl fullWidth>
-        <FormLabel htmlFor="course-name">name</FormLabel>
+        <FormLabel htmlFor="course-name">{t.common.name}</FormLabel>
         <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required />
       </FormControl>
       <FormControl fullWidth>
-        <FormLabel htmlFor="course-description">description</FormLabel>
+        <FormLabel htmlFor="course-description">{t.common.description}</FormLabel>
         <OutlinedInput
           id="course-description"
           value={description}
@@ -69,7 +72,7 @@ const CreateCourseForm = () => {
         />
       </FormControl>
       <FormControl fullWidth>
-        <FormLabel htmlFor="course-image">image URL</FormLabel>
+        <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
         <OutlinedInput
           id="course-image"
           value={imageUrl}
@@ -78,7 +81,7 @@ const CreateCourseForm = () => {
         />
       </FormControl>
       <Button type="submit" variant="contained" disabled={createCourse.isPending || name.trim().length === 0}>
-        {createCourse.isPending ? 'creating…' : 'create course'}
+        {createCourse.isPending ? t.courses.creating : t.courses.create}
       </Button>
       {createCourse.isError ? <MutationError error={createCourse.error} /> : null}
     </Paper>
@@ -86,6 +89,8 @@ const CreateCourseForm = () => {
 };
 
 const CoursesSection = () => {
+  const t = useTranslations();
+  const { language } = useLanguage();
   const courses = useQuery(actions.courses);
   const modules = useQuery(actions.modules);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -101,14 +106,14 @@ const CoursesSection = () => {
       <CreateCourseForm />
       <Box component="section">
         <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
-          Courses
+          {t.courses.heading}
         </Typography>
         {courses.isPending ? (
-          <Typography variant="body1">loading courses…</Typography>
+          <Typography variant="body1">{t.courses.loading}</Typography>
         ) : courses.isError ? (
           <MutationError error={courses.error} />
         ) : courses.data.courses.length === 0 ? (
-          <Typography variant="body1">No courses yet.</Typography>
+          <Typography variant="body1">{t.courses.empty}</Typography>
         ) : (
           <List disablePadding>
             {courses.data.courses.map((course) => (
@@ -117,7 +122,7 @@ const CoursesSection = () => {
                 data-testid="course-row"
                 secondaryAction={
                   <Button variant="text" onClick={() => setSelectedId(course.id)}>
-                    manage
+                    {t.courses.manage}
                   </Button>
                 }
               >
@@ -127,10 +132,11 @@ const CoursesSection = () => {
                   secondary={
                     <Stack useFlexGap spacing="0.2rem">
                       <span>
-                        <DataValue>{moduleCount(course)}</DataValue> module{moduleCount(course) === 1 ? '' : 's'}
+                        <DataValue>{moduleCount(course)}</DataValue>{' '}
+                        {t.courses.moduleNoun({ count: moduleCount(course) })}
                       </span>
                       <EntryDate component="time" dateTime={course.createdAt}>
-                        {displayDate(course.createdAt)}
+                        {formatDate(course.createdAt, language)}
                       </EntryDate>
                     </Stack>
                   }
@@ -147,6 +153,7 @@ const CoursesSection = () => {
 type CoursesTab = 'tree' | 'lessons';
 
 export const CoursesPanel = () => {
+  const t = useTranslations();
   const [tab, setTab] = useState<CoursesTab>('tree');
 
   const changeTab = (_event: MouseEvent<HTMLElement>, value: CoursesTab | null) => {
@@ -155,12 +162,12 @@ export const CoursesPanel = () => {
 
   return (
     <Stack useFlexGap spacing="1.5rem">
-      <ToggleButtonGroup exclusive value={tab} onChange={changeTab} aria-label="Course tree or lessons">
+      <ToggleButtonGroup exclusive value={tab} onChange={changeTab} aria-label={t.courses.tabsAria}>
         <ToggleButton value="tree" data-testid="courses-tab-tree">
-          Course tree
+          {t.courses.treeTab}
         </ToggleButton>
         <ToggleButton value="lessons" data-testid="courses-tab-lessons">
-          Lessons
+          {t.courses.lessonsTab}
         </ToggleButton>
       </ToggleButtonGroup>
       {tab === 'tree' ? <CoursesSection /> : <LessonsSection />}

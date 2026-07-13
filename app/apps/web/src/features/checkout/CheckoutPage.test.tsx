@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { CheckoutPage } from './CheckoutPage.js';
@@ -46,11 +47,11 @@ describe('CheckoutPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('e-mail'), 'buyer@together.dev');
-    await userEvent.click(screen.getByRole('button', { name: 'Symuluj płatność (dev)' }));
+    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
 
-    const link = await screen.findByRole('link', { name: 'Otwórz swój kurs' });
+    const link = await screen.findByRole('link', { name: pl.checkout.openCourse });
     expect(link).toHaveAttribute('href', 'https://acme.test/magic');
-    expect(screen.getByText(/produkcyjnej/i)).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
   });
 });

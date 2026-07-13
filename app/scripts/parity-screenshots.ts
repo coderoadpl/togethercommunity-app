@@ -385,17 +385,65 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
   };
 };
 
-const signInStudent = async (page: Page, studioBaseUrl: string, email: string): Promise<void> => {
+interface MagicLinkLabels {
+  send: string;
+  open: string;
+}
+
+const ENGLISH_MAGIC_LINK: MagicLinkLabels = { send: 'Send me a magic link', open: 'Open magic link' };
+const POLISH_MAGIC_LINK: MagicLinkLabels = { send: 'Wyślij mi magiczny link', open: 'Otwórz magiczny link' };
+
+const signInStudent = async (
+  page: Page,
+  studioBaseUrl: string,
+  email: string,
+  labels: MagicLinkLabels = ENGLISH_MAGIC_LINK,
+): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await page.locator('#magic-link-email').waitFor({ state: 'visible', timeout: 20000 });
   await page.locator('#magic-link-email').fill(email);
-  await page.getByRole('button', { name: 'Send me a magic link' }).click();
-  const magicLink = page.getByRole('link', { name: 'Open magic link' });
+  await page.getByRole('button', { name: labels.send }).click();
+  const magicLink = page.getByRole('link', { name: labels.open });
   await magicLink.waitFor({ state: 'visible', timeout: 20000 });
   const href = await magicLink.getAttribute('href');
   assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');
   await page.goto(href, { waitUntil: 'load' });
   await page.waitForURL('**/my', { timeout: 20000 });
+};
+
+const setLanguage = async (context: BrowserContext, language: 'pl' | 'en'): Promise<void> => {
+  await context.addInitScript((value) => {
+    window.localStorage.setItem('together-language', value);
+  }, language);
+};
+
+const capturePolishSurfaces = async (
+  browser: Browser,
+  studioBaseUrl: string,
+  fixture: StudentFixture,
+  viewport: { width: number; height: number },
+): Promise<void> => {
+  const creatorContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  await setLanguage(creatorContext, 'pl');
+  const creatorPage = await creatorContext.newPage();
+  await signInCreator(creatorPage, studioBaseUrl);
+  await creatorPage.getByTestId('section-products').waitFor({ state: 'visible', timeout: 20000 });
+  await creatorPage.getByRole('heading', { name: 'Nowy produkt' }).waitFor({ state: 'visible', timeout: 20000 });
+  const productRow = creatorPage.getByTestId('product-row').filter({ hasText: fixture.mixedProductTitle }).first();
+  await productRow.waitFor({ state: 'visible', timeout: 20000 });
+  await creatorPage.evaluate(() => window.scrollTo(0, 0));
+  await shoot(creatorPage, '16-panel-pl.png');
+  await creatorContext.close();
+
+  const studentContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  await setLanguage(studentContext, 'pl');
+  const studentPage = await studentContext.newPage();
+  await signInStudent(studentPage, studioBaseUrl, fixture.studentEmail, POLISH_MAGIC_LINK);
+  await studentPage.goto(`${studioBaseUrl}/my/courses/${fixture.courseId}`, { waitUntil: 'load' });
+  await studentPage.getByTestId('course-tree').waitFor({ state: 'visible', timeout: 20000 });
+  await studentPage.getByText('Advanced Patterns').first().waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(studentPage, '17-student-tree-pl.png');
+  await studentContext.close();
 };
 
 const captureStudentJourney = async (
@@ -530,12 +578,16 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const viewport = { width: 1440, height: 900 };
   const studentContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  await setLanguage(studentContext, 'en');
   await captureStudentJourney(studentContext, studioBaseUrl, fixture);
   await studentContext.close();
 
   const creatorContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  await setLanguage(creatorContext, 'en');
   await captureCreatorPanel(creatorContext, studioBaseUrl, fixture);
   await creatorContext.close();
+
+  await capturePolishSurfaces(browser, studioBaseUrl, fixture, viewport);
 
   console.log(`\nshots:parity: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s) -> ${outputDir}`);
 } catch (error) {

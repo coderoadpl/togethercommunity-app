@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { MemberGrant, MemberWithProductIds, Product } from '@core/domain/index.js';
 
+import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { MemberDetail } from './MemberDetail.js';
@@ -81,8 +82,8 @@ describe('MemberDetail', () => {
 
     expect(await screen.findByText('Full Course')).toBeInTheDocument();
     expect(screen.getAllByTestId('grant-row')).toHaveLength(2);
-    expect(screen.getByText('active')).toBeInTheDocument();
-    expect(screen.getByText('expired')).toBeInTheDocument();
+    expect(screen.getByText(pl.members.active)).toBeInTheDocument();
+    expect(screen.getByText(pl.members.expired)).toBeInTheDocument();
     expect(screen.getByText(/2027/)).toBeInTheDocument();
   });
 
@@ -92,7 +93,7 @@ describe('MemberDetail', () => {
 
     await userEvent.click(await screen.findByRole('combobox', { name: 'grant product' }));
     await userEvent.click(await screen.findByRole('option', { name: 'New Workshop' }));
-    await userEvent.click(screen.getByRole('button', { name: 'grant' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.members.grant }));
 
     await waitFor(() => expect(grantBodies).toHaveLength(1));
     expect(grantBodies[0]).toEqual({ memberId: 'member-1', productId: 'p3', expiresAt: null });
@@ -102,11 +103,11 @@ describe('MemberDetail', () => {
     const { revoked } = setup();
     renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
 
-    const [firstRevoke] = await screen.findAllByRole('button', { name: 'revoke' });
+    const [firstRevoke] = await screen.findAllByRole('button', { name: pl.members.revoke });
     if (firstRevoke) await userEvent.click(firstRevoke);
 
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'revoke' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: pl.members.revoke }));
 
     await waitFor(() => expect(revoked).toEqual(['grant-active']));
   });

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LoginPage } from './LoginPage.js';
@@ -30,17 +31,17 @@ const renderLoginPage = async () => {
 };
 
 const fillCredentials = async () => {
-  await userEvent.type(screen.getByLabelText('email'), 'creator@together.dev');
-  await userEvent.type(screen.getByLabelText('password'), 'wrong-password');
+  await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'creator@together.dev');
+  await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'wrong-password');
 };
 
 describe('LoginPage', () => {
   it('renders labeled login inputs', async () => {
     await renderLoginPage();
 
-    expect(screen.getByLabelText('email')).toBeInTheDocument();
-    expect(screen.getByLabelText('password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'sign in' })).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.auth.signInIdle })).toBeInTheDocument();
   });
 
   it('renders the AppError from a failed sign-in mutation', async () => {
@@ -52,7 +53,7 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: 'sign in' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
@@ -67,8 +68,8 @@ describe('LoginPage', () => {
 
     await renderLoginPage();
     await fillCredentials();
-    await userEvent.click(screen.getByRole('button', { name: 'sign in' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
 
-    expect(await screen.findByRole('button', { name: 'signing in…' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: pl.auth.signInPending })).toBeDisabled();
   });
 });

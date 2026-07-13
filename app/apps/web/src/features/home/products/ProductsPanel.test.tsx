@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Product } from '@core/domain/index.js';
 
+import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ProductsPanel } from './ProductsPanel.js';
@@ -66,19 +67,19 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'publish' }));
+    await userEvent.click(screen.getByRole('button', { name: pl.products.publish }));
 
     await waitFor(() => {
-      expect(screen.getByText(/published/i)).toBeInTheDocument();
+      expect(screen.getByText(pl.products.published)).toBeInTheDocument();
     });
 
-    await userEvent.type(screen.getByLabelText('title'), 'New Workshop');
-    await userEvent.type(screen.getByLabelText('description'), 'Hands-on session');
-    await userEvent.clear(screen.getByLabelText('price in cents'));
-    await userEvent.type(screen.getByLabelText('price in cents'), '4900');
-    await userEvent.clear(screen.getByLabelText('currency'));
-    await userEvent.type(screen.getByLabelText('currency'), 'EUR');
-    await userEvent.click(screen.getByRole('button', { name: 'create product' }));
+    await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'New Workshop');
+    await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
+    await userEvent.clear(screen.getByLabelText(pl.products.priceInCents));
+    await userEvent.type(screen.getByLabelText(pl.products.priceInCents), '4900');
+    await userEvent.clear(screen.getByLabelText(pl.products.currencyLabel));
+    await userEvent.type(screen.getByLabelText(pl.products.currencyLabel), 'EUR');
+    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
 
     expect(await screen.findByText('New Workshop')).toBeInTheDocument();
   });

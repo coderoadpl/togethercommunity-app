@@ -17,9 +17,11 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations } from '../../i18n/index.js';
 import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const LoginPage = () => {
+  const t = useTranslations();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [magicEmail, setMagicEmail] = useState('');
@@ -87,11 +89,11 @@ export const LoginPage = () => {
           Together
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          sign in · tenant {window.location.hostname}
+          {t.auth.signInEyebrow({ host: window.location.hostname })}
         </Eyebrow>
         <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-email">email</FormLabel>
+            <FormLabel htmlFor="login-email">{t.auth.emailLabel}</FormLabel>
             <OutlinedInput
               id="login-email"
               type="email"
@@ -103,7 +105,7 @@ export const LoginPage = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="login-password">password</FormLabel>
+            <FormLabel htmlFor="login-password">{t.auth.passwordLabel}</FormLabel>
             <OutlinedInput
               id="login-password"
               type="password"
@@ -122,7 +124,7 @@ export const LoginPage = () => {
             data-testid="signin-submit"
             sx={{ mt: '0.4rem' }}
           >
-            {signIn.isPending ? 'signing in…' : 'sign in'}
+            {signIn.isPending ? t.auth.signInPending : t.auth.signInIdle}
           </Button>
         </Stack>
         {signIn.isError ? (
@@ -138,7 +140,7 @@ export const LoginPage = () => {
             disabled={signInWithPasskey.isPending}
             onClick={() => signInWithPasskey.mutate()}
           >
-            {signInWithPasskey.isPending ? 'signing in…' : 'Sign in with passkey'}
+            {signInWithPasskey.isPending ? t.auth.passkeyPending : t.auth.passkeyIdle}
           </Button>
           {authConfig.data?.googleEnabled ? (
             <Button
@@ -148,7 +150,7 @@ export const LoginPage = () => {
               disabled={signInWithGoogle.isPending}
               onClick={() => signInWithGoogle.mutate()}
             >
-              Continue with Google
+              {t.auth.continueWithGoogle}
             </Button>
           ) : null}
         </Stack>
@@ -162,7 +164,7 @@ export const LoginPage = () => {
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="magic-link-email">magic link email</FormLabel>
+            <FormLabel htmlFor="magic-link-email">{t.auth.magicLinkEmailLabel}</FormLabel>
             <OutlinedInput
               id="magic-link-email"
               type="email"
@@ -173,7 +175,7 @@ export const LoginPage = () => {
             />
           </FormControl>
           <Button type="submit" variant="text" disabled={requestMagicLink.isPending}>
-            {requestMagicLink.isPending ? 'sending magic link…' : 'Send me a magic link'}
+            {requestMagicLink.isPending ? t.auth.magicLinkPending : t.auth.magicLinkIdle}
           </Button>
         </Stack>
         {requestMagicLink.isError ? (
@@ -185,12 +187,12 @@ export const LoginPage = () => {
         ) : null}
         {requestedMagicEmail ? (
           <FinePrint variant="caption" component="p" sx={{ mt: '0.8rem' }}>
-            {devMagicLink.isPending ? 'fetching dev magic link…' : 'Magic link requested.'}
+            {devMagicLink.isPending ? t.auth.magicLinkFetching : t.auth.magicLinkRequested}
           </FinePrint>
         ) : null}
         {devMagicLink.data?.magicLink ? (
           <FinePrint variant="caption" component="p" sx={{ mt: '0.4rem' }}>
-            <Link href={devMagicLink.data.magicLink.url}>Open magic link</Link>
+            <Link href={devMagicLink.data.magicLink.url}>{t.auth.openMagicLink}</Link>
           </FinePrint>
         ) : null}
         {devMagicLink.isError ? (
@@ -198,11 +200,11 @@ export const LoginPage = () => {
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-          demo account: <DemoValue>creator@together.dev</DemoValue> /{' '}
+          {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
           <DemoValue>demo1234</DemoValue>
         </FinePrint>
         <FinePrint variant="caption" component="p">
-          New here? <Link href="/register">Create an account</Link>
+          {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
         </FinePrint>
       </Paper>
     </Box>

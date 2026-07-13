@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { TenantHomePage } from './TenantHomePage.js';
@@ -46,8 +47,8 @@ describe('TenantHomePage', () => {
     await renderHomePage();
 
     expect(await screen.findByRole('heading', { name: 'Acme' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Products' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'New product' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.sections.products })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.products.newProduct })).toBeInTheDocument();
   });
 
   it('falls back to the tenant picker when no tenant is selected', async () => {
@@ -58,6 +59,6 @@ describe('TenantHomePage', () => {
 
     await renderHomePage();
 
-    expect(await screen.findByText('Choose a tenant')).toBeInTheDocument();
+    expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
   });
 });

@@ -1,9 +1,10 @@
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 
-import { languageOptions, useLanguage, type Language } from '../../i18n/index.js';
+import { languageOptions, useLanguage, useTranslations, type Language } from '../../i18n/index.js';
 
 export const LanguageSwitcher = () => {
   const { language, setLanguage } = useLanguage();
+  const t = useTranslations();
   return (
     <Box sx={{ position: 'fixed', top: 10, right: 214, zIndex: (t) => t.zIndex.appBar }}>
       <ToggleButtonGroup
@@ -11,7 +12,7 @@ export const LanguageSwitcher = () => {
         size="small"
         exclusive
         value={language}
-        aria-label="Language"
+        aria-label={t.common.language}
         onChange={(_event, next: Language | null) => {
           if (next) setLanguage(next);
         }}

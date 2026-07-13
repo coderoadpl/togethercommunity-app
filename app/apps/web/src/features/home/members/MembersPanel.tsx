@@ -19,16 +19,17 @@ import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MemberDetail } from './MemberDetail.js';
 
-const displayDate = (value: string) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
-
-const errorMessage = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Export failed';
+const errorMessage = (error: unknown, t: Messages): string =>
+  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : t.members.exportFailed;
 
 export const MembersPanel = () => {
+  const t = useTranslations();
+  const { language } = useLanguage();
   const members = useQuery(actions.members);
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export const MembersPanel = () => {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setExportError(errorMessage(error));
+      setExportError(errorMessage(error, t));
     } finally {
       setExporting(null);
     }
@@ -72,7 +73,7 @@ export const MembersPanel = () => {
           sx={{ flexWrap: 'wrap', alignItems: 'baseline', columnGap: '1rem', rowGap: '0.6rem' }}
         >
           <Typography variant="h2" component="h2">
-            Members
+            {t.members.heading}
           </Typography>
           <Box sx={{ flex: 1 }} />
           <Button
@@ -81,7 +82,7 @@ export const MembersPanel = () => {
             disabled={exporting !== null}
             onClick={() => void download('csv')}
           >
-            {exporting === 'csv' ? 'exporting…' : 'Export CSV'}
+            {exporting === 'csv' ? t.members.exporting : t.members.exportCsv}
           </Button>
           <Button
             variant="outlined"
@@ -89,26 +90,26 @@ export const MembersPanel = () => {
             disabled={exporting !== null}
             onClick={() => void download('json')}
           >
-            {exporting === 'json' ? 'exporting…' : 'Export JSON'}
+            {exporting === 'json' ? t.members.exporting : t.members.exportJson}
           </Button>
         </Stack>
 
         {members.isPending ? (
-          <Typography variant="body1">loading members…</Typography>
+          <Typography variant="body1">{t.members.loading}</Typography>
         ) : members.isError ? (
           <Alert>{members.error.message}</Alert>
         ) : members.data.members.length === 0 ? (
-          <Typography variant="body1">No members yet.</Typography>
+          <Typography variant="body1">{t.members.empty}</Typography>
         ) : (
           <TableContainer>
-            <Table size="small" aria-label="Members">
+            <Table size="small" aria-label={t.members.heading}>
               <TableHead>
                 <TableRow>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell align="right">Products</TableCell>
-                  <TableCell>Created</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <TableCell>{t.members.colEmail}</TableCell>
+                  <TableCell>{t.members.colName}</TableCell>
+                  <TableCell align="right">{t.members.colProducts}</TableCell>
+                  <TableCell>{t.members.colCreated}</TableCell>
+                  <TableCell align="right">{t.members.colActions}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -119,13 +120,13 @@ export const MembersPanel = () => {
                     <TableCell align="right">{member.productIds.length}</TableCell>
                     <TableCell>
                       <EntryDate component="time" dateTime={member.createdAt}>
-                        {displayDate(member.createdAt)}
+                        {formatDate(member.createdAt, language)}
                       </EntryDate>
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <Button size="small" onClick={() => setSelectedId(member.id)}>
-                          Manage
+                          {t.members.manage}
                         </Button>
                         <Button
                           size="small"
@@ -133,7 +134,7 @@ export const MembersPanel = () => {
                           disabled={removeMember.isPending}
                           onClick={() => removeMember.mutate({ memberId: member.id })}
                         >
-                          Remove
+                          {t.members.remove}
                         </Button>
                       </Stack>
                     </TableCell>
@@ -145,7 +146,7 @@ export const MembersPanel = () => {
         )}
 
         {exportError !== null ? <Alert>{exportError}</Alert> : null}
-        {removeMember.isError ? <Alert>{errorMessage(removeMember.error)}</Alert> : null}
+        {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
       </Stack>
     </Paper>
   );

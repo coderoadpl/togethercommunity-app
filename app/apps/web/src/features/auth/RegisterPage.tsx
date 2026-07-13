@@ -17,9 +17,11 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { useTranslations } from '../../i18n/index.js';
 import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const RegisterPage = () => {
+  const t = useTranslations();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,11 +60,11 @@ export const RegisterPage = () => {
           Together
         </Wordmark>
         <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          create account · tenant {window.location.hostname}
+          {t.auth.createAccountEyebrow({ host: window.location.hostname })}
         </Eyebrow>
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
-            <FormLabel htmlFor="register-name">name</FormLabel>
+            <FormLabel htmlFor="register-name">{t.auth.nameLabel}</FormLabel>
             <OutlinedInput
               id="register-name"
               value={name}
@@ -72,7 +74,7 @@ export const RegisterPage = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="register-email">email</FormLabel>
+            <FormLabel htmlFor="register-email">{t.auth.emailLabel}</FormLabel>
             <OutlinedInput
               id="register-email"
               type="email"
@@ -83,7 +85,7 @@ export const RegisterPage = () => {
             />
           </FormControl>
           <FormControl fullWidth>
-            <FormLabel htmlFor="register-password">password</FormLabel>
+            <FormLabel htmlFor="register-password">{t.auth.passwordLabel}</FormLabel>
             <OutlinedInput
               id="register-password"
               type="password"
@@ -100,7 +102,7 @@ export const RegisterPage = () => {
             disabled={signUp.isPending}
             sx={{ mt: '0.4rem' }}
           >
-            {signUp.isPending ? 'creating account…' : 'create account'}
+            {signUp.isPending ? t.auth.creatingAccount : t.auth.createAccount}
           </Button>
         </Stack>
         {signUp.isError ? (
@@ -110,7 +112,7 @@ export const RegisterPage = () => {
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p">
-          Already have an account? <Link href="/login">Sign in</Link>
+          {t.auth.alreadyHaveAccount} <Link href="/login">{t.auth.signInLink}</Link>
         </FinePrint>
       </Paper>
     </Box>

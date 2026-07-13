@@ -157,6 +157,10 @@ interface StudentFixture {
   courseId: string;
   welcomeLessonId: string;
   lockedLessonId: string;
+  courseName: string;
+  mediaLessonName: string;
+  mixedProductTitle: string;
+  grantsMemberEmail: string;
 }
 
 const youtube = (id: string): string => JSON.stringify({ type: 'embed', embedUrl: `https://www.youtube.com/embed/${id}` });
@@ -164,6 +168,11 @@ const youtube = (id: string): string => JSON.stringify({ type: 'embed', embedUrl
 const html = (body: string): string => JSON.stringify({ type: 'html', html: body });
 
 const link = (url: string, description: string): string => JSON.stringify({ type: 'link', url, description });
+
+const video = (storageKey: string, streamVideoId: string, streamLibraryId: string): string =>
+  JSON.stringify({ type: 'video', storageKey, streamVideoId, streamLibraryId });
+
+const pdf = (pdfUrl: string, name: string): string => JSON.stringify({ type: 'pdf', pdfUrl, name });
 
 const chapterContent = (name: string, lessonId: string): string =>
   JSON.stringify({ id: randomUUID(), name, lessonId });
@@ -265,13 +274,22 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
     ['Welcome and setup', welcomeLessonId],
     ['How the course works', howLessonId],
   ]);
-  await createModule('Core Concepts', 'Building Blocks', [
+  const coreConceptsId = await createModule('Core Concepts', 'Building Blocks', [
     ['Components in depth', componentsLessonId],
     ['State and effects', stateLessonId],
   ]);
   await createModule('Advanced Patterns', 'Scaling Up', [
     ['Performance tuning', performanceLessonId],
     ['Architecture patterns', architectureLessonId],
+  ]);
+
+  const mediaLessonName = 'Streaming media deep dive';
+  await createLesson(mediaLessonName, [
+    video('courses/react-fundamentals/streaming-media.mp4', 'a1b2c3d4-1122-3344-5566-778899aabbcc', '128312'),
+    pdf('https://static.together.dev/react-fundamentals/streaming-media-cheatsheet.pdf', 'Streaming media cheat sheet'),
+    html(
+      '<h2>Streaming media deep dive</h2><p>The video above streams straight from your Bunny library, and the PDF opens inline or in a new tab. Together only stores the pointers — your media stays where it already lives.</p>',
+    ),
   ]);
 
   const accessItems = JSON.stringify([
@@ -292,16 +310,79 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
     ),
   );
 
+  const mixedProductTitle = 'React Fundamentals - tiered access';
+  const mixedAccessItems = JSON.stringify([
+    { courseId, courseLevelAccess: false, moduleIds: [gettingStartedId, coreConceptsId], lessonIds: [] },
+    { courseId, courseLevelAccess: false, moduleIds: [], lessonIds: [componentsLessonId] },
+    { courseId, courseLevelAccess: true, moduleIds: [], lessonIds: [] },
+  ]);
+  const mixedProduct = productCreatedSchema.parse(
+    await cliData(
+      await studio(
+        ['product', 'create', '--title', mixedProductTitle, '--price-cents', '29900', '--access-items', mixedAccessItems],
+        creatorHome,
+      ),
+      'create mixed product',
+    ),
+  );
+
   const studentEmail = `student.parity+${randomUUID().slice(0, 8)}@together.dev`;
   await cliData(
     await studio(['dev', 'grant', '--email', studentEmail, '--product', product.product.id], creatorHome),
     'grant product',
   );
 
+  const grantsMemberEmail = `member.grants+${randomUUID().slice(0, 8)}@together.dev`;
+  await cliData(
+    await studio(
+      [
+        'dev',
+        'grant',
+        '--email',
+        grantsMemberEmail,
+        '--product',
+        mixedProduct.product.id,
+        '--starts-at',
+        '2026-06-01T00:00:00.000Z',
+        '--expires-at',
+        '2027-06-01T00:00:00.000Z',
+      ],
+      creatorHome,
+    ),
+    'grant active product',
+  );
+  await cliData(
+    await studio(
+      [
+        'dev',
+        'grant',
+        '--email',
+        grantsMemberEmail,
+        '--product',
+        product.product.id,
+        '--starts-at',
+        '2025-01-01T00:00:00.000Z',
+        '--expires-at',
+        '2025-04-01T00:00:00.000Z',
+      ],
+      creatorHome,
+    ),
+    'grant expired product',
+  );
+
   await cliData(await cli(['login-magic', '--email', studentEmail], studentHome), 'student magic login');
   await cliData(await studio(['student', 'complete', howLessonId], studentHome), 'complete lesson');
 
-  return { studentEmail, courseId, welcomeLessonId, lockedLessonId: performanceLessonId };
+  return {
+    studentEmail,
+    courseId,
+    welcomeLessonId,
+    lockedLessonId: performanceLessonId,
+    courseName: 'React Fundamentals',
+    mediaLessonName,
+    mixedProductTitle,
+    grantsMemberEmail,
+  };
 };
 
 const signInStudent = async (page: Page, studioBaseUrl: string, email: string): Promise<void> => {
@@ -354,6 +435,77 @@ const captureStudentJourney = async (
   await page.close();
 };
 
+const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
+  await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('login-email').fill('creator@together.dev');
+  await page.getByTestId('login-password').fill('demo1234');
+  await page.getByTestId('signin-submit').click();
+  await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
+};
+
+const captureCreatorPanel = async (
+  context: BrowserContext,
+  studioBaseUrl: string,
+  fixture: StudentFixture,
+): Promise<void> => {
+  const page = await context.newPage();
+
+  await signInCreator(page, studioBaseUrl);
+
+  await page.getByTestId('section-courses').click();
+  const courseRow = page.getByTestId('course-row').filter({ hasText: fixture.courseName }).first();
+  await courseRow.waitFor({ state: 'visible', timeout: 20000 });
+  await courseRow.getByRole('button', { name: 'manage' }).click();
+  await page.getByRole('heading', { name: 'Modules' }).waitFor({ state: 'visible', timeout: 20000 });
+  const firstModule = page.getByTestId('module-card').first();
+  await firstModule.waitFor({ state: 'visible', timeout: 20000 });
+  await firstModule.getByText('Welcome and setup').first().waitFor({ state: 'visible', timeout: 20000 });
+  await firstModule.scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, -24));
+  await shoot(page, '12-panel-course-editor.png');
+
+  await page.getByRole('button', { name: '← all courses' }).click();
+  await page.getByTestId('courses-tab-lessons').click();
+  const lessonRow = page.getByTestId('lesson-row').filter({ hasText: fixture.mediaLessonName }).first();
+  await lessonRow.waitFor({ state: 'visible', timeout: 20000 });
+  await lessonRow.getByRole('button', { name: 'edit' }).click();
+  await page.getByRole('heading', { name: 'Edit lesson' }).waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('block-type').filter({ hasText: 'video' }).first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('block-type').filter({ hasText: 'pdf' }).first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const videoBlockBox = await page.getByTestId('lesson-block').first().boundingBox();
+  if (videoBlockBox) await page.evaluate((top) => window.scrollBy(0, top - 20), videoBlockBox.y);
+  await shoot(page, '13-panel-lesson-editor.png');
+
+  await page.getByTestId('section-products').click();
+  const productRow = page.getByTestId('product-row').filter({ hasText: fixture.mixedProductTitle }).first();
+  await productRow.waitFor({ state: 'visible', timeout: 20000 });
+  await productRow.getByRole('button', { name: 'edit access' }).click();
+  const accessItems = productRow.getByTestId('access-item');
+  await accessItems.first().waitFor({ state: 'visible', timeout: 20000 });
+  assert((await accessItems.count()) === 3, 'mixed product should expose three access items');
+  await productRow.scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, -24));
+  await shoot(page, '14-panel-product-access.png');
+
+  await page.getByTestId('section-members').click();
+  const memberRow = page.getByTestId('member-row').filter({ hasText: fixture.grantsMemberEmail }).first();
+  await memberRow.waitFor({ state: 'visible', timeout: 20000 });
+  await memberRow.getByRole('button', { name: 'Manage' }).click();
+  await page.getByRole('heading', { name: 'Granted products' }).waitFor({ state: 'visible', timeout: 20000 });
+  const grantRows = page.getByTestId('grant-row');
+  await grantRows.first().waitFor({ state: 'visible', timeout: 20000 });
+  assert((await grantRows.count()) === 2, 'grants member should show two grants');
+  await page.getByText('active').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByText('expired').first().waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByRole('heading', { name: 'Granted products' }).scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, -24));
+  await shoot(page, '15-panel-member-grants.png');
+
+  await page.close();
+};
+
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -380,6 +532,10 @@ try {
   const studentContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
   await captureStudentJourney(studentContext, studioBaseUrl, fixture);
   await studentContext.close();
+
+  const creatorContext = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  await captureCreatorPanel(creatorContext, studioBaseUrl, fixture);
+  await creatorContext.close();
 
   console.log(`\nshots:parity: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s) -> ${outputDir}`);
 } catch (error) {

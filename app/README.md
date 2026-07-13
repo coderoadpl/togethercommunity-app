@@ -11,7 +11,7 @@ auth, organizations (tenants), tenant resolution by domain, one demo resource
 npm install
 npm run db:up        # Postgres 16 in Docker on port 48912
 npm run db:migrate
-npm run db:seed      # two creators + their tenants + members + todos
+npm run db:seed      # creators, tenants, courses, tiered products, members with varied grants
 npm run build:web
 npm run dev:server   # API + SPA on http://localhost:48730
 ```
@@ -22,6 +22,59 @@ sign in as `creator@together.dev` / `demo1234` on studio, or
 isolated todos (and its own accent color). Note: on `localhost` browsers reject
 cross-subdomain cookies, so you sign in per tenant domain; on a real base domain
 one session spans all tenant subdomains.
+
+## Demo data
+
+`npm run db:seed` provisions a rich, idempotent demo dataset (deterministic ids
+throughout, e.g. `course-js`, `lesson-js-zmienne-1`) meant for manually testing
+feature parity. Re-running the seed never duplicates anything.
+
+**Tenants and owners** (owners sign in with password `demo1234`):
+
+| Tenant     | Subdomain                        | Owner                     |
+| ---------- | -------------------------------- | ------------------------- |
+| Studio Demo | http://studio.localhost:48730   | `creator@together.dev`    |
+| Acme Courses | http://acme.localhost:48730    | `creator2@together.dev`   |
+| Akademia Samouka | http://akademia.localhost:48730 | `creator3@together.dev` |
+
+**Courses**
+
+- **Studio** — `Kurs JavaScript od podstaw` (`course-js`): 3 modules with legacy
+  prefixes (`Część 1 - Podstawy` → 2 chapters, `Część 2 - DOM`, `Część 3 -
+  Projekty`); `React w praktyce` (`course-react`): 2 modules. Lessons mix
+  `embed` (YouTube-nocookie), `html` (Polish teaching prose), `link` and `pdf`
+  blocks.
+- **Akademia** — `Samodzielna nauka programowania` (`course-akademia`): 2 modules.
+- **Acme** keeps its original walking-skeleton data untouched.
+
+**Product tiers (Studio)** — all published, price in PLN grosze:
+
+| Product                          | Price   | Access level                                    |
+| -------------------------------- | ------- | ----------------------------------------------- |
+| `Kurs JavaScript - pełny dostęp` | 39900   | course-level → `course-js`                      |
+| `React w praktyce - pełny dostęp`| 49900   | course-level → `course-react`                   |
+| `Pakiet: moduł DOM`              | 9900    | module-level → only the DOM module of `course-js` |
+| `Free preview`                   | 0       | lesson-level → one lesson from every module of both courses |
+
+Akademia offers `Akademia - dostęp roczny` (29900, course-level).
+
+**Members** — sign in **passwordlessly via magic link** (CLI `login-magic
+--email <e>`, or a checkout). Their grants exercise every access edge state:
+
+| Member                          | Tenant   | Grant                          | What they see                                                  |
+| ------------------------------- | -------- | ------------------------------ | ------------------------------------------------------------- |
+| `kursant.aktywny@together.dev`  | studio   | perpetual → JS course          | `course-js` fully-accessible, partially-completed (2 lessons done + last-viewed) |
+| `kursant.wygasly@together.dev`  | studio   | JS course, **expired 7d ago**  | course **absent** from `student courses`; structure `not-accessible` |
+| `kursant.przyszly@together.dev` | studio   | JS course, **starts in 7d**    | course **absent** (grant not yet active); structure `not-accessible` |
+| `kursant.modul@together.dev`    | studio   | active → DOM module pack        | `course-js` partially-accessible (only DOM module unlocked)   |
+| `free@together.dev`             | studio   | active → Free preview           | both courses partially-accessible (one lesson per module)     |
+| `kursant.akademia@together.dev` | akademia | active, expires in ~330d        | `course-akademia` fully-accessible, 1 lesson completed        |
+
+The "absent vs. not-accessible" behaviour reflects `listMyCourses` semantics: it
+lists only courses whose access status (computed from **active** grants) is not
+`not-accessible`, so expired and future grants drop the course from the list
+entirely, while `student structure <courseId>` still resolves it as
+`not-accessible`.
 
 ## CLI — the agent feedback loop
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   attachModuleToCourseInputSchema,
+  checkoutSessionInputSchema,
   courseLessonSchema,
   courseModuleSchema,
   courseSchema,
@@ -93,6 +94,24 @@ export const publicOfferOutputSchema = z.object({
       currency: z.string().regex(/^[A-Z]{3}$/),
     }),
   ),
+});
+
+export const publicPaymentConfigOutputSchema = z.object({
+  stripeConfigured: z.boolean(),
+  simulatedPaymentsEnabled: z.boolean(),
+});
+
+export const checkoutSessionRequestSchema = checkoutSessionInputSchema;
+
+export type CheckoutSessionRequest = z.input<typeof checkoutSessionRequestSchema>;
+
+export const checkoutSessionOutputSchema = z.object({
+  url: z.string().url(),
+});
+
+export const stripeWebhookOutputSchema = z.object({
+  received: z.literal(true),
+  processed: z.boolean(),
 });
 
 export const myProductsOutputSchema = z.object({
@@ -380,6 +399,8 @@ export const m2mEnrollOutputSchema = z.object({
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
+  publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
+  checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   tenants: { method: 'GET', path: '/api/tenants' },
@@ -424,6 +445,7 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
+  stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
 } as const;
 
@@ -434,6 +456,8 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 export const API_PATHS = {
   health: API_ROUTES.health.path,
   publicOffer: API_ROUTES.publicOffer.path,
+  publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
+  checkoutSession: API_ROUTES.checkoutSession.path,
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   tenants: API_ROUTES.tenants.path,
@@ -473,6 +497,7 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   stripeTestConnection: API_ROUTES.stripeTestConnection.path,
+  stripeWebhook: API_ROUTES.stripeWebhook.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
 } as const;
 
@@ -481,7 +506,7 @@ export const API_PATHS = {
  * from `tenant_secrets`. Stripe (not a first-party client) calls it, so it lives
  * outside the client contract, like the Better Auth handler paths.
  */
-export const STRIPE_WEBHOOK_PATH_PATTERN = '/api/webhooks/stripe/:tenantId';
+export const STRIPE_WEBHOOK_PATH_PATTERN = API_ROUTES.stripeWebhook.path;
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */
 export const TENANT_HEADER = 'x-tenant';

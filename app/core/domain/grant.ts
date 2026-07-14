@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const grantSourceSchema = z.enum(['simulated', 'manual']);
+export const grantSourceSchema = z.enum(['simulated', 'manual', 'stripe']);
 
 export type GrantSource = z.infer<typeof grantSourceSchema>;
 

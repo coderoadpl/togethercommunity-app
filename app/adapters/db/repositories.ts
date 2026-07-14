@@ -8,6 +8,7 @@ import {
   memberCourseProgressSchema,
   memberGrantSchema,
   productGrantSchema,
+  processedPaymentEventSchema,
   productSchema,
   staffRoleSchema,
   tenantApiKeySchema,
@@ -20,6 +21,7 @@ import {
   type Membership,
   type Product,
   type ProductGrant,
+  type ProcessedPaymentEvent,
   type StaffRole,
   type TenantApiKey,
   type TenantSecret,
@@ -35,6 +37,7 @@ import type {
   MemberCourseProgressRepository,
   PurchaseRepository,
   ProductGrantRepository,
+  ProcessedPaymentEventRepository,
   ProductRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -53,6 +56,7 @@ import {
   memberCourseProgress,
   members,
   productGrants,
+  processedPaymentEvents,
   products,
   tenantAdmins,
   tenantApiKeys,
@@ -69,6 +73,9 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 const parseProduct = (product: Product): Product => productSchema.parse(product);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
+
+const parseProcessedPaymentEvent = (event: ProcessedPaymentEvent): ProcessedPaymentEvent =>
+  processedPaymentEventSchema.parse(event);
 
 const parseLesson = (lesson: CourseLesson): CourseLesson => courseLessonSchema.parse(lesson);
 
@@ -700,6 +707,41 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
       .delete(tenantSecrets)
       .where(and(eq(tenantSecrets.tenantId, tenantId), eq(tenantSecrets.key, key)))
       .returning({ id: tenantSecrets.id });
+    return rows.length > 0;
+  },
+});
+
+export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => ({
+  findByEventId: async (tenantId, eventId) => {
+    const rows = await db
+      .select()
+      .from(processedPaymentEvents)
+      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseProcessedPaymentEvent(row) : null;
+  },
+  findByObjectAndType: async (tenantId, objectId, type) => {
+    const rows = await db
+      .select()
+      .from(processedPaymentEvents)
+      .where(
+        and(
+          eq(processedPaymentEvents.tenantId, tenantId),
+          eq(processedPaymentEvents.objectId, objectId),
+          eq(processedPaymentEvents.type, type),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row ? parseProcessedPaymentEvent(row) : null;
+  },
+  create: async (tenantId, event) => {
+    const rows = await db
+      .insert(processedPaymentEvents)
+      .values({ ...event, tenantId })
+      .onConflictDoNothing()
+      .returning({ id: processedPaymentEvents.id });
     return rows.length > 0;
   },
 });

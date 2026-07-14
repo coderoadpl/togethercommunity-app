@@ -124,6 +124,34 @@ Per request: (1) exact custom-domain match in `tenant_domains`,
 tenant-scoped use-case takes `ctx.identity` and every repository call requires
 `tenantId`.
 
+## Stripe test mode
+
+Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, and store that tenant's
+Stripe test-mode restricted key and webhook signing secret without adding either
+value to an env file or Git:
+
+```bash
+npm run --silent cli -- --tenant studio tenant-secret set stripe.restrictedKey '<restricted-test-key>'
+npm run --silent cli -- --tenant studio tenant-secret set stripe.webhookSecret '<webhook-signing-secret>'
+npm run --silent cli -- --tenant studio stripe test-connection
+```
+
+The restricted key needs write access to Checkout Sessions. In the Stripe
+Dashboard, register `/api/webhooks/stripe/<tenant-id>` for
+`checkout.session.completed`. For localhost, the Stripe CLI can forward events:
+
+```bash
+stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
+```
+
+Store the `whsec_…` value printed by `stripe listen` as the tenant webhook
+secret, open a published product's `/checkout/<product-id>` page, and pay with a
+Stripe test card. The browser return page only shows status; the signed webhook
+creates or renews access and sends the welcome magic link.
+
+Checkout is one-time payment only. Recurring payments and subscriptions remain
+deferred under FR-33.
+
 ## Ports
 
 | service | port |

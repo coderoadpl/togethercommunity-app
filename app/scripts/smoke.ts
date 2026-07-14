@@ -154,6 +154,8 @@ const bootServer = async (
       WEB_DIST_DIR: webDistDir,
       SIMULATED_PAYMENTS: 'true',
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+      PAYMENT_PROVIDER: 'fake',
+      EMAIL_PROVIDER: 'dev',
     },
   });
   let logs = '';
@@ -287,6 +289,18 @@ const m2mEnrollSchema = z.object({
   renewed: z.boolean(),
   magicLink: magicLinkSchema.nullable(),
 });
+const paymentConfigSchema = z.object({
+  stripeConfigured: z.boolean(),
+  simulatedPaymentsEnabled: z.boolean(),
+});
+const checkoutSessionSchema = z.object({ url: z.string().url() });
+const webhookSchema = z.object({ received: z.literal(true), processed: z.boolean() });
+const membersSchema = z.object({
+  members: z.array(z.object({ email: z.string().email(), productIds: z.array(z.string()) })),
+});
+const devEmailResultSchema = z.object({
+  email: z.object({ to: z.string().email(), subject: z.string(), text: z.string() }).nullable(),
+});
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -385,6 +399,103 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
     publicOffer.products.some((product) => product.id === created.product.id),
     'the anonymously fetched public offer did not include the newly published product',
   );
+
+  const webhookSecret = 'whsec_smoke_known_secret';
+  expectOk(
+    await cli(
+      ['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', 'stripe.restrictedKey', 'rk_test_smoke_restricted'],
+      authedHome,
+    ),
+    'stripe: configure restricted key',
+  );
+  expectOk(
+    await cli(
+      ['--json', '--api-url', url, '--tenant', 'acme', 'tenant-secret', 'set', 'stripe.webhookSecret', webhookSecret],
+      authedHome,
+    ),
+    'stripe: configure webhook secret',
+  );
+  const paymentConfig = paymentConfigSchema.parse(
+    expectOk(
+      await cli(['--json', '--api-url', url, '--tenant', 'acme', 'public', 'payment-config'], anonHome),
+      'stripe: public payment config',
+    ),
+  );
+  assert(paymentConfig.stripeConfigured, 'stripe: configured tenant should expose stripeConfigured=true');
+  const checkoutSession = checkoutSessionSchema.parse(
+    expectOk(
+      await cli(
+        [
+          '--json', '--api-url', url, '--tenant', 'acme', 'checkout', 'session',
+          '--product', created.product.id, '--email', 'stripe-smoke@together.dev', '--language', 'pl',
+        ],
+        anonHome,
+      ),
+      'stripe: create fake checkout session',
+    ),
+  );
+  assert(checkoutSession.url.startsWith('https://fake.checkout.local/'), 'stripe: fake checkout URL was not returned');
+  const sessionId = checkoutSession.url.slice(checkoutSession.url.lastIndexOf('/') + 1);
+  const event = JSON.stringify({
+    id: `evt_${randomUUID()}`,
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: sessionId,
+        customer_details: { email: 'stripe-smoke@together.dev' },
+        metadata: {
+          tenantId: 'tenant-acme',
+          productId: created.product.id,
+          memberEmail: 'stripe-smoke@together.dev',
+          language: 'pl',
+        },
+      },
+    },
+  });
+  const webhook = webhookSchema.parse(
+    expectOk(
+      await cli(
+        [
+          '--json', '--api-url', url, 'stripe', 'deliver-webhook', '--tenant-id', 'tenant-acme',
+          '--webhook-secret', webhookSecret, '--event', event,
+        ],
+        anonHome,
+      ),
+      'stripe: deliver signed webhook',
+    ),
+  );
+  assert(webhook.processed, 'stripe: first webhook delivery should fulfill the checkout');
+  const repeatedWebhook = webhookSchema.parse(
+    expectOk(
+      await cli(
+        [
+          '--json', '--api-url', url, 'stripe', 'deliver-webhook', '--tenant-id', 'tenant-acme',
+          '--webhook-secret', webhookSecret, '--event', event,
+        ],
+        anonHome,
+      ),
+      'stripe: deliver duplicate webhook',
+    ),
+  );
+  assert(!repeatedWebhook.processed, 'stripe: duplicate webhook should be a successful no-op');
+  const stripeMembers = membersSchema.parse(
+    expectOk(
+      await cli(['--json', '--api-url', url, '--tenant', 'acme', 'member', 'list'], authedHome),
+      'stripe: member list after webhook',
+    ),
+  );
+  const stripeMember = stripeMembers.members.find((member) => member.email === 'stripe-smoke@together.dev');
+  assert(stripeMember?.productIds.includes(created.product.id) === true, 'stripe: webhook did not create the member grant');
+  const stripeEmail = devEmailResultSchema.parse(
+    expectOk(
+      await cli(
+        ['--json', '--api-url', url, '--tenant', 'acme', 'dev', 'email', '--to', 'stripe-smoke@together.dev'],
+        anonHome,
+      ),
+      'stripe: welcome email in dev sink',
+    ),
+  );
+  assert(stripeEmail.email !== null, 'stripe: webhook did not send the welcome email');
 
   expectError(
     await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'list'], anonHome),

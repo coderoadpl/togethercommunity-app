@@ -109,7 +109,12 @@ const deps = (input: {
     payment: {
       createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
       expireCheckoutSession: async () => ok({ expired: true }),
-      verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test' }),
+      verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test', objectId: null, checkoutSession: null }),
+    },
+    processedPaymentEvents: {
+      findByEventId: async () => null,
+      findByObjectAndType: async () => null,
+      create: async () => true,
     },
     purchases: {
       createMemberGrant: async (purchase) => ({

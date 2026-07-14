@@ -24,7 +24,10 @@ import { CardTitle, DataValue, Eyebrow, FinePrint, Wordmark } from '../../theme.
 export const CheckoutPage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const offer = useQuery(actions.publicOffer);
+  const [checkoutStatus, setCheckoutStatus] = useState(() => new URLSearchParams(window.location.search).get('status'));
+  const statusPage = checkoutStatus === 'success' || checkoutStatus === 'cancelled';
+  const offer = useQuery({ ...actions.publicOffer, enabled: !statusPage });
+  const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
@@ -37,12 +40,57 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     },
   });
 
+  const checkoutSession = useMutation({
+    ...actions.createCheckoutSession,
+    onSuccess: (data) => window.location.assign(data.url),
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (paymentConfig.data?.stripeConfigured) {
+      checkoutSession.mutate({ productId, email, language });
+      return;
+    }
     simulatePurchase.mutate({ email, productId, language });
   };
 
-  if (offer.isPending) {
+  const retry = () => {
+    window.history.replaceState(null, '', window.location.pathname);
+    setCheckoutStatus(null);
+  };
+
+  if (checkoutStatus === 'success') {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
+        <Paper variant="outlined" sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}>
+          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>Together</Wordmark>
+          <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>{t.checkout.successEyebrow}</Eyebrow>
+          <Stack useFlexGap spacing="1rem">
+            <CardTitle variant="h1">{t.checkout.successTitle}</CardTitle>
+            <Typography variant="body1">{t.checkout.successBody}</Typography>
+          </Stack>
+        </Paper>
+      </Box>
+    );
+  }
+
+  if (checkoutStatus === 'cancelled') {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
+        <Paper variant="outlined" sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}>
+          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>Together</Wordmark>
+          <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>{t.checkout.cancelledEyebrow}</Eyebrow>
+          <Stack useFlexGap spacing="1rem">
+            <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
+            <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
+            <Button variant="contained" color="secondary" onClick={retry}>{t.checkout.retry}</Button>
+          </Stack>
+        </Paper>
+      </Box>
+    );
+  }
+
+  if (offer.isPending || paymentConfig.isPending) {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
         <Typography variant="h2" component="p">
@@ -52,10 +100,10 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     );
   }
 
-  if (offer.isError) {
+  if (offer.isError || paymentConfig.isError) {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Alert>{offer.error.message}</Alert>
+        <Alert>{offer.error?.message ?? paymentConfig.error?.message}</Alert>
       </Container>
     );
   }
@@ -139,10 +187,40 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             type="submit"
             variant="contained"
             color="secondary"
-            disabled={simulatePurchase.isPending}
+            disabled={
+              simulatePurchase.isPending ||
+              checkoutSession.isPending ||
+              (!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled)
+            }
           >
-            {simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.submitIdle}
+            {paymentConfig.data.stripeConfigured
+              ? checkoutSession.isPending
+                ? t.checkout.payPending
+                : t.checkout.payIdle
+              : simulatePurchase.isPending
+                ? t.checkout.submitPending
+                : t.checkout.submitIdle}
           </Button>
+          {paymentConfig.data.stripeConfigured && paymentConfig.data.simulatedPaymentsEnabled ? (
+            <Button
+              type="button"
+              variant="outlined"
+              disabled={simulatePurchase.isPending || checkoutSession.isPending}
+              onClick={() => simulatePurchase.mutate({ email, productId, language })}
+            >
+              {simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.submitIdle}
+            </Button>
+          ) : null}
+          {!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
+            <Alert>{t.checkout.paymentUnavailable}</Alert>
+          ) : null}
+          {checkoutSession.isError ? (
+            <Alert>
+              {checkoutSession.error instanceof ApiError
+                ? checkoutSession.error.appError.message
+                : checkoutSession.error.message}
+            </Alert>
+          ) : null}
           {simulatePurchase.isError ? (
             <Alert>
               {simulatePurchase.error instanceof ApiError

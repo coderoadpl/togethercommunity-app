@@ -1,4 +1,4 @@
-import type { ProductGrant } from '@core/domain/index.js';
+import type { GrantSource, ProductGrant } from '@core/domain/index.js';
 
 import type { Clock, IdGenerator, ProductGrantRepository } from '../ports.js';
 
@@ -18,7 +18,7 @@ const isActive = (grant: ProductGrant, now: string): boolean =>
 
 export const createOrRenewGrant = async (
   tenantId: string,
-  input: { memberId: string; productId: string; expiresAt: string | null },
+  input: { memberId: string; productId: string; expiresAt: string | null; source?: GrantSource },
   deps: GrantWindowDeps,
 ): Promise<GrantWindowResult> => {
   const now = deps.clock.nowIso();
@@ -42,7 +42,7 @@ export const createOrRenewGrant = async (
     tenantId,
     memberId: input.memberId,
     productId: input.productId,
-    source: 'manual',
+    source: input.source ?? 'manual',
     startsAt: now,
     expiresAt: input.expiresAt,
     legacyId: null,

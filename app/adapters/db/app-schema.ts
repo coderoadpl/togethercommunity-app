@@ -102,7 +102,7 @@ export const productGrants = pgTable(
     productId: text('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
-    source: text('source', { enum: ['simulated', 'manual'] }).notNull(),
+    source: text('source', { enum: ['simulated', 'manual', 'stripe'] }).notNull(),
     startsAt: text('starts_at')
       .notNull()
       .default(sql`to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`),
@@ -159,6 +159,23 @@ export const tenantSecrets = pgTable(
   (table) => [
     index('tenant_secrets_tenantId_idx').on(table.tenantId),
     uniqueIndex('tenant_secrets_tenant_key_uidx').on(table.tenantId, table.key),
+  ],
+);
+
+export const processedPaymentEvents = pgTable(
+  'processed_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    objectId: text('object_id').notNull(),
+    processedAt: text('processed_at').notNull(),
+  },
+  (table) => [
+    index('processed_events_tenantId_idx').on(table.tenantId),
+    uniqueIndex('processed_events_object_type_uidx').on(table.objectId, table.type),
   ],
 );
 

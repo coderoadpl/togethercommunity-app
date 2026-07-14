@@ -370,5 +370,15 @@ export interface Messages {
     emailLabel: string;
     submitIdle: string;
     submitPending: string;
+    payIdle: string;
+    payPending: string;
+    successEyebrow: string;
+    successTitle: string;
+    successBody: string;
+    cancelledEyebrow: string;
+    cancelledTitle: string;
+    cancelledBody: string;
+    retry: string;
+    paymentUnavailable: string;
   };
 }

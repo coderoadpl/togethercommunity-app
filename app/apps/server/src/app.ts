@@ -9,6 +9,7 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
   courseCreateInputSchema,
+  checkoutSessionRequestSchema,
   courseUpdateInputSchema,
   grantCreateInputSchema,
   grantRevokeInputSchema,
@@ -53,6 +54,7 @@ import {
   attachModuleToCourse,
   authenticateApiKey,
   createCourse,
+  createCheckoutSession,
   createLesson,
   createModule,
   createProduct,
@@ -69,6 +71,7 @@ import {
   getNextLesson,
   getProgress,
   getPublicOffer,
+  getPaymentConfig,
   getTenantSecretsMasked,
   grantProductToMember,
   listCourses,
@@ -90,6 +93,7 @@ import {
   setTenantSecret,
   simulatePurchase,
   testStripeConnection,
+  fulfillStripeWebhook,
   updateCourse,
   updateLastViewed,
   updateLesson,
@@ -242,6 +246,34 @@ export const buildApp = (deps: AppDeps) => {
     return respondPublic(ok(parsed.data), etag);
   });
 
+  app.get(API_PATHS.publicPaymentConfig, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const config = await getPaymentConfig(tenant.value.tenant.id, deps);
+    return respondPublic(
+      config.ok
+        ? ok({ ...config.value, simulatedPaymentsEnabled: deps.devEndpoints.simulatedPayments })
+        : config,
+    );
+  });
+
+  app.post(API_PATHS.checkoutSession, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = checkoutSessionRequestSchema.safeParse(body);
+    if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
+    const baseUrl = magicLinkBaseUrl(
+      c.req.header('host') ?? '',
+      c.req.header('x-forwarded-proto') ?? null,
+      tenant.value.source,
+      deps.appBaseUrl,
+    );
+    return respondPublic(await createCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, deps));
+  });
+
   app.options(API_PATHS.authConfig, () =>
     new Response(null, {
       status: 204,
@@ -382,10 +414,10 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result);
   });
 
-  // Inbound Stripe webhook: public (Stripe is not an authenticated client), one
-  // URL per tenant so the signing secret is resolved from tenant_secrets.
   app.post(STRIPE_WEBHOOK_PATH_PATTERN, async (c) => {
     const tenantId = c.req.param('tenantId');
+    const tenant = await deps.tenants.findById(tenantId);
+    if (!tenant) return respond(err(tenantNotFound()));
     const webhookSecret = await deps.secretResolver.resolve(tenantId, 'stripe.webhookSecret');
     if (!webhookSecret.ok) return respond(webhookSecret);
     const payloadRaw = await c.req.text();
@@ -395,7 +427,11 @@ export const buildApp = (deps: AppDeps) => {
       webhookSecret: webhookSecret.value,
     });
     if (!event.ok) return respond(event);
-    return respond(ok({ received: true, type: event.value.type }));
+    const fulfilled = await fulfillStripeWebhook(tenant, event.value, {
+      ...deps,
+      exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
+    });
+    return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });
 
   // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.

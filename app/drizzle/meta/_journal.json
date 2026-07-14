@@ -71,6 +71,13 @@
       "when": 1784056337655,
       "tag": "0009_ambiguous_miss_america",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784057369560,
+      "tag": "0010_bitter_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

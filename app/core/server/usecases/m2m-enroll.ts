@@ -1,12 +1,9 @@
 import {
   err,
-  internal,
   m2mEnrollInputSchema,
-  notFound,
   ok,
   unauthorized,
   validation,
-  welcomeSetPassword,
   type AppError,
   type M2mEnrollInput,
   type Result,
@@ -14,16 +11,8 @@ import {
   type TenantApiKey,
 } from '@core/domain/index.js';
 
-import type {
-  ApiKeyCrypto,
-  DevMagicLinkReader,
-  EmailPort,
-  ProductGrantRepository,
-  ProductRepository,
-  TenantApiKeyRepository,
-} from '../ports.js';
-import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
-import { createOrRenewGrant } from './grant-window.js';
+import type { ApiKeyCrypto, TenantApiKeyRepository } from '../ports.js';
+import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 
 export interface ApiKeyAuthDeps {
   tenantApiKeys: TenantApiKeyRepository;
@@ -42,14 +31,7 @@ export const authenticateApiKey = async (
   return ok(found);
 };
 
-export interface M2mEnrollDeps extends EnsureMemberDeps {
-  products: ProductRepository;
-  grants: ProductGrantRepository;
-  email: EmailPort;
-  devMagicLinks: DevMagicLinkReader;
-  appBaseUrl: string;
-  exposeMagicLinks: boolean;
-}
+export type M2mEnrollDeps = FulfillEnrollmentDeps;
 
 export interface M2mEnrollResult {
   memberId: string;
@@ -66,34 +48,16 @@ export const m2mEnroll = async (
   const parsed = m2mEnrollInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid enrollment payload', parsed.error.flatten()));
 
-  const product = await deps.products.findById(tenant.id, parsed.data.productId);
-  if (!product || !product.published) {
-    return err(notFound(`No published product "${parsed.data.productId}" in this tenant`));
-  }
-
-  const member = await ensureMember(tenant.id, parsed.data.email, deps);
-  if (!member.ok) return member;
-
-  const { grantId, renewed } = await createOrRenewGrant(
-    tenant.id,
-    { memberId: member.value.id, productId: parsed.data.productId, expiresAt: parsed.data.expiresAt ?? null },
+  return fulfillEnrollment(
+    tenant,
+    {
+      email: parsed.data.email,
+      productId: parsed.data.productId,
+      expiresAt: parsed.data.expiresAt ?? null,
+      language: parsed.data.language ?? 'pl',
+      source: 'manual',
+      sendEmail: parsed.data.doNotSendEmail !== true,
+    },
     deps,
   );
-
-  const language = parsed.data.language ?? 'pl';
-  let magicLink: M2mEnrollResult['magicLink'] = null;
-  if (parsed.data.doNotSendEmail !== true) {
-    const { url } = await deps.authPort.createEnrollmentMagicLink({
-      email: member.value.email,
-      callbackURL: deps.appBaseUrl,
-      tenantName: tenant.name,
-      language,
-    });
-    const message = welcomeSetPassword(language, { tenantName: tenant.name, actionUrl: url });
-    const sent = await deps.email.send({ to: member.value.email, ...message });
-    if (!sent.ok) return err(internal('Could not send the enrollment email'));
-    if (deps.exposeMagicLinks) magicLink = await deps.devMagicLinks.findByEmail(member.value.email);
-  }
-
-  return ok({ memberId: member.value.id, grantId, renewed, magicLink });
 };

@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -23,9 +23,14 @@ const offerBody = {
 };
 
 describe('CheckoutPage', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/checkout/course-1'));
+
   it('loads the public offer and completes the simulated purchase flow', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
       http.post('/api/dev/simulate-purchase', () =>
         HttpResponse.json({
           ok: true,
@@ -53,5 +58,42 @@ describe('CheckoutPage', () => {
     const link = await screen.findByRole('link', { name: pl.checkout.openCourse });
     expect(link).toHaveAttribute('href', 'https://acme.test/magic');
     expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
+  });
+
+  it('shows the Stripe primary action when the tenant is configured', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    expect(await screen.findByRole('button', { name: pl.checkout.payIdle })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.checkout.submitIdle })).toBeInTheDocument();
+  });
+
+  it('renders webhook-driven success guidance without fulfilling from the page', () => {
+    window.history.replaceState(null, '', '/checkout/course-1?status=success&session_id=cs_1');
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    expect(screen.getByRole('heading', { name: pl.checkout.successTitle })).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.successBody)).toBeInTheDocument();
+  });
+
+  it('renders cancellation guidance and returns to retry', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?status=cancelled');
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    expect(screen.getByRole('heading', { name: pl.checkout.cancelledTitle })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.retry }));
+    expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
   });
 });

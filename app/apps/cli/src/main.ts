@@ -74,6 +74,11 @@ const simulatePurchaseOptionsSchema = z.object({
   email: z.string().email(),
   product: z.string().min(1),
 });
+const checkoutSessionOptionsSchema = z.object({
+  product: z.string().min(1),
+  email: z.string().email().optional(),
+  language: transactionalLanguageSchema.optional(),
+});
 const memberExportOptionsSchema = z.object({
   format: memberExportFormatSchema,
   out: z.string().min(1).optional(),
@@ -121,6 +126,20 @@ const m2mEnrollOptionsSchema = z.object({
   language: transactionalLanguageSchema.optional(),
   skipEmail: z.boolean().optional(),
 });
+const stripeWebhookOptionsSchema = z.object({
+  tenantId: z.string().min(1),
+  webhookSecret: z.string().min(1),
+  event: z.string().min(1),
+});
+
+const hmacSha256 = async (secret: string, value: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
+    'sign',
+  ]);
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
 
 const readJsonPayload = async (
   inline: string | undefined,
@@ -301,6 +320,36 @@ publicCommand.command('auth-config').description('Show public auth configuration
     );
   }),
 );
+
+publicCommand.command('payment-config').description('Show public payment configuration').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.publicPaymentConfig(), ctx.json, (data) =>
+      `stripe=${data.stripeConfigured ? 'configured' : 'not-configured'} simulated=${data.simulatedPaymentsEnabled ? 'enabled' : 'disabled'}`,
+    );
+  }),
+);
+
+const checkout = program.command('checkout').description('Public checkout');
+
+checkout
+  .command('session')
+  .description('Create a Stripe-hosted checkout session')
+  .requiredOption('--product <id>')
+  .option('--email <email>')
+  .option('--language <language>', 'checkout language (pl or en)')
+  .action(
+    withInput(z.tuple([checkoutSessionOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createCheckoutSession({
+          productId: options.product,
+          ...(options.email === undefined ? {} : { email: options.email }),
+          ...(options.language === undefined ? {} : { language: options.language }),
+        }),
+        ctx.json,
+        (data) => data.url,
+      );
+    }),
+  );
 
 const tenant = program.command('tenant').description('Tenant staff access');
 
@@ -1061,6 +1110,24 @@ stripe
   .action(
     withCtx(async (ctx) => {
       emit(await ctx.api.testStripeConnection(), ctx.json, (data) => data.diagnostic);
+    }),
+  );
+
+stripe
+  .command('deliver-webhook')
+  .description('Sign and deliver a Stripe event payload')
+  .requiredOption('--tenant-id <id>')
+  .requiredOption('--webhook-secret <secret>')
+  .requiredOption('--event <json>')
+  .action(
+    withInput(z.tuple([stripeWebhookOptionsSchema]), async (ctx, [options]) => {
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const signature = await hmacSha256(options.webhookSecret, `${timestamp}.${options.event}`);
+      emit(
+        await ctx.api.deliverStripeWebhook(options.tenantId, options.event, `t=${timestamp},v1=${signature}`),
+        ctx.json,
+        (data) => `received=${data.received} processed=${data.processed}`,
+      );
     }),
   );
 

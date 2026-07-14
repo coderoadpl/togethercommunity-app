@@ -8,6 +8,7 @@ import {
   apiKeysListOutputSchema,
   authConfigOutputSchema,
   courseOutputSchema,
+  checkoutSessionOutputSchema,
   courseStructureOutputSchema,
   coursesListOutputSchema,
   devGrantOutputSchema,
@@ -32,11 +33,13 @@ import {
   productsAccessIssuesOutputSchema,
   progressOutputSchema,
   publicOfferOutputSchema,
+  publicPaymentConfigOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
   simulatePurchaseOutputSchema,
   stripeTestConnectionOutputSchema,
+  stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
   tenantCreateOutputSchema,
@@ -47,6 +50,7 @@ import {
   type ApiKeyCreateInput,
   type ApiKeyRevokeInput,
   type CourseCreateInput,
+  type CheckoutSessionRequest,
   type CourseUpdateInput,
   type GrantCreateInput,
   type GrantRevokeInput,
@@ -114,6 +118,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
+  raw?: { body: string; headers: Record<string, string> },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -122,11 +127,12 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
       headers: {
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(body === undefined && raw === undefined ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
+        ...raw?.headers,
       },
-      body: body === undefined ? null : JSON.stringify(body),
+      body: raw?.body ?? (body === undefined ? null : JSON.stringify(body)),
       credentials: 'include',
       signal: signal ?? null,
     });
@@ -166,6 +172,34 @@ export const createApiClient = (options: ApiClientOptions) => ({
       publicOfferOutputSchema,
       undefined,
       signal,
+    ),
+  publicPaymentConfig: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.publicPaymentConfig.method,
+      API_ROUTES.publicPaymentConfig.path,
+      publicPaymentConfigOutputSchema,
+      undefined,
+      signal,
+    ),
+  createCheckoutSession: (input: CheckoutSessionRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.checkoutSession.method,
+      API_ROUTES.checkoutSession.path,
+      checkoutSessionOutputSchema,
+      input,
+      signal,
+    ),
+  deliverStripeWebhook: (tenantId: string, payloadRaw: string, signatureHeader: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.stripeWebhook.method,
+      API_ROUTES.stripeWebhook.path.replace(':tenantId', encodeURIComponent(tenantId)),
+      stripeWebhookOutputSchema,
+      undefined,
+      signal,
+      { body: payloadRaw, headers: { 'stripe-signature': signatureHeader } },
     ),
   authConfig: (signal?: AbortSignal) =>
     request(

@@ -13,6 +13,7 @@ import type {
   ApiKeyCreateInput,
   ApiKeyRevokeInput,
   CourseCreateInput,
+  CheckoutSessionRequest,
   CourseUpdateInput,
   GrantCreateInput,
   GrantRevokeInput,
@@ -178,6 +179,18 @@ export const publicOfferQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: publicOfferScopes.all(),
     call: ({ signal }) => api.publicOffer(signal),
+  });
+
+export const publicPaymentConfigQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: ['payment-config'] as const,
+    call: ({ signal }) => api.publicPaymentConfig(signal),
+  });
+
+export const createCheckoutSessionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['checkout-session'] as const,
+    call: (input: CheckoutSessionRequest) => api.createCheckoutSession(input),
   });
 
 export const authConfigQuery = (api: ApiClient) =>

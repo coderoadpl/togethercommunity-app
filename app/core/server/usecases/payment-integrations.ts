@@ -12,7 +12,10 @@ export const testStripeConnection = async (
   if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Stripe'));
   const created = await payment.createCheckoutSession({
     tenantId: ctx.identity.tenantId,
-    productRef: 'connection-test',
+    productId: 'connection-test',
+    productName: 'Stripe connection test',
+    priceCents: 100,
+    currency: 'USD',
     successUrl: `${input.appBaseUrl}/integrations/stripe/test/success`,
     cancelUrl: `${input.appBaseUrl}/integrations/stripe/test/cancel`,
   });

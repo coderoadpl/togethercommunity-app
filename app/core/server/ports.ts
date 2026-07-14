@@ -11,6 +11,7 @@ import type {
   Membership,
   Product,
   ProductGrant,
+  ProcessedPaymentEvent,
   Result,
   StaffRole,
   Tenant,
@@ -124,12 +125,25 @@ export interface TenantSecretResolver {
 export interface PaymentWebhookEvent {
   id: string;
   type: string;
+  objectId: string | null;
+  checkoutSession: {
+    email: string | null;
+    metadata: {
+      tenantId: string | null;
+      productId: string | null;
+      memberEmail: string | null;
+      language: string | null;
+    };
+  } | null;
 }
 
 export interface PaymentProvider {
   createCheckoutSession(input: {
     tenantId: string;
-    productRef: string;
+    productId: string;
+    productName: string;
+    priceCents: number;
+    currency: string;
     successUrl: string;
     cancelUrl: string;
     customerEmail?: string;
@@ -144,6 +158,12 @@ export interface PaymentProvider {
     signatureHeader: string;
     webhookSecret: string;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
+}
+
+export interface ProcessedPaymentEventRepository {
+  findByEventId(tenantId: string, eventId: string): Promise<ProcessedPaymentEvent | null>;
+  findByObjectAndType(tenantId: string, objectId: string, type: string): Promise<ProcessedPaymentEvent | null>;
+  create(tenantId: string, event: ProcessedPaymentEvent): Promise<boolean>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */

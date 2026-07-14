@@ -12,6 +12,7 @@ import {
   createMemberRepository,
   createPurchaseRepository,
   createProductGrantRepository,
+  createProcessedPaymentEventRepository,
   createProductRepository,
   createTenantAccessReader,
   createTenantApiKeyRepository,
@@ -47,6 +48,7 @@ import type {
   MemberRepository,
   PurchaseRepository,
   ProductGrantRepository,
+  ProcessedPaymentEventRepository,
   ProductRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -75,6 +77,7 @@ export interface AppDeps {
   members: MemberRepository;
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
+  processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
   apiKeyCrypto: ApiKeyCrypto;
@@ -159,6 +162,7 @@ export const createDeps = (env: Env): AppDeps => {
     members: createMemberRepository(db),
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
+    processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
     apiKeyCrypto: createApiKeyCrypto(),

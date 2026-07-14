@@ -18,6 +18,7 @@ import {
   newCourseModuleSchema,
   notFound,
   ok,
+  tenantSecretKeySchema,
   transactionalLanguageSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
@@ -1012,6 +1013,54 @@ apiKey
       emit(await ctx.api.revokeApiKey({ id }), ctx.json, (data) =>
         `revoked API key ${data.apiKey.name} (${data.apiKey.id})`,
       );
+    }),
+  );
+
+const tenantSecret = program
+  .command('tenant-secret')
+  .description('Encrypted BYO integration secrets (owner only)');
+
+tenantSecret.command('list').description('List configured secrets (masked)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.listTenantSecrets(), ctx.json, (data) =>
+      data.secrets.length === 0
+        ? 'no secrets'
+        : data.secrets.map((s) => `${s.key}\t${s.maskedPreview}\t(updated ${s.updatedAt})`).join('\n'),
+    );
+  }),
+);
+
+tenantSecret
+  .command('set <key> <value>')
+  .description('Store or replace a secret; encrypted at rest, returned masked')
+  .action(
+    withInput(
+      z.tuple([tenantSecretKeySchema, z.string().min(1), noOptionsSchema]),
+      async (ctx, [key, value]) => {
+        emit(await ctx.api.setTenantSecret({ key, value }), ctx.json, (data) =>
+          `saved ${data.secret.key} (${data.secret.maskedPreview})`,
+        );
+      },
+    ),
+  );
+
+tenantSecret
+  .command('delete <key>')
+  .description('Delete a secret')
+  .action(
+    withInput(z.tuple([tenantSecretKeySchema, noOptionsSchema]), async (ctx, [key]) => {
+      emit(await ctx.api.deleteTenantSecret({ key }), ctx.json, (data) => `deleted ${data.key}`);
+    }),
+  );
+
+const stripe = program.command('stripe').description('Stripe payment integration (owner only)');
+
+stripe
+  .command('test-connection')
+  .description('Create and immediately expire a test checkout session via the port')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.testStripeConnection(), ctx.json, (data) => data.diagnostic);
     }),
   );
 

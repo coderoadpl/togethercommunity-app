@@ -17,15 +17,24 @@ import {
   createTenantApiKeyRepository,
   createTenantDomainRepository,
   createTenantRepository,
+  createTenantSecretRepository,
 } from '@adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
+import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
+import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
+import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
 import type {
   ApiKeyCrypto,
   AuthPort,
   Clock,
+  PaymentProvider,
+  SecretCrypto,
+  TenantSecretRepository,
+  TenantSecretResolver,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -69,6 +78,10 @@ export interface AppDeps {
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
   apiKeyCrypto: ApiKeyCrypto;
+  tenantSecrets: TenantSecretRepository;
+  secretCrypto: SecretCrypto;
+  secretResolver: TenantSecretResolver;
+  payment: PaymentProvider;
   email: EmailPort;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -91,6 +104,13 @@ export interface AppDeps {
 export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+  const tenantSecrets = createTenantSecretRepository(db);
+  const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
+  const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  const payment =
+    env.PAYMENT_PROVIDER === 'stripe'
+      ? createStripePaymentProvider({ resolver: secretResolver })
+      : createFakePaymentProvider(secretResolver);
   const email =
     env.EMAIL_PROVIDER === 'ses'
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
@@ -142,6 +162,10 @@ export const createDeps = (env: Env): AppDeps => {
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
     apiKeyCrypto: createApiKeyCrypto(),
+    tenantSecrets,
+    secretCrypto,
+    secretResolver,
+    payment,
     email,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),

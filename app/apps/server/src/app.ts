@@ -26,7 +26,10 @@ import {
   productsCreateInputSchema,
   productsPublishInputSchema,
   simulatePurchaseInputSchema,
+  STRIPE_WEBHOOK_PATH_PATTERN,
   tenantCreateInputSchema,
+  tenantSecretDeleteInputSchema,
+  tenantSecretSetInputSchema,
   toEnvelope,
 } from '@core/contract/index.js';
 import {
@@ -55,6 +58,7 @@ import {
   createProduct,
   createTenant,
   createTenantApiKey,
+  deleteTenantSecret,
   devGrantProduct,
   exportMembers,
   listTenantApiKeys,
@@ -65,6 +69,7 @@ import {
   getNextLesson,
   getProgress,
   getPublicOffer,
+  getTenantSecretsMasked,
   grantProductToMember,
   listCourses,
   listLessons,
@@ -82,7 +87,9 @@ import {
   resolveIdentity,
   revokeGrant,
   resolveTenant,
+  setTenantSecret,
   simulatePurchase,
+  testStripeConnection,
   updateCourse,
   updateLastViewed,
   updateLesson,
@@ -375,6 +382,22 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result);
   });
 
+  // Inbound Stripe webhook: public (Stripe is not an authenticated client), one
+  // URL per tenant so the signing secret is resolved from tenant_secrets.
+  app.post(STRIPE_WEBHOOK_PATH_PATTERN, async (c) => {
+    const tenantId = c.req.param('tenantId');
+    const webhookSecret = await deps.secretResolver.resolve(tenantId, 'stripe.webhookSecret');
+    if (!webhookSecret.ok) return respond(webhookSecret);
+    const payloadRaw = await c.req.text();
+    const event = await deps.payment.verifyWebhookEvent({
+      payloadRaw,
+      signatureHeader: c.req.header('stripe-signature') ?? '',
+      webhookSecret: webhookSecret.value,
+    });
+    if (!event.ok) return respond(event);
+    return respond(ok({ received: true, type: event.value.type }));
+  });
+
   // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
@@ -497,6 +520,35 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid API key id', parsed.error.flatten())));
     const result = await revokeTenantApiKey({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
+  });
+
+  app.get(API_PATHS.tenantSecrets, async (c) => {
+    const result = await getTenantSecretsMasked({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ secrets: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantSecrets, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = tenantSecretSetInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid secret payload', parsed.error.flatten())));
+    const result = await setTenantSecret({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ secret: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.tenantSecretDelete, async (c) => {
+    const parsed = tenantSecretDeleteInputSchema.safeParse({ key: c.req.param('key') });
+    if (!parsed.success) return respond(err(validation('Invalid secret key', parsed.error.flatten())));
+    const result = await deleteTenantSecret({ identity: c.get('identity') }, parsed.data.key, deps);
+    return respond(result.ok ? ok({ key: result.value.key }) : result);
+  });
+
+  app.post(API_PATHS.stripeTestConnection, async (c) => {
+    const result = await testStripeConnection(
+      { identity: c.get('identity') },
+      { appBaseUrl: deps.appBaseUrl },
+      deps.payment,
+    );
+    return respond(result);
   });
 
   app.post(API_PATHS.products, async (c) => {

@@ -62,6 +62,7 @@ import {
   SignOutIcon,
 } from './panel-icons.js';
 import { CoursesPanel } from './courses/CoursesPanel.js';
+import { IntegrationsPanel } from './integrations/IntegrationsPanel.js';
 import { MembersPanel } from './members/MembersPanel.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 
@@ -362,7 +363,7 @@ const UserMenu = ({
   );
 };
 
-const SectionContent = ({ section }: { section: CreatorSection }) => {
+const SectionContent = ({ section, tenant }: { section: CreatorSection; tenant: TenantContext }) => {
   const t = useTranslations();
   switch (section) {
     case 'products':
@@ -371,10 +372,11 @@ const SectionContent = ({ section }: { section: CreatorSection }) => {
       return <CoursesPanel />;
     case 'members':
       return <MembersPanel />;
+    case 'integrations':
+      return <IntegrationsPanel tenantId={tenant.id} />;
     case 'settings':
       return <SecurityPanel />;
     case 'sales':
-    case 'integrations':
       return (
         <Paper elevation={1} sx={{ p: '1.5rem' }}>
           <Typography variant="h2" component="h2">
@@ -482,7 +484,7 @@ const CreatorShell = ({ tenant, email }: { tenant: TenantContext; email: string 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar />
         <Box sx={{ maxWidth: '60rem', mx: 'auto', px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
-          <SectionContent section={section} />
+          <SectionContent section={section} tenant={tenant} />
         </Box>
       </Box>
     </Box>

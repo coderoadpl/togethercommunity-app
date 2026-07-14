@@ -186,8 +186,10 @@ export default tseslint.config(
         { type: 'core-client', pattern: 'core/client/**', mode: 'full' },
         { type: 'adapter-db', pattern: 'adapters/db/**', mode: 'full' },
         { type: 'adapter-auth', pattern: 'adapters/auth/**', mode: 'full' },
+        { type: 'adapter-crypto', pattern: 'adapters/crypto/**', mode: 'full' },
         { type: 'adapter-domains', pattern: 'adapters/domain-provisioning/**', mode: 'full' },
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
+        { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
@@ -233,15 +235,24 @@ export default tseslint.config(
             { from: ['core-server'], allow: ['core-domain', 'core-server'] },
             { from: ['core-client'], allow: ['core-domain', 'core-contract', 'core-client'] },
             {
-              from: ['adapter-db', 'adapter-auth', 'adapter-domains', 'adapter-email'],
+              from: [
+                'adapter-db',
+                'adapter-auth',
+                'adapter-crypto',
+                'adapter-domains',
+                'adapter-email',
+                'adapter-payment',
+              ],
               allow: [
                 'core-domain',
                 'core-server',
                 'core-client',
                 'adapter-db',
                 'adapter-auth',
+                'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-payment',
               ],
             },
             {
@@ -252,8 +263,10 @@ export default tseslint.config(
                 'core-server',
                 'adapter-db',
                 'adapter-auth',
+                'adapter-crypto',
                 'adapter-domains',
                 'adapter-email',
+                'adapter-payment',
                 'app-server',
               ],
             },
@@ -352,8 +365,16 @@ export default tseslint.config(
               allow: ['@better-auth/passkey', 'better-auth', 'drizzle-orm', 'node:crypto', 'pg', 'zod'],
             },
             {
+              from: ['adapter-crypto'],
+              allow: ['node:crypto'],
+            },
+            {
               from: ['adapter-email'],
               allow: ['@aws-sdk/client-ses'],
+            },
+            {
+              from: ['adapter-payment'],
+              allow: ['node:crypto', 'stripe'],
             },
             {
               from: ['app-server'],
@@ -516,6 +537,32 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-email'], allow: ['@aws-sdk/client-ses', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/crypto/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-crypto'], allow: ['node:crypto', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/payment/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-payment'], allow: ['node:crypto', 'stripe', 'vitest'] }],
         },
       ],
     },

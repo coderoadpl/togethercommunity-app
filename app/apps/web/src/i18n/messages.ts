@@ -116,6 +116,28 @@ export interface Messages {
     verifyCode: string;
     twoFactorOn: string;
   };
+  integrations: {
+    heading: string;
+    intro: string;
+    stripeHeading: string;
+    stripeDescription: string;
+    restrictedKeyLabel: string;
+    webhookSecretLabel: string;
+    configured: string;
+    notConfigured: string;
+    valuePlaceholder: string;
+    save: string;
+    saving: string;
+    saved: string;
+    remove: string;
+    removing: string;
+    testConnection: string;
+    testing: string;
+    testFailed: string;
+    webhookUrlLabel: string;
+    webhookUrlHint: string;
+    loading: string;
+  };
   products: {
     newProduct: string;
     titleLabel: string;

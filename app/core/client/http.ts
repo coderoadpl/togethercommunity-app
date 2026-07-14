@@ -36,10 +36,14 @@ import {
   productsListOutputSchema,
   productsPublishOutputSchema,
   simulatePurchaseOutputSchema,
+  stripeTestConnectionOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
+  tenantSecretsListOutputSchema,
+  tenantSecretSetOutputSchema,
+  tenantSecretDeleteOutputSchema,
   type ApiKeyCreateInput,
   type ApiKeyRevokeInput,
   type CourseCreateInput,
@@ -61,6 +65,8 @@ import {
   type ReadMethod,
   type SimulatePurchaseInput,
   type TenantCreateInput,
+  type TenantSecretDeleteInput,
+  type TenantSecretSetInput,
   type WriteMethod,
 } from '@core/contract/index.js';
 import {
@@ -400,6 +406,42 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.apiKeyRevoke.path.replace(':id', encodeURIComponent(input.id)),
       apiKeyRevokeOutputSchema,
       undefined,
+      signal,
+    ),
+  listTenantSecrets: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSecrets.method,
+      API_ROUTES.tenantSecrets.path,
+      tenantSecretsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  setTenantSecret: (input: TenantSecretSetInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSecretSet.method,
+      API_ROUTES.tenantSecretSet.path,
+      tenantSecretSetOutputSchema,
+      input,
+      signal,
+    ),
+  deleteTenantSecret: (input: TenantSecretDeleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSecretDelete.method,
+      API_ROUTES.tenantSecretDelete.path.replace(':key', encodeURIComponent(input.key)),
+      tenantSecretDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  testStripeConnection: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.stripeTestConnection.method,
+      API_ROUTES.stripeTestConnection.path,
+      stripeTestConnectionOutputSchema,
+      {},
       signal,
     ),
   m2mEnroll: (input: M2mEnrollRequest, signal?: AbortSignal) =>

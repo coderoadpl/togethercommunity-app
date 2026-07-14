@@ -11,6 +11,7 @@ import {
   productSchema,
   staffRoleSchema,
   tenantApiKeySchema,
+  tenantSecretSchema,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -21,6 +22,7 @@ import {
   type ProductGrant,
   type StaffRole,
   type TenantApiKey,
+  type TenantSecret,
 } from '@core/domain/index.js';
 import type {
   CourseLessonRepository,
@@ -38,6 +40,7 @@ import type {
   TenantApiKeyRepository,
   TenantDomainRepository,
   TenantRepository,
+  TenantSecretRepository,
 } from '@core/server/index.js';
 
 import type { Db } from './client.js';
@@ -54,6 +57,7 @@ import {
   tenantAdmins,
   tenantApiKeys,
   tenantDomains,
+  tenantSecrets,
   tenants,
 } from './schema.js';
 
@@ -82,6 +86,9 @@ const parseProgress = (progress: MemberCourseProgress): MemberCourseProgress =>
 const parseMemberGrant = (grant: MemberGrant): MemberGrant => memberGrantSchema.parse(grant);
 
 const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
+
+const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
+  tenantSecretSchema.parse(row);
 
 export const createProductRepository = (db: Db): ProductRepository => ({
   listByTenant: async (tenantId) =>
@@ -639,6 +646,61 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
       .returning();
     const row = rows[0];
     return row ? parseApiKey(row) : null;
+  },
+});
+
+export const createTenantSecretRepository = (db: Db): TenantSecretRepository => ({
+  listByTenant: async (tenantId) =>
+    (
+      await db
+        .select()
+        .from(tenantSecrets)
+        .where(eq(tenantSecrets.tenantId, tenantId))
+        .orderBy(asc(tenantSecrets.key))
+    ).map(parseSecret),
+  findByKey: async (tenantId, key) => {
+    const rows = await db
+      .select()
+      .from(tenantSecrets)
+      .where(and(eq(tenantSecrets.tenantId, tenantId), eq(tenantSecrets.key, key)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseSecret(row) : null;
+  },
+  upsert: async (tenantId, secret) => {
+    const rows = await db
+      .insert(tenantSecrets)
+      .values({
+        id: secret.id,
+        tenantId,
+        key: secret.key,
+        ciphertext: secret.ciphertext,
+        iv: secret.iv,
+        authTag: secret.authTag,
+        maskedPreview: secret.maskedPreview,
+        updatedAt: secret.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: [tenantSecrets.tenantId, tenantSecrets.key],
+        set: {
+          ciphertext: secret.ciphertext,
+          iv: secret.iv,
+          authTag: secret.authTag,
+          maskedPreview: secret.maskedPreview,
+          updatedAt: secret.updatedAt,
+        },
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('tenant_secrets upsert returned no row');
+    return parseSecret(row);
+  },
+  delete: async (tenantId, key) => {
+    const rows = await db
+      .delete(tenantSecrets)
+      .where(and(eq(tenantSecrets.tenantId, tenantId), eq(tenantSecrets.key, key)))
+      .returning({ id: tenantSecrets.id });
+    return rows.length > 0;
   },
 });
 

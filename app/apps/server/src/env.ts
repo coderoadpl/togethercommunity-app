@@ -13,6 +13,9 @@ const envSchema = z
     APP_BASE_DOMAIN: z.string().default('localhost'),
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
+    // 32-byte AES-256-GCM key, base64. Generate: openssl rand -base64 32
+    SECRETS_MASTER_KEY: z.string().min(1).default('dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE='),
+    PAYMENT_PROVIDER: z.enum(['stripe', 'fake']).default('fake'),
     SECURE_COOKIES: z
       .enum(['true', 'false'])
       .default('false')
@@ -39,6 +42,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['BETTER_AUTH_SECRET'],
         message: 'BETTER_AUTH_SECRET must be set to a production secret',
+      });
+    }
+    if (env.SECRETS_MASTER_KEY === 'dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE=') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SECRETS_MASTER_KEY'],
+        message: 'SECRETS_MASTER_KEY must be set to a production key (32 random bytes, base64)',
       });
     }
     if (env.SIMULATED_PAYMENTS) {

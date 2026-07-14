@@ -28,6 +28,8 @@ import type {
   ProductsPublishInput,
   SimulatePurchaseInput,
   TenantCreateInput,
+  TenantSecretDeleteInput,
+  TenantSecretSetInput,
 } from '@core/contract/index.js';
 import type { DevGrantInput, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
 
@@ -131,6 +133,11 @@ export const authScopes = {
 export const apiKeysScopes = {
   all: () => ['api-keys'] as const,
   lists: () => ['api-keys', 'list'] as const,
+};
+
+export const tenantSecretsScopes = {
+  all: () => ['tenant-secrets'] as const,
+  lists: () => ['tenant-secrets', 'list'] as const,
 };
 
 export const coursesScopes = {
@@ -398,6 +405,32 @@ export const revokeApiKeyMutation = (api: ApiClient) =>
   });
 
 export const apiKeysInvalidates = () => ({ queryKey: apiKeysScopes.lists() });
+
+export const tenantSecretsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantSecretsScopes.lists(),
+    call: ({ signal }) => api.listTenantSecrets(signal),
+  });
+
+export const setTenantSecretMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'set'],
+    call: (input: TenantSecretSetInput) => api.setTenantSecret(input),
+  });
+
+export const deleteTenantSecretMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'delete'],
+    call: (input: TenantSecretDeleteInput) => api.deleteTenantSecret(input),
+  });
+
+export const testStripeConnectionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
+    call: () => api.testStripeConnection(),
+  });
+
+export const tenantSecretsInvalidates = () => ({ queryKey: tenantSecretsScopes.lists() });
 
 /** Invalidation filters for the course tree editor (courses, modules, lessons). */
 export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });

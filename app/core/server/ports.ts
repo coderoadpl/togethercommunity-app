@@ -16,6 +16,8 @@ import type {
   Tenant,
   TenantApiKey,
   TenantDomain,
+  TenantSecret,
+  TenantSecretKey,
 } from '@core/domain/index.js';
 
 /**
@@ -101,6 +103,47 @@ export interface TenantApiKeyRepository {
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
+}
+
+export interface TenantSecretRepository {
+  listByTenant(tenantId: string): Promise<TenantSecret[]>;
+  findByKey(tenantId: string, key: TenantSecretKey): Promise<TenantSecret | null>;
+  upsert(tenantId: string, secret: TenantSecret): Promise<TenantSecret>;
+  delete(tenantId: string, key: TenantSecretKey): Promise<boolean>;
+}
+
+export interface SecretCrypto {
+  encrypt(plaintext: string): { ciphertext: string; iv: string; authTag: string };
+  decrypt(input: { ciphertext: string; iv: string; authTag: string }): Result<string, AppError>;
+}
+
+export interface TenantSecretResolver {
+  resolve(tenantId: string, key: TenantSecretKey): Promise<Result<string, AppError>>;
+}
+
+export interface PaymentWebhookEvent {
+  id: string;
+  type: string;
+}
+
+export interface PaymentProvider {
+  createCheckoutSession(input: {
+    tenantId: string;
+    productRef: string;
+    successUrl: string;
+    cancelUrl: string;
+    customerEmail?: string;
+    language?: string;
+  }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
+  expireCheckoutSession(input: {
+    tenantId: string;
+    sessionId: string;
+  }): Promise<Result<{ expired: true }, AppError>>;
+  verifyWebhookEvent(input: {
+    payloadRaw: string;
+    signatureHeader: string;
+    webhookSecret: string;
+  }): Promise<Result<PaymentWebhookEvent, AppError>>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */

@@ -7,6 +7,7 @@ import type { AppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
   MAGIC_LINK_LANGUAGE_HEADER,
+  ok,
   type Member,
   type Membership,
   type Product,
@@ -91,6 +92,24 @@ const deps = (input: {
     apiKeyCrypto: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
+    },
+    tenantSecrets: {
+      listByTenant: async () => [],
+      findByKey: async () => null,
+      upsert: async (_tenantId, secret) => secret,
+      delete: async () => false,
+    },
+    secretCrypto: {
+      encrypt: () => ({ ciphertext: 'cipher', iv: 'iv', authTag: 'tag' }),
+      decrypt: () => ok('plaintext'),
+    },
+    secretResolver: {
+      resolve: async () => ok('plaintext'),
+    },
+    payment: {
+      createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
+      expireCheckoutSession: async () => ok({ expired: true }),
+      verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test' }),
     },
     purchases: {
       createMemberGrant: async (purchase) => ({

@@ -11,6 +11,10 @@ const adapterAuthTestExternal =
   'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';
 const adapterEmailExternal = 'node_modules/@aws-sdk/client-ses(/|$)';
 const adapterEmailTestExternal = 'node_modules/(@aws-sdk/client-ses|vitest)(/|$)';
+const adapterCryptoExternal = 'node_modules/zod(/|$)';
+const adapterCryptoTestExternal = 'node_modules/vitest(/|$)';
+const adapterPaymentExternal = 'node_modules/stripe(/|$)';
+const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appServerExternal =
   'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
@@ -155,6 +159,30 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/email/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterEmailTestExternal },
+    },
+    {
+      name: 'adapter-crypto-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/crypto', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterCryptoExternal },
+    },
+    {
+      name: 'adapter-crypto-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/crypto/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterCryptoTestExternal },
+    },
+    {
+      name: 'adapter-payment-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/payment', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterPaymentExternal },
+    },
+    {
+      name: 'adapter-payment-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/payment/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterPaymentTestExternal },
     },
     {
       name: 'app-server-external-allowlist',

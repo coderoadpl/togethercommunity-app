@@ -23,9 +23,12 @@ import {
   productAccessIssuesSchema,
   productSchema,
   progressViewSchema,
+  setTenantSecretInputSchema,
   staffRoleSchema,
   tenantApiKeyPublicSchema,
   tenantSchema,
+  tenantSecretKeySchema,
+  tenantSecretMaskedSchema,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
@@ -331,6 +334,33 @@ export const apiKeyRevokeOutputSchema = z.object({
   apiKey: tenantApiKeyPublicSchema,
 });
 
+export const tenantSecretsListOutputSchema = z.object({
+  secrets: z.array(tenantSecretMaskedSchema),
+});
+
+export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
+
+export type TenantSecretSetInput = z.input<typeof tenantSecretSetInputSchema>;
+
+export const tenantSecretSetOutputSchema = z.object({
+  secret: tenantSecretMaskedSchema,
+});
+
+export const tenantSecretDeleteInputSchema = z.object({
+  key: tenantSecretKeySchema,
+});
+
+export type TenantSecretDeleteInput = z.input<typeof tenantSecretDeleteInputSchema>;
+
+export const tenantSecretDeleteOutputSchema = z.object({
+  key: tenantSecretKeySchema,
+});
+
+export const stripeTestConnectionOutputSchema = z.object({
+  ok: z.literal(true),
+  diagnostic: z.string(),
+});
+
 export const m2mEnrollRequestSchema = m2mEnrollInputSchema;
 
 export type M2mEnrollRequest = z.input<typeof m2mEnrollRequestSchema>;
@@ -390,6 +420,10 @@ export const API_ROUTES = {
   apiKeys: { method: 'GET', path: '/api/api-keys' },
   apiKeysCreate: { method: 'POST', path: '/api/api-keys' },
   apiKeyRevoke: { method: 'DELETE', path: '/api/api-keys/:id' },
+  tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
+  tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
+  tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
+  stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
 } as const;
 
@@ -436,8 +470,18 @@ export const API_PATHS = {
   devEmail: API_ROUTES.devEmail.path,
   apiKeys: API_ROUTES.apiKeys.path,
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
+  tenantSecrets: API_ROUTES.tenantSecrets.path,
+  tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
+  stripeTestConnection: API_ROUTES.stripeTestConnection.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
 } as const;
+
+/**
+ * Inbound Stripe webhook, one URL per tenant so the signing secret is resolved
+ * from `tenant_secrets`. Stripe (not a first-party client) calls it, so it lives
+ * outside the client contract, like the Better Auth handler paths.
+ */
+export const STRIPE_WEBHOOK_PATH_PATTERN = '/api/webhooks/stripe/:tenantId';
 
 /** Header used by non-browser clients (CLI, tests) to select the tenant. */
 export const TENANT_HEADER = 'x-tenant';

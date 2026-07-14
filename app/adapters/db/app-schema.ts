@@ -142,6 +142,26 @@ export const tenantApiKeys = pgTable(
   ],
 );
 
+export const tenantSecrets = pgTable(
+  'tenant_secrets',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    ciphertext: text('ciphertext').notNull(),
+    iv: text('iv').notNull(),
+    authTag: text('auth_tag').notNull(),
+    maskedPreview: text('masked_preview').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('tenant_secrets_tenantId_idx').on(table.tenantId),
+    uniqueIndex('tenant_secrets_tenant_key_uidx').on(table.tenantId, table.key),
+  ],
+);
+
 export const courses = pgTable(
   'courses',
   {

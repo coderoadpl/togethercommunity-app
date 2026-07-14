@@ -24,11 +24,26 @@ const buildAuth = () => {
     google: null,
   });
   return {
-    authPort: createAuthPort(auth, db),
+    authPort: createAuthPort(auth),
     magicLinks: createDevMagicLinkReader(db),
     emails: createDevEmailReader(db),
   };
 };
+
+describe('createAuthPort.ensureUser', () => {
+  it('creates a passwordless account once and is idempotent on the same email', async () => {
+    const { authPort } = buildAuth();
+    const email = `ensure-${Date.now()}@together.dev`;
+
+    const first = await authPort.ensureUser(email);
+    expect(first.created).toBe(true);
+    expect(first.userId.length).toBeGreaterThan(0);
+
+    const second = await authPort.ensureUser(email.toUpperCase());
+    expect(second.created).toBe(false);
+    expect(second.userId).toBe(first.userId);
+  });
+});
 
 describe('createAuthPort.requestMagicLink', () => {
   it('rebases the verify link onto the requesting tenant host and sends an English email', async () => {

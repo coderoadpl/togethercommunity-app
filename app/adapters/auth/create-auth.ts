@@ -1,16 +1,13 @@
-import { randomUUID } from 'node:crypto';
-
 import { passkey } from '@better-auth/passkey';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
-import { eq } from 'drizzle-orm';
 
 import { magicLink as magicLinkTemplate, normalizeEmail } from '@core/domain/index.js';
 import type { AuthPort, EmailPort } from '@core/server/index.js';
 import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
 import type { Db } from '@adapters/db/client.js';
-import { devMagicLinks, user } from '@adapters/db/schema.js';
+import { devMagicLinks } from '@adapters/db/schema.js';
 
 export interface AuthSettings {
   secret: string;
@@ -128,11 +125,14 @@ const nameFromEmail = (email: string): string => email.split('@')[0] ?? email;
 
 /**
  * AuthPort implementation: the only place the core's identity touches Better Auth.
- * ensureUser inserts a passwordless provider user directly via drizzle — the
- * installed better-auth server API has no first-class passwordless-create, and
- * the embedded topology owns its provider tables.
+ * ensureUser provisions a passwordless account through Better Auth's own
+ * `internalAdapter` (reached via `auth.$context`) instead of a hand-rolled
+ * insert — the adapter owns id generation, field mapping and creation hooks, so
+ * this stays correct if Better Auth reshapes the user model. The credential
+ * account (and thus a password) is only ever created on real sign-up/import;
+ * these accounts sign in via magic link or passkey.
  */
-export const createAuthPort = (auth: Auth, db: Db): AuthPort => ({
+export const createAuthPort = (auth: Auth): AuthPort => ({
   getAuthenticatedUser: async (requestHeaders) => {
     const session = await auth.api.getSession({ headers: requestHeaders });
     if (!session) return null;
@@ -144,31 +144,23 @@ export const createAuthPort = (auth: Auth, db: Db): AuthPort => ({
   },
   ensureUser: async (email) => {
     const normalizedEmail = normalizeEmail(email);
-    const existing = await db.select().from(user).where(eq(user.email, normalizedEmail)).limit(1);
-    const found = existing[0];
-    if (found) return { userId: found.id, created: false };
+    const { internalAdapter } = await auth.$context;
+    const existing = await internalAdapter.findUserByEmail(normalizedEmail);
+    if (existing) return { userId: existing.user.id, created: false };
 
-    const id = randomUUID();
-    const now = new Date();
-    const inserted = await db
-      .insert(user)
-      .values({
-        id,
+    try {
+      const created = await internalAdapter.createUser({
         name: nameFromEmail(normalizedEmail),
         email: normalizedEmail,
         emailVerified: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing({ target: user.email })
-      .returning({ userId: user.id });
-    const insertedUser = inserted[0];
-    if (insertedUser) return { userId: insertedUser.userId, created: true };
-
-    const afterConflict = await db.select({ id: user.id }).from(user).where(eq(user.email, normalizedEmail)).limit(1);
-    const existingAfterConflict = afterConflict[0];
-    if (!existingAfterConflict) throw new Error('User create/read failed after email conflict');
-    return { userId: existingAfterConflict.id, created: false };
+      });
+      return { userId: created.id, created: true };
+    } catch (cause) {
+      // A concurrent ensureUser may have won the unique-email race; re-read.
+      const afterConflict = await internalAdapter.findUserByEmail(normalizedEmail);
+      if (!afterConflict) throw cause;
+      return { userId: afterConflict.user.id, created: false };
+    }
   },
   requestMagicLink: async ({ email, callbackURL, tenantName, language, baseUrl }) => {
     const normalizedEmail = normalizeEmail(email);

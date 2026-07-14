@@ -154,7 +154,7 @@ export const createDeps = (env: Env): AppDeps => {
 
   return {
     auth,
-    authPort: createAuthPort(auth, db),
+    authPort: createAuthPort(auth),
     products: createProductRepository(db),
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),

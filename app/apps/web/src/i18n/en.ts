@@ -80,12 +80,18 @@ export const en: Messages = {
   sections: {
     products: 'Products',
     courses: 'Courses',
+    lessons: 'Lessons',
     sales: 'Sales',
     members: 'Members',
     integrations: 'Integrations',
     settings: 'Settings',
     aria: 'Creator sections',
     comingSoon: 'Coming soon.',
+  },
+  tenantNotFound: {
+    title: 'No such space',
+    body: 'There is no space at this address. Double-check the link you followed.',
+    hint: 'If this is your space, make sure it has already been created.',
   },
   panel: {
     navigation: 'Panel navigation',
@@ -139,7 +145,9 @@ export const en: Messages = {
   products: {
     newProduct: 'New product',
     titleLabel: 'title',
-    priceInCents: 'price in cents',
+    priceLabel: 'price',
+    priceHelper: 'in currency units, up to 2 decimals (e.g. 199.99)',
+    priceInvalid: 'Enter a price with at most two decimals.',
     currencyLabel: 'currency',
     creating: 'creating…',
     create: 'create product',

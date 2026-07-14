@@ -86,12 +86,18 @@ export const pl: Messages = {
   sections: {
     products: 'Produkty',
     courses: 'Kursy',
+    lessons: 'Lekcje',
     sales: 'Sprzedaż',
     members: 'Uczestnicy',
     integrations: 'Integracje',
     settings: 'Ustawienia',
     aria: 'Sekcje panelu twórcy',
     comingSoon: 'Już wkrótce.',
+  },
+  tenantNotFound: {
+    title: 'Nie ma takiej przestrzeni',
+    body: 'Pod tym adresem nie działa żadna przestrzeń. Sprawdź, czy adres jest poprawny.',
+    hint: 'Jeśli to Twoja przestrzeń, upewnij się, że została już utworzona.',
   },
   panel: {
     navigation: 'Nawigacja panelu',
@@ -145,7 +151,9 @@ export const pl: Messages = {
   products: {
     newProduct: 'Nowy produkt',
     titleLabel: 'tytuł',
-    priceInCents: 'cena w groszach',
+    priceLabel: 'cena',
+    priceHelper: 'w jednostkach waluty, maks. 2 miejsca po przecinku (np. 199.99)',
+    priceInvalid: 'Podaj cenę z maksymalnie dwoma miejscami po przecinku.',
     currencyLabel: 'waluta',
     creating: 'tworzenie…',
     create: 'utwórz produkt',

@@ -83,12 +83,18 @@ export interface Messages {
   sections: {
     products: string;
     courses: string;
+    lessons: string;
     sales: string;
     members: string;
     integrations: string;
     settings: string;
     aria: string;
     comingSoon: string;
+  };
+  tenantNotFound: {
+    title: string;
+    body: string;
+    hint: string;
   };
   panel: {
     navigation: string;
@@ -141,7 +147,9 @@ export interface Messages {
   products: {
     newProduct: string;
     titleLabel: string;
-    priceInCents: string;
+    priceLabel: string;
+    priceHelper: string;
+    priceInvalid: string;
     currencyLabel: string;
     creating: string;
     create: string;

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type MouseEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
@@ -10,11 +10,10 @@ import {
   OutlinedInput,
   Paper,
   Stack,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 
 import type { Course } from '@core/domain/index.js';
 
@@ -22,9 +21,7 @@ import { actions } from '../../../api.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
-import { CourseDetail } from './CourseDetail.js';
 import { MutationError } from './feedback.js';
-import { LessonsSection } from './LessonsSection.js';
 
 const CreateCourseForm = () => {
   const t = useTranslations();
@@ -88,18 +85,18 @@ const CreateCourseForm = () => {
   );
 };
 
-const CoursesSection = () => {
+export const CoursesListPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const courses = useQuery(actions.courses);
   const modules = useQuery(actions.modules);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const moduleCount = (course: Course): number =>
     modules.data ? modules.data.modules.filter((module) => module.courseIds.includes(course.id)).length : 0;
 
-  const selected = courses.data?.courses.find((course) => course.id === selectedId) ?? null;
-  if (selected) return <CourseDetail course={selected} onBack={() => setSelectedId(null)} />;
+  const openCourse = (courseId: string) =>
+    void navigate({ to: '/panel/courses/$courseId', params: { courseId } });
 
   return (
     <Stack useFlexGap spacing="2rem">
@@ -121,7 +118,7 @@ const CoursesSection = () => {
                 key={course.id}
                 data-testid="course-row"
                 secondaryAction={
-                  <Button variant="text" onClick={() => setSelectedId(course.id)}>
+                  <Button variant="text" onClick={() => openCourse(course.id)}>
                     {t.courses.manage}
                   </Button>
                 }
@@ -146,31 +143,6 @@ const CoursesSection = () => {
           </List>
         )}
       </Box>
-    </Stack>
-  );
-};
-
-type CoursesTab = 'tree' | 'lessons';
-
-export const CoursesPanel = () => {
-  const t = useTranslations();
-  const [tab, setTab] = useState<CoursesTab>('tree');
-
-  const changeTab = (_event: MouseEvent<HTMLElement>, value: CoursesTab | null) => {
-    if (value) setTab(value);
-  };
-
-  return (
-    <Stack useFlexGap spacing="1.5rem">
-      <ToggleButtonGroup exclusive value={tab} onChange={changeTab} aria-label={t.courses.tabsAria}>
-        <ToggleButton value="tree" data-testid="courses-tab-tree">
-          {t.courses.treeTab}
-        </ToggleButton>
-        <ToggleButton value="lessons" data-testid="courses-tab-lessons">
-          {t.courses.lessonsTab}
-        </ToggleButton>
-      </ToggleButtonGroup>
-      {tab === 'tree' ? <CoursesSection /> : <LessonsSection />}
     </Stack>
   );
 };

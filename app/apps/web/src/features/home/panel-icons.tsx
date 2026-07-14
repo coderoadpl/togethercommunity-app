@@ -14,6 +14,12 @@ export const CoursesIcon = () => (
   </SvgIcon>
 );
 
+export const LessonsIcon = () => (
+  <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
+    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z" />
+  </SvgIcon>
+);
+
 export const SalesIcon = () => (
   <SvgIcon aria-hidden viewBox={iconViewBox} fontSize="small">
     <path d="M19 14V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zm-9-1c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm13-6v11c0 1.1-.9 2-2 2H4v-2h17V7h2z" />

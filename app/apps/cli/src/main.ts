@@ -19,6 +19,7 @@ import {
   newCourseModuleSchema,
   notFound,
   ok,
+  priceMajorSchema,
   tenantSecretKeySchema,
   transactionalLanguageSchema,
   updateCourseLessonInputSchema,
@@ -73,7 +74,8 @@ const tenantSettingsOptionsSchema = z.object({
 });
 const productCreateOptionsSchema = z.object({
   title: z.string().trim().min(1).max(200),
-  priceCents: centsSchema,
+  priceCents: centsSchema.optional(),
+  price: priceMajorSchema.optional(),
   currency: currencySchema.optional(),
   description: z.string().optional(),
   accessItems: z.string().optional(),
@@ -480,12 +482,26 @@ product
   .command('create')
   .description('Create a product in the active tenant')
   .requiredOption('--title <title>')
-  .requiredOption('--price-cents <cents>', 'price in integer cents')
+  .option('--price-cents <cents>', 'price in integer cents')
+  .option('--price <amount>', 'price in currency units, e.g. 199 or 199.99')
   .option('--currency <currency>', '3-letter uppercase currency code')
   .option('--description <description>')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .action(
     withInput(z.tuple([productCreateOptionsSchema]), async (ctx, [options]) => {
+      if (options.price !== undefined && options.priceCents !== undefined) {
+        emit(err(validation('Provide only one of --price and --price-cents')), ctx.json, () => '');
+        return;
+      }
+      const priceCents = options.price ?? options.priceCents;
+      if (priceCents === undefined) {
+        emit(
+          err(validation('Provide a price with --price (currency units) or --price-cents (integer cents)')),
+          ctx.json,
+          () => '',
+        );
+        return;
+      }
       let accessItems: z.output<typeof productAccessItemsInlineSchema> | undefined;
       if (options.accessItems !== undefined) {
         const payload = await readJsonPayload(options.accessItems, undefined);
@@ -503,7 +519,7 @@ product
       emit(
         await ctx.api.createProduct({
           title: options.title,
-          priceCents: options.priceCents,
+          priceCents,
           ...(options.currency === undefined ? {} : { currency: options.currency }),
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(accessItems === undefined ? {} : { accessItems }),

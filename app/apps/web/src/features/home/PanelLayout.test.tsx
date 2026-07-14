@@ -1,0 +1,155 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { pl } from '../../i18n/pl.js';
+import {
+  PanelCoursesRoute,
+  PanelIndexRoute,
+  PanelIntegrationsRoute,
+  PanelLessonsRoute,
+  PanelMembersRoute,
+  PanelProductsRoute,
+  PanelSalesRoute,
+  PanelSettingsRoute,
+} from './panel-routes.js';
+import { renderWithProviders } from '../../test/render.js';
+import { server } from '../../test/server.js';
+import { PanelLayout } from './PanelLayout.js';
+
+const meWithTenant = {
+  userId: 'u1',
+  email: 'creator@together.dev',
+  name: 'Demo',
+  tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null },
+};
+
+const stubViewport = (isDesktop: boolean) => {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: isDesktop,
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+};
+
+const commonHandlers = () => {
+  server.use(
+    http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
+    http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
+    http.get('/api/products/access-issues', () => HttpResponse.json({ ok: true, data: { issues: [] } })),
+    http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [] } })),
+    http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
+    http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+    http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
+  );
+};
+
+const renderPanelAt = async (initialPath: string) => {
+  const rootRoute = createRootRoute();
+  const layoutRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: PanelLayout });
+  const indexRoute = createRoute({ getParentRoute: () => layoutRoute, path: '/', component: PanelIndexRoute });
+  const productsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'products', component: PanelProductsRoute });
+  const coursesRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'courses', component: PanelCoursesRoute });
+  const lessonsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'lessons', component: PanelLessonsRoute });
+  const membersRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'members', component: PanelMembersRoute });
+  const salesRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'sales', component: PanelSalesRoute });
+  const integrationsRoute = createRoute({
+    getParentRoute: () => layoutRoute,
+    path: 'integrations',
+    component: PanelIntegrationsRoute,
+  });
+  const settingsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'settings', component: PanelSettingsRoute });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([
+      layoutRoute.addChildren([
+        indexRoute,
+        productsRoute,
+        coursesRoute,
+        lessonsRoute,
+        membersRoute,
+        salesRoute,
+        integrationsRoute,
+        settingsRoute,
+      ]),
+    ]),
+    history: createMemoryHistory({ initialEntries: [initialPath] }),
+  });
+  await router.load();
+  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
+};
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('Creator panel routing', () => {
+  it('renders every sidebar section and marks the active one from the URL', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    await renderPanelAt('/panel/members');
+
+    expect(await screen.findByTestId('tenant-name')).toHaveTextContent('Acme');
+    for (const id of ['products', 'courses', 'lessons', 'members', 'sales', 'integrations', 'settings'] as const) {
+      expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('heading', { name: pl.members.heading })).toBeInTheDocument();
+  });
+
+  it('deep-links straight into the products section at /panel index', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    const { router } = await renderPanelAt('/panel');
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/products'));
+    expect(await screen.findByRole('heading', { name: pl.products.newProduct })).toBeInTheDocument();
+    expect(screen.getByTestId('section-products')).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('navigates between sections when a sidebar link is clicked', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    const { router } = await renderPanelAt('/panel/products');
+
+    await userEvent.click(await screen.findByTestId('section-courses'));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/courses'));
+    expect(screen.getByTestId('section-courses')).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('heading', { name: pl.courses.heading })).toBeInTheDocument();
+  });
+
+  it('shows the coming-soon copy on the sales section', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    await renderPanelAt('/panel/sales');
+
+    expect(await screen.findByText(pl.sections.comingSoon)).toBeInTheDocument();
+  });
+
+  it('signs out from the account menu in the app bar', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    await renderPanelAt('/panel/products');
+
+    await userEvent.click(await screen.findByTestId('user-menu'));
+    expect(await screen.findByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
+    expect(screen.getByTestId('sign-out')).toBeInTheDocument();
+  });
+});

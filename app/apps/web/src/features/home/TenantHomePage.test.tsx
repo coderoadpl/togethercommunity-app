@@ -1,8 +1,13 @@
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
+import { screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -16,6 +21,13 @@ const meWithTenant = {
   tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null },
 };
 
+const meMemberOnly = {
+  userId: 'u1',
+  email: 'member@together.dev',
+  name: 'Member',
+  tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1' },
+};
+
 const meWithoutTenant = {
   userId: 'u1',
   email: 'creator@together.dev',
@@ -27,132 +39,51 @@ const tenantsBody = {
   tenants: [{ tenant: { id: 't1', slug: 'acme', name: 'Acme', contentVersion: 1 }, staffRole: 'owner' }],
 };
 
-/**
- * MUI's `useMediaQuery` reads `window.matchMedia`, which jsdom does not provide.
- * Stub it so the shell can resolve the permanent (desktop) vs temporary (mobile)
- * drawer deterministically per test.
- */
-const stubViewport = (isDesktop: boolean) => {
-  vi.stubGlobal(
-    'matchMedia',
-    (query: string) => ({
-      matches: isDesktop,
-      media: query,
-      onchange: null,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      dispatchEvent: () => false,
-    }),
-  );
-};
+const stub = (label: string) => () => <div>{label}</div>;
 
-afterEach(() => vi.unstubAllGlobals());
-
-const renderHomePage = async () => {
-  const rootRoute = createRootRoute({ component: TenantHomePage });
+const renderHome = async () => {
+  const rootRoute = createRootRoute();
+  const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: TenantHomePage });
+  const panelRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: stub('PANEL') });
+  const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: stub('LOGIN') });
+  const myRoute = createRoute({ getParentRoute: () => rootRoute, path: '/my', component: stub('MY') });
   const router = createRouter({
-    routeTree: rootRoute,
+    routeTree: rootRoute.addChildren([indexRoute, panelRoute, loginRoute, myRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
-describe('TenantHomePage', () => {
-  it('renders the classic admin shell with sidebar sections and the active section', async () => {
-    stubViewport(true);
-    server.use(
-      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
-      http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
-      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
-      http.get('/api/products/access-issues', () =>
-        HttpResponse.json({ ok: true, data: { issues: [] } }),
-      ),
-    );
-
-    await renderHomePage();
-
-    expect(await screen.findByTestId('tenant-name')).toHaveTextContent('Acme');
-    for (const id of ['products', 'courses', 'sales', 'members', 'integrations', 'settings'] as const) {
-      expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
-    }
-    expect(screen.getByTestId('section-products')).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByTestId('section-courses')).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('heading', { name: pl.products.newProduct })).toBeInTheDocument();
+describe('TenantHomePage dispatcher', () => {
+  it('redirects a staff member into the creator panel', async () => {
+    server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })));
+    await renderHome();
+    expect(await screen.findByText('PANEL')).toBeInTheDocument();
   });
 
-  it('switches the active section and shows a coming-soon panel for stub sections', async () => {
-    stubViewport(true);
-    server.use(
-      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
-      http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
-      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
-      http.get('/api/products/access-issues', () =>
-        HttpResponse.json({ ok: true, data: { issues: [] } }),
-      ),
-    );
-
-    await renderHomePage();
-
-    await userEvent.click(await screen.findByTestId('section-sales'));
-
-    expect(screen.getByTestId('section-sales')).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByText(pl.sections.comingSoon)).toBeInTheDocument();
+  it('redirects a member-only account to their courses', async () => {
+    server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: meMemberOnly })));
+    await renderHome();
+    expect(await screen.findByText('MY')).toBeInTheDocument();
   });
 
-  it('opens the mobile navigation drawer from the AppBar hamburger', async () => {
-    stubViewport(false);
+  it('redirects an unauthenticated visitor to sign in', async () => {
     server.use(
-      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
-      http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
-      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
-      http.get('/api/products/access-issues', () =>
-        HttpResponse.json({ ok: true, data: { issues: [] } }),
+      http.get('/api/me', () =>
+        HttpResponse.json({ ok: false, error: { code: 'unauthorized', message: 'Sign in' } }, { status: 401 }),
       ),
     );
-
-    await renderHomePage();
-
-    const hamburger = await screen.findByTestId('open-navigation');
-    expect(screen.queryByTestId('section-products')).not.toBeInTheDocument();
-
-    await userEvent.click(hamburger);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('section-products')).toBeInTheDocument();
-    });
-    expect(screen.getByTestId('section-members')).toBeInTheDocument();
+    await renderHome();
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
   });
 
-  it('signs out from the account menu in the AppBar', async () => {
-    stubViewport(true);
-    server.use(
-      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithTenant })),
-      http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
-      http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
-      http.get('/api/products/access-issues', () =>
-        HttpResponse.json({ ok: true, data: { issues: [] } }),
-      ),
-    );
-
-    await renderHomePage();
-
-    await userEvent.click(await screen.findByTestId('user-menu'));
-    expect(await screen.findByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
-    expect(screen.getByTestId('sign-out')).toBeInTheDocument();
-  });
-
-  it('falls back to the tenant picker when no tenant is selected', async () => {
-    stubViewport(true);
+  it('shows the tenant picker when no space is selected', async () => {
     server.use(
       http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
       http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
     );
-
-    await renderHomePage();
-
+    await renderHome();
     expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
   });
 });

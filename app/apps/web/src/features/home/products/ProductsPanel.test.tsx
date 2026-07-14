@@ -76,13 +76,36 @@ describe('ProductsPanel', () => {
 
     await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'New Workshop');
     await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
-    await userEvent.clear(screen.getByLabelText(pl.products.priceInCents));
-    await userEvent.type(screen.getByLabelText(pl.products.priceInCents), '4900');
-    await userEvent.clear(screen.getByLabelText(pl.products.currencyLabel));
-    await userEvent.type(screen.getByLabelText(pl.products.currencyLabel), 'EUR');
+    await userEvent.clear(screen.getByLabelText(pl.products.priceLabel));
+    await userEvent.type(screen.getByLabelText(pl.products.priceLabel), '49.99');
+
+    await userEvent.click(screen.getByRole('combobox', { name: pl.products.currencyLabel }));
+    await userEvent.click(await screen.findByRole('option', { name: 'EUR' }));
+
     await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
 
     expect(await screen.findByText('New Workshop')).toBeInTheDocument();
+  });
+
+  it('rejects a price with more than two decimals before submitting', async () => {
+    let createCalls = 0;
+    renderProductsPanel();
+    server.use(
+      http.post('/api/products', () => {
+        createCalls += 1;
+        return HttpResponse.json({ ok: false }, { status: 400 });
+      }),
+    );
+
+    expect(await screen.findByText('Draft Course')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'Bad price');
+    await userEvent.clear(screen.getByLabelText(pl.products.priceLabel));
+    await userEvent.type(screen.getByLabelText(pl.products.priceLabel), '1.999');
+    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+
+    expect(await screen.findByText(pl.products.priceInvalid)).toBeInTheDocument();
+    expect(createCalls).toBe(0);
   });
 
   it('flags products whose access items point at missing content', async () => {

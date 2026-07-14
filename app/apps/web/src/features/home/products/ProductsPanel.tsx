@@ -7,18 +7,22 @@ import {
   Collapse,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   List,
   ListItem,
   ListItemText,
+  MenuItem,
   OutlinedInput,
   Paper,
+  Select,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
+import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -132,8 +136,9 @@ export const ProductsPanel = () => {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [priceCents, setPriceCents] = useState('0');
-  const [currency, setCurrency] = useState('PLN');
+  const [price, setPrice] = useState('0');
+  const [currency, setCurrency] = useState<string>('PLN');
+  const [priceError, setPriceError] = useState(false);
 
   const invalidateProducts = async () => {
     await queryClient.invalidateQueries(actions.productsInvalidates());
@@ -144,19 +149,26 @@ export const ProductsPanel = () => {
     onSuccess: async () => {
       setTitle('');
       setDescription('');
-      setPriceCents('0');
+      setPrice('0');
       setCurrency('PLN');
+      setPriceError(false);
       await invalidateProducts();
     },
   });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const parsedPrice = priceMajorSchema.safeParse(price);
+    if (!parsedPrice.success) {
+      setPriceError(true);
+      return;
+    }
+    setPriceError(false);
     createProduct.mutate({
       title,
       description,
-      priceCents: Number(priceCents),
-      currency: currency.toUpperCase(),
+      priceCents: parsedPrice.data,
+      currency,
     });
   };
 
@@ -192,26 +204,37 @@ export const ProductsPanel = () => {
             />
           </FormControl>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
-            <FormControl fullWidth>
-              <FormLabel htmlFor="product-price">{t.products.priceInCents}</FormLabel>
+            <FormControl fullWidth error={priceError}>
+              <FormLabel htmlFor="product-price">{t.products.priceLabel}</FormLabel>
               <OutlinedInput
                 id="product-price"
-                type="number"
-                inputProps={{ min: 0, step: 1 }}
-                value={priceCents}
-                onChange={(event) => setPriceCents(event.target.value)}
+                type="text"
+                inputProps={{ inputMode: 'decimal', 'aria-describedby': 'product-price-helper' }}
+                value={price}
+                onChange={(event) => {
+                  setPriceError(false);
+                  setPrice(event.target.value);
+                }}
                 required
               />
+              <FormHelperText id="product-price-helper">
+                {priceError ? t.products.priceInvalid : t.products.priceHelper}
+              </FormHelperText>
             </FormControl>
             <FormControl fullWidth>
               <FormLabel htmlFor="product-currency">{t.products.currencyLabel}</FormLabel>
-              <OutlinedInput
+              <Select
                 id="product-currency"
                 value={currency}
                 onChange={(event) => setCurrency(event.target.value)}
-                inputProps={{ maxLength: 3 }}
-                required
-              />
+                inputProps={{ 'aria-label': t.products.currencyLabel }}
+              >
+                {SUPPORTED_CURRENCIES.map((code) => (
+                  <MenuItem key={code} value={code}>
+                    {code}
+                  </MenuItem>
+                ))}
+              </Select>
             </FormControl>
           </Stack>
           <Button type="submit" variant="contained" disabled={createProduct.isPending}>

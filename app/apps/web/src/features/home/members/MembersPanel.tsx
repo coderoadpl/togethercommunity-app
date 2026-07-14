@@ -14,15 +14,15 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '@core/client/index.js';
-import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
+import type { MemberExportFormat } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
-import { MemberDetail } from './MemberDetail.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : t.members.exportFailed;
@@ -30,9 +30,9 @@ const errorMessage = (error: unknown, t: Messages): string =>
 export const MembersPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const members = useQuery(actions.members);
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<MemberExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const removeMember = useMutation({
@@ -60,9 +60,8 @@ export const MembersPanel = () => {
     }
   };
 
-  const selected: MemberWithProductIds | null =
-    members.data?.members.find((member) => member.id === selectedId) ?? null;
-  if (selected) return <MemberDetail member={selected} onBack={() => setSelectedId(null)} />;
+  const openMember = (memberId: string) =>
+    void navigate({ to: '/panel/members/$memberId', params: { memberId } });
 
   return (
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -125,7 +124,7 @@ export const MembersPanel = () => {
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <Button size="small" onClick={() => setSelectedId(member.id)}>
+                        <Button size="small" onClick={() => openMember(member.id)}>
                           {t.members.manage}
                         </Button>
                         <Button

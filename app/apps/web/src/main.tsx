@@ -48,9 +48,23 @@ import { initWebObservability, reportError } from './observability.js';
 import { queryClient } from './query-client.js';
 import { RefreshSnackbar } from './RefreshSnackbar.js';
 import { renderRootErrorFallback } from './RootErrorFallback.js';
+import { TenantGate } from './features/tenant-not-found/TenantNotFoundPage.js';
 import { CheckoutRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
+import {
+  PanelCourseDetailRoute,
+  PanelCoursesRoute,
+  PanelIndexRoute,
+  PanelIntegrationsRoute,
+  PanelLayout,
+  PanelLessonsRoute,
+  PanelMemberDetailRoute,
+  PanelMembersRoute,
+  PanelProductsRoute,
+  PanelSalesRoute,
+  PanelSettingsRoute,
+} from './routes/panel.js';
 import {
   CourseRoute,
   CourseStructureRoute,
@@ -136,6 +150,62 @@ const accountRoute = createRoute({
   component: MemberAccountRoute,
 });
 
+const panelLayoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/panel',
+  component: PanelLayout,
+});
+const panelIndexRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: '/',
+  component: PanelIndexRoute,
+});
+const panelProductsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'products',
+  component: PanelProductsRoute,
+});
+const panelCoursesRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'courses',
+  component: PanelCoursesRoute,
+});
+const panelCourseDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'courses/$courseId',
+  component: PanelCourseDetailRoute,
+});
+const panelLessonsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'lessons',
+  component: PanelLessonsRoute,
+});
+const panelMembersRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'members',
+  component: PanelMembersRoute,
+});
+const panelMemberDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'members/$memberId',
+  component: PanelMemberDetailRoute,
+});
+const panelSalesRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'sales',
+  component: PanelSalesRoute,
+});
+const panelIntegrationsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'integrations',
+  component: PanelIntegrationsRoute,
+});
+const panelSettingsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'settings',
+  component: PanelSettingsRoute,
+});
+
 const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
@@ -149,6 +219,18 @@ const router = createRouter({
     registerRoute,
     resetPasswordRoute,
     accountRoute,
+    panelLayoutRoute.addChildren([
+      panelIndexRoute,
+      panelProductsRoute,
+      panelCoursesRoute,
+      panelCourseDetailRoute,
+      panelLessonsRoute,
+      panelMembersRoute,
+      panelMemberDetailRoute,
+      panelSalesRoute,
+      panelIntegrationsRoute,
+      panelSettingsRoute,
+    ]),
   ]),
 });
 
@@ -172,7 +254,9 @@ createRoot(container).render(
           <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
             <QueryClientProvider client={queryClient}>
               <RefreshSnackbar />
-              <RouterProvider router={router} />
+              <TenantGate>
+                <RouterProvider router={router} />
+              </TenantGate>
               {import.meta.env.DEV ? (
                 <Suspense fallback={null}>
                   <ReactQueryDevtools />

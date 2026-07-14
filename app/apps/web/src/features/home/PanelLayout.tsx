@@ -1,0 +1,345 @@
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import {
+  Alert,
+  AppBar,
+  Box,
+  Chip,
+  Container,
+  Divider,
+  Drawer,
+  IconButton,
+  List,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  ThemeProvider,
+  Toolbar,
+  Typography,
+  useMediaQuery,
+} from '@mui/material';
+import { useTheme } from '@mui/material/styles';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
+
+import { ApiError } from '@core/client/index.js';
+
+import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
+import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
+import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
+import { actions } from '../../api.js';
+import { useTranslations, type Messages } from '../../i18n/index.js';
+import { tenantHue } from '../../lib/tenant.js';
+import { useThemeMode } from '../../theme-mode.js';
+import {
+  AppBarTitle,
+  AppBarWordmark,
+  BreakAllText,
+  createThemeForMode,
+  Eyebrow,
+  PanelNavItem,
+  TenantSwatch,
+} from '../../theme.js';
+import {
+  AccountIcon,
+  CoursesIcon,
+  IntegrationsIcon,
+  LessonsIcon,
+  MembersIcon,
+  MenuIcon,
+  ProductsIcon,
+  SalesIcon,
+  SettingsIcon,
+  SignOutIcon,
+} from './panel-icons.js';
+import { PanelContextProvider, type PanelTenant } from './panel-context.js';
+
+type PanelSection =
+  | 'products'
+  | 'courses'
+  | 'lessons'
+  | 'members'
+  | 'sales'
+  | 'integrations'
+  | 'settings';
+
+interface SectionDescriptor {
+  id: PanelSection;
+  to: string;
+}
+
+const sectionDescriptors: SectionDescriptor[] = [
+  { id: 'products', to: '/panel/products' },
+  { id: 'courses', to: '/panel/courses' },
+  { id: 'lessons', to: '/panel/lessons' },
+  { id: 'members', to: '/panel/members' },
+  { id: 'sales', to: '/panel/sales' },
+  { id: 'integrations', to: '/panel/integrations' },
+  { id: 'settings', to: '/panel/settings' },
+];
+
+const drawerWidth = 248;
+
+const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
+  role === 'owner' ? t.tenant.roleOwner : role === 'admin' ? t.tenant.roleAdmin : t.tenant.roleMember;
+
+const isActive = (pathname: string, to: string): boolean =>
+  pathname === to || pathname.startsWith(`${to}/`);
+
+const SectionIcon = ({ id }: { id: PanelSection }) => {
+  switch (id) {
+    case 'products':
+      return <ProductsIcon />;
+    case 'courses':
+      return <CoursesIcon />;
+    case 'lessons':
+      return <LessonsIcon />;
+    case 'members':
+      return <MembersIcon />;
+    case 'sales':
+      return <SalesIcon />;
+    case 'integrations':
+      return <IntegrationsIcon />;
+    case 'settings':
+      return <SettingsIcon />;
+  }
+};
+
+const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
+  const t = useTranslations();
+  const { pathname } = useLocation();
+  return (
+    <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
+      {sectionDescriptors.map(({ id, to }) => {
+        const active = isActive(pathname, to);
+        return (
+          <PanelNavItem
+            key={id}
+            data-testid={`section-${id}`}
+            selected={active}
+            aria-current={active ? 'page' : undefined}
+            onClick={() => onNavigate(to)}
+          >
+            <ListItemIcon>
+              <SectionIcon id={id} />
+            </ListItemIcon>
+            <ListItemText primary={t.sections[id]} />
+          </PanelNavItem>
+        );
+      })}
+    </List>
+  );
+};
+
+const UserMenu = ({
+  email,
+  role,
+  onSignOut,
+  pending,
+}: {
+  email: string;
+  role: PanelTenant['staffRole'];
+  onSignOut: () => void;
+  pending: boolean;
+}) => {
+  const t = useTranslations();
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+
+  return (
+    <>
+      <IconButton
+        color="inherit"
+        edge="end"
+        data-testid="user-menu"
+        aria-label={t.panel.accountMenu}
+        aria-haspopup="true"
+        aria-expanded={open ? true : undefined}
+        onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+      >
+        <AccountIcon />
+      </IconButton>
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={() => setAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
+          <Eyebrow variant="overline" component="p">
+            {t.panel.signedInAs}
+          </Eyebrow>
+          <BreakAllText variant="body2" data-testid="user-menu-email">
+            {email}
+          </BreakAllText>
+          <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.5rem' }} />
+        </Box>
+        <Divider />
+        <MenuItem
+          data-testid="sign-out"
+          disabled={pending}
+          onClick={() => {
+            setAnchorEl(null);
+            onSignOut();
+          }}
+        >
+          <ListItemIcon>
+            <SignOutIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.tenant.signOut} />
+        </MenuItem>
+      </Menu>
+    </>
+  );
+};
+
+const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) => {
+  const t = useTranslations();
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useSuppressGlobalChrome();
+
+  const signOut = useMutation({
+    ...actions.signOut,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+      await navigate({ to: '/login' });
+    },
+  });
+
+  const goTo = (to: string) => {
+    setMobileOpen(false);
+    void navigate({ to });
+  };
+
+  const nav = <PanelNav onNavigate={goTo} />;
+
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <AppBar position="fixed" sx={{ zIndex: (appBarTheme) => appBarTheme.zIndex.drawer + 1 }}>
+        <Toolbar sx={{ gap: '0.75rem' }}>
+          {isDesktop ? null : (
+            <IconButton
+              edge="start"
+              color="inherit"
+              data-testid="open-navigation"
+              aria-label={t.panel.openNavigation}
+              onClick={() => setMobileOpen(true)}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
+          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
+          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <AppBarTitle component="span" noWrap data-testid="tenant-name">
+              {tenant.name}
+            </AppBarTitle>
+            <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+          </Box>
+          <Box sx={{ flex: 1 }} />
+          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}>
+            <LanguageSwitcher inline />
+            <ThemeSwitcher inline />
+          </Box>
+          <UserMenu
+            email={email}
+            role={tenant.staffRole}
+            pending={signOut.isPending}
+            onSignOut={() => signOut.mutate()}
+          />
+        </Toolbar>
+      </AppBar>
+
+      <Box sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}>
+        {isDesktop ? (
+          <Drawer
+            variant="permanent"
+            open
+            sx={{
+              display: { xs: 'none', md: 'block' },
+              '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' },
+            }}
+          >
+            <Toolbar />
+            {nav}
+          </Drawer>
+        ) : (
+          <Drawer
+            variant="temporary"
+            open={mobileOpen}
+            onClose={() => setMobileOpen(false)}
+            sx={{
+              display: { xs: 'block', md: 'none' },
+              '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' },
+            }}
+          >
+            <Toolbar />
+            {nav}
+          </Drawer>
+        )}
+      </Box>
+
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Toolbar />
+        <Box sx={{ maxWidth: '60rem', mx: 'auto', px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
+          <Outlet />
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
+export const PanelLayout = () => {
+  const navigate = useNavigate();
+  const t = useTranslations();
+  const { mode } = useThemeMode();
+  const me = useQuery(actions.me);
+
+  const unauthorized = me.error instanceof ApiError && me.error.appError.code === 'unauthorized';
+  const tenant = me.data?.tenant ?? null;
+  const noTenant = me.isSuccess && !tenant;
+  const memberOnly = tenant !== null && !tenant.staffRole;
+
+  useEffect(() => {
+    if (unauthorized) void navigate({ to: '/login' });
+    else if (noTenant) void navigate({ to: '/' });
+    else if (memberOnly) void navigate({ to: '/my' });
+  }, [unauthorized, noTenant, memberOnly, navigate]);
+
+  const theme = useMemo(
+    () => createThemeForMode(mode, tenant ? tenantHue(tenant.slug) : 0),
+    [mode, tenant],
+  );
+
+  if (me.isPending) {
+    return (
+      <Container sx={{ maxWidth: '44rem' }}>
+        <Typography variant="h2" component="p" sx={{ py: 6 }}>
+          {t.tenant.openingWorkspace}
+        </Typography>
+      </Container>
+    );
+  }
+  if (unauthorized || noTenant || memberOnly) return null;
+  if (me.isError) {
+    return (
+      <Container sx={{ maxWidth: '44rem' }}>
+        <Alert sx={{ mt: 4 }}>{me.error.message}</Alert>
+      </Container>
+    );
+  }
+  if (!tenant || !tenant.staffRole) return null;
+
+  return (
+    <ThemeProvider theme={theme}>
+      <PanelContextProvider value={{ tenant, email: me.data.email }}>
+        <PanelShell tenant={tenant} email={me.data.email} />
+      </PanelContextProvider>
+    </ThemeProvider>
+  );
+};

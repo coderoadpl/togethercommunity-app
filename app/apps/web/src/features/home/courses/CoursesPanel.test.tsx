@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -13,9 +20,30 @@ import {
 } from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
+import { PanelCourseDetailRoute } from '../panel-routes.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
-import { CoursesPanel } from './CoursesPanel.js';
+import { CoursesListPanel } from './CoursesPanel.js';
+
+const renderCoursesPanel = async () => {
+  const rootRoute = createRootRoute();
+  const listRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/courses',
+    component: CoursesListPanel,
+  });
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/courses/$courseId',
+    component: PanelCourseDetailRoute,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([listRoute, detailRoute]),
+    history: createMemoryHistory({ initialEntries: ['/panel/courses'] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
+};
 
 const course = (over: Partial<Course> = {}): Course => ({
   id: 'course-1',
@@ -71,7 +99,7 @@ describe('CoursesPanel courses tab', () => {
       }),
     );
 
-    renderWithProviders(<CoursesPanel />);
+    await renderCoursesPanel();
 
     expect(await screen.findByText('Launch Kit')).toBeInTheDocument();
 
@@ -98,7 +126,7 @@ describe('CoursesPanel courses tab', () => {
       ),
     );
 
-    renderWithProviders(<CoursesPanel />);
+    await renderCoursesPanel();
 
     await userEvent.type(screen.getByLabelText(pl.common.name), 'X');
     await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
@@ -124,7 +152,7 @@ describe('CoursesPanel courses tab', () => {
       }),
     );
 
-    renderWithProviders(<CoursesPanel />);
+    await renderCoursesPanel();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
 
@@ -159,7 +187,7 @@ describe('CoursesPanel courses tab', () => {
       http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
     );
 
-    renderWithProviders(<CoursesPanel />);
+    await renderCoursesPanel();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
 
@@ -194,7 +222,7 @@ describe('CoursesPanel courses tab', () => {
       }),
     );
 
-    renderWithProviders(<CoursesPanel />);
+    await renderCoursesPanel();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
 
@@ -228,7 +256,7 @@ describe('CoursesPanel courses tab', () => {
       }),
     );
 
-    renderWithProviders(<CoursesPanel />);
+    await renderCoursesPanel();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.detachModule }));

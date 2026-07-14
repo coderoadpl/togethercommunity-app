@@ -25,7 +25,7 @@ const ThemeProbe = () => {
   const theme = useTheme();
   return (
     <div data-testid="theme-probe">
-      {theme.shape.borderRadius}:{theme.typography.fontFamily}
+      {theme.shape.borderRadius}:{theme.palette.background.default}:{theme.typography.fontFamily}
     </div>
   );
 };
@@ -44,12 +44,13 @@ const selectMode = async (user: ReturnType<typeof userEvent.setup>, label: strin
 };
 
 describe('ThemeSwitcher', () => {
-  it('switches from the logbook theme to stock Material via the Autocomplete', async () => {
+  it('defaults to the shadcn theme and switches to stock Material via the Autocomplete', async () => {
     const user = userEvent.setup();
     renderSwitcher();
 
     expect(screen.getByTestId('theme-selector')).toBeInTheDocument();
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^0:/);
+    expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Shadcn');
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^8:#fafafa:'Inter'/);
 
     await selectMode(user, 'Material');
 
@@ -68,13 +69,14 @@ describe('ThemeSwitcher', () => {
       'Material',
       'Quiet Studio',
       'Scoreboard',
+      'Shadcn',
       'Signal Mono',
       'Steady Frame',
     ]);
 
     await user.click(screen.getByRole('option', { name: 'Scoreboard' }));
 
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^8:'Inter'/);
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^8:#F7F5F2:'Inter'/);
     expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Scoreboard');
   });
 
@@ -84,7 +86,7 @@ describe('ThemeSwitcher', () => {
 
     await selectMode(user, 'Quiet Studio');
 
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^10:'Inter'/);
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^10:#FAFAF8:'Inter'/);
     expect(screen.getByRole('combobox', { name: pl.common.theme })).toHaveValue('Quiet Studio');
   });
 

@@ -44,6 +44,7 @@ export const MODES = [
   { id: 'material', label: 'Material' },
   { id: 'quiet-studio', label: 'Quiet Studio' },
   { id: 'scoreboard', label: 'Scoreboard' },
+  { id: 'shadcn', label: 'Shadcn' },
   { id: 'signal-mono', label: 'Signal Mono' },
   { id: 'steady-frame', label: 'Steady Frame' },
 ] as const;
@@ -75,6 +76,8 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
       return createQuietStudioTheme();
     case 'scoreboard':
       return createScoreboardTheme();
+    case 'shadcn':
+      return createShadcnTheme();
     case 'signal-mono':
       return createSignalMonoTheme();
     case 'steady-frame':
@@ -83,6 +86,440 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
       return createPlainTheme(accentHue);
   }
 };
+
+const SHADCN_FONT =
+  "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+
+const SHADCN_BG = '#fafafa';
+const SHADCN_SURFACE = '#ffffff';
+const SHADCN_INK = '#09090b';
+const SHADCN_INK_SOFT = '#71717a';
+const SHADCN_PRIMARY = '#18181b';
+const SHADCN_PRIMARY_HOVER = '#27272a';
+const SHADCN_MUTED = '#f4f4f5';
+const SHADCN_BORDER = '#e4e4e7';
+const SHADCN_BORDER_STRONG = '#d4d4d8';
+const SHADCN_RING = '#a1a1aa';
+const SHADCN_DESTRUCTIVE = '#dc2626';
+const SHADCN_SUCCESS = '#16a34a';
+const SHADCN_SHADOW_XS = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
+const SHADCN_SHADOW_MD = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)';
+const SHADCN_SHADOW_LG = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)';
+
+export const createShadcnTheme = (): Theme =>
+  createTheme({
+    headerRule: `1px solid ${SHADCN_BORDER}`,
+    palette: {
+      mode: 'light',
+      primary: {
+        main: SHADCN_PRIMARY,
+        dark: SHADCN_INK,
+        contrastText: SHADCN_SURFACE,
+      },
+      secondary: {
+        main: SHADCN_PRIMARY,
+        dark: SHADCN_INK,
+        contrastText: SHADCN_SURFACE,
+      },
+      success: { main: SHADCN_SUCCESS, contrastText: SHADCN_SURFACE },
+      error: { main: SHADCN_DESTRUCTIVE, contrastText: SHADCN_SURFACE },
+      background: { default: SHADCN_BG, paper: SHADCN_SURFACE },
+      text: { primary: SHADCN_INK, secondary: SHADCN_INK_SOFT },
+      divider: SHADCN_BORDER,
+    },
+    shape: { borderRadius: 8 },
+    typography: {
+      fontFamily: SHADCN_FONT,
+      body1: { fontSize: '0.875rem', lineHeight: 1.6 },
+      body2: { fontSize: '0.8125rem', lineHeight: 1.55 },
+      h1: {
+        fontSize: '1.875rem',
+        fontWeight: 700,
+        letterSpacing: '-0.025em',
+        lineHeight: 1.2,
+      },
+      h2: {
+        fontSize: '1.125rem',
+        fontWeight: 600,
+        letterSpacing: '-0.015em',
+        lineHeight: 1.4,
+      },
+      h3: {
+        fontSize: '1rem',
+        fontWeight: 600,
+        lineHeight: 1.45,
+      },
+      overline: {
+        fontSize: '0.75rem',
+        fontWeight: 500,
+        letterSpacing: 0,
+        lineHeight: 1.7,
+        textTransform: 'none',
+        color: SHADCN_INK_SOFT,
+      },
+      button: {
+        fontSize: '0.875rem',
+        fontWeight: 500,
+        letterSpacing: 0,
+        lineHeight: 1.45,
+        textTransform: 'none',
+      },
+      caption: { fontSize: '0.75rem', lineHeight: 1.5, color: SHADCN_INK_SOFT },
+    },
+    components: {
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            backgroundColor: SHADCN_BG,
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          },
+          '@keyframes settle': {
+            from: { opacity: 0, transform: 'translateY(0.5rem)' },
+            to: { opacity: 1, transform: 'none' },
+          },
+        },
+      },
+      MuiButton: {
+        defaultProps: { disableElevation: true },
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            padding: '0.5rem 1rem',
+            boxShadow: 'none',
+            '&:focus-visible': {
+              outline: 'none',
+              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+            },
+          },
+          contained: {
+            backgroundColor: SHADCN_PRIMARY,
+            color: SHADCN_SURFACE,
+            boxShadow: SHADCN_SHADOW_XS,
+            '&:hover': { backgroundColor: SHADCN_PRIMARY_HOVER, boxShadow: SHADCN_SHADOW_XS },
+            '&.Mui-disabled': {
+              backgroundColor: SHADCN_PRIMARY,
+              color: SHADCN_SURFACE,
+              opacity: 0.5,
+            },
+          },
+          outlined: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            color: SHADCN_INK,
+            backgroundColor: SHADCN_SURFACE,
+            boxShadow: SHADCN_SHADOW_XS,
+            '&:hover': {
+              border: `1px solid ${SHADCN_BORDER}`,
+              backgroundColor: SHADCN_MUTED,
+            },
+          },
+          text: {
+            color: SHADCN_INK,
+            '&:hover': { backgroundColor: SHADCN_MUTED },
+          },
+        },
+      },
+      MuiCard: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 12,
+            backgroundImage: 'none',
+            boxShadow: SHADCN_SHADOW_XS,
+          },
+        },
+      },
+      MuiPaper: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: { backgroundImage: 'none', boxShadow: 'none' },
+          rounded: { borderRadius: 12 },
+          outlined: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 12,
+            boxShadow: SHADCN_SHADOW_XS,
+          },
+          elevation1: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 12,
+            boxShadow: SHADCN_SHADOW_XS,
+          },
+          elevation8: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 8,
+            boxShadow: SHADCN_SHADOW_MD,
+          },
+        },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            backgroundColor: SHADCN_SURFACE,
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
+            '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.35)}` },
+            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+              borderColor: SHADCN_RING,
+              borderWidth: 1,
+            },
+          },
+          input: {
+            padding: '0.55rem 0.75rem',
+            fontSize: '0.875rem',
+            lineHeight: 1.5,
+            '&[type="number"]': { fontVariantNumeric: 'tabular-nums' },
+          },
+        },
+      },
+      MuiFormLabel: {
+        styleOverrides: {
+          root: {
+            color: SHADCN_INK,
+            fontSize: '0.8125rem',
+            fontWeight: 500,
+            lineHeight: 1.5,
+            marginBottom: '0.35rem',
+            '&.Mui-focused': { color: SHADCN_INK },
+          },
+        },
+      },
+      MuiInputBase: {
+        styleOverrides: {
+          input: { '&::placeholder': { color: SHADCN_INK_SOFT, opacity: 1 } },
+        },
+      },
+      MuiLink: {
+        defaultProps: { underline: 'hover' },
+        styleOverrides: {
+          root: {
+            color: SHADCN_INK,
+            fontWeight: 500,
+            textDecorationColor: SHADCN_BORDER_STRONG,
+            '&[aria-current="true"]': { fontWeight: 600 },
+            '&:focus-visible': {
+              outline: 'none',
+              borderRadius: 4,
+              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+            },
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            height: 'auto',
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            lineHeight: 1.45,
+          },
+          label: { padding: '0.16rem 0.6rem' },
+          outlined: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            color: SHADCN_INK,
+            backgroundColor: SHADCN_SURFACE,
+            '&.MuiChip-colorSuccess': {
+              borderColor: alpha(SHADCN_SUCCESS, 0.4),
+              color: SHADCN_SUCCESS,
+            },
+            '&.MuiChip-colorWarning': { borderColor: alpha('#d97706', 0.4), color: '#b45309' },
+          },
+        },
+      },
+      MuiToggleButtonGroup: {
+        styleOverrides: {
+          root: {
+            gap: '0.125rem',
+            padding: '0.1875rem',
+            borderRadius: 8,
+            backgroundColor: SHADCN_MUTED,
+            '& .MuiToggleButtonGroup-grouped, & .MuiToggleButtonGroup-firstButton, & .MuiToggleButtonGroup-middleButton, & .MuiToggleButtonGroup-lastButton': {
+              border: 0,
+              borderRadius: 6,
+              marginLeft: 0,
+            },
+          },
+        },
+      },
+      MuiToggleButton: {
+        styleOverrides: {
+          root: {
+            border: 0,
+            borderRadius: 6,
+            padding: '0.35rem 0.85rem',
+            color: SHADCN_INK_SOFT,
+            fontFamily: SHADCN_FONT,
+            fontSize: '0.8125rem',
+            fontWeight: 500,
+            lineHeight: 1.45,
+            textTransform: 'none',
+            '&:hover': { backgroundColor: 'transparent', color: SHADCN_INK },
+            '&.Mui-selected': {
+              backgroundColor: SHADCN_SURFACE,
+              color: SHADCN_INK,
+              boxShadow: SHADCN_SHADOW_XS,
+              '&:hover': { backgroundColor: SHADCN_SURFACE },
+            },
+            '&:focus-visible': {
+              outline: 'none',
+              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+            },
+          },
+        },
+      },
+      MuiTabs: {
+        styleOverrides: {
+          root: { minHeight: 40 },
+          indicator: { backgroundColor: SHADCN_INK, height: 2 },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            minHeight: 40,
+            padding: '0.5rem 0.85rem',
+            color: SHADCN_INK_SOFT,
+            fontSize: '0.875rem',
+            fontWeight: 500,
+            textTransform: 'none',
+            '&.Mui-selected': { color: SHADCN_INK },
+          },
+        },
+      },
+      MuiList: {
+        styleOverrides: { root: { paddingTop: 0, paddingBottom: 0 } },
+      },
+      MuiListItem: {
+        styleOverrides: {
+          root: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 10,
+            marginBottom: '0.5rem',
+            padding: '0.75rem 1rem',
+            backgroundColor: SHADCN_SURFACE,
+            transition: 'border-color 120ms ease',
+            '&:hover': { borderColor: SHADCN_BORDER_STRONG },
+            '&:last-of-type': { marginBottom: 0 },
+            '& .MuiListItemText-primary': { fontWeight: 500 },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            color: SHADCN_INK,
+            '&:hover': { backgroundColor: SHADCN_MUTED },
+            '&:focus-visible': {
+              boxShadow: `inset 0 0 0 2px ${alpha(SHADCN_RING, 0.6)}`,
+            },
+            '& .MuiListItemText-secondary': { color: SHADCN_INK_SOFT },
+          },
+        },
+      },
+      MuiListItemText: {
+        styleOverrides: { secondary: { color: SHADCN_INK_SOFT } },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderBottom: `1px solid ${SHADCN_BORDER}`,
+            fontSize: '0.875rem',
+            padding: '0.6rem 0.75rem',
+          },
+          head: {
+            color: SHADCN_INK_SOFT,
+            fontSize: '0.8125rem',
+            fontWeight: 500,
+            backgroundColor: 'transparent',
+          },
+          alignRight: { fontVariantNumeric: 'tabular-nums' },
+        },
+      },
+      MuiDivider: {
+        styleOverrides: { root: { borderColor: SHADCN_BORDER } },
+      },
+      MuiAlert: {
+        defaultProps: { severity: 'error', variant: 'outlined' },
+        styleOverrides: {
+          root: {
+            border: `1px solid ${alpha(SHADCN_DESTRUCTIVE, 0.5)}`,
+            borderRadius: 10,
+            backgroundColor: SHADCN_SURFACE,
+            color: SHADCN_DESTRUCTIVE,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiAppBar: {
+        defaultProps: { elevation: 0 },
+        styleOverrides: {
+          root: {
+            backgroundColor: SHADCN_SURFACE,
+            color: SHADCN_INK,
+            borderBottom: `1px solid ${SHADCN_BORDER}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: SHADCN_BG,
+            backgroundImage: 'none',
+            borderRight: `1px solid ${SHADCN_BORDER}`,
+            boxShadow: 'none',
+          },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 12,
+            boxShadow: SHADCN_SHADOW_LG,
+          },
+        },
+      },
+      MuiAutocomplete: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${SHADCN_BORDER}`,
+            borderRadius: 8,
+            boxShadow: SHADCN_SHADOW_MD,
+          },
+          option: {
+            fontSize: '0.875rem',
+            borderRadius: 6,
+            margin: '0 0.25rem',
+            '&[aria-selected="true"]': { backgroundColor: SHADCN_MUTED },
+            '&.Mui-focused': { backgroundColor: SHADCN_MUTED },
+          },
+        },
+      },
+      MuiLinearProgress: {
+        styleOverrides: {
+          root: { height: 6, borderRadius: 999, backgroundColor: SHADCN_BORDER },
+          bar: { borderRadius: 999, backgroundColor: SHADCN_PRIMARY },
+        },
+      },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            backgroundColor: SHADCN_PRIMARY,
+            color: SHADCN_SURFACE,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            borderRadius: 6,
+            padding: '0.35rem 0.65rem',
+          },
+          arrow: { color: SHADCN_PRIMARY },
+        },
+      },
+    },
+  });
 
 const SIGNAL_FONT_UI =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
@@ -1906,7 +2343,7 @@ export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-al
 /**
  * Sidebar section entry. The selected state derives entirely from the active
  * theme's primary token (tint fill + accent rail + accent text), so it reads
- * coherently across all six modes without any hard-coded color.
+ * coherently across all registered modes without any hard-coded color.
  */
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,

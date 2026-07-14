@@ -38,7 +38,7 @@ const isThemeMode = (value: string | null): value is ThemeMode =>
 const isLanguage = (value: string | null): value is Language =>
   value !== null && languageSchema.safeParse(value).success;
 
-const themePreference = persistedPreference('together-theme-mode', isThemeMode, 'logbook');
+const themePreference = persistedPreference('together-theme-mode', isThemeMode, 'shadcn');
 
 export const languagePreference = persistedPreference(
   'together-language',
@@ -47,7 +47,7 @@ export const languagePreference = persistedPreference(
 );
 
 const ThemeModeContext = createContext<{ mode: ThemeMode; setMode: (mode: ThemeMode) => void }>({
-  mode: 'logbook',
+  mode: 'shadcn',
   setMode: () => undefined,
 });
 

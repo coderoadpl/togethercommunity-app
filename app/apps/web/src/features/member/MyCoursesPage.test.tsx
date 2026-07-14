@@ -23,6 +23,7 @@ const courses: Course[] = [
     name: 'JavaScript Foundations',
     description: 'Start from zero.',
     imageUrl: null,
+    moduleOrder: [],
     legacyId: null,
     createdAt: '2026-07-12T10:00:00.000Z',
   },

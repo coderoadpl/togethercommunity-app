@@ -21,6 +21,8 @@ import {
   healthOutputSchema,
   lessonOutputSchema,
   lessonsListOutputSchema,
+  lessonReferencesOutputSchema,
+  lessonDeleteOutputSchema,
   m2mEnrollOutputSchema,
   meOutputSchema,
   memberGrantsOutputSchema,
@@ -65,6 +67,7 @@ import {
   type M2mEnrollRequest,
   type MemberRemoveInput,
   type ModuleAttachInput,
+  type ModuleDetachInput,
   type ModuleCreateInput,
   type ModuleUpdateInput,
   type ProductsAccessItemsInput,
@@ -380,12 +383,32 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.modulesUpdate.method, API_ROUTES.modulesUpdate.path, moduleOutputSchema, input, signal),
   attachModuleToCourse: (input: ModuleAttachInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.modulesAttach.method, API_ROUTES.modulesAttach.path, moduleOutputSchema, input, signal),
+  detachModuleFromCourse: (input: ModuleDetachInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.modulesDetach.method, API_ROUTES.modulesDetach.path, moduleOutputSchema, input, signal),
   listLessons: (signal?: AbortSignal) =>
     request(options, API_ROUTES.lessons.method, API_ROUTES.lessons.path, lessonsListOutputSchema, undefined, signal),
   createLesson: (input: LessonCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.lessonsCreate.method, API_ROUTES.lessonsCreate.path, lessonOutputSchema, input, signal),
   updateLesson: (input: LessonUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.lessonsUpdate.method, API_ROUTES.lessonsUpdate.path, lessonOutputSchema, input, signal),
+  lessonReferences: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.lessonReferences.method,
+      `${API_ROUTES.lessonReferences.path}?id=${encodeURIComponent(lessonId)}`,
+      lessonReferencesOutputSchema,
+      undefined,
+      signal,
+    ),
+  deleteLesson: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.lessonsDelete.method,
+      API_ROUTES.lessonsDelete.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      lessonDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
   studentCourses: (signal?: AbortSignal) =>
     request(
       options,

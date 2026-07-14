@@ -93,8 +93,22 @@ const rollUpCompletion = (statuses: CompletionStatus[]): CompletionStatus => {
 const byModuleOrder = (a: CourseModule, b: CourseModule): number =>
   a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt);
 
-export const modulesForCourse = (course: Course, modules: CourseModule[]): CourseModule[] =>
-  modules.filter((module) => module.courseIds.includes(course.id)).sort(byModuleOrder);
+/**
+ * Modules attached to a course, ordered by the course's explicit `moduleOrder`
+ * (staff-controlled), with any module missing from that list falling back to
+ * creation order at the end — so a freshly attached module is stable until it
+ * is positioned.
+ */
+export const modulesForCourse = (course: Course, modules: CourseModule[]): CourseModule[] => {
+  const rank = new Map(course.moduleOrder.map((moduleId, index) => [moduleId, index]));
+  return modules
+    .filter((module) => module.courseIds.includes(course.id))
+    .sort((a, b) => {
+      const rankA = rank.get(a.id) ?? Number.POSITIVE_INFINITY;
+      const rankB = rank.get(b.id) ?? Number.POSITIVE_INFINITY;
+      return rankA === rankB ? byModuleOrder(a, b) : rankA - rankB;
+    });
+};
 
 export interface LinearContent {
   contentId: string;

@@ -104,6 +104,7 @@ export interface MemberCourseProgressRepository {
     input: { id: string; memberId: string; courseId: string; now: string },
   ): Promise<MemberCourseProgress>;
   update(tenantId: string, progress: MemberCourseProgress): Promise<MemberCourseProgress | null>;
+  countReferencingLesson(tenantId: string, lessonId: string): Promise<number>;
 }
 
 export interface MemberRepository {

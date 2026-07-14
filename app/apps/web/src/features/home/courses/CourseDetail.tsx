@@ -35,6 +35,11 @@ const ChapterEditor = ({
   onRemove,
   onAddContent,
   onRemoveContent,
+  onMoveContent,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
   pending,
 }: {
   chapter: Chapter;
@@ -43,19 +48,39 @@ const ChapterEditor = ({
   onRemove: () => void;
   onAddContent: (lessonId: string, name: string) => void;
   onRemoveContent: (contentId: string) => void;
+  onMoveContent: (contentId: string, direction: -1 | 1) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   pending: boolean;
 }) => {
   const t = useTranslations();
   const [name, setName] = useState(chapter.name);
   const [contentName, setContentName] = useState('');
+  const [nameTouched, setNameTouched] = useState(false);
   const [lessonId, setLessonId] = useState('');
+
+  const selectLesson = (nextLessonId: string) => {
+    setLessonId(nextLessonId);
+    if (!nameTouched) {
+      const picked = lessons.find((lesson) => lesson.id === nextLessonId);
+      setContentName(picked ? picked.name : '');
+    }
+  };
+
+  const duplicate = lessonId !== '' && chapter.contents.some((content) => content.lessonId === lessonId);
 
   const submitContent = (event: FormEvent) => {
     event.preventDefault();
-    if (!lessonId || contentName.trim().length === 0) return;
-    onAddContent(lessonId, contentName.trim());
+    if (!lessonId) return;
+    const fallback = lessons.find((lesson) => lesson.id === lessonId)?.name ?? '';
+    const finalName = contentName.trim().length > 0 ? contentName.trim() : fallback;
+    if (finalName.length === 0) return;
+    onAddContent(lessonId, finalName);
     setContentName('');
     setLessonId('');
+    setNameTouched(false);
   };
 
   return (
@@ -77,6 +102,24 @@ const ChapterEditor = ({
           {t.courses.rename}
         </Button>
         <Box sx={{ flex: 1 }} />
+        <Button
+          size="small"
+          variant="text"
+          disabled={pending || !canMoveUp}
+          aria-label={t.courses.moveChapterUp({ name: chapter.name })}
+          onClick={onMoveUp}
+        >
+          ↑
+        </Button>
+        <Button
+          size="small"
+          variant="text"
+          disabled={pending || !canMoveDown}
+          aria-label={t.courses.moveChapterDown({ name: chapter.name })}
+          onClick={onMoveDown}
+        >
+          ↓
+        </Button>
         <Button size="small" variant="text" color="error" disabled={pending} onClick={onRemove}>
           {t.courses.removeChapter}
         </Button>
@@ -86,20 +129,40 @@ const ChapterEditor = ({
         <Typography variant="caption">{t.courses.noLessonsInChapter}</Typography>
       ) : (
         <List disablePadding dense>
-          {chapter.contents.map((content) => (
+          {chapter.contents.map((content, index) => (
             <ListItem
               key={content.id}
               disableGutters
               secondaryAction={
-                <Button
-                  size="small"
-                  variant="text"
-                  color="error"
-                  disabled={pending}
-                  onClick={() => onRemoveContent(content.id)}
-                >
-                  {t.common.remove}
-                </Button>
+                <Stack direction="row" useFlexGap spacing="0.25rem">
+                  <Button
+                    size="small"
+                    variant="text"
+                    disabled={pending || index === 0}
+                    aria-label={t.courses.moveContentUp({ name: content.name })}
+                    onClick={() => onMoveContent(content.id, -1)}
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    disabled={pending || index === chapter.contents.length - 1}
+                    aria-label={t.courses.moveContentDown({ name: content.name })}
+                    onClick={() => onMoveContent(content.id, 1)}
+                  >
+                    ↓
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="error"
+                    disabled={pending}
+                    onClick={() => onRemoveContent(content.id)}
+                  >
+                    {t.common.remove}
+                  </Button>
+                </Stack>
               }
             >
               <ListItemText primary={content.name} secondary={lessonName(lessons, content.lessonId, t)} />
@@ -116,7 +179,7 @@ const ChapterEditor = ({
               id={`content-lesson-${chapter.id}`}
               displayEmpty
               value={lessonId}
-              onChange={(event) => setLessonId(event.target.value)}
+              onChange={(event) => selectLesson(event.target.value)}
               inputProps={{ 'aria-label': `content lesson ${chapter.id}` }}
             >
               <MenuItem value="">
@@ -135,17 +198,20 @@ const ChapterEditor = ({
               id={`content-name-${chapter.id}`}
               size="small"
               value={contentName}
-              onChange={(event) => setContentName(event.target.value)}
+              onChange={(event) => {
+                setNameTouched(true);
+                setContentName(event.target.value);
+              }}
             />
           </FormControl>
         </Stack>
+        {duplicate ? (
+          <Typography variant="caption" role="alert" color="warning.main">
+            {t.courses.duplicateLessonWarning}
+          </Typography>
+        ) : null}
         <Box>
-          <Button
-            type="submit"
-            size="small"
-            variant="outlined"
-            disabled={pending || !lessonId || contentName.trim().length === 0}
-          >
+          <Button type="submit" size="small" variant="outlined" disabled={pending || !lessonId}>
             {t.courses.addLesson}
           </Button>
         </Box>
@@ -154,7 +220,35 @@ const ChapterEditor = ({
   );
 };
 
-const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: CourseLesson[] }) => {
+const move = <T,>(items: T[], index: number, direction: -1 | 1): T[] => {
+  const target = index + direction;
+  if (target < 0 || target >= items.length) return items;
+  const next = [...items];
+  const [moved] = next.splice(index, 1);
+  if (!moved) return items;
+  next.splice(target, 0, moved);
+  return next;
+};
+
+const ModuleCard = ({
+  module,
+  lessons,
+  onMoveUp,
+  onMoveDown,
+  onDetach,
+  canMoveUp,
+  canMoveDown,
+  reorderPending,
+}: {
+  module: CourseModule;
+  lessons: CourseLesson[];
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDetach: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  reorderPending: boolean;
+}) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(module.title);
@@ -168,7 +262,7 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
     },
   });
 
-  const pending = updateModule.isPending;
+  const pending = updateModule.isPending || reorderPending;
   const saveChapters = (chapters: Chapter[]) => updateModule.mutate({ id: module.id, chapters });
 
   const addChapter = (event: FormEvent) => {
@@ -183,6 +277,8 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
 
   const removeChapter = (chapterId: string) =>
     saveChapters(module.chapters.filter((chapter) => chapter.id !== chapterId));
+
+  const moveChapter = (index: number, direction: -1 | 1) => saveChapters(move(module.chapters, index, direction));
 
   const addContent = (chapterId: string, lessonId: string, name: string) =>
     saveChapters(
@@ -202,11 +298,45 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
       ),
     );
 
+  const moveContent = (chapterId: string, contentId: string, direction: -1 | 1) =>
+    saveChapters(
+      module.chapters.map((chapter) => {
+        if (chapter.id !== chapterId) return chapter;
+        const index = chapter.contents.findIndex((content) => content.id === contentId);
+        if (index < 0) return chapter;
+        return { ...chapter, contents: move(chapter.contents, index, direction) };
+      }),
+    );
+
   const renameModule = () => updateModule.mutate({ id: module.id, title: title.trim(), prefix: prefix.trim() || null });
 
   return (
     <Paper elevation={1} sx={{ p: '1.1rem', display: 'grid', gap: '1rem' }} data-testid="module-card">
-      <TreeModuleTitle component="h3">{module.name}</TreeModuleTitle>
+      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+        <TreeModuleTitle component="h3">{module.name}</TreeModuleTitle>
+        <Box sx={{ flex: 1 }} />
+        <Button
+          size="small"
+          variant="text"
+          disabled={pending || !canMoveUp}
+          aria-label={t.courses.moveModuleUp({ name: module.name })}
+          onClick={onMoveUp}
+        >
+          ↑
+        </Button>
+        <Button
+          size="small"
+          variant="text"
+          disabled={pending || !canMoveDown}
+          aria-label={t.courses.moveModuleDown({ name: module.name })}
+          onClick={onMoveDown}
+        >
+          ↓
+        </Button>
+        <Button size="small" variant="text" color="error" disabled={pending} onClick={onDetach}>
+          {t.courses.detachModule}
+        </Button>
+      </Stack>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }} size="small">
           <FormLabel htmlFor={`module-title-${module.id}`}>{t.products.titleLabel}</FormLabel>
@@ -244,16 +374,21 @@ const ModuleCard = ({ module, lessons }: { module: CourseModule; lessons: Course
         {module.chapters.length === 0 ? (
           <Typography variant="caption">{t.courses.noChapters}</Typography>
         ) : (
-          module.chapters.map((chapter) => (
+          module.chapters.map((chapter, index) => (
             <ChapterEditor
               key={chapter.id}
               chapter={chapter}
               lessons={lessons}
               pending={pending}
+              canMoveUp={index > 0}
+              canMoveDown={index < module.chapters.length - 1}
+              onMoveUp={() => moveChapter(index, -1)}
+              onMoveDown={() => moveChapter(index, 1)}
               onRename={(name) => renameChapter(chapter.id, name)}
               onRemove={() => removeChapter(chapter.id)}
               onAddContent={(lessonId, name) => addContent(chapter.id, lessonId, name)}
               onRemoveContent={(contentId) => removeContent(chapter.id, contentId)}
+              onMoveContent={(contentId, direction) => moveContent(chapter.id, contentId, direction)}
             />
           ))
         )}
@@ -383,10 +518,32 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
   );
 };
 
+const orderAttachedModules = (course: Course, attached: CourseModule[]): CourseModule[] => {
+  const rank = new Map(course.moduleOrder.map((moduleId, index) => [moduleId, index]));
+  return [...attached].sort((a, b) => {
+    const rankA = rank.get(a.id) ?? Number.POSITIVE_INFINITY;
+    const rankB = rank.get(b.id) ?? Number.POSITIVE_INFINITY;
+    if (rankA !== rankB) return rankA - rankB;
+    if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
+    return a.id.localeCompare(b.id);
+  });
+};
+
 export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () => void }) => {
   const t = useTranslations();
+  const queryClient = useQueryClient();
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
+
+  const invalidateTree = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries(actions.modulesInvalidates()),
+      queryClient.invalidateQueries(actions.coursesInvalidates()),
+    ]);
+  };
+
+  const reorderModules = useMutation({ ...actions.updateCourse, onSuccess: invalidateTree });
+  const detachModule = useMutation({ ...actions.detachModule, onSuccess: invalidateTree });
 
   if (modules.isPending || lessons.isPending) {
     return <Typography variant="body1">{t.courses.loadingCourse}</Typography>;
@@ -394,8 +551,17 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   if (modules.isError) return <MutationError error={modules.error} />;
   if (lessons.isError) return <MutationError error={lessons.error} />;
 
-  const attached = modules.data.modules.filter((module) => module.courseIds.includes(course.id));
+  const attached = orderAttachedModules(
+    course,
+    modules.data.modules.filter((module) => module.courseIds.includes(course.id)),
+  );
   const unattached = modules.data.modules.filter((module) => !module.courseIds.includes(course.id));
+  const reorderPending = reorderModules.isPending || detachModule.isPending;
+
+  const moveModule = (index: number, direction: -1 | 1) => {
+    const reordered = move(attached, index, direction);
+    reorderModules.mutate({ id: course.id, moduleOrder: reordered.map((module) => module.id) });
+  };
 
   return (
     <Stack useFlexGap spacing="1.5rem">
@@ -416,12 +582,24 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
         <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
           {t.courses.modulesHeading}
         </Typography>
+        {reorderModules.isError ? <MutationError error={reorderModules.error} /> : null}
+        {detachModule.isError ? <MutationError error={detachModule.error} /> : null}
         {attached.length === 0 ? (
           <Typography variant="body1">{t.courses.noModulesInCourse}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
-            {attached.map((module) => (
-              <ModuleCard key={module.id} module={module} lessons={lessons.data.lessons} />
+            {attached.map((module, index) => (
+              <ModuleCard
+                key={module.id}
+                module={module}
+                lessons={lessons.data.lessons}
+                reorderPending={reorderPending}
+                canMoveUp={index > 0}
+                canMoveDown={index < attached.length - 1}
+                onMoveUp={() => moveModule(index, -1)}
+                onMoveDown={() => moveModule(index, 1)}
+                onDetach={() => detachModule.mutate({ courseId: course.id, moduleId: module.id })}
+              />
             ))}
           </Stack>
         )}

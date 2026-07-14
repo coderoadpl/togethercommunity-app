@@ -134,9 +134,9 @@ describe('content history use-cases', () => {
     const result = await getContentVersion({ identity: identity('t-acme', 'owner') }, 'v9', deps(repo));
     expect(result).toMatchObject({
       ok: true,
-      value: { id: 'v9', entityKind: 'course', schemaVersion: 1, currentSchemaVersion: 1 },
+      value: { id: 'v9', entityKind: 'course', schemaVersion: 1, currentSchemaVersion: 2 },
     });
-    expect(result.ok && result.value.payload).toMatchObject({ id: 'c1', name: 'Old name' });
+    expect(result.ok && result.value.payload).toMatchObject({ id: 'c1', name: 'Old name', moduleOrder: [] });
   });
 
   it('returns not_found for an unknown version id', async () => {

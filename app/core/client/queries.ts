@@ -23,6 +23,7 @@ import type {
   LessonUpdateInput,
   MemberRemoveInput,
   ModuleAttachInput,
+  ModuleDetachInput,
   ModuleCreateInput,
   ModuleUpdateInput,
   ProductsAccessItemsInput,
@@ -164,6 +165,7 @@ export const contentHistoryScopes = {
 
 export const lessonsScopes = {
   all: () => ['lessons'] as const,
+  references: (lessonId: string) => ['lessons', 'references', lessonId] as const,
 };
 
 export const studentScopes = {
@@ -354,6 +356,12 @@ export const attachModuleMutation = (api: ApiClient) =>
     call: (input: ModuleAttachInput) => api.attachModuleToCourse(input),
   });
 
+export const detachModuleMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...modulesScopes.all(), 'detach'],
+    call: (input: ModuleDetachInput) => api.detachModuleFromCourse(input),
+  });
+
 export const createLessonMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...lessonsScopes.all(), 'create'],
@@ -364,6 +372,20 @@ export const updateLessonMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...lessonsScopes.all(), 'update'],
     call: (input: LessonUpdateInput) => api.updateLesson(input),
+  });
+
+export const lessonReferencesQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: lessonsScopes.references(lessonId),
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.lessonReferences(lessonId, signal),
+  });
+
+export const deleteLessonMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'delete'],
+    call: (lessonId: string) => api.deleteLesson(lessonId),
   });
 
 export const updateProductAccessItemsMutation = (api: ApiClient) =>

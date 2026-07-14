@@ -35,6 +35,7 @@ const course: Course = {
   name: 'Launch Kit',
   description: '',
   imageUrl: null,
+  moduleOrder: [],
   legacyId: null,
   createdAt: '2026-07-12T10:00:00.000Z',
 };

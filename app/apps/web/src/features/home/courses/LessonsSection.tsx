@@ -2,6 +2,10 @@ import { useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   FormLabel,
@@ -325,11 +329,73 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
   );
 };
 
+const LessonDeleteDialog = ({ lesson, onClose }: { lesson: CourseLesson; onClose: () => void }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const references = useQuery(actions.lessonReferences(lesson.id));
+  const deleteLesson = useMutation({
+    ...actions.deleteLesson,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.lessonsInvalidates());
+      onClose();
+    },
+  });
+
+  const summary = () => {
+    if (references.isPending) return <Typography variant="body2">{t.lessons.deleteReferencesLoading}</Typography>;
+    if (references.isError) return <MutationError error={references.error} />;
+    const { chapters, products, progressCount } = references.data.references;
+    if (chapters.length === 0 && products.length === 0 && progressCount === 0) {
+      return <Typography variant="body2">{t.lessons.deleteReferencesNone}</Typography>;
+    }
+    return (
+      <Stack useFlexGap spacing="0.35rem">
+        {chapters.length > 0 ? (
+          <Typography variant="body2">{t.lessons.deleteReferencesChapters({ count: chapters.length })}</Typography>
+        ) : null}
+        {products.length > 0 ? (
+          <Typography variant="body2">{t.lessons.deleteReferencesProducts({ count: products.length })}</Typography>
+        ) : null}
+        {progressCount > 0 ? (
+          <Typography variant="body2">{t.lessons.deleteReferencesProgress({ count: progressCount })}</Typography>
+        ) : null}
+      </Stack>
+    );
+  };
+
+  return (
+    <Dialog open onClose={onClose} aria-labelledby="lesson-delete-title">
+      <DialogTitle id="lesson-delete-title">{t.lessons.deleteConfirmTitle}</DialogTitle>
+      <DialogContent>
+        <Stack useFlexGap spacing="0.75rem" sx={{ pt: '0.25rem' }}>
+          <Typography variant="body1">{t.lessons.deleteConfirmIntro({ name: lesson.name })}</Typography>
+          {summary()}
+          {deleteLesson.isError ? <MutationError error={deleteLesson.error} /> : null}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="text" onClick={onClose} disabled={deleteLesson.isPending}>
+          {t.common.cancel}
+        </Button>
+        <Button
+          variant="contained"
+          color="error"
+          onClick={() => deleteLesson.mutate(lesson.id)}
+          disabled={deleteLesson.isPending || references.isPending}
+        >
+          {deleteLesson.isPending ? t.lessons.deleting : t.lessons.deleteConfirm}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 export const LessonsSection = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const lessons = useQuery(actions.lessons);
   const [editing, setEditing] = useState<CourseLesson | null>(null);
+  const [deleting, setDeleting] = useState<CourseLesson | null>(null);
 
   return (
     <Stack useFlexGap spacing="1.5rem">
@@ -354,9 +420,19 @@ export const LessonsSection = () => {
                 key={lesson.id}
                 data-testid="lesson-row"
                 secondaryAction={
-                  <Button variant="text" onClick={() => setEditing(lesson)}>
-                    {t.lessons.edit}
-                  </Button>
+                  <Stack direction="row" useFlexGap spacing="0.25rem">
+                    <Button variant="text" onClick={() => setEditing(lesson)}>
+                      {t.lessons.edit}
+                    </Button>
+                    <Button
+                      variant="text"
+                      color="error"
+                      aria-label={t.lessons.deleteAria({ name: lesson.name })}
+                      onClick={() => setDeleting(lesson)}
+                    >
+                      {t.lessons.delete}
+                    </Button>
+                  </Stack>
                 }
               >
                 <ListItemText
@@ -373,6 +449,8 @@ export const LessonsSection = () => {
           </List>
         )}
       </Box>
+
+      {deleting ? <LessonDeleteDialog lesson={deleting} onClose={() => setDeleting(null)} /> : null}
     </Stack>
   );
 };

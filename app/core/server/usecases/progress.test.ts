@@ -42,12 +42,13 @@ const identity = (over: Partial<Identity>): Identity => ({
 
 const ctx = (over: Partial<Identity>): Ctx => ({ identity: identity(over) });
 
-const course = (id: string, tenantId: string): Course => ({
+const course = (id: string, tenantId: string, moduleOrder: string[] = []): Course => ({
   id,
   tenantId,
   name: `Course ${id}`,
   description: '',
   imageUrl: null,
+  moduleOrder,
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 });
@@ -177,6 +178,12 @@ const makeProgressStore = (): { repo: MemberCourseProgressRepository; rows: Memb
       rows[idx] = progress;
       return progress;
     },
+    countReferencingLesson: async (tenantId, lessonId) =>
+      rows.filter(
+        (r) =>
+          r.tenantId === tenantId &&
+          (r.completedLessonIds.includes(lessonId) || r.lastViewedLessonId === lessonId),
+      ).length,
   };
   return { repo, rows };
 };

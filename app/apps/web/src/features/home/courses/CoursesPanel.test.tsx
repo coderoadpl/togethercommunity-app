@@ -3,7 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { updateCourseModuleInputSchema, type Course, type CourseLesson, type CourseModule } from '@core/domain/index.js';
+import {
+  detachModuleFromCourseInputSchema,
+  updateCourseInputSchema,
+  updateCourseModuleInputSchema,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
+} from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -16,6 +23,7 @@ const course = (over: Partial<Course> = {}): Course => ({
   name: 'Launch Kit',
   description: 'A course',
   imageUrl: null,
+  moduleOrder: [],
   legacyId: null,
   createdAt: '2026-07-12T10:00:00.000Z',
   ...over,
@@ -127,6 +135,7 @@ describe('CoursesPanel courses tab', () => {
 
     await userEvent.click(await screen.findByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: 'Intro lesson' }));
+    await userEvent.clear(screen.getByLabelText(pl.courses.displayName));
     await userEvent.type(screen.getByLabelText(pl.courses.displayName), 'Watch this');
     await userEvent.click(screen.getByRole('button', { name: pl.courses.addLesson }));
 
@@ -134,5 +143,97 @@ describe('CoursesPanel courses tab', () => {
     await waitFor(() => {
       expect(within(screen.getByTestId('module-card')).getByText('Intro lesson')).toBeInTheDocument();
     });
+  });
+
+  it('auto-fills the display name, enables add on pick, and warns on a duplicate lesson', async () => {
+    const chapters = [
+      { id: 'ch1', name: 'Chapter', contents: [{ id: 'ct1', name: 'Existing', lessonId: 'lesson-1' }] },
+    ];
+    const modules = [courseModule({ chapters })];
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({ ok: true, data: { lessons: [lesson({ id: 'lesson-1', name: 'Intro lesson' })] } }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+    );
+
+    renderWithProviders(<CoursesPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+
+    await userEvent.click(await screen.findByRole('combobox', { name: 'content lesson ch1' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Intro lesson' }));
+
+    expect(screen.getByLabelText(pl.courses.displayName)).toHaveValue('Intro lesson');
+    expect(screen.getByRole('button', { name: pl.courses.addLesson })).toBeEnabled();
+    expect(screen.getByText(pl.courses.duplicateLessonWarning)).toBeInTheDocument();
+  });
+
+  it('reorders modules with the up/down controls', async () => {
+    let courses = [course({ moduleOrder: ['module-1', 'module-2'] })];
+    const modules = [
+      courseModule({ id: 'module-1', title: 'Module One' }),
+      courseModule({ id: 'module-2', title: 'Module Two' }),
+    ];
+    let sentOrder: string[] | undefined;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/courses/update', async ({ request }) => {
+        const body = updateCourseInputSchema.parse(await request.json());
+        sentOrder = body.moduleOrder;
+        const current = courses[0];
+        if (!current) return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } });
+        const updated: Course = { ...current, moduleOrder: body.moduleOrder ?? current.moduleOrder };
+        courses = [updated];
+        return HttpResponse.json({ ok: true, data: { course: updated } });
+      }),
+    );
+
+    renderWithProviders(<CoursesPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: pl.courses.moveModuleDown({ name: 'Module One' }) }),
+    );
+
+    await waitFor(() => expect(sentOrder).toEqual(['module-2', 'module-1']));
+    await waitFor(() => {
+      const firstCard = screen.getAllByTestId('module-card')[0];
+      if (!firstCard) throw new Error('no module card rendered');
+      expect(within(firstCard).getByText('Module Two')).toBeInTheDocument();
+    });
+  });
+
+  it('detaches a module from the course', async () => {
+    let modules = [courseModule({ id: 'module-1', title: 'Module One' })];
+    let detached: { courseId: string; moduleId: string } | undefined;
+    server.use(
+      http.get('/api/courses', () =>
+        HttpResponse.json({ ok: true, data: { courses: [course({ moduleOrder: ['module-1'] })] } }),
+      ),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules/detach', async ({ request }) => {
+        detached = detachModuleFromCourseInputSchema.parse(await request.json());
+        const updated = courseModule({ id: 'module-1', title: 'Module One', courseIds: [] });
+        modules = [updated];
+        return HttpResponse.json({ ok: true, data: { module: updated } });
+      }),
+    );
+
+    renderWithProviders(<CoursesPanel />);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.detachModule }));
+
+    await waitFor(() => expect(detached).toEqual({ courseId: 'course-1', moduleId: 'module-1' }));
+    expect(await screen.findByText(pl.courses.noModulesInCourse)).toBeInTheDocument();
   });
 });

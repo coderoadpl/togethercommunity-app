@@ -2,6 +2,8 @@ import {
   attachModuleToCourseInputSchema,
   buildSnapshot,
   computeCourseModuleName,
+  deleteCourseLessonInputSchema,
+  detachModuleFromCourseInputSchema,
   err,
   forbidden,
   newCourseLessonSchema,
@@ -15,12 +17,16 @@ import {
   updateCourseModuleInputSchema,
   updateProductAccessItemsInputSchema,
   validation,
+  type AccessItem,
   type AppError,
   type Chapter,
   type Course,
   type CourseLesson,
   type CourseModule,
   type EntityKind,
+  type LessonReferenceChapter,
+  type LessonReferenceProduct,
+  type LessonReferences,
   type Product,
   type Result,
   type UpdateProductAccessItemsInput,
@@ -34,6 +40,7 @@ import type {
   CourseRepository,
   EntityVersionRecord,
   IdGenerator,
+  MemberCourseProgressRepository,
   ProductRepository,
 } from '../ports.js';
 
@@ -42,6 +49,7 @@ export interface CourseManagementDeps {
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   products: ProductRepository;
+  progress: MemberCourseProgressRepository;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -152,6 +160,7 @@ export const createCourse = async (
     name: parsed.data.name,
     description: parsed.data.description,
     imageUrl: parsed.data.imageUrl,
+    moduleOrder: [],
     legacyId: parsed.data.legacyId,
     createdAt: deps.clock.nowIso(),
   };
@@ -172,6 +181,24 @@ export const updateCourse = async (
   const existing = await deps.courses.findById(tenant.value, parsed.data.id);
   if (!existing) return err(notFound(`No course "${parsed.data.id}" in this tenant`));
 
+  let moduleOrder = existing.moduleOrder;
+  if (parsed.data.moduleOrder !== undefined) {
+    const requested = unique(parsed.data.moduleOrder);
+    if (requested.length !== parsed.data.moduleOrder.length) {
+      return err(validation('Module order may not contain duplicate module ids'));
+    }
+    const attached = (await deps.modules.list(tenant.value)).filter((module) =>
+      module.courseIds.includes(existing.id),
+    );
+    const attachedIds = new Set(attached.map((module) => module.id));
+    if (requested.some((moduleId) => !attachedIds.has(moduleId))) {
+      return err(validation('Module order may only reference modules attached to this course'));
+    }
+    const requestedSet = new Set(requested);
+    const trailing = attached.filter((module) => !requestedSet.has(module.id)).map((module) => module.id);
+    moduleOrder = [...requested, ...trailing];
+  }
+
   const snapshot = snapshotOf(ctx, 'course', existing.id, existing, deps);
   if (!snapshot.ok) return snapshot;
 
@@ -180,6 +207,7 @@ export const updateCourse = async (
     name: parsed.data.name ?? existing.name,
     description: parsed.data.description ?? existing.description,
     imageUrl: parsed.data.imageUrl === undefined ? existing.imageUrl : parsed.data.imageUrl,
+    moduleOrder,
   };
   const saved = await deps.courses.update(tenant.value, updated, snapshot.value);
   return saved ? ok(saved) : err(notFound(`No course "${parsed.data.id}" in this tenant`));
@@ -314,7 +342,163 @@ export const attachModuleToCourse = async (
 
   const updated: CourseModule = { ...module, courseIds: [...module.courseIds, course.id] };
   const saved = await deps.modules.update(tenant.value, updated);
-  return saved ? ok(saved) : err(notFound(`No module "${parsed.data.moduleId}" in this tenant`));
+  if (!saved) return err(notFound(`No module "${parsed.data.moduleId}" in this tenant`));
+
+  if (!course.moduleOrder.includes(module.id)) {
+    const snapshot = snapshotOf(ctx, 'course', course.id, course, deps);
+    if (!snapshot.ok) return snapshot;
+    await deps.courses.update(
+      tenant.value,
+      { ...course, moduleOrder: [...course.moduleOrder, module.id] },
+      snapshot.value,
+    );
+  }
+  return ok(saved);
+}
+
+export const detachModuleFromCourse = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CourseManagementDeps,
+): Promise<Result<CourseModule, AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  const parsed = detachModuleFromCourseInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid module detachment', parsed.error.flatten()));
+
+  const course = await deps.courses.findById(tenant.value, parsed.data.courseId);
+  if (!course) return err(notFound(`No course "${parsed.data.courseId}" in this tenant`));
+  const module = await deps.modules.findById(tenant.value, parsed.data.moduleId);
+  if (!module) return err(notFound(`No module "${parsed.data.moduleId}" in this tenant`));
+  if (!module.courseIds.includes(course.id)) return ok(module);
+
+  const updated: CourseModule = {
+    ...module,
+    courseIds: module.courseIds.filter((courseId) => courseId !== course.id),
+  };
+  const saved = await deps.modules.update(tenant.value, updated);
+  if (!saved) return err(notFound(`No module "${parsed.data.moduleId}" in this tenant`));
+
+  if (course.moduleOrder.includes(module.id)) {
+    const snapshot = snapshotOf(ctx, 'course', course.id, course, deps);
+    if (!snapshot.ok) return snapshot;
+    await deps.courses.update(
+      tenant.value,
+      { ...course, moduleOrder: course.moduleOrder.filter((moduleId) => moduleId !== module.id) },
+      snapshot.value,
+    );
+  }
+  return ok(saved);
+}
+
+const collectLessonReferences = async (
+  tenantId: string,
+  lesson: CourseLesson,
+  deps: Pick<CourseManagementDeps, 'modules' | 'products' | 'progress'>,
+): Promise<LessonReferences> => {
+  const [modules, products, progressCount] = await Promise.all([
+    deps.modules.list(tenantId),
+    deps.products.listByTenant(tenantId),
+    deps.progress.countReferencingLesson(tenantId, lesson.id),
+  ]);
+
+  const chapters: LessonReferenceChapter[] = [];
+  for (const module of modules) {
+    for (const chapter of module.chapters) {
+      for (const content of chapter.contents) {
+        if (content.lessonId !== lesson.id) continue;
+        chapters.push({
+          moduleId: module.id,
+          moduleName: module.name,
+          chapterId: chapter.id,
+          chapterName: chapter.name,
+          contentId: content.id,
+          contentName: content.name,
+        });
+      }
+    }
+  }
+
+  const referencesLesson = (item: AccessItem): boolean =>
+    item.level === 'lessons' && item.lessonIds.includes(lesson.id);
+  const productRefs: LessonReferenceProduct[] = products
+    .filter((product) => product.accessItems.some(referencesLesson))
+    .map((product) => ({ productId: product.id, productTitle: product.title }));
+
+  return { lessonId: lesson.id, lessonName: lesson.name, chapters, products: productRefs, progressCount };
+};
+
+export const listLessonReferences = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CourseManagementDeps,
+): Promise<Result<LessonReferences, AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  const parsed = deleteCourseLessonInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid lesson reference query', parsed.error.flatten()));
+
+  const lesson = await deps.lessons.findById(tenant.value, parsed.data.id);
+  if (!lesson) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+
+  return ok(await collectLessonReferences(tenant.value, lesson, deps));
+};
+
+const withoutLesson = (item: AccessItem, lessonId: string): AccessItem | null => {
+  if (item.level !== 'lessons') return item;
+  const lessonIds = item.lessonIds.filter((id) => id !== lessonId);
+  if (lessonIds.length === 0) return null;
+  return { ...item, lessonIds };
+};
+
+export const deleteLesson = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: CourseManagementDeps,
+): Promise<Result<LessonReferences, AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  const parsed = deleteCourseLessonInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid lesson deletion', parsed.error.flatten()));
+
+  const lesson = await deps.lessons.findById(tenant.value, parsed.data.id);
+  if (!lesson) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+
+  const references = await collectLessonReferences(tenant.value, lesson, deps);
+
+  const deleted = await deps.lessons.delete(tenant.value, lesson.id);
+  if (!deleted) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+
+  const modules = await deps.modules.list(tenant.value);
+  for (const module of modules) {
+    const referencesLesson = module.chapters.some((chapter) =>
+      chapter.contents.some((content) => content.lessonId === lesson.id),
+    );
+    if (!referencesLesson) continue;
+    const chapters: Chapter[] = module.chapters.map((chapter) => ({
+      ...chapter,
+      contents: chapter.contents.filter((content) => content.lessonId !== lesson.id),
+    }));
+    const snapshot = snapshotOf(ctx, 'course_module', module.id, module, deps);
+    if (!snapshot.ok) return snapshot;
+    await deps.modules.update(tenant.value, { ...module, chapters }, snapshot.value);
+  }
+
+  const products = await deps.products.listByTenant(tenant.value);
+  for (const product of products) {
+    const referencesLesson = product.accessItems.some(
+      (item) => item.level === 'lessons' && item.lessonIds.includes(lesson.id),
+    );
+    if (!referencesLesson) continue;
+    const accessItems = product.accessItems
+      .map((item) => withoutLesson(item, lesson.id))
+      .filter((item): item is AccessItem => item !== null);
+    const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
+    if (!snapshot.ok) return snapshot;
+    await deps.products.updateAccessItems(tenant.value, product.id, accessItems, snapshot.value);
+  }
+
+  return ok(references);
 };
 
 export const updateProductAccessItems = async (

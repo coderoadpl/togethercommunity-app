@@ -86,6 +86,7 @@ export const courseSchema = z.object({
   name: requiredNameSchema,
   description: z.string(),
   imageUrl: z.string().url().nullable(),
+  moduleOrder: z.array(z.string()),
   legacyId: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -249,6 +250,7 @@ export const updateCourseInputSchema = z.object({
   name: requiredNameSchema.optional(),
   description: z.string().optional(),
   imageUrl: z.string().url().nullable().optional(),
+  moduleOrder: z.array(z.string().min(1)).optional(),
 });
 
 export type UpdateCourseInput = z.input<typeof updateCourseInputSchema>;
@@ -294,3 +296,44 @@ export const attachModuleToCourseInputSchema = z.object({
 });
 
 export type AttachModuleToCourseInput = z.input<typeof attachModuleToCourseInputSchema>;
+
+export const detachModuleFromCourseInputSchema = z.object({
+  courseId: z.string().min(1),
+  moduleId: z.string().min(1),
+});
+
+export type DetachModuleFromCourseInput = z.input<typeof detachModuleFromCourseInputSchema>;
+
+export const deleteCourseLessonInputSchema = z.object({
+  id: z.string().min(1),
+});
+
+export type DeleteCourseLessonInput = z.input<typeof deleteCourseLessonInputSchema>;
+
+export const lessonReferenceChapterSchema = z.object({
+  moduleId: z.string(),
+  moduleName: z.string(),
+  chapterId: z.string(),
+  chapterName: z.string(),
+  contentId: z.string(),
+  contentName: z.string(),
+});
+
+export type LessonReferenceChapter = z.infer<typeof lessonReferenceChapterSchema>;
+
+export const lessonReferenceProductSchema = z.object({
+  productId: z.string(),
+  productTitle: z.string(),
+});
+
+export type LessonReferenceProduct = z.infer<typeof lessonReferenceProductSchema>;
+
+export const lessonReferencesSchema = z.object({
+  lessonId: z.string(),
+  lessonName: z.string(),
+  chapters: z.array(lessonReferenceChapterSchema),
+  products: z.array(lessonReferenceProductSchema),
+  progressCount: z.number().int().nonnegative(),
+});
+
+export type LessonReferences = z.infer<typeof lessonReferencesSchema>;

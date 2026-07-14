@@ -20,6 +20,7 @@ import {
   memberRemoveInputSchema,
   m2mEnrollRequestSchema,
   moduleAttachInputSchema,
+  moduleDetachInputSchema,
   moduleCreateInputSchema,
   moduleUpdateInputSchema,
   productsAccessItemsInputSchema,
@@ -53,6 +54,7 @@ import {
 } from '@core/domain/index.js';
 import {
   attachModuleToCourse,
+  detachModuleFromCourse,
   authenticateApiKey,
   createCourse,
   createCheckoutSession,
@@ -61,7 +63,9 @@ import {
   createProduct,
   createTenant,
   createTenantApiKey,
+  deleteLesson,
   deleteTenantSecret,
+  listLessonReferences,
   getContentHistory,
   getContentVersion,
   devGrantProduct,
@@ -738,6 +742,14 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ module: result.value }) : result);
   });
 
+  app.post(API_PATHS.modulesDetach, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = moduleDetachInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid module detach payload', parsed.error.flatten())));
+    const result = await detachModuleFromCourse({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ module: result.value }) : result);
+  });
+
   app.get(API_PATHS.lessons, async (c) => {
     const result = await listLessons({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ lessons: result.value }) : result);
@@ -757,6 +769,18 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid lesson update payload', parsed.error.flatten())));
     const result = await updateLesson({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ lesson: result.value }) : result);
+  });
+
+  app.get(API_PATHS.lessonReferences, async (c) => {
+    const id = c.req.query('id');
+    if (id === undefined) return respond(err(validation('Missing "id" query parameter')));
+    const result = await listLessonReferences({ identity: c.get('identity') }, { id }, deps);
+    return respond(result.ok ? ok({ references: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.lessonsDelete, async (c) => {
+    const result = await deleteLesson({ identity: c.get('identity') }, { id: c.req.param('lessonId') }, deps);
+    return respond(result.ok ? ok({ references: result.value }) : result);
   });
 
   app.get(API_PATHS.studentCourses, async (c) => {

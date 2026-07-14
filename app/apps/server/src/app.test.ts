@@ -192,6 +192,7 @@ const deps = (input: {
         updatedAt: input.now,
       }),
       update: async (_tenantId, progress) => progress,
+      countReferencingLesson: async () => 0,
     },
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,

@@ -217,6 +217,14 @@ export interface Messages {
     attaching: string;
     attachModule: string;
     saveModule: string;
+    detachModule: string;
+    detaching: string;
+    moveModuleUp: (params: { name: string }) => string;
+    moveModuleDown: (params: { name: string }) => string;
+    moveChapterUp: (params: { name: string }) => string;
+    moveChapterDown: (params: { name: string }) => string;
+    moveContentUp: (params: { name: string }) => string;
+    moveContentDown: (params: { name: string }) => string;
     chaptersHeading: string;
     noChapters: string;
     newChapterName: string;
@@ -229,6 +237,7 @@ export interface Messages {
     selectLesson: string;
     displayName: string;
     addLesson: string;
+    duplicateLessonWarning: string;
     unknownLesson: string;
     historyHeading: string;
     historyLoading: string;
@@ -261,6 +270,17 @@ export interface Messages {
     moveUp: (params: { index: number }) => string;
     moveDown: (params: { index: number }) => string;
     removeBlock: (params: { index: number }) => string;
+    delete: string;
+    deleteAria: (params: { name: string }) => string;
+    deleteConfirmTitle: string;
+    deleteConfirmIntro: (params: { name: string }) => string;
+    deleteReferencesNone: string;
+    deleteReferencesChapters: (params: { count: number }) => string;
+    deleteReferencesProducts: (params: { count: number }) => string;
+    deleteReferencesProgress: (params: { count: number }) => string;
+    deleteReferencesLoading: string;
+    deleteConfirm: string;
+    deleting: string;
   };
   members: {
     heading: string;

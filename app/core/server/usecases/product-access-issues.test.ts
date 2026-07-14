@@ -43,6 +43,7 @@ const course = (id: string): Course => ({
   name: `Course ${id}`,
   description: '',
   imageUrl: null,
+  moduleOrder: [],
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 });

@@ -28,6 +28,7 @@ import {
   validation,
   type AccessStatus,
   type AppError,
+  type LessonReferences,
   type Result,
 } from '@core/domain/index.js';
 
@@ -107,8 +108,21 @@ const courseUpdateOptionsSchema = z.object({
   name: z.string().trim().min(1).optional(),
   description: z.string().optional(),
   imageUrl: z.string().url().optional(),
+  moduleOrder: z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    )
+    .optional(),
 });
 const moduleAttachOptionsSchema = z.object({
+  course: z.string().min(1),
+  module: z.string().min(1),
+});
+const moduleDetachOptionsSchema = z.object({
   course: z.string().min(1),
   module: z.string().min(1),
 });
@@ -605,6 +619,7 @@ course
   .option('--name <name>')
   .option('--description <description>')
   .option('--image-url <url>')
+  .option('--module-order <ids>', 'comma-separated module ids in display order')
   .action(
     withInput(z.tuple([z.string().min(1), courseUpdateOptionsSchema]), async (ctx, [id, options]) => {
       emit(
@@ -613,6 +628,7 @@ course
           ...(options.name === undefined ? {} : { name: options.name }),
           ...(options.description === undefined ? {} : { description: options.description }),
           ...(options.imageUrl === undefined ? {} : { imageUrl: options.imageUrl }),
+          ...(options.moduleOrder === undefined ? {} : { moduleOrder: options.moduleOrder }),
         }),
         ctx.json,
         (data) => `updated course: ${data.course.name} (${data.course.id.slice(0, 8)})`,
@@ -731,6 +747,21 @@ moduleCommand
     }),
   );
 
+moduleCommand
+  .command('detach')
+  .description('Detach a module from a course (keeps the module in the pool)')
+  .requiredOption('--course <courseId>')
+  .requiredOption('--module <moduleId>')
+  .action(
+    withInput(z.tuple([moduleDetachOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.detachModuleFromCourse({ courseId: options.course, moduleId: options.module }),
+        ctx.json,
+        (data) => `detached module ${data.module.id.slice(0, 8)} from course ${options.course.slice(0, 8)}`,
+      );
+    }),
+  );
+
 const lesson = program.command('lesson').description('Course lessons (staff only)');
 
 lesson.command('list').description('List lessons').action(
@@ -785,6 +816,45 @@ lesson
       }
       emit(await ctx.api.updateLesson(input.value), ctx.json, (data) =>
         `updated lesson: ${data.lesson.name} (${data.lesson.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+const describeLessonReferences = (references: LessonReferences): string => {
+  const lines = [`lesson ${references.lessonName} (${references.lessonId.slice(0, 8)})`];
+  lines.push(
+    references.chapters.length === 0
+      ? 'chapters: none'
+      : `chapters: ${references.chapters.map((chapter) => `${chapter.moduleName} / ${chapter.chapterName}`).join(', ')}`,
+  );
+  lines.push(
+    references.products.length === 0
+      ? 'products: none'
+      : `products: ${references.products.map((product) => product.productTitle).join(', ')}`,
+  );
+  lines.push(`progress records: ${references.progressCount}`);
+  return lines.join('\n');
+};
+
+lesson
+  .command('references <id>')
+  .description('Show what references a lesson (chapters, products, progress)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.lessonReferences(id), ctx.json, (data) => describeLessonReferences(data.references));
+    }),
+  );
+
+lesson
+  .command('delete <id>')
+  .description('Delete a lesson and clean up its references (chapters, product access items)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(
+        await ctx.api.deleteLesson(id),
+        ctx.json,
+        (data) =>
+          `deleted lesson ${data.references.lessonName} (${data.references.lessonId.slice(0, 8)})\n${describeLessonReferences(data.references)}`,
       );
     }),
   );

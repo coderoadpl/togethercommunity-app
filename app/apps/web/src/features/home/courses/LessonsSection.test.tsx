@@ -59,4 +59,74 @@ describe('LessonsSection blocks editor', () => {
     });
     expect(await screen.findByText('Reordered Lesson')).toBeInTheDocument();
   });
+
+  it('shows what references a lesson and deletes it after confirmation', async () => {
+    let lessons: CourseLesson[] = [
+      {
+        id: 'lesson-1',
+        tenantId: 't1',
+        name: 'Intro lesson',
+        contents: [],
+        legacyId: null,
+        createdAt: '2026-07-12T10:00:00.000Z',
+      },
+    ];
+    let deleted = false;
+
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons } })),
+      http.get('/api/lessons/references', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            references: {
+              lessonId: 'lesson-1',
+              lessonName: 'Intro lesson',
+              chapters: [
+                {
+                  moduleId: 'm1',
+                  moduleName: 'Module',
+                  chapterId: 'ch1',
+                  chapterName: 'Chapter',
+                  contentId: 'ct1',
+                  contentName: 'Intro',
+                },
+              ],
+              products: [{ productId: 'p1', productTitle: 'Bundle' }],
+              progressCount: 2,
+            },
+          },
+        }),
+      ),
+      http.delete('/api/lessons/:lessonId', () => {
+        deleted = true;
+        lessons = [];
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            references: {
+              lessonId: 'lesson-1',
+              lessonName: 'Intro lesson',
+              chapters: [],
+              products: [],
+              progressCount: 2,
+            },
+          },
+        });
+      }),
+    );
+
+    renderWithProviders(<LessonsSection />);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.lessons.deleteAria({ name: 'Intro lesson' }) }));
+
+    expect(await screen.findByText(pl.lessons.deleteReferencesChapters({ count: 1 }))).toBeInTheDocument();
+    expect(screen.getByText(pl.lessons.deleteReferencesProducts({ count: 1 }))).toBeInTheDocument();
+    expect(screen.getByText(pl.lessons.deleteReferencesProgress({ count: 2 }))).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.deleteConfirm }));
+
+    await waitFor(() => expect(deleted).toBe(true));
+    expect(await screen.findByText(pl.lessons.empty)).toBeInTheDocument();
+  });
 });

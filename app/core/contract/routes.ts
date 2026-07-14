@@ -7,6 +7,8 @@ import {
   courseModuleSchema,
   courseSchema,
   courseStructureWithAccessSchema,
+  detachModuleFromCourseInputSchema,
+  lessonReferencesSchema,
   createApiKeyInputSchema,
   entityHistoryEntrySchema,
   entityHistoryQuerySchema,
@@ -282,6 +284,10 @@ export const moduleAttachInputSchema = attachModuleToCourseInputSchema;
 
 export type ModuleAttachInput = z.input<typeof moduleAttachInputSchema>;
 
+export const moduleDetachInputSchema = detachModuleFromCourseInputSchema;
+
+export type ModuleDetachInput = z.input<typeof moduleDetachInputSchema>;
+
 export const moduleOutputSchema = z.object({
   module: courseModuleSchema,
 });
@@ -296,6 +302,14 @@ export type LessonUpdateInput = z.input<typeof lessonUpdateInputSchema>;
 
 export const lessonOutputSchema = z.object({
   lesson: courseLessonSchema,
+});
+
+export const lessonReferencesOutputSchema = z.object({
+  references: lessonReferencesSchema,
+});
+
+export const lessonDeleteOutputSchema = z.object({
+  references: lessonReferencesSchema,
 });
 
 export const contentHistoryQuerySchema = entityHistoryQuerySchema;
@@ -444,9 +458,12 @@ export const API_ROUTES = {
   modulesCreate: { method: 'POST', path: '/api/modules' },
   modulesUpdate: { method: 'POST', path: '/api/modules/update' },
   modulesAttach: { method: 'POST', path: '/api/modules/attach' },
+  modulesDetach: { method: 'POST', path: '/api/modules/detach' },
   lessons: { method: 'GET', path: '/api/lessons' },
   lessonsCreate: { method: 'POST', path: '/api/lessons' },
   lessonsUpdate: { method: 'POST', path: '/api/lessons/update' },
+  lessonReferences: { method: 'GET', path: '/api/lessons/references' },
+  lessonsDelete: { method: 'DELETE', path: '/api/lessons/:lessonId' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
@@ -502,9 +519,12 @@ export const API_PATHS = {
   modulesCreate: API_ROUTES.modulesCreate.path,
   modulesUpdate: API_ROUTES.modulesUpdate.path,
   modulesAttach: API_ROUTES.modulesAttach.path,
+  modulesDetach: API_ROUTES.modulesDetach.path,
   lessons: API_ROUTES.lessons.path,
   lessonsCreate: API_ROUTES.lessonsCreate.path,
   lessonsUpdate: API_ROUTES.lessonsUpdate.path,
+  lessonReferences: API_ROUTES.lessonReferences.path,
+  lessonsDelete: API_ROUTES.lessonsDelete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,

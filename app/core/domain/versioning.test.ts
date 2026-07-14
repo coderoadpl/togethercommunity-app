@@ -95,9 +95,10 @@ describe('upcaster chain runner', () => {
 
 describe('buildSnapshot', () => {
   it('stamps the current schema version and validates the entity', () => {
-    const entity = SNAPSHOT_FIXTURES.course[1];
+    const currentVersion = CURRENT_SNAPSHOT_SCHEMA_VERSION.course;
+    const entity = SNAPSHOT_FIXTURES.course[currentVersion];
     const result = buildSnapshot('course', entity);
-    expect(result).toMatchObject({ ok: true, value: { schemaVersion: 1 } });
+    expect(result).toMatchObject({ ok: true, value: { schemaVersion: currentVersion } });
   });
 
   it('fails internally when the entity does not match the current schema', () => {

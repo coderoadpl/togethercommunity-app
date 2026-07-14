@@ -5,6 +5,7 @@ import type {
   CourseLesson,
   CourseModule,
   Identity,
+  MemberCourseProgress,
   Product,
   StaffRole,
 } from '@core/domain/index.js';
@@ -14,6 +15,7 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   EntityVersionRecord,
+  MemberCourseProgressRepository,
   ProductRepository,
 } from '../ports.js';
 import {
@@ -21,7 +23,10 @@ import {
   createCourse,
   createLesson,
   createModule,
+  deleteLesson,
+  detachModuleFromCourse,
   listCourses,
+  listLessonReferences,
   updateCourse,
   updateLesson,
   updateModule,
@@ -42,12 +47,13 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   memberId: null,
 });
 
-const course = (id: string, tenantId: string): Course => ({
+const course = (id: string, tenantId: string, moduleOrder: string[] = []): Course => ({
   id,
   tenantId,
   name: `Course ${id}`,
   description: '',
   imageUrl: null,
+  moduleOrder,
   legacyId: null,
   createdAt: now,
 });
@@ -181,11 +187,31 @@ const productRepo = (store: Product[], versions: EntityVersionRecord[] = []): Pr
   bumpContentVersion: async () => undefined,
 });
 
+const progressRepo = (store: MemberCourseProgress[] = []): MemberCourseProgressRepository => ({
+  findByMemberAndCourse: async () => null,
+  findOrCreate: async (_tenantId, { id, memberId, courseId, now: createdAt }) => ({
+    id,
+    tenantId: _tenantId,
+    memberId,
+    courseId,
+    completedLessonIds: [],
+    updatedAt: createdAt,
+  }),
+  update: async (_tenantId, progress) => progress,
+  countReferencingLesson: async (tenantId, lessonId) =>
+    store.filter(
+      (progress) =>
+        progress.tenantId === tenantId &&
+        (progress.completedLessonIds.includes(lessonId) || progress.lastViewedLessonId === lessonId),
+    ).length,
+});
+
 const deps = (input: {
   courses?: Course[];
   modules?: CourseModule[];
   lessons?: CourseLesson[];
   products?: Product[];
+  progress?: MemberCourseProgress[];
   ids?: string[];
   versions?: EntityVersionRecord[];
 } = {}): CourseManagementDeps => {
@@ -196,6 +222,7 @@ const deps = (input: {
     modules: moduleRepo(input.modules ?? [], versions),
     lessons: lessonRepo(input.lessons ?? [], versions),
     products: productRepo(input.products ?? [], versions),
+    progress: progressRepo(input.progress ?? []),
     ids: {
       nextId: () => {
         const next = ids.shift();
@@ -253,7 +280,7 @@ describe('course management use-cases', () => {
       id: 'snapshot-1',
       entityKind: 'course',
       entityId: 'c1',
-      schemaVersion: 1,
+      schemaVersion: 2,
       createdBy: 'u1',
     });
     // The snapshot captures the PREVIOUS name, not the new one.
@@ -440,5 +467,148 @@ describe('course management use-cases', () => {
       deps(),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('creates a course with an empty module order', async () => {
+    const store: Course[] = [];
+    const created = await createCourse(
+      { identity: identity('t-acme', 'admin') },
+      { name: 'Course' },
+      deps({ courses: store, ids: ['course-1'] }),
+    );
+    expect(created).toMatchObject({ ok: true, value: { moduleOrder: [] } });
+  });
+
+  it('appends an attached module to the course module order and cleans it on detach', async () => {
+    const courses = [course('c1', 't-acme')];
+    const modules = [module('m1', 't-acme'), module('m2', 't-acme')];
+    const d = deps({ courses, modules, ids: ['snap-1', 'snap-2', 'snap-3'] });
+
+    await attachModuleToCourse({ identity: identity('t-acme', 'owner') }, { courseId: 'c1', moduleId: 'm1' }, d);
+    await attachModuleToCourse({ identity: identity('t-acme', 'owner') }, { courseId: 'c1', moduleId: 'm2' }, d);
+    expect(courses[0]?.moduleOrder).toEqual(['m1', 'm2']);
+
+    const detached = await detachModuleFromCourse(
+      { identity: identity('t-acme', 'owner') },
+      { courseId: 'c1', moduleId: 'm1' },
+      d,
+    );
+    expect(detached).toMatchObject({ ok: true, value: { courseIds: [] } });
+    expect(courses[0]?.moduleOrder).toEqual(['m2']);
+    expect(modules.find((m) => m.id === 'm1')?.courseIds).toEqual([]);
+  });
+
+  it('reorders modules through updateCourse and appends unlisted attached modules', async () => {
+    const courses = [course('c1', 't-acme', ['m1', 'm2', 'm3'])];
+    const modules = [
+      module('m1', 't-acme', ['c1']),
+      module('m2', 't-acme', ['c1']),
+      module('m3', 't-acme', ['c1']),
+    ];
+    const d = deps({ courses, modules, ids: ['snap-1'] });
+
+    const reordered = await updateCourse(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'c1', moduleOrder: ['m3', 'm1'] },
+      d,
+    );
+    expect(reordered).toMatchObject({ ok: true });
+    expect(courses[0]?.moduleOrder).toEqual(['m3', 'm1', 'm2']);
+  });
+
+  it('rejects a module order referencing modules not attached to the course', async () => {
+    const d = deps({
+      courses: [course('c1', 't-acme', ['m1'])],
+      modules: [module('m1', 't-acme', ['c1']), module('m2', 't-acme')],
+    });
+    const result = await updateCourse(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'c1', moduleOrder: ['m1', 'm2'] },
+      d,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects a module order with duplicate ids', async () => {
+    const d = deps({
+      courses: [course('c1', 't-acme', ['m1'])],
+      modules: [module('m1', 't-acme', ['c1'])],
+    });
+    const result = await updateCourse(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'c1', moduleOrder: ['m1', 'm1'] },
+      d,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('lists what references a lesson before deletion', async () => {
+    const chapters = [
+      { id: 'ch1', name: 'Chapter', contents: [{ id: 'ct1', name: 'Intro', lessonId: 'l1' }] },
+    ];
+    const d = deps({
+      lessons: [lesson('l1', 't-acme')],
+      modules: [{ ...module('m1', 't-acme', ['c1']), chapters }],
+      products: [{ ...product('p1', 't-acme'), accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }] }],
+      progress: [
+        {
+          id: 'pr1',
+          tenantId: 't-acme',
+          memberId: 'mem1',
+          courseId: 'c1',
+          completedLessonIds: ['l1'],
+          updatedAt: now,
+        },
+      ],
+    });
+
+    const result = await listLessonReferences({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d);
+    expect(result.ok && result.value).toMatchObject({
+      lessonId: 'l1',
+      chapters: [{ moduleId: 'm1', chapterId: 'ch1', contentId: 'ct1' }],
+      products: [{ productId: 'p1' }],
+      progressCount: 1,
+    });
+  });
+
+  it('deletes a lesson and cleans chapter and product references, leaving progress', async () => {
+    const chapters = [
+      {
+        id: 'ch1',
+        name: 'Chapter',
+        contents: [
+          { id: 'ct1', name: 'Intro', lessonId: 'l1' },
+          { id: 'ct2', name: 'Keep', lessonId: 'l2' },
+        ],
+      },
+    ];
+    const modules = [{ ...module('m1', 't-acme', ['c1']), chapters }];
+    const products = [
+      { ...product('p1', 't-acme'), accessItems: [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1', 'l2'] }] },
+      { ...product('p2', 't-acme'), accessItems: [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }] },
+    ];
+    const lessons = [lesson('l1', 't-acme'), lesson('l2', 't-acme')];
+    const d = deps({
+      lessons,
+      modules,
+      products,
+      ids: ['snap-module', 'snap-p1', 'snap-p2'],
+    });
+
+    const result = await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d);
+    expect(result).toMatchObject({ ok: true, value: { lessonId: 'l1' } });
+    expect(lessons.map((item) => item.id)).toEqual(['l2']);
+    expect(modules[0]?.chapters[0]?.contents.map((content) => content.id)).toEqual(['ct2']);
+    expect(products[0]?.accessItems).toEqual([{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
+    expect(products[1]?.accessItems).toEqual([]);
+  });
+
+  it('reports not found when deleting a missing lesson', async () => {
+    const result = await deleteLesson(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'missing' },
+      deps(),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });

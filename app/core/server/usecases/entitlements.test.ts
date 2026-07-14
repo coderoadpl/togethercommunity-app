@@ -77,12 +77,13 @@ const module = (
   createdAt,
 });
 
-const course = (id: string): Course => ({
+const course = (id: string, moduleOrder: string[] = []): Course => ({
   id,
   tenantId: 't1',
   name: `Course ${id}`,
   description: '',
   imageUrl: null,
+  moduleOrder,
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 });
@@ -220,6 +221,12 @@ const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressReposit
     updatedAt: input.now,
   }),
   update: async (_t, progress) => progress,
+  countReferencingLesson: async (tenantId, lessonId) =>
+    rows.filter(
+      (r) =>
+        r.tenantId === tenantId &&
+        (r.completedLessonIds.includes(lessonId) || r.lastViewedLessonId === lessonId),
+    ).length,
 });
 
 const deps = (

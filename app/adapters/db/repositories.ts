@@ -220,6 +220,7 @@ export const createCourseRepository = (db: Db): CourseRepository => ({
           name: course.name,
           description: course.description,
           imageUrl: course.imageUrl,
+          moduleOrder: course.moduleOrder,
           legacyId: course.legacyId,
         })
         .where(and(eq(courses.tenantId, tenantId), eq(courses.id, course.id)))
@@ -497,6 +498,18 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
           lastViewedChapterId: row.lastViewedChapterId ?? undefined,
         })
       : null;
+  },
+  countReferencingLesson: async (tenantId, lessonId) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(memberCourseProgress)
+      .where(
+        and(
+          eq(memberCourseProgress.tenantId, tenantId),
+          sql`(${memberCourseProgress.completedLessonIds} @> ${JSON.stringify([lessonId])}::jsonb or ${memberCourseProgress.lastViewedLessonId} = ${lessonId})`,
+        ),
+      );
+    return rows[0]?.value ?? 0;
   },
 });
 

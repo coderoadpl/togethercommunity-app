@@ -190,6 +190,7 @@ export const courses = pgTable(
     name: text('name').notNull(),
     description: text('description').notNull(),
     imageUrl: text('image_url'),
+    moduleOrder: jsonb('module_order').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
     createdAt: text('created_at').notNull(),
   },

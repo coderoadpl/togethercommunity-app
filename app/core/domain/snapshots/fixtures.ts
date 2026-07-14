@@ -72,6 +72,19 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
       legacyId: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     },
+    3: {
+      id: 'lesson-fixture-3',
+      tenantId: 'tenant-fixture',
+      name: 'Welcome lesson',
+      contents: [
+        { type: 'video', storageKey: 'videos/welcome', streamVideoId: 'stream-1' },
+        { type: 'pdf', pdfUrl: '/assets/sample-lekcja.pdf', name: 'Cheatsheet' },
+        { type: 'html', html: '<p>Hello</p>' },
+      ],
+      durationMinutes: 12,
+      legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
   },
   product: {
     1: {

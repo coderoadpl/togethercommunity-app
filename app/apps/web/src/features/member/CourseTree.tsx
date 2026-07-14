@@ -4,6 +4,7 @@ import {
   Collapse,
   FormControl,
   FormLabel,
+  Link,
   List,
   ListItemButton,
   OutlinedInput,
@@ -21,7 +22,7 @@ import type {
 } from '@core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { TreeChapterTitle, TreeModuleTitle } from '../../theme.js';
+import { LessonDurationText, TreeChapterTitle, TreeModuleTitle } from '../../theme.js';
 import { Highlighted } from './highlight.js';
 import { Caret, CompletionFull, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
 
@@ -63,15 +64,22 @@ const LessonRow = ({
   lesson,
   courseId,
   search,
+  currentLessonId,
 }: {
   lesson: CourseStructureLesson;
   courseId: string;
   search: string;
+  currentLessonId?: string | undefined;
 }) => {
   const t = useTranslations();
   const label = <Highlighted text={lesson.name} query={search} />;
   const marks = (
     <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem', ml: '0.5rem' }}>
+      {lesson.durationMinutes !== undefined && (
+        <LessonDurationText data-testid={`lesson-duration-${lesson.lessonId}`}>
+          {t.courseTree.lessonDuration({ minutes: lesson.durationMinutes })}
+        </LessonDurationText>
+      )}
       <CompletionMark status={lesson.completionStatus} />
       <AccessMark status={lesson.accessStatus} />
     </Stack>
@@ -79,18 +87,31 @@ const LessonRow = ({
 
   if (lesson.accessStatus === 'not-accessible') {
     return (
-      <Tooltip title={t.courseTree.lockedTooltip}>
-        <Box component="span" sx={{ display: 'block' }}>
-          <ListItemButton
-            disabled
-            data-testid={`lesson-button-${lesson.lessonId}`}
-            sx={{ pl: '3.4rem', pr: '0.75rem', opacity: 0.6 }}
-          >
-            <Box sx={{ flex: 1, minWidth: 0 }}>{label}</Box>
-            {marks}
-          </ListItemButton>
-        </Box>
-      </Tooltip>
+      <>
+        <Tooltip title={t.courseTree.lockedTooltip}>
+          <Box component="span" sx={{ display: 'block' }}>
+            <ListItemButton
+              disabled
+              data-testid={`lesson-button-${lesson.lessonId}`}
+              sx={{ pl: '3.4rem', pr: '0.75rem', opacity: 0.6 }}
+            >
+              <Box sx={{ flex: 1, minWidth: 0 }}>{label}</Box>
+              {marks}
+            </ListItemButton>
+          </Box>
+        </Tooltip>
+        {lesson.unlockProductId !== undefined && (
+          <Box sx={{ pl: '3.4rem', pr: '0.75rem', pb: '0.5rem', mt: '-0.25rem' }}>
+            <Link
+              href={`/checkout/${lesson.unlockProductId}`}
+              variant="body2"
+              data-testid={`unlock-lesson-${lesson.lessonId}`}
+            >
+              {t.courseTree.unlockAccess}
+            </Link>
+          </Box>
+        )}
+      </>
     );
   }
 
@@ -98,6 +119,7 @@ const LessonRow = ({
     <ListItemButton
       component="a"
       href={`/my/courses/${courseId}/lessons/${lesson.lessonId}`}
+      selected={lesson.lessonId === currentLessonId}
       data-testid={`lesson-button-${lesson.lessonId}`}
       sx={{ pl: '3.4rem', pr: '0.75rem' }}
     >
@@ -113,12 +135,14 @@ const ChapterNode = ({
   search,
   open,
   onToggle,
+  currentLessonId,
 }: {
   chapter: VisibleChapter;
   courseId: string;
   search: string;
   open: boolean;
   onToggle: () => void;
+  currentLessonId?: string | undefined;
 }) => (
   <Box component="li" sx={{ listStyle: 'none' }}>
     <ListItemButton
@@ -137,7 +161,12 @@ const ChapterNode = ({
       <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
         {chapter.lessons.map((lesson) => (
           <Box component="li" key={lesson.contentId} sx={{ listStyle: 'none' }}>
-            <LessonRow lesson={lesson} courseId={courseId} search={search} />
+            <LessonRow
+              lesson={lesson}
+              courseId={courseId}
+              search={search}
+              currentLessonId={currentLessonId}
+            />
           </Box>
         ))}
       </List>
@@ -151,12 +180,14 @@ const ModuleNode = ({
   search,
   isOpen,
   onToggle,
+  currentLessonId,
 }: {
   module: VisibleModule;
   courseId: string;
   search: string;
   isOpen: (id: string) => boolean;
   onToggle: (id: string) => void;
+  currentLessonId?: string | undefined;
 }) => {
   const open = isOpen(module.id);
   return (
@@ -183,6 +214,7 @@ const ModuleNode = ({
               search={search}
               open={isOpen(chapter.id)}
               onToggle={() => onToggle(chapter.id)}
+              currentLessonId={currentLessonId}
             />
           ))}
         </List>
@@ -194,9 +226,11 @@ const ModuleNode = ({
 export const CourseTree = ({
   courseId,
   structure,
+  currentLessonId,
 }: {
   courseId: string;
   structure: CourseStructureWithAccess;
+  currentLessonId?: string | undefined;
 }) => {
   const t = useTranslations();
   const [rawSearch, setRawSearch] = useState('');
@@ -248,6 +282,7 @@ export const CourseTree = ({
               search={searchActive ? search : ''}
               isOpen={isOpen}
               onToggle={toggle}
+              currentLessonId={currentLessonId}
             />
           ))}
         </List>

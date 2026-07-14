@@ -273,6 +273,8 @@ export interface Messages {
     contentBlocks: string;
     noBlocks: string;
     blockTypeLabel: string;
+    durationLabel: string;
+    durationHelper: string;
     htmlEditTab: string;
     htmlPreviewTab: string;
     htmlTabsAria: string;
@@ -381,6 +383,7 @@ export interface Messages {
     lockedTooltip: string;
     courseSyllabus: string;
     noPublishedContent: string;
+    emptyCourseTitle: string;
     courseUnavailable: string;
     courseNotInLibrary: string;
     backToMyCourses: string;
@@ -389,11 +392,29 @@ export interface Messages {
     noMatches: string;
     loadingCourse: string;
     courseNotFound: string;
+    lessonDuration: (params: { minutes: number }) => string;
+    unlockAccess: string;
+  };
+  courseOverview: {
+    progressTitle: string;
+    completedOf: (params: { done: number; total: number }) => string;
+    percentValue: (params: { percent: number }) => string;
+    continueLearning: string;
+    goToFirstLesson: string;
+    curriculum: string;
+    aboutCourse: string;
+    coverAlt: (params: { name: string }) => string;
+    statLessons: string;
+    statDuration: string;
+    statCompleted: string;
+    durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
+    durationMinutesOnly: (params: { minutes: number }) => string;
   };
   lesson: {
     loading: string;
     unavailable: string;
     eyebrow: string;
+    noContentTitle: string;
     noContent: string;
     videoPlaceholder: string;
     openPdf: string;

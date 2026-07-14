@@ -161,12 +161,30 @@ export const locateLesson = (
   return null;
 };
 
+/**
+ * The cheapest published product whose access items unlock the given lesson —
+ * the one upsell target a locked row can honestly advertise.
+ */
+export const cheapestUnlockingProduct = (
+  publishedProducts: Product[],
+  location: { courseId: string; moduleId: string; lessonId: string },
+): Product | null => {
+  let cheapest: Product | null = null;
+  for (const product of publishedProducts) {
+    const lookup = buildAccessLookup(product.accessItems);
+    if (!isLessonAccessibleByLookup(lookup, location)) continue;
+    if (cheapest === null || product.priceCents < cheapest.priceCents) cheapest = product;
+  }
+  return cheapest;
+};
+
 export const buildCourseStructure = (
   course: Course,
   modules: CourseModule[],
   lessonsById: Map<string, CourseLesson>,
   lookup: AccessLookup,
   completedLessonIds: Set<string>,
+  publishedProducts: Product[] = [],
 ): CourseStructureWithAccess => {
   const structureModules = modulesForCourse(course, modules).map((module) => {
     const moduleGranted =
@@ -176,6 +194,14 @@ export const buildCourseStructure = (
       const lessons = chapter.contents.map((content) => {
         const accessible =
           moduleGranted || lookup.lessonIds.has(content.lessonId);
+        const unlockProduct = accessible
+          ? null
+          : cheapestUnlockingProduct(publishedProducts, {
+              courseId: course.id,
+              moduleId: module.id,
+              lessonId: content.lessonId,
+            });
+        const durationMinutes = lessonsById.get(content.lessonId)?.durationMinutes;
         return {
           contentId: content.id,
           lessonId: content.lessonId,
@@ -184,6 +210,8 @@ export const buildCourseStructure = (
           completionStatus: completedLessonIds.has(content.lessonId)
             ? ('fully-completed' as const)
             : ('not-completed' as const),
+          ...(durationMinutes === undefined ? {} : { durationMinutes }),
+          ...(unlockProduct === null ? {} : { unlockProductId: unlockProduct.id }),
         };
       });
       return {

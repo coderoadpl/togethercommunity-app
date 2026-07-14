@@ -115,11 +115,14 @@ export const courseModuleSchema = z
 
 export type CourseModule = z.infer<typeof courseModuleSchema>;
 
+export const lessonDurationSchema = z.number().int().positive();
+
 export const courseLessonSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   name: requiredNameSchema,
   contents: z.array(lessonBlockSchema),
+  durationMinutes: lessonDurationSchema.optional(),
   legacyId: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -162,6 +165,8 @@ export const courseStructureLessonSchema = z.object({
   name: z.string(),
   accessStatus: accessStatusSchema,
   completionStatus: completionStatusSchema,
+  durationMinutes: lessonDurationSchema.optional(),
+  unlockProductId: z.string().optional(),
 });
 
 export type CourseStructureLesson = z.infer<typeof courseStructureLessonSchema>;
@@ -277,6 +282,7 @@ export type UpdateCourseModuleInput = z.input<typeof updateCourseModuleInputSche
 export const newCourseLessonSchema = z.object({
   name: requiredNameSchema,
   contents: z.array(lessonBlockSchema).default([]),
+  durationMinutes: lessonDurationSchema.optional(),
   legacyId: z.string().nullable().default(null),
 });
 
@@ -286,6 +292,7 @@ export const updateCourseLessonInputSchema = z.object({
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
   contents: z.array(lessonBlockSchema).optional(),
+  durationMinutes: lessonDurationSchema.nullable().optional(),
 });
 
 export type UpdateCourseLessonInput = z.input<typeof updateCourseLessonInputSchema>;

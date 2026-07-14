@@ -82,7 +82,10 @@ const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.par
 const parseProcessedPaymentEvent = (event: ProcessedPaymentEvent): ProcessedPaymentEvent =>
   processedPaymentEventSchema.parse(event);
 
-const parseLesson = (lesson: CourseLesson): CourseLesson => courseLessonSchema.parse(lesson);
+const parseLesson = (
+  lesson: Omit<CourseLesson, 'durationMinutes'> & { durationMinutes: number | null },
+): CourseLesson =>
+  courseLessonSchema.parse({ ...lesson, durationMinutes: lesson.durationMinutes ?? undefined });
 
 const parseModule = (module: Omit<CourseModule, 'name'>): CourseModule =>
   courseModuleSchema.parse({
@@ -350,6 +353,7 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .set({
           name: lesson.name,
           contents: lesson.contents,
+          durationMinutes: lesson.durationMinutes ?? null,
           legacyId: lesson.legacyId,
         })
         .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, lesson.id)))

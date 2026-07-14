@@ -10,7 +10,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import type { CourseStructureWithAccess } from '@core/domain/index.js';
+import type { Course, CourseStructureWithAccess, ProgressView } from '@core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -41,6 +41,7 @@ const structure: CourseStructureWithAccess = {
               name: 'Intro to Variables',
               accessStatus: 'fully-accessible',
               completionStatus: 'fully-completed',
+              durationMinutes: 12,
             },
             {
               contentId: 'ct2',
@@ -48,6 +49,7 @@ const structure: CourseStructureWithAccess = {
               name: 'Advanced Variables',
               accessStatus: 'fully-accessible',
               completionStatus: 'not-completed',
+              durationMinutes: 18,
             },
           ],
         },
@@ -86,6 +88,15 @@ const structure: CourseStructureWithAccess = {
               name: 'Closures Deep Dive',
               accessStatus: 'not-accessible',
               completionStatus: 'not-completed',
+              durationMinutes: 30,
+              unlockProductId: 'prod-advanced',
+            },
+            {
+              contentId: 'ct5',
+              lessonId: 'l5',
+              name: 'Uncovered Lesson',
+              accessStatus: 'not-accessible',
+              completionStatus: 'not-completed',
             },
           ],
         },
@@ -94,10 +105,41 @@ const structure: CourseStructureWithAccess = {
   ],
 };
 
-const mockStructure = (body: CourseStructureWithAccess = structure) => {
+const catalog: Course[] = [
+  {
+    id: 'course-1',
+    tenantId: 't1',
+    name: 'JavaScript Foundations',
+    description: 'Start from zero.',
+    imageUrl: 'https://picsum.photos/seed/js/960/540',
+    moduleOrder: [],
+    legacyId: null,
+    createdAt: '2026-07-12T10:00:00.000Z',
+  },
+];
+
+const progressView = (lastViewedLessonId?: string): ProgressView => ({
+  courseId: 'course-1',
+  completedLessonIds: ['l1'],
+  ...(lastViewedLessonId === undefined ? {} : { lastViewedLessonId }),
+});
+
+const mockPage = ({
+  body = structure,
+  lastViewedLessonId,
+}: {
+  body?: CourseStructureWithAccess;
+  lastViewedLessonId?: string;
+} = {}) => {
   server.use(
     http.get('/api/student/courses/:courseId/structure', () =>
       HttpResponse.json({ ok: true, data: { structure: body } }),
+    ),
+    http.get('/api/student/progress', () =>
+      HttpResponse.json({ ok: true, data: { progress: progressView(lastViewedLessonId) } }),
+    ),
+    http.get('/api/student/courses', () =>
+      HttpResponse.json({ ok: true, data: { courses: catalog } }),
     ),
   );
 };
@@ -114,7 +156,7 @@ const renderPage = async (node: ReactNode) => {
 
 describe('CourseStructurePage', () => {
   it('renders every node as a teaser regardless of access', async () => {
-    mockStructure();
+    mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     expect(await screen.findByRole('heading', { name: 'JavaScript Foundations' })).toBeInTheDocument();
@@ -125,7 +167,7 @@ describe('CourseStructurePage', () => {
   });
 
   it('decorates the three access states with the right icons and disabled behavior', async () => {
-    mockStructure();
+    mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const accessible = await screen.findByTestId('lesson-button-l1');
@@ -145,7 +187,7 @@ describe('CourseStructurePage', () => {
   });
 
   it('shows completion checkmarks per lesson, chapter and module', async () => {
-    mockStructure();
+    mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const completedLesson = await screen.findByTestId('lesson-button-l1');
@@ -159,7 +201,7 @@ describe('CourseStructurePage', () => {
   });
 
   it('collapses a module when its header is clicked', async () => {
-    mockStructure();
+    mockPage();
     const user = userEvent.setup();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
@@ -169,7 +211,7 @@ describe('CourseStructurePage', () => {
   });
 
   it('filters to matching lessons, auto-expands and highlights the match', async () => {
-    mockStructure();
+    mockPage();
     const user = userEvent.setup();
     const { container } = await renderPage(<CourseStructurePage courseId="course-1" />);
 
@@ -185,10 +227,104 @@ describe('CourseStructurePage', () => {
     expect(mark?.textContent).toBe('Scope');
   });
 
+  it('shows per-lesson durations only when present', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const timed = await screen.findByTestId('lesson-duration-l1');
+    expect(timed).toHaveTextContent('12 min');
+    expect(screen.getByTestId('lesson-duration-l4')).toHaveTextContent('30 min');
+    expect(screen.queryByTestId('lesson-duration-l3')).not.toBeInTheDocument();
+  });
+
+  it('summarizes lessons, total duration and completion in the stat tiles', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const lessonsTile = await screen.findByTestId('stat-tile-lessons');
+    expect(lessonsTile).toHaveTextContent('5');
+    expect(screen.getByTestId('stat-tile-duration')).toHaveTextContent('1 godz. 0 min');
+    expect(screen.getByTestId('stat-tile-completed')).toHaveTextContent('20%');
+    expect(screen.getByTestId('progress-summary')).toHaveTextContent('1 z 5 ukończone');
+  });
+
+  it('points the continue CTA at the last viewed lesson', async () => {
+    mockPage({ lastViewedLessonId: 'l2' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cta = await screen.findByTestId('continue-cta');
+    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+    expect(screen.getByTestId('first-lesson-link')).toHaveAttribute(
+      'href',
+      '/my/courses/course-1/lessons/l1',
+    );
+  });
+
+  it('falls back to the first accessible lesson without a last viewed one', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cta = await screen.findByTestId('continue-cta');
+    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+  });
+
+  it('hides the continue CTA when no lesson is accessible', async () => {
+    const locked: CourseStructureWithAccess = {
+      ...structure,
+      accessStatus: 'not-accessible',
+      modules: structure.modules.map((module) => ({
+        ...module,
+        accessStatus: 'not-accessible',
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          accessStatus: 'not-accessible',
+          lessons: chapter.lessons.map((lesson) => ({
+            ...lesson,
+            accessStatus: 'not-accessible',
+          })),
+        })),
+      })),
+    };
+    mockPage({ body: locked });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    await screen.findByTestId('course-progress-card');
+    expect(screen.queryByTestId('continue-cta')).not.toBeInTheDocument();
+  });
+
+  it('offers an unlock link only for locked lessons covered by a product', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const unlock = await screen.findByTestId('unlock-lesson-l4');
+    expect(unlock).toHaveAttribute('href', '/checkout/prod-advanced');
+    expect(unlock).toHaveTextContent(pl.courseTree.unlockAccess);
+    expect(screen.queryByTestId('unlock-lesson-l5')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('unlock-lesson-l1')).not.toBeInTheDocument();
+  });
+
+  it('shows a friendly empty state for a course without modules', async () => {
+    mockPage({ body: { ...structure, modules: [] } });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const empty = await screen.findByTestId('course-empty-state');
+    expect(within(empty).getByTestId('empty-course-icon')).toBeInTheDocument();
+    expect(empty).toHaveTextContent(pl.courseTree.emptyCourseTitle);
+    expect(empty).toHaveTextContent(pl.courseTree.noPublishedContent);
+    expect(screen.queryByTestId('curriculum-card')).not.toBeInTheDocument();
+  });
+
   it('shows a not-found state for a course outside the library', async () => {
     server.use(
       http.get('/api/student/courses/:courseId/structure', () =>
         HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+      http.get('/api/student/progress', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Not found' } }, { status: 404 }),
+      ),
+      http.get('/api/student/courses', () =>
+        HttpResponse.json({ ok: true, data: { courses: [] } }),
       ),
     );
     await renderPage(<CourseStructurePage courseId="course-9" />);

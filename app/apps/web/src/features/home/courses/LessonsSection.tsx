@@ -8,6 +8,7 @@ import {
   DialogTitle,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   List,
   ListItem,
@@ -305,6 +306,9 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [name, setName] = useState(lesson?.name ?? '');
+  const [duration, setDuration] = useState(
+    lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
+  );
   const [blocks, setBlocks] = useState<BlockDraft[]>(lesson ? lesson.contents.map(toDraft) : []);
   const [addType, setAddType] = useState<BlockType>('video');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -342,8 +346,17 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
       setValidationError(parsed.message);
       return;
     }
-    if (lesson) updateLesson.mutate({ id: lesson.id, name: name.trim(), contents: parsed.blocks });
-    else createLesson.mutate({ name: name.trim(), contents: parsed.blocks });
+    const minutes = Number.parseInt(duration, 10);
+    const durationMinutes = Number.isInteger(minutes) && minutes > 0 ? minutes : null;
+    if (lesson) {
+      updateLesson.mutate({ id: lesson.id, name: name.trim(), contents: parsed.blocks, durationMinutes });
+    } else {
+      createLesson.mutate({
+        name: name.trim(),
+        contents: parsed.blocks,
+        ...(durationMinutes === null ? {} : { durationMinutes }),
+      });
+    }
   };
 
   return (
@@ -354,6 +367,18 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
       <FormControl fullWidth>
         <FormLabel htmlFor="lesson-name">{t.common.name}</FormLabel>
         <OutlinedInput id="lesson-name" value={name} onChange={(event) => setName(event.target.value)} required />
+      </FormControl>
+      <FormControl sx={{ maxWidth: '14rem' }}>
+        <FormLabel htmlFor="lesson-duration">{t.lessons.durationLabel}</FormLabel>
+        <OutlinedInput
+          id="lesson-duration"
+          size="small"
+          type="number"
+          value={duration}
+          onChange={(event) => setDuration(event.target.value)}
+          inputProps={{ min: 1, step: 1, 'data-testid': 'lesson-duration-input' }}
+        />
+        <FormHelperText>{t.lessons.durationHelper}</FormHelperText>
       </FormControl>
 
       <Divider />

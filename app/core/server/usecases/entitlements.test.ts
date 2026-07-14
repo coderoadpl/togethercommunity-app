@@ -19,6 +19,7 @@ import type {
   CourseRepository,
   MemberCourseProgressRepository,
   ProductGrantRepository,
+  ProductRepository,
 } from '../ports.js';
 import {
   getAccessibleLesson,
@@ -229,18 +230,31 @@ const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressReposit
     ).length,
 });
 
+const productsRepo = (rows: Product[]): ProductRepository => ({
+  listByTenant: async (tenantId) => rows.filter((p) => p.tenantId === tenantId),
+  listPublishedByTenant: async (tenantId) =>
+    rows.filter((p) => p.tenantId === tenantId && p.published),
+  findById: async (tenantId, id) => rows.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
+  create: async () => undefined,
+  updateAccessItems: async () => null,
+  setPublished: async () => undefined,
+  bumpContentVersion: async () => undefined,
+});
+
 const deps = (
   grants: ProductGrant[],
   products: Product[],
   courses: Course[] = [c1],
   modules: CourseModule[] = [m1, m2],
   progress: MemberCourseProgress[] = [],
+  lessonRows: CourseLesson[] = lessons,
 ): CourseAccessDeps => ({
   grants: grantsRepo(grants, products),
   courses: coursesRepo(courses),
   modules: modulesRepo(modules),
-  lessons: lessonsRepo(lessons),
+  lessons: lessonsRepo(lessonRows),
   progress: progressRepo(progress),
+  products: productsRepo(products),
   clock,
 });
 
@@ -529,6 +543,64 @@ describe('getCourseStructureWithAccess', () => {
   it('unknown course is not found', async () => {
     const result = await getCourseStructureWithAccess(ctx({}), 'nope', deps([], []));
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
+describe('getCourseStructureWithAccess — durations and upsell', () => {
+  const priced = (id: string, priceCents: number, accessItems: Product['accessItems'], published = true): Product => ({
+    ...product(id, accessItems),
+    priceCents,
+    published,
+  });
+
+  const catalogue = [
+    priced('p-full', 10000, [{ level: 'course', courseId: 'c1' }]),
+    priced('p-m2', 5000, [{ level: 'modules', courseId: 'c1', moduleIds: ['m2'] }]),
+    priced('p-l4', 2000, [{ level: 'lessons', courseId: 'c1', lessonIds: ['l4'] }]),
+    priced('p-draft', 100, [{ level: 'course', courseId: 'c1' }], false),
+  ];
+
+  const lessonsAt = (result: Awaited<ReturnType<typeof getCourseStructureWithAccess>>) => {
+    if (!result.ok) throw new Error('expected ok');
+    return result.value.modules.flatMap((m) => m.chapters.flatMap((c) => c.lessons));
+  };
+
+  it('points each locked lesson at the cheapest published covering product', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], catalogue));
+    const all = lessonsAt(result);
+    const byId = new Map(all.map((l) => [l.lessonId, l]));
+    expect(nn(byId.get('l1')).unlockProductId).toBe('p-full');
+    expect(nn(byId.get('l4')).unlockProductId).toBe('p-l4');
+    expect(nn(byId.get('l5')).unlockProductId).toBe('p-m2');
+  });
+
+  it('never suggests unpublished products even when they are cheapest', async () => {
+    const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], catalogue));
+    expect(lessonsAt(result).some((l) => l.unlockProductId === 'p-draft')).toBe(false);
+  });
+
+  it('omits the upsell on accessible lessons and when nothing covers a lesson', async () => {
+    const covered = await getCourseStructureWithAccess(
+      ctx({}),
+      'c1',
+      deps([grant('g1', 'p-full', '2026-05-01T00:00:00.000Z', null)], catalogue),
+    );
+    expect(lessonsAt(covered).every((l) => l.unlockProductId === undefined)).toBe(true);
+
+    const uncovered = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], []));
+    expect(lessonsAt(uncovered).every((l) => l.unlockProductId === undefined)).toBe(true);
+  });
+
+  it('carries lesson durations into the structure', async () => {
+    const timed = lessons.map((l) => (l.id === 'l1' ? { ...l, durationMinutes: 12 } : l));
+    const result = await getCourseStructureWithAccess(
+      ctx({}),
+      'c1',
+      deps([], [], [c1], [m1, m2], [], timed),
+    );
+    const byId = new Map(lessonsAt(result).map((l) => [l.lessonId, l]));
+    expect(nn(byId.get('l1')).durationMinutes).toBe(12);
+    expect(nn(byId.get('l2')).durationMinutes).toBeUndefined();
   });
 });
 

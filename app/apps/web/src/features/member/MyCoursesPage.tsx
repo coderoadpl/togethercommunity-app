@@ -8,8 +8,18 @@ import type { CompletionStatus, Course } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
-import { CardTitle, CourseCardRoot, Eyebrow, LedgerHeader } from '../../theme.js';
+import {
+  CardTitle,
+  CourseCardCover,
+  CourseCardCoverFallback,
+  CourseCardInitials,
+  CourseCardRoot,
+  EmptyStateContent,
+  Eyebrow,
+  LedgerHeader,
+} from '../../theme.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
+import { EmptyLibraryIcon } from './overview-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -40,9 +50,39 @@ const CompletionChip = ({ courseId }: { courseId: string }) => {
   );
 };
 
+const courseInitials = (name: string): string =>
+  name
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+    .slice(0, 2)
+    .map((word) => (word[0] ?? '').toLocaleUpperCase())
+    .join('');
+
+const CourseCardMedia = ({ course }: { course: Course }) => {
+  const t = useTranslations();
+  if (course.imageUrl !== null) {
+    return (
+      <CourseCardCover
+        src={course.imageUrl}
+        alt={t.courseOverview.coverAlt({ name: course.name })}
+        loading="lazy"
+        data-testid={`course-cover-${course.id}`}
+      />
+    );
+  }
+  return (
+    <CourseCardCoverFallback data-testid={`course-cover-fallback-${course.id}`}>
+      <CourseCardInitials component="span" aria-hidden>
+        {courseInitials(course.name)}
+      </CourseCardInitials>
+    </CourseCardCoverFallback>
+  );
+};
+
 const CourseCard = ({ course }: { course: Course }) => (
   <CourseCardRoot component="a" href={`/my/courses/${course.id}`} data-testid={`course-card-${course.id}`}>
-    <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', height: '100%' }}>
+    <CourseCardMedia course={course} />
+    <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
       <Stack direction="row" useFlexGap sx={{ alignItems: 'flex-start', columnGap: '0.75rem' }}>
         <CardTitle variant="h2" sx={{ flex: 1, minWidth: 0 }}>
           {course.name}
@@ -105,11 +145,12 @@ export const MyCoursesPage = () => {
 
       <Box component="section" sx={{ mt: '2.5rem' }}>
         {courses.data.courses.length === 0 ? (
-          <Paper elevation={1} sx={{ p: '1.5rem' }}>
-            <CardTitle variant="h1">{t.student.noCourses}</CardTitle>
-            <Typography variant="body1" sx={{ mt: '1rem' }}>
-              {t.student.coursesWillAppear}
-            </Typography>
+          <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid="my-courses-empty-state">
+            <EmptyStateContent useFlexGap sx={{ rowGap: '0.75rem' }}>
+              <EmptyLibraryIcon />
+              <CardTitle variant="h1">{t.student.noCourses}</CardTitle>
+              <Typography variant="body1">{t.student.coursesWillAppear}</Typography>
+            </EmptyStateContent>
           </Paper>
         ) : (
           <Box

@@ -122,6 +122,7 @@ const STUDIO_BILLING_PORTAL_URL = 'https://billing.stripe.com/p/login/test_examp
 
 interface LessonDef {
   id: string;
+  durationMinutes: number;
   name: string;
   contents: LessonBlock[];
 }
@@ -129,6 +130,7 @@ interface LessonDef {
 const studioLessons: LessonDef[] = [
   {
     id: 'lesson-js-demo-video',
+    durationMinutes: 4,
     name: 'Demo wideo (Bunny Stream)',
     contents: [
       video(BUNNY_DEMO_LIBRARY_ID, BUNNY_DEMO_VIDEO_ID),
@@ -139,6 +141,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-zmienne-1',
+    durationMinutes: 12,
     name: 'Deklarowanie zmiennych',
     contents: [
       embed('W6NZfCO5SIk'),
@@ -153,6 +156,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-zmienne-2',
+    durationMinutes: 15,
     name: 'Typy proste i złożone',
     contents: [
       html(
@@ -163,6 +167,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-funkcje-1',
+    durationMinutes: 18,
     name: 'Funkcje i argumenty',
     contents: [
       embed('N8ap4k_1QEQ'),
@@ -173,6 +178,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-funkcje-2',
+    durationMinutes: 22,
     name: 'Domknięcia i zakres',
     contents: [
       html(
@@ -183,6 +189,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-dom-1',
+    durationMinutes: 14,
     name: 'Wybieranie elementów DOM',
     contents: [
       embed('0ik6X4DJKCc'),
@@ -194,6 +201,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-dom-2',
+    durationMinutes: 19,
     name: 'Zdarzenia i interakcja',
     contents: [
       html(
@@ -205,6 +213,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-js-projekt-1',
+    durationMinutes: 35,
     name: 'Projekt: lista zadań',
     contents: [
       embed('8dWL3wF_OMw'),
@@ -216,6 +225,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-react-jsx-1',
+    durationMinutes: 11,
     name: 'Czym jest JSX',
     contents: [
       embed('SqcY0GlETPk'),
@@ -227,6 +237,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-react-jsx-2',
+    durationMinutes: 16,
     name: 'Komponenty i propsy',
     contents: [
       html(
@@ -237,6 +248,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-react-state-1',
+    durationMinutes: 14,
     name: 'Stan komponentu z useState',
     contents: [
       embed('O6P86uwfdR0'),
@@ -248,6 +260,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-react-state-2',
+    durationMinutes: 17,
     name: 'Przepływ danych i podnoszenie stanu',
     contents: [
       html(
@@ -258,6 +271,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-react-hooks-1',
+    durationMinutes: 21,
     name: 'Efekty uboczne z useEffect',
     contents: [
       embed('0ZJgIjIuY7U'),
@@ -269,6 +283,7 @@ const studioLessons: LessonDef[] = [
   },
   {
     id: 'lesson-react-hooks-2',
+    durationMinutes: 25,
     name: 'Tworzenie własnych hooków',
     contents: [
       html(
@@ -283,6 +298,7 @@ const studioLessons: LessonDef[] = [
 const akademiaLessons: LessonDef[] = [
   {
     id: 'lesson-akademia-1-1',
+    durationMinutes: 9,
     name: 'Jak uczyć się programowania',
     contents: [
       embed('zOjov-2OZ0E'),
@@ -294,6 +310,7 @@ const akademiaLessons: LessonDef[] = [
   },
   {
     id: 'lesson-akademia-1-2',
+    durationMinutes: 13,
     name: 'Narzędzia i środowisko pracy',
     contents: [
       html(
@@ -304,6 +321,7 @@ const akademiaLessons: LessonDef[] = [
   },
   {
     id: 'lesson-akademia-2-1',
+    durationMinutes: 24,
     name: 'Ćwiczenia praktyczne',
     contents: [
       embed('rfscVS0vtbw'),
@@ -315,6 +333,7 @@ const akademiaLessons: LessonDef[] = [
   },
   {
     id: 'lesson-akademia-2-2',
+    durationMinutes: 10,
     name: 'Budowanie portfolio',
     contents: [
       html(
@@ -480,6 +499,7 @@ interface CourseDef {
   tenantId: string;
   name: string;
   description: string;
+  imageUrl: string;
 }
 
 const courseDefs: CourseDef[] = [
@@ -488,18 +508,21 @@ const courseDefs: CourseDef[] = [
     tenantId: 'tenant-studio',
     name: 'Kurs JavaScript od podstaw',
     description: 'Kompletny kurs JavaScript: od zmiennych, przez funkcje i DOM, po pierwszy projekt.',
+    imageUrl: 'https://picsum.photos/seed/together-course-js/960/540',
   },
   {
     id: 'course-react',
     tenantId: 'tenant-studio',
     name: 'React w praktyce',
     description: 'Budowanie interfejsów w React — komponenty, stan, hooki i zaawansowane wzorce.',
+    imageUrl: 'https://picsum.photos/seed/together-course-react/960/540',
   },
   {
     id: 'course-akademia',
     tenantId: 'tenant-akademia',
     name: 'Samodzielna nauka programowania',
     description: 'Przewodnik po samodzielnej nauce programowania: metody, narzędzia i praktyka.',
+    imageUrl: 'https://picsum.photos/seed/together-course-akademia/960/540',
   },
 ];
 
@@ -748,7 +771,7 @@ await db
       tenantId: course.tenantId,
       name: course.name,
       description: course.description,
-      imageUrl: null,
+      imageUrl: course.imageUrl,
       createdAt: nextIso(),
     })),
   )
@@ -773,6 +796,7 @@ await db
       tenantId: lessonTenant[lesson.id] ?? 'tenant-studio',
       name: lesson.name,
       contents: lesson.contents,
+      durationMinutes: lesson.durationMinutes,
       createdAt: nextIso(),
     })),
   )
@@ -781,6 +805,7 @@ await db
     set: {
       name: sql`excluded.name`,
       contents: sql`excluded.contents`,
+      durationMinutes: sql`excluded.duration_minutes`,
     },
   });
 

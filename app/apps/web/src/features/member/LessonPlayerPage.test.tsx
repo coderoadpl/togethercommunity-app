@@ -287,6 +287,61 @@ describe('LessonPlayerPage', () => {
     expect(screen.queryByText(/upgrade|enroll|subscription|price/i)).not.toBeInTheDocument();
   });
 
+  it('shows an unlock CTA on the locked page when a product covers the lesson', async () => {
+    const lockedStructure: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((entry) => ({
+            ...entry,
+            accessStatus: 'not-accessible',
+            unlockProductId: 'prod-full',
+          })),
+        })),
+      })),
+    };
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'forbidden', message: 'Forbidden' } },
+          { status: 403 },
+        ),
+      ),
+      http.get('/api/student/courses/:courseId/structure', () =>
+        HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
+      ),
+      okProgress(),
+      okNext(null),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const unlock = await screen.findByTestId('unlock-lesson-cta');
+    expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
+    expect(unlock).toHaveTextContent(pl.courseTree.unlockAccess);
+  });
+
+  it('renders the rail curriculum with the current lesson highlighted', async () => {
+    server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const rail = await screen.findByTestId('curriculum-card');
+    expect(rail).toHaveTextContent(pl.courseOverview.curriculum);
+    const current = within(rail).getByTestId('lesson-button-l1');
+    expect(current).toHaveClass('Mui-selected');
+  });
+
+  it('shows a friendly empty state for a lesson without blocks', async () => {
+    server.use(okNext(null), okStructure(), okProgress(), okLesson([]));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const empty = await screen.findByTestId('lesson-empty-state');
+    expect(within(empty).getByTestId('empty-lesson-icon')).toBeInTheDocument();
+    expect(empty).toHaveTextContent(pl.lesson.noContentTitle);
+    expect(empty).toHaveTextContent(pl.lesson.noContent);
+  });
+
   it('fires a fire-and-forget last-viewed with module and chapter ids on mount', async () => {
     let lastViewedBody: unknown = null;
     server.use(

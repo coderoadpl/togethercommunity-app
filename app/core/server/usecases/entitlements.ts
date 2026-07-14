@@ -11,6 +11,7 @@ import {
   type CourseLesson,
   type CourseStructureWithAccess,
   type NextLesson,
+  type Product,
   type Result,
 } from '@core/domain/index.js';
 
@@ -22,6 +23,7 @@ import type {
   CourseRepository,
   MemberCourseProgressRepository,
   ProductGrantRepository,
+  ProductRepository,
 } from '../ports.js';
 import {
   aggregateAccessItems,
@@ -44,6 +46,7 @@ export interface CourseAccessDeps extends EntitlementsDeps {
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   progress: MemberCourseProgressRepository;
+  products: ProductRepository;
 }
 
 interface MemberScope {
@@ -171,6 +174,7 @@ export const getCourseStructureWithAccess = async (
 
   let lookup: AccessLookup;
   let completedLessonIds = new Set<string>();
+  let publishedProducts: Product[] = [];
   if (isStaff(ctx)) {
     lookup = fullCourseLookup(course.id);
   } else if (ctx.identity.memberId) {
@@ -181,11 +185,21 @@ export const getCourseStructureWithAccess = async (
       courseId: course.id,
     });
     if (existing) completedLessonIds = new Set(existing.completedLessonIds);
+    publishedProducts = await deps.products.listPublishedByTenant(tenant.value);
   } else {
     lookup = buildAccessLookup([]);
   }
 
-  return ok(buildCourseStructure(course, modules, lessonMap(lessons), lookup, completedLessonIds));
+  return ok(
+    buildCourseStructure(
+      course,
+      modules,
+      lessonMap(lessons),
+      lookup,
+      completedLessonIds,
+      publishedProducts,
+    ),
+  );
 };
 
 export const listMyCourses = async (

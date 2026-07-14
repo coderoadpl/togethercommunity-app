@@ -233,6 +233,7 @@ export const courseLessons = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     contents: jsonb('contents').$type<LessonBlock[]>().notNull().default([]),
+    durationMinutes: integer('duration_minutes'),
     legacyId: text('legacy_id'),
     createdAt: text('created_at').notNull(),
   },

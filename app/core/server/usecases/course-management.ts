@@ -292,6 +292,9 @@ export const createLesson = async (
     tenantId: tenant.value,
     name: parsed.data.name,
     contents: parsed.data.contents,
+    ...(parsed.data.durationMinutes === undefined
+      ? {}
+      : { durationMinutes: parsed.data.durationMinutes }),
     legacyId: parsed.data.legacyId,
     createdAt: deps.clock.nowIso(),
   };
@@ -315,10 +318,16 @@ export const updateLesson = async (
   const snapshot = snapshotOf(ctx, 'course_lesson', existing.id, existing, deps);
   if (!snapshot.ok) return snapshot;
 
+  const { durationMinutes: existingDuration, ...base } = existing;
+  const nextDuration =
+    parsed.data.durationMinutes === undefined
+      ? existingDuration
+      : parsed.data.durationMinutes ?? undefined;
   const updated: CourseLesson = {
-    ...existing,
+    ...base,
     name: parsed.data.name ?? existing.name,
     contents: parsed.data.contents ?? existing.contents,
+    ...(nextDuration === undefined ? {} : { durationMinutes: nextDuration }),
   };
   const saved = await deps.lessons.update(tenant.value, updated, snapshot.value);
   return saved ? ok(saved) : err(notFound(`No lesson "${parsed.data.id}" in this tenant`));

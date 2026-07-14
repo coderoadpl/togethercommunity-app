@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ListItemButton, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, LinearProgress, ListItemButton, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -2401,6 +2401,7 @@ export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
 export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ theme }) => ({
   display: 'block',
   height: '100%',
+  overflow: 'hidden',
   textDecoration: 'none',
   color: 'inherit',
   border: `1px solid ${theme.palette.divider}`,
@@ -2411,6 +2412,94 @@ export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ them
     boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.18)}`,
   },
 }));
+
+export const CourseCardCover = styled('img')(({ theme }) => ({
+  display: 'block',
+  width: '100%',
+  aspectRatio: '16 / 9',
+  objectFit: 'cover',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const CourseCardCoverFallback = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  aspectRatio: '16 / 9',
+  backgroundColor: alpha(theme.palette.primary.main, 0.08),
+  color: theme.palette.primary.main,
+  borderBottom: `1px solid ${theme.palette.divider}`,
+}));
+
+export const CourseCardInitials = styled(Typography)<AsElement>({
+  fontSize: '2.1rem',
+  fontWeight: 700,
+  letterSpacing: '0.12em',
+});
+
+export const CourseCoverImage = styled('img')(({ theme }) => ({
+  display: 'block',
+  width: '100%',
+  aspectRatio: '16 / 9',
+  objectFit: 'cover',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+
+export const StatTile = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  padding: '0.8rem 1rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+}));
+
+export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '1.3rem',
+  color: theme.palette.primary.main,
+}));
+
+export const StatTileValue = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '1.02rem',
+  fontWeight: 700,
+  lineHeight: 1.25,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
+
+export const StatTileLabel = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.68rem',
+  letterSpacing: '0.09em',
+  textTransform: 'uppercase',
+  color: theme.palette.text.secondary,
+}));
+
+export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
+  height: 6,
+  borderRadius: 999,
+  backgroundColor: alpha(theme.palette.primary.main, 0.14),
+  '& .MuiLinearProgress-bar': { borderRadius: 999 },
+}));
+
+export const LessonDurationText = styled('span')(({ theme }) => ({
+  whiteSpace: 'nowrap',
+  fontSize: '0.78rem',
+  color: theme.palette.text.secondary,
+  fontFamily: theme.numericFontFamily,
+  fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
+}));
+
+export const EmptyStateIcon = styled(SvgIcon)(({ theme }) => ({
+  fontSize: '2.6rem',
+  color: theme.palette.text.disabled,
+}));
+
+export const EmptyStateContent = styled(Stack)({
+  alignItems: 'center',
+  textAlign: 'center',
+});
 
 export const LessonMediaFrame = styled(Box)(({ theme }) => ({
   position: 'relative',

@@ -21,6 +21,7 @@ import { actions } from '../../api.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import {
   CardTitle,
+  EmptyStateContent,
   Eyebrow,
   LedgerHeader,
   LessonFooterBar,
@@ -29,7 +30,9 @@ import {
   LessonMediaIframe,
   LessonPlaceholder,
 } from '../../theme.js';
+import { CurriculumCard } from './CourseRail.js';
 import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
+import { EmptyLessonIcon } from './overview-icons.js';
 import { CompletionFull } from './tree-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -164,7 +167,13 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
   );
 };
 
-const LockedView = ({ courseId }: { courseId: string }) => {
+const LockedView = ({
+  courseId,
+  unlockProductId,
+}: {
+  courseId: string;
+  unlockProductId?: string;
+}) => {
   const t = useTranslations();
   return (
     <Container sx={{ maxWidth: '52rem', py: 6 }}>
@@ -173,8 +182,26 @@ const LockedView = ({ courseId }: { courseId: string }) => {
           <LockedState />
           <CardTitle variant="h1">{t.lesson.contentLocked}</CardTitle>
           <Typography variant="body1">{t.lesson.noAccessYet}</Typography>
-          <Stack direction="row" useFlexGap sx={{ columnGap: '1rem', mt: '0.5rem' }}>
-            <Button component="a" href={`/my/courses/${courseId}`} variant="contained">
+          <Stack
+            direction="row"
+            useFlexGap
+            sx={{ columnGap: '1rem', rowGap: '0.75rem', mt: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}
+          >
+            {unlockProductId !== undefined && (
+              <Button
+                component="a"
+                href={`/checkout/${unlockProductId}`}
+                variant="contained"
+                data-testid="unlock-lesson-cta"
+              >
+                {t.courseTree.unlockAccess}
+              </Button>
+            )}
+            <Button
+              component="a"
+              href={`/my/courses/${courseId}`}
+              variant={unlockProductId === undefined ? 'contained' : 'outlined'}
+            >
               {t.lesson.backToCourse}
             </Button>
             <Button component="a" href="/my" variant="outlined">
@@ -261,7 +288,19 @@ export const LessonPlayerPage = ({
   if (unauthorized) return null;
 
   if (lesson.isError) {
-    if (isForbidden(lesson.error)) return <LockedView courseId={courseId} />;
+    if (isForbidden(lesson.error)) {
+      const lockedRow = structure.data?.structure.modules
+        .flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons))
+        .find((entry) => entry.lessonId === lessonId);
+      return (
+        <LockedView
+          courseId={courseId}
+          {...(lockedRow?.unlockProductId === undefined
+            ? {}
+            : { unlockProductId: lockedRow.unlockProductId })}
+        />
+      );
+    }
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -293,7 +332,7 @@ export const LessonPlayerPage = ({
   };
 
   return (
-    <Container disableGutters sx={{ maxWidth: '52rem !important', px: '1.25rem', pb: '6rem' }}>
+    <Container disableGutters sx={{ maxWidth: '72rem !important', px: '1.25rem', pb: '6rem' }}>
       <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
         {location !== null && (
           <Breadcrumbs aria-label="breadcrumb" sx={{ mb: '0.75rem' }}>
@@ -315,24 +354,38 @@ export const LessonPlayerPage = ({
         </Eyebrow>
       </LedgerHeader>
 
-      <Stack component="section" useFlexGap spacing="1.5rem" sx={{ mt: '2.5rem' }}>
-        {blocks.length === 0 ? (
-          <Paper elevation={1} sx={{ p: '1.5rem' }}>
-            <Typography variant="body1">{t.lesson.noContent}</Typography>
-          </Paper>
-        ) : (
-          blocks.map((block, index) => (
-            <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
-              <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-                {blockLabel(t, block.type)}
-              </Eyebrow>
-              <BlockBody block={block} />
-            </Paper>
-          ))
-        )}
-      </Stack>
+      <Box
+        sx={{
+          mt: '2.5rem',
+          display: 'grid',
+          gap: '1.5rem',
+          alignItems: 'start',
+          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 24rem' },
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <Stack component="section" useFlexGap spacing="1.5rem">
+            {blocks.length === 0 ? (
+              <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid="lesson-empty-state">
+                <EmptyStateContent useFlexGap sx={{ rowGap: '0.75rem' }}>
+                  <EmptyLessonIcon />
+                  <CardTitle variant="h2">{t.lesson.noContentTitle}</CardTitle>
+                  <Typography variant="body1">{t.lesson.noContent}</Typography>
+                </EmptyStateContent>
+              </Paper>
+            ) : (
+              blocks.map((block, index) => (
+                <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
+                  <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+                    {blockLabel(t, block.type)}
+                  </Eyebrow>
+                  <BlockBody block={block} />
+                </Paper>
+              ))
+            )}
+          </Stack>
 
-      <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
+          <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           useFlexGap
@@ -370,8 +423,29 @@ export const LessonPlayerPage = ({
                 {t.lesson.next({ name: nextLesson.name })}
               </Link>
             ))}
+          </Stack>
+        </LessonFooterBar>
+        </Box>
+
+        <Stack
+          useFlexGap
+          sx={{
+            rowGap: '1.5rem',
+            position: { md: 'sticky' },
+            top: { md: '1.5rem' },
+            maxHeight: { md: 'calc(100vh - 3rem)' },
+            overflowY: { md: 'auto' },
+          }}
+        >
+          {structure.data !== undefined && (
+            <CurriculumCard
+              courseId={courseId}
+              structure={structure.data.structure}
+              currentLessonId={lessonId}
+            />
+          )}
         </Stack>
-      </LessonFooterBar>
+      </Box>
     </Container>
   );
 };

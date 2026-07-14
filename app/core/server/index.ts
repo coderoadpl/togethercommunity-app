@@ -18,6 +18,7 @@ export * from './usecases/members.js';
 export * from './usecases/tenants.js';
 export * from './usecases/create-tenant.js';
 export * from './usecases/course-management.js';
+export * from './usecases/content-history.js';
 export * from './usecases/access.js';
 export * from './usecases/tenant-secrets.js';
 export * from './usecases/payment-integrations.js';

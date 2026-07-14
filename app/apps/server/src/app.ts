@@ -61,6 +61,8 @@ import {
   createTenant,
   createTenantApiKey,
   deleteTenantSecret,
+  getContentHistory,
+  getContentVersion,
   devGrantProduct,
   exportMembers,
   listTenantApiKeys,
@@ -641,6 +643,23 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid course update payload', parsed.error.flatten())));
     const result = await updateCourse({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ course: result.value }) : result);
+  });
+
+  app.get(API_PATHS.coursesHistoryVersion, async (c) => {
+    const id = c.req.query('id');
+    if (id === undefined) return respond(err(validation('Missing "id" query parameter')));
+    const result = await getContentVersion({ identity: c.get('identity') }, id, deps);
+    return respond(result.ok ? ok({ version: result.value }) : result);
+  });
+
+  app.get(API_PATHS.coursesHistory, async (c) => {
+    const query = {
+      entityKind: c.req.query('entityKind'),
+      entityId: c.req.query('entityId'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    };
+    const result = await getContentHistory({ identity: c.get('identity') }, query, deps);
+    return respond(result.ok ? ok({ versions: result.value }) : result);
   });
 
   app.get(API_PATHS.modules, async (c) => {

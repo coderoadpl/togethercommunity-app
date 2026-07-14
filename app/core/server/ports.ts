@@ -3,6 +3,8 @@ import type {
   Course,
   CourseLesson,
   CourseModule,
+  EntityHistoryEntry,
+  EntityKind,
   EmailMessage,
   Member,
   MemberGrant,
@@ -26,12 +28,40 @@ import type {
  * The core never knows which database, auth provider or platform sits behind them.
  */
 
+/**
+ * A previous-state snapshot to write into `entity_versions` in the SAME
+ * transaction as the mutation that supersedes it. Passed to write-through
+ * repository methods so backward compatibility is captured atomically.
+ */
+export interface EntityVersionRecord {
+  id: string;
+  entityKind: EntityKind;
+  entityId: string;
+  schemaVersion: number;
+  payload: unknown;
+  createdAt: string;
+  createdBy: string | null;
+}
+
+export interface EntityVersionRepository {
+  list(
+    tenantId: string,
+    query: { entityKind: EntityKind; entityId: string; limit: number },
+  ): Promise<EntityHistoryEntry[]>;
+  findById(tenantId: string, id: string): Promise<EntityVersionRecord | null>;
+}
+
 export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
   create(tenantId: string, product: Product): Promise<void>;
-  updateAccessItems(tenantId: string, id: string, accessItems: Product['accessItems']): Promise<Product | null>;
+  updateAccessItems(
+    tenantId: string,
+    id: string,
+    accessItems: Product['accessItems'],
+    version?: EntityVersionRecord,
+  ): Promise<Product | null>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
 }
@@ -41,7 +71,7 @@ export interface CourseRepository {
   findById(tenantId: string, id: string): Promise<Course | null>;
   findByIds(tenantId: string, ids: string[]): Promise<Course[]>;
   create(tenantId: string, course: Course): Promise<void>;
-  update(tenantId: string, course: Course): Promise<Course | null>;
+  update(tenantId: string, course: Course, version?: EntityVersionRecord): Promise<Course | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
 }
 
@@ -50,7 +80,7 @@ export interface CourseModuleRepository {
   findById(tenantId: string, id: string): Promise<CourseModule | null>;
   findByIds(tenantId: string, ids: string[]): Promise<CourseModule[]>;
   create(tenantId: string, module: CourseModule): Promise<void>;
-  update(tenantId: string, module: CourseModule): Promise<CourseModule | null>;
+  update(tenantId: string, module: CourseModule, version?: EntityVersionRecord): Promise<CourseModule | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
 }
 
@@ -59,7 +89,7 @@ export interface CourseLessonRepository {
   findById(tenantId: string, id: string): Promise<CourseLesson | null>;
   findByIds(tenantId: string, ids: string[]): Promise<CourseLesson[]>;
   create(tenantId: string, lesson: CourseLesson): Promise<void>;
-  update(tenantId: string, lesson: CourseLesson): Promise<CourseLesson | null>;
+  update(tenantId: string, lesson: CourseLesson, version?: EntityVersionRecord): Promise<CourseLesson | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
 }
 

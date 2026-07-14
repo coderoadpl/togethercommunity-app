@@ -272,6 +272,32 @@ export const memberCourseProgress = pgTable(
   ],
 );
 
+export const entityVersions = pgTable(
+  'entity_versions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    entityKind: text('entity_kind', {
+      enum: ['course', 'course_module', 'course_lesson', 'product'],
+    }).notNull(),
+    entityId: text('entity_id').notNull(),
+    schemaVersion: integer('schema_version').notNull(),
+    payload: jsonb('payload').notNull(),
+    createdAt: text('created_at').notNull(),
+    createdBy: text('created_by'),
+  },
+  (table) => [
+    index('entity_versions_tenant_entity_created_idx').on(
+      table.tenantId,
+      table.entityKind,
+      table.entityId,
+      table.createdAt.desc(),
+    ),
+  ],
+);
+
 export const devMagicLinks = pgTable('dev_magic_links', {
   email: text('email').primaryKey(),
   url: text('url').notNull(),

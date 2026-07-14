@@ -230,6 +230,12 @@ export interface Messages {
     displayName: string;
     addLesson: string;
     unknownLesson: string;
+    historyHeading: string;
+    historyLoading: string;
+    historyEmpty: string;
+    historyRestoreNote: string;
+    historyUnknownAuthor: string;
+    historyEntry: (params: { version: number; date: string; author: string }) => string;
   };
   lessons: {
     heading: string;

@@ -11,6 +11,8 @@ import {
   checkoutSessionOutputSchema,
   courseStructureOutputSchema,
   coursesListOutputSchema,
+  contentHistoryOutputSchema,
+  contentVersionOutputSchema,
   devGrantOutputSchema,
   devEmailOutputSchema,
   devMagicLinkOutputSchema,
@@ -79,6 +81,7 @@ import {
   ok,
   type AppError,
   type DevGrantInput,
+  type EntityKind,
   type MemberExportFormat,
   type NewProductInput,
   type Result,
@@ -343,6 +346,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.coursesCreate.method, API_ROUTES.coursesCreate.path, courseOutputSchema, input, signal),
   updateCourse: (input: CourseUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.coursesUpdate.method, API_ROUTES.coursesUpdate.path, courseOutputSchema, input, signal),
+  listContentHistory: (
+    input: { entityKind: EntityKind; entityId: string; limit?: number },
+    signal?: AbortSignal,
+  ) => {
+    const params = new URLSearchParams({ entityKind: input.entityKind, entityId: input.entityId });
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    return request(
+      options,
+      API_ROUTES.coursesHistory.method,
+      `${API_ROUTES.coursesHistory.path}?${params.toString()}`,
+      contentHistoryOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getContentVersion: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.coursesHistoryVersion.method,
+      `${API_ROUTES.coursesHistoryVersion.path}?id=${encodeURIComponent(id)}`,
+      contentVersionOutputSchema,
+      undefined,
+      signal,
+    ),
   listModules: (signal?: AbortSignal) =>
     request(options, API_ROUTES.modules.method, API_ROUTES.modules.path, modulesListOutputSchema, undefined, signal),
   createModule: (input: ModuleCreateInput, signal?: AbortSignal) =>

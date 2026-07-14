@@ -32,7 +32,7 @@ import type {
   TenantSecretDeleteInput,
   TenantSecretSetInput,
 } from '@core/contract/index.js';
-import type { DevGrantInput, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
+import type { DevGrantInput, EntityKind, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -148,6 +148,13 @@ export const coursesScopes = {
 
 export const modulesScopes = {
   all: () => ['modules'] as const,
+};
+
+export const contentHistoryScopes = {
+  all: () => ['content-history'] as const,
+  list: (entityKind: EntityKind, entityId: string) =>
+    ['content-history', 'list', entityKind, entityId] as const,
+  version: (id: string) => ['content-history', 'version', id] as const,
 };
 
 export const lessonsScopes = {
@@ -301,6 +308,21 @@ export const modulesQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: modulesScopes.all(),
     call: ({ signal }) => api.listModules(signal),
+  });
+
+export const contentHistoryQuery = (
+  api: ApiClient,
+  input: { entityKind: EntityKind; entityId: string; limit?: number },
+) =>
+  defineQuery({
+    queryKey: contentHistoryScopes.list(input.entityKind, input.entityId),
+    call: ({ signal }) => api.listContentHistory(input, signal),
+  });
+
+export const contentVersionQuery = (api: ApiClient, id: string) =>
+  defineQuery({
+    queryKey: contentHistoryScopes.version(id),
+    call: ({ signal }) => api.getContentVersion(id, signal),
   });
 
 export const lessonsQuery = (api: ApiClient) =>

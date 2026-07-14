@@ -7,6 +7,7 @@ import {
   createCourseRepository,
   createDevEmailReader,
   createDevMagicLinkReader,
+  createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
   createMemberRepository,
@@ -40,6 +41,7 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   DevEmailReader,
+  EntityVersionRepository,
   EmailPort,
   DevMagicLinkReader,
   HealthPort,
@@ -74,6 +76,7 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
+  entityVersions: EntityVersionRepository;
   members: MemberRepository;
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
@@ -159,6 +162,7 @@ export const createDeps = (env: Env): AppDeps => {
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
+    entityVersions: createEntityVersionRepository(db),
     members: createMemberRepository(db),
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),

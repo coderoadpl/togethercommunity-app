@@ -235,6 +235,13 @@ export const en: Messages = {
     displayName: 'display name',
     addLesson: 'add lesson',
     unknownLesson: 'unknown lesson',
+    historyHeading: 'Change history',
+    historyLoading: 'loading history…',
+    historyEmpty: 'No saved versions yet. A snapshot is captured the first time this course is edited.',
+    historyRestoreNote: 'Restoring a version comes later; this list is read-only for now.',
+    historyUnknownAuthor: 'unknown',
+    historyEntry: ({ version, date, author }) =>
+      format('schema v{version} · {date} · {author}', { version, date, author }),
   },
   lessons: {
     heading: 'Lessons',

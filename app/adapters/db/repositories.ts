@@ -1,10 +1,11 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import {
   computeCourseModuleName,
   courseLessonSchema,
   courseModuleSchema,
   courseSchema,
+  entityHistoryEntrySchema,
   memberCourseProgressSchema,
   memberGrantSchema,
   productGrantSchema,
@@ -32,6 +33,8 @@ import type {
   CourseRepository,
   DevEmailReader,
   DevMagicLinkReader,
+  EntityVersionRecord,
+  EntityVersionRepository,
   HealthPort,
   MemberRepository,
   MemberCourseProgressRepository,
@@ -53,6 +56,7 @@ import {
   courses,
   devEmails,
   devMagicLinks,
+  entityVersions,
   memberCourseProgress,
   members,
   productGrants,
@@ -97,6 +101,24 @@ const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.p
 const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
   tenantSecretSchema.parse(row);
 
+/**
+ * Writes a previous-state snapshot into `entity_versions`. Runs on whichever
+ * executor (`db` or a `tx`) is passed so the write-through path is atomic with
+ * the mutation that supersedes it.
+ */
+const insertEntityVersion = async (executor: Db, tenantId: string, version: EntityVersionRecord): Promise<void> => {
+  await executor.insert(entityVersions).values({
+    id: version.id,
+    tenantId,
+    entityKind: version.entityKind,
+    entityId: version.entityId,
+    schemaVersion: version.schemaVersion,
+    payload: version.payload,
+    createdAt: version.createdAt,
+    createdBy: version.createdBy,
+  });
+};
+
 export const createProductRepository = (db: Db): ProductRepository => ({
   listByTenant: async (tenantId) =>
     (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt))).map(
@@ -133,14 +155,21 @@ export const createProductRepository = (db: Db): ProductRepository => ({
       createdAt: product.createdAt,
     });
   },
-  updateAccessItems: async (tenantId, id, accessItems) => {
-    const rows = await db
-      .update(products)
-      .set({ accessItems })
-      .where(and(eq(products.tenantId, tenantId), eq(products.id, id)))
-      .returning();
-    const row = rows[0];
-    return row ? parseProduct(row) : null;
+  updateAccessItems: async (tenantId, id, accessItems, version) => {
+    const apply = async (executor: Db): Promise<Product | null> => {
+      const rows = await executor
+        .update(products)
+        .set({ accessItems })
+        .where(and(eq(products.tenantId, tenantId), eq(products.id, id)))
+        .returning();
+      const row = rows[0];
+      return row ? parseProduct(row) : null;
+    };
+    if (!version) return apply(db);
+    return db.transaction(async (tx) => {
+      await insertEntityVersion(tx, tenantId, version);
+      return apply(tx);
+    });
   },
   setPublished: async (tenantId, id, published) => {
     await db
@@ -182,19 +211,26 @@ export const createCourseRepository = (db: Db): CourseRepository => ({
   create: async (tenantId, course) => {
     await db.insert(courses).values({ ...course, tenantId });
   },
-  update: async (tenantId, course) => {
-    const rows = await db
-      .update(courses)
-      .set({
-        name: course.name,
-        description: course.description,
-        imageUrl: course.imageUrl,
-        legacyId: course.legacyId,
-      })
-      .where(and(eq(courses.tenantId, tenantId), eq(courses.id, course.id)))
-      .returning();
-    const row = rows[0];
-    return row ? parseCourse(row) : null;
+  update: async (tenantId, course, version) => {
+    const apply = async (executor: Db): Promise<Course | null> => {
+      const rows = await executor
+        .update(courses)
+        .set({
+          name: course.name,
+          description: course.description,
+          imageUrl: course.imageUrl,
+          legacyId: course.legacyId,
+        })
+        .where(and(eq(courses.tenantId, tenantId), eq(courses.id, course.id)))
+        .returning();
+      const row = rows[0];
+      return row ? parseCourse(row) : null;
+    };
+    if (!version) return apply(db);
+    return db.transaction(async (tx) => {
+      await insertEntityVersion(tx, tenantId, version);
+      return apply(tx);
+    });
   },
   delete: async (tenantId, id) => {
     const rows = await db
@@ -244,20 +280,27 @@ export const createCourseModuleRepository = (db: Db): CourseModuleRepository => 
       createdAt: module.createdAt,
     });
   },
-  update: async (tenantId, module) => {
-    const rows = await db
-      .update(courseModules)
-      .set({
-        courseIds: module.courseIds,
-        title: module.title,
-        prefix: module.prefix,
-        chapters: module.chapters,
-        legacyId: module.legacyId,
-      })
-      .where(and(eq(courseModules.tenantId, tenantId), eq(courseModules.id, module.id)))
-      .returning();
-    const row = rows[0];
-    return row ? parseModule(row) : null;
+  update: async (tenantId, module, version) => {
+    const apply = async (executor: Db): Promise<CourseModule | null> => {
+      const rows = await executor
+        .update(courseModules)
+        .set({
+          courseIds: module.courseIds,
+          title: module.title,
+          prefix: module.prefix,
+          chapters: module.chapters,
+          legacyId: module.legacyId,
+        })
+        .where(and(eq(courseModules.tenantId, tenantId), eq(courseModules.id, module.id)))
+        .returning();
+      const row = rows[0];
+      return row ? parseModule(row) : null;
+    };
+    if (!version) return apply(db);
+    return db.transaction(async (tx) => {
+      await insertEntityVersion(tx, tenantId, version);
+      return apply(tx);
+    });
   },
   delete: async (tenantId, id) => {
     const rows = await db
@@ -298,18 +341,25 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
   create: async (tenantId, lesson) => {
     await db.insert(courseLessons).values({ ...lesson, tenantId });
   },
-  update: async (tenantId, lesson) => {
-    const rows = await db
-      .update(courseLessons)
-      .set({
-        name: lesson.name,
-        contents: lesson.contents,
-        legacyId: lesson.legacyId,
-      })
-      .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, lesson.id)))
-      .returning();
-    const row = rows[0];
-    return row ? parseLesson(row) : null;
+  update: async (tenantId, lesson, version) => {
+    const apply = async (executor: Db): Promise<CourseLesson | null> => {
+      const rows = await executor
+        .update(courseLessons)
+        .set({
+          name: lesson.name,
+          contents: lesson.contents,
+          legacyId: lesson.legacyId,
+        })
+        .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, lesson.id)))
+        .returning();
+      const row = rows[0];
+      return row ? parseLesson(row) : null;
+    };
+    if (!version) return apply(db);
+    return db.transaction(async (tx) => {
+      await insertEntityVersion(tx, tenantId, version);
+      return apply(tx);
+    });
   },
   delete: async (tenantId, id) => {
     const rows = await db
@@ -317,6 +367,50 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
       .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, id)))
       .returning({ id: courseLessons.id });
     return rows.length > 0;
+  },
+});
+
+export const createEntityVersionRepository = (db: Db): EntityVersionRepository => ({
+  list: async (tenantId, query) =>
+    (
+      await db
+        .select({
+          id: entityVersions.id,
+          entityKind: entityVersions.entityKind,
+          entityId: entityVersions.entityId,
+          schemaVersion: entityVersions.schemaVersion,
+          createdAt: entityVersions.createdAt,
+          createdBy: entityVersions.createdBy,
+        })
+        .from(entityVersions)
+        .where(
+          and(
+            eq(entityVersions.tenantId, tenantId),
+            eq(entityVersions.entityKind, query.entityKind),
+            eq(entityVersions.entityId, query.entityId),
+          ),
+        )
+        .orderBy(desc(entityVersions.createdAt))
+        .limit(query.limit)
+    ).map((row) => entityHistoryEntrySchema.parse(row)),
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(entityVersions)
+      .where(and(eq(entityVersions.tenantId, tenantId), eq(entityVersions.id, id)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const record: EntityVersionRecord = {
+      id: row.id,
+      entityKind: row.entityKind,
+      entityId: row.entityId,
+      schemaVersion: row.schemaVersion,
+      payload: row.payload,
+      createdAt: row.createdAt,
+      createdBy: row.createdBy,
+    };
+    return record;
   },
 });
 

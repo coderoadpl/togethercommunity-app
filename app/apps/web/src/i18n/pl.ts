@@ -249,6 +249,13 @@ export const pl: Messages = {
     displayName: 'wyświetlana nazwa',
     addLesson: 'dodaj lekcję',
     unknownLesson: 'nieznana lekcja',
+    historyHeading: 'Historia zmian',
+    historyLoading: 'ładowanie historii…',
+    historyEmpty: 'Brak zapisanych wersji. Migawka powstaje przy pierwszej edycji tego kursu.',
+    historyRestoreNote: 'Przywracanie wersji dodamy później; na razie lista jest tylko do odczytu.',
+    historyUnknownAuthor: 'nieznany',
+    historyEntry: ({ version, date, author }) =>
+      format('schemat v{version} · {date} · {author}', { version, date, author }),
   },
   lessons: {
     heading: 'Lekcje',

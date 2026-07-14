@@ -78,6 +78,13 @@
       "when": 1784057369560,
       "tag": "0010_bitter_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784060000000,
+      "tag": "0011_versioned_snapshots",
+      "breakpoints": true
     }
   ]
 }

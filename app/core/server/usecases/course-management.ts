@@ -1,5 +1,6 @@
 import {
   attachModuleToCourseInputSchema,
+  buildSnapshot,
   computeCourseModuleName,
   err,
   forbidden,
@@ -19,6 +20,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type EntityKind,
   type Product,
   type Result,
   type UpdateProductAccessItemsInput,
@@ -30,6 +32,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  EntityVersionRecord,
   IdGenerator,
   ProductRepository,
 } from '../ports.js';
@@ -47,6 +50,32 @@ const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
   if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage courses'));
   if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage courses'));
   return ok(ctx.identity.tenantId);
+};
+
+/**
+ * Builds the previous-state snapshot the write-through path persists in the
+ * same transaction as the update. Failure means the live entity no longer
+ * matches the current snapshot schema — the versioning gate should have caught
+ * that, so we surface it rather than silently skip the snapshot.
+ */
+const snapshotOf = (
+  ctx: Ctx,
+  kind: EntityKind,
+  entityId: string,
+  previous: unknown,
+  deps: Pick<CourseManagementDeps, 'ids' | 'clock'>,
+): Result<EntityVersionRecord, AppError> => {
+  const built = buildSnapshot(kind, previous);
+  if (!built.ok) return built;
+  return ok({
+    id: deps.ids.nextId(),
+    entityKind: kind,
+    entityId,
+    schemaVersion: built.value.schemaVersion,
+    payload: built.value.payload,
+    createdAt: deps.clock.nowIso(),
+    createdBy: ctx.identity.userId,
+  });
 };
 
 const unique = (ids: string[]): string[] => [...new Set(ids)];
@@ -143,13 +172,16 @@ export const updateCourse = async (
   const existing = await deps.courses.findById(tenant.value, parsed.data.id);
   if (!existing) return err(notFound(`No course "${parsed.data.id}" in this tenant`));
 
+  const snapshot = snapshotOf(ctx, 'course', existing.id, existing, deps);
+  if (!snapshot.ok) return snapshot;
+
   const updated: Course = {
     ...existing,
     name: parsed.data.name ?? existing.name,
     description: parsed.data.description ?? existing.description,
     imageUrl: parsed.data.imageUrl === undefined ? existing.imageUrl : parsed.data.imageUrl,
   };
-  const saved = await deps.courses.update(tenant.value, updated);
+  const saved = await deps.courses.update(tenant.value, updated, snapshot.value);
   return saved ? ok(saved) : err(notFound(`No course "${parsed.data.id}" in this tenant`));
 };
 
@@ -201,6 +233,9 @@ export const updateModule = async (
     if (!lessonCheck.ok) return lessonCheck;
   }
 
+  const snapshot = snapshotOf(ctx, 'course_module', existing.id, existing, deps);
+  if (!snapshot.ok) return snapshot;
+
   const title = parsed.data.title ?? existing.title;
   const prefix = parsed.data.prefix === undefined ? existing.prefix : parsed.data.prefix;
   const updated: CourseModule = {
@@ -210,7 +245,7 @@ export const updateModule = async (
     name: computeCourseModuleName(prefix, title),
     chapters: parsed.data.chapters ?? existing.chapters,
   };
-  const saved = await deps.modules.update(tenant.value, updated);
+  const saved = await deps.modules.update(tenant.value, updated, snapshot.value);
   return saved ? ok(saved) : err(notFound(`No module "${parsed.data.id}" in this tenant`));
 };
 
@@ -249,12 +284,15 @@ export const updateLesson = async (
   const existing = await deps.lessons.findById(tenant.value, parsed.data.id);
   if (!existing) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
 
+  const snapshot = snapshotOf(ctx, 'course_lesson', existing.id, existing, deps);
+  if (!snapshot.ok) return snapshot;
+
   const updated: CourseLesson = {
     ...existing,
     name: parsed.data.name ?? existing.name,
     contents: parsed.data.contents ?? existing.contents,
   };
-  const saved = await deps.lessons.update(tenant.value, updated);
+  const saved = await deps.lessons.update(tenant.value, updated, snapshot.value);
   return saved ? ok(saved) : err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
 };
 
@@ -328,6 +366,14 @@ export const updateProductAccessItems = async (
     }
   }
 
-  const updated = await deps.products.updateAccessItems(tenant.value, product.id, parsed.data.accessItems);
+  const snapshot = snapshotOf(ctx, 'product', product.id, product, deps);
+  if (!snapshot.ok) return snapshot;
+
+  const updated = await deps.products.updateAccessItems(
+    tenant.value,
+    product.id,
+    parsed.data.accessItems,
+    snapshot.value,
+  );
   return updated ? ok(updated) : err(notFound(`No product "${parsed.data.id}" in this tenant`));
 };

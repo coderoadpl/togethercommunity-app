@@ -176,6 +176,10 @@ const deps = (input: {
       update: async () => null,
       delete: async () => false,
     },
+    entityVersions: {
+      list: async () => [],
+      findById: async () => null,
+    },
     progress: {
       findByMemberAndCourse: async () => null,
       findOrCreate: async (_tenantId, input) => ({

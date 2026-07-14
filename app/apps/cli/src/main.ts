@@ -10,6 +10,7 @@ import {
   accessItemSchema,
   currencySchema,
   devGrantInputSchema,
+  entityKindSchema,
   err,
   internal,
   m2mEnrollInputSchema,
@@ -104,6 +105,14 @@ const courseUpdateOptionsSchema = z.object({
 const moduleAttachOptionsSchema = z.object({
   course: z.string().min(1),
   module: z.string().min(1),
+});
+const historyOptionsSchema = z.object({
+  kind: entityKindSchema,
+  limit: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
 });
 const productAccessItemsInlineSchema = z.array(accessItemSchema);
 const lastViewedOptionsSchema = z.object({
@@ -571,6 +580,44 @@ course
         }),
         ctx.json,
         (data) => `updated course: ${data.course.name} (${data.course.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+course
+  .command('history <entityId>')
+  .description('List snapshot versions for a content entity (staff only)')
+  .requiredOption('--kind <kind>', 'course | course_module | course_lesson | product')
+  .option('--limit <n>', 'max versions to return (newest first)')
+  .action(
+    withInput(z.tuple([z.string().min(1), historyOptionsSchema]), async (ctx, [entityId, options]) => {
+      emit(
+        await ctx.api.listContentHistory({
+          entityKind: options.kind,
+          entityId,
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.versions.length === 0
+            ? 'no versions'
+            : data.versions
+                .map((v) => `- v${v.schemaVersion}  ${v.createdAt}  ${v.createdBy ?? 'unknown'}  (${v.id.slice(0, 8)})`)
+                .join('\n'),
+      );
+    }),
+  );
+
+course
+  .command('version <versionId>')
+  .description('Show a single snapshot upcast to the current schema (staff only)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [versionId]) => {
+      emit(
+        await ctx.api.getContentVersion(versionId),
+        ctx.json,
+        ({ version }) =>
+          `${version.entityKind} ${version.entityId.slice(0, 8)}  stored v${version.schemaVersion} -> current v${version.currentSchemaVersion}\n${JSON.stringify(version.payload, null, 2)}`,
       );
     }),
   );

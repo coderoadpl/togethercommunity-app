@@ -13,6 +13,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  EntityVersionRecord,
   ProductRepository,
 } from '../ports.js';
 import {
@@ -85,7 +86,7 @@ const product = (id: string, tenantId: string): Product => ({
   createdAt: now,
 });
 
-const courseRepo = (store: Course[]): CourseRepository => ({
+const courseRepo = (store: Course[], versions: EntityVersionRecord[] = []): CourseRepository => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
@@ -94,9 +95,10 @@ const courseRepo = (store: Course[]): CourseRepository => ({
   create: async (_tenantId, item) => {
     store.push(item);
   },
-  update: async (tenantId, item) => {
+  update: async (tenantId, item, version) => {
     const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === item.id);
     if (index < 0) return null;
+    if (version) versions.push(version);
     store[index] = item;
     return item;
   },
@@ -108,7 +110,7 @@ const courseRepo = (store: Course[]): CourseRepository => ({
   },
 });
 
-const moduleRepo = (store: CourseModule[]): CourseModuleRepository => ({
+const moduleRepo = (store: CourseModule[], versions: EntityVersionRecord[] = []): CourseModuleRepository => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
@@ -117,9 +119,10 @@ const moduleRepo = (store: CourseModule[]): CourseModuleRepository => ({
   create: async (_tenantId, item) => {
     store.push(item);
   },
-  update: async (tenantId, item) => {
+  update: async (tenantId, item, version) => {
     const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === item.id);
     if (index < 0) return null;
+    if (version) versions.push(version);
     store[index] = item;
     return item;
   },
@@ -131,7 +134,7 @@ const moduleRepo = (store: CourseModule[]): CourseModuleRepository => ({
   },
 });
 
-const lessonRepo = (store: CourseLesson[]): CourseLessonRepository => ({
+const lessonRepo = (store: CourseLesson[], versions: EntityVersionRecord[] = []): CourseLessonRepository => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
@@ -140,9 +143,10 @@ const lessonRepo = (store: CourseLesson[]): CourseLessonRepository => ({
   create: async (_tenantId, item) => {
     store.push(item);
   },
-  update: async (tenantId, item) => {
+  update: async (tenantId, item, version) => {
     const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === item.id);
     if (index < 0) return null;
+    if (version) versions.push(version);
     store[index] = item;
     return item;
   },
@@ -154,7 +158,7 @@ const lessonRepo = (store: CourseLesson[]): CourseLessonRepository => ({
   },
 });
 
-const productRepo = (store: Product[]): ProductRepository => ({
+const productRepo = (store: Product[], versions: EntityVersionRecord[] = []): ProductRepository => ({
   listByTenant: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   listPublishedByTenant: async (tenantId) =>
     store.filter((item) => item.tenantId === tenantId && item.published),
@@ -163,9 +167,10 @@ const productRepo = (store: Product[]): ProductRepository => ({
   create: async (_tenantId, item) => {
     store.push(item);
   },
-  updateAccessItems: async (tenantId, id, accessItems) => {
+  updateAccessItems: async (tenantId, id, accessItems, version) => {
     const found = store.find((item) => item.tenantId === tenantId && item.id === id);
     if (!found) return null;
+    if (version) versions.push(version);
     found.accessItems = accessItems;
     return found;
   },
@@ -182,13 +187,15 @@ const deps = (input: {
   lessons?: CourseLesson[];
   products?: Product[];
   ids?: string[];
+  versions?: EntityVersionRecord[];
 } = {}): CourseManagementDeps => {
   const ids = input.ids ?? ['generated-id'];
+  const versions = input.versions ?? [];
   return {
-    courses: courseRepo(input.courses ?? []),
-    modules: moduleRepo(input.modules ?? []),
-    lessons: lessonRepo(input.lessons ?? []),
-    products: productRepo(input.products ?? []),
+    courses: courseRepo(input.courses ?? [], versions),
+    modules: moduleRepo(input.modules ?? [], versions),
+    lessons: lessonRepo(input.lessons ?? [], versions),
+    products: productRepo(input.products ?? [], versions),
     ids: {
       nextId: () => {
         const next = ids.shift();
@@ -211,7 +218,7 @@ describe('course management use-cases', () => {
 
   it('creates and updates a course', async () => {
     const store: Course[] = [];
-    const d = deps({ courses: store, ids: ['course-1'] });
+    const d = deps({ courses: store, ids: ['course-1', 'course-snapshot-1'] });
     const created = await createCourse(
       { identity: identity('t-acme', 'admin') },
       { name: 'Course', imageUrl: null },
@@ -226,6 +233,54 @@ describe('course management use-cases', () => {
     );
     expect(updated).toMatchObject({ ok: true, value: { name: 'Updated' } });
     expect(store[0]?.name).toBe('Updated');
+  });
+
+  it('snapshots the previous course state before applying an update', async () => {
+    const versions: EntityVersionRecord[] = [];
+    const d = deps({
+      courses: [course('c1', 't-acme')],
+      ids: ['snapshot-1'],
+      versions,
+    });
+    const result = await updateCourse(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'c1', name: 'Renamed' },
+      d,
+    );
+    expect(result.ok).toBe(true);
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({
+      id: 'snapshot-1',
+      entityKind: 'course',
+      entityId: 'c1',
+      schemaVersion: 1,
+      createdBy: 'u1',
+    });
+    // The snapshot captures the PREVIOUS name, not the new one.
+    expect(versions[0]?.payload).toMatchObject({ id: 'c1', name: 'Course c1' });
+  });
+
+  it('snapshots module, lesson and product updates in the same write-through path', async () => {
+    const versions: EntityVersionRecord[] = [];
+    const d = deps({
+      courses: [course('c1', 't-acme')],
+      modules: [module('m1', 't-acme', ['c1'])],
+      lessons: [lesson('l1', 't-acme')],
+      products: [product('p1', 't-acme')],
+      ids: ['v-module', 'v-lesson', 'v-product'],
+      versions,
+    });
+    const ctx = { identity: identity('t-acme', 'owner') };
+
+    await updateModule(ctx, { id: 'm1', title: 'New title' }, d);
+    await updateLesson(ctx, { id: 'l1', name: 'New lesson name' }, d);
+    await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
+
+    expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
+    expect(versions.every((v) => v.schemaVersion === 1)).toBe(true);
+    expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
+    expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
+    expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });
   });
 
   it('creates a lesson with closed typed blocks and rejects unknown block shapes', async () => {
@@ -263,7 +318,7 @@ describe('course management use-cases', () => {
       courses: [course('c1', 't-acme')],
       lessons: [lesson('l1', 't-acme')],
       modules: [],
-      ids: ['module-1'],
+      ids: ['module-1', 'module-snapshot-1'],
     });
     const created = await createModule(
       { identity: identity('t-acme', 'owner') },

@@ -22,6 +22,7 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '@core/domain/i
 import { actions } from '../../../api.js';
 import { useTranslations, type Messages } from '../../../i18n/index.js';
 import { CardTitle, Eyebrow, TreeChapterTitle, TreeModuleTitle } from '../../../theme.js';
+import { HistoryPanel } from './HistoryPanel.js';
 import { MutationError, newId } from './feedback.js';
 
 const lessonName = (lessons: CourseLesson[], lessonId: string, t: Messages): string =>
@@ -409,6 +410,7 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
 
       <CreateModuleForm courseId={course.id} />
       <AttachModuleForm courseId={course.id} modules={unattached} />
+      <HistoryPanel courseId={course.id} />
 
       <Box component="section">
         <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>

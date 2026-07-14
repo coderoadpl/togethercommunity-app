@@ -8,6 +8,9 @@ import {
   courseSchema,
   courseStructureWithAccessSchema,
   createApiKeyInputSchema,
+  entityHistoryEntrySchema,
+  entityHistoryQuerySchema,
+  entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   languageSchema,
   m2mEnrollInputSchema,
@@ -293,6 +296,18 @@ export const lessonOutputSchema = z.object({
   lesson: courseLessonSchema,
 });
 
+export const contentHistoryQuerySchema = entityHistoryQuerySchema;
+
+export type ContentHistoryQueryInput = z.input<typeof contentHistoryQuerySchema>;
+
+export const contentHistoryOutputSchema = z.object({
+  versions: z.array(entityHistoryEntrySchema),
+});
+
+export const contentVersionOutputSchema = z.object({
+  version: entityVersionDetailSchema,
+});
+
 export const studentCoursesOutputSchema = z.object({
   courses: z.array(courseSchema),
 });
@@ -413,6 +428,8 @@ export const API_ROUTES = {
   courses: { method: 'GET', path: '/api/courses' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
+  coursesHistory: { method: 'GET', path: '/api/courses/history' },
+  coursesHistoryVersion: { method: 'GET', path: '/api/courses/history/version' },
   modules: { method: 'GET', path: '/api/modules' },
   modulesCreate: { method: 'POST', path: '/api/modules' },
   modulesUpdate: { method: 'POST', path: '/api/modules/update' },
@@ -467,6 +484,8 @@ export const API_PATHS = {
   productsAccessIssues: API_ROUTES.productsAccessIssues.path,
   courses: API_ROUTES.courses.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,
+  coursesHistory: API_ROUTES.coursesHistory.path,
+  coursesHistoryVersion: API_ROUTES.coursesHistoryVersion.path,
   modules: API_ROUTES.modules.path,
   modulesCreate: API_ROUTES.modulesCreate.path,
   modulesUpdate: API_ROUTES.modulesUpdate.path,

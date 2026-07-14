@@ -3,10 +3,13 @@ import { useParams } from '@tanstack/react-router';
 import { CoursePage } from '../features/member/CoursePage.js';
 import { CourseStructurePage } from '../features/member/CourseStructurePage.js';
 import { LessonPlayerPage } from '../features/member/LessonPlayerPage.js';
+import { MemberAccountPage } from '../features/member/MemberAccountPage.js';
 import { MyCoursesPage } from '../features/member/MyCoursesPage.js';
 import { MyProductsPage } from '../features/member/MyProductsPage.js';
 
 export const MyCoursesRoute = () => <MyCoursesPage />;
+
+export const MemberAccountRoute = () => <MemberAccountPage />;
 
 export const MyProductsRoute = () => <MyProductsPage />;
 

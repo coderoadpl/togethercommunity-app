@@ -5,6 +5,7 @@ import { createDevEmailPort } from '@adapters/email/dev.js';
 import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
 
 import { createDb } from './client.js';
+import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
 import {
   courseLessons,
   courseModules,
@@ -115,7 +116,9 @@ const video = (streamLibraryId: string, streamVideoId: string): LessonBlock => (
 const BUNNY_DEMO_LIBRARY_ID = '197133';
 const BUNNY_DEMO_VIDEO_ID = 'dc48a09e-d9bb-420a-83d7-72dc2304c034';
 
-const SAMPLE_PDF = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+const SAMPLE_PDF = SAMPLE_LESSON_PDF_URL;
+
+const STUDIO_BILLING_PORTAL_URL = 'https://billing.stripe.com/p/login/test_example';
 
 interface LessonDef {
   id: string;
@@ -706,6 +709,11 @@ await db
   .insert(tenants)
   .values(creators.map((creator) => ({ ...creator.tenant, createdAt: nextIso() })))
   .onConflictDoNothing();
+
+await db
+  .update(tenants)
+  .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL })
+  .where(eq(tenants.id, 'tenant-studio'));
 
 await db
   .insert(tenantAdmins)

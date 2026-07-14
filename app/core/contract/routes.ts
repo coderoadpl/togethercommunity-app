@@ -33,6 +33,8 @@ import {
   tenantSchema,
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
+  tenantSettingsSchema,
+  updateTenantSettingsInputSchema,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
@@ -390,6 +392,14 @@ export const tenantSecretDeleteOutputSchema = z.object({
   key: tenantSecretKeySchema,
 });
 
+export const tenantSettingsOutputSchema = z.object({
+  settings: tenantSettingsSchema,
+});
+
+export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
+
+export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
+
 export const stripeTestConnectionOutputSchema = z.object({
   ok: z.literal(true),
   diagnostic: z.string(),
@@ -464,6 +474,8 @@ export const API_ROUTES = {
   stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
+  tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
+  tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -518,6 +530,8 @@ export const API_PATHS = {
   stripeTestConnection: API_ROUTES.stripeTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
+  tenantSettings: API_ROUTES.tenantSettings.path,
+  tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
 } as const;
 
 /**

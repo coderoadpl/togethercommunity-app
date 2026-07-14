@@ -21,6 +21,7 @@ export * from './usecases/course-management.js';
 export * from './usecases/content-history.js';
 export * from './usecases/access.js';
 export * from './usecases/tenant-secrets.js';
+export * from './usecases/tenant-settings.js';
 export * from './usecases/payment-integrations.js';
 export * from './usecases/checkout.js';
 export * from './usecases/stripe-webhook.js';

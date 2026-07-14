@@ -70,7 +70,7 @@ export interface AuthConfig {
 }
 
 export interface AppDeps {
-  auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext'>;
+  auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext'>;
   authPort: AuthPort;
   products: ProductRepository;
   courses: CourseRepository;

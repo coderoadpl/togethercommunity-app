@@ -375,7 +375,12 @@ const SectionContent = ({ section, tenant }: { section: CreatorSection; tenant: 
     case 'integrations':
       return <IntegrationsPanel tenantId={tenant.id} />;
     case 'settings':
-      return <SecurityPanel />;
+      return (
+        <Stack useFlexGap spacing="1.5rem">
+          <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+          <SecurityPanel />
+        </Stack>
+      );
     case 'sales':
       return (
         <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -488,6 +493,68 @@ const CreatorShell = ({ tenant, email }: { tenant: TenantContext; email: string 
         </Box>
       </Box>
     </Box>
+  );
+};
+
+const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [url, setUrl] = useState<string | null>(null);
+
+  const value = url ?? settings.data?.settings.billingPortalUrl ?? '';
+
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    updateSettings.mutate({ billingPortalUrl: value.trim() === '' ? null : value.trim() });
+  };
+
+  return (
+    <Paper elevation={1} sx={{ p: '1.5rem' }}>
+      <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>
+        <Typography variant="h2" component="h2">
+          {t.billing.heading}
+        </Typography>
+        <Typography variant="body2">{t.billing.intro}</Typography>
+        <FormControl fullWidth>
+          <FormLabel htmlFor="billing-portal-url">{t.billing.urlLabel}</FormLabel>
+          <OutlinedInput
+            id="billing-portal-url"
+            type="url"
+            value={value}
+            disabled={!canEdit || settings.isPending}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder={t.billing.placeholder}
+            inputProps={{ 'data-testid': 'billing-portal-url' }}
+          />
+        </FormControl>
+        {canEdit ? (
+          <Box>
+            <Button
+              type="submit"
+              variant="outlined"
+              data-testid="billing-portal-save"
+              disabled={updateSettings.isPending}
+            >
+              {updateSettings.isPending ? t.billing.saving : t.billing.save}
+            </Button>
+          </Box>
+        ) : null}
+        {updateSettings.isSuccess ? (
+          <Typography variant="caption" component="p" data-testid="billing-portal-saved">
+            {t.billing.saved}
+          </Typography>
+        ) : null}
+        {updateSettings.isError ? <Alert>{mutationErrorMessage(updateSettings.error)}</Alert> : null}
+      </Box>
+    </Paper>
   );
 };
 

@@ -31,6 +31,7 @@ import {
   tenantCreateInputSchema,
   tenantSecretDeleteInputSchema,
   tenantSecretSetInputSchema,
+  tenantSettingsUpdateInputSchema,
   toEnvelope,
 } from '@core/contract/index.js';
 import {
@@ -75,6 +76,8 @@ import {
   getPublicOffer,
   getPaymentConfig,
   getTenantSecretsMasked,
+  getTenantSettings,
+  updateTenantSettings,
   grantProductToMember,
   listCourses,
   listLessons,
@@ -104,7 +107,11 @@ import {
   type AuthenticatedUser,
   type TenantSource,
 } from '@core/server/index.js';
-import { BETTER_AUTH_API_PATH_PATTERN, BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
+import {
+  BETTER_AUTH_API_PATH_PATTERN,
+  BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_PASSWORD_RESET_PATH,
+} from '@adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
@@ -319,6 +326,33 @@ export const buildApp = (deps: AppDeps) => {
         ...(resolved ? { tenantName: resolved.tenant.name } : {}),
         language: headerLanguage.success ? headerLanguage.data : 'pl',
         mode: 'email',
+        baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
+      });
+    }
+    return deps.auth.handler(
+      new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
+    );
+  });
+
+  // Set the reset-password delivery context (language, host) before Better Auth
+  // generates the token, so the emailed reset link lands on the requesting domain.
+  app.post(BETTER_AUTH_PASSWORD_RESET_PATH, async (c) => {
+    const rawBody = await c.req.text();
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      payload = null;
+    }
+    const parsedBody = magicLinkRequestBodySchema.safeParse(payload);
+    if (parsedBody.success) {
+      const host = c.req.header('host') ?? '';
+      const forwardedProto = c.req.header('x-forwarded-proto') ?? null;
+      const tenant = await resolveTenant(host, c.req.header(TENANT_HEADER) ?? null, deps);
+      const source: TenantSource = tenant.ok && tenant.value ? tenant.value.source : 'subdomain';
+      const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
+      deps.auth.setResetPasswordDeliveryContext(parsedBody.data.email, {
+        language: headerLanguage.success ? headerLanguage.data : 'pl',
         baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
       });
     }
@@ -578,6 +612,19 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid secret key', parsed.error.flatten())));
     const result = await deleteTenantSecret({ identity: c.get('identity') }, parsed.data.key, deps);
     return respond(result.ok ? ok({ key: result.value.key }) : result);
+  });
+
+  app.get(API_PATHS.tenantSettings, async (c) => {
+    const result = await getTenantSettings({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.post(API_PATHS.tenantSettingsUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = tenantSettingsUpdateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid tenant settings payload', parsed.error.flatten())));
+    const result = await updateTenantSettings({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ settings: result.value }) : result);
   });
 
   app.post(API_PATHS.stripeTestConnection, async (c) => {

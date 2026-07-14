@@ -26,6 +26,7 @@ import {
   type StaffRole,
   type TenantApiKey,
   type TenantSecret,
+  type TenantSettings,
 } from '@core/domain/index.js';
 import type {
   CourseLessonRepository,
@@ -927,6 +928,22 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
   findBySlug: async (slug) => {
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
+  },
+  findSettings: async (tenantId) => {
+    const rows = await db
+      .select({ billingPortalUrl: tenants.billingPortalUrl })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const row = rows[0];
+    return row ? { billingPortalUrl: row.billingPortalUrl } : null;
+  },
+  updateSettings: async (tenantId, settings): Promise<TenantSettings> => {
+    await db
+      .update(tenants)
+      .set({ billingPortalUrl: settings.billingPortalUrl })
+      .where(eq(tenants.id, tenantId));
+    return { billingPortalUrl: settings.billingPortalUrl };
   },
   createTenantWithOwnerGrant: async (input) =>
     db.transaction(async (tx) => {

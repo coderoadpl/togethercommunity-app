@@ -5,7 +5,7 @@ import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 import { productSchema } from './product.js';
 import { courseSnapshotV1Schema } from './snapshots/course/v1.js';
-import { courseLessonSnapshotV1Schema } from './snapshots/course_lesson/v1.js';
+import { courseLessonSnapshotV2Schema } from './snapshots/course_lesson/v2.js';
 import { courseModuleSnapshotV1Schema } from './snapshots/course_module/v1.js';
 import { productSnapshotV1Schema } from './snapshots/product/v1.js';
 
@@ -26,7 +26,7 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV1Schema,
   course_module: courseModuleSnapshotV1Schema,
-  course_lesson: courseLessonSnapshotV1Schema,
+  course_lesson: courseLessonSnapshotV2Schema,
   product: productSnapshotV1Schema,
 };
 
@@ -41,7 +41,7 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 1,
   course_module: 1,
-  course_lesson: 1,
+  course_lesson: 2,
   product: 1,
 };
 
@@ -54,7 +54,9 @@ type Upcaster = (payload: unknown) => unknown;
 const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
   course: {},
   course_module: {},
-  course_lesson: {},
+  // v1 payloads (pdfUrl restricted to absolute URLs) are a strict subset of v2,
+  // which additionally accepts same-origin paths — so the widening is identity.
+  course_lesson: { 1: (payload) => payload },
   product: {},
 };
 
@@ -187,7 +189,7 @@ export const SNAPSHOT_CURRENT_SCHEMAS: Record<EntityKind, z.ZodTypeAny> = curren
 export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: '4dced831',
   course_module: 'db069353',
-  course_lesson: 'b313cffd',
+  course_lesson: 'e132b565',
   product: '645c9735',
 };
 

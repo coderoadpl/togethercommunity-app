@@ -63,7 +63,13 @@ const centsSchema = z
 const emailOptionSchema = z.object({ email: z.string().email() });
 const authPasswordOptionsSchema = emailOptionSchema.extend({ password: z.string().min(1) });
 const registerOptionsSchema = authPasswordOptionsSchema.extend({ name: z.string().min(1) });
+const passwordResetRequestOptionsSchema = emailOptionSchema.extend({ language: z.string().min(1).optional() });
+const resetPasswordOptionsSchema = z.object({ token: z.string().min(1), password: z.string().min(1) });
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
+const tenantSettingsOptionsSchema = z.object({
+  billingPortalUrl: z.string().url().optional(),
+  clearBillingPortalUrl: z.boolean().optional(),
+});
 const productCreateOptionsSchema = z.object({
   title: z.string().trim().min(1).max(200),
   priceCents: centsSchema,
@@ -406,6 +412,36 @@ tenant
       }
       saveConfig({ ...ctx.config, tenant: slug });
       emit(ok(membership), ctx.json, (m) => `active tenant: ${m.tenant.name} (${m.tenant.slug})`);
+    }),
+  );
+
+tenant.command('settings').description('Show tenant settings').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.getTenantSettings(), ctx.json, (data) =>
+      `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+    );
+  }),
+);
+
+tenant
+  .command('settings-set')
+  .description('Update tenant settings (owner only)')
+  .option('--billing-portal-url <url>', 'billing portal URL shown to members')
+  .option('--clear-billing-portal-url', 'remove the billing portal URL')
+  .action(
+    withInput(z.tuple([tenantSettingsOptionsSchema]), async (ctx, [options]) => {
+      const billingPortalUrl = options.clearBillingPortalUrl === true ? null : options.billingPortalUrl;
+      if (billingPortalUrl === undefined) {
+        emit(
+          err(validation('Pass --billing-portal-url <url> or --clear-billing-portal-url')),
+          ctx.json,
+          () => '',
+        );
+        return;
+      }
+      emit(await ctx.api.updateTenantSettings({ billingPortalUrl }), ctx.json, (data) =>
+        `billing portal url: ${data.settings.billingPortalUrl ?? '(not set)'}`,
+      );
     }),
   );
 
@@ -939,6 +975,39 @@ dev
         const box = data.expiresAt ? ` (expires ${data.expiresAt})` : '';
         return `${status}: product ${data.productId} for member ${data.memberId}${box}`;
       });
+    }),
+  );
+
+program
+  .command('request-password-reset')
+  .description('Send a password-reset email (to the requesting tenant host)')
+  .requiredOption('--email <email>')
+  .option('--language <language>', 'email language (pl or en)')
+  .action(
+    withInput(z.tuple([passwordResetRequestOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.auth.requestPasswordReset({
+          email: options.email,
+          ...(options.language === undefined ? {} : { language: options.language }),
+        }),
+        ctx.json,
+        () => `password-reset email requested for ${options.email}`,
+      );
+    }),
+  );
+
+program
+  .command('reset-password')
+  .description('Consume a reset token and set a new password')
+  .requiredOption('--token <token>')
+  .requiredOption('--password <password>')
+  .action(
+    withInput(z.tuple([resetPasswordOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.auth.resetPassword({ token: options.token, newPassword: options.password }),
+        ctx.json,
+        () => 'password reset',
+      );
     }),
   );
 

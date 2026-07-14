@@ -55,10 +55,12 @@ import {
   CourseRoute,
   CourseStructureRoute,
   LessonPlayerRoute,
+  MemberAccountRoute,
   MyCoursesRoute,
   MyProductsRoute,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
+import { ResetPasswordRoute } from './routes/reset-password.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
 /** Dev-only, lazy so the devtools chunk never reaches the production bundle. */
@@ -123,6 +125,16 @@ const registerRoute = createRoute({
   path: '/register',
   component: RegisterRoute,
 });
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  component: ResetPasswordRoute,
+});
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/account',
+  component: MemberAccountRoute,
+});
 
 const router = createRouter({
   routeTree: rootRoute.addChildren([
@@ -135,6 +147,8 @@ const router = createRouter({
     courseStructureRoute,
     lessonPlayerRoute,
     registerRoute,
+    resetPasswordRoute,
+    accountRoute,
   ]),
 });
 

@@ -6,7 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
-import { AccountIcon, SignOutIcon } from './account-icons.js';
+import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
 
 export const MemberAccountMenu = () => {
   const t = useTranslations();
@@ -56,6 +56,18 @@ export const MemberAccountMenu = () => {
           </Box>
         ) : null}
         {email !== null ? <Divider /> : null}
+        <MenuItem
+          data-testid="member-account-link"
+          onClick={() => {
+            setAnchorEl(null);
+            void navigate({ to: '/account' });
+          }}
+        >
+          <ListItemIcon>
+            <ManageAccountIcon />
+          </ListItemIcon>
+          <ListItemText primary={t.account.menuAccount} />
+        </MenuItem>
         <MenuItem
           data-testid="member-sign-out"
           disabled={signOut.isPending}

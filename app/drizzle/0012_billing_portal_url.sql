@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "billing_portal_url" text;

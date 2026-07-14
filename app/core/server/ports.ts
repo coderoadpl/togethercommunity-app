@@ -21,6 +21,7 @@ import type {
   TenantDomain,
   TenantSecret,
   TenantSecretKey,
+  TenantSettings,
 } from '@core/domain/index.js';
 
 /**
@@ -251,6 +252,8 @@ export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 export interface TenantRepository {
   findById(tenantId: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
+  findSettings(tenantId: string): Promise<TenantSettings | null>;
+  updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
   createTenantWithOwnerGrant(input: {
     tenant: { id: string; slug: string; name: string; createdAt: string };
     ownerGrant: {

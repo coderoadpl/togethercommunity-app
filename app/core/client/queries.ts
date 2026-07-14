@@ -31,6 +31,7 @@ import type {
   TenantCreateInput,
   TenantSecretDeleteInput,
   TenantSecretSetInput,
+  TenantSettingsUpdateInput,
 } from '@core/contract/index.js';
 import type { DevGrantInput, EntityKind, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
 
@@ -139,6 +140,10 @@ export const apiKeysScopes = {
 export const tenantSecretsScopes = {
   all: () => ['tenant-secrets'] as const,
   lists: () => ['tenant-secrets', 'list'] as const,
+};
+
+export const tenantSettingsScopes = {
+  all: () => ['tenant-settings'] as const,
 };
 
 export const coursesScopes = {
@@ -467,6 +472,20 @@ export const testStripeConnectionMutation = (api: ApiClient) =>
 
 export const tenantSecretsInvalidates = () => ({ queryKey: tenantSecretsScopes.lists() });
 
+export const tenantSettingsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tenantSettingsScopes.all(),
+    call: ({ signal }) => api.getTenantSettings(signal),
+  });
+
+export const updateTenantSettingsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSettingsScopes.all(), 'update'],
+    call: (input: TenantSettingsUpdateInput) => api.updateTenantSettings(input),
+  });
+
+export const tenantSettingsInvalidates = () => ({ queryKey: tenantSettingsScopes.all() });
+
 /** Invalidation filters for the course tree editor (courses, modules, lessons). */
 export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });
 
@@ -507,6 +526,18 @@ export const requestMagicLinkMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'magic-link'],
     call: (input: { email: string; callbackURL: string; language?: string }) => auth.requestMagicLink(input),
+  });
+
+export const requestPasswordResetMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'request-password-reset'],
+    call: (input: { email: string; language?: string }) => auth.requestPasswordReset(input),
+  });
+
+export const resetPasswordMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, { token: string; newPassword: string }> =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'reset-password'],
+    call: (input: { token: string; newPassword: string }) => auth.resetPassword(input),
   });
 
 export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>

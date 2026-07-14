@@ -116,6 +116,18 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
           )
         ).error,
       ),
+    requestPasswordReset: async ({ email, language }) =>
+      toResult(
+        undefined,
+        (
+          await client.requestPasswordReset(
+            { email, redirectTo: '/reset-password' },
+            language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
+          )
+        ).error,
+      ),
+    resetPassword: async ({ token, newPassword }) =>
+      toResult({ token: null }, (await client.resetPassword({ newPassword, token })).error),
     signOut: async () => toResult(undefined, (await client.signOut()).error),
     registerPasskey: async (name) =>
       toResult(undefined, (await client.passkey.addPasskey({ name })).error),
@@ -171,6 +183,46 @@ const verifyMagicLinkToken = async (
   return ok({ token: sessionToken });
 };
 
+const postCliPasswordReset = async (
+  baseUrl: string,
+  input: { email: string; language?: string },
+): Promise<Result<void, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/request-password-reset', baseUrl), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: baseUrl,
+        ...(input.language ? { [MAGIC_LINK_LANGUAGE_HEADER]: input.language } : {}),
+      },
+      body: JSON.stringify({ email: input.email, redirectTo: '/reset-password' }),
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error requesting password reset: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult(undefined, await readAuthError(response));
+  return ok(undefined);
+};
+
+const postCliResetPassword = async (
+  baseUrl: string,
+  input: { token: string; newPassword: string },
+): Promise<Result<AuthSessionResult, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/reset-password', baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: baseUrl },
+      body: JSON.stringify({ token: input.token, newPassword: input.newPassword }),
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error resetting password: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
+  return ok({ token: null });
+};
+
 const verifyTotpCli = async (
   baseUrl: string,
   code: string,
@@ -199,6 +251,8 @@ export const createCliAuthAdapter = (baseUrl: string, onToken: (token: string) =
   signUp: (input) => postCliAuth(baseUrl, '/api/auth/sign-up/email', input, onToken),
   signIn: (input) => postCliAuth(baseUrl, '/api/auth/sign-in/email', input, onToken),
   requestMagicLink: (input) => postCliMagicLink(baseUrl, input),
+  requestPasswordReset: (input) => postCliPasswordReset(baseUrl, input),
+  resetPassword: (input) => postCliResetPassword(baseUrl, input),
   signOut: async () => ok(undefined),
   registerPasskey: async () => err(notSupportedInCli),
   signInWithPasskey: async () => err(notSupportedInCli),

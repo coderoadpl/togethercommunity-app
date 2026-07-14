@@ -363,6 +363,48 @@ export interface Messages {
     embedTitle: string;
     pdfTitle: string;
   };
+  account: {
+    menuAccount: string;
+    title: string;
+    heading: string;
+    signedInAs: string;
+    back: string;
+    passwordHeading: string;
+    passwordIntro: string;
+    setOrResetPassword: string;
+    resetSending: string;
+    resetSent: string;
+    billingHeading: string;
+    billingIntro: string;
+    managePayments: string;
+  };
+  resetPassword: {
+    title: string;
+    eyebrow: (params: { host: string }) => string;
+    intro: string;
+    newPasswordLabel: string;
+    confirmPasswordLabel: string;
+    submitIdle: string;
+    submitPending: string;
+    mismatch: string;
+    tooShort: (params: { min: number }) => string;
+    missingToken: string;
+    successTitle: string;
+    successBody: string;
+    goToLogin: string;
+  };
+  billing: {
+    heading: string;
+    intro: string;
+    urlLabel: string;
+    placeholder: string;
+    save: string;
+    saving: string;
+    saved: string;
+    clear: string;
+    configured: string;
+    notConfigured: string;
+  };
   checkout: {
     loading: string;
     eyebrow: (params: { tenant: string }) => string;

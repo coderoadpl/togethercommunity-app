@@ -11,6 +11,7 @@ export const tenants = pgTable(
     name: text('name').notNull(),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
+    billingPortalUrl: text('billing_portal_url'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );

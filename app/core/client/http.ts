@@ -49,6 +49,7 @@ import {
   tenantSecretsListOutputSchema,
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
+  tenantSettingsOutputSchema,
   type ApiKeyCreateInput,
   type ApiKeyRevokeInput,
   type CourseCreateInput,
@@ -73,6 +74,7 @@ import {
   type TenantCreateInput,
   type TenantSecretDeleteInput,
   type TenantSecretSetInput,
+  type TenantSettingsUpdateInput,
   type WriteMethod,
 } from '@core/contract/index.js';
 import {
@@ -507,6 +509,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   m2mEnroll: (input: M2mEnrollRequest, signal?: AbortSignal) =>
     request(options, API_ROUTES.m2mEnroll.method, API_ROUTES.m2mEnroll.path, m2mEnrollOutputSchema, input, signal),
+  getTenantSettings: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSettings.method,
+      API_ROUTES.tenantSettings.path,
+      tenantSettingsOutputSchema,
+      undefined,
+      signal,
+    ),
+  updateTenantSettings: (input: TenantSettingsUpdateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSettingsUpdate.method,
+      API_ROUTES.tenantSettingsUpdate.path,
+      tenantSettingsOutputSchema,
+      input,
+      signal,
+    ),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

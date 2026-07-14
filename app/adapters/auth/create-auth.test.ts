@@ -24,6 +24,7 @@ const buildAuth = () => {
     google: null,
   });
   return {
+    auth,
     authPort: createAuthPort(auth),
     magicLinks: createDevMagicLinkReader(db),
     emails: createDevEmailReader(db),
@@ -92,5 +93,45 @@ describe('createAuthPort.requestMagicLink', () => {
 
     const link = await magicLinks.findByEmail(normalizeEmail(email));
     expect(new URL(link?.url ?? '').host).toBe('localhost:48730');
+  });
+});
+
+describe('reset password email', () => {
+  it('rebases the reset link onto the requesting host and sends an English email', async () => {
+    const { auth, authPort, emails } = buildAuth();
+    const email = `reset-en-${Date.now()}@together.dev`;
+    await authPort.ensureUser(email);
+
+    auth.setResetPasswordDeliveryContext(email, {
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: '/reset-password' },
+      headers: new Headers(),
+    });
+
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Reset your password');
+    expect(message?.html).toContain('http://studio.localhost:48730/reset-password?token=');
+  });
+
+  it('sends a Polish email when the requested language is pl', async () => {
+    const { auth, authPort, emails } = buildAuth();
+    const email = `reset-pl-${Date.now()}@together.dev`;
+    await authPort.ensureUser(email);
+
+    auth.setResetPasswordDeliveryContext(email, {
+      language: 'pl',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: '/reset-password' },
+      headers: new Headers(),
+    });
+
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Zresetuj hasło');
+    expect(message?.html).toContain('/reset-password?token=');
   });
 });

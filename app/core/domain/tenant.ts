@@ -11,6 +11,21 @@ export const tenantSchema = z.object({
 
 export type Tenant = z.infer<typeof tenantSchema>;
 
+export const tenantSettingsSchema = z.object({
+  billingPortalUrl: z.string().url().nullable(),
+});
+
+export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
+
+export const updateTenantSettingsInputSchema = z.object({
+  billingPortalUrl: z
+    .union([z.string().url(), z.literal('')])
+    .nullable()
+    .transform((value) => (value === '' || value === null ? null : value)),
+});
+
+export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
 export const membershipSchema = z.object({
   tenant: tenantSchema,
   staffRole: staffRoleSchema,

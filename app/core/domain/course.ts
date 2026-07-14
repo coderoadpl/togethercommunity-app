@@ -39,10 +39,18 @@ const embedLessonBlockSchema = z
   })
   .strict();
 
+/** An absolute URL, or a same-origin root-relative path (e.g. an asset our own server hosts). */
+const documentUrlSchema = z
+  .string()
+  .refine(
+    (value) => value.startsWith('/') || z.string().url().safeParse(value).success,
+    'Must be an absolute URL or a same-origin path starting with "/"',
+  );
+
 const pdfLessonBlockSchema = z
   .object({
     type: z.literal('pdf'),
-    pdfUrl: z.string().url(),
+    pdfUrl: documentUrlSchema,
     name: z.string().min(1).optional(),
   })
   .strict();

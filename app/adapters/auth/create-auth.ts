@@ -3,7 +3,11 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 
-import { magicLink as magicLinkTemplate, normalizeEmail } from '@core/domain/index.js';
+import {
+  magicLink as magicLinkTemplate,
+  normalizeEmail,
+  resetPassword as resetPasswordTemplate,
+} from '@core/domain/index.js';
 import type { AuthPort, EmailPort } from '@core/server/index.js';
 import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
 import type { Db } from '@adapters/db/client.js';
@@ -29,6 +33,8 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
+export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset';
+
 export interface MagicLinkDeliveryContext {
   tenantName?: string;
   language: string;
@@ -50,16 +56,41 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
   }
 };
 
+export interface ResetPasswordDeliveryContext {
+  language: string;
+  /** Host-derived base URL: the reset page link is built on this so it lands on the requesting domain. */
+  baseUrl?: string;
+}
+
 export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
+  const resetPasswordContexts = new Map<string, ResetPasswordDeliveryContext>();
   const capturedLinks = new Map<string, { url: string; token: string }>();
+
+  const resetPasswordUrl = (base: string, token: string): string => {
+    const url = new URL('/reset-password', base);
+    url.searchParams.set('token', token);
+    return url.toString();
+  };
 
   const auth = betterAuth({
     database: drizzleAdapter(db, { provider: 'pg' }),
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
-    emailAndPassword: { enabled: true, password: { verify: verifyPasswordWithLegacyFallback } },
+    emailAndPassword: {
+      enabled: true,
+      password: { verify: verifyPasswordWithLegacyFallback },
+      sendResetPassword: async ({ user, token }) => {
+        const normalizedEmail = normalizeEmail(user.email);
+        const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'pl' };
+        resetPasswordContexts.delete(normalizedEmail);
+        const actionUrl = resetPasswordUrl(context.baseUrl ?? settings.baseUrl, token);
+        const message = resetPasswordTemplate(context.language, { actionUrl });
+        const sent = await settings.email.send({ to: normalizedEmail, ...message });
+        if (!sent.ok) throw new Error(sent.error.message);
+      },
+    },
     ...(settings.google
       ? { socialProviders: { google: settings.google } }
       : {}),
@@ -109,6 +140,9 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     ...auth,
     setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
       deliveryContexts.set(normalizeEmail(email), context);
+    },
+    setResetPasswordDeliveryContext: (email: string, context: ResetPasswordDeliveryContext) => {
+      resetPasswordContexts.set(normalizeEmail(email), context);
     },
     consumeCapturedMagicLink: (email: string) => {
       const normalizedEmail = normalizeEmail(email);

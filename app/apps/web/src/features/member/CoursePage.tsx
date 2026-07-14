@@ -6,7 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -41,7 +41,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
         <Alert>
-          {isForbidden(products.error) ? t.student.staffNoMember : products.error.message}
+          {isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t)}
         </Alert>
       </Container>
     );

@@ -14,10 +14,8 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
-
 import { actions } from '../../api.js';
-import { useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
@@ -103,7 +101,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   if (offer.isError || paymentConfig.isError) {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Alert>{offer.error?.message ?? paymentConfig.error?.message}</Alert>
+        <Alert>{localizeError(offer.error ?? paymentConfig.error, t)}</Alert>
       </Container>
     );
   }
@@ -216,16 +214,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           ) : null}
           {checkoutSession.isError ? (
             <Alert>
-              {checkoutSession.error instanceof ApiError
-                ? checkoutSession.error.appError.message
-                : checkoutSession.error.message}
+              {localizeError(checkoutSession.error, t)}
             </Alert>
           ) : null}
           {simulatePurchase.isError ? (
             <Alert>
-              {simulatePurchase.error instanceof ApiError
-                ? simulatePurchase.error.appError.message
-                : simulatePurchase.error.message}
+              {localizeError(simulatePurchase.error, t)}
             </Alert>
           ) : null}
         </Stack>

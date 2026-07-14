@@ -13,15 +13,11 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
 import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { Eyebrow } from '../../../theme.js';
-import { useTranslations } from '../../../i18n/index.js';
-
-const mutationErrorMessage = (error: Error): string =>
-  error instanceof ApiError ? error.appError.message : error.message;
+import { localizeError, useTranslations } from '../../../i18n/index.js';
 
 const SecretField = ({
   secretKey,
@@ -107,8 +103,8 @@ const SecretField = ({
           {t.integrations.saved}
         </Typography>
       ) : null}
-      {setSecret.isError ? <Alert>{mutationErrorMessage(setSecret.error)}</Alert> : null}
-      {removeSecret.isError ? <Alert>{mutationErrorMessage(removeSecret.error)}</Alert> : null}
+      {setSecret.isError ? <Alert>{localizeError(setSecret.error, t)}</Alert> : null}
+      {removeSecret.isError ? <Alert>{localizeError(removeSecret.error, t)}</Alert> : null}
     </Box>
   );
 };
@@ -147,7 +143,7 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
             </Typography>
           ) : secrets.isError ? (
             <Alert>
-              {secrets.error instanceof ApiError ? secrets.error.appError.message : secrets.error.message}
+              {localizeError(secrets.error, t)}
             </Alert>
           ) : (
             <Stack useFlexGap spacing="1.25rem">
@@ -195,7 +191,7 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
             ) : null}
             {testConnection.isError ? (
               <Alert data-testid="stripe-test-error">
-                {mutationErrorMessage(testConnection.error)}
+                {localizeError(testConnection.error, t)}
               </Alert>
             ) : null}
           </Box>

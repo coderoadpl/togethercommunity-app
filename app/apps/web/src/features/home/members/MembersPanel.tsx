@@ -20,12 +20,12 @@ import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
-  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : t.members.exportFailed;
+  error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.members.exportFailed;
 
 export const MembersPanel = () => {
   const t = useTranslations();
@@ -96,7 +96,7 @@ export const MembersPanel = () => {
         {members.isPending ? (
           <Typography variant="body1">{t.members.loading}</Typography>
         ) : members.isError ? (
-          <Alert>{members.error.message}</Alert>
+          <Alert>{localizeError(members.error, t)}</Alert>
         ) : members.data.members.length === 0 ? (
           <Typography variant="body1">{t.members.empty}</Typography>
         ) : (

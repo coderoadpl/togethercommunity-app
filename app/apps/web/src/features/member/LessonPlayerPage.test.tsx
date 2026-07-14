@@ -252,13 +252,15 @@ describe('LessonPlayerPage', () => {
     server.use(okNext(null), okStructureFullyCompleted(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     expect(await screen.findByTestId('course-completed')).toHaveTextContent(pl.lesson.courseCompleted);
+    expect(screen.queryByTestId('course-end')).not.toBeInTheDocument();
   });
 
-  it('does not show the completion chip at the last lesson when the course is not finished', async () => {
+  it('shows a neutral end-of-course state at the last lesson when the course is not finished', async () => {
     server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
     await screen.findByTestId('mark-complete');
     expect(screen.queryByTestId('course-completed')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('course-end')).toHaveTextContent(pl.lesson.lastLesson);
   });
 
   it('renders a full-page locked state on a 403 envelope without upsell', async () => {

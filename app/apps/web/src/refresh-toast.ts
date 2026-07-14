@@ -1,5 +1,7 @@
+import type { ErrorCode } from '@core/domain/index.js';
+
 export interface RefreshToast {
-  readonly message: string;
+  readonly code: ErrorCode | null;
 }
 
 let current: RefreshToast | null = null;
@@ -24,8 +26,8 @@ export const refreshToastStore = {
   snapshot(): RefreshToast | null {
     return current;
   },
-  show(message: string): void {
-    current = { message };
+  show(code: ErrorCode | null): void {
+    current = { code };
     emit();
   },
   dismiss(): void {

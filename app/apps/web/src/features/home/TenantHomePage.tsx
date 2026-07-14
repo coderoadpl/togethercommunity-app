@@ -21,7 +21,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, Eyebrow } from '../../theme.js';
 
@@ -54,7 +54,7 @@ export const TenantHomePage = () => {
   if (me.isError) {
     return (
       <Container sx={{ maxWidth: '44rem' }}>
-        <Alert sx={{ mt: 4 }}>{me.error.message}</Alert>
+        <Alert sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
       </Container>
     );
   }
@@ -141,11 +141,7 @@ const PickTenant = () => {
             {createTenant.isPending ? t.tenant.creating : t.tenant.createButton}
           </Button>
           {createTenant.isError ? (
-            <Alert>
-              {createTenant.error instanceof ApiError
-                ? createTenant.error.appError.message
-                : createTenant.error.message}
-            </Alert>
+            <Alert>{localizeError(createTenant.error, t)}</Alert>
           ) : null}
           {createdSlug ? (
             <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>

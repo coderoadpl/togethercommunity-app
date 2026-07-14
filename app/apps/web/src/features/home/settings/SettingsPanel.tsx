@@ -12,15 +12,10 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
-
 import { actions } from '../../../api.js';
-import { useTranslations } from '../../../i18n/index.js';
+import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { Eyebrow } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
-
-const mutationErrorMessage = (error: Error): string =>
-  error instanceof ApiError ? error.appError.message : error.message;
 
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
@@ -78,7 +73,7 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             {t.billing.saved}
           </Typography>
         ) : null}
-        {updateSettings.isError ? <Alert>{mutationErrorMessage(updateSettings.error)}</Alert> : null}
+        {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
       </Box>
     </Paper>
   );
@@ -138,7 +133,7 @@ const SecurityPanel = () => {
               {t.security.passkeyAdded}
             </Typography>
           ) : null}
-          {registerPasskey.isError ? <Alert>{mutationErrorMessage(registerPasskey.error)}</Alert> : null}
+          {registerPasskey.isError ? <Alert>{localizeError(registerPasskey.error, t)}</Alert> : null}
         </Box>
 
         <Box component="form" onSubmit={enrollTwoFactor} sx={{ display: 'grid', gap: '0.8rem' }}>
@@ -159,7 +154,7 @@ const SecurityPanel = () => {
           <Button type="submit" variant="outlined" data-testid="enable-2fa" disabled={enableTwoFactor.isPending}>
             {enableTwoFactor.isPending ? t.security.enabling : t.security.enableTwoFactor}
           </Button>
-          {enableTwoFactor.isError ? <Alert>{mutationErrorMessage(enableTwoFactor.error)}</Alert> : null}
+          {enableTwoFactor.isError ? <Alert>{localizeError(enableTwoFactor.error, t)}</Alert> : null}
         </Box>
 
         {enableTwoFactor.data ? (
@@ -202,7 +197,7 @@ const SecurityPanel = () => {
                   {t.security.twoFactorOn}
                 </Typography>
               ) : null}
-              {verifyTotp.isError ? <Alert>{mutationErrorMessage(verifyTotp.error)}</Alert> : null}
+              {verifyTotp.isError ? <Alert>{localizeError(verifyTotp.error, t)}</Alert> : null}
             </Box>
           </Box>
         ) : null}

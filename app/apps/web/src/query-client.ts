@@ -18,8 +18,7 @@ const queryCache = new QueryCache({
   onError: (error, query) => {
     reportError(error);
     if (query.state.data === undefined) return;
-    const message = error instanceof ApiError ? error.appError.message : 'Could not refresh data';
-    refreshToastStore.show(message);
+    refreshToastStore.show(error instanceof ApiError ? error.appError.code : null);
   },
 });
 

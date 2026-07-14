@@ -199,7 +199,7 @@ const studioLessons: LessonDef[] = [
       html(
         '<h3>Obsługa zdarzeń</h3><p>Interaktywność strony budujemy, nasłuchując zdarzeń metodą <code>addEventListener</code>. Do najczęstszych zdarzeń należą <code>click</code>, <code>input</code> oraz <code>submit</code>.</p><p>Pamiętaj o tym, by przy formularzach wywołać <code>event.preventDefault()</code>, jeśli chcesz przejąć kontrolę nad domyślnym zachowaniem przeglądarki.</p>',
       ),
-      embed('XF1_MlZ5l40'),
+      embed('jS4aFq5-91M'),
       link('https://developer.mozilla.org/pl/docs/Web/API/EventTarget/addEventListener', 'MDN — addEventListener'),
     ],
   },
@@ -207,7 +207,7 @@ const studioLessons: LessonDef[] = [
     id: 'lesson-js-projekt-1',
     name: 'Projekt: lista zadań',
     contents: [
-      embed('Ttf3CEsEwMQ'),
+      embed('8dWL3wF_OMw'),
       html(
         '<h3>Projekt końcowy</h3><p>W tej lekcji łączymy zdobytą wiedzę i budujemy prostą aplikację listy zadań (to-do). Wykorzystamy manipulację DOM, obsługę zdarzeń oraz zapisywanie stanu w <code>localStorage</code>.</p><ul><li>Dodawanie i usuwanie zadań.</li><li>Oznaczanie zadań jako ukończone.</li><li>Trwałość danych po odświeżeniu strony.</li></ul>',
       ),
@@ -253,7 +253,7 @@ const studioLessons: LessonDef[] = [
       html(
         '<h3>Podnoszenie stanu (lifting state up)</h3><p>Gdy kilka komponentów potrzebuje tych samych danych, przenosimy stan do ich wspólnego rodzica i przekazujemy go w dół przez propsy. To podstawowy wzorzec przepływu danych w React.</p>',
       ),
-      embed('-jHT1AGVXWY'),
+      embed('bMknfKXIFA8'),
     ],
   },
   {
@@ -299,7 +299,7 @@ const akademiaLessons: LessonDef[] = [
       html(
         '<h3>Środowisko pracy</h3><p>Zanim zaczniesz pisać kod, warto skonfigurować wygodne środowisko: edytor (np. VS Code), terminal oraz system kontroli wersji <code>git</code>.</p><p>Dobre narzędzia nie napiszą kodu za Ciebie, ale znacząco przyspieszą pracę i naukę.</p>',
       ),
-      embed('USj2Al6xkgU'),
+      embed('pQN-pnXPaVg'),
     ],
   },
   {

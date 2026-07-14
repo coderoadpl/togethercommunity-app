@@ -21,12 +21,11 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
 import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
@@ -119,11 +118,7 @@ const ProductRow = ({
         <ProductAccessEditor product={product} />
       </Collapse>
       {publishProduct.isError ? (
-        <Alert>
-          {publishProduct.error instanceof ApiError
-            ? publishProduct.error.appError.message
-            : publishProduct.error.message}
-        </Alert>
+        <Alert>{localizeError(publishProduct.error, t)}</Alert>
       ) : null}
     </Paper>
   );
@@ -242,11 +237,7 @@ export const ProductsPanel = () => {
           </Button>
         </Stack>
         {createProduct.isError ? (
-          <Alert>
-            {createProduct.error instanceof ApiError
-              ? createProduct.error.appError.message
-              : createProduct.error.message}
-          </Alert>
+          <Alert>{localizeError(createProduct.error, t)}</Alert>
         ) : null}
       </Paper>
 
@@ -257,7 +248,7 @@ export const ProductsPanel = () => {
         {products.isPending ? (
           <Typography variant="body1">{t.products.loading}</Typography>
         ) : products.isError ? (
-          <Alert>{products.error.message}</Alert>
+          <Alert>{localizeError(products.error, t)}</Alert>
         ) : products.data.products.length === 0 ? (
           <Typography variant="body1">{t.products.empty}</Typography>
         ) : (

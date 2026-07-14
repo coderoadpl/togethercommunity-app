@@ -14,10 +14,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
-
 import { actions } from '../../api.js';
-import { useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const LoginPage = () => {
@@ -130,7 +128,7 @@ export const LoginPage = () => {
         </Stack>
         {signIn.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
-            {signIn.error instanceof ApiError ? signIn.error.appError.message : signIn.error.message}
+            {localizeError(signIn.error, t)}
           </Alert>
         ) : null}
         <Stack useFlexGap spacing="0.6rem" sx={{ mt: '0.9rem' }}>
@@ -157,9 +155,7 @@ export const LoginPage = () => {
         </Stack>
         {signInWithPasskey.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
-            {signInWithPasskey.error instanceof ApiError
-              ? signInWithPasskey.error.appError.message
-              : signInWithPasskey.error.message}
+            {localizeError(signInWithPasskey.error, t)}
           </Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
@@ -184,9 +180,7 @@ export const LoginPage = () => {
         </Stack>
         {requestMagicLink.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
-            {requestMagicLink.error instanceof ApiError
-              ? requestMagicLink.error.appError.message
-              : requestMagicLink.error.message}
+            {localizeError(requestMagicLink.error, t)}
           </Alert>
         ) : null}
         {requestedMagicEmail ? (
@@ -200,7 +194,7 @@ export const LoginPage = () => {
           </FinePrint>
         ) : null}
         {devMagicLink.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>{devMagicLink.error.message}</Alert>
+          <Alert sx={{ mt: '0.6rem' }}>{localizeError(devMagicLink.error, t)}</Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>

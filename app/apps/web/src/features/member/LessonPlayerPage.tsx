@@ -18,7 +18,7 @@ import { ApiError } from '@core/client/index.js';
 import type { LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations, type Messages } from '../../i18n/index.js';
+import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import {
   CardTitle,
   Eyebrow,
@@ -132,9 +132,12 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
   }
 
   if (block.type === 'html') {
-    // Legacy injected lesson HTML raw (a trust-the-server XSS surface); we sanitize with DOMPurify first.
-    const clean = DOMPurify.sanitize(block.html);
-    return <LessonHtmlContent data-testid="lesson-html" dangerouslySetInnerHTML={{ __html: clean }} />;
+    return (
+      <LessonHtmlContent
+        data-testid="lesson-html"
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(block.html) }}
+      />
+    );
   }
 
   const github = /(^|\.)github\.com/i.test(new URL(block.url).hostname);
@@ -264,7 +267,7 @@ export const LessonPlayerPage = ({
         <Paper elevation={1} sx={{ p: '1.5rem' }}>
           <CardTitle variant="h1">{t.lesson.unavailable}</CardTitle>
           <Typography variant="body1" sx={{ mt: '1rem' }}>
-            {lesson.error.message}
+            {localizeError(lesson.error, t)}
           </Typography>
           <Box sx={{ mt: '1rem' }}>
             <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
@@ -359,7 +362,9 @@ export const LessonPlayerPage = ({
             (nextLesson === null ? (
               structure.data?.structure.completionStatus === 'fully-completed' ? (
                 <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
-              ) : null
+              ) : (
+                <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
+              )
             ) : (
               <Link href={nextHref ?? ''} data-testid="next-lesson">
                 {t.lesson.next({ name: nextLesson.name })}

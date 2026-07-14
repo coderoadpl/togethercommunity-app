@@ -2,7 +2,7 @@ import { Box, Button, Paper, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
-import { useTranslations, type Messages } from './i18n/index.js';
+import { localizeErrorCode, useTranslations, type Messages } from './i18n/index.js';
 import { activeTraceId } from './observability.js';
 
 const headingFor = (error: unknown, t: Messages): string => {
@@ -26,7 +26,7 @@ const headingFor = (error: unknown, t: Messages): string => {
 };
 
 const detailFor = (error: unknown, t: Messages): string =>
-  error instanceof ApiError ? error.appError.message : t.errors.detailGeneric;
+  error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.errors.detailGeneric;
 
 interface RootErrorFallbackProps {
   error: unknown;

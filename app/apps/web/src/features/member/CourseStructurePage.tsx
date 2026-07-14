@@ -6,7 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
 import { CourseTree } from './CourseTree.js';
 
@@ -53,7 +53,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
               ? t.student.staffNoMember
               : isNotFound(structure.error)
                 ? t.courseTree.courseNotInLibrary
-                : structure.error.message}
+                : localizeError(structure.error, t)}
           </Typography>
           <Box sx={{ mt: '1rem' }}>
             <Link href="/my">{t.courseTree.backToMyCourses}</Link>

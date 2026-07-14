@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
@@ -17,16 +17,19 @@ import {
   Paper,
   Select,
   Stack,
+  Tab,
+  Tabs,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import DOMPurify from 'dompurify';
 
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
-import { Eyebrow } from '../../../theme.js';
+import { Eyebrow, LessonHtmlContent } from '../../../theme.js';
 import { errorMessage, MutationError } from './feedback.js';
 
 type BlockType = LessonBlock['type'];
@@ -125,6 +128,113 @@ const parseBlocks = (
   return { ok: true, blocks };
 };
 
+const HtmlBlockEditor = ({
+  index,
+  value,
+  onChange,
+}: {
+  index: number;
+  value: string;
+  onChange: (html: string) => void;
+}) => {
+  const t = useTranslations();
+  const [tab, setTab] = useState<'edit' | 'preview'>('edit');
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const surround = (before: string, after: string, placeholder: string) => {
+    const element = inputRef.current;
+    const start = element?.selectionStart ?? value.length;
+    const end = element?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end) || placeholder;
+    onChange(`${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`);
+    requestAnimationFrame(() => {
+      if (element === null) return;
+      element.focus();
+      const caret = start + before.length;
+      element.setSelectionRange(caret, caret + selected.length);
+    });
+  };
+
+  const tools = [
+    {
+      key: 'bold',
+      label: t.lessons.htmlToolbarBold,
+      apply: () => surround('<strong>', '</strong>', t.lessons.htmlPlaceholderBold),
+    },
+    {
+      key: 'italic',
+      label: t.lessons.htmlToolbarItalic,
+      apply: () => surround('<em>', '</em>', t.lessons.htmlPlaceholderItalic),
+    },
+    {
+      key: 'heading',
+      label: t.lessons.htmlToolbarHeading,
+      apply: () => surround('<h3>', '</h3>', t.lessons.htmlPlaceholderHeading),
+    },
+    {
+      key: 'list',
+      label: t.lessons.htmlToolbarList,
+      apply: () => surround('<ul>\n  <li>', '</li>\n</ul>', t.lessons.htmlPlaceholderList),
+    },
+    {
+      key: 'code',
+      label: t.lessons.htmlToolbarCode,
+      apply: () => surround('<code>', '</code>', t.lessons.htmlPlaceholderCode),
+    },
+  ];
+
+  return (
+    <Stack useFlexGap spacing="0.6rem">
+      <Tabs
+        value={tab}
+        onChange={(_event, next: 'edit' | 'preview') => setTab(next)}
+        aria-label={t.lessons.htmlTabsAria}
+      >
+        <Tab value="edit" label={t.lessons.htmlEditTab} />
+        <Tab value="preview" label={t.lessons.htmlPreviewTab} />
+      </Tabs>
+      {tab === 'edit' ? (
+        <>
+          <Stack
+            direction="row"
+            useFlexGap
+            spacing="0.35rem"
+            sx={{ flexWrap: 'wrap' }}
+            data-testid="html-toolbar"
+          >
+            {tools.map((tool) => (
+              <Button key={tool.key} size="small" variant="outlined" onClick={tool.apply}>
+                {tool.label}
+              </Button>
+            ))}
+          </Stack>
+          <FormControl fullWidth size="small">
+            <FormLabel htmlFor={`block-${index}-html`}>{t.lessons.htmlLabel}</FormLabel>
+            <OutlinedInput
+              id={`block-${index}-html`}
+              size="small"
+              value={value}
+              multiline
+              minRows={4}
+              inputRef={inputRef}
+              onChange={(event) => onChange(event.target.value)}
+            />
+          </FormControl>
+        </>
+      ) : value.trim().length === 0 ? (
+        <Typography variant="caption" data-testid="html-preview-empty">
+          {t.lessons.htmlPreviewEmpty}
+        </Typography>
+      ) : (
+        <LessonHtmlContent
+          data-testid="html-preview"
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(value) }}
+        />
+      )}
+    </Stack>
+  );
+};
+
 const BlockFields = ({
   draft,
   index,
@@ -181,7 +291,13 @@ const BlockFields = ({
         </Stack>
       );
     case 'html':
-      return field('html', 'html', draft.html, (html) => onChange({ ...draft, html }), true);
+      return (
+        <HtmlBlockEditor
+          index={index}
+          value={draft.html}
+          onChange={(html) => onChange({ ...draft, html })}
+        />
+      );
   }
 };
 
@@ -409,7 +525,7 @@ export const LessonsSection = () => {
           <Typography variant="body1">{t.lessons.loading}</Typography>
         ) : lessons.isError ? (
           <Typography variant="body1" role="alert">
-            {errorMessage(lessons.error)}
+            {errorMessage(lessons.error, t)}
           </Typography>
         ) : lessons.data.lessons.length === 0 ? (
           <Typography variant="body1">{t.lessons.empty}</Typography>

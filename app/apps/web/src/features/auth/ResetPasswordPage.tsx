@@ -12,10 +12,8 @@ import {
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
-
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -122,9 +120,7 @@ export const ResetPasswordPage = () => {
             ) : null}
             {resetPassword.isError ? (
               <Alert sx={{ mt: '0.6rem' }}>
-                {resetPassword.error instanceof ApiError
-                  ? resetPassword.error.appError.message
-                  : resetPassword.error.message}
+                {localizeError(resetPassword.error, t)}
               </Alert>
             ) : null}
             <FinePrint variant="caption" component="p" sx={{ mt: '1rem' }}>

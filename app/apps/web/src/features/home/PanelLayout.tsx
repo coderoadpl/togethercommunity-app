@@ -28,7 +28,7 @@ import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { useTranslations, type Messages } from '../../i18n/index.js';
+import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { useThemeMode } from '../../theme-mode.js';
 import {
@@ -329,7 +329,7 @@ export const PanelLayout = () => {
   if (me.isError) {
     return (
       <Container sx={{ maxWidth: '44rem' }}>
-        <Alert sx={{ mt: 4 }}>{me.error.message}</Alert>
+        <Alert sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
       </Container>
     );
   }

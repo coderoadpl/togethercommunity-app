@@ -17,6 +17,7 @@ export const ThemeSwitcher = ({ inline = false }: { inline?: boolean }) => {
       data-testid="theme-selector"
       size="small"
       disableClearable
+      noOptionsText={t.common.noOptions}
       options={MODES}
       value={MODES.find((option) => option.id === mode) ?? MODES[0]}
       isOptionEqualToValue={(option, selected) => option.id === selected.id}

@@ -14,10 +14,8 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
-
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
 
 export const RegisterPage = () => {
@@ -107,7 +105,7 @@ export const RegisterPage = () => {
         </Stack>
         {signUp.isError ? (
           <Alert sx={{ mt: '0.6rem' }}>
-            {signUp.error instanceof ApiError ? signUp.error.appError.message : signUp.error.message}
+            {localizeError(signUp.error, t)}
           </Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />

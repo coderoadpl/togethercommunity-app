@@ -2,6 +2,8 @@ import { Alert, Box } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
+import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
+
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
@@ -17,15 +19,15 @@ const detailMessages = (details: unknown): string[] => {
   return messages;
 };
 
-export const errorMessage = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : error instanceof Error ? error.message : 'Something went wrong';
+export const errorMessage = (error: unknown, t: Messages): string => localizeError(error, t);
 
 export const MutationError = ({ error }: { error: Error }) => {
+  const t = useTranslations();
   const appError = error instanceof ApiError ? error.appError : null;
   const details = appError ? detailMessages(appError.details) : [];
   return (
     <Alert>
-      {appError ? appError.message : error.message}
+      {localizeError(error, t)}
       {details.length > 0 ? (
         <Box component="ul" sx={{ m: 0, pl: '1.2rem' }}>
           {details.map((message) => (

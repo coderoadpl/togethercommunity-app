@@ -20,6 +20,7 @@ export interface Messages {
     save: string;
     name: string;
     description: string;
+    noOptions: string;
   };
   refresh: {
     failed: (params: { message: string }) => string;
@@ -34,6 +35,14 @@ export interface Messages {
     headingConflict: string;
     detailGeneric: string;
     traceId: string;
+    messageUnauthorized: string;
+    messageForbidden: string;
+    messageNotFound: string;
+    messageValidation: string;
+    messageConflict: string;
+    messageTenantNotFound: string;
+    messageInternal: string;
+    messageUnknown: string;
   };
   auth: {
     signInTitle: string;
@@ -264,6 +273,21 @@ export interface Messages {
     contentBlocks: string;
     noBlocks: string;
     blockTypeLabel: string;
+    htmlEditTab: string;
+    htmlPreviewTab: string;
+    htmlTabsAria: string;
+    htmlLabel: string;
+    htmlPreviewEmpty: string;
+    htmlToolbarBold: string;
+    htmlToolbarItalic: string;
+    htmlToolbarHeading: string;
+    htmlToolbarList: string;
+    htmlToolbarCode: string;
+    htmlPlaceholderBold: string;
+    htmlPlaceholderItalic: string;
+    htmlPlaceholderHeading: string;
+    htmlPlaceholderList: string;
+    htmlPlaceholderCode: string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -381,6 +405,7 @@ export interface Messages {
     completed: string;
     completeContinue: string;
     courseCompleted: string;
+    lastLesson: string;
     next: (params: { name: string }) => string;
     labelVideo: string;
     labelDocument: string;

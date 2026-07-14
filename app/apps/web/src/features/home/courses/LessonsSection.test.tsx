@@ -60,6 +60,32 @@ describe('LessonsSection blocks editor', () => {
     expect(await screen.findByText('Reordered Lesson')).toBeInTheDocument();
   });
 
+  it('inserts markup via the toolbar and renders a sanitized live preview', async () => {
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
+
+    const { container } = renderWithProviders(<LessonsSection />);
+
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeHtml }));
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+
+    const editor = await screen.findByLabelText(pl.lessons.htmlLabel);
+    await userEvent.type(editor, '<p>Safe body</p><script>window.__xss=1</script>');
+
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.htmlToolbarBold }));
+    expect(editor).toHaveValue(
+      `<p>Safe body</p><script>window.__xss=1</script><strong>${pl.lessons.htmlPlaceholderBold}</strong>`,
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: pl.lessons.htmlPreviewTab }));
+
+    const preview = await screen.findByTestId('html-preview');
+    expect(preview).toHaveTextContent('Safe body');
+    expect(preview).toHaveTextContent(pl.lessons.htmlPlaceholderBold);
+    expect(container.querySelector('[data-testid="html-preview"] script')).toBeNull();
+    expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
+  });
+
   it('shows what references a lesson and deletes it after confirmation', async () => {
     let lessons: CourseLesson[] = [
       {

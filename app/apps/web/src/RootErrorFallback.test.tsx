@@ -13,7 +13,8 @@ describe('renderRootErrorFallback', () => {
 
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(pl.errors.headingSessionEnded);
-    expect(alert).toHaveTextContent('Your session expired');
+    expect(alert).toHaveTextContent(pl.errors.messageUnauthorized);
+    expect(alert).not.toHaveTextContent('Your session expired');
   });
 
   it('falls back to a generic heading for a non-ApiError throw', () => {

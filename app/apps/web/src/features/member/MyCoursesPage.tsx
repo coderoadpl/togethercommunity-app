@@ -7,7 +7,7 @@ import { ApiError } from '@core/client/index.js';
 import type { CompletionStatus, Course } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations, type Messages } from '../../i18n/index.js';
+import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { CardTitle, CourseCardRoot, Eyebrow, LedgerHeader } from '../../theme.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 
@@ -82,7 +82,7 @@ export const MyCoursesPage = () => {
     return (
       <Container sx={{ maxWidth: '52rem', py: 6 }}>
         <Alert>
-          {isForbidden(courses.error) ? t.student.staffNoMember : courses.error.message}
+          {isForbidden(courses.error) ? t.student.staffNoMember : localizeError(courses.error, t)}
         </Alert>
       </Container>
     );

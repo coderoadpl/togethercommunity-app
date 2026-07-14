@@ -15,7 +15,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useLanguage, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { BreakAllText, CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -51,7 +51,7 @@ export const MemberAccountPage = () => {
   if (me.isError) {
     return (
       <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Alert>{me.error.message}</Alert>
+        <Alert>{localizeError(me.error, t)}</Alert>
       </Container>
     );
   }
@@ -106,9 +106,7 @@ export const MemberAccountPage = () => {
             ) : null}
             {requestPasswordReset.isError ? (
               <Alert>
-                {requestPasswordReset.error instanceof ApiError
-                  ? requestPasswordReset.error.appError.message
-                  : requestPasswordReset.error.message}
+                {localizeError(requestPasswordReset.error, t)}
               </Alert>
             ) : null}
           </Stack>

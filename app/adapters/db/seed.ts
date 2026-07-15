@@ -12,11 +12,14 @@ import {
   courses,
   memberCourseProgress,
   members,
+  notifications,
+  posts,
   productGrants,
   products,
   tenantAdmins,
   tenantDomains,
   tenants,
+  threadSubscriptions,
   user,
 } from './schema.js';
 
@@ -1001,6 +1004,227 @@ if (progressSpecs.length > 0) {
     .onConflictDoNothing();
 }
 
+const studioCreatorUserId = creatorUserIds.get('tenant-studio') ?? '';
+const memberUserId = (memberId: string): string => {
+  const spec = memberSpecs.find((member) => member.id === memberId);
+  if (!spec) throw new Error(`Seeded member not found: ${memberId}`);
+  return spec.userId;
+};
+
+interface SeedPostDef {
+  id: string;
+  contextId: string;
+  parentPostId: string | null;
+  rootPostId: string;
+  authorUserId: string;
+  authorDisplay: string;
+  authorIsStaff: boolean;
+  body: string;
+  createdAt: string;
+  deletedAt: string | null;
+}
+
+const aktywnyUserId = memberUserId('member-studio-aktywny');
+const freeUserId = memberUserId('member-studio-free');
+const wygaslyUserId = memberUserId('member-studio-wygasly');
+const modulUserId = memberUserId('member-studio-modul');
+
+const discussionPosts: SeedPostDef[] = [
+  {
+    id: 'post-js-zmienne-tip',
+    contextId: 'lesson-js-zmienne-1',
+    parentPostId: null,
+    rootPostId: 'post-js-zmienne-tip',
+    authorUserId: wygaslyUserId,
+    authorDisplay: 'Kursant Wygasły',
+    authorIsStaff: false,
+    body: 'Mała podpowiedź dla innych: przykłady z tej lekcji najwygodniej testować w konsoli przeglądarki (F12 → Console). Od razu widać, jak const blokuje ponowne przypisanie wartości.',
+    createdAt: relativeIso(-20),
+    deletedAt: null,
+  },
+  {
+    id: 'post-js-zmienne-tip-r1',
+    contextId: 'lesson-js-zmienne-1',
+    parentPostId: 'post-js-zmienne-tip',
+    rootPostId: 'post-js-zmienne-tip',
+    authorUserId: freeUserId,
+    authorDisplay: 'Konto Free',
+    authorIsStaff: false,
+    body: 'Dzięki, przydało się!',
+    createdAt: relativeIso(-19),
+    deletedAt: relativeIso(-18),
+  },
+  {
+    id: 'post-js-zmienne-q',
+    contextId: 'lesson-js-zmienne-1',
+    parentPostId: null,
+    rootPostId: 'post-js-zmienne-q',
+    authorUserId: aktywnyUserId,
+    authorDisplay: 'Kursant Aktywny',
+    authorIsStaff: false,
+    body: 'Czy jest jeszcze sens używać var? W starszych poradnikach na YouTube wszędzie widzę var, a w tej lekcji tylko let i const. Powinienem przepisywać stare przykłady, czy po prostu je pomijać?',
+    createdAt: relativeIso(-3),
+    deletedAt: null,
+  },
+  {
+    id: 'post-js-zmienne-q-r1',
+    contextId: 'lesson-js-zmienne-1',
+    parentPostId: 'post-js-zmienne-q',
+    rootPostId: 'post-js-zmienne-q',
+    authorUserId: freeUserId,
+    authorDisplay: 'Konto Free',
+    authorIsStaff: false,
+    body: 'Mam dokładnie to samo — zaczynałem od kursu sprzed kilku lat i wszystko było na var. Odkąd przepisuję przykłady na const i let, dużo łatwiej mi zauważyć, gdzie wartość naprawdę się zmienia.',
+    createdAt: relativeIso(-2),
+    deletedAt: null,
+  },
+  {
+    id: 'post-js-zmienne-q-r2',
+    contextId: 'lesson-js-zmienne-1',
+    parentPostId: 'post-js-zmienne-q-r1',
+    rootPostId: 'post-js-zmienne-q',
+    authorUserId: studioCreatorUserId,
+    authorDisplay: 'Studio Creator',
+    authorIsStaff: true,
+    body: 'Dobre pytanie! W nowym kodzie var zostawiamy historii: domyślnie używaj const, a let tylko tam, gdzie wartość faktycznie się zmienia. Przepisywanie starych przykładów to świetne ćwiczenie — szczerze polecam.',
+    createdAt: relativeIso(-1),
+    deletedAt: null,
+  },
+  {
+    id: 'post-js-dom-q',
+    contextId: 'lesson-js-dom-1',
+    parentPostId: null,
+    rootPostId: 'post-js-dom-q',
+    authorUserId: modulUserId,
+    authorDisplay: 'Kursant Modułowy',
+    authorIsStaff: false,
+    body: 'Utknąłem na querySelectorAll: zwraca NodeList, a nie tablicę, więc map w ogóle nie działał. Uratowało mnie Array.from(lista). Czy jest powód, dla którego przeglądarka nie zwraca zwykłej tablicy?',
+    createdAt: relativeIso(-10),
+    deletedAt: null,
+  },
+  {
+    id: 'post-js-dom-q-r1',
+    contextId: 'lesson-js-dom-1',
+    parentPostId: 'post-js-dom-q',
+    rootPostId: 'post-js-dom-q',
+    authorUserId: studioCreatorUserId,
+    authorDisplay: 'Studio Creator',
+    authorIsStaff: true,
+    body: 'Świetna obserwacja! NodeList to starszy interfejs DOM — powstał, zanim tablice miały dzisiejsze metody. Array.from albo spread [...lista] to dokładnie idiom, którego używamy w dalszej części tej lekcji.',
+    createdAt: relativeIso(-9),
+    deletedAt: null,
+  },
+];
+
+await db
+  .insert(posts)
+  .values(
+    discussionPosts.map((post) => ({
+      id: post.id,
+      tenantId: 'tenant-studio',
+      contextKind: 'lesson' as const,
+      contextId: post.contextId,
+      parentPostId: post.parentPostId,
+      rootPostId: post.rootPostId,
+      authorUserId: post.authorUserId,
+      authorDisplay: post.authorDisplay,
+      authorIsStaff: post.authorIsStaff,
+      body: post.body,
+      createdAt: post.createdAt,
+      editedAt: null,
+      deletedAt: post.deletedAt,
+    })),
+  )
+  .onConflictDoUpdate({
+    target: posts.id,
+    set: {
+      body: sql`excluded.body`,
+      createdAt: sql`excluded.created_at`,
+      deletedAt: sql`excluded.deleted_at`,
+      authorUserId: sql`excluded.author_user_id`,
+      authorDisplay: sql`excluded.author_display`,
+      authorIsStaff: sql`excluded.author_is_staff`,
+    },
+  });
+
+const subscriptionDefs: Array<{ userId: string; rootPostId: string; createdAt: string }> = [
+  { userId: wygaslyUserId, rootPostId: 'post-js-zmienne-tip', createdAt: relativeIso(-20) },
+  { userId: freeUserId, rootPostId: 'post-js-zmienne-tip', createdAt: relativeIso(-19) },
+  { userId: aktywnyUserId, rootPostId: 'post-js-zmienne-q', createdAt: relativeIso(-3) },
+  { userId: freeUserId, rootPostId: 'post-js-zmienne-q', createdAt: relativeIso(-2) },
+  { userId: studioCreatorUserId, rootPostId: 'post-js-zmienne-q', createdAt: relativeIso(-1) },
+  { userId: modulUserId, rootPostId: 'post-js-dom-q', createdAt: relativeIso(-10) },
+  { userId: studioCreatorUserId, rootPostId: 'post-js-dom-q', createdAt: relativeIso(-9) },
+];
+
+await db
+  .insert(threadSubscriptions)
+  .values(
+    subscriptionDefs.map((subscription) => ({
+      tenantId: 'tenant-studio',
+      userId: subscription.userId,
+      rootPostId: subscription.rootPostId,
+      createdAt: subscription.createdAt,
+      mutedAt: null,
+    })),
+  )
+  .onConflictDoNothing();
+
+const snippetOf = (body: string): string => body.replace(/\s+/g, ' ').slice(0, 180);
+const postBody = (id: string): string => {
+  const post = discussionPosts.find((item) => item.id === id);
+  if (!post) throw new Error(`Seeded post not found: ${id}`);
+  return post.body;
+};
+
+const notificationDefs = [
+  {
+    id: 'notif-aktywny-zmienne-r1',
+    postId: 'post-js-zmienne-q-r1',
+    authorDisplay: 'Konto Free',
+    createdAt: relativeIso(-2),
+    readAt: relativeIso(-1.5),
+  },
+  {
+    id: 'notif-aktywny-zmienne-r2',
+    postId: 'post-js-zmienne-q-r2',
+    authorDisplay: 'Studio Creator',
+    createdAt: relativeIso(-1),
+    readAt: null,
+  },
+];
+
+await db
+  .insert(notifications)
+  .values(
+    notificationDefs.map((notification) => ({
+      id: notification.id,
+      tenantId: 'tenant-studio',
+      recipientUserId: aktywnyUserId,
+      kind: 'thread-reply' as const,
+      payload: {
+        rootPostId: 'post-js-zmienne-q',
+        postId: notification.postId,
+        contextKind: 'lesson',
+        contextId: 'lesson-js-zmienne-1',
+        courseId: 'course-js',
+        lessonName: 'Deklarowanie zmiennych',
+        authorDisplay: notification.authorDisplay,
+        snippet: snippetOf(postBody(notification.postId)),
+      },
+      readAt: notification.readAt,
+      createdAt: notification.createdAt,
+    })),
+  )
+  .onConflictDoUpdate({
+    target: notifications.id,
+    set: {
+      payload: sql`excluded.payload`,
+      readAt: sql`excluded.read_at`,
+      createdAt: sql`excluded.created_at`,
+    },
+  });
+
 console.log('Seed applied:');
 for (const creator of creators) {
   console.log(`  creator  ${creator.email} / ${PASSWORD}  ->  ${creator.tenant.slug}`);
@@ -1008,5 +1232,6 @@ for (const creator of creators) {
 for (const member of memberSpecs) {
   console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
 }
+console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
 console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 process.exit(0);

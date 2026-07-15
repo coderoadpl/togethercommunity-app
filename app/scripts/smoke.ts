@@ -301,6 +301,25 @@ const membersSchema = z.object({
 const devEmailResultSchema = z.object({
   email: z.object({ to: z.string().email(), subject: z.string(), text: z.string() }).nullable(),
 });
+const postCreatedSchema = z.object({
+  post: z.object({ id: z.string(), rootPostId: z.string(), contextId: z.string() }),
+});
+const notificationsListSchema = z.object({
+  notifications: z.array(
+    z.object({
+      id: z.string(),
+      kind: z.string(),
+      readAt: z.string().nullable(),
+      payload: z.object({ rootPostId: z.string(), postId: z.string(), snippet: z.string() }),
+    }),
+  ),
+});
+const notificationReadSchema = z.object({
+  notification: z.object({ id: z.string(), readAt: z.string().nullable() }),
+});
+const searchHitsSchema = z.object({
+  hits: z.array(z.object({ post: z.object({ id: z.string() }), lessonId: z.string(), snippet: z.string() })),
+});
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -789,6 +808,89 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
   );
 };
 
+const driveCommunityFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const authorHome = mkdtempSync(join(tmpdir(), 'smoke-community-author-'));
+  const replierHome = mkdtempSync(join(tmpdir(), 'smoke-community-replier-'));
+  const expiredHome = mkdtempSync(join(tmpdir(), 'smoke-community-expired-'));
+  homes.push(authorHome, replierHome, expiredHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const studio = (args: string[], home: string): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], authorHome),
+    'community: author login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.modul@together.dev'], replierHome),
+    'community: replier login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.wygasly@together.dev'], expiredHome),
+    'community: expired member login',
+  );
+
+  const marker = `smoke${randomUUID().slice(0, 8)}`;
+  const posted = postCreatedSchema.parse(
+    expectOk(
+      await studio(
+        ['discussion', 'post', '--lesson', 'lesson-js-dom-1', '--body', `Pytanie ${marker}: czy querySelectorAll przyjmuje kazdy selektor CSS?`],
+        authorHome,
+      ),
+      'community: member posts a question',
+    ),
+  );
+  assert(posted.post.rootPostId === posted.post.id, 'a top-level post should be its own thread root');
+
+  const reply = postCreatedSchema.parse(
+    expectOk(
+      await studio(
+        ['discussion', 'reply', '--lesson', 'lesson-js-dom-1', '--parent', posted.post.id, '--body', `Tak ${marker}, dziala z kazdym selektorem.`],
+        replierHome,
+      ),
+      'community: second member replies',
+    ),
+  );
+  assert(reply.post.rootPostId === posted.post.id, 'the reply should join the original thread');
+
+  const inbox = notificationsListSchema.parse(
+    expectOk(await studio(['notifications', 'list'], authorHome), 'community: author notifications'),
+  );
+  const notification = inbox.notifications.find((item) => item.payload.postId === reply.post.id);
+  assert(notification !== undefined, 'the reply should notify the thread author');
+  assert(notification.kind === 'thread-reply', `expected a thread-reply notification, got ${notification.kind}`);
+  assert(notification.readAt === null, 'the fresh thread-reply notification should be unread');
+  assert(
+    notification.payload.rootPostId === posted.post.id,
+    'the notification should point at the original thread',
+  );
+
+  const read = notificationReadSchema.parse(
+    expectOk(await studio(['notifications', 'read', notification.id], authorHome), 'community: mark notification read'),
+  );
+  assert(read.notification.readAt !== null, 'marking the notification read should set readAt');
+
+  const search = searchHitsSchema.parse(
+    expectOk(await studio(['discussion', 'search', '--query', marker], authorHome), 'community: search posts'),
+  );
+  assert(
+    search.hits.some((hit) => hit.post.id === posted.post.id && hit.lessonId === 'lesson-js-dom-1'),
+    'search should find the freshly posted question',
+  );
+
+  expectError(
+    await studio(
+      ['discussion', 'post', '--lesson', 'lesson-js-dom-1', '--body', 'Czy moge jeszcze pisac po wygasnieciu dostepu?'],
+      expiredHome,
+    ),
+    'community: expired member cannot post',
+    EXIT_CODE_BY_ERROR_CODE.forbidden,
+    'forbidden',
+  );
+};
+
 const startedAt = Date.now();
 const homes: string[] = [];
 let server: ChildProcess | null = null;
@@ -809,6 +911,8 @@ try {
   await driveStudentFlow(port, homes);
   console.log('smoke: driving the M2M enrollment surface...');
   await driveM2mFlow(port, homes);
+  console.log('smoke: driving the community surface...');
+  await driveCommunityFlow(port, homes);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

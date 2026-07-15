@@ -124,6 +124,43 @@ Per request: (1) exact custom-domain match in `tenant_domains`,
 tenant-scoped use-case takes `ctx.identity` and every repository call requires
 `tenantId`.
 
+## Community
+
+Lesson discussions are the first Community (Faza 2) slice:
+
+- **Discussions under lessons** — context-generic posts (`contextKind:
+  'lesson'` today, spaces later) with nested replies capped at depth 3,
+  author edit + soft delete ("Wpis usunięty" placeholder keeps thread shape),
+  and staff moderation (staff can delete any post; staff posts carry the
+  "Autor" badge).
+- **Visibility = lesson entitlement** — you read, search and write a lesson's
+  discussion iff that lesson is fully accessible to you (staff always).
+  Free-preview lessons deliberately have open discussions — the community
+  teaser for the book funnel.
+- **Search** — Postgres full-text (`tsvector` GIN, `simple` config) over post
+  bodies, entitlement-filtered server-side; the course page groups hits by
+  lesson.
+- **Subscriptions & notifications** — authors and repliers auto-follow their
+  thread, with an explicit follow/mute toggle. A reply fans out `thread-reply`
+  notifications to subscribers (minus the reply author) through
+  `NotificationChannelPort`: **in-app** (row + realtime bus → the bell badge)
+  and **e-mail** today; **web push later is just another adapter** on the same
+  port — no redesign needed.
+- **Realtime with a fallback** — the in-app channel streams over SSE and the
+  browser falls back to polling on serverless (details in
+  [Realtime](#realtime) below).
+
+The seed plants a Polish demo discussion under `course-js` lessons
+(`lesson-js-zmienne-1`, `lesson-js-dom-1`), including a creator answer and a
+deleted-post placeholder, plus one unread notification for
+`kursant.aktywny@together.dev` — the bell shows a badge on first login.
+
+```bash
+npm run --silent cli -- --tenant studio discussion list --lesson lesson-js-zmienne-1
+npm run --silent cli -- --tenant studio discussion search --query const
+npm run --silent cli -- --tenant studio notifications list
+```
+
 ## Realtime
 
 In-app notifications stream over Server-Sent Events: an authenticated,

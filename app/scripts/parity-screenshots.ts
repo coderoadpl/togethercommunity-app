@@ -443,6 +443,48 @@ const capturePolishSurfaces = async (
   await studentContext.close();
 };
 
+const captureCommunitySurfaces = async (
+  browser: Browser,
+  studioBaseUrl: string,
+  viewport: { width: number; height: number },
+): Promise<void> => {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  await setLanguage(context, 'pl');
+  const page = await context.newPage();
+  await signInStudent(page, studioBaseUrl, 'kursant.aktywny@together.dev', POLISH_MAGIC_LINK);
+
+  await page.getByTestId('notification-bell').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('notification-bell').click();
+  await page.getByTestId('notification-notif-aktywny-zmienne-r2').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('notification-notif-aktywny-zmienne-r1').waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, '19-notification-bell.png');
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: viewport.width, height: 1400 });
+  await page.goto(`${studioBaseUrl}/my/courses/course-js/lessons/lesson-js-zmienne-1`, { waitUntil: 'load' });
+  await page.getByTestId('discussion-section').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('deleted-post-post-js-zmienne-tip-r1').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('follow-toggle-post-js-zmienne-q').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('discussion-composer').waitFor({ state: 'visible', timeout: 20000 });
+  const section = await page.getByTestId('discussion-section').boundingBox();
+  if (section) await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), section.y);
+  await shoot(page, '18-lesson-discussion.png');
+
+  await page.goto(`${studioBaseUrl}/my/courses/course-js`, { waitUntil: 'load' });
+  const searchInput = page.getByTestId('course-discussion-search-input');
+  await searchInput.waitFor({ state: 'visible', timeout: 20000 });
+  await searchInput.fill('lekcji');
+  await page.getByTestId('course-search-results').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('search-group-lesson-js-zmienne-1').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('search-group-lesson-js-dom-1').waitFor({ state: 'visible', timeout: 20000 });
+  const searchSection = await page.getByTestId('course-discussion-search').boundingBox();
+  if (searchSection) await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), searchSection.y);
+  await shoot(page, '20-discussion-search.png');
+
+  await context.close();
+};
+
 const captureStudentJourney = async (
   context: BrowserContext,
   studioBaseUrl: string,
@@ -585,6 +627,8 @@ try {
   await creatorContext.close();
 
   await capturePolishSurfaces(browser, studioBaseUrl, fixture, viewport);
+
+  await captureCommunitySurfaces(browser, studioBaseUrl, viewport);
 
   console.log(`\nshots:parity: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s) -> ${outputDir}`);
 } catch (error) {

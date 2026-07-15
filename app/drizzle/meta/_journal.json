@@ -106,6 +106,13 @@
       "when": 1784240000000,
       "tag": "0014_lesson_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784300000000,
+      "tag": "0015_complete_anita_blake",
+      "breakpoints": true
     }
   ]
 }

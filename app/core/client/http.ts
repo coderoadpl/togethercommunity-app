@@ -33,6 +33,13 @@ import {
   modulesListOutputSchema,
   myProductsOutputSchema,
   nextLessonOutputSchema,
+  notificationReadOutputSchema,
+  notificationsListOutputSchema,
+  notificationsReadAllOutputSchema,
+  notificationsUnreadOutputSchema,
+  discussionOutputSchema,
+  postOutputSchema,
+  postsSearchOutputSchema,
   productsAccessItemsOutputSchema,
   productsAccessIssuesOutputSchema,
   progressOutputSchema,
@@ -52,6 +59,7 @@ import {
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
+  threadSubscriptionOutputSchema,
   type ApiKeyCreateInput,
   type ApiKeyRevokeInput,
   type CourseCreateInput,
@@ -70,6 +78,13 @@ import {
   type ModuleDetachInput,
   type ModuleCreateInput,
   type ModuleUpdateInput,
+  type NotificationReadInput,
+  type NotificationsListInput,
+  type DiscussionGetInput,
+  type PostCreateInput,
+  type PostDeleteInput,
+  type PostUpdateInput,
+  type PostsSearchInput,
   type ProductsAccessItemsInput,
   type ProductsPublishInput,
   type ReadMethod,
@@ -469,6 +484,104 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.studentProgress.method,
       `${API_ROUTES.studentProgress.path}?courseId=${encodeURIComponent(courseId)}`,
       progressOutputSchema,
+      undefined,
+      signal,
+    ),
+  createPost: (input: PostCreateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.postsCreate.method, API_ROUTES.postsCreate.path, postOutputSchema, input, signal),
+  updatePost: (input: PostUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.postsUpdate.method, API_ROUTES.postsUpdate.path, postOutputSchema, input, signal),
+  deletePost: (input: PostDeleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsDelete.method,
+      API_ROUTES.postsDelete.path.replace(':postId', encodeURIComponent(input.id)),
+      postOutputSchema,
+      undefined,
+      signal,
+    ),
+  discussion: (input: DiscussionGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ contextKind: input.contextKind, contextId: input.contextId });
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    return request(
+      options,
+      API_ROUTES.discussion.method,
+      `${API_ROUTES.discussion.path}?${params.toString()}`,
+      discussionOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  subscribeThread: (input: { rootPostId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.threadSubscribe.method,
+      API_ROUTES.threadSubscribe.path,
+      threadSubscriptionOutputSchema,
+      input,
+      signal,
+    ),
+  muteThread: (input: { rootPostId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.threadMute.method,
+      API_ROUTES.threadMute.path,
+      threadSubscriptionOutputSchema,
+      input,
+      signal,
+    ),
+  searchPosts: (input: PostsSearchInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ query: input.query });
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    for (const lessonId of input.lessonIds ?? []) params.append('lessonId', lessonId);
+    return request(
+      options,
+      API_ROUTES.postsSearch.method,
+      `${API_ROUTES.postsSearch.path}?${params.toString()}`,
+      postsSearchOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  listNotifications: (input: NotificationsListInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.notifications.method,
+      suffix.length > 0 ? `${API_ROUTES.notifications.path}?${suffix}` : API_ROUTES.notifications.path,
+      notificationsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  markNotificationRead: (input: NotificationReadInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.notificationRead.method,
+      API_ROUTES.notificationRead.path,
+      notificationReadOutputSchema,
+      input,
+      signal,
+    ),
+  markAllNotificationsRead: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.notificationsReadAll.method,
+      API_ROUTES.notificationsReadAll.path,
+      notificationsReadAllOutputSchema,
+      {},
+      signal,
+    ),
+  unreadNotificationCount: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.notificationsUnread.method,
+      API_ROUTES.notificationsUnread.path,
+      notificationsUnreadOutputSchema,
       undefined,
       signal,
     ),

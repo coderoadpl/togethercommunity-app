@@ -16,6 +16,9 @@ import type {
   ProcessedPaymentEvent,
   Result,
   StaffRole,
+  Notification,
+  Post,
+  PostSearchHit,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -92,6 +95,56 @@ export interface CourseLessonRepository {
   create(tenantId: string, lesson: CourseLesson): Promise<void>;
   update(tenantId: string, lesson: CourseLesson, version?: EntityVersionRecord): Promise<CourseLesson | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface PostRepository {
+  createPost(tenantId: string, post: Post): Promise<Post>;
+  findById(tenantId: string, id: string): Promise<Post | null>;
+  listThreadsForContext(
+    tenantId: string,
+    query: { contextKind: 'lesson'; contextId: string; cursor?: string; limit: number },
+  ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
+  listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
+  updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
+  softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null>;
+  search(
+    tenantId: string,
+    query: { query: string; lessonIds: string[]; limit: number },
+  ): Promise<PostSearchHit[]>;
+}
+
+export interface ThreadSubscription {
+  tenantId: string;
+  userId: string;
+  rootPostId: string;
+  createdAt: string;
+  mutedAt: string | null;
+}
+
+export interface ThreadSubscriptionRepository {
+  upsert(tenantId: string, input: { userId: string; rootPostId: string; createdAt: string }): Promise<ThreadSubscription>;
+  mute(tenantId: string, input: { userId: string; rootPostId: string; mutedAt: string }): Promise<ThreadSubscription | null>;
+  listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]>;
+}
+
+export interface NotificationRepository {
+  insert(tenantId: string, notification: Notification): Promise<Notification>;
+  listForRecipient(
+    tenantId: string,
+    query: { recipientUserId: string; cursor?: string; limit: number },
+  ): Promise<{ notifications: Notification[]; nextCursor: string | null }>;
+  markRead(tenantId: string, input: { id: string; recipientUserId: string; readAt: string }): Promise<Notification | null>;
+  markAllRead(tenantId: string, input: { recipientUserId: string; readAt: string }): Promise<number>;
+  unreadCount(tenantId: string, recipientUserId: string): Promise<number>;
+}
+
+export interface NotificationDeliveryContext {
+  recipientEmail: string | null;
+  tenantName: string;
+}
+
+export interface NotificationChannelPort {
+  deliver(notification: Notification, context: NotificationDeliveryContext): Promise<Result<void, AppError>>;
 }
 
 export interface MemberCourseProgressRepository {

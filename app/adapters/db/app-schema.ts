@@ -275,6 +275,79 @@ export const memberCourseProgress = pgTable(
   ],
 );
 
+export const posts = pgTable(
+  'posts',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    contextKind: text('context_kind', { enum: ['lesson'] }).notNull(),
+    contextId: text('context_id').notNull(),
+    parentPostId: text('parent_post_id'),
+    rootPostId: text('root_post_id').notNull(),
+    authorUserId: text('author_user_id').notNull(),
+    authorDisplay: text('author_display').notNull(),
+    body: text('body').notNull(),
+    createdAt: text('created_at').notNull(),
+    editedAt: text('edited_at'),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => [
+    index('posts_tenant_context_created_idx').on(
+      table.tenantId,
+      table.contextKind,
+      table.contextId,
+      table.createdAt,
+    ),
+    index('posts_tenant_root_idx').on(table.tenantId, table.rootPostId),
+  ],
+);
+
+export const threadSubscriptions = pgTable(
+  'thread_subscriptions',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    rootPostId: text('root_post_id').notNull(),
+    createdAt: text('created_at').notNull(),
+    mutedAt: text('muted_at'),
+  },
+  (table) => [
+    index('thread_subscriptions_tenant_root_idx').on(table.tenantId, table.rootPostId),
+    uniqueIndex('thread_subscriptions_tenant_user_root_uidx').on(
+      table.tenantId,
+      table.userId,
+      table.rootPostId,
+    ),
+  ],
+);
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    recipientUserId: text('recipient_user_id').notNull(),
+    kind: text('kind', { enum: ['thread-reply'] }).notNull(),
+    payload: jsonb('payload').notNull(),
+    readAt: text('read_at'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('notifications_tenant_recipient_read_created_idx').on(
+      table.tenantId,
+      table.recipientUserId,
+      table.readAt,
+      table.createdAt.desc(),
+    ),
+  ],
+);
+
 export const entityVersions = pgTable(
   'entity_versions',
   {

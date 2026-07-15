@@ -27,3 +27,4 @@ export * from './usecases/checkout.js';
 export * from './usecases/stripe-webhook.js';
 export * from './usecases/entitlements.js';
 export * from './usecases/progress.js';
+export * from './usecases/community.js';

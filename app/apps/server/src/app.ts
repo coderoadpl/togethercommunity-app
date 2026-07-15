@@ -23,6 +23,13 @@ import {
   moduleDetachInputSchema,
   moduleCreateInputSchema,
   moduleUpdateInputSchema,
+  notificationReadInputSchema,
+  notificationsListInputSchema,
+  discussionGetInputSchema,
+  postCreateInputSchema,
+  postDeleteInputSchema,
+  postUpdateInputSchema,
+  postsSearchInputSchema,
   productsAccessItemsInputSchema,
   publicOfferOutputSchema,
   productsCreateInputSchema,
@@ -83,6 +90,17 @@ import {
   getTenantSettings,
   updateTenantSettings,
   grantProductToMember,
+  createPost,
+  deletePost,
+  editPost,
+  listDiscussion,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  muteThread,
+  searchPosts,
+  subscribeThread,
+  unreadNotificationCount,
   listCourses,
   listLessons,
   listMemberGrants,
@@ -831,6 +849,89 @@ export const buildApp = (deps: AppDeps) => {
     const result = await getAccessibleLesson({ identity: c.get('identity') }, c.req.param('lessonId'), deps);
     return respond(result.ok ? ok({ lesson: result.value }) : result);
   });
+
+  app.post(API_PATHS.postsCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid post payload', parsed.error.flatten())));
+    const result = await createPost({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.post(API_PATHS.postsUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postUpdateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid post update payload', parsed.error.flatten())));
+    const result = await editPost({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.postsDelete, async (c) => {
+    const parsed = postDeleteInputSchema.safeParse({ id: c.req.param('postId') });
+    if (!parsed.success) return respond(err(validation('Invalid post id', parsed.error.flatten())));
+    const result = await deletePost({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.get(API_PATHS.discussion, async (c) => {
+    const parsed = discussionGetInputSchema.safeParse({
+      contextKind: c.req.query('contextKind'),
+      contextId: c.req.query('contextId'),
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid discussion query', parsed.error.flatten())));
+    const result = await listDiscussion({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ discussion: result.value }) : result);
+  });
+
+  app.post(API_PATHS.threadSubscribe, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const result = await subscribeThread({ identity: c.get('identity') }, body, deps);
+    return respond(result);
+  });
+
+  app.post(API_PATHS.threadMute, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const result = await muteThread({ identity: c.get('identity') }, body, deps);
+    return respond(result);
+  });
+
+  app.get(API_PATHS.postsSearch, async (c) => {
+    const parsed = postsSearchInputSchema.safeParse({
+      query: c.req.query('query'),
+      lessonIds: c.req.queries('lessonId'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid post search query', parsed.error.flatten())));
+    const result = await searchPosts({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ hits: result.value }) : result);
+  });
+
+  app.get(API_PATHS.notifications, async (c) => {
+    const parsed = notificationsListInputSchema.safeParse({
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid notifications query', parsed.error.flatten())));
+    return respond(await listNotifications({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.notificationRead, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = notificationReadInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid notification payload', parsed.error.flatten())));
+    const result = await markNotificationRead({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ notification: result.value }) : result);
+  });
+
+  app.post(API_PATHS.notificationsReadAll, async (c) =>
+    respond(await markAllNotificationsRead({ identity: c.get('identity') }, deps)),
+  );
+
+  app.get(API_PATHS.notificationsUnread, async (c) =>
+    respond(await unreadNotificationCount({ identity: c.get('identity') }, deps)),
+  );
 
   return app;
 };

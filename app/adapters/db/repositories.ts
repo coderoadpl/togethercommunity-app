@@ -8,6 +8,8 @@ import {
   entityHistoryEntrySchema,
   memberCourseProgressSchema,
   memberGrantSchema,
+  notificationSchema,
+  postSchema,
   productGrantSchema,
   processedPaymentEventSchema,
   productSchema,
@@ -20,6 +22,9 @@ import {
   type MemberCourseProgress,
   type MemberGrant,
   type Membership,
+  type Notification,
+  type Post,
+  type PostSearchHit,
   type Product,
   type ProductGrant,
   type ProcessedPaymentEvent,
@@ -39,6 +44,8 @@ import type {
   HealthPort,
   MemberRepository,
   MemberCourseProgressRepository,
+  NotificationRepository,
+  PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
@@ -48,6 +55,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TenantSecretRepository,
+  ThreadSubscriptionRepository,
 } from '@core/server/index.js';
 
 import type { Db } from './client.js';
@@ -60,6 +68,8 @@ import {
   entityVersions,
   memberCourseProgress,
   members,
+  notifications,
+  posts,
   productGrants,
   processedPaymentEvents,
   products,
@@ -68,6 +78,7 @@ import {
   tenantDomains,
   tenantSecrets,
   tenants,
+  threadSubscriptions,
 } from './schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
@@ -99,6 +110,11 @@ const parseProgress = (progress: MemberCourseProgress): MemberCourseProgress =>
   memberCourseProgressSchema.parse(progress);
 
 const parseMemberGrant = (grant: MemberGrant): MemberGrant => memberGrantSchema.parse(grant);
+
+const parsePost = (post: typeof posts.$inferSelect): Post => postSchema.parse(post);
+
+const parseNotification = (notification: typeof notifications.$inferSelect): Notification =>
+  notificationSchema.parse(notification);
 
 const parseApiKey = (apiKey: TenantApiKey): TenantApiKey => tenantApiKeySchema.parse(apiKey);
 
@@ -511,6 +527,231 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         and(
           eq(memberCourseProgress.tenantId, tenantId),
           sql`(${memberCourseProgress.completedLessonIds} @> ${JSON.stringify([lessonId])}::jsonb or ${memberCourseProgress.lastViewedLessonId} = ${lessonId})`,
+        ),
+      );
+    return rows[0]?.value ?? 0;
+  },
+});
+
+export const createPostRepository = (db: Db): PostRepository => ({
+  createPost: async (tenantId, post) => {
+    const rows = await db
+      .insert(posts)
+      .values({ ...post, tenantId })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('posts insert returned no row');
+    return parsePost(row);
+  },
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, id)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parsePost(row) : null;
+  },
+  listThreadsForContext: async (tenantId, query) => {
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, query.contextKind),
+          eq(posts.contextId, query.contextId),
+          sql`${posts.parentPostId} is null`,
+          ...(query.cursor === undefined ? [] : [sql`${posts.createdAt} > ${query.cursor}`]),
+        ),
+      )
+      .orderBy(asc(posts.createdAt), asc(posts.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    const threads = await Promise.all(
+      page.map(async (post) => {
+        const counts = await db
+          .select({ value: sql<number>`count(*)::int` })
+          .from(posts)
+          .where(
+            and(
+              eq(posts.tenantId, tenantId),
+              eq(posts.rootPostId, post.rootPostId),
+              sql`${posts.id} <> ${post.id}`,
+            ),
+          );
+        return { post: parsePost(post), replyCount: counts[0]?.value ?? 0 };
+      }),
+    );
+    return {
+      threads,
+      nextCursor: overflow ? overflow.createdAt : null,
+    };
+  },
+  listReplies: async (tenantId, rootPostId) =>
+    (
+      await db
+        .select()
+        .from(posts)
+        .where(and(eq(posts.tenantId, tenantId), eq(posts.rootPostId, rootPostId), sql`${posts.parentPostId} is not null`))
+        .orderBy(asc(posts.createdAt), asc(posts.id))
+    ).map(parsePost),
+  updateBody: async (tenantId, input) => {
+    const rows = await db
+      .update(posts)
+      .set({ body: input.body, editedAt: input.editedAt })
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id), sql`${posts.deletedAt} is null`))
+      .returning();
+    const row = rows[0];
+    return row ? parsePost(row) : null;
+  },
+  softDelete: async (tenantId, input) => {
+    const rows = await db
+      .update(posts)
+      .set({ deletedAt: input.deletedAt })
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parsePost(row) : null;
+  },
+  search: async (tenantId, query) => {
+    if (query.lessonIds.length === 0) return [];
+    const rows = await db
+      .select({
+        post: posts,
+        snippet: sql<string>`left(regexp_replace(${posts.body}, '\\s+', ' ', 'g'), 180)`,
+      })
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, 'lesson'),
+          inArray(posts.contextId, query.lessonIds),
+          sql`${posts.deletedAt} is null`,
+          sql`body_tsvector @@ plainto_tsquery('simple', ${query.query})`,
+        ),
+      )
+      .orderBy(desc(posts.createdAt))
+      .limit(query.limit);
+    return rows.map(
+      (row): PostSearchHit => ({
+        post: parsePost(row.post),
+        lessonId: row.post.contextId,
+        snippet: row.snippet,
+      }),
+    );
+  },
+});
+
+export const createThreadSubscriptionRepository = (db: Db): ThreadSubscriptionRepository => ({
+  upsert: async (tenantId, input) => {
+    const rows = await db
+      .insert(threadSubscriptions)
+      .values({ tenantId, userId: input.userId, rootPostId: input.rootPostId, createdAt: input.createdAt, mutedAt: null })
+      .onConflictDoUpdate({
+        target: [
+          threadSubscriptions.tenantId,
+          threadSubscriptions.userId,
+          threadSubscriptions.rootPostId,
+        ],
+        set: { mutedAt: null },
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('thread_subscriptions upsert returned no row');
+    return row;
+  },
+  mute: async (tenantId, input) => {
+    const rows = await db
+      .update(threadSubscriptions)
+      .set({ mutedAt: input.mutedAt })
+      .where(
+        and(
+          eq(threadSubscriptions.tenantId, tenantId),
+          eq(threadSubscriptions.userId, input.userId),
+          eq(threadSubscriptions.rootPostId, input.rootPostId),
+        ),
+      )
+      .returning();
+    return rows[0] ?? null;
+  },
+  listSubscribersForRoot: async (tenantId, rootPostId) =>
+    db
+      .select()
+      .from(threadSubscriptions)
+      .where(and(eq(threadSubscriptions.tenantId, tenantId), eq(threadSubscriptions.rootPostId, rootPostId)))
+      .orderBy(asc(threadSubscriptions.createdAt)),
+});
+
+export const createNotificationRepository = (db: Db): NotificationRepository => ({
+  insert: async (tenantId, notification) => {
+    const rows = await db
+      .insert(notifications)
+      .values({ ...notification, tenantId })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('notifications insert returned no row');
+    return parseNotification(row);
+  },
+  listForRecipient: async (tenantId, query) => {
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, tenantId),
+          eq(notifications.recipientUserId, query.recipientUserId),
+          ...(query.cursor === undefined ? [] : [sql`${notifications.createdAt} < ${query.cursor}`]),
+        ),
+      )
+      .orderBy(desc(notifications.createdAt), desc(notifications.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const overflow = rows[query.limit];
+    return {
+      notifications: page.map(parseNotification),
+      nextCursor: overflow ? overflow.createdAt : null,
+    };
+  },
+  markRead: async (tenantId, input) => {
+    const rows = await db
+      .update(notifications)
+      .set({ readAt: input.readAt })
+      .where(
+        and(
+          eq(notifications.tenantId, tenantId),
+          eq(notifications.id, input.id),
+          eq(notifications.recipientUserId, input.recipientUserId),
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseNotification(row) : null;
+  },
+  markAllRead: async (tenantId, input) => {
+    const rows = await db
+      .update(notifications)
+      .set({ readAt: input.readAt })
+      .where(
+        and(
+          eq(notifications.tenantId, tenantId),
+          eq(notifications.recipientUserId, input.recipientUserId),
+          sql`${notifications.readAt} is null`,
+        ),
+      )
+      .returning({ id: notifications.id });
+    return rows.length;
+  },
+  unreadCount: async (tenantId, recipientUserId) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, tenantId),
+          eq(notifications.recipientUserId, recipientUserId),
+          sql`${notifications.readAt} is null`,
         ),
       );
     return rows[0]?.value ?? 0;

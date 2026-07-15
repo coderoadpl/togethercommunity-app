@@ -7,8 +7,12 @@ import {
   courseModuleSchema,
   courseSchema,
   courseStructureWithAccessSchema,
+  createPostInputSchema,
+  deletePostInputSchema,
   detachModuleFromCourseInputSchema,
+  discussionSchema,
   lessonReferencesSchema,
+  listDiscussionInputSchema,
   createApiKeyInputSchema,
   entityHistoryEntrySchema,
   entityHistoryQuerySchema,
@@ -19,18 +23,26 @@ import {
   memberExportFileSchema,
   memberGrantSchema,
   memberWithProductIdsSchema,
+  muteThreadInputSchema,
   revokeGrantInputSchema,
   membershipSchema,
   newCourseLessonSchema,
   newCourseModuleSchema,
   newCourseSchema,
+  notificationListInputSchema,
+  notificationMarkReadInputSchema,
+  notificationSchema,
   newProductSchema,
   nextLessonSchema,
+  postSchema,
+  postSearchHitSchema,
   productAccessIssuesSchema,
   productSchema,
   progressViewSchema,
+  searchPostsInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
+  subscribeThreadInputSchema,
   tenantApiKeyPublicSchema,
   tenantSchema,
   tenantSecretKeySchema,
@@ -41,6 +53,7 @@ import {
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
   updateLastViewedInputSchema,
+  updatePostInputSchema,
   updateProductAccessItemsInputSchema,
 } from '@core/domain/index.js';
 
@@ -354,6 +367,75 @@ export const nextLessonOutputSchema = z.object({
   next: nextLessonSchema,
 });
 
+export const postCreateInputSchema = createPostInputSchema;
+
+export type PostCreateInput = z.input<typeof postCreateInputSchema>;
+
+export const postUpdateInputSchema = updatePostInputSchema;
+
+export type PostUpdateInput = z.input<typeof postUpdateInputSchema>;
+
+export const postDeleteInputSchema = deletePostInputSchema;
+
+export type PostDeleteInput = z.input<typeof postDeleteInputSchema>;
+
+export const postOutputSchema = z.object({
+  post: postSchema,
+});
+
+export const discussionGetInputSchema = listDiscussionInputSchema;
+
+export type DiscussionGetInput = z.input<typeof discussionGetInputSchema>;
+
+export const discussionOutputSchema = z.object({
+  discussion: discussionSchema,
+});
+
+export const threadSubscribeInputSchema = subscribeThreadInputSchema;
+
+export type ThreadSubscribeInput = z.input<typeof threadSubscribeInputSchema>;
+
+export const threadMuteInputSchema = muteThreadInputSchema;
+
+export type ThreadMuteInput = z.input<typeof threadMuteInputSchema>;
+
+export const threadSubscriptionOutputSchema = z.object({
+  rootPostId: z.string(),
+});
+
+export const postsSearchInputSchema = searchPostsInputSchema;
+
+export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
+
+export const postsSearchOutputSchema = z.object({
+  hits: z.array(postSearchHitSchema),
+});
+
+export const notificationsListInputSchema = notificationListInputSchema;
+
+export type NotificationsListInput = z.input<typeof notificationsListInputSchema>;
+
+export const notificationsListOutputSchema = z.object({
+  notifications: z.array(notificationSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const notificationReadInputSchema = notificationMarkReadInputSchema;
+
+export type NotificationReadInput = z.input<typeof notificationReadInputSchema>;
+
+export const notificationReadOutputSchema = z.object({
+  notification: notificationSchema,
+});
+
+export const notificationsReadAllOutputSchema = z.object({
+  read: z.number().int().nonnegative(),
+});
+
+export const notificationsUnreadOutputSchema = z.object({
+  unread: z.number().int().nonnegative(),
+});
+
 export const devGrantOutputSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
@@ -471,6 +553,17 @@ export const API_ROUTES = {
   studentLessonNext: { method: 'GET', path: '/api/student/lessons/next' },
   studentLastViewed: { method: 'POST', path: '/api/student/progress/last-viewed' },
   studentProgress: { method: 'GET', path: '/api/student/progress' },
+  postsCreate: { method: 'POST', path: '/api/posts' },
+  postsUpdate: { method: 'POST', path: '/api/posts/update' },
+  postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
+  discussion: { method: 'GET', path: '/api/discussion' },
+  threadSubscribe: { method: 'POST', path: '/api/discussion/subscribe' },
+  threadMute: { method: 'POST', path: '/api/discussion/mute' },
+  postsSearch: { method: 'GET', path: '/api/posts/search' },
+  notifications: { method: 'GET', path: '/api/notifications' },
+  notificationRead: { method: 'POST', path: '/api/notifications/read' },
+  notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
+  notificationsUnread: { method: 'GET', path: '/api/notifications/unread-count' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   members: { method: 'GET', path: '/api/members' },
@@ -532,6 +625,17 @@ export const API_PATHS = {
   studentLessonNext: API_ROUTES.studentLessonNext.path,
   studentLastViewed: API_ROUTES.studentLastViewed.path,
   studentProgress: API_ROUTES.studentProgress.path,
+  postsCreate: API_ROUTES.postsCreate.path,
+  postsUpdate: API_ROUTES.postsUpdate.path,
+  postsDelete: API_ROUTES.postsDelete.path,
+  discussion: API_ROUTES.discussion.path,
+  threadSubscribe: API_ROUTES.threadSubscribe.path,
+  threadMute: API_ROUTES.threadMute.path,
+  postsSearch: API_ROUTES.postsSearch.path,
+  notifications: API_ROUTES.notifications.path,
+  notificationRead: API_ROUTES.notificationRead.path,
+  notificationsReadAll: API_ROUTES.notificationsReadAll.path,
+  notificationsUnread: API_ROUTES.notificationsUnread.path,
   devGrant: API_ROUTES.devGrant.path,
   myProducts: API_ROUTES.myProducts.path,
   members: API_ROUTES.members.path,

@@ -11,6 +11,8 @@ import {
   createHealthPort,
   createMemberCourseProgressRepository,
   createMemberRepository,
+  createNotificationRepository,
+  createPostRepository,
   createPurchaseRepository,
   createProductGrantRepository,
   createProcessedPaymentEventRepository,
@@ -20,6 +22,7 @@ import {
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
+  createThreadSubscriptionRepository,
 } from '@adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
@@ -28,6 +31,7 @@ import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resol
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
+import { createEmailNotificationChannel } from '@adapters/email/notification-channel.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
 import type {
   ApiKeyCrypto,
@@ -48,6 +52,9 @@ import type {
   IdGenerator,
   MemberCourseProgressRepository,
   MemberRepository,
+  NotificationChannelPort,
+  NotificationRepository,
+  PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
@@ -56,6 +63,7 @@ import type {
   TenantApiKeyRepository,
   TenantDomainRepository,
   TenantRepository,
+  ThreadSubscriptionRepository,
 } from '@core/server/index.js';
 
 import type { Env } from './env.js';
@@ -78,6 +86,10 @@ export interface AppDeps {
   lessons: CourseLessonRepository;
   entityVersions: EntityVersionRepository;
   members: MemberRepository;
+  posts: PostRepository;
+  threadSubscriptions: ThreadSubscriptionRepository;
+  notifications: NotificationRepository;
+  notificationChannels: NotificationChannelPort[];
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -164,6 +176,10 @@ export const createDeps = (env: Env): AppDeps => {
     lessons: createCourseLessonRepository(db),
     entityVersions: createEntityVersionRepository(db),
     members: createMemberRepository(db),
+    posts: createPostRepository(db),
+    threadSubscriptions: createThreadSubscriptionRepository(db),
+    notifications: createNotificationRepository(db),
+    notificationChannels: [createEmailNotificationChannel(email)],
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),

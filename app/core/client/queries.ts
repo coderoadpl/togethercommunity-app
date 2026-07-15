@@ -26,6 +26,13 @@ import type {
   ModuleDetachInput,
   ModuleCreateInput,
   ModuleUpdateInput,
+  NotificationReadInput,
+  NotificationsListInput,
+  DiscussionGetInput,
+  PostCreateInput,
+  PostDeleteInput,
+  PostUpdateInput,
+  PostsSearchInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
   SimulatePurchaseInput,
@@ -175,6 +182,18 @@ export const studentScopes = {
   lesson: (lessonId: string) => ['student', 'lesson', lessonId] as const,
   nextLesson: (lessonId: string) => ['student', 'next-lesson', lessonId] as const,
   progress: (courseId: string) => ['student', 'progress', courseId] as const,
+};
+
+export const discussionScopes = {
+  all: () => ['discussion'] as const,
+  lesson: (lessonId: string) => ['discussion', 'lesson', lessonId] as const,
+  search: (query: string) => ['discussion', 'search', query] as const,
+};
+
+export const notificationScopes = {
+  all: () => ['notifications'] as const,
+  list: () => ['notifications', 'list'] as const,
+  unread: () => ['notifications', 'unread'] as const,
 };
 
 export const meQuery = (api: ApiClient) =>
@@ -440,6 +459,72 @@ export const updateLastViewedMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...studentScopes.all(), 'last-viewed'],
     call: (input: LastViewedInput) => api.updateLastViewed(input),
+  });
+
+export const discussionQuery = (api: ApiClient, input: DiscussionGetInput) =>
+  defineQuery({
+    queryKey: discussionScopes.lesson(input.contextId),
+    call: ({ signal }) => api.discussion(input, signal),
+  });
+
+export const createPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...discussionScopes.all(), 'create-post'],
+    call: (input: PostCreateInput) => api.createPost(input),
+  });
+
+export const updatePostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...discussionScopes.all(), 'update-post'],
+    call: (input: PostUpdateInput) => api.updatePost(input),
+  });
+
+export const deletePostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...discussionScopes.all(), 'delete-post'],
+    call: (input: PostDeleteInput) => api.deletePost(input),
+  });
+
+export const subscribeThreadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...discussionScopes.all(), 'subscribe'],
+    call: (input: { rootPostId: string }) => api.subscribeThread(input),
+  });
+
+export const muteThreadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...discussionScopes.all(), 'mute'],
+    call: (input: { rootPostId: string }) => api.muteThread(input),
+  });
+
+export const postsSearchQuery = (api: ApiClient, input: PostsSearchInput) =>
+  defineQuery({
+    queryKey: discussionScopes.search(input.query),
+    call: ({ signal }) => api.searchPosts(input, signal),
+  });
+
+export const notificationsQuery = (api: ApiClient, input: NotificationsListInput = {}) =>
+  defineQuery({
+    queryKey: notificationScopes.list(),
+    call: ({ signal }) => api.listNotifications(input, signal),
+  });
+
+export const unreadNotificationsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: notificationScopes.unread(),
+    call: ({ signal }) => api.unreadNotificationCount(signal),
+  });
+
+export const markNotificationReadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...notificationScopes.all(), 'read'],
+    call: (input: NotificationReadInput) => api.markNotificationRead(input),
+  });
+
+export const markAllNotificationsReadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...notificationScopes.all(), 'read-all'],
+    call: () => api.markAllNotificationsRead(),
   });
 
 export const devGrantMutation = (api: ApiClient) =>

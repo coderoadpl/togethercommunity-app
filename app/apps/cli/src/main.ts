@@ -162,6 +162,40 @@ const stripeWebhookOptionsSchema = z.object({
   webhookSecret: z.string().min(1),
   event: z.string().min(1),
 });
+const discussionPostOptionsSchema = z.object({
+  lesson: z.string().min(1),
+  body: z.string().min(1),
+});
+const discussionReplyOptionsSchema = discussionPostOptionsSchema.extend({
+  parent: z.string().min(1),
+});
+const discussionListOptionsSchema = z.object({
+  lesson: z.string().min(1),
+  limit: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+});
+const discussionSearchOptionsSchema = z.object({
+  query: z.string().min(1),
+  lesson: z.string().min(1).optional(),
+  limit: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+});
+const notificationsListOptionsSchema = z.object({
+  limit: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+});
+const notificationReadOptionsSchema = z.object({
+  all: z.boolean().optional(),
+});
 
 const hmacSha256 = async (secret: string, value: string): Promise<string> => {
   const encoder = new TextEncoder();
@@ -976,6 +1010,137 @@ student
       }
       emit(await ctx.api.updateLastViewed(input.value), ctx.json, (data) =>
         `last viewed lesson ${data.progress.lastViewedLessonId ?? 'none'} in course ${data.progress.courseId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+const discussion = program.command('discussion').description('Lesson discussions');
+
+discussion
+  .command('post')
+  .description('Create a top-level discussion post under a lesson')
+  .requiredOption('--lesson <lessonId>')
+  .requiredOption('--body <text>')
+  .action(
+    withInput(z.tuple([discussionPostOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createPost({ contextKind: 'lesson', contextId: options.lesson, body: options.body }),
+        ctx.json,
+        (data) => `posted ${data.post.id.slice(0, 8)} in lesson ${data.post.contextId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+discussion
+  .command('reply')
+  .description('Reply to a discussion post')
+  .requiredOption('--lesson <lessonId>')
+  .requiredOption('--parent <postId>')
+  .requiredOption('--body <text>')
+  .action(
+    withInput(z.tuple([discussionReplyOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createPost({
+          contextKind: 'lesson',
+          contextId: options.lesson,
+          parentPostId: options.parent,
+          body: options.body,
+        }),
+        ctx.json,
+        (data) => `replied ${data.post.id.slice(0, 8)} to thread ${data.post.rootPostId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+discussion
+  .command('list')
+  .description('List a lesson discussion')
+  .requiredOption('--lesson <lessonId>')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([discussionListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.discussion({
+          contextKind: 'lesson',
+          contextId: options.lesson,
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.discussion.threads.length === 0
+            ? 'no posts'
+            : data.discussion.threads
+                .map((post) => `- ${post.authorDisplay}: ${post.body} (${post.id.slice(0, 8)}, ${post.replyCount} replies)`)
+                .join('\n'),
+      );
+    }),
+  );
+
+discussion
+  .command('search')
+  .description('Search accessible discussion posts')
+  .requiredOption('--query <text>')
+  .option('--lesson <lessonId>')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([discussionSearchOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.searchPosts({
+          query: options.query,
+          ...(options.lesson === undefined ? {} : { lessonIds: [options.lesson] }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.hits.length === 0
+            ? 'no matches'
+            : data.hits
+                .map((hit) => `- lesson ${hit.lessonId.slice(0, 8)} ${hit.post.id.slice(0, 8)}: ${hit.snippet}`)
+                .join('\n'),
+      );
+    }),
+  );
+
+const notifications = program.command('notifications').description('Your notifications');
+
+notifications
+  .command('list')
+  .description('List notifications')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([notificationsListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listNotifications(options.limit === undefined ? {} : { limit: options.limit }),
+        ctx.json,
+        (data) =>
+          data.notifications.length === 0
+            ? 'no notifications'
+            : data.notifications
+                .map((item) => {
+                  const status = item.readAt === null ? 'unread' : 'read';
+                  return `- ${status} ${item.kind} ${item.payload.snippet} (${item.id.slice(0, 8)})`;
+                })
+                .join('\n'),
+      );
+    }),
+  );
+
+notifications
+  .command('read [id]')
+  .description('Mark one notification, or all notifications with --all, as read')
+  .option('--all')
+  .action(
+    withInput(z.tuple([z.string().min(1).optional(), notificationReadOptionsSchema]), async (ctx, [id, options]) => {
+      if (options.all === true) {
+        emit(await ctx.api.markAllNotificationsRead(), ctx.json, (data) => `marked ${data.read} notification(s) read`);
+        return;
+      }
+      if (id === undefined) {
+        emit(err(validation('Pass a notification id or --all')), ctx.json, () => '');
+        return;
+      }
+      emit(await ctx.api.markNotificationRead({ id }), ctx.json, (data) =>
+        `marked ${data.notification.id.slice(0, 8)} read`,
       );
     }),
   );

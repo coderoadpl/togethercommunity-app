@@ -228,6 +228,13 @@ const deps = (input: {
       unreadCount: async () => 0,
     },
     notificationChannels: [],
+    realtimeBus: {
+      publish: () => undefined,
+      subscribe: () => () => undefined,
+    },
+    links: {
+      lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/lessons/${lessonId}`,
+    },
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
       listVerifiedDomains: async () => domains,

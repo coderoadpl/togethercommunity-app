@@ -26,6 +26,7 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
+import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
@@ -257,6 +258,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             <LanguageSwitcher inline />
             <ThemeSwitcher inline />
           </Box>
+          <NotificationBell />
           <UserMenu
             email={email}
             role={tenant.staffRole}

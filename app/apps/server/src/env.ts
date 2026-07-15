@@ -30,6 +30,10 @@ const envSchema = z
       .transform((value) => value === 'true'),
     EMAIL_PROVIDER: z.enum(['ses', 'dev']).default('dev'),
     EMAIL_FROM: z.string().min(1).optional(),
+    NOTIFY_EMAIL: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     WEB_DIST_DIR: z.string().default('dist/web'),

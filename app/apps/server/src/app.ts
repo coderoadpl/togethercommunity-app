@@ -136,6 +136,7 @@ import {
 } from '@adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
+import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity } };
@@ -932,6 +933,19 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.notificationsUnread, async (c) =>
     respond(await unreadNotificationCount({ identity: c.get('identity') }, deps)),
   );
+
+  app.get(API_PATHS.notificationsStream, (c) => {
+    const identity = c.get('identity');
+    const tenantId = identity.tenantId;
+    if (tenantId === null) return respond(err(tenantNotFound('Select a tenant')));
+    const stream = createNotificationEventStream({
+      tenantId,
+      recipientUserId: identity.userId,
+      bus: deps.realtimeBus,
+      unreadCount: () => deps.notifications.unreadCount(tenantId, identity.userId),
+    });
+    return new Response(stream, { headers: SSE_HEADERS });
+  });
 
   return app;
 };

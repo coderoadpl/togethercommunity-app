@@ -124,6 +124,14 @@ export interface Messages {
     accountMenu: string;
     signedInAs: string;
   };
+  notifications: {
+    bell: string;
+    heading: string;
+    empty: string;
+    loading: string;
+    markAllRead: string;
+    threadReply: (params: { author: string; lesson: string }) => string;
+  };
   security: {
     heading: string;
     passkeys: string;

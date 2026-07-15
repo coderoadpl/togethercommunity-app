@@ -1,5 +1,6 @@
 import {
   createPostInputSchema,
+  DEFAULT_LANGUAGE,
   deletePostInputSchema,
   err,
   forbidden,
@@ -31,6 +32,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  DiscussionLinkPort,
   IdGenerator,
   NotificationChannelPort,
   NotificationRepository,
@@ -52,6 +54,7 @@ export interface CommunityDeps {
   lessons: CourseLessonRepository;
   grants: ProductGrantRepository;
   tenantAccess: TenantAccessReader;
+  links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -208,9 +211,23 @@ const notifySubscribers = async (
   tenantId: string,
   post: Post,
   deps: CommunityDeps,
-  tenantName: string,
+  tenant: { tenantName: string; tenantSlug: string | null },
 ): Promise<Result<void, AppError>> => {
   const subscribers = await deps.threadSubscriptions.listSubscribersForRoot(tenantId, post.rootPostId);
+  if (subscribers.length === 0) return ok(undefined);
+  const [courses, modules, lesson] = await Promise.all([
+    deps.courses.list(tenantId),
+    deps.modules.list(tenantId),
+    deps.lessons.findById(tenantId, post.contextId),
+  ]);
+  const location = locateLesson(post.contextId, courses, modules);
+  const courseId = location?.course.id ?? null;
+  const lessonName = lesson?.name ?? '';
+  const lessonUrl = deps.links.lessonDiscussionUrl({
+    tenantSlug: tenant.tenantSlug,
+    courseId,
+    lessonId: post.contextId,
+  });
   for (const subscriber of subscribers) {
     if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
     const notification: Notification = {
@@ -223,6 +240,8 @@ const notifySubscribers = async (
         postId: post.id,
         contextKind: post.contextKind,
         contextId: post.contextId,
+        courseId,
+        lessonName,
         authorDisplay: post.authorDisplay,
         snippet: snippet(post.body),
       },
@@ -233,7 +252,13 @@ const notifySubscribers = async (
     const member = await deps.tenantAccess.findMember(subscriber.userId, tenantId);
     const recipientEmail = member?.email ?? null;
     for (const channel of deps.notificationChannels) {
-      const delivered = await channel.deliver(inserted, { recipientEmail, tenantName });
+      const delivered = await channel.deliver(inserted, {
+        recipientEmail,
+        tenantName: tenant.tenantName,
+        lessonName,
+        lessonUrl,
+        language: DEFAULT_LANGUAGE,
+      });
       if (!delivered.ok) return delivered;
     }
   }
@@ -285,7 +310,10 @@ export const createPost = async (
     createdAt: created.createdAt,
   });
   if (parentPost !== null) {
-    const notified = await notifySubscribers(actor.value.tenantId, created, deps, ctx.identity.tenantName ?? 'Together');
+    const notified = await notifySubscribers(actor.value.tenantId, created, deps, {
+      tenantName: ctx.identity.tenantName ?? 'Together',
+      tenantSlug: ctx.identity.tenantSlug,
+    });
     if (!notified.ok) return notified;
   }
   return ok(created);

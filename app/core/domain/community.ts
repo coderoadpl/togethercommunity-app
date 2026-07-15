@@ -81,6 +81,9 @@ export const threadReplyNotificationPayloadSchema = z.object({
   postId: z.string().min(1),
   contextKind: postContextKindSchema,
   contextId: z.string().min(1),
+  // Defaults keep rows persisted before these fields existed parseable.
+  courseId: z.string().min(1).nullable().default(null),
+  lessonName: z.string().default(''),
   authorDisplay: z.string().min(1),
   snippet: z.string(),
 });

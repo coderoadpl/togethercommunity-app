@@ -82,6 +82,32 @@ export const resetPassword = (
   });
 };
 
+export const threadReply = (
+  language: string,
+  input: { tenantName: string; lessonName: string; authorDisplay: string; snippet: string; url: string },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const lessonName = escapeHtml(input.lessonName);
+  const author = escapeHtml(input.authorDisplay);
+  const snippet = escapeHtml(input.snippet);
+
+  if (languageOrDefault(language) === 'en') {
+    const actionLink = link(input.url, 'Open the discussion');
+    return emailMessageSchema.parse({
+      subject: `New reply in the "${input.lessonName}" discussion`,
+      html: `<p>Hello!</p><p>${author} replied in the "${lessonName}" discussion on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
+      text: `Hello!\n\n${input.authorDisplay} replied in the "${input.lessonName}" discussion on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the discussion: ${input.url}`,
+    });
+  }
+
+  const actionLink = link(input.url, 'Otwórz dyskusję');
+  return emailMessageSchema.parse({
+    subject: `Nowa odpowiedź w dyskusji „${input.lessonName}”`,
+    html: `<p>Cześć!</p><p>${author} odpowiedział(a) w dyskusji „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
+    text: `Cześć!\n\n${input.authorDisplay} odpowiedział(a) w dyskusji „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz dyskusję: ${input.url}`,
+  });
+};
+
 export const magicLink = (
   language: string,
   input: { tenantName: string; url: string },

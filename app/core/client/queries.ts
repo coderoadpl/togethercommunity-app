@@ -521,7 +521,9 @@ export const markNotificationReadMutation = (api: ApiClient) =>
     call: (input: NotificationReadInput) => api.markNotificationRead(input),
   });
 
-export const markAllNotificationsReadMutation = (api: ApiClient) =>
+export const markAllNotificationsReadMutation = (
+  api: ApiClient,
+): MutationDescriptor<{ read: number }, void> =>
   defineMutation({
     mutationKey: [...notificationScopes.all(), 'read-all'],
     call: () => api.markAllNotificationsRead(),
@@ -612,6 +614,8 @@ export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: member
 
 /** Invalidation filter progress mutations apply to refresh a course's tree. */
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
+
+export const notificationsInvalidates = () => ({ queryKey: notificationScopes.all() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

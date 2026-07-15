@@ -119,6 +119,9 @@ type Branded<T, M extends HttpMethod> = T & { readonly [HTTP_METHOD_BRAND]?: M }
 export type ReadResult<T> = Branded<Result<T, AppError>, ReadMethod>;
 export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
 
+/** Same-origin SSE endpoint for the browser EventSource wrapper. */
+export const NOTIFICATIONS_STREAM_PATH = API_ROUTES.notificationsStream.path;
+
 export interface ApiClientOptions {
   /** '' for same-origin (web); absolute URL for CLI and other clients. */
   baseUrl: string;

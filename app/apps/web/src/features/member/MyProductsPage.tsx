@@ -20,6 +20,7 @@ import { ApiError } from '@core/client/index.js';
 import { actions } from '../../api.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
+import { NotificationBell } from '../../NotificationBell.js';
 import { CardTitle, DataValue, Eyebrow, LedgerHeader } from '../../theme.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 
@@ -69,6 +70,7 @@ export const MyProductsPage = () => {
           <Box sx={{ flex: 1 }} />
           <Link href="/my">{t.student.myCourses}</Link>
           <Link href="/">{t.common.home}</Link>
+          <NotificationBell />
           <MemberAccountMenu />
         </Stack>
         <Eyebrow variant="overline" component="p">

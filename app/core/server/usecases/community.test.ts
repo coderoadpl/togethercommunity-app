@@ -355,6 +355,10 @@ const deps = (accessProducts: Product[], accessGrants: ProductGrant[] = []): Com
     lessons: lessonsRepo,
     grants: grantRepo(accessGrants, accessProducts),
     tenantAccess,
+    links: {
+      lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
+        `http://${tenantSlug ?? 'app'}.localhost/my/courses/${courseId ?? 'none'}/lessons/${lessonId}`,
+    },
     ids: new SequenceIds(),
     clock,
   };

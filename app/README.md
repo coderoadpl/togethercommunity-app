@@ -124,6 +124,23 @@ Per request: (1) exact custom-domain match in `tenant_domains`,
 tenant-scoped use-case takes `ctx.identity` and every repository call requires
 `tenantId`.
 
+## Realtime
+
+In-app notifications stream over Server-Sent Events: an authenticated,
+tenant-scoped `GET /api/notifications/stream` sends the unread count on
+connect, then pushes each new notification for that recipient as it is
+delivered (with a heartbeat comment every 25 s). The web app keeps its
+TanStack Query caches fresh from this stream and never renders stream
+payloads directly.
+
+The stream requires a long-lived Node process. On serverless deployments
+(function duration limits cut idle connections), the browser wrapper detects
+the failing stream and transparently falls back to 30-second polling of the
+same notification endpoints — no server-side configuration needed.
+
+E-mail delivery of thread replies rides the same notification-channel port and
+is toggled with `NOTIFY_EMAIL` (see `.env.example`).
+
 ## Stripe test mode
 
 Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, and store that tenant's

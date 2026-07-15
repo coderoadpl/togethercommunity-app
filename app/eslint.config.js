@@ -205,6 +205,11 @@ export default tseslint.config(
         { type: 'web-test', pattern: 'apps/web/src/test/**', mode: 'full' },
         { type: 'web-theme', pattern: 'apps/web/src/theme*', mode: 'full' },
         { type: 'web-i18n', pattern: 'apps/web/src/i18n/**', mode: 'full' },
+        {
+          type: 'web-notifications',
+          pattern: ['apps/web/src/NotificationBell*', 'apps/web/src/notifications-stream*'],
+          mode: 'full',
+        },
         { type: 'app-web', pattern: 'apps/web/**', mode: 'full' },
         { type: 'app-cli', pattern: 'apps/cli/**', mode: 'full' },
         { type: 'config', pattern: '*.config.ts', mode: 'full' },
@@ -285,6 +290,7 @@ export default tseslint.config(
                 'web-lib',
                 'web-theme',
                 'web-i18n',
+                'web-notifications',
                 'app-web',
                 'core-domain',
                 'core-contract',
@@ -306,6 +312,21 @@ export default tseslint.config(
                 ['web-features', { feature: '${from.feature}' }],
                 'web-api',
                 'web-ui',
+                'web-lib',
+                'web-theme',
+                'web-i18n',
+                'web-notifications',
+                'web-test',
+                'core-domain',
+                'core-contract',
+                'core-client',
+              ],
+            },
+            {
+              from: ['web-notifications'],
+              allow: [
+                'web-notifications',
+                'web-api',
                 'web-lib',
                 'web-theme',
                 'web-i18n',
@@ -458,6 +479,19 @@ export default tseslint.config(
             {
               from: ['web-i18n'],
               allow: ['react', 'vitest'],
+            },
+            {
+              from: ['web-notifications'],
+              allow: [
+                '@mui/material',
+                '@tanstack/react-query',
+                '@tanstack/react-router',
+                '@testing-library/react',
+                '@testing-library/user-event',
+                'msw',
+                'react',
+                'vitest',
+              ],
             },
             {
               from: ['app-web'],
@@ -644,6 +678,17 @@ export default tseslint.config(
     files: ['apps/web/src/theme-mode.tsx'],
     rules: {
       'no-restricted-globals': ['error', ...HTTP_GLOBALS],
+    },
+  },
+  {
+    // Scoped exception: the SSE wrapper is the single EventSource owner in apps/web.
+    files: ['apps/web/src/notifications-stream.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...HTTP_GLOBALS.filter((global) => global.name !== 'EventSource'),
+        ...STORAGE_GLOBALS,
+      ],
     },
   },
   {

@@ -18,6 +18,7 @@ import {
   Eyebrow,
   LedgerHeader,
 } from '../../theme.js';
+import { NotificationBell } from '../../NotificationBell.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 
@@ -136,6 +137,7 @@ export const MyCoursesPage = () => {
           <Box sx={{ flex: 1 }} />
           <Link href="/my/products">{t.student.myProducts}</Link>
           <Link href="/">{t.common.home}</Link>
+          <NotificationBell />
           <MemberAccountMenu />
         </Stack>
         <Eyebrow variant="overline" component="p">

@@ -141,10 +141,32 @@ export interface NotificationRepository {
 export interface NotificationDeliveryContext {
   recipientEmail: string | null;
   tenantName: string;
+  lessonName: string;
+  lessonUrl: string;
+  language: string;
 }
 
 export interface NotificationChannelPort {
   deliver(notification: Notification, context: NotificationDeliveryContext): Promise<Result<void, AppError>>;
+}
+
+export interface RealtimeNotificationEvent {
+  tenantId: string;
+  recipientUserId: string;
+  notification: Notification;
+}
+
+export interface RealtimeBusPort {
+  publish(event: RealtimeNotificationEvent): void;
+  subscribe(listener: (event: RealtimeNotificationEvent) => void): () => void;
+}
+
+export interface DiscussionLinkPort {
+  lessonDiscussionUrl(input: {
+    tenantSlug: string | null;
+    courseId: string | null;
+    lessonId: string;
+  }): string;
 }
 
 export interface MemberCourseProgressRepository {

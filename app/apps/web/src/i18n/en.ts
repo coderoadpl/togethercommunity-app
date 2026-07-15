@@ -122,6 +122,17 @@ export const en: Messages = {
     accountMenu: 'Account menu',
     signedInAs: 'Signed in as',
   },
+  notifications: {
+    bell: 'Notifications',
+    heading: 'Notifications',
+    empty: 'You have no notifications yet.',
+    loading: 'Loading notifications…',
+    markAllRead: 'Mark all as read',
+    threadReply: ({ author, lesson }) =>
+      lesson.length > 0
+        ? format('{author} replied in the "{lesson}" discussion', { author, lesson })
+        : format('{author} replied in a discussion', { author }),
+  },
   security: {
     heading: 'Security',
     passkeys: 'Passkeys',

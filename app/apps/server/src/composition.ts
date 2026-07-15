@@ -31,7 +31,8 @@ import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resol
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
-import { createEmailNotificationChannel } from '@adapters/email/notification-channel.js';
+import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
+import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
 import type {
   ApiKeyCrypto,
@@ -45,6 +46,7 @@ import type {
   CourseModuleRepository,
   CourseRepository,
   DevEmailReader,
+  DiscussionLinkPort,
   EntityVersionRepository,
   EmailPort,
   DevMagicLinkReader,
@@ -59,6 +61,7 @@ import type {
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  RealtimeBusPort,
   TenantAccessReader,
   TenantApiKeyRepository,
   TenantDomainRepository,
@@ -90,6 +93,8 @@ export interface AppDeps {
   threadSubscriptions: ThreadSubscriptionRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
+  realtimeBus: RealtimeBusPort;
+  links: DiscussionLinkPort;
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -133,6 +138,15 @@ export const createDeps = (env: Env): AppDeps => {
     env.EMAIL_PROVIDER === 'ses'
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
+  const realtimeBus = createRealtimeBus();
+  const links: DiscussionLinkPort = {
+    lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) => {
+      const url = new URL(env.APP_BASE_URL);
+      if (tenantSlug !== null) url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
+      url.pathname = courseId === null ? '/my' : `/my/courses/${courseId}/lessons/${lessonId}`;
+      return url.toString();
+    },
+  };
 
   const google =
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
@@ -179,7 +193,12 @@ export const createDeps = (env: Env): AppDeps => {
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     notifications: createNotificationRepository(db),
-    notificationChannels: [createEmailNotificationChannel(email)],
+    notificationChannels: [
+      createInAppNotificationChannel(realtimeBus),
+      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(email)] : []),
+    ],
+    realtimeBus,
+    links,
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),

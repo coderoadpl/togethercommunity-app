@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, ListItemButton, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ButtonBase, LinearProgress, ListItemButton, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -2422,6 +2422,37 @@ export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
     '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.16) },
   },
 }));
+
+export const NotificationMenuItem = styled(MenuItem)({
+  whiteSpace: 'normal',
+  alignItems: 'flex-start',
+});
+
+export const NotificationTitle = styled(Typography, {
+  shouldForwardProp: (prop) => prop !== 'unread',
+})<AsElement & { unread?: boolean }>(({ unread }) => ({
+  fontSize: '0.9rem',
+  fontWeight: unread === true ? 700 : 500,
+}));
+
+export const NotificationSnippet = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.8rem',
+  color: theme.palette.text.secondary,
+}));
+
+export const UnreadDot = styled('span')(({ theme }) => ({
+  display: 'inline-block',
+  width: 8,
+  height: 8,
+  marginTop: 6,
+  borderRadius: '50%',
+  backgroundColor: theme.palette.primary.main,
+  flexShrink: 0,
+}));
+
+export const NotificationBellIcon = styled(SvgIcon)({
+  fontSize: '1.25rem',
+});
 
 export const AccessLockIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.05rem',

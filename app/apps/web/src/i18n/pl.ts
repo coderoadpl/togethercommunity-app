@@ -128,6 +128,17 @@ export const pl: Messages = {
     accountMenu: 'Menu konta',
     signedInAs: 'Zalogowano jako',
   },
+  notifications: {
+    bell: 'Powiadomienia',
+    heading: 'Powiadomienia',
+    empty: 'Nie masz jeszcze żadnych powiadomień.',
+    loading: 'Wczytywanie powiadomień…',
+    markAllRead: 'Oznacz wszystkie jako przeczytane',
+    threadReply: ({ author, lesson }) =>
+      lesson.length > 0
+        ? format('{author} odpowiedział(a) w dyskusji „{lesson}”', { author, lesson })
+        : format('{author} odpowiedział(a) w dyskusji', { author }),
+  },
   security: {
     heading: 'Bezpieczeństwo',
     passkeys: 'Klucze dostępu',

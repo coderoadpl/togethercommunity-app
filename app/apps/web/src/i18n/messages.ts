@@ -515,6 +515,8 @@ export interface Messages {
     following: string;
     mutedState: string;
     replyCount: (params: { count: number }) => string;
+    continueThread: string;
+    backToDiscussion: string;
     loadMore: string;
     searchLabel: string;
     searching: string;

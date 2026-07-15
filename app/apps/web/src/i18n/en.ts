@@ -550,6 +550,8 @@ export const en: Messages = {
     mutedState: 'Muted',
     replyCount: ({ count }) =>
       count === 1 ? '1 reply' : format('{count} replies', { count }),
+    continueThread: 'Continue thread',
+    backToDiscussion: 'Back to the full discussion',
     loadMore: 'Show more threads',
     searchLabel: 'Search this discussion',
     searching: 'searching…',

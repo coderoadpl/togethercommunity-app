@@ -131,11 +131,70 @@ describe('DiscussionSection', () => {
 
     expect(screen.getByTestId('reply-button-r1')).toBeInTheDocument();
     expect(screen.getByTestId('reply-button-c1')).toBeInTheDocument();
-    expect(screen.queryByTestId('reply-button-c2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('reply-button-c2')).toBeInTheDocument();
 
     expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(
       pl.discussion.replyCount({ count: 2 }),
     );
+  });
+
+  it('collapses replies deeper than five levels behind a continue-thread link with a re-rooted subthread', async () => {
+    const bodies: unknown[] = [];
+    const chain = (id: string, parentPostId: string, body: string, replies: DiscussionPost[] = []) =>
+      asThread(post({ id, parentPostId, rootPostId: 'r1', body }), replies);
+    const c7 = chain('c7', 'c6', 'Poziom siódmy');
+    const c6 = chain('c6', 'c5', 'Poziom szósty', [c7]);
+    const c5 = chain('c5', 'c4', 'Poziom piąty', [c6]);
+    const c4 = chain('c4', 'c3', 'Poziom czwarty', [c5]);
+    const c3 = chain('c3', 'c2', 'Poziom trzeci', [c4]);
+    const c2 = chain('c2', 'r1', 'Poziom drugi', [c3]);
+    const root = asThread(post({ id: 'r1', body: 'Poziom pierwszy' }), [c2]);
+    server.use(
+      okMe(),
+      okDiscussion([root]),
+      http.post('/api/posts', async ({ request }) => {
+        const body = createPostInputSchema.parse(await request.json());
+        bodies.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            post: post({ id: 'n1', parentPostId: 'c7', rootPostId: 'r1', body: body.body, authorUserId: 'u1' }),
+          },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    expect(await screen.findByTestId('post-body-c5')).toHaveTextContent('Poziom piąty');
+    expect(screen.queryByTestId('post-body-c6')).not.toBeInTheDocument();
+    const continueLink = screen.getByTestId('continue-thread-c5');
+    expect(continueLink).toHaveTextContent(pl.discussion.continueThread);
+
+    await user.click(continueLink);
+
+    expect(screen.getByTestId('back-to-discussion')).toHaveTextContent(
+      pl.discussion.backToDiscussion,
+    );
+    expect(screen.getByTestId('discussion-subthread-c5')).toBeInTheDocument();
+    expect(screen.getByTestId('post-body-c6')).toHaveTextContent('Poziom szósty');
+    expect(screen.getByTestId('post-body-c7')).toHaveTextContent('Poziom siódmy');
+    expect(screen.queryByTestId('post-body-r1')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('reply-button-c7'));
+    await user.type(screen.getByTestId('reply-composer-c7-input'), 'Głębsza odpowiedź');
+    await user.click(screen.getByTestId('reply-composer-c7-submit'));
+
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        { contextKind: 'lesson', contextId: 'l1', parentPostId: 'c7', body: 'Głębsza odpowiedź' },
+      ]),
+    );
+
+    await user.click(screen.getByTestId('back-to-discussion'));
+    expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('Poziom pierwszy');
+    expect(screen.queryByTestId('post-body-c6')).not.toBeInTheDocument();
   });
 
   it('sends a reply optimistically and refetches the discussion', async () => {

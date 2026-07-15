@@ -564,6 +564,8 @@ export const pl: Messages = {
     mutedState: 'Wyciszono',
     replyCount: ({ count }) =>
       format('{count} {word}', { count, word: plural(count, 'odpowiedź', 'odpowiedzi', 'odpowiedzi') }),
+    continueThread: 'Kontynuuj wątek',
+    backToDiscussion: 'Wróć do całej dyskusji',
     loadMore: 'Pokaż więcej wątków',
     searchLabel: 'Szukaj w tej dyskusji',
     searching: 'szukanie…',

@@ -170,22 +170,6 @@ const accessibleLessons = (
   return ids;
 };
 
-const postDepth = async (
-  tenantId: string,
-  post: Post,
-  deps: Pick<CommunityDeps, 'posts'>,
-): Promise<number> => {
-  let depth = 1;
-  let parentId = post.parentPostId;
-  while (parentId !== null) {
-    const parent = await deps.posts.findById(tenantId, parentId);
-    if (!parent) return depth;
-    depth += 1;
-    parentId = parent.parentPostId;
-  }
-  return depth;
-};
-
 const nestReplies = (rootId: string, replies: Post[]): DiscussionPost[] => {
   const byParent = new Map<string, Post[]>();
   for (const reply of replies) {
@@ -286,8 +270,6 @@ export const createPost = async (
     if (!parentPost || parentPost.contextKind !== parsed.data.contextKind || parentPost.contextId !== parsed.data.contextId) {
       return err(validation('Parent post does not belong to this discussion'));
     }
-    const depth = await postDepth(actor.value.tenantId, parentPost, deps);
-    if (depth >= 3) return err(validation('Reply depth is capped at 3'));
     rootPostId = parentPost.rootPostId;
   }
   const post: Post = {

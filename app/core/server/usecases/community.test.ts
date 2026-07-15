@@ -374,19 +374,23 @@ const allAccess = product('all', [{ level: 'course', courseId: 'c1' }]);
 const previewAccess = product('preview', [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
 
 describe('community use-cases', () => {
-  it('caps reply depth at 3', async () => {
+  it('creates a 10-level reply chain with the root post id preserved', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);
     expect(root.ok).toBe(true);
     if (!root.ok) return;
-    const second = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'reply' }, d);
-    expect(second.ok).toBe(true);
-    if (!second.ok) return;
-    const third = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: second.value.id, body: 'nested' }, d);
-    expect(third.ok).toBe(true);
-    if (!third.ok) return;
-    const fourth = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', parentPostId: third.value.id, body: 'too deep' }, d);
-    expect(fourth).toMatchObject({ ok: false, error: { code: 'validation' } });
+    let parent = root.value;
+    for (let level = 2; level <= 10; level += 1) {
+      const reply = await createPost(
+        ctx(),
+        { contextKind: 'lesson', contextId: 'l1', parentPostId: parent.id, body: `level ${level}` },
+        d,
+      );
+      expect(reply.ok).toBe(true);
+      if (!reply.ok) return;
+      expect(reply.value.rootPostId).toBe(root.value.id);
+      parent = reply.value;
+    }
   });
 
   it('guards lesson access and allows free-preview lesson grants', async () => {

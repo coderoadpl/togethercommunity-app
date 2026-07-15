@@ -38,7 +38,7 @@ import {
 import { Highlighted } from './highlight.js';
 
 const PAGE_SIZE = 20;
-const MAX_DEPTH = 3;
+const MAX_INDENT = 5;
 const MIN_SEARCH_LENGTH = 2;
 
 const isForbidden = (error: Error | null) =>
@@ -129,6 +129,7 @@ interface ThreadActions {
   submitReply: (parent: DiscussionPost, body: string, reset: () => void) => void;
   submitEdit: (post: DiscussionPost, body: string, reset: () => void) => void;
   requestDelete: (post: DiscussionPost) => void;
+  openSubthread: (id: string) => void;
   replyBusy: boolean;
   editBusy: boolean;
   pendingReply: { parentId: string; author: string; body: string } | null;
@@ -147,7 +148,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
   const t = useTranslations();
   const deleted = post.deletedAt !== null;
   const own = a.viewer !== null && a.viewer.userId === post.authorUserId;
-  const canReply = a.viewer !== null && depth < MAX_DEPTH && !deleted;
+  const canReply = a.viewer !== null && !deleted;
   const canEdit = own && !deleted;
   const canDelete = (own || (a.viewer?.canModerate ?? false)) && !deleted;
 
@@ -246,17 +247,39 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
         </Box>
       )}
 
-      {(post.replies.length > 0 || a.pendingReply?.parentId === post.id) && (
-        <ReplyIndent data-testid={`replies-of-${post.id}`} sx={{ mt: '0.75rem' }}>
-          <Stack useFlexGap sx={{ rowGap: '1rem' }}>
-            {post.replies.map((reply) => (
-              <PostView key={reply.id} post={reply} depth={depth + 1} actions={a} />
-            ))}
-            {a.pendingReply?.parentId === post.id && (
+      {depth < MAX_INDENT ? (
+        (post.replies.length > 0 || a.pendingReply?.parentId === post.id) && (
+          <ReplyIndent data-testid={`replies-of-${post.id}`} sx={{ mt: '0.75rem' }}>
+            <Stack useFlexGap sx={{ rowGap: '1rem' }}>
+              {post.replies.map((reply) => (
+                <PostView key={reply.id} post={reply} depth={depth + 1} actions={a} />
+              ))}
+              {a.pendingReply?.parentId === post.id && (
+                <PendingPostView author={a.pendingReply.author} body={a.pendingReply.body} />
+              )}
+            </Stack>
+          </ReplyIndent>
+        )
+      ) : (
+        <>
+          {a.pendingReply?.parentId === post.id && (
+            <ReplyIndent sx={{ mt: '0.75rem' }}>
               <PendingPostView author={a.pendingReply.author} body={a.pendingReply.body} />
-            )}
-          </Stack>
-        </ReplyIndent>
+            </ReplyIndent>
+          )}
+          {post.replies.length > 0 && (
+            <Box sx={{ mt: '0.5rem' }}>
+              <Button
+                size="small"
+                variant="text"
+                data-testid={`continue-thread-${post.id}`}
+                onClick={() => a.openSubthread(post.id)}
+              >
+                {t.discussion.continueThread}
+              </Button>
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );
@@ -265,6 +288,15 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
 const threadsContain = (threads: DiscussionPost[], id: string | undefined): boolean =>
   id !== undefined &&
   threads.some((post) => post.id === id || threadsContain(post.replies, id));
+
+const findPost = (threads: DiscussionPost[], id: string): DiscussionPost | null => {
+  for (const candidate of threads) {
+    if (candidate.id === id) return candidate;
+    const nested = findPost(candidate.replies, id);
+    if (nested !== null) return nested;
+  }
+  return null;
+};
 
 const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
   const t = useTranslations();
@@ -330,6 +362,7 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<DiscussionPost | null>(null);
+  const [subthreadRootId, setSubthreadRootId] = useState<string | null>(null);
   const [subOverride, setSubOverride] = useState<Record<string, ThreadSubscriptionState>>({});
 
   const invalidate = () => queryClient.invalidateQueries(actions.discussionInvalidates());
@@ -350,6 +383,7 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
 
   const threads = discussion.data?.discussion.threads ?? [];
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
+  const subthreadRoot = subthreadRootId === null ? null : findPost(threads, subthreadRootId);
 
   const optimisticVariables =
     create.variables !== undefined &&
@@ -418,6 +452,7 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
       );
     },
     requestDelete: setDeleting,
+    openSubthread: setSubthreadRootId,
     replyBusy: create.isPending,
     editBusy: update.isPending,
     pendingReply,
@@ -445,6 +480,25 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
         <Typography variant="body2">{t.discussion.loading}</Typography>
       ) : discussion.isError ? (
         <Alert>{localizeError(discussion.error, t)}</Alert>
+      ) : subthreadRoot !== null ? (
+        <Stack useFlexGap sx={{ rowGap: '1rem' }}>
+          <Box>
+            <Button
+              variant="text"
+              data-testid="back-to-discussion"
+              onClick={() => setSubthreadRootId(null)}
+            >
+              {t.discussion.backToDiscussion}
+            </Button>
+          </Box>
+          {mutationError !== null && <Alert>{localizeError(mutationError, t)}</Alert>}
+          <DiscussionThread
+            sx={{ p: '1rem 1.25rem' }}
+            data-testid={`discussion-subthread-${subthreadRoot.id}`}
+          >
+            <PostView post={subthreadRoot} depth={1} actions={threadActions} />
+          </DiscussionThread>
+        </Stack>
       ) : (
         <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
           <LessonDiscussionSearch lessonId={lessonId} />

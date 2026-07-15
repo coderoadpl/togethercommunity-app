@@ -86,7 +86,7 @@ describe('ProductAccessEditor', () => {
     const { bodies } = setup();
     renderWithProviders(<ProductAccessEditor product={product} />);
 
-    await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: pl.access.courseLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
     await userEvent.click(screen.getByRole('button', { name: pl.access.addFullCourse }));
 
@@ -106,7 +106,7 @@ describe('ProductAccessEditor', () => {
     renderWithProviders(<ProductAccessEditor product={product} />);
 
     await userEvent.click(await screen.findByLabelText(pl.access.proMode));
-    await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: pl.access.courseLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
     await userEvent.click(screen.getByRole('button', { name: pl.access.selectedLessons }));
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Intro lesson' }));
@@ -130,7 +130,7 @@ describe('ProductAccessEditor', () => {
     renderWithProviders(<ProductAccessEditor product={product} />);
 
     await userEvent.click(await screen.findByLabelText(pl.access.proMode));
-    await userEvent.click(await screen.findByRole('combobox', { name: 'access course product-1' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: pl.access.courseLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Launch Kit' }));
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Module One' }));
     await userEvent.click(screen.getByRole('button', { name: pl.access.addItem }));

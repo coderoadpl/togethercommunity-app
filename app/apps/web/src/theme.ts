@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, LinearProgress, ListItemButton, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ButtonBase, LinearProgress, ListItemButton, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -416,6 +416,16 @@ export const createShadcnTheme = (): Theme =>
               boxShadow: `inset 0 0 0 2px ${alpha(SHADCN_RING, 0.6)}`,
             },
             '& .MuiListItemText-secondary': { color: SHADCN_INK_SOFT },
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            '&:focus-visible': {
+              outline: 'none',
+              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+            },
           },
         },
       },
@@ -861,6 +871,13 @@ export const createSignalMonoTheme = (): Theme =>
           },
         },
       },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
+          },
+        },
+      },
       MuiListItemText: {
         styleOverrides: { secondary: { color: SIGNAL_INK_SOFT } },
       },
@@ -1234,6 +1251,13 @@ export const createSteadyFrameTheme = (): Theme =>
           },
         },
       },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
+          },
+        },
+      },
       MuiListItemText: {
         styleOverrides: { secondary: { color: FRAME_INK_SOFT } },
       },
@@ -1413,7 +1437,11 @@ export const createScoreboardTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: { borderRadius: 8, padding: '0.6rem 1.15rem' },
+          root: {
+            borderRadius: 8,
+            padding: '0.6rem 1.15rem',
+            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: 2 },
+          },
           contained: {
             backgroundColor: SCORE_INK,
             color: SCORE_SURFACE,
@@ -1610,6 +1638,14 @@ export const createScoreboardTheme = (): Theme =>
             borderRadius: 6,
             color: SCORE_INK,
             '&:hover': { backgroundColor: alpha(SCORE_INK, 0.05) },
+            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: -3 },
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: 2 },
           },
         },
       },
@@ -1796,7 +1832,11 @@ export const createQuietStudioTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: { borderRadius: 10, padding: '0.55rem 1.25rem' },
+          root: {
+            borderRadius: 10,
+            padding: '0.55rem 1.25rem',
+            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: 2 },
+          },
           contained: {
             boxShadow: STUDIO_SHADOW_REST,
             '&:hover': { boxShadow: STUDIO_SHADOW_FLOAT },
@@ -1938,6 +1978,14 @@ export const createQuietStudioTheme = (): Theme =>
           root: {
             borderRadius: 10,
             '&:hover': { backgroundColor: alpha(STUDIO_PRIMARY, 0.05) },
+            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: -2 },
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: 2 },
           },
         },
       },
@@ -2071,6 +2119,9 @@ export const createAppTheme = (accentHue = 24): Theme => {
       MuiButton: {
         defaultProps: { disableElevation: true, disableRipple: true },
         styleOverrides: {
+          root: {
+            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: 2 },
+          },
           contained: {
             backgroundColor: INK,
             color: PAPER,
@@ -2198,7 +2249,17 @@ export const createAppTheme = (accentHue = 24): Theme => {
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: { '&:hover': { backgroundColor: accentWash } },
+          root: {
+            '&:hover': { backgroundColor: accentWash },
+            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: -2 },
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: 2 },
+          },
         },
       },
       MuiAlert: {
@@ -2454,6 +2515,25 @@ export const StatTile = styled(Box)(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.background.paper,
+}));
+
+export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+  gap: '0.75rem',
+  padding: '0.9rem 1rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+  textAlign: 'left',
+  fontFamily: theme.typography.fontFamily,
+  transition: 'border-color 120ms ease',
+  '&:hover': { borderColor: theme.palette.text.primary },
+  '&:focus-visible': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: 2,
+  },
 }));
 
 export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({

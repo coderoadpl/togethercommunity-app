@@ -73,7 +73,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
             displayEmpty
             value={productId}
             onChange={(event) => setProductId(event.target.value)}
-            inputProps={{ 'aria-label': 'grant product' }}
+            inputProps={{ 'aria-label': t.members.productLabel }}
           >
             <MenuItem value="">
               <em>{t.members.selectProduct}</em>
@@ -92,7 +92,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
             type="datetime-local"
             value={expiresAt}
             onChange={(event) => setExpiresAt(event.target.value)}
-            inputProps={{ 'aria-label': 'grant expiry' }}
+            inputProps={{ 'aria-label': t.members.expiresOptional }}
           />
         </FormControl>
         <Button type="submit" variant="contained" disabled={grant.isPending || !productId}>
@@ -141,7 +141,7 @@ const RenewControl = ({
         type="datetime-local"
         value={expiresAt}
         onChange={(event) => setExpiresAt(event.target.value)}
-        inputProps={{ 'aria-label': `renew expiry ${grant.id}` }}
+        inputProps={{ 'aria-label': t.members.renewExpiryLabel }}
       />
       <Button
         size="small"

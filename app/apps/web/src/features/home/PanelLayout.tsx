@@ -15,6 +15,7 @@ import {
   MenuItem,
   ThemeProvider,
   Toolbar,
+  Tooltip,
   Typography,
   useMediaQuery,
 } from '@mui/material';
@@ -43,6 +44,7 @@ import {
 import {
   AccountIcon,
   CoursesIcon,
+  DashboardIcon,
   IntegrationsIcon,
   LessonsIcon,
   MembersIcon,
@@ -55,6 +57,7 @@ import {
 import { PanelContextProvider, type PanelTenant } from './panel-context.js';
 
 type PanelSection =
+  | 'dashboard'
   | 'products'
   | 'courses'
   | 'lessons'
@@ -66,9 +69,11 @@ type PanelSection =
 interface SectionDescriptor {
   id: PanelSection;
   to: string;
+  exact?: boolean;
 }
 
 const sectionDescriptors: SectionDescriptor[] = [
+  { id: 'dashboard', to: '/panel', exact: true },
   { id: 'products', to: '/panel/products' },
   { id: 'courses', to: '/panel/courses' },
   { id: 'lessons', to: '/panel/lessons' },
@@ -83,11 +88,13 @@ const drawerWidth = 248;
 const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
   role === 'owner' ? t.tenant.roleOwner : role === 'admin' ? t.tenant.roleAdmin : t.tenant.roleMember;
 
-const isActive = (pathname: string, to: string): boolean =>
-  pathname === to || pathname.startsWith(`${to}/`);
+const isActive = (pathname: string, to: string, exact: boolean): boolean =>
+  exact ? pathname === to || pathname === `${to}/` : pathname === to || pathname.startsWith(`${to}/`);
 
 const SectionIcon = ({ id }: { id: PanelSection }) => {
   switch (id) {
+    case 'dashboard':
+      return <DashboardIcon />;
     case 'products':
       return <ProductsIcon />;
     case 'courses':
@@ -110,8 +117,8 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const { pathname } = useLocation();
   return (
     <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
-      {sectionDescriptors.map(({ id, to }) => {
-        const active = isActive(pathname, to);
+      {sectionDescriptors.map(({ id, to, exact }) => {
+        const active = isActive(pathname, to, exact ?? false);
         return (
           <PanelNavItem
             key={id}
@@ -148,17 +155,19 @@ const UserMenu = ({
 
   return (
     <>
-      <IconButton
-        color="inherit"
-        edge="end"
-        data-testid="user-menu"
-        aria-label={t.panel.accountMenu}
-        aria-haspopup="true"
-        aria-expanded={open ? true : undefined}
-        onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-      >
-        <AccountIcon />
-      </IconButton>
+      <Tooltip title={t.panel.accountMenu}>
+        <IconButton
+          color="inherit"
+          edge="end"
+          data-testid="user-menu"
+          aria-label={t.panel.accountMenu}
+          aria-haspopup="true"
+          aria-expanded={open ? true : undefined}
+          onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+        >
+          <AccountIcon />
+        </IconButton>
+      </Tooltip>
       <Menu
         anchorEl={anchorEl}
         open={open}
@@ -224,15 +233,17 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       <AppBar position="fixed" sx={{ zIndex: (appBarTheme) => appBarTheme.zIndex.drawer + 1 }}>
         <Toolbar sx={{ gap: '0.75rem' }}>
           {isDesktop ? null : (
-            <IconButton
-              edge="start"
-              color="inherit"
-              data-testid="open-navigation"
-              aria-label={t.panel.openNavigation}
-              onClick={() => setMobileOpen(true)}
-            >
-              <MenuIcon />
-            </IconButton>
+            <Tooltip title={t.panel.openNavigation}>
+              <IconButton
+                edge="start"
+                color="inherit"
+                data-testid="open-navigation"
+                aria-label={t.panel.openNavigation}
+                onClick={() => setMobileOpen(true)}
+              >
+                <MenuIcon />
+              </IconButton>
+            </Tooltip>
           )}
           <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
           <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>

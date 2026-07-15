@@ -157,7 +157,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
         displayEmpty
         value={courseId}
         onChange={(event) => pickCourse(event.target.value)}
-        inputProps={{ 'aria-label': `access course ${product.id}` }}
+        inputProps={{ 'aria-label': t.access.courseLabel }}
       >
         <MenuItem value="">
           <em>{t.access.selectCourse}</em>
@@ -225,7 +225,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
               onChange={(_event, value: AccessLevel | null) => {
                 if (value) setLevel(value);
               }}
-              aria-label="access level"
+              aria-label={t.access.levelAria}
             >
               <ToggleButton value="course" data-testid="level-course">
                 {t.access.wholeCourse}
@@ -240,7 +240,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
           ) : null}
 
           {courseId && level === 'course' ? (
-            <Box role="group" aria-label="exclusions" sx={{ display: 'grid', gap: '0.2rem' }}>
+            <Box role="group" aria-label={t.access.exclusionsLabel} sx={{ display: 'grid', gap: '0.2rem' }}>
               <FormLabel component="div">{t.access.exclusionsLabel}</FormLabel>
               {availableModules.length === 0 ? (
                 <Typography variant="body2">{t.access.noModulesToExclude}</Typography>
@@ -263,7 +263,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
           ) : null}
 
           {courseId && level === 'modules' ? (
-            <Box role="group" aria-label="modules" sx={{ display: 'grid', gap: '0.2rem' }}>
+            <Box role="group" aria-label={t.access.modulesLabel} sx={{ display: 'grid', gap: '0.2rem' }}>
               <FormLabel component="div">{t.access.modulesLabel}</FormLabel>
               {availableModules.length === 0 ? (
                 <Typography variant="body2">{t.access.noModulesInCourse}</Typography>
@@ -286,7 +286,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
           ) : null}
 
           {courseId && level === 'lessons' ? (
-            <Box role="group" aria-label="lessons" sx={{ display: 'grid', gap: '0.2rem' }}>
+            <Box role="group" aria-label={t.access.lessonsLabel} sx={{ display: 'grid', gap: '0.2rem' }}>
               <FormLabel component="div">{t.access.lessonsLabel}</FormLabel>
               {availableLessons.length === 0 ? (
                 <Typography variant="body2">{t.access.noLessonsInCourse}</Typography>

@@ -18,6 +18,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Course } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
@@ -91,6 +92,8 @@ export const CoursesListPanel = () => {
   const navigate = useNavigate();
   const courses = useQuery(actions.courses);
   const modules = useQuery(actions.modules);
+  const [search, setSearch] = useState('');
+  const query = useDebouncedValue(search);
 
   const moduleCount = (course: Course): number =>
     modules.data ? modules.data.modules.filter((module) => module.courseIds.includes(course.id)).length : 0;
@@ -98,22 +101,41 @@ export const CoursesListPanel = () => {
   const openCourse = (courseId: string) =>
     void navigate({ to: '/panel/courses/$courseId', params: { courseId } });
 
+  const visibleCourses = (courses.data?.courses ?? [])
+    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((course) => matchesQuery(query, course.name));
+
   return (
     <Stack useFlexGap spacing="2rem">
       <CreateCourseForm />
       <Box component="section">
-        <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
-          {t.courses.heading}
-        </Typography>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ mb: '1rem', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
+        >
+          <Typography variant="h2" component="h3">
+            {t.courses.heading}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder={t.courses.searchPlaceholder}
+            testId="courses-search"
+          />
+        </Stack>
         {courses.isPending ? (
           <Typography variant="body1">{t.courses.loading}</Typography>
         ) : courses.isError ? (
           <MutationError error={courses.error} />
         ) : courses.data.courses.length === 0 ? (
           <Typography variant="body1">{t.courses.empty}</Typography>
+        ) : visibleCourses.length === 0 ? (
+          <Typography variant="body1">{t.courses.noMatches}</Typography>
         ) : (
           <List disablePadding>
-            {courses.data.courses.map((course) => (
+            {visibleCourses.map((course) => (
               <ListItem
                 key={course.id}
                 data-testid="course-row"

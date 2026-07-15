@@ -101,7 +101,16 @@ describe('Creator panel routing', () => {
     await renderPanelAt('/panel/members');
 
     expect(await screen.findByTestId('tenant-name')).toHaveTextContent('Acme');
-    for (const id of ['products', 'courses', 'lessons', 'members', 'sales', 'integrations', 'settings'] as const) {
+    for (const id of [
+      'dashboard',
+      'products',
+      'courses',
+      'lessons',
+      'members',
+      'sales',
+      'integrations',
+      'settings',
+    ] as const) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
     }
     expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
@@ -109,15 +118,17 @@ describe('Creator panel routing', () => {
     expect(screen.getByRole('heading', { name: pl.members.heading })).toBeInTheDocument();
   });
 
-  it('deep-links straight into the products section at /panel index', async () => {
+  it('shows the dashboard overview at /panel index', async () => {
     stubViewport(true);
     commonHandlers();
 
     const { router } = await renderPanelAt('/panel');
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/panel/products'));
-    expect(await screen.findByRole('heading', { name: pl.products.newProduct })).toBeInTheDocument();
-    expect(screen.getByTestId('section-products')).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByTestId('dashboard-tiles')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/panel');
+    expect(screen.getByRole('heading', { name: pl.dashboard.heading })).toBeInTheDocument();
+    expect(screen.getByTestId('section-dashboard')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
   });
 
   it('navigates between sections when a sidebar link is clicked', async () => {

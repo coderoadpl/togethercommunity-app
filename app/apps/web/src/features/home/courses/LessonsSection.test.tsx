@@ -86,6 +86,48 @@ describe('LessonsSection blocks editor', () => {
     expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
   });
 
+  it('filters lessons by name and by content type', async () => {
+    const lessons: CourseLesson[] = [
+      {
+        id: 'l1',
+        tenantId: 't1',
+        name: 'Video intro',
+        contents: [{ type: 'video', storageKey: 'videos/a.mp4', streamVideoId: 'vid-1' }],
+        legacyId: null,
+        createdAt: '2026-07-10T10:00:00.000Z',
+      },
+      {
+        id: 'l2',
+        tenantId: 't1',
+        name: 'Reading list',
+        contents: [{ type: 'html', html: '<p>Read me</p>' }],
+        legacyId: null,
+        createdAt: '2026-07-11T10:00:00.000Z',
+      },
+    ];
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons } })));
+
+    renderWithProviders(<LessonsSection />);
+    await screen.findByText('Video intro');
+
+    expect(screen.getAllByTestId('lesson-row').map((node) => node.textContent)).toEqual([
+      expect.stringContaining('Reading list'),
+      expect.stringContaining('Video intro'),
+    ]);
+
+    await userEvent.click(screen.getByTestId('lessons-type-filter-html'));
+    await waitFor(() => expect(screen.getAllByTestId('lesson-row')).toHaveLength(1));
+    expect(screen.getByText('Reading list')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('lessons-type-filter-all'));
+    await userEvent.type(screen.getByTestId('lessons-search'), 'video');
+    await waitFor(() => expect(screen.getAllByTestId('lesson-row')).toHaveLength(1));
+    expect(screen.getByText('Video intro')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId('lessons-search'), ' nothing-matches');
+    expect(await screen.findByText(pl.lessons.noMatches)).toBeInTheDocument();
+  });
+
   it('shows what references a lesson and deletes it after confirmation', async () => {
     let lessons: CourseLesson[] = [
       {

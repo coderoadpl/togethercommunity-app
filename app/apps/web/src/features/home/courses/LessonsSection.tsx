@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -20,6 +21,7 @@ import {
   Stack,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +30,7 @@ import DOMPurify from 'dompurify';
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { Eyebrow, LessonHtmlContent } from '../../../theme.js';
@@ -43,6 +46,8 @@ type BlockDraft =
   | { type: 'html'; html: string };
 
 const BLOCK_TYPE_ORDER: BlockType[] = ['video', 'embed', 'pdf', 'link', 'html'];
+
+const TYPE_FILTERS: (BlockType | 'all')[] = ['all', ...BLOCK_TYPE_ORDER];
 
 const blockTypeLabel = (t: Messages, value: BlockType): string => {
   switch (value) {
@@ -396,24 +401,32 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
                   {block.type}
                 </Eyebrow>
                 <Box sx={{ flex: 1 }} />
-                <Button
-                  size="small"
-                  variant="text"
-                  disabled={index === 0}
-                  aria-label={t.lessons.moveUp({ index })}
-                  onClick={() => moveBlock(index, -1)}
-                >
-                  ↑
-                </Button>
-                <Button
-                  size="small"
-                  variant="text"
-                  disabled={index === blocks.length - 1}
-                  aria-label={t.lessons.moveDown({ index })}
-                  onClick={() => moveBlock(index, 1)}
-                >
-                  ↓
-                </Button>
+                <Tooltip title={t.lessons.moveUp({ index })}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={index === 0}
+                      aria-label={t.lessons.moveUp({ index })}
+                      onClick={() => moveBlock(index, -1)}
+                    >
+                      ↑
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title={t.lessons.moveDown({ index })}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={index === blocks.length - 1}
+                      aria-label={t.lessons.moveDown({ index })}
+                      onClick={() => moveBlock(index, 1)}
+                    >
+                      ↓
+                    </Button>
+                  </span>
+                </Tooltip>
                 <Button
                   size="small"
                   variant="text"
@@ -537,15 +550,58 @@ export const LessonsSection = () => {
   const lessons = useQuery(actions.lessons);
   const [editing, setEditing] = useState<CourseLesson | null>(null);
   const [deleting, setDeleting] = useState<CourseLesson | null>(null);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<BlockType | 'all'>('all');
+  const query = useDebouncedValue(search);
+
+  const visibleLessons = (lessons.data?.lessons ?? [])
+    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((lesson) => matchesQuery(query, lesson.name))
+    .filter((lesson) => typeFilter === 'all' || lesson.contents.some((block) => block.type === typeFilter));
 
   return (
     <Stack useFlexGap spacing="1.5rem">
       <LessonForm key={editing?.id ?? 'new'} lesson={editing} onDone={() => setEditing(null)} />
 
       <Box component="section">
-        <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
-          {t.lessons.heading}
-        </Typography>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ mb: '0.75rem', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
+        >
+          <Typography variant="h2" component="h3">
+            {t.lessons.heading}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder={t.lessons.searchPlaceholder}
+            testId="lessons-search"
+          />
+        </Stack>
+        <Stack
+          direction="row"
+          useFlexGap
+          spacing="0.4rem"
+          role="group"
+          aria-label={t.lessons.typeFilterAria}
+          sx={{ mb: '1rem', flexWrap: 'wrap' }}
+        >
+          {TYPE_FILTERS.map((value) => (
+            <Chip
+              key={value}
+              size="small"
+              clickable
+              variant={typeFilter === value ? 'filled' : 'outlined'}
+              color={typeFilter === value ? 'primary' : 'default'}
+              label={value === 'all' ? t.lessons.typeFilterAll : blockTypeLabel(t, value)}
+              aria-pressed={typeFilter === value}
+              data-testid={`lessons-type-filter-${value}`}
+              onClick={() => setTypeFilter(value)}
+            />
+          ))}
+        </Stack>
         {lessons.isPending ? (
           <Typography variant="body1">{t.lessons.loading}</Typography>
         ) : lessons.isError ? (
@@ -554,9 +610,11 @@ export const LessonsSection = () => {
           </Typography>
         ) : lessons.data.lessons.length === 0 ? (
           <Typography variant="body1">{t.lessons.empty}</Typography>
+        ) : visibleLessons.length === 0 ? (
+          <Typography variant="body1">{t.lessons.noMatches}</Typography>
         ) : (
           <List disablePadding>
-            {lessons.data.lessons.map((lesson) => (
+            {visibleLessons.map((lesson) => (
               <ListItem
                 key={lesson.id}
                 data-testid="lesson-row"

@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Paper,
   Stack,
   Table,
@@ -17,15 +18,29 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '@core/client/index.js';
-import type { MemberExportFormat } from '@core/domain/index.js';
+import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.members.exportFailed;
+
+type GrantFilter = 'all' | 'active' | 'expired';
+
+const GRANT_FILTERS: GrantFilter[] = ['all', 'active', 'expired'];
+
+const grantFilterLabel = (t: Messages, value: GrantFilter): string =>
+  value === 'all' ? t.members.filterAll : value === 'active' ? t.members.filterActive : t.members.filterExpired;
+
+const matchesGrantFilter = (member: MemberWithProductIds, filter: GrantFilter): boolean => {
+  if (filter === 'all') return true;
+  if (filter === 'active') return member.activeProductIds.length > 0;
+  return member.productIds.length > 0 && member.activeProductIds.length === 0;
+};
 
 export const MembersPanel = () => {
   const t = useTranslations();
@@ -35,6 +50,9 @@ export const MembersPanel = () => {
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState<MemberExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [grantFilter, setGrantFilter] = useState<GrantFilter>('all');
+  const query = useDebouncedValue(search);
   const removeMember = useMutation({
     ...actions.removeMember,
     onSuccess: async () => {
@@ -62,6 +80,11 @@ export const MembersPanel = () => {
 
   const openMember = (memberId: string) =>
     void navigate({ to: '/panel/members/$memberId', params: { memberId } });
+
+  const visibleMembers = (members.data?.members ?? [])
+    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((member) => matchesQuery(query, member.email, member.displayName))
+    .filter((member) => matchesGrantFilter(member, grantFilter));
 
   return (
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -93,12 +116,49 @@ export const MembersPanel = () => {
           </Button>
         </Stack>
 
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
+        >
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder={t.members.searchPlaceholder}
+            testId="members-search"
+          />
+          <Stack
+            direction="row"
+            useFlexGap
+            spacing="0.4rem"
+            role="group"
+            aria-label={t.members.grantFilterAria}
+            sx={{ flexWrap: 'wrap' }}
+          >
+            {GRANT_FILTERS.map((value) => (
+              <Chip
+                key={value}
+                size="small"
+                clickable
+                variant={grantFilter === value ? 'filled' : 'outlined'}
+                color={grantFilter === value ? 'primary' : 'default'}
+                label={grantFilterLabel(t, value)}
+                aria-pressed={grantFilter === value}
+                data-testid={`members-grant-filter-${value}`}
+                onClick={() => setGrantFilter(value)}
+              />
+            ))}
+          </Stack>
+        </Stack>
+
         {members.isPending ? (
           <Typography variant="body1">{t.members.loading}</Typography>
         ) : members.isError ? (
           <Alert>{localizeError(members.error, t)}</Alert>
         ) : members.data.members.length === 0 ? (
           <Typography variant="body1">{t.members.empty}</Typography>
+        ) : visibleMembers.length === 0 ? (
+          <Typography variant="body1">{t.members.noMatches}</Typography>
         ) : (
           <TableContainer>
             <Table size="small" aria-label={t.members.heading}>
@@ -112,7 +172,7 @@ export const MembersPanel = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {members.data.members.map((member) => (
+                {visibleMembers.map((member) => (
                   <TableRow key={member.id} data-testid="member-row">
                     <TableCell>{member.email}</TableCell>
                     <TableCell>{member.displayName ?? '—'}</TableCell>

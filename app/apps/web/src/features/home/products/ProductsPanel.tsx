@@ -25,6 +25,7 @@ import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
@@ -134,10 +135,16 @@ export const ProductsPanel = () => {
   const [price, setPrice] = useState('0');
   const [currency, setCurrency] = useState<string>('PLN');
   const [priceError, setPriceError] = useState(false);
+  const [search, setSearch] = useState('');
+  const query = useDebouncedValue(search);
 
   const invalidateProducts = async () => {
     await queryClient.invalidateQueries(actions.productsInvalidates());
   };
+
+  const visibleProducts = (products.data?.products ?? [])
+    .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((product) => matchesQuery(query, product.title));
 
   const createProduct = useMutation({
     ...actions.createProduct,
@@ -242,18 +249,33 @@ export const ProductsPanel = () => {
       </Paper>
 
       <Box component="section">
-        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
-          {t.products.heading}
-        </Typography>
+        <Stack
+          direction="row"
+          useFlexGap
+          sx={{ mb: '1rem', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
+        >
+          <Typography variant="h2" component="h2">
+            {t.products.heading}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder={t.products.searchPlaceholder}
+            testId="products-search"
+          />
+        </Stack>
         {products.isPending ? (
           <Typography variant="body1">{t.products.loading}</Typography>
         ) : products.isError ? (
           <Alert>{localizeError(products.error, t)}</Alert>
         ) : products.data.products.length === 0 ? (
           <Typography variant="body1">{t.products.empty}</Typography>
+        ) : visibleProducts.length === 0 ? (
+          <Typography variant="body1">{t.products.noMatches}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
-            {products.data.products.map((product) => (
+            {visibleProducts.map((product) => (
               <ProductRow
                 key={product.id}
                 product={product}

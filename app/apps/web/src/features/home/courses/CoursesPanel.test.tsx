@@ -191,7 +191,7 @@ describe('CoursesPanel courses tab', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
 
-    await userEvent.click(await screen.findByRole('combobox', { name: 'content lesson ch1' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: pl.courses.lessonLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'Intro lesson' }));
 
     expect(screen.getByLabelText(pl.courses.displayName)).toHaveValue('Intro lesson');

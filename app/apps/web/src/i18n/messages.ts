@@ -90,6 +90,7 @@ export interface Messages {
     openingProducts: string;
   };
   sections: {
+    dashboard: string;
     products: string;
     courses: string;
     lessons: string;
@@ -99,6 +100,15 @@ export interface Messages {
     settings: string;
     aria: string;
     comingSoon: string;
+  };
+  dashboard: {
+    heading: string;
+    loading: string;
+    publishedDraft: (params: { published: number; draft: number }) => string;
+    activeGrants: string;
+    recentMembers: string;
+    viewAllMembers: string;
+    openSection: (params: { section: string }) => string;
   };
   tenantNotFound: {
     title: string;
@@ -165,6 +175,8 @@ export interface Messages {
     heading: string;
     loading: string;
     empty: string;
+    searchPlaceholder: string;
+    noMatches: string;
     publish: string;
     published: string;
     draft: string;
@@ -197,6 +209,7 @@ export interface Messages {
     save: string;
     saved: string;
     unknownCourse: string;
+    levelAria: string;
     proMode: string;
     addFullCourse: string;
     exclusionsLabel: string;
@@ -218,6 +231,8 @@ export interface Messages {
     heading: string;
     loading: string;
     empty: string;
+    searchPlaceholder: string;
+    noMatches: string;
     manage: string;
     moduleNoun: (params: { count: number }) => string;
     allCourses: string;
@@ -254,6 +269,7 @@ export interface Messages {
     selectLesson: string;
     displayName: string;
     addLesson: string;
+    chapterNameAria: (params: { name: string }) => string;
     duplicateLessonWarning: string;
     unknownLesson: string;
     historyHeading: string;
@@ -267,6 +283,10 @@ export interface Messages {
     heading: string;
     loading: string;
     empty: string;
+    searchPlaceholder: string;
+    noMatches: string;
+    typeFilterAria: string;
+    typeFilterAll: string;
     edit: string;
     editLesson: string;
     newLesson: string;
@@ -323,6 +343,12 @@ export interface Messages {
     exporting: string;
     loading: string;
     empty: string;
+    searchPlaceholder: string;
+    noMatches: string;
+    grantFilterAria: string;
+    filterAll: string;
+    filterActive: string;
+    filterExpired: string;
     colEmail: string;
     colName: string;
     colProducts: string;
@@ -340,6 +366,7 @@ export interface Messages {
     granting: string;
     grant: string;
     renew: string;
+    renewExpiryLabel: string;
     grantedProducts: string;
     loadingGrants: string;
     noGrants: string;

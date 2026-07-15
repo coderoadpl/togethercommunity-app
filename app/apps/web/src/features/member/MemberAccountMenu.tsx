@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem } from '@mui/material';
+import { Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -28,16 +28,18 @@ export const MemberAccountMenu = () => {
 
   return (
     <>
-      <IconButton
-        size="small"
-        data-testid="member-account-menu"
-        aria-label={t.panel.accountMenu}
-        aria-haspopup="true"
-        aria-expanded={open ? true : undefined}
-        onClick={(event) => setAnchorEl(event.currentTarget)}
-      >
-        <AccountIcon />
-      </IconButton>
+      <Tooltip title={t.panel.accountMenu}>
+        <IconButton
+          size="small"
+          data-testid="member-account-menu"
+          aria-label={t.panel.accountMenu}
+          aria-haspopup="true"
+          aria-expanded={open ? true : undefined}
+          onClick={(event) => setAnchorEl(event.currentTarget)}
+        >
+          <AccountIcon />
+        </IconButton>
+      </Tooltip>
       <Menu
         anchorEl={anchorEl}
         open={open}

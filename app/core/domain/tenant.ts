@@ -56,6 +56,7 @@ export const memberWithProductIdsSchema = z.object({
   externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
   productIds: z.array(z.string()),
+  activeProductIds: z.array(z.string()),
 });
 
 export type MemberWithProductIds = z.infer<typeof memberWithProductIdsSchema>;

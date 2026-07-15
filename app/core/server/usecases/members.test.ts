@@ -36,7 +36,10 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
   externalCustomerIds: input.externalCustomerIds ?? {},
   createdAt: input.createdAt ?? '2026-07-12T00:00:00.000Z',
   productIds: input.productIds ?? [],
+  activeProductIds: input.activeProductIds ?? [],
 });
+
+const clock = { nowIso: () => '2026-07-12T12:00:00.000Z' };
 
 const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRepository => ({
   findById: async (): Promise<Member | null> => null,
@@ -57,6 +60,7 @@ describe('listMembers', () => {
   it('forbids a plain member identity', async () => {
     const result = await listMembers({ identity: plainMember('t-acme') }, {
       members: membersFor({ 't-acme': [memberRow({ id: 'm1' })] }),
+      clock,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
@@ -64,6 +68,7 @@ describe('listMembers', () => {
   it('requires a resolved tenant', async () => {
     const result = await listMembers({ identity: staff(null, null) }, {
       members: membersFor({}),
+      clock,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });
@@ -74,8 +79,8 @@ describe('listMembers', () => {
       't-globex': [memberRow({ id: 'globex-1', email: 'globex@together.dev' })],
     });
 
-    const acme = await listMembers({ identity: staff('t-acme', 'acme') }, { members });
-    const globex = await listMembers({ identity: staff('t-globex', 'globex') }, { members });
+    const acme = await listMembers({ identity: staff('t-acme', 'acme') }, { members, clock });
+    const globex = await listMembers({ identity: staff('t-globex', 'globex') }, { members, clock });
 
     expect(acme).toMatchObject({ ok: true, value: [{ id: 'acme-1' }] });
     expect(globex).toMatchObject({ ok: true, value: [{ id: 'globex-1' }] });
@@ -89,16 +94,17 @@ describe('removeMember', () => {
       't-globex': [memberRow({ id: 'm1' })],
     });
 
-    const result = await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, { members });
+    const result = await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, { members, clock });
 
     expect(result).toEqual({ ok: true, value: { memberId: 'm1' } });
-    await expect(members.listWithProductIds('t-acme')).resolves.toEqual([]);
-    await expect(members.listWithProductIds('t-globex')).resolves.toMatchObject([{ id: 'm1' }]);
+    await expect(members.listWithProductIds('t-acme', clock.nowIso())).resolves.toEqual([]);
+    await expect(members.listWithProductIds('t-globex', clock.nowIso())).resolves.toMatchObject([{ id: 'm1' }]);
   });
 
   it('forbids a plain member identity', async () => {
     const result = await removeMember({ identity: plainMember('t-acme') }, { memberId: 'm1' }, {
       members: membersFor({ 't-acme': [memberRow({ id: 'm1' })] }),
+      clock,
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -107,6 +113,7 @@ describe('removeMember', () => {
   it('returns not_found when the member is absent in this tenant', async () => {
     const result = await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'missing' }, {
       members: membersFor({ 't-acme': [memberRow({ id: 'm1' })] }),
+      clock,
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
@@ -130,7 +137,7 @@ describe('exportMembers', () => {
       ],
     });
 
-    const result = await exportMembers({ identity: staff('t-acme', 'acme') }, { format: 'csv' }, { members });
+    const result = await exportMembers({ identity: staff('t-acme', 'acme') }, { format: 'csv' }, { members, clock });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -158,7 +165,7 @@ describe('exportMembers', () => {
       ],
     });
 
-    const result = await exportMembers({ identity: staff('t-acme', 'acme') }, { format: 'csv' }, { members });
+    const result = await exportMembers({ identity: staff('t-acme', 'acme') }, { format: 'csv' }, { members, clock });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -170,7 +177,7 @@ describe('exportMembers', () => {
   it('serializes the JSON array', async () => {
     const members = membersFor({ 't-acme': [memberRow({ id: 'm1', productIds: ['p1'] })] });
 
-    const result = await exportMembers({ identity: staff('t-acme', 'acme') }, { format: 'json' }, { members });
+    const result = await exportMembers({ identity: staff('t-acme', 'acme') }, { format: 'json' }, { members, clock });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -181,6 +188,7 @@ describe('exportMembers', () => {
   it('forbids a plain member identity', async () => {
     const result = await exportMembers({ identity: plainMember('t-acme') }, { format: 'csv' }, {
       members: membersFor({}),
+      clock,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });

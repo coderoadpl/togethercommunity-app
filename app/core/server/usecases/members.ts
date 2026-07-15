@@ -12,10 +12,11 @@ import {
 } from '@core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { MemberRepository } from '../ports.js';
+import type { Clock, MemberRepository } from '../ports.js';
 
 export interface MembersDeps {
   members: MemberRepository;
+  clock: Clock;
 }
 
 const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
@@ -68,7 +69,7 @@ export const listMembers = async (
 ): Promise<Result<MemberWithProductIds[], AppError>> => {
   const tenant = requireStaffTenant(ctx);
   if (!tenant.ok) return tenant;
-  return ok(await deps.members.listWithProductIds(tenant.value));
+  return ok(await deps.members.listWithProductIds(tenant.value, deps.clock.nowIso()));
 };
 
 export const exportMembers = async (
@@ -79,7 +80,7 @@ export const exportMembers = async (
   const tenant = requireStaffTenant(ctx);
   if (!tenant.ok) return tenant;
 
-  const members = await deps.members.listWithProductIds(tenant.value);
+  const members = await deps.members.listWithProductIds(tenant.value, deps.clock.nowIso());
   const filename = `members-${ctx.identity.tenantSlug ?? tenant.value}.${input.format}`;
 
   return ok(

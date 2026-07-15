@@ -175,6 +175,11 @@ const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: strin
     (await page.getByTestId('tenant-name').textContent()) === 'Studio Demo',
     'creator sign-in did not open the Studio workspace',
   );
+  await page.getByTestId('dashboard-tiles').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('dashboard-member-row').first().waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, '02a-creator-dashboard.png');
+
+  await page.getByTestId('section-products').click();
   await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '02-creator-panel-products.png');
 

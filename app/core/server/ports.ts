@@ -110,7 +110,7 @@ export interface MemberCourseProgressRepository {
 export interface MemberRepository {
   findById(tenantId: string, memberId: string): Promise<Member | null>;
   findByEmail(tenantId: string, email: string): Promise<Member | null>;
-  listWithProductIds(tenantId: string): Promise<MemberWithProductIds[]>;
+  listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
   delete(tenantId: string, memberId: string): Promise<boolean>;

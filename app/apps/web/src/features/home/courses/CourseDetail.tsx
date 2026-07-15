@@ -13,6 +13,7 @@ import {
   Paper,
   Select,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -91,7 +92,7 @@ const ChapterEditor = ({
           size="small"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          inputProps={{ 'aria-label': `chapter name ${chapter.id}` }}
+          inputProps={{ 'aria-label': t.courses.chapterNameAria({ name: chapter.name }) }}
         />
         <Button
           size="small"
@@ -102,24 +103,32 @@ const ChapterEditor = ({
           {t.courses.rename}
         </Button>
         <Box sx={{ flex: 1 }} />
-        <Button
-          size="small"
-          variant="text"
-          disabled={pending || !canMoveUp}
-          aria-label={t.courses.moveChapterUp({ name: chapter.name })}
-          onClick={onMoveUp}
-        >
-          ↑
-        </Button>
-        <Button
-          size="small"
-          variant="text"
-          disabled={pending || !canMoveDown}
-          aria-label={t.courses.moveChapterDown({ name: chapter.name })}
-          onClick={onMoveDown}
-        >
-          ↓
-        </Button>
+        <Tooltip title={t.courses.moveChapterUp({ name: chapter.name })}>
+          <span>
+            <Button
+              size="small"
+              variant="text"
+              disabled={pending || !canMoveUp}
+              aria-label={t.courses.moveChapterUp({ name: chapter.name })}
+              onClick={onMoveUp}
+            >
+              ↑
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title={t.courses.moveChapterDown({ name: chapter.name })}>
+          <span>
+            <Button
+              size="small"
+              variant="text"
+              disabled={pending || !canMoveDown}
+              aria-label={t.courses.moveChapterDown({ name: chapter.name })}
+              onClick={onMoveDown}
+            >
+              ↓
+            </Button>
+          </span>
+        </Tooltip>
         <Button size="small" variant="text" color="error" disabled={pending} onClick={onRemove}>
           {t.courses.removeChapter}
         </Button>
@@ -135,24 +144,32 @@ const ChapterEditor = ({
               disableGutters
               secondaryAction={
                 <Stack direction="row" useFlexGap spacing="0.25rem">
-                  <Button
-                    size="small"
-                    variant="text"
-                    disabled={pending || index === 0}
-                    aria-label={t.courses.moveContentUp({ name: content.name })}
-                    onClick={() => onMoveContent(content.id, -1)}
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="text"
-                    disabled={pending || index === chapter.contents.length - 1}
-                    aria-label={t.courses.moveContentDown({ name: content.name })}
-                    onClick={() => onMoveContent(content.id, 1)}
-                  >
-                    ↓
-                  </Button>
+                  <Tooltip title={t.courses.moveContentUp({ name: content.name })}>
+                    <span>
+                      <Button
+                        size="small"
+                        variant="text"
+                        disabled={pending || index === 0}
+                        aria-label={t.courses.moveContentUp({ name: content.name })}
+                        onClick={() => onMoveContent(content.id, -1)}
+                      >
+                        ↑
+                      </Button>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={t.courses.moveContentDown({ name: content.name })}>
+                    <span>
+                      <Button
+                        size="small"
+                        variant="text"
+                        disabled={pending || index === chapter.contents.length - 1}
+                        aria-label={t.courses.moveContentDown({ name: content.name })}
+                        onClick={() => onMoveContent(content.id, 1)}
+                      >
+                        ↓
+                      </Button>
+                    </span>
+                  </Tooltip>
                   <Button
                     size="small"
                     variant="text"
@@ -180,7 +197,7 @@ const ChapterEditor = ({
               displayEmpty
               value={lessonId}
               onChange={(event) => selectLesson(event.target.value)}
-              inputProps={{ 'aria-label': `content lesson ${chapter.id}` }}
+              inputProps={{ 'aria-label': t.courses.lessonLabel }}
             >
               <MenuItem value="">
                 <em>{t.courses.selectLesson}</em>
@@ -315,24 +332,32 @@ const ModuleCard = ({
       <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
         <TreeModuleTitle component="h3">{module.name}</TreeModuleTitle>
         <Box sx={{ flex: 1 }} />
-        <Button
-          size="small"
-          variant="text"
-          disabled={pending || !canMoveUp}
-          aria-label={t.courses.moveModuleUp({ name: module.name })}
-          onClick={onMoveUp}
-        >
-          ↑
-        </Button>
-        <Button
-          size="small"
-          variant="text"
-          disabled={pending || !canMoveDown}
-          aria-label={t.courses.moveModuleDown({ name: module.name })}
-          onClick={onMoveDown}
-        >
-          ↓
-        </Button>
+        <Tooltip title={t.courses.moveModuleUp({ name: module.name })}>
+          <span>
+            <Button
+              size="small"
+              variant="text"
+              disabled={pending || !canMoveUp}
+              aria-label={t.courses.moveModuleUp({ name: module.name })}
+              onClick={onMoveUp}
+            >
+              ↑
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title={t.courses.moveModuleDown({ name: module.name })}>
+          <span>
+            <Button
+              size="small"
+              variant="text"
+              disabled={pending || !canMoveDown}
+              aria-label={t.courses.moveModuleDown({ name: module.name })}
+              onClick={onMoveDown}
+            >
+              ↓
+            </Button>
+          </span>
+        </Tooltip>
         <Button size="small" variant="text" color="error" disabled={pending} onClick={onDetach}>
           {t.courses.detachModule}
         </Button>
@@ -497,7 +522,7 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
             displayEmpty
             value={moduleId}
             onChange={(event) => setModuleId(event.target.value)}
-            inputProps={{ 'aria-label': 'attach module' }}
+            inputProps={{ 'aria-label': t.courses.moduleLabel }}
           >
             <MenuItem value="">
               <em>{t.courses.selectModule}</em>

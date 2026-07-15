@@ -534,7 +534,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .limit(1);
     return rows[0] ?? null;
   },
-  listWithProductIds: async (tenantId) =>
+  listWithProductIds: async (tenantId, now) =>
     db
       .select({
         id: members.id,
@@ -547,6 +547,9 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         productIds: sql<
           string[]
         >`coalesce(array_agg(${productGrants.productId}) filter (where ${productGrants.productId} is not null), '{}')`,
+        activeProductIds: sql<
+          string[]
+        >`coalesce(array_agg(${productGrants.productId}) filter (where ${productGrants.productId} is not null and ${productGrants.startsAt}::timestamptz <= ${now}::timestamptz and (${productGrants.expiresAt} is null or ${productGrants.expiresAt}::timestamptz >= ${now}::timestamptz)), '{}')`,
       })
       .from(members)
       .leftJoin(

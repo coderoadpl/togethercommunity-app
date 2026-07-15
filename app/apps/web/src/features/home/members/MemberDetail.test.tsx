@@ -19,6 +19,7 @@ const member: MemberWithProductIds = {
   externalCustomerIds: {},
   createdAt: '2026-07-01T10:00:00.000Z',
   productIds: ['p1'],
+  activeProductIds: ['p1'],
 };
 
 const grants: MemberGrant[] = [
@@ -91,7 +92,7 @@ describe('MemberDetail', () => {
     const { grantBodies } = setup();
     renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
 
-    await userEvent.click(await screen.findByRole('combobox', { name: 'grant product' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: pl.members.productLabel }));
     await userEvent.click(await screen.findByRole('option', { name: 'New Workshop' }));
     await userEvent.click(screen.getByRole('button', { name: pl.members.grant }));
 

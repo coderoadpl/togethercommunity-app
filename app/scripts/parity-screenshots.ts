@@ -424,6 +424,7 @@ const capturePolishSurfaces = async (
   const creatorPage = await creatorContext.newPage();
   await signInCreator(creatorPage, studioBaseUrl);
   await creatorPage.getByTestId('section-products').waitFor({ state: 'visible', timeout: 20000 });
+  await creatorPage.getByTestId('section-products').click();
   await creatorPage.getByRole('heading', { name: 'Nowy produkt' }).waitFor({ state: 'visible', timeout: 20000 });
   const productRow = creatorPage.getByTestId('product-row').filter({ hasText: fixture.mixedProductTitle }).first();
   await productRow.waitFor({ state: 'visible', timeout: 20000 });
@@ -510,7 +511,7 @@ const captureCreatorPanel = async (
   await shoot(page, '12-panel-course-editor.png');
 
   await page.getByRole('button', { name: '← all courses' }).click();
-  await page.getByTestId('courses-tab-lessons').click();
+  await page.getByTestId('section-lessons').click();
   const lessonRow = page.getByTestId('lesson-row').filter({ hasText: fixture.mediaLessonName }).first();
   await lessonRow.waitFor({ state: 'visible', timeout: 20000 });
   await lessonRow.getByRole('button', { name: 'edit' }).click();

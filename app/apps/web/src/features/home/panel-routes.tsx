@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';
+import { DashboardPanel } from './DashboardPanel.js';
 import { CourseDetail } from './courses/CourseDetail.js';
 import { CoursesListPanel } from './courses/CoursesPanel.js';
 import { MutationError } from './courses/feedback.js';
@@ -15,7 +16,7 @@ import { usePanelContext } from './panel-context.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 
-export const PanelIndexRoute = () => <Navigate to="/panel/products" />;
+export const PanelIndexRoute = () => <DashboardPanel />;
 
 export const PanelProductsRoute = () => <ProductsPanel />;
 

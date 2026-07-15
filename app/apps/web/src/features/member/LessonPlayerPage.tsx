@@ -31,6 +31,7 @@ import {
   LessonPlaceholder,
 } from '../../theme.js';
 import { CurriculumCard } from './CourseRail.js';
+import { DiscussionSection } from './DiscussionSection.js';
 import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
 import { EmptyLessonIcon } from './overview-icons.js';
 import { CompletionFull } from './tree-icons.js';
@@ -425,6 +426,8 @@ export const LessonPlayerPage = ({
             ))}
           </Stack>
         </LessonFooterBar>
+
+        <DiscussionSection lessonId={lessonId} />
         </Box>
 
         <Stack

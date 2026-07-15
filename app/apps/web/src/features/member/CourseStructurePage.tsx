@@ -24,6 +24,7 @@ import {
   CurriculumCard,
   formatTotalDuration,
 } from './CourseRail.js';
+import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
 import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -199,6 +200,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
             structure={course}
             lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
           />
+          {hasModules && <CourseDiscussionSearch courseId={courseId} structure={course} />}
           {hasModules && <CurriculumCard courseId={courseId} structure={course} />}
         </Stack>
       </Box>

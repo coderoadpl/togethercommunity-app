@@ -2674,3 +2674,69 @@ export const LockedStateIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '3rem',
   color: theme.palette.text.disabled,
 }));
+
+export const DiscussionThread = styled(Box)(({ theme }) => ({
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+}));
+
+export const ReplyIndent = styled(Box)(({ theme }) => ({
+  borderLeft: `2px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+  paddingLeft: '1rem',
+  marginLeft: '0.35rem',
+}));
+
+export const AuthorChip = styled('span')(({ theme }) => ({
+  display: 'inline-block',
+  padding: '0.05rem 0.5rem',
+  borderRadius: 999,
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: theme.palette.primary.main,
+  backgroundColor: alpha(theme.palette.primary.main, 0.12),
+  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+}));
+
+export const PostAuthorName = styled(Typography)<AsElement>({
+  fontSize: '0.9rem',
+  fontWeight: 700,
+});
+
+export const PostMetaText = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
+  fontSize: '0.75rem',
+  color: theme.palette.text.secondary,
+  fontFamily: theme.numericFontFamily,
+}));
+
+export const PostBody = styled(Typography)<AsElement>({
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+});
+
+export const DeletedPostText = styled(Typography)<AsElement>(({ theme }) => ({
+  fontStyle: 'italic',
+  color: theme.palette.text.disabled,
+}));
+
+export const NotificationDot = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'active',
+})<{ active?: boolean }>(({ theme, active }) => ({
+  display: 'inline-block',
+  width: 8,
+  height: 8,
+  borderRadius: '50%',
+  backgroundColor:
+    active === true ? theme.palette.success.main : alpha(theme.palette.text.primary, 0.25),
+  flexShrink: 0,
+}));
+
+export const PendingPostBox = styled(Box)({ opacity: 0.55 });
+
+export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) => ({
+  fontSize: '0.85rem',
+  color: theme.palette.text.secondary,
+  overflowWrap: 'anywhere',
+}));

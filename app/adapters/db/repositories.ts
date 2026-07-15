@@ -682,6 +682,19 @@ export const createThreadSubscriptionRepository = (db: Db): ThreadSubscriptionRe
       .from(threadSubscriptions)
       .where(and(eq(threadSubscriptions.tenantId, tenantId), eq(threadSubscriptions.rootPostId, rootPostId)))
       .orderBy(asc(threadSubscriptions.createdAt)),
+  listForUser: async (tenantId, input) =>
+    input.rootPostIds.length === 0
+      ? []
+      : db
+          .select()
+          .from(threadSubscriptions)
+          .where(
+            and(
+              eq(threadSubscriptions.tenantId, tenantId),
+              eq(threadSubscriptions.userId, input.userId),
+              inArray(threadSubscriptions.rootPostId, input.rootPostIds),
+            ),
+          ),
 });
 
 export const createNotificationRepository = (db: Db): NotificationRepository => ({

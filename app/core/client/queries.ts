@@ -186,8 +186,9 @@ export const studentScopes = {
 
 export const discussionScopes = {
   all: () => ['discussion'] as const,
-  lesson: (lessonId: string) => ['discussion', 'lesson', lessonId] as const,
-  search: (query: string) => ['discussion', 'search', query] as const,
+  lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
+  search: (query: string, lessonIds: readonly string[]) =>
+    ['discussion', 'search', query, lessonIds.join(',')] as const,
 };
 
 export const notificationScopes = {
@@ -463,7 +464,7 @@ export const updateLastViewedMutation = (api: ApiClient) =>
 
 export const discussionQuery = (api: ApiClient, input: DiscussionGetInput) =>
   defineQuery({
-    queryKey: discussionScopes.lesson(input.contextId),
+    queryKey: discussionScopes.lesson(input.contextId, input.limit),
     call: ({ signal }) => api.discussion(input, signal),
   });
 
@@ -499,7 +500,7 @@ export const muteThreadMutation = (api: ApiClient) =>
 
 export const postsSearchQuery = (api: ApiClient, input: PostsSearchInput) =>
   defineQuery({
-    queryKey: discussionScopes.search(input.query),
+    queryKey: discussionScopes.search(input.query, input.lessonIds ?? []),
     call: ({ signal }) => api.searchPosts(input, signal),
   });
 
@@ -616,6 +617,8 @@ export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: member
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });
 
 export const notificationsInvalidates = () => ({ queryKey: notificationScopes.all() });
+
+export const discussionInvalidates = () => ({ queryKey: discussionScopes.all() });
 
 /**
  * Auth side effects are mutation descriptors over `AuthClientPort` like any

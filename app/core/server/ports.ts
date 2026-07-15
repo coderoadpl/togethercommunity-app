@@ -125,6 +125,7 @@ export interface ThreadSubscriptionRepository {
   upsert(tenantId: string, input: { userId: string; rootPostId: string; createdAt: string }): Promise<ThreadSubscription>;
   mute(tenantId: string, input: { userId: string; rootPostId: string; mutedAt: string }): Promise<ThreadSubscription | null>;
   listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]>;
+  listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]>;
 }
 
 export interface NotificationRepository {

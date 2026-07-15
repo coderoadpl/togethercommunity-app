@@ -281,6 +281,12 @@ class FakeSubscriptions implements ThreadSubscriptionRepository {
   async listSubscribersForRoot(tenantId: string, rootPostId: string): Promise<ThreadSubscription[]> {
     return this.rows.filter((item) => item.tenantId === tenantId && item.rootPostId === rootPostId);
   }
+
+  async listForUser(tenantId: string, input: { userId: string; rootPostIds: string[] }): Promise<ThreadSubscription[]> {
+    return this.rows.filter(
+      (item) => item.tenantId === tenantId && item.userId === input.userId && input.rootPostIds.includes(item.rootPostId),
+    );
+  }
 }
 
 class FakeNotifications implements NotificationRepository {

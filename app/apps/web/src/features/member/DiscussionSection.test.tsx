@@ -1,0 +1,307 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import { userEvent } from '@testing-library/user-event';
+import { delay, http, HttpResponse } from 'msw';
+import { describe, expect, it } from 'vitest';
+
+import { createPostInputSchema, type DiscussionPost, type Post } from '@core/domain/index.js';
+
+import { pl } from '../../i18n/pl.js';
+import { renderWithProviders } from '../../test/render.js';
+import { server } from '../../test/server.js';
+import { DiscussionSection } from './DiscussionSection.js';
+
+const post = (input: Partial<Post> & { id: string }): Post => ({
+  tenantId: 't1',
+  contextKind: 'lesson',
+  contextId: 'l1',
+  parentPostId: null,
+  rootPostId: input.id,
+  authorUserId: 'u2',
+  authorDisplay: 'Ola Autorka',
+  authorIsStaff: false,
+  body: 'Treść wpisu',
+  createdAt: '2026-07-15T08:00:00.000Z',
+  editedAt: null,
+  deletedAt: null,
+  ...input,
+});
+
+const asThread = (root: Post, replies: DiscussionPost[] = []): DiscussionPost => ({
+  ...root,
+  replyCount: replies.length,
+  replies,
+});
+
+const okMe = (staffRole: 'owner' | null = null) =>
+  http.get('/api/me', () =>
+    HttpResponse.json({
+      ok: true,
+      data: {
+        userId: 'u1',
+        email: 'user@example.com',
+        name: 'Jan Uczestnik',
+        tenant: {
+          id: 't1',
+          slug: 'acme',
+          name: 'Acme',
+          staffRole,
+          memberId: staffRole === null ? 'm1' : null,
+        },
+      },
+    }),
+  );
+
+const okDiscussion = (
+  threads: DiscussionPost[],
+  viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
+  nextCursor: string | null = null,
+) =>
+  http.get('/api/discussion', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { discussion: { threads, nextCursor, viewerSubscriptions } },
+    }),
+  );
+
+describe('DiscussionSection', () => {
+  it('hides the composer behind a friendly note when the lesson discussion is not accessible', async () => {
+    server.use(
+      okMe(),
+      http.get('/api/discussion', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'forbidden', message: 'This lesson is not accessible' } },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    expect(await screen.findByTestId('discussion-locked-note')).toHaveTextContent(
+      pl.discussion.lockedNote,
+    );
+    expect(screen.queryByTestId('discussion-composer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-search-input')).not.toBeInTheDocument();
+  });
+
+  it('shows the composer and empty state when the discussion is accessible', async () => {
+    server.use(okMe(), okDiscussion([]));
+
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    expect(await screen.findByTestId('discussion-composer-input')).toBeInTheDocument();
+    expect(screen.getByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
+  });
+
+  it('renders three nesting levels with indentation, author chip and deleted placeholder', async () => {
+    const level3 = asThread(
+      post({ id: 'c2', parentPostId: 'c1', rootPostId: 'r1', body: 'Trzeci poziom' }),
+    );
+    const level2 = asThread(
+      post({ id: 'c1', parentPostId: 'r1', rootPostId: 'r1', body: 'Drugi poziom' }),
+      [level3],
+    );
+    const deleted = asThread(
+      post({
+        id: 'c3',
+        parentPostId: 'r1',
+        rootPostId: 'r1',
+        body: 'Wpis usunięty',
+        deletedAt: '2026-07-15T09:00:00.000Z',
+      }),
+    );
+    const root = asThread(
+      post({ id: 'r1', body: 'Pierwszy poziom', authorIsStaff: true, authorDisplay: 'Marta Twórczyni' }),
+      [level2, deleted],
+    );
+    server.use(okMe(), okDiscussion([root]));
+
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    expect(await screen.findByTestId('post-body-r1')).toHaveTextContent('Pierwszy poziom');
+    expect(screen.getByTestId('author-chip-r1')).toHaveTextContent(pl.discussion.authorChip);
+    expect(screen.queryByTestId('author-chip-c1')).not.toBeInTheDocument();
+
+    const level2Container = within(screen.getByTestId('replies-of-r1'));
+    expect(level2Container.getByTestId('post-body-c1')).toHaveTextContent('Drugi poziom');
+    const level3Container = within(screen.getByTestId('replies-of-c1'));
+    expect(level3Container.getByTestId('post-body-c2')).toHaveTextContent('Trzeci poziom');
+
+    expect(screen.getByTestId('deleted-post-c3')).toHaveTextContent(pl.discussion.deletedPost);
+
+    expect(screen.getByTestId('reply-button-r1')).toBeInTheDocument();
+    expect(screen.getByTestId('reply-button-c1')).toBeInTheDocument();
+    expect(screen.queryByTestId('reply-button-c2')).not.toBeInTheDocument();
+
+    expect(screen.getByTestId('reply-count-r1')).toHaveTextContent(
+      pl.discussion.replyCount({ count: 2 }),
+    );
+  });
+
+  it('sends a reply optimistically and refetches the discussion', async () => {
+    const bodies: unknown[] = [];
+    let replied = false;
+    let discussionReads = 0;
+    const root = asThread(post({ id: 'r1', body: 'Pytanie o silnik' }));
+    const reply = asThread(
+      post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: 'Moja odpowiedź', authorUserId: 'u1', authorDisplay: 'Jan Uczestnik' }),
+    );
+    server.use(
+      okMe(),
+      http.get('/api/discussion', () => {
+        discussionReads += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            discussion: {
+              threads: [replied ? { ...root, replyCount: 1, replies: [reply] } : root],
+              nextCursor: null,
+              viewerSubscriptions: {},
+            },
+          },
+        });
+      }),
+      http.post('/api/posts', async ({ request }) => {
+        const body = createPostInputSchema.parse(await request.json());
+        bodies.push(body);
+        await delay(80);
+        replied = true;
+        return HttpResponse.json({ ok: true, data: { post: post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: body.body, authorUserId: 'u1' }) } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('reply-button-r1'));
+    await user.type(screen.getByTestId('reply-composer-r1-input'), 'Moja odpowiedź');
+    const readsBefore = discussionReads;
+    await user.click(screen.getByTestId('reply-composer-r1-submit'));
+
+    expect(await screen.findByTestId('pending-post')).toHaveTextContent('Moja odpowiedź');
+
+    expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('Moja odpowiedź');
+    expect(screen.queryByTestId('pending-post')).not.toBeInTheDocument();
+    expect(bodies).toEqual([
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: 'r1', body: 'Moja odpowiedź' },
+    ]);
+    expect(discussionReads).toBeGreaterThan(readsBefore);
+  });
+
+  it('toggles thread follow and mute with a clear state', async () => {
+    const muteCalls: unknown[] = [];
+    const subscribeCalls: unknown[] = [];
+    const followed = asThread(post({ id: 'r1', body: 'Obserwowany wątek' }));
+    const fresh = asThread(post({ id: 'r2', rootPostId: 'r2', body: 'Nowy wątek' }));
+    server.use(
+      okMe(),
+      okDiscussion([followed, fresh], { r1: 'subscribed' }),
+      http.post('/api/discussion/mute', async ({ request }) => {
+        muteCalls.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { rootPostId: 'r1' } });
+      }),
+      http.post('/api/discussion/subscribe', async ({ request }) => {
+        subscribeCalls.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { rootPostId: 'r2' } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    const followedToggle = await screen.findByTestId('follow-toggle-r1');
+    expect(followedToggle).toHaveTextContent(pl.discussion.following);
+    expect(followedToggle).toHaveAttribute('aria-pressed', 'true');
+
+    const freshToggle = screen.getByTestId('follow-toggle-r2');
+    expect(freshToggle).toHaveTextContent(pl.discussion.follow);
+    expect(freshToggle).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(followedToggle);
+    await waitFor(() => expect(muteCalls).toEqual([{ rootPostId: 'r1' }]));
+    expect(screen.getByTestId('follow-toggle-r1')).toHaveTextContent(pl.discussion.mutedState);
+
+    await user.click(freshToggle);
+    await waitFor(() => expect(subscribeCalls).toEqual([{ rootPostId: 'r2' }]));
+    expect(screen.getByTestId('follow-toggle-r2')).toHaveTextContent(pl.discussion.following);
+  });
+
+  it('lets staff delete any post after a confirmation dialog', async () => {
+    const deletedIds: string[] = [];
+    let removed = false;
+    const root = asThread(post({ id: 'r1', body: 'Do moderacji', authorUserId: 'u2' }));
+    server.use(
+      okMe('owner'),
+      http.get('/api/discussion', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            discussion: {
+              threads: [
+                removed
+                  ? { ...root, deletedAt: '2026-07-15T09:30:00.000Z', replyCount: 0, replies: [] }
+                  : root,
+              ],
+              nextCursor: null,
+              viewerSubscriptions: {},
+            },
+          },
+        }),
+      ),
+      http.delete('/api/posts/:postId', ({ params }) => {
+        deletedIds.push(String(params['postId']));
+        removed = true;
+        return HttpResponse.json({
+          ok: true,
+          data: { post: post({ id: 'r1', deletedAt: '2026-07-15T09:30:00.000Z' }) },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    await user.click(await screen.findByTestId('delete-button-r1'));
+    expect(await screen.findByText(pl.discussion.deleteConfirmTitle)).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('confirm-delete-post'));
+
+    await waitFor(() => expect(deletedIds).toEqual(['r1']));
+    expect(await screen.findByTestId('deleted-post-r1')).toHaveTextContent(
+      pl.discussion.deletedPost,
+    );
+  });
+
+  it('searches within this lesson and highlights matches', async () => {
+    const requestedUrls: string[] = [];
+    const root = asThread(post({ id: 'r1', body: 'Wątek bazowy' }));
+    server.use(
+      okMe(),
+      okDiscussion([root]),
+      http.get('/api/posts/search', ({ request }) => {
+        requestedUrls.push(request.url);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            hits: [
+              { post: post({ id: 'h1', body: 'Pali silnik do dechy' }), lessonId: 'l1', snippet: 'Pali silnik do dechy' },
+            ],
+          },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    await user.type(await screen.findByTestId('discussion-search-input'), 'silnik');
+
+    const hit = await screen.findByTestId('search-hit-h1');
+    expect(hit).toHaveTextContent('Pali silnik do dechy');
+    expect(within(hit).getByText('silnik').tagName).toBe('MARK');
+
+    const url = new URL(requestedUrls[requestedUrls.length - 1] ?? '');
+    expect(url.searchParams.get('query')).toBe('silnik');
+    expect(url.searchParams.getAll('lessonId')).toEqual(['l1']);
+  });
+});

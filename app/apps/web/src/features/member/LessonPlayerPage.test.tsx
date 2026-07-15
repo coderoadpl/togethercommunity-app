@@ -8,7 +8,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
   CourseLesson,
@@ -119,6 +119,28 @@ const renderPage = async (node: ReactNode) => {
 };
 
 describe('LessonPlayerPage', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u1',
+            email: 'user@example.com',
+            name: 'Jan Uczestnik',
+            tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1' },
+          },
+        }),
+      ),
+      http.get('/api/discussion', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { discussion: { threads: [], nextCursor: null, viewerSubscriptions: {} } },
+        }),
+      ),
+    );
+  });
+
   it('renders every typed block', async () => {
     server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
     const { container } = await renderPage(

@@ -24,6 +24,7 @@ import {
   type Post,
   type PostSearchHit,
   type Result,
+  type ThreadSubscriptionState,
 } from '@core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -298,6 +299,7 @@ export const createPost = async (
     rootPostId,
     authorUserId: actor.value.userId,
     authorDisplay: ctx.identity.name,
+    authorIsStaff: ctx.identity.staffRole !== null,
     body,
     createdAt: deps.clock.nowIso(),
     editedAt: null,
@@ -343,7 +345,15 @@ export const listDiscussion = async (
       replies: nestReplies(thread.post.id, await deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
     })),
   );
-  return ok({ threads, nextCursor: listed.nextCursor });
+  const subscriptions = await deps.threadSubscriptions.listForUser(scope.value.tenantId, {
+    userId: scope.value.userId,
+    rootPostIds: threads.map((thread) => thread.rootPostId),
+  });
+  const viewerSubscriptions: Record<string, ThreadSubscriptionState> = {};
+  for (const subscription of subscriptions) {
+    viewerSubscriptions[subscription.rootPostId] = subscription.mutedAt === null ? 'subscribed' : 'muted';
+  }
+  return ok({ threads, nextCursor: listed.nextCursor, viewerSubscriptions });
 };
 
 export const editPost = async (

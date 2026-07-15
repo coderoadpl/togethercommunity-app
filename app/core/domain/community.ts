@@ -13,6 +13,8 @@ export const postSchema = z.object({
   rootPostId: z.string().min(1),
   authorUserId: z.string().min(1),
   authorDisplay: z.string().min(1),
+  // Default keeps rows persisted before this field existed parseable.
+  authorIsStaff: z.boolean().default(false),
   body: z.string().min(1).max(5000),
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(),
@@ -120,14 +122,26 @@ export type DiscussionPost = Post & {
   replyCount: number;
 };
 
-export const discussionPostSchema: z.ZodType<DiscussionPost> = postSchema.extend({
-  replies: z.lazy(() => z.array(discussionPostSchema)),
-  replyCount: z.number().int().nonnegative(),
-});
+type DiscussionPostInput = z.input<typeof postSchema> & {
+  replies: DiscussionPostInput[];
+  replyCount: number;
+};
+
+export const discussionPostSchema: z.ZodType<DiscussionPost, z.ZodTypeDef, DiscussionPostInput> =
+  postSchema.extend({
+    replies: z.lazy(() => z.array(discussionPostSchema)),
+    replyCount: z.number().int().nonnegative(),
+  });
+
+export const threadSubscriptionStateSchema = z.enum(['subscribed', 'muted']);
+
+export type ThreadSubscriptionState = z.output<typeof threadSubscriptionStateSchema>;
 
 export const discussionSchema = z.object({
   threads: z.array(discussionPostSchema),
   nextCursor: z.string().nullable(),
+  // Default keeps envelopes produced before this field existed parseable.
+  viewerSubscriptions: z.record(threadSubscriptionStateSchema).default({}),
 });
 
 export type Discussion = z.output<typeof discussionSchema>;

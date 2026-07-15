@@ -219,6 +219,7 @@ const deps = (input: {
         mutedAt: subscription.mutedAt,
       }),
       listSubscribersForRoot: async () => [],
+      listForUser: async () => [],
     },
     notifications: {
       insert: async (_tenantId, notification) => notification,

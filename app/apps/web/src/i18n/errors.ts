@@ -17,6 +17,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   switch (code) {
     case 'unauthorized':
       return t.errors.messageUnauthorized;
+    case 'invalid_credentials':
+      return t.errors.messageInvalidCredentials;
     case 'forbidden':
       return t.errors.messageForbidden;
     case 'not_found':

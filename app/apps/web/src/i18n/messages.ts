@@ -28,6 +28,7 @@ export interface Messages {
   errors: {
     headingGeneric: string;
     headingSessionEnded: string;
+    headingInvalidCredentials: string;
     headingForbidden: string;
     headingNotFound: string;
     headingTenantNotFound: string;
@@ -36,6 +37,7 @@ export interface Messages {
     detailGeneric: string;
     traceId: string;
     messageUnauthorized: string;
+    messageInvalidCredentials: string;
     messageForbidden: string;
     messageNotFound: string;
     messageValidation: string;
@@ -159,6 +161,7 @@ export interface Messages {
     testConnection: string;
     testing: string;
     testFailed: string;
+    saveKeysFirst: string;
     webhookUrlLabel: string;
     webhookUrlHint: string;
     loading: string;
@@ -251,6 +254,10 @@ export interface Messages {
     saveModule: string;
     detachModule: string;
     detaching: string;
+    detachModuleConfirmTitle: string;
+    detachModuleConfirmIntro: (params: { name: string }) => string;
+    detachModuleSharedNote: (params: { count: number }) => string;
+    detachModuleConfirm: string;
     moveModuleUp: (params: { name: string }) => string;
     moveModuleDown: (params: { name: string }) => string;
     moveChapterUp: (params: { name: string }) => string;
@@ -264,6 +271,11 @@ export interface Messages {
     chapterLabel: string;
     rename: string;
     removeChapter: string;
+    removeChapterConfirmTitle: string;
+    removeChapterConfirmIntro: (params: { name: string }) => string;
+    removeChapterLessonCount: (params: { count: number }) => string;
+    removeChapterSharedWarning: (params: { count: number }) => string;
+    removeChapterConfirm: string;
     noLessonsInChapter: string;
     lessonLabel: string;
     selectLesson: string;
@@ -427,11 +439,13 @@ export interface Messages {
     completedOf: (params: { done: number; total: number }) => string;
     percentValue: (params: { percent: number }) => string;
     continueLearning: string;
+    reviewAgain: string;
+    courseCompleted: string;
     goToFirstLesson: string;
     curriculum: string;
     aboutCourse: string;
     coverAlt: (params: { name: string }) => string;
-    statLessons: string;
+    statLessons: (params: { count: number }) => string;
     statDuration: string;
     statCompleted: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;

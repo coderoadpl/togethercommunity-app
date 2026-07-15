@@ -10,6 +10,8 @@ const headingFor = (error: unknown, t: Messages): string => {
   switch (error.appError.code) {
     case 'unauthorized':
       return t.errors.headingSessionEnded;
+    case 'invalid_credentials':
+      return t.errors.headingInvalidCredentials;
     case 'forbidden':
       return t.errors.headingForbidden;
     case 'not_found':

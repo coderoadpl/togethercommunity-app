@@ -260,8 +260,46 @@ describe('CoursesPanel courses tab', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.detachModule }));
+    await userEvent.click(await screen.findByTestId('module-detach-confirm'));
 
     await waitFor(() => expect(detached).toEqual({ courseId: 'course-1', moduleId: 'module-1' }));
     expect(await screen.findByText(pl.courses.noModulesInCourse)).toBeInTheDocument();
+  });
+
+  it('confirms a populated chapter delete before mutating', async () => {
+    const chapters = [
+      { id: 'ch1', name: 'Getting started', contents: [{ id: 'ct1', name: 'Watch this', lessonId: 'lesson-1' }] },
+    ];
+    let modules = [courseModule({ chapters })];
+    let savedChapters: { id: string }[] | undefined;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({ ok: true, data: { lessons: [lesson({ id: 'lesson-1', name: 'Intro lesson' })] } }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules/update', async ({ request }) => {
+        const body = updateCourseModuleInputSchema.parse(await request.json());
+        const current = modules[0];
+        if (!current) return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } });
+        savedChapters = body.chapters ?? current.chapters;
+        const updated: CourseModule = { ...current, chapters: body.chapters ?? current.chapters };
+        modules = [updated];
+        return HttpResponse.json({ ok: true, data: { module: updated } });
+      }),
+    );
+
+    await renderCoursesPanel();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
+    await userEvent.click(await screen.findByRole('button', { name: pl.courses.removeChapter }));
+
+    expect(await screen.findByText(pl.courses.removeChapterConfirmTitle)).toBeInTheDocument();
+    expect(savedChapters).toBeUndefined();
+
+    await userEvent.click(screen.getByTestId('chapter-delete-confirm'));
+
+    await waitFor(() => expect(savedChapters).toEqual([]));
   });
 });

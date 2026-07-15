@@ -25,6 +25,7 @@ export const en: Messages = {
   errors: {
     headingGeneric: 'Something went wrong',
     headingSessionEnded: 'Your session has ended',
+    headingInvalidCredentials: "We couldn't sign you in",
     headingForbidden: 'You do not have access',
     headingNotFound: 'Nothing here',
     headingTenantNotFound: 'Unknown space',
@@ -33,6 +34,7 @@ export const en: Messages = {
     detailGeneric: 'An unexpected error interrupted the page.',
     traceId: 'Trace ID:',
     messageUnauthorized: 'Your session has ended. Please sign in again to continue.',
+    messageInvalidCredentials: 'Incorrect email or password. Check your details and try again.',
     messageForbidden: "You don't have permission to do that.",
     messageNotFound: "We couldn't find what you were looking for.",
     messageValidation: 'Please check the details you entered and try again.',
@@ -158,6 +160,7 @@ export const en: Messages = {
     testConnection: 'Test connection',
     testing: 'testing…',
     testFailed: 'The connection test failed.',
+    saveKeysFirst: 'Save your Stripe key and webhook secret first to test the connection.',
     webhookUrlLabel: 'Webhook URL for the Stripe dashboard',
     webhookUrlHint: 'Paste this into Stripe → Developers → Webhooks.',
     loading: 'loading integrations…',
@@ -257,6 +260,17 @@ export const en: Messages = {
     saveModule: 'save module',
     detachModule: 'detach module',
     detaching: 'detaching…',
+    detachModuleConfirmTitle: 'Detach module?',
+    detachModuleConfirmIntro: ({ name }) =>
+      format('The module "{name}" will be detached from this course. The module and its lessons stay intact.', {
+        name,
+      }),
+    detachModuleSharedNote: ({ count }) =>
+      format('This module is shared with {count} other {noun} — they keep their access to it.', {
+        count,
+        noun: count === 1 ? 'course' : 'courses',
+      }),
+    detachModuleConfirm: 'Detach module',
     moveModuleUp: ({ name }) => format('move module {name} up', { name }),
     moveModuleDown: ({ name }) => format('move module {name} down', { name }),
     moveChapterUp: ({ name }) => format('move chapter {name} up', { name }),
@@ -270,6 +284,20 @@ export const en: Messages = {
     chapterLabel: 'chapter',
     rename: 'rename',
     removeChapter: 'remove chapter',
+    removeChapterConfirmTitle: 'Delete chapter?',
+    removeChapterConfirmIntro: ({ name }) =>
+      format('You are about to delete the chapter "{name}". This cannot be undone.', { name }),
+    removeChapterLessonCount: ({ count }) =>
+      format('This also removes {count} {noun} assigned to this chapter.', {
+        count,
+        noun: count === 1 ? 'lesson' : 'lessons',
+      }),
+    removeChapterSharedWarning: ({ count }) =>
+      format('This module is shared with {count} other {noun} — the change affects all of them.', {
+        count,
+        noun: count === 1 ? 'course' : 'courses',
+      }),
+    removeChapterConfirm: 'Delete chapter',
     noLessonsInChapter: 'No lessons in this chapter yet.',
     lessonLabel: 'lesson',
     selectLesson: 'select a lesson',
@@ -441,11 +469,13 @@ export const en: Messages = {
     completedOf: ({ done, total }) => format('{done} of {total} completed', { done, total }),
     percentValue: ({ percent }) => format('{percent}%', { percent }),
     continueLearning: 'Continue learning',
+    reviewAgain: 'Review again',
+    courseCompleted: 'Course completed',
     goToFirstLesson: 'Go to the first lesson',
     curriculum: 'Course curriculum',
     aboutCourse: 'About this course',
     coverAlt: ({ name }) => format('Course cover for {name}', { name }),
-    statLessons: 'Lessons',
+    statLessons: ({ count }) => (count === 1 ? 'Lesson' : 'Lessons'),
     statDuration: 'Total duration',
     statCompleted: 'Completed',
     durationHoursMinutes: ({ hours, minutes }) => format('{hours} h {minutes} min', { hours, minutes }),

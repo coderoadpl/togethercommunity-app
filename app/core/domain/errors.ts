@@ -1,5 +1,6 @@
 export const ERROR_CODES = [
   'unauthorized',
+  'invalid_credentials',
   'forbidden',
   'not_found',
   'validation',
@@ -21,6 +22,9 @@ export const appError = (code: ErrorCode, message: string, details?: unknown): A
 
 export const unauthorized = (message = 'Authentication required'): AppError =>
   appError('unauthorized', message);
+
+export const invalidCredentials = (message = 'Invalid credentials'): AppError =>
+  appError('invalid_credentials', message);
 
 export const forbidden = (message = 'Not allowed'): AppError => appError('forbidden', message);
 

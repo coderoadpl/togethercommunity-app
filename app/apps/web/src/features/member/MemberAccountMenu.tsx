@@ -19,7 +19,7 @@ export const MemberAccountMenu = () => {
   const signOut = useMutation({
     ...actions.signOut,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      queryClient.clear();
       await navigate({ to: '/login' });
     },
   });

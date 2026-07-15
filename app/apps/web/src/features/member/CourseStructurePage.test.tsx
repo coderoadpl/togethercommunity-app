@@ -248,7 +248,7 @@ describe('CourseStructurePage', () => {
     expect(screen.getByTestId('progress-summary')).toHaveTextContent('1 z 5 ukończone');
   });
 
-  it('points the continue CTA at the last viewed lesson', async () => {
+  it('points the continue CTA at the last viewed lesson when it is unfinished', async () => {
     mockPage({ lastViewedLessonId: 'l2' });
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
@@ -261,12 +261,72 @@ describe('CourseStructurePage', () => {
     );
   });
 
-  it('falls back to the first accessible lesson without a last viewed one', async () => {
+  it('skips a completed last-viewed lesson and targets the first unfinished one', async () => {
+    mockPage({ lastViewedLessonId: 'l1' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cta = await screen.findByTestId('continue-cta');
+    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+    expect(cta).toHaveTextContent(pl.courseOverview.continueLearning);
+  });
+
+  it('falls back to the first unfinished accessible lesson without a last viewed one', async () => {
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     const cta = await screen.findByTestId('continue-cta');
+    expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l2');
+  });
+
+  it('switches the CTA to a review state once every accessible lesson is complete', async () => {
+    const completed: CourseStructureWithAccess = {
+      ...structure,
+      accessStatus: 'fully-accessible',
+      completionStatus: 'fully-completed',
+      modules: [
+        {
+          id: 'm1',
+          name: '01 - Fundamentals',
+          accessStatus: 'fully-accessible',
+          completionStatus: 'fully-completed',
+          chapters: [
+            {
+              id: 'c1',
+              name: 'Getting started',
+              accessStatus: 'fully-accessible',
+              completionStatus: 'fully-completed',
+              lessons: [
+                {
+                  contentId: 'ct1',
+                  lessonId: 'l1',
+                  name: 'Intro to Variables',
+                  accessStatus: 'fully-accessible',
+                  completionStatus: 'fully-completed',
+                  durationMinutes: 12,
+                },
+                {
+                  contentId: 'ct2',
+                  lessonId: 'l2',
+                  name: 'Advanced Variables',
+                  accessStatus: 'fully-accessible',
+                  completionStatus: 'fully-completed',
+                  durationMinutes: 18,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    mockPage({ body: completed, lastViewedLessonId: 'l2' });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const cta = await screen.findByTestId('continue-cta');
+    expect(cta).toHaveTextContent(pl.courseOverview.reviewAgain);
     expect(cta).toHaveAttribute('href', '/my/courses/course-1/lessons/l1');
+    expect(screen.getByTestId('course-completed-note')).toHaveTextContent(
+      pl.courseOverview.courseCompleted,
+    );
   });
 
   it('hides the continue CTA when no lesson is accessible', async () => {

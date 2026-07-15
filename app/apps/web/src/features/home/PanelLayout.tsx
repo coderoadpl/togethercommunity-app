@@ -216,7 +216,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   const signOut = useMutation({
     ...actions.signOut,
     onSuccess: async () => {
-      await queryClient.invalidateQueries();
+      queryClient.clear();
       await navigate({ to: '/login' });
     },
   });

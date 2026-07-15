@@ -3,7 +3,7 @@ import { Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
 import type { CourseStructureLesson, CourseStructureWithAccess } from '@core/domain/index.js';
 
 import { useTranslations, type Messages } from '../../i18n/index.js';
-import { Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
+import { CourseCompletedNote, Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';
 import { CourseTree } from './CourseTree.js';
 
 export const flattenLessons = (structure: CourseStructureWithAccess): CourseStructureLesson[] =>
@@ -36,12 +36,18 @@ export const continueLessonId = (
   structure: CourseStructureWithAccess,
   lastViewedLessonId: string | undefined,
 ): string | null => {
-  const lessons = flattenLessons(structure);
-  const lastViewed = lessons.find(
-    (lesson) =>
-      lesson.lessonId === lastViewedLessonId && lesson.accessStatus === 'fully-accessible',
+  const accessible = flattenLessons(structure).filter(
+    (lesson) => lesson.accessStatus === 'fully-accessible',
   );
-  return lastViewed?.lessonId ?? firstAccessibleLessonId(structure);
+  const lastViewed = accessible.find(
+    (lesson) =>
+      lesson.lessonId === lastViewedLessonId && lesson.completionStatus !== 'fully-completed',
+  );
+  if (lastViewed) return lastViewed.lessonId;
+  const firstUnfinished = accessible.find(
+    (lesson) => lesson.completionStatus !== 'fully-completed',
+  );
+  return firstUnfinished?.lessonId ?? accessible[0]?.lessonId ?? null;
 };
 
 export const formatTotalDuration = (t: Messages, totalMinutes: number): string =>
@@ -65,6 +71,12 @@ export const CourseProgressCard = ({
   const totals = courseTotals(structure);
   const continueTarget = continueLessonId(structure, lastViewedLessonId);
   const firstTarget = firstAccessibleLessonId(structure);
+  const targetLesson =
+    continueTarget === null
+      ? undefined
+      : flattenLessons(structure).find((lesson) => lesson.lessonId === continueTarget);
+  const isReview = targetLesson?.completionStatus === 'fully-completed';
+  const courseCompleted = totals.total > 0 && totals.done === totals.total;
 
   return (
     <Paper elevation={1} sx={{ p: '1.25rem' }} data-testid="course-progress-card">
@@ -89,18 +101,28 @@ export const CourseProgressCard = ({
         sx={{ mt: '0.6rem' }}
         aria-label={t.courseOverview.progressTitle}
       />
+      {courseCompleted && (
+        <CourseCompletedNote
+          variant="body2"
+          component="p"
+          data-testid="course-completed-note"
+          sx={{ mt: '0.75rem' }}
+        >
+          {t.courseOverview.courseCompleted}
+        </CourseCompletedNote>
+      )}
       {continueTarget !== null && (
         <Stack useFlexGap sx={{ mt: '1.25rem', rowGap: '0.75rem' }}>
           <Button
-            variant="contained"
+            variant={isReview ? 'outlined' : 'contained'}
             fullWidth
             component="a"
             href={`/my/courses/${courseId}/lessons/${continueTarget}`}
             data-testid="continue-cta"
           >
-            {t.courseOverview.continueLearning}
+            {isReview ? t.courseOverview.reviewAgain : t.courseOverview.continueLearning}
           </Button>
-          {firstTarget !== null && (
+          {firstTarget !== null && firstTarget !== continueTarget && (
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
               <Link
                 href={`/my/courses/${courseId}/lessons/${firstTarget}`}

@@ -4,19 +4,20 @@ export const currencySchema = z.string().regex(/^[A-Z]{3}$/, 'Currency must be a
 
 export const SUPPORTED_CURRENCIES = ['PLN', 'EUR', 'USD'] as const;
 
-const PRICE_MAJOR_PATTERN = /^\d+(\.\d{1,2})?$/;
+const PRICE_MAJOR_PATTERN = /^\d+([.,]\d{1,2})?$/;
 
 /**
- * Parses a price entered in major currency units (e.g. `199` or `199.99`) into
- * an integer number of minor units (cents/grosze), rejecting more than two
- * decimals. Integer arithmetic avoids the float drift of `amount * 100`.
+ * Parses a price entered in major currency units (e.g. `199`, `199.99` or the
+ * Polish `199,99`) into an integer number of minor units (cents/grosze),
+ * rejecting more than two decimals. Integer arithmetic avoids the float drift
+ * of `amount * 100`.
  */
 export const priceMajorSchema = z
   .string()
   .trim()
   .regex(PRICE_MAJOR_PATTERN, 'Price must be a non-negative amount with at most two decimals')
   .transform((value) => {
-    const [whole = '0', fraction = ''] = value.split('.');
+    const [whole = '0', fraction = ''] = value.replace(',', '.').split('.');
     return Number.parseInt(whole, 10) * 100 + Number.parseInt(fraction.padEnd(2, '0'), 10);
   });
 

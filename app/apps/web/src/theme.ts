@@ -2571,6 +2571,11 @@ export const LessonDurationText = styled('span')(({ theme }) => ({
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
 }));
 
+export const CourseCompletedNote = styled(Typography)<AsElement>(({ theme }) => ({
+  fontWeight: 600,
+  color: theme.palette.success.main,
+}));
+
 export const EmptyStateIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '2.6rem',
   color: theme.palette.text.disabled,

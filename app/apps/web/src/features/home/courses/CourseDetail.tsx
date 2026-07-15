@@ -2,6 +2,10 @@ import { useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   FormLabel,
@@ -271,6 +275,7 @@ const ModuleCard = ({
   const [title, setTitle] = useState(module.title);
   const [prefix, setPrefix] = useState(module.prefix ?? '');
   const [chapterName, setChapterName] = useState('');
+  const [chapterToRemove, setChapterToRemove] = useState<Chapter | null>(null);
 
   const updateModule = useMutation({
     ...actions.updateModule,
@@ -410,7 +415,7 @@ const ModuleCard = ({
               onMoveUp={() => moveChapter(index, -1)}
               onMoveDown={() => moveChapter(index, 1)}
               onRename={(name) => renameChapter(chapter.id, name)}
-              onRemove={() => removeChapter(chapter.id)}
+              onRemove={() => setChapterToRemove(chapter)}
               onAddContent={(lessonId, name) => addContent(chapter.id, lessonId, name)}
               onRemoveContent={(contentId) => removeContent(chapter.id, contentId)}
               onMoveContent={(contentId, direction) => moveContent(chapter.id, contentId, direction)}
@@ -436,6 +441,46 @@ const ModuleCard = ({
       </Stack>
 
       {updateModule.isError ? <MutationError error={updateModule.error} /> : null}
+
+      {chapterToRemove ? (
+        <Dialog open onClose={() => setChapterToRemove(null)} aria-labelledby="chapter-delete-title">
+          <DialogTitle id="chapter-delete-title">{t.courses.removeChapterConfirmTitle}</DialogTitle>
+          <DialogContent>
+            <Stack useFlexGap spacing="0.6rem" sx={{ pt: '0.25rem' }}>
+              <Typography variant="body1">
+                {t.courses.removeChapterConfirmIntro({ name: chapterToRemove.name })}
+              </Typography>
+              {chapterToRemove.contents.length > 0 ? (
+                <Typography variant="body2">
+                  {t.courses.removeChapterLessonCount({ count: chapterToRemove.contents.length })}
+                </Typography>
+              ) : null}
+              {module.courseIds.length > 1 ? (
+                <Typography variant="body2" color="warning.main">
+                  {t.courses.removeChapterSharedWarning({ count: module.courseIds.length - 1 })}
+                </Typography>
+              ) : null}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="text" onClick={() => setChapterToRemove(null)} disabled={pending}>
+              {t.common.cancel}
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              data-testid="chapter-delete-confirm"
+              disabled={pending}
+              onClick={() => {
+                removeChapter(chapterToRemove.id);
+                setChapterToRemove(null);
+              }}
+            >
+              {t.courses.removeChapterConfirm}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
     </Paper>
   );
 };
@@ -559,6 +604,7 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const queryClient = useQueryClient();
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
+  const [moduleToDetach, setModuleToDetach] = useState<CourseModule | null>(null);
 
   const invalidateTree = async () => {
     await Promise.all([
@@ -623,12 +669,47 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
                 canMoveDown={index < attached.length - 1}
                 onMoveUp={() => moveModule(index, -1)}
                 onMoveDown={() => moveModule(index, 1)}
-                onDetach={() => detachModule.mutate({ courseId: course.id, moduleId: module.id })}
+                onDetach={() => setModuleToDetach(module)}
               />
             ))}
           </Stack>
         )}
       </Box>
+
+      {moduleToDetach ? (
+        <Dialog open onClose={() => setModuleToDetach(null)} aria-labelledby="module-detach-title">
+          <DialogTitle id="module-detach-title">{t.courses.detachModuleConfirmTitle}</DialogTitle>
+          <DialogContent>
+            <Stack useFlexGap spacing="0.6rem" sx={{ pt: '0.25rem' }}>
+              <Typography variant="body1">
+                {t.courses.detachModuleConfirmIntro({ name: moduleToDetach.name })}
+              </Typography>
+              {moduleToDetach.courseIds.length > 1 ? (
+                <Typography variant="body2">
+                  {t.courses.detachModuleSharedNote({ count: moduleToDetach.courseIds.length - 1 })}
+                </Typography>
+              ) : null}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="text" onClick={() => setModuleToDetach(null)} disabled={detachModule.isPending}>
+              {t.common.cancel}
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              data-testid="module-detach-confirm"
+              disabled={detachModule.isPending}
+              onClick={() => {
+                detachModule.mutate({ courseId: course.id, moduleId: moduleToDetach.id });
+                setModuleToDetach(null);
+              }}
+            >
+              {t.courses.detachModuleConfirm}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
     </Stack>
   );
 };

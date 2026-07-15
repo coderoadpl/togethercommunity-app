@@ -34,11 +34,15 @@ const authErrorSchema = z.object({
   message: z.string().optional(),
 });
 
-const toResult = <T>(value: T, error: { message?: string | undefined; status: number } | null): Result<T, AppError> => {
+const toResult = <T>(
+  value: T,
+  error: { message?: string | undefined; status: number } | null,
+  unauthorizedCode: 'unauthorized' | 'invalid_credentials' = 'unauthorized',
+): Result<T, AppError> => {
   if (!error) return ok(value);
   const code =
     error.status === 401
-      ? 'unauthorized'
+      ? unauthorizedCode
       : error.status === 403
         ? 'forbidden'
         : error.status === 400 || error.status === 422
@@ -81,7 +85,10 @@ const postCliAuth = async (
     return err(appError('internal', `Network error calling ${path}: ${String(cause)}`));
   }
 
-  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
+  if (!response.ok) {
+    const unauthorizedCode = path === '/api/auth/sign-in/email' ? 'invalid_credentials' : 'unauthorized';
+    return toResult({ token: null }, await readAuthError(response), unauthorizedCode);
+  }
 
   const token = response.headers.get('set-auth-token');
   if (token) onToken(token);
@@ -104,7 +111,7 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
     signIn: async ({ email, password }) => {
       const token = null;
       const response = await client.signIn.email({ email, password });
-      return toResult({ token }, response.error);
+      return toResult({ token }, response.error, 'invalid_credentials');
     },
     requestMagicLink: async ({ email, callbackURL, language }) =>
       toResult(

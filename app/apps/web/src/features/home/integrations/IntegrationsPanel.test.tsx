@@ -67,11 +67,21 @@ describe('IntegrationsPanel', () => {
   });
 
   it('reports a readable diagnostic after testing the connection', async () => {
-    renderPanel();
+    renderPanel([
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
     await userEvent.click(await screen.findByTestId('stripe-test-connection'));
     expect(await screen.findByTestId('stripe-test-result')).toHaveTextContent(
       'Stripe accepted the credentials.',
     );
+  });
+
+  it('guards the test button until both Stripe secrets are stored', async () => {
+    renderPanel();
+    const hint = await screen.findByTestId('stripe-test-hint');
+    expect(hint).toHaveTextContent(pl.integrations.saveKeysFirst);
+    expect(screen.getByTestId('stripe-test-connection')).toBeDisabled();
   });
 
   it('removes a configured secret', async () => {

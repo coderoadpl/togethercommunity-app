@@ -120,6 +120,11 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
   const testConnection = useMutation(actions.testStripeConnection);
 
   const webhookUrl = `${window.location.origin}/api/webhooks/stripe/${tenantId}`;
+  const storedSecrets = secrets.data?.secrets;
+  const stripeReady =
+    storedSecrets !== undefined &&
+    previewFor(storedSecrets, 'stripe.restrictedKey') !== null &&
+    previewFor(storedSecrets, 'stripe.webhookSecret') !== null;
 
   return (
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -178,12 +183,17 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
               type="button"
               variant="contained"
               data-testid="stripe-test-connection"
-              disabled={testConnection.isPending}
+              disabled={testConnection.isPending || !stripeReady}
               onClick={() => testConnection.mutate(undefined)}
               sx={{ justifySelf: 'start' }}
             >
               {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
             </Button>
+            {!stripeReady && !secrets.isPending && !secrets.isError ? (
+              <Typography variant="caption" component="p" data-testid="stripe-test-hint">
+                {t.integrations.saveKeysFirst}
+              </Typography>
+            ) : null}
             {testConnection.isSuccess ? (
               <Typography variant="caption" component="p" data-testid="stripe-test-result">
                 {testConnection.data.diagnostic}

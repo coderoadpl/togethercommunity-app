@@ -43,7 +43,7 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
       key: 'lessons',
       icon: <StatLessonsIcon />,
       value: `${totals.total}`,
-      label: t.courseOverview.statLessons,
+      label: t.courseOverview.statLessons({ count: totals.total }),
     },
     {
       key: 'duration',

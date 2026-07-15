@@ -55,7 +55,9 @@ describe('LoginPage', () => {
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(pl.errors.messageInvalidCredentials);
+    expect(alert).not.toHaveTextContent(pl.errors.messageUnauthorized);
   });
 
   it('disables submit while the sign-in mutation is pending', async () => {

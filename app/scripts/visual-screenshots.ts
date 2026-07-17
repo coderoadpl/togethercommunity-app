@@ -82,8 +82,13 @@ const SCREENS: ScreenSpec[] = [
     ready: async (page) => {
       await page.getByTestId('course-card-course-js').waitFor(visible);
       await page.getByTestId('completion-course-js').waitFor(visible);
+      // The unread badge lives on the header bell on sm+ and on the bottom
+      // tab-bar bell on xs (decision D4) — wait on the instance this viewport
+      // actually shows.
+      const width = page.viewportSize()?.width ?? 0;
+      const bellTestId = width < 600 ? 'notification-tab' : 'notification-bell';
       await page
-        .locator('[data-testid="notification-bell"] .MuiBadge-badge:not(.MuiBadge-invisible)')
+        .locator(`[data-testid="${bellTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
         .waitFor(visible);
     },
   },

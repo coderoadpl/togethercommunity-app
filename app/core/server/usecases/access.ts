@@ -169,13 +169,18 @@ export const cheapestUnlockingProduct = (
   publishedProducts: Product[],
   location: { courseId: string; moduleId: string; lessonId: string },
 ): Product | null => {
-  let cheapest: Product | null = null;
+  let cheapestPaid: Product | null = null;
+  let cheapestFree: Product | null = null;
   for (const product of publishedProducts) {
     const lookup = buildAccessLookup(product.accessItems);
     if (!isLessonAccessibleByLookup(lookup, location)) continue;
-    if (cheapest === null || product.priceCents < cheapest.priceCents) cheapest = product;
+    if (product.priceCents > 0) {
+      if (cheapestPaid === null || product.priceCents < cheapestPaid.priceCents) cheapestPaid = product;
+    } else if (cheapestFree === null || product.priceCents < cheapestFree.priceCents) {
+      cheapestFree = product;
+    }
   }
-  return cheapest;
+  return cheapestPaid ?? cheapestFree;
 };
 
 export const buildCourseStructure = (

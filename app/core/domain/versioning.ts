@@ -226,6 +226,14 @@ export const entityHistoryQuerySchema = z.object({
 export type EntityHistoryQuery = z.infer<typeof entityHistoryQuerySchema>;
 export type EntityHistoryQueryInput = z.input<typeof entityHistoryQuerySchema>;
 
+export const courseHistoryQuerySchema = z.object({
+  courseId: z.string().min(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type CourseHistoryQuery = z.infer<typeof courseHistoryQuerySchema>;
+export type CourseHistoryQueryInput = z.input<typeof courseHistoryQuerySchema>;
+
 export const entityHistoryEntrySchema = z.object({
   id: z.string(),
   entityKind: entityKindSchema,
@@ -236,6 +244,14 @@ export const entityHistoryEntrySchema = z.object({
 });
 
 export type EntityHistoryEntry = z.infer<typeof entityHistoryEntrySchema>;
+
+export const courseHistoryEntrySchema = entityHistoryEntrySchema.extend({
+  subjectKind: z.enum(['course', 'module']),
+  subjectName: z.string().min(1),
+  createdByDisplayName: z.string().min(1).nullable(),
+});
+
+export type CourseHistoryEntry = z.infer<typeof courseHistoryEntrySchema>;
 
 export const entityVersionDetailSchema = entityHistoryEntrySchema.extend({
   currentSchemaVersion: z.number().int().positive(),

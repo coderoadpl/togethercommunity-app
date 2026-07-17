@@ -173,7 +173,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           <CardTitle variant="h1">{product.title}</CardTitle>
           <Typography variant="body1">{product.description}</Typography>
           <Typography variant="h2" component="p">
-            <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue>
+            <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
           </Typography>
           <FormControl fullWidth>
             <FormLabel htmlFor="checkout-email">{t.checkout.emailLabel}</FormLabel>
@@ -196,7 +196,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               (!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
-            {paymentConfig.data.stripeConfigured
+            {product.priceCents === 0
+              ? simulatePurchase.isPending || checkoutSession.isPending
+                ? t.checkout.freePending
+                : t.checkout.freeIdle
+              : paymentConfig.data.stripeConfigured
               ? checkoutSession.isPending
                 ? t.checkout.payPending
                 : t.checkout.payIdle
@@ -204,14 +208,22 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 ? t.checkout.submitPending
                 : t.checkout.submitIdle}
           </Button>
-          {paymentConfig.data.stripeConfigured && paymentConfig.data.simulatedPaymentsEnabled ? (
+          {product.priceCents > 0 &&
+          paymentConfig.data.stripeConfigured &&
+          paymentConfig.data.simulatedPaymentsEnabled ? (
             <Button
               type="button"
               variant="outlined"
               disabled={simulatePurchase.isPending || checkoutSession.isPending}
               onClick={() => simulatePurchase.mutate({ email, productId, language })}
             >
-              {simulatePurchase.isPending ? t.checkout.submitPending : t.checkout.submitIdle}
+              {product.priceCents === 0
+                ? simulatePurchase.isPending
+                  ? t.checkout.freePending
+                  : t.checkout.freeIdle
+                : simulatePurchase.isPending
+                  ? t.checkout.submitPending
+                  : t.checkout.submitIdle}
             </Button>
           ) : null}
           {!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (

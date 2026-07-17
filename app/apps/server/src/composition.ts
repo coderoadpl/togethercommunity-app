@@ -23,6 +23,7 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
   createThreadSubscriptionRepository,
+  createUserDisplayReader,
 } from '@adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
@@ -68,6 +69,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   ThreadSubscriptionRepository,
+  UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
 
@@ -90,6 +92,7 @@ export interface AppDeps {
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   entityVersions: EntityVersionRepository;
+  userDisplays: UserDisplayReader;
   members: MemberRepository;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
@@ -192,6 +195,7 @@ export const createDeps = (env: Env): AppDeps => {
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
     entityVersions: createEntityVersionRepository(db),
+    userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),

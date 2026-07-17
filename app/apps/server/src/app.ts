@@ -331,6 +331,7 @@ export const buildApp = (deps: AppDeps) => {
         googleEnabled: deps.authConfig.googleEnabled,
         passkeysEnabled: true,
         totpEnabled: true,
+        exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
       }),
     ),
   );
@@ -767,8 +768,7 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.coursesHistory, async (c) => {
     const query = {
-      entityKind: c.req.query('entityKind'),
-      entityId: c.req.query('entityId'),
+      courseId: c.req.query('courseId'),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
     };
     const result = await getContentHistory({ identity: c.get('identity') }, query, deps);

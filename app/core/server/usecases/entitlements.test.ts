@@ -576,6 +576,24 @@ describe('getCourseStructureWithAccess — durations and upsell', () => {
     expect(nn(byId.get('l5')).unlockProductId).toBe('p-m2');
   });
 
+  it('prefers the cheapest paid covering product regardless of catalogue ordering', async () => {
+    const free = priced('p-free', 0, [{ level: 'course', courseId: 'c1' }]);
+    const paid = priced('p-paid', 3900, [{ level: 'course', courseId: 'c1' }]);
+    for (const products of [[free, paid], [paid, free]]) {
+      const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], products));
+      expect(lessonsAt(result).every((lessonRow) => lessonRow.unlockProductId === 'p-paid')).toBe(true);
+    }
+  });
+
+  it('falls back to a free covering product when no paid product covers the lesson', async () => {
+    const free = priced('p-free', 0, [{ level: 'course', courseId: 'c1' }]);
+    const unrelatedPaid = priced('p-paid-other', 100, [{ level: 'course', courseId: 'other' }]);
+    for (const products of [[free, unrelatedPaid], [unrelatedPaid, free]]) {
+      const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], products));
+      expect(lessonsAt(result).every((lessonRow) => lessonRow.unlockProductId === 'p-free')).toBe(true);
+    }
+  });
+
   it('never suggests unpublished products even when they are cheapest', async () => {
     const result = await getCourseStructureWithAccess(ctx({}), 'c1', deps([], catalogue));
     expect(lessonsAt(result).some((l) => l.unlockProductId === 'p-draft')).toBe(false);

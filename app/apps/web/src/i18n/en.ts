@@ -348,6 +348,8 @@ export const en: Messages = {
     historyEntry: ({ version, date, author }) =>
       format('schema v{version} · {date} · {author}', { version, date, author }),
     historyEntryId: ({ id }) => format('version id: {id}', { id }),
+    historySubjectCourse: ({ name }) => format('course: {name}', { name }),
+    historySubjectModule: ({ name }) => format('module: {name}', { name }),
   },
   lessons: {
     heading: 'Lessons',
@@ -687,6 +689,8 @@ export const en: Messages = {
     emailLabel: 'email',
     submitIdle: 'Simulate payment (dev)',
     submitPending: 'Simulating payment…',
+    freeIdle: 'Get it for free',
+    freePending: 'Granting access…',
     payIdle: 'Pay',
     payPending: 'Redirecting to Stripe…',
     successEyebrow: 'payment received',

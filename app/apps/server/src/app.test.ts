@@ -184,6 +184,9 @@ const deps = (input: {
       list: async () => [],
       findById: async () => null,
     },
+    userDisplays: {
+      findDisplayNames: async () => new Map(),
+    },
     progress: {
       findByMemberAndCourse: async () => null,
       listByMember: async () => [],
@@ -370,7 +373,12 @@ describe('public auth-config route', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     expect(body).toMatchObject({
       ok: true,
-      data: { googleEnabled: false, passkeysEnabled: true, totpEnabled: true },
+      data: {
+        googleEnabled: false,
+        passkeysEnabled: true,
+        totpEnabled: true,
+        exposeMagicLinks: false,
+      },
     });
   });
 

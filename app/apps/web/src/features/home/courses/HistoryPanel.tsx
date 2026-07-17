@@ -15,7 +15,7 @@ import { MutationError } from './feedback.js';
 export const HistoryPanel = ({ courseId }: { courseId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const history = useQuery(actions.contentHistory({ entityKind: 'course', entityId: courseId }));
+  const history = useQuery(actions.contentHistory({ courseId }));
 
   return (
     <Paper elevation={1} sx={{ p: '1.1rem', display: 'grid', gap: '0.75rem' }} data-testid="history-panel">
@@ -37,9 +37,13 @@ export const HistoryPanel = ({ courseId }: { courseId: string }) => {
                 primary={t.courses.historyEntry({
                   version: version.schemaVersion,
                   date: formatDateTime(version.createdAt, language),
-                  author: version.createdBy ?? t.courses.historyUnknownAuthor,
+                  author: version.createdByDisplayName ?? t.courses.historyUnknownAuthor,
                 })}
-                secondary={t.courses.historyEntryId({ id: version.id })}
+                secondary={`${
+                  version.subjectKind === 'course'
+                    ? t.courses.historySubjectCourse({ name: version.subjectName })
+                    : t.courses.historySubjectModule({ name: version.subjectName })
+                } · ${t.courses.historyEntryId({ id: version.id })}`}
               />
             </ListItem>
           ))}

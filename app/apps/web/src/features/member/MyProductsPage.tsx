@@ -18,7 +18,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { CardTitle, DataValue, Eyebrow, LedgerHeader } from '../../theme.js';
@@ -32,6 +32,7 @@ const isForbidden = (error: Error | null) =>
 
 export const MyProductsPage = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const products = useQuery(actions.myProducts);
   const navigate = useNavigate();
   const unauthorized = isUnauthorized(products.error);
@@ -95,7 +96,7 @@ export const MyProductsPage = () => {
                     primary={product.title}
                     secondary={
                       <>
-                        <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue> ·{' '}
+                        <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue> ·{' '}
                         {product.description}
                       </>
                     }

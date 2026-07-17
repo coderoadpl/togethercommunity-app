@@ -107,7 +107,6 @@ import {
   ok,
   type AppError,
   type DevGrantInput,
-  type EntityKind,
   type MemberExportFormat,
   type NewProductInput,
   type Result,
@@ -394,10 +393,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
   updateCourse: (input: CourseUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.coursesUpdate.method, API_ROUTES.coursesUpdate.path, courseOutputSchema, input, signal),
   listContentHistory: (
-    input: { entityKind: EntityKind; entityId: string; limit?: number },
+    input: { courseId: string; limit?: number },
     signal?: AbortSignal,
   ) => {
-    const params = new URLSearchParams({ entityKind: input.entityKind, entityId: input.entityId });
+    const params = new URLSearchParams({ courseId: input.courseId });
     if (input.limit !== undefined) params.set('limit', String(input.limit));
     return request(
       options,

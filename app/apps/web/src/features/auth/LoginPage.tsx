@@ -197,10 +197,12 @@ export const LoginPage = () => {
           <Alert sx={{ mt: '0.6rem' }}>{localizeError(devMagicLink.error, t)}</Alert>
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-          {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
-          <DemoValue>demo1234</DemoValue>
-        </FinePrint>
+        {authConfig.data?.exposeMagicLinks ? (
+          <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
+            {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
+            <DemoValue>demo1234</DemoValue>
+          </FinePrint>
+        ) : null}
         <FinePrint variant="caption" component="p">
           {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
         </FinePrint>

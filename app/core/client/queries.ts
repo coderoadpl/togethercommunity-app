@@ -43,7 +43,7 @@ import type {
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '@core/contract/index.js';
-import type { DevGrantInput, EntityKind, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
+import type { DevGrantInput, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -173,8 +173,7 @@ export const modulesScopes = {
 
 export const contentHistoryScopes = {
   all: () => ['content-history'] as const,
-  list: (entityKind: EntityKind, entityId: string) =>
-    ['content-history', 'list', entityKind, entityId] as const,
+  list: (courseId: string) => ['content-history', 'list', courseId] as const,
   version: (id: string) => ['content-history', 'version', id] as const,
 };
 
@@ -359,10 +358,10 @@ export const modulesQuery = (api: ApiClient) =>
 
 export const contentHistoryQuery = (
   api: ApiClient,
-  input: { entityKind: EntityKind; entityId: string; limit?: number },
+  input: { courseId: string; limit?: number },
 ) =>
   defineQuery({
-    queryKey: contentHistoryScopes.list(input.entityKind, input.entityId),
+    queryKey: contentHistoryScopes.list(input.courseId),
     call: ({ signal }) => api.listContentHistory(input, signal),
   });
 

@@ -171,8 +171,14 @@ const grantRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRep
   setGrantWindow: async () => null,
   revokeGrant: async () => null,
   listForMemberWithProductNames: async () => [],
-  listActiveForMember: async (tenantId, memberId) =>
-    grants.filter((item) => item.tenantId === tenantId && item.memberId === memberId),
+  listActiveForMember: async (tenantId, memberId, now) =>
+    grants.filter(
+      (item) =>
+        item.tenantId === tenantId &&
+        item.memberId === memberId &&
+        item.startsAt <= now &&
+        (item.expiresAt === null || item.expiresAt >= now),
+    ),
   listGrantedProducts: async (tenantId, memberId) => {
     const ids = new Set(
       grants.filter((item) => item.tenantId === tenantId && item.memberId === memberId).map((item) => item.productId),
@@ -341,7 +347,11 @@ class FakeNotifications implements NotificationRepository {
   }
 }
 
-const deps = (accessProducts: Product[], accessGrants: ProductGrant[] = []): CommunityDeps => {
+const deps = (
+  accessProducts: Product[],
+  accessGrants: ProductGrant[] = [],
+  staffUserIds: string[] = [],
+): CommunityDeps => {
   const members: Member[] = [
     { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW },
     { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW },
@@ -349,7 +359,13 @@ const deps = (accessProducts: Product[], accessGrants: ProductGrant[] = []): Com
   ];
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
-    findStaffGrant: async () => null,
+    findStaffGrant: async (userId, lookup) =>
+      'tenantId' in lookup && lookup.tenantId === 't1' && staffUserIds.includes(userId)
+        ? {
+            tenant: { id: 't1', slug: 'tenant', name: 'Tenant', contentVersion: 1 },
+            staffRole: 'admin',
+          }
+        : null,
     findMember: async (userId, tenantId) => members.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
   };
   return {
@@ -453,6 +469,49 @@ describe('community use-cases', () => {
     expect(await d.threadSubscriptions.listSubscribersForRoot('t1', root.value.rootPostId)).toEqual(
       expect.arrayContaining([expect.objectContaining({ userId: 'u2', mutedAt: null })]),
     );
+  });
+
+  it('skips subscribers whose grant expired while still notifying staff subscribers', async () => {
+    const expired = {
+      ...grant('m2', 'all'),
+      expiresAt: '2026-07-14T10:00:00.000Z',
+    };
+    const d = deps([allAccess], [grant('m1', 'all'), expired], ['u3']);
+    const delivered: string[] = [];
+    d.notificationChannels.push({
+      deliver: async (notification) => {
+        delivered.push(notification.recipientUserId);
+        return { ok: true, value: undefined };
+      },
+    });
+    const root = await createPost(
+      ctx({ userId: 'u1', memberId: 'm1', name: 'One' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'root' },
+      d,
+    );
+    if (!root.ok) throw new Error('root failed');
+    await d.threadSubscriptions.upsert('t1', {
+      userId: 'u2',
+      rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+    await d.threadSubscriptions.upsert('t1', {
+      userId: 'u3',
+      rootPostId: root.value.rootPostId,
+      createdAt: NOW,
+    });
+
+    const reply = await createPost(
+      ctx({ userId: 'u1', memberId: 'm1', name: 'One' }),
+      { contextKind: 'lesson', contextId: 'l1', parentPostId: root.value.id, body: 'private reply' },
+      d,
+    );
+
+    expect(reply.ok).toBe(true);
+    expect(delivered).toEqual(['u3']);
+    expect(d.notifications).toBeInstanceOf(FakeNotifications);
+    if (!(d.notifications instanceof FakeNotifications)) return;
+    expect(d.notifications.rows.map((notification) => notification.recipientUserId)).toEqual(['u3']);
   });
 
   it('renders soft-deleted posts as placeholders', async () => {

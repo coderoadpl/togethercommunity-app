@@ -9,18 +9,18 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { LoginPage } from './LoginPage.js';
 
-const stubAuthConfig = () =>
+const stubAuthConfig = (exposeMagicLinks = false) =>
   server.use(
     http.get('*/api/public/auth-config', () =>
       HttpResponse.json({
         ok: true,
-        data: { googleEnabled: false, passkeysEnabled: true, totpEnabled: true },
+        data: { googleEnabled: false, passkeysEnabled: true, totpEnabled: true, exposeMagicLinks },
       }),
     ),
   );
 
-const renderLoginPage = async () => {
-  stubAuthConfig();
+const renderLoginPage = async (exposeMagicLinks = false) => {
+  stubAuthConfig(exposeMagicLinks);
   const rootRoute = createRootRoute({ component: LoginPage });
   const router = createRouter({
     routeTree: rootRoute,
@@ -42,6 +42,14 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
     expect(screen.getByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: pl.auth.signInIdle })).toBeInTheDocument();
+    expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
+  });
+
+  it('shows demo credentials only when dev magic-link exposure is enabled', async () => {
+    await renderLoginPage(true);
+
+    expect(await screen.findByText('creator@together.dev')).toBeInTheDocument();
+    expect(screen.getByText('demo1234')).toBeInTheDocument();
   });
 
   it('renders the AppError from a failed sign-in mutation', async () => {

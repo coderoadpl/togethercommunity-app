@@ -57,6 +57,7 @@ import type {
   TenantRepository,
   TenantSecretRepository,
   ThreadSubscriptionRepository,
+  UserDisplayReader,
 } from '@core/server/index.js';
 
 import type { Db } from './client.js';
@@ -80,6 +81,7 @@ import {
   tenantSecrets,
   tenants,
   threadSubscriptions,
+  user,
 } from './schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
@@ -454,6 +456,19 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
       createdBy: row.createdBy,
     };
     return record;
+  },
+});
+
+export const createUserDisplayReader = (db: Db): UserDisplayReader => ({
+  findDisplayNames: async (userIds) => {
+    if (userIds.length === 0) return new Map();
+    const rows = await db
+      .select({ id: user.id, name: user.name, email: user.email })
+      .from(user)
+      .where(inArray(user.id, userIds));
+    return new Map(
+      rows.map((row) => [row.id, row.name.trim().length > 0 ? row.name.trim() : row.email]),
+    );
   },
 });
 

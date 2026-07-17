@@ -14,8 +14,8 @@ import {
   lessonReferencesSchema,
   listDiscussionInputSchema,
   createApiKeyInputSchema,
-  entityHistoryEntrySchema,
-  entityHistoryQuerySchema,
+  courseHistoryEntrySchema,
+  courseHistoryQuerySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   languageSchema,
@@ -77,6 +77,7 @@ export const authConfigOutputSchema = z.object({
   googleEnabled: z.boolean(),
   passkeysEnabled: z.boolean(),
   totpEnabled: z.boolean(),
+  exposeMagicLinks: z.boolean(),
 });
 
 export const meOutputSchema = z.object({
@@ -347,12 +348,12 @@ export const lessonDeleteOutputSchema = z.object({
   references: lessonReferencesSchema,
 });
 
-export const contentHistoryQuerySchema = entityHistoryQuerySchema;
+export const contentHistoryQuerySchema = courseHistoryQuerySchema;
 
 export type ContentHistoryQueryInput = z.input<typeof contentHistoryQuerySchema>;
 
 export const contentHistoryOutputSchema = z.object({
-  versions: z.array(entityHistoryEntrySchema),
+  versions: z.array(courseHistoryEntrySchema),
 });
 
 export const contentVersionOutputSchema = z.object({

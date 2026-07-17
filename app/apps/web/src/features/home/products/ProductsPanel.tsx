@@ -101,7 +101,7 @@ const ProductRow = ({
       </Stack>
       <Stack useFlexGap spacing="0.2rem">
         <span>
-          <DataValue>{formatPrice(product.priceCents, product.currency)}</DataValue> ·{' '}
+          <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue> ·{' '}
           {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
           <DataValue>{accessCount}</DataValue> {t.products.accessItemNoun({ count: accessCount })}
         </span>

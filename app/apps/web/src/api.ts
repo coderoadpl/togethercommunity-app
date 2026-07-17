@@ -93,7 +93,7 @@ import {
   verifyTotpMutation,
 } from '@core/client/index.js';
 import type { DiscussionGetInput, PostsSearchInput } from '@core/contract/index.js';
-import type { EntityKind, MemberExportFormat } from '@core/domain/index.js';
+import type { MemberExportFormat } from '@core/domain/index.js';
 
 /**
  * W3C `traceparent` for the active span, formatted from the OTel facade so FE→BE
@@ -145,7 +145,7 @@ export const actions = {
   courses: coursesQuery(apiClient),
   createCourse: createCourseMutation(apiClient),
   updateCourse: updateCourseMutation(apiClient),
-  contentHistory: (input: { entityKind: EntityKind; entityId: string; limit?: number }) =>
+  contentHistory: (input: { courseId: string; limit?: number }) =>
     contentHistoryQuery(apiClient, input),
   coursesInvalidates,
   modules: modulesQuery(apiClient),

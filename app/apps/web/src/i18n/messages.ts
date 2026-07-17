@@ -317,6 +317,8 @@ export interface Messages {
     historyUnknownAuthor: string;
     historyEntry: (params: { version: number; date: string; author: string }) => string;
     historyEntryId: (params: { id: string }) => string;
+    historySubjectCourse: (params: { name: string }) => string;
+    historySubjectModule: (params: { name: string }) => string;
   };
   lessons: {
     heading: string;
@@ -635,6 +637,8 @@ export interface Messages {
     emailLabel: string;
     submitIdle: string;
     submitPending: string;
+    freeIdle: string;
+    freePending: string;
     payIdle: string;
     payPending: string;
     successEyebrow: string;

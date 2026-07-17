@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EntityHistoryEntry, Identity, StaffRole } from '@core/domain/index.js';
+import {
+  computeCourseModuleName,
+  type Course,
+  type CourseModule,
+  type EntityHistoryEntry,
+  type Identity,
+  type StaffRole,
+} from '@core/domain/index.js';
 
-import type { EntityVersionRecord, EntityVersionRepository } from '../ports.js';
+import type {
+  CourseModuleRepository,
+  CourseRepository,
+  EntityVersionRecord,
+  EntityVersionRepository,
+} from '../ports.js';
 import { getContentHistory, getContentVersion, type ContentHistoryDeps } from './content-history.js';
 
 const identity = (tenantId: string | null, staffRole: StaffRole | null): Identity => ({
@@ -81,13 +93,62 @@ const versionsRepo = (
   },
 });
 
-const deps = (repo: EntityVersionRepository): ContentHistoryDeps => ({ entityVersions: repo });
+const course: Course = {
+  id: 'c1',
+  tenantId: 't-acme',
+  name: 'Course one',
+  description: '',
+  imageUrl: null,
+  moduleOrder: ['m1'],
+  legacyId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+const moduleRow: CourseModule = {
+  id: 'm1',
+  tenantId: 't-acme',
+  courseIds: ['c1'],
+  title: 'Foundations',
+  prefix: null,
+  name: computeCourseModuleName(null, 'Foundations'),
+  chapters: [],
+  legacyId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+const courses: CourseRepository = {
+  list: async () => [course],
+  findById: async (tenantId, id) => (tenantId === course.tenantId && id === course.id ? course : null),
+  findByIds: async () => [course],
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+};
+
+const modules: CourseModuleRepository = {
+  list: async (tenantId) => (tenantId === moduleRow.tenantId ? [moduleRow] : []),
+  findById: async () => moduleRow,
+  findByIds: async () => [moduleRow],
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+};
+
+const deps = (repo: EntityVersionRepository): ContentHistoryDeps => ({
+  entityVersions: repo,
+  courses,
+  modules,
+  userDisplays: {
+    findDisplayNames: async (userIds) =>
+      new Map(userIds.map((userId) => [userId, userId === 'u1' ? 'Ada Creator' : userId])),
+  },
+});
 
 describe('content history use-cases', () => {
   it('requires staff tenant context', async () => {
     const result = await getContentHistory(
       { identity: identity('t-acme', null) },
-      { entityKind: 'course', entityId: 'c1' },
+      { courseId: 'c1' },
       deps(versionsRepo([])),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
@@ -100,10 +161,17 @@ describe('content history use-cases', () => {
     ]);
     const result = await getContentHistory(
       { identity: identity('t-acme', 'admin') },
-      { entityKind: 'course', entityId: 'c1' },
+      { courseId: 'c1' },
       deps(repo),
     );
-    expect(result.ok && result.value.map((v) => v.id)).toEqual(['a1']);
+    expect(result.ok && result.value).toEqual([
+      expect.objectContaining({
+        id: 'a1',
+        subjectKind: 'course',
+        subjectName: 'Course one',
+        createdByDisplayName: 'Ada Creator',
+      }),
+    ]);
   });
 
   it('applies the pagination-lite limit', async () => {
@@ -114,16 +182,45 @@ describe('content history use-cases', () => {
     ]);
     const result = await getContentHistory(
       { identity: identity('t-acme', 'owner') },
-      { entityKind: 'course', entityId: 'c1', limit: 2 },
+      { courseId: 'c1', limit: 2 },
       deps(repo),
     );
     expect(result.ok && result.value).toHaveLength(2);
   });
 
-  it('rejects an invalid entity kind', async () => {
+  it('merges course and module snapshots chronologically with resolved creator names', async () => {
+    const repo = versionsRepo([
+      entry({ tenantId: 't-acme', id: 'course-old', createdAt: '2026-01-01T00:00:00.000Z' }),
+      entry({
+        tenantId: 't-acme',
+        id: 'module-new',
+        entityKind: 'course_module',
+        entityId: 'm1',
+        createdAt: '2026-01-02T00:00:00.000Z',
+      }),
+    ]);
+
     const result = await getContentHistory(
       { identity: identity('t-acme', 'owner') },
-      { entityKind: 'unknown', entityId: 'c1' },
+      { courseId: 'c1' },
+      deps(repo),
+    );
+
+    expect(result.ok && result.value).toEqual([
+      expect.objectContaining({
+        id: 'module-new',
+        subjectKind: 'module',
+        subjectName: 'Foundations',
+        createdByDisplayName: 'Ada Creator',
+      }),
+      expect.objectContaining({ id: 'course-old', subjectKind: 'course' }),
+    ]);
+  });
+
+  it('rejects a missing course id', async () => {
+    const result = await getContentHistory(
+      { identity: identity('t-acme', 'owner') },
+      {},
       deps(versionsRepo([])),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });

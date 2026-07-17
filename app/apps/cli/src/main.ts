@@ -10,7 +10,6 @@ import {
   accessItemSchema,
   currencySchema,
   devGrantInputSchema,
-  entityKindSchema,
   err,
   internal,
   m2mEnrollInputSchema,
@@ -129,7 +128,6 @@ const moduleDetachOptionsSchema = z.object({
   module: z.string().min(1),
 });
 const historyOptionsSchema = z.object({
-  kind: entityKindSchema,
   limit: z
     .string()
     .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
@@ -687,16 +685,14 @@ course
   );
 
 course
-  .command('history <entityId>')
-  .description('List snapshot versions for a content entity (staff only)')
-  .requiredOption('--kind <kind>', 'course | course_module | course_lesson | product')
+  .command('history <courseId>')
+  .description('List course and module snapshot versions (staff only)')
   .option('--limit <n>', 'max versions to return (newest first)')
   .action(
-    withInput(z.tuple([z.string().min(1), historyOptionsSchema]), async (ctx, [entityId, options]) => {
+    withInput(z.tuple([z.string().min(1), historyOptionsSchema]), async (ctx, [courseId, options]) => {
       emit(
         await ctx.api.listContentHistory({
-          entityKind: options.kind,
-          entityId,
+          courseId,
           ...(options.limit === undefined ? {} : { limit: options.limit }),
         }),
         ctx.json,
@@ -704,7 +700,10 @@ course
           data.versions.length === 0
             ? 'no versions'
             : data.versions
-                .map((v) => `- v${v.schemaVersion}  ${v.createdAt}  ${v.createdBy ?? 'unknown'}  (${v.id.slice(0, 8)})`)
+                .map(
+                  (v) =>
+                    `- v${v.schemaVersion}  ${v.createdAt}  ${v.createdByDisplayName ?? 'unknown'}  ${v.subjectKind}:${v.subjectName}  (${v.id.slice(0, 8)})`,
+                )
                 .join('\n'),
       );
     }),

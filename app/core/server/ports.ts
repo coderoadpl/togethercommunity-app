@@ -56,6 +56,10 @@ export interface EntityVersionRepository {
   findById(tenantId: string, id: string): Promise<EntityVersionRecord | null>;
 }
 
+export interface UserDisplayReader {
+  findDisplayNames(userIds: string[]): Promise<Map<string, string>>;
+}
+
 export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;

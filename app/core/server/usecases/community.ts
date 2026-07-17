@@ -252,6 +252,23 @@ const notifySubscribers = async (
   });
   for (const subscriber of subscribers) {
     if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
+    const [staffGrant, member] = await Promise.all([
+      deps.tenantAccess.findStaffGrant(subscriber.userId, { tenantId }),
+      deps.tenantAccess.findMember(subscriber.userId, tenantId),
+    ]);
+    const memberCanAccess = async (): Promise<boolean> => {
+      if (!member || !location) return false;
+      const lookup = await resolveMemberAccessLookup(
+        { tenantId, memberId: member.id },
+        deps,
+      );
+      return isLessonAccessibleByLookup(lookup, {
+        courseId: location.course.id,
+        moduleId: location.moduleId,
+        lessonId: post.contextId,
+      });
+    };
+    if (staffGrant === null && !(await memberCanAccess())) continue;
     const notification: Notification = {
       id: deps.ids.nextId(),
       tenantId,
@@ -271,7 +288,6 @@ const notifySubscribers = async (
       createdAt: deps.clock.nowIso(),
     };
     const inserted = await deps.notifications.insert(tenantId, notification);
-    const member = await deps.tenantAccess.findMember(subscriber.userId, tenantId);
     const recipientEmail = member?.email ?? null;
     for (const channel of deps.notificationChannels) {
       const delivered = await channel.deliver(inserted, {

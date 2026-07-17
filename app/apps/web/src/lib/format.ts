@@ -2,8 +2,8 @@ const LOCALE_BY_LANGUAGE: Record<string, string> = { pl: 'pl-PL', en: 'en-GB' };
 
 export const localeFor = (language: string): string => LOCALE_BY_LANGUAGE[language] ?? language;
 
-export const formatPrice = (priceCents: number, currency: string) =>
-  new Intl.NumberFormat(undefined, {
+export const formatPrice = (priceCents: number, currency: string, language: string) =>
+  new Intl.NumberFormat(localeFor(language), {
     style: 'currency',
     currency,
   }).format(priceCents / 100);

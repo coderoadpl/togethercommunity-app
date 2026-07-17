@@ -51,6 +51,7 @@ describe('CheckoutPage', () => {
     renderWithProviders(<CheckoutPage productId="course-1" />);
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    expect(screen.getByText('49,00 zł')).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
     await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
@@ -60,6 +61,28 @@ describe('CheckoutPage', () => {
     expect(screen.getByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
     expect(screen.queryByText(pl.checkout.alreadyOwnedTitle)).not.toBeInTheDocument();
     expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
+  });
+
+  it('uses free-claim copy for a zero-price product', async () => {
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            ...offerBody,
+            products: [{ ...offerBody.products[0], priceCents: 0 }],
+          },
+        }),
+      ),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    expect(await screen.findByRole('button', { name: pl.checkout.freeIdle })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: pl.checkout.payIdle })).not.toBeInTheDocument();
   });
 
   it('tells a repeat buyer they already own the product', async () => {

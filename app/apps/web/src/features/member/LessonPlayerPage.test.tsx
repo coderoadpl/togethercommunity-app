@@ -312,7 +312,7 @@ describe('LessonPlayerPage', () => {
     expect(await screen.findByTestId('course-end')).toHaveTextContent(pl.lesson.lastLesson);
   });
 
-  it('renders a full-page locked state on a 403 envelope without upsell', async () => {
+  it('renders a SectionCard locked state inside the member skeleton without a paid CTA', async () => {
     server.use(
       http.get('/api/student/lessons/:lessonId', () =>
         HttpResponse.json(
@@ -327,13 +327,14 @@ describe('LessonPlayerPage', () => {
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
     expect(await screen.findByRole('heading', { name: pl.lesson.contentLocked })).toBeInTheDocument();
+    expect(screen.getByTestId('locked-lesson-upsell')).toBeInTheDocument();
+    expect(screen.getByTestId('member-bottom-nav')).toBeInTheDocument();
     expect(screen.getByTestId('locked-state-icon')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: pl.lesson.backToCourse })).toHaveAttribute(
       'href',
       '/my/courses/course-1',
     );
-    expect(screen.getByRole('link', { name: pl.lesson.browseCourses })).toHaveAttribute('href', '/my');
-    expect(screen.queryByText(/upgrade|enroll|subscription|price/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('unlock-lesson-cta')).not.toBeInTheDocument();
   });
 
   it('shows an unlock CTA on the locked page when a product covers the lesson', async () => {
@@ -361,6 +362,22 @@ describe('LessonPlayerPage', () => {
       http.get('/api/student/courses/:courseId/structure', () =>
         HttpResponse.json({ ok: true, data: { structure: lockedStructure } }),
       ),
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            tenant: { slug: 'studio', name: 'Studio' },
+            contentVersion: 1,
+            products: [{
+              id: 'prod-full',
+              title: 'Pełny kurs JavaScript',
+              description: 'Wszystkie lekcje',
+              priceCents: 19900,
+              currency: 'PLN',
+            }],
+          },
+        }),
+      ),
       okProgress(),
       okNext(null),
     );
@@ -369,6 +386,8 @@ describe('LessonPlayerPage', () => {
     const unlock = await screen.findByTestId('unlock-lesson-cta');
     expect(unlock).toHaveAttribute('href', '/checkout/prod-full');
     expect(unlock).toHaveTextContent(pl.courseTree.unlockAccess);
+    expect(await screen.findByRole('heading', { name: 'Pełny kurs JavaScript' })).toBeInTheDocument();
+    expect(await screen.findByTestId('locked-product-price')).toHaveTextContent('199');
   });
 
   it('renders the rail curriculum with the current lesson highlighted', async () => {

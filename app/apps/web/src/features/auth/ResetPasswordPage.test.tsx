@@ -45,12 +45,16 @@ describe('ResetPasswordPage', () => {
     expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(pl.resetPassword.mismatch);
   });
 
-  it('reports a missing token', async () => {
+  it('guards a missing token before showing the password form', async () => {
     await renderResetPage('');
-    await userEvent.type(screen.getByTestId('reset-password'), 'newpassword123');
-    await userEvent.type(screen.getByTestId('reset-password-confirm'), 'newpassword123');
-    await userEvent.click(screen.getByTestId('reset-submit'));
 
-    expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(pl.resetPassword.missingToken);
+    expect(await screen.findByTestId('reset-missing-token')).toHaveTextContent(
+      pl.resetPassword.missingToken,
+    );
+    expect(screen.queryByTestId('reset-password')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.resetPassword.goToLogin })).toHaveAttribute(
+      'href',
+      '/login',
+    );
   });
 });

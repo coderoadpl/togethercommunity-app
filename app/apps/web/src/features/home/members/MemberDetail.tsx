@@ -3,11 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   FormControl,
   FormLabel,
   LinearProgress,
@@ -34,7 +29,8 @@ import type {
 } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
+import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
@@ -142,9 +138,9 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
         {t.members.learningHeading}
       </Typography>
       {summary.isPending ? (
-        <Typography variant="body1">{t.members.loadingLearning}</Typography>
+        <StatusView state={{ kind: 'loading', label: t.members.loadingLearning }} />
       ) : summary.isError ? (
-        <MutationError error={summary.error} />
+        <StatusView state={{ kind: 'error', message: localizeError(summary.error, t) }} />
       ) : (
         <Stack useFlexGap spacing="1rem">
           <Typography variant="body2">
@@ -156,7 +152,7 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
             )}
           </Typography>
           {summary.data.summary.courses.length === 0 ? (
-            <Typography variant="body1">{t.members.noAccessibleCourses}</Typography>
+            <StatusView state={{ kind: 'empty', title: t.members.noAccessibleCourses }} />
           ) : (
             <TableContainer>
               <Table size="small" aria-label={t.members.learningHeading}>
@@ -224,33 +220,22 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
         </Stack>
       )}
 
-      <Dialog open={resetting !== null} onClose={() => setResetting(null)}>
-        <DialogTitle>{t.members.resetProgressTitle}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {t.members.resetProgressConfirm({
-              count: resetting?.completedLessonCount ?? 0,
-              course: resetting?.courseName ?? '',
-            })}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button variant="text" onClick={() => setResetting(null)}>
-            {t.common.cancel}
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            data-testid="reset-progress-confirm"
-            disabled={reset.isPending}
-            onClick={() => {
-              if (resetting) reset.mutate({ memberId, courseId: resetting.courseId });
-            }}
-          >
-            {reset.isPending ? t.members.resettingProgress : t.members.resetProgress}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={resetting !== null}
+        title={t.members.resetProgressTitle}
+        body={t.members.resetProgressConfirm({
+          count: resetting?.completedLessonCount ?? 0,
+          course: resetting?.courseName ?? '',
+        })}
+        confirmLabel={reset.isPending ? t.members.resettingProgress : t.members.resetProgress}
+        cancelLabel={t.common.cancel}
+        pending={reset.isPending}
+        onClose={() => setResetting(null)}
+        onConfirm={() => {
+          if (resetting) reset.mutate({ memberId, courseId: resetting.courseId });
+        }}
+        confirmTestId="reset-progress-confirm"
+      />
     </Box>
   );
 };
@@ -355,11 +340,11 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           {t.members.grantedProducts}
         </Typography>
         {grants.isPending ? (
-          <Typography variant="body1">{t.members.loadingGrants}</Typography>
+          <StatusView state={{ kind: 'loading', label: t.members.loadingGrants }} />
         ) : grants.isError ? (
-          <MutationError error={grants.error} />
+          <StatusView state={{ kind: 'error', message: localizeError(grants.error, t) }} />
         ) : grants.data.grants.length === 0 ? (
-          <Typography variant="body1">{t.members.noGrants}</Typography>
+          <StatusView state={{ kind: 'empty', title: t.members.noGrants }} />
         ) : (
           <TableContainer>
             <Table size="small" aria-label={t.members.grantedProducts}>
@@ -405,29 +390,18 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
         {revoke.isError ? <MutationError error={revoke.error} /> : null}
       </Box>
 
-      <Dialog open={revoking !== null} onClose={() => setRevoking(null)}>
-        <DialogTitle>{t.members.revokeAccess}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {t.members.revokeConfirm({ product: revoking?.productName ?? '', email: member.email })}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button variant="text" onClick={() => setRevoking(null)}>
-            {t.common.cancel}
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            disabled={revoke.isPending}
-            onClick={() => {
-              if (revoking) revoke.mutate({ grantId: revoking.id });
-            }}
-          >
-            {revoke.isPending ? t.members.revoking : t.members.revoke}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={revoking !== null}
+        title={t.members.revokeAccess}
+        body={t.members.revokeConfirm({ product: revoking?.productName ?? '', email: member.email })}
+        confirmLabel={revoke.isPending ? t.members.revoking : t.members.revoke}
+        cancelLabel={t.common.cancel}
+        pending={revoke.isPending}
+        onClose={() => setRevoking(null)}
+        onConfirm={() => {
+          if (revoking) revoke.mutate({ grantId: revoking.id });
+        }}
+      />
     </Stack>
   );
 };

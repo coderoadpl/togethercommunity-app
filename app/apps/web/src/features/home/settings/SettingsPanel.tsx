@@ -7,13 +7,13 @@ import {
   FormLabel,
   OutlinedInput,
   Paper,
-  Skeleton,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
+import { StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { Eyebrow } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
@@ -48,10 +48,9 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         <FormControl fullWidth>
           <FormLabel htmlFor="billing-portal-url">{t.billing.urlLabel}</FormLabel>
           {settings.isPending ? (
-            <Skeleton
-              variant="rounded"
+            <StatusView
+              state={{ kind: 'loading', label: t.common.loading }}
               data-testid="billing-portal-url-loading"
-              sx={{ height: '3.5rem' }}
             />
           ) : (
             <OutlinedInput
@@ -65,7 +64,9 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             />
           )}
         </FormControl>
-        {settings.isError ? <Alert>{localizeError(settings.error, t)}</Alert> : null}
+        {settings.isError ? (
+          <StatusView state={{ kind: 'error', message: localizeError(settings.error, t) }} />
+        ) : null}
         {canEdit ? (
           <Box>
             <Button

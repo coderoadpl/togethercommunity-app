@@ -52,6 +52,37 @@ describe('LoginPage', () => {
     expect(screen.getByText('demo1234')).toBeInTheDocument();
   });
 
+  it('swaps the form for a magic-link confirmation after requesting a link', async () => {
+    server.use(
+      http.post('*', () => HttpResponse.json({ status: true })),
+      http.get('*/api/dev/magic-link', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            magicLink: {
+              email: 'member@example.com',
+              url: 'https://studio.test/magic',
+              token: 'magic-token',
+            },
+          },
+        }),
+      ),
+    );
+
+    await renderLoginPage();
+    await userEvent.type(screen.getByLabelText(pl.auth.magicLinkEmailLabel), 'member@example.com');
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.magicLinkIdle }));
+
+    expect(await screen.findByTestId('magic-link-sent')).toHaveTextContent(
+      pl.auth.magicLinkRequestedBody({ email: 'member@example.com' }),
+    );
+    expect(screen.queryByLabelText(pl.auth.passwordLabel)).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: pl.auth.openMagicLink })).toHaveAttribute(
+      'href',
+      'https://studio.test/magic',
+    );
+  });
+
   it('renders the AppError from a failed sign-in mutation', async () => {
     server.use(
       http.post('*', () =>

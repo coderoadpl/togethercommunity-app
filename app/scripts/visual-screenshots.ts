@@ -49,7 +49,7 @@ const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844 },
 ] as const;
 
-type AuthKind = 'public' | 'member' | 'creator';
+type AuthKind = 'public' | 'member' | 'member-free' | 'creator';
 
 interface ScreenSpec {
   name: string;
@@ -94,6 +94,42 @@ const SCREENS: ScreenSpec[] = [
     ready: async (page) => {
       await page.getByTestId('course-tree').waitFor(visible);
       await page.getByText('Przejdź do pierwszej lekcji').waitFor(visible);
+    },
+  },
+  {
+    name: 'my-products',
+    auth: 'member',
+    path: '/my/products',
+    ready: (page) => page.getByTestId('my-product-product-js-full').waitFor(visible),
+  },
+  {
+    name: 'product-stub',
+    auth: 'member',
+    path: '/my/course/product-js-full',
+    ready: (page) => page.getByText('Treść kursu już wkrótce').waitFor(visible),
+  },
+  {
+    name: 'account',
+    auth: 'member',
+    path: '/account',
+    ready: async (page) => {
+      await page.getByTestId('account-email').waitFor(visible);
+      await page.getByTestId('theme-selector').waitFor(visible);
+    },
+  },
+  {
+    name: 'course-not-found',
+    auth: 'member',
+    path: '/my/courses/course-does-not-exist',
+    ready: (page) => page.locator('[data-state="not-found"]').waitFor(visible),
+  },
+  {
+    name: 'lesson-locked',
+    auth: 'member-free',
+    path: '/my/courses/course-js/lessons/lesson-js-zmienne-2',
+    ready: async (page) => {
+      await page.getByTestId('locked-lesson-upsell').waitFor(visible);
+      await page.getByTestId('locked-product-price').waitFor(visible);
     },
   },
   {
@@ -324,6 +360,19 @@ const signInMember = async (page: Page, studioBaseUrl: string): Promise<void> =>
   await page.waitForURL('**/my', { timeout: 20000 });
 };
 
+const signInFreeMember = async (page: Page, studioBaseUrl: string): Promise<void> => {
+  await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
+  await page.locator('#magic-link-email').waitFor(visible);
+  await page.locator('#magic-link-email').fill('free@together.dev');
+  await page.getByRole('button', { name: 'Wyślij mi magiczny link' }).click();
+  const magicLink = page.getByRole('link', { name: 'Otwórz magiczny link' });
+  await magicLink.waitFor(visible);
+  const href = await magicLink.getAttribute('href');
+  assert(href !== null && href.length > 0, 'login page did not expose a dev magic link');
+  await page.goto(href, { waitUntil: 'load' });
+  await page.waitForURL('**/my', { timeout: 20000 });
+};
+
 type StorageState = Awaited<ReturnType<BrowserContext['storageState']>>;
 
 const bootstrapAuthState = async (
@@ -396,9 +445,11 @@ try {
 
   console.log('visual: signing in the member and creator fixtures...');
   const memberState = await bootstrapAuthState(browser, studioBaseUrl, signInMember);
+  const freeMemberState = await bootstrapAuthState(browser, studioBaseUrl, signInFreeMember);
   const creatorState = await bootstrapAuthState(browser, studioBaseUrl, signInCreator);
   const stateFor = (auth: AuthKind): StorageState | undefined => {
     if (auth === 'member') return memberState;
+    if (auth === 'member-free') return freeMemberState;
     if (auth === 'creator') return creatorState;
     return undefined;
   };
@@ -408,7 +459,7 @@ try {
 
   for (const theme of THEMES) {
     for (const viewport of VIEWPORTS) {
-      for (const auth of ['public', 'member', 'creator'] satisfies AuthKind[]) {
+      for (const auth of ['public', 'member', 'member-free', 'creator'] satisfies AuthKind[]) {
         const screens = SCREENS.filter((screen) => screen.auth === auth);
         const storageState = stateFor(auth);
         const context = await browser.newContext({

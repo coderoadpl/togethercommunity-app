@@ -3,10 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Paper,
   Stack,
   TextField,
@@ -18,6 +14,7 @@ import { ApiError } from '@core/client/index.js';
 import type { DiscussionPost, ThreadSubscriptionState } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { ConfirmDialog } from '../../components/layout/index.js';
 import { useDebouncedValue } from '../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatRelativeTime } from '../../lib/format.js';
@@ -614,27 +611,19 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
       )}
 
       {deleting !== null && (
-        <Dialog open onClose={() => setDeleting(null)} aria-labelledby="post-delete-title">
-          <DialogTitle id="post-delete-title">{t.discussion.deleteConfirmTitle}</DialogTitle>
-          <DialogContent>
-            <Typography variant="body1">{t.discussion.deleteConfirmBody}</Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button variant="text" onClick={() => setDeleting(null)}>
-              {t.common.cancel}
-            </Button>
-            <Button
-              variant="contained"
-              data-testid="confirm-delete-post"
-              disabled={remove.isPending}
-              onClick={() =>
-                remove.mutate({ id: deleting.id }, { onSuccess: () => setDeleting(null) })
-              }
-            >
-              {remove.isPending ? t.discussion.deleting : t.discussion.deleteConfirm}
-            </Button>
-          </DialogActions>
-        </Dialog>
+        <ConfirmDialog
+          open
+          title={t.discussion.deleteConfirmTitle}
+          body={t.discussion.deleteConfirmBody}
+          confirmLabel={remove.isPending ? t.discussion.deleting : t.discussion.deleteConfirm}
+          cancelLabel={t.common.cancel}
+          pending={remove.isPending}
+          onClose={() => setDeleting(null)}
+          onConfirm={() =>
+            remove.mutate({ id: deleting.id }, { onSuccess: () => setDeleting(null) })
+          }
+          confirmTestId="confirm-delete-post"
+        />
       )}
     </Box>
   );

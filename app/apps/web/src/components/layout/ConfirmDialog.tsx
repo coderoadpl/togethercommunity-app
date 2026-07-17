@@ -8,8 +8,10 @@ interface ConfirmDialogProps {
   confirmLabel: ReactNode;
   cancelLabel: ReactNode;
   pending?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onClose: () => void;
+  confirmTestId?: string;
   'data-testid'?: string;
 }
 
@@ -20,8 +22,10 @@ export const ConfirmDialog = ({
   confirmLabel,
   cancelLabel,
   pending = false,
+  confirmDisabled = false,
   onConfirm,
   onClose,
+  confirmTestId = 'confirm-dialog-confirm',
   'data-testid': testId,
 }: ConfirmDialogProps) => {
   const titleId = useId();
@@ -42,8 +46,8 @@ export const ConfirmDialog = ({
           variant="contained"
           color="error"
           onClick={onConfirm}
-          disabled={pending}
-          data-testid="confirm-dialog-confirm"
+          disabled={pending || confirmDisabled}
+          data-testid={confirmTestId}
         >
           {confirmLabel}
         </Button>

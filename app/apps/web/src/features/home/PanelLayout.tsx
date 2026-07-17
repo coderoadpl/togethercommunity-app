@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
-  Alert,
   AppBar,
   Box,
   Chip,
@@ -16,7 +15,6 @@ import {
   ThemeProvider,
   Toolbar,
   Tooltip,
-  Typography,
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
@@ -30,6 +28,7 @@ import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { useThemeMode } from '../../theme-mode.js';
@@ -331,18 +330,16 @@ export const PanelLayout = () => {
 
   if (me.isPending) {
     return (
-      <Container sx={{ maxWidth: '44rem' }}>
-        <Typography variant="h2" component="p" sx={{ py: 6 }}>
-          {t.tenant.openingWorkspace}
-        </Typography>
+      <Container sx={{ maxWidth: '44rem', py: 6 }}>
+        <StatusView state={{ kind: 'loading', label: t.tenant.openingWorkspace }} />
       </Container>
     );
   }
   if (unauthorized || noTenant || memberOnly) return null;
   if (me.isError) {
     return (
-      <Container sx={{ maxWidth: '44rem' }}>
-        <Alert sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
+      <Container sx={{ maxWidth: '44rem', py: 6 }}>
+        <StatusView state={{ kind: 'error', message: localizeError(me.error, t) }} />
       </Container>
     );
   }

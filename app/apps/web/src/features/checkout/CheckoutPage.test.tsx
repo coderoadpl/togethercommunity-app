@@ -137,6 +137,22 @@ describe('CheckoutPage', () => {
 
     expect(screen.getByRole('heading', { name: pl.checkout.successTitle })).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.successBody)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.checkout.goToLogin })).toHaveAttribute('href', '/login');
+  });
+
+  it('renders an unavailable offer as a not-found state with an escape action', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+
+    renderWithProviders(<CheckoutPage productId="missing-product" />);
+
+    const heading = await screen.findByRole('heading', { name: pl.checkout.unavailableTitle });
+    expect(heading.closest('[data-state]')).toHaveAttribute('data-state', 'not-found');
+    expect(screen.getByRole('link', { name: pl.checkout.goToLogin })).toHaveAttribute('href', '/login');
   });
 
   it('renders cancellation guidance and returns to retry', async () => {

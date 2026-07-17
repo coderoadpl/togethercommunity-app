@@ -1,11 +1,7 @@
 import { useEffect } from 'react';
 import {
-  Alert,
   Box,
   Button,
-  Container,
-  Link,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -15,8 +11,12 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
+import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { BreakAllText, CardTitle, Eyebrow, LedgerHeader } from '../../theme.js';
+import { BreakAllText } from '../../theme.js';
+import { MemberSurface } from './MemberSurface.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -38,11 +38,11 @@ export const MemberAccountPage = () => {
 
   if (me.isPending) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Typography variant="h2" component="p">
-          {t.common.loading}
-        </Typography>
-      </Container>
+      <MemberSurface
+        title={t.account.title}
+        eyebrow={t.account.heading}
+        state={{ kind: 'loading', label: t.common.loading }}
+      />
     );
   }
 
@@ -50,9 +50,11 @@ export const MemberAccountPage = () => {
 
   if (me.isError) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Alert>{localizeError(me.error, t)}</Alert>
-      </Container>
+      <MemberSurface
+        title={t.account.title}
+        eyebrow={t.account.heading}
+        state={{ kind: 'error', message: localizeError(me.error, t) }}
+      />
     );
   }
 
@@ -60,33 +62,15 @@ export const MemberAccountPage = () => {
   const billingPortalUrl = tenantSettings.data?.settings.billingPortalUrl ?? null;
 
   return (
-    <Container disableGutters sx={{ maxWidth: '44rem !important', px: '1.25rem', pb: '6rem' }}>
-      <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">{t.account.title}</Typography>
-          <Box sx={{ flex: 1 }} />
-          <Link href="/my">{t.student.myCourses}</Link>
-          <Link href="/">{t.common.home}</Link>
-        </Stack>
-        <Eyebrow variant="overline" component="p">
-          {t.account.heading}
-        </Eyebrow>
-      </LedgerHeader>
-
-      <Stack component="section" useFlexGap spacing="1.5rem" sx={{ mt: '48px' }}>
-        <Paper elevation={1} sx={{ p: '1.5rem' }}>
-          <Eyebrow variant="overline" component="p">
-            {t.account.signedInAs}
-          </Eyebrow>
+    <MemberSurface title={t.account.title} eyebrow={t.account.heading}>
+      <Stack component="section" useFlexGap spacing="1.5rem">
+        <SectionCard title={t.account.signedInAs}>
           <BreakAllText variant="body1" data-testid="account-email">
             {email}
           </BreakAllText>
-        </Paper>
+        </SectionCard>
 
-        <Paper elevation={1} sx={{ p: '1.5rem' }}>
-          <Stack useFlexGap spacing="0.8rem">
-            <CardTitle variant="h2">{t.account.passwordHeading}</CardTitle>
-            <Typography variant="body2">{t.account.passwordIntro}</Typography>
+        <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
             <Box>
               <Button
                 variant="outlined"
@@ -105,18 +89,12 @@ export const MemberAccountPage = () => {
               </Typography>
             ) : null}
             {requestPasswordReset.isError ? (
-              <Alert>
-                {localizeError(requestPasswordReset.error, t)}
-              </Alert>
+              <StatusView state={{ kind: 'error', message: localizeError(requestPasswordReset.error, t) }} />
             ) : null}
-          </Stack>
-        </Paper>
+        </SectionCard>
 
         {billingPortalUrl ? (
-          <Paper elevation={1} sx={{ p: '1.5rem' }}>
-            <Stack useFlexGap spacing="0.8rem">
-              <CardTitle variant="h2">{t.account.billingHeading}</CardTitle>
-              <Typography variant="body2">{t.account.billingIntro}</Typography>
+          <SectionCard title={t.account.billingHeading} description={t.account.billingIntro}>
               <Box>
                 <Button
                   component="a"
@@ -129,10 +107,16 @@ export const MemberAccountPage = () => {
                   {t.account.managePayments}
                 </Button>
               </Box>
-            </Stack>
-          </Paper>
+          </SectionCard>
         ) : null}
+
+        <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
+            <LanguageSwitcher inline />
+            <ThemeSwitcher inline />
+          </Stack>
+        </SectionCard>
       </Stack>
-    </Container>
+    </MemberSurface>
   );
 };

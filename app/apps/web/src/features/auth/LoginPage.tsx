@@ -1,22 +1,22 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
-  Box,
   Button,
   Divider,
   FormControl,
   FormLabel,
   Link,
   OutlinedInput,
-  Paper,
   Stack,
+  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
+import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { DemoValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
 export const LoginPage = () => {
   const t = useTranslations();
@@ -71,25 +71,46 @@ export const LoginPage = () => {
     requestMagicLink.mutate({ email: magicEmail, callbackURL: `${window.location.origin}/my`, language });
   };
 
+  const footer = (
+    <>
+      {authConfig.data?.exposeMagicLinks ? (
+        <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
+          {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
+          <DemoValue>demo1234</DemoValue>
+        </FinePrint>
+      ) : null}
+      <FinePrint variant="caption" component="p">
+        {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
+      </FinePrint>
+    </>
+  );
+
+  if (requestedMagicEmail) {
+    return (
+      <FocusCard eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+        <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
+          <CardTitle variant="h1">{t.auth.magicLinkRequested}</CardTitle>
+          <Typography variant="body1">
+            {t.auth.magicLinkRequestedBody({ email: requestedMagicEmail })}
+          </Typography>
+          {devMagicLink.isPending ? (
+            <FinePrint variant="caption" component="p">
+              {t.auth.magicLinkFetching}
+            </FinePrint>
+          ) : null}
+          {devMagicLink.data?.magicLink ? (
+            <Button component="a" href={devMagicLink.data.magicLink.url} variant="contained" fullWidth>
+              {t.auth.openMagicLink}
+            </Button>
+          ) : null}
+          {devMagicLink.isError ? <Alert>{localizeError(devMagicLink.error, t)}</Alert> : null}
+        </Stack>
+      </FocusCard>
+    );
+  }
+
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-      <Paper
-        variant="outlined"
-        sx={{
-          width: '100%',
-          maxWidth: '23rem',
-          px: '1.8rem',
-          pt: '2rem',
-          pb: '1.6rem',
-          animation: 'settle 0.45s ease-out both',
-        }}
-      >
-        <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          Together
-        </Wordmark>
-        <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          {t.auth.signInEyebrow({ host: window.location.hostname })}
-        </Eyebrow>
+    <FocusCard eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
         <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="login-email">{t.auth.emailLabel}</FormLabel>
@@ -183,30 +204,6 @@ export const LoginPage = () => {
             {localizeError(requestMagicLink.error, t)}
           </Alert>
         ) : null}
-        {requestedMagicEmail ? (
-          <FinePrint variant="caption" component="p" sx={{ mt: '0.8rem' }}>
-            {devMagicLink.isPending ? t.auth.magicLinkFetching : t.auth.magicLinkRequested}
-          </FinePrint>
-        ) : null}
-        {devMagicLink.data?.magicLink ? (
-          <FinePrint variant="caption" component="p" sx={{ mt: '0.4rem' }}>
-            <Link href={devMagicLink.data.magicLink.url}>{t.auth.openMagicLink}</Link>
-          </FinePrint>
-        ) : null}
-        {devMagicLink.isError ? (
-          <Alert sx={{ mt: '0.6rem' }}>{localizeError(devMagicLink.error, t)}</Alert>
-        ) : null}
-        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-        {authConfig.data?.exposeMagicLinks ? (
-          <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
-            {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
-            <DemoValue>demo1234</DemoValue>
-          </FinePrint>
-        ) : null}
-        <FinePrint variant="caption" component="p">
-          {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
-        </FinePrint>
-      </Paper>
-    </Box>
+    </FocusCard>
   );
 };

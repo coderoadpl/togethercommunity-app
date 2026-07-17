@@ -3,10 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   FormHelperText,
@@ -30,6 +26,7 @@ import DOMPurify from 'dompurify';
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -583,29 +580,23 @@ const LessonDeleteDialog = ({ lesson, onClose }: { lesson: CourseLesson; onClose
   };
 
   return (
-    <Dialog open onClose={onClose} aria-labelledby="lesson-delete-title">
-      <DialogTitle id="lesson-delete-title">{t.lessons.deleteConfirmTitle}</DialogTitle>
-      <DialogContent>
-        <Stack useFlexGap spacing="0.75rem" sx={{ pt: '0.25rem' }}>
+    <ConfirmDialog
+      open
+      title={t.lessons.deleteConfirmTitle}
+      body={
+        <>
           <Typography variant="body1">{t.lessons.deleteConfirmIntro({ name: lesson.name })}</Typography>
           {summary()}
           {deleteLesson.isError ? <MutationError error={deleteLesson.error} /> : null}
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button variant="text" onClick={onClose} disabled={deleteLesson.isPending}>
-          {t.common.cancel}
-        </Button>
-        <Button
-          variant="contained"
-          color="error"
-          onClick={() => deleteLesson.mutate(lesson.id)}
-          disabled={deleteLesson.isPending || references.isPending}
-        >
-          {deleteLesson.isPending ? t.lessons.deleting : t.lessons.deleteConfirm}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        </>
+      }
+      confirmLabel={deleteLesson.isPending ? t.lessons.deleting : t.lessons.deleteConfirm}
+      cancelLabel={t.common.cancel}
+      pending={deleteLesson.isPending}
+      confirmDisabled={references.isPending}
+      onClose={onClose}
+      onConfirm={() => deleteLesson.mutate(lesson.id)}
+    />
   );
 };
 
@@ -669,13 +660,11 @@ export const LessonsSection = () => {
           ))}
         </Stack>
         {lessons.isPending ? (
-          <Typography variant="body1">{t.lessons.loading}</Typography>
+          <StatusView state={{ kind: 'loading', label: t.lessons.loading }} />
         ) : lessons.isError ? (
-          <Typography variant="body1" role="alert">
-            {errorMessage(lessons.error, t)}
-          </Typography>
+          <StatusView state={{ kind: 'error', message: errorMessage(lessons.error, t) }} />
         ) : lessons.data.lessons.length === 0 ? (
-          <Typography variant="body1">{t.lessons.empty}</Typography>
+          <StatusView state={{ kind: 'empty', title: t.lessons.empty }} />
         ) : visibleLessons.length === 0 ? (
           <Typography variant="body1">{t.lessons.noMatches}</Typography>
         ) : (

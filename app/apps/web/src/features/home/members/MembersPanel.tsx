@@ -21,6 +21,7 @@ import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -53,10 +54,21 @@ export const MembersPanel = () => {
   const [exportError, setExportError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [grantFilter, setGrantFilter] = useState<GrantFilter>('all');
+  const [removing, setRemoving] = useState<MemberWithProductIds | null>(null);
   const query = useDebouncedValue(search);
+  const impactMemberId = removing?.id ?? '';
+  const removalGrants = useQuery({
+    ...actions.memberGrants(impactMemberId),
+    enabled: removing !== null,
+  });
+  const removalProgress = useQuery({
+    ...actions.memberLearningSummary(impactMemberId),
+    enabled: removing !== null,
+  });
   const removeMember = useMutation({
     ...actions.removeMember,
     onSuccess: async () => {
+      setRemoving(null);
       await queryClient.invalidateQueries(actions.membersInvalidates());
     },
   });
@@ -154,11 +166,11 @@ export const MembersPanel = () => {
         </Stack>
 
         {members.isPending ? (
-          <Typography variant="body1">{t.members.loading}</Typography>
+          <StatusView state={{ kind: 'loading', label: t.members.loading }} />
         ) : members.isError ? (
-          <Alert>{localizeError(members.error, t)}</Alert>
+          <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />
         ) : members.data.members.length === 0 ? (
-          <Typography variant="body1">{t.members.empty}</Typography>
+          <StatusView state={{ kind: 'empty', title: t.members.empty }} surface={false} />
         ) : visibleMembers.length === 0 ? (
           <Typography variant="body1">{t.members.noMatches}</Typography>
         ) : (
@@ -193,7 +205,7 @@ export const MembersPanel = () => {
                           size="small"
                           color="error"
                           disabled={removeMember.isPending}
-                          onClick={() => removeMember.mutate({ memberId: member.id })}
+                          onClick={() => setRemoving(member)}
                         >
                           {t.members.remove}
                         </Button>
@@ -210,6 +222,57 @@ export const MembersPanel = () => {
         {exportError !== null ? <Alert>{exportError}</Alert> : null}
         {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
       </Stack>
+      <ConfirmDialog
+        open={removing !== null}
+        title={t.members.removeConfirmTitle}
+        body={
+          <>
+            <Typography variant="body1">
+              {t.members.removeConfirmIntro({ email: removing?.email ?? '' })}
+            </Typography>
+            {removalGrants.isPending || removalProgress.isPending ? (
+              <StatusView state={{ kind: 'loading', label: t.common.loading }} />
+            ) : removalGrants.isError || removalProgress.isError ? (
+              <StatusView
+                state={{
+                  kind: 'error',
+                  message: localizeError(removalGrants.error ?? removalProgress.error, t),
+                  retry: {
+                    label: t.common.reload,
+                    onRetry: () => {
+                      void removalGrants.refetch();
+                      void removalProgress.refetch();
+                    },
+                  },
+                }}
+              />
+            ) : (
+              <Typography variant="body2" data-testid="member-remove-impact">
+                {t.members.removeImpact({
+                  grants: removalGrants.data?.grants.length ?? 0,
+                  completedLessons:
+                    removalProgress.data?.summary.courses.reduce(
+                      (total, course) => total + course.completedLessonCount,
+                      0,
+                    ) ?? 0,
+                })}
+              </Typography>
+            )}
+            {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
+          </>
+        }
+        confirmLabel={removeMember.isPending ? t.members.removing : t.members.remove}
+        cancelLabel={t.common.cancel}
+        pending={removeMember.isPending}
+        confirmDisabled={!removalGrants.isSuccess || !removalProgress.isSuccess}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing !== null && removalGrants.isSuccess && removalProgress.isSuccess) {
+            removeMember.mutate({ memberId: removing.id });
+          }
+        }}
+        data-testid="member-remove-dialog"
+      />
     </Paper>
   );
 };

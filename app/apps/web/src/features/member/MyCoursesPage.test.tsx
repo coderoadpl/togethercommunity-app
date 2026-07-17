@@ -70,11 +70,14 @@ describe('MyCoursesPage', () => {
     await renderPage(<MyCoursesPage />);
 
     expect(await screen.findByRole('heading', { name: pl.student.myCourses })).toBeInTheDocument();
-    const card = screen.getByTestId('course-card-course-1');
+    const card = await screen.findByTestId('course-card-course-1');
     expect(card).toHaveAttribute('href', '/my/courses/course-1');
     expect(screen.getByText('Start from zero.')).toBeInTheDocument();
     expect(await screen.findByTestId('completion-course-1')).toHaveTextContent(pl.student.completionInProgress);
-    expect(screen.getByRole('link', { name: pl.student.myProducts })).toHaveAttribute('href', '/my/products');
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: pl.student.myProducts })).toHaveAttribute(
+      'href',
+      '/my/products',
+    );
   });
 
   it('shows an empty state when no courses are accessible', async () => {

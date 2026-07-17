@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -98,6 +98,89 @@ describe('MembersPanel', () => {
 
     await userEvent.click(screen.getByTestId('members-grant-filter-all'));
     await waitFor(() => expect(screen.getAllByTestId('member-row')).toHaveLength(3));
+  });
+
+  it('confirms member removal with grant and progress impact counts', async () => {
+    const removed: string[] = [];
+    useMembers();
+    server.use(
+      http.get('/api/members/:memberId/grants', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            grants: [
+              {
+                id: 'grant-1',
+                productId: 'p1',
+                productName: 'Course one',
+                startsAt: '2026-01-01T00:00:00.000Z',
+                expiresAt: null,
+                source: 'manual',
+                active: true,
+              },
+              {
+                id: 'grant-2',
+                productId: 'p2',
+                productName: 'Course two',
+                startsAt: '2026-01-01T00:00:00.000Z',
+                expiresAt: null,
+                source: 'manual',
+                active: true,
+              },
+            ],
+          },
+        }),
+      ),
+      http.get('/api/members/:memberId/learning-summary', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            summary: {
+              lastActivityAt: null,
+              courses: [
+                {
+                  courseId: 'course-1',
+                  courseName: 'Course one',
+                  completedLessonCount: 3,
+                  accessibleLessonCount: 5,
+                  lastActivityAt: null,
+                  latestCompletedLesson: null,
+                },
+                {
+                  courseId: 'course-2',
+                  courseName: 'Course two',
+                  completedLessonCount: 2,
+                  accessibleLessonCount: 4,
+                  lastActivityAt: null,
+                  latestCompletedLesson: null,
+                },
+              ],
+            },
+          },
+        }),
+      ),
+      http.delete('/api/members/:memberId', ({ params }) => {
+        removed.push(String(params.memberId));
+        return HttpResponse.json({ ok: true, data: { memberId: String(params.memberId) } });
+      }),
+    );
+
+    renderWithProviders(<MembersPanel />);
+    const row = (await screen.findAllByTestId('member-row')).find((candidate) =>
+      candidate.textContent?.includes('student1@together.dev'),
+    );
+    expect(row).toBeDefined();
+    if (row === undefined) return;
+
+    await userEvent.click(within(row).getByRole('button', { name: pl.members.remove }));
+
+    const dialog = await screen.findByRole('dialog', { name: pl.members.removeConfirmTitle });
+    expect(await within(dialog).findByTestId('member-remove-impact')).toHaveTextContent(
+      pl.members.removeImpact({ grants: 2, completedLessons: 5 }),
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: pl.members.remove }));
+
+    await waitFor(() => expect(removed).toEqual(['member-1']));
   });
 
   it('paginates long member lists and searches across all pages', async () => {

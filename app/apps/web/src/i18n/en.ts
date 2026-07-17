@@ -73,7 +73,9 @@ export const en: Messages = {
     magicLinkEmailLabel: 'magic link email',
     magicLinkIdle: 'Send me a magic link',
     magicLinkPending: 'sending magic link…',
-    magicLinkRequested: 'Magic link requested.',
+    magicLinkRequested: 'Magic link sent.',
+    magicLinkRequestedBody: ({ email }) =>
+      format('Check {email}. The link will sign you in without a password.', { email }),
     magicLinkFetching: 'fetching dev magic link…',
     openMagicLink: 'Open magic link',
     demoAccount: 'demo account:',
@@ -93,9 +95,10 @@ export const en: Messages = {
   tenant: {
     choose: 'Choose a space',
     eachOwnDomain: 'every space lives on its own domain',
+    welcome: 'Welcome to Together. Open an existing space or create a new one.',
     create: 'Create a space',
     nameLabel: 'name',
-    slugLabel: 'slug',
+    slugLabel: 'space address',
     enterNameToPreview: 'Enter a name to preview the space URL.',
     creating: 'creating space…',
     createButton: 'create space',
@@ -453,6 +456,17 @@ export const en: Messages = {
     colActions: 'Actions',
     manage: 'Manage',
     remove: 'Remove',
+    removing: 'Removing…',
+    removeConfirmTitle: 'Remove member?',
+    removeConfirmIntro: ({ email }) =>
+      format('You are about to permanently remove {email}. This cannot be undone.', { email }),
+    removeImpact: ({ grants, completedLessons }) =>
+      format('Impact: {grants} {grantNoun} and progress covering {completedLessons} completed {lessonNoun}.', {
+        grants,
+        completedLessons,
+        grantNoun: grants === 1 ? 'grant' : 'grants',
+        lessonNoun: completedLessons === 1 ? 'lesson' : 'lessons',
+      }),
     exportFailed: 'Export failed',
     allMembersBack: '← all members',
     joined: 'Joined',
@@ -662,6 +676,8 @@ export const en: Messages = {
     billingHeading: 'Payments',
     billingIntro: 'Manage your subscription, payment methods and invoices.',
     managePayments: 'Manage payments',
+    preferencesHeading: 'Appearance and language',
+    preferencesIntro: 'Choose how member pages look and which language they use.',
   },
   resetPassword: {
     title: 'Set a new password',
@@ -673,6 +689,7 @@ export const en: Messages = {
     submitPending: 'saving…',
     mismatch: 'Passwords do not match.',
     tooShort: ({ min }) => format('Password must be at least {min} characters.', { min }),
+    missingTokenTitle: 'This password link is invalid',
     missingToken: 'The reset token is missing from the link. Request a new one from your account page.',
     successTitle: 'Password set',
     successBody: 'You can now sign in with your new password.',
@@ -693,6 +710,7 @@ export const en: Messages = {
   },
   checkout: {
     loading: 'Loading checkout…',
+    checkoutEyebrow: 'checkout',
     eyebrow: ({ tenant }) => format('checkout · {tenant}', { tenant }),
     unavailableTitle: 'This product is not available',
     unavailableBody: 'The checkout link may be old, or the product may still be a draft.',
@@ -713,6 +731,7 @@ export const en: Messages = {
     successEyebrow: 'payment received',
     successTitle: 'Check your email',
     successBody: 'Access will be granted after Stripe confirms the payment. We will send you a magic link by email.',
+    goToLogin: 'Go to sign in',
     cancelledEyebrow: 'payment cancelled',
     cancelledTitle: 'The payment was not completed',
     cancelledBody: 'You were not charged. You can safely try again.',

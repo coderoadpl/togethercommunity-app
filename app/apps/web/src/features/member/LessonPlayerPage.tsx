@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Box,
-  Breadcrumbs,
   Button,
   Chip,
-  Container,
   Link,
   Paper,
   Skeleton,
@@ -17,15 +15,15 @@ import { useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '@core/client/index.js';
-import type { LessonBlock } from '@core/domain/index.js';
+import type { CourseStructureWithAccess, LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
+import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
+import { formatPrice } from '../../lib/format.js';
 import {
-  CardTitle,
-  EmptyStateContent,
+  DataValue,
   Eyebrow,
-  LedgerHeader,
   LessonFooterBar,
   LessonHtmlContent,
   LessonMediaFrame,
@@ -35,6 +33,7 @@ import {
 import { CurriculumCard } from './CourseRail.js';
 import { DiscussionSection } from './DiscussionSection.js';
 import { CodeIcon, LinkIcon, LockedState } from './lesson-icons.js';
+import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
 import { CompletionFull } from './tree-icons.js';
 
@@ -188,48 +187,66 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
 
 const LockedView = ({
   courseId,
+  lessonName,
+  courseName,
+  structure,
   unlockProductId,
 }: {
   courseId: string;
+  lessonName?: string | undefined;
+  courseName?: string | undefined;
+  structure?: CourseStructureWithAccess | undefined;
   unlockProductId?: string;
 }) => {
   const t = useTranslations();
+  const { language } = useLanguage();
+  const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
+  const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
   return (
-    <Container sx={{ maxWidth: '52rem', py: 6 }}>
-      <Paper elevation={1} sx={{ p: '2.5rem' }}>
-        <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'center' }}>
-          <LockedState />
-          <CardTitle variant="h1">{t.lesson.contentLocked}</CardTitle>
-          <Typography variant="body1">{t.lesson.noAccessYet}</Typography>
-          <Stack
-            direction="row"
-            useFlexGap
-            sx={{ columnGap: '1rem', rowGap: '0.75rem', mt: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}
-          >
-            {unlockProductId !== undefined && (
-              <Button
-                component="a"
-                href={`/checkout/${unlockProductId}`}
-                variant="contained"
-                data-testid="unlock-lesson-cta"
-              >
-                {t.courseTree.unlockAccess}
-              </Button>
-            )}
+    <MemberSurface
+      title={lessonName ?? t.lesson.contentLocked}
+      eyebrow={t.lesson.eyebrow}
+      width="wide"
+      {...(courseName === undefined
+        ? {}
+        : {
+            breadcrumbs: [
+              { label: courseName, href: `/my/courses/${courseId}` },
+              { label: lessonName ?? t.lesson.contentLocked },
+            ],
+          })}
+      {...(structure === undefined
+        ? {}
+        : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
+    >
+      <SectionCard
+        title={product?.title ?? t.lesson.contentLocked}
+        description={t.lesson.noAccessYet}
+        actions={
+          unlockProductId === undefined ? undefined : (
             <Button
               component="a"
-              href={`/my/courses/${courseId}`}
-              variant={unlockProductId === undefined ? 'contained' : 'outlined'}
+              href={`/checkout/${unlockProductId}`}
+              variant="contained"
+              data-testid="unlock-lesson-cta"
             >
-              {t.lesson.backToCourse}
+              {t.courseTree.unlockAccess}
             </Button>
-            <Button component="a" href="/my" variant="outlined">
-              {t.lesson.browseCourses}
-            </Button>
-          </Stack>
+          )
+        }
+        data-testid="locked-lesson-upsell"
+      >
+        <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'flex-start' }}>
+          <LockedState />
+          {product !== undefined && (
+            <Typography variant="h3" component="p" data-testid="locked-product-price">
+              <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
+            </Typography>
+          )}
+          <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
         </Stack>
-      </Paper>
-    </Container>
+      </SectionCard>
+    </MemberSurface>
   );
 };
 
@@ -307,11 +324,12 @@ export const LessonPlayerPage = ({
 
   if (lesson.isPending) {
     return (
-      <Container sx={{ maxWidth: '52rem', py: 6 }}>
-        <Typography variant="h2" component="p">
-          {t.lesson.loading}
-        </Typography>
-      </Container>
+      <MemberSurface
+        title={t.lesson.loading}
+        eyebrow={t.lesson.eyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.lesson.loading }}
+      />
     );
   }
 
@@ -325,6 +343,9 @@ export const LessonPlayerPage = ({
       return (
         <LockedView
           courseId={courseId}
+          lessonName={lockedRow?.name}
+          courseName={structure.data?.structure.name}
+          structure={structure.data?.structure}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -332,17 +353,17 @@ export const LessonPlayerPage = ({
       );
     }
     return (
-      <Container sx={{ maxWidth: '52rem', py: 6 }}>
-        <Paper elevation={1} sx={{ p: '1.5rem' }}>
-          <CardTitle variant="h1">{t.lesson.unavailable}</CardTitle>
-          <Typography variant="body1" sx={{ mt: '1rem' }}>
-            {localizeError(lesson.error, t)}
-          </Typography>
-          <Box sx={{ mt: '1rem' }}>
-            <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
-          </Box>
-        </Paper>
-      </Container>
+      <MemberSurface
+        title={t.lesson.unavailable}
+        eyebrow={t.lesson.eyebrow}
+        width="wide"
+        state={{
+          kind: 'not-found',
+          title: t.lesson.unavailable,
+          body: localizeError(lesson.error, t),
+          action: <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>,
+        }}
+      />
     );
   }
 
@@ -362,134 +383,111 @@ export const LessonPlayerPage = ({
   };
 
   return (
-    <Container disableGutters sx={{ maxWidth: '72rem !important', px: '1.25rem', pb: '6rem' }}>
-      <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
-        {location !== null && (
-          <Breadcrumbs aria-label="breadcrumb" sx={{ mb: '0.75rem' }}>
-            <Link href={`/my/courses/${courseId}`}>{location.courseName}</Link>
-            {location.module !== null && <Typography variant="body2">{location.module.name}</Typography>}
-            {location.chapter !== null && <Typography variant="body2">{location.chapter.name}</Typography>}
-            <Typography variant="body2" color="text.primary">
-              {lesson.data.lesson.name}
-            </Typography>
-          </Breadcrumbs>
-        )}
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">{lesson.data.lesson.name}</Typography>
-          <Box sx={{ flex: 1 }} />
-          <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
-        </Stack>
-        <Eyebrow variant="overline" component="p">
-          {t.lesson.eyebrow}
-        </Eyebrow>
-      </LedgerHeader>
-
-      <Box
-        sx={{
-          mt: '2.5rem',
-          display: 'grid',
-          gap: '1.5rem',
-          alignItems: 'start',
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 24rem' },
-        }}
-      >
-        <Box sx={{ minWidth: 0 }}>
-          <Stack component="section" useFlexGap spacing="1.5rem">
-            {blocks.length === 0 ? (
-              <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid="lesson-empty-state">
-                <EmptyStateContent useFlexGap sx={{ rowGap: '0.75rem' }}>
-                  <EmptyLessonIcon />
-                  <CardTitle variant="h2">{t.lesson.noContentTitle}</CardTitle>
-                  <Typography variant="body1">{t.lesson.noContent}</Typography>
-                </EmptyStateContent>
-              </Paper>
-            ) : (
-              blocks.map((block, index) => (
-                <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
-                  <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-                    {blockLabel(t, block.type)}
-                  </Eyebrow>
-                  <BlockBody block={block} />
-                </Paper>
-              ))
-            )}
-          </Stack>
-
-          <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          useFlexGap
-          sx={{ alignItems: { sm: 'center' }, columnGap: '1rem', rowGap: '1rem' }}
-        >
-          {completed ? (
-            <Button
-              variant="outlined"
-              data-testid="unmark-complete"
-              onClick={() => uncomplete.mutate({ lessonId })}
-              disabled={uncomplete.isPending}
-              startIcon={<CompletionFull />}
-              title={t.lesson.unmarkCompletedHint}
-            >
-              {t.lesson.unmarkCompleted}
-            </Button>
+    <MemberSurface
+      title={lesson.data.lesson.name}
+      eyebrow={t.lesson.eyebrow}
+      width="wide"
+      {...(location === null
+        ? {}
+        : {
+            breadcrumbs: [
+              { label: location.courseName, href: `/my/courses/${courseId}` },
+              ...(location.module === null ? [] : [{ label: location.module.name }]),
+              ...(location.chapter === null ? [] : [{ label: location.chapter.name }]),
+              { label: lesson.data.lesson.name },
+            ],
+          })}
+      {...(structure.data === undefined
+        ? {}
+        : {
+            rail: (
+              <CurriculumCard
+                courseId={courseId}
+                structure={structure.data.structure}
+                currentLessonId={lessonId}
+              />
+            ),
+          })}
+    >
+      <Box sx={{ minWidth: 0 }}>
+        <Stack component="section" useFlexGap spacing="1.5rem">
+          {blocks.length === 0 ? (
+            <StatusView
+              state={{
+                kind: 'empty',
+                icon: <EmptyLessonIcon />,
+                title: t.lesson.noContentTitle,
+                body: t.lesson.noContent,
+              }}
+              data-testid="lesson-empty-state"
+            />
           ) : (
-            <Button
-              variant="outlined"
-              data-testid="mark-complete"
-              onClick={() => complete.mutate({ lessonId })}
-              disabled={complete.isPending}
-            >
-              {t.lesson.markCompleted}
-            </Button>
+            blocks.map((block, index) => (
+              <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
+                <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+                  {blockLabel(t, block.type)}
+                </Eyebrow>
+                <BlockBody block={block} />
+              </Paper>
+            ))
           )}
-          {nextHref !== null && (
-            <Button
-              variant="contained"
-              data-testid="complete-continue"
-              onClick={continueToNext}
-              disabled={complete.isPending}
-            >
-              {t.lesson.completeContinue}
-            </Button>
-          )}
-          <Box sx={{ flex: 1 }} />
-          {next.isSuccess &&
-            (nextLesson === null ? (
-              structure.data?.structure.completionStatus === 'fully-completed' ? (
-                <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
-              ) : (
-                <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
-              )
+        </Stack>
+
+        <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            useFlexGap
+            sx={{ alignItems: { sm: 'center' }, columnGap: '1rem', rowGap: '1rem' }}
+          >
+            {completed ? (
+              <Button
+                variant="outlined"
+                data-testid="unmark-complete"
+                onClick={() => uncomplete.mutate({ lessonId })}
+                disabled={uncomplete.isPending}
+                startIcon={<CompletionFull />}
+                title={t.lesson.unmarkCompletedHint}
+              >
+                {t.lesson.unmarkCompleted}
+              </Button>
             ) : (
-              <Link href={nextHref ?? ''} data-testid="next-lesson">
-                {t.lesson.next({ name: nextLesson.name })}
-              </Link>
-            ))}
+              <Button
+                variant="outlined"
+                data-testid="mark-complete"
+                onClick={() => complete.mutate({ lessonId })}
+                disabled={complete.isPending}
+              >
+                {t.lesson.markCompleted}
+              </Button>
+            )}
+            {nextHref !== null && (
+              <Button
+                variant="contained"
+                data-testid="complete-continue"
+                onClick={continueToNext}
+                disabled={complete.isPending}
+              >
+                {t.lesson.completeContinue}
+              </Button>
+            )}
+            <Box sx={{ flex: 1 }} />
+            {next.isSuccess &&
+              (nextLesson === null ? (
+                structure.data?.structure.completionStatus === 'fully-completed' ? (
+                  <Chip data-testid="course-completed" label={t.lesson.courseCompleted} />
+                ) : (
+                  <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
+                )
+              ) : (
+                <Link href={nextHref ?? ''} data-testid="next-lesson">
+                  {t.lesson.next({ name: nextLesson.name })}
+                </Link>
+              ))}
           </Stack>
         </LessonFooterBar>
 
         <DiscussionSection lessonId={lessonId} />
-        </Box>
-
-        <Stack
-          useFlexGap
-          sx={{
-            rowGap: '1.5rem',
-            position: { md: 'sticky' },
-            top: { md: '1.5rem' },
-            maxHeight: { md: 'calc(100vh - 3rem)' },
-            overflowY: { md: 'auto' },
-          }}
-        >
-          {structure.data !== undefined && (
-            <CurriculumCard
-              courseId={courseId}
-              structure={structure.data.structure}
-              currentLessonId={lessonId}
-            />
-          )}
-        </Stack>
       </Box>
-    </Container>
+    </MemberSurface>
   );
 };

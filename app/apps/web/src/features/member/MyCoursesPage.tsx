@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Alert, Box, Chip, Container, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Chip, Link, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -7,6 +7,7 @@ import { ApiError } from '@core/client/index.js';
 import type { CompletionStatus, Course } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import {
   CardTitle,
@@ -14,12 +15,8 @@ import {
   CourseCardCoverFallback,
   CourseCardInitials,
   CourseCardRoot,
-  EmptyStateContent,
-  Eyebrow,
-  LedgerHeader,
 } from '../../theme.js';
-import { NotificationBell } from '../../NotificationBell.js';
-import { MemberAccountMenu } from './MemberAccountMenu.js';
+import { MemberSurface } from './MemberSurface.js';
 import { EmptyLibraryIcon } from './overview-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -109,11 +106,12 @@ export const MyCoursesPage = () => {
 
   if (courses.isPending) {
     return (
-      <Container sx={{ maxWidth: '52rem', py: 6 }}>
-        <Typography variant="h2" component="p">
-          {t.student.loadingCourses}
-        </Typography>
-      </Container>
+      <MemberSurface
+        title={t.student.myCourses}
+        eyebrow={t.student.courseLibrary}
+        width="wide"
+        state={{ kind: 'loading', label: t.student.loadingCourses }}
+      />
     );
   }
 
@@ -121,51 +119,44 @@ export const MyCoursesPage = () => {
 
   if (courses.isError) {
     return (
-      <Container sx={{ maxWidth: '52rem', py: 6 }}>
-        <Alert>
-          {isForbidden(courses.error) ? t.student.staffNoMember : localizeError(courses.error, t)}
-        </Alert>
-      </Container>
+      <MemberSurface
+        title={t.student.myCourses}
+        eyebrow={t.student.courseLibrary}
+        width="wide"
+        state={{
+          kind: 'error',
+          message: isForbidden(courses.error) ? t.student.staffNoMember : localizeError(courses.error, t),
+        }}
+      />
     );
   }
 
   return (
-    <Container disableGutters sx={{ maxWidth: '52rem !important', px: '1.25rem', pb: '6rem' }}>
-      <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">{t.student.myCourses}</Typography>
-          <Box sx={{ flex: 1 }} />
-          <Link href="/my/products">{t.student.myProducts}</Link>
-          <Link href="/">{t.common.home}</Link>
-          <NotificationBell />
-          <MemberAccountMenu />
-        </Stack>
-        <Eyebrow variant="overline" component="p">
-          {t.student.courseLibrary}
-        </Eyebrow>
-      </LedgerHeader>
-
-      <Box component="section" sx={{ mt: '2.5rem' }}>
+    <MemberSurface title={t.student.myCourses} eyebrow={t.student.courseLibrary} width="wide">
         {courses.data.courses.length === 0 ? (
-          <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid="my-courses-empty-state">
-            <EmptyStateContent useFlexGap sx={{ rowGap: '0.75rem' }}>
-              <EmptyLibraryIcon />
-              <CardTitle variant="h1">{t.student.noCourses}</CardTitle>
-              <Typography variant="body1">{t.student.coursesWillAppear}</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: '0.25rem' }}>
-                {t.student.coursesEmptyRenewHint}
-              </Typography>
-              <Link href="/my/products" sx={{ mt: '0.25rem' }}>
-                {t.student.myProducts}
-              </Link>
-            </EmptyStateContent>
-          </Paper>
+          <StatusView
+            state={{
+              kind: 'empty',
+              icon: <EmptyLibraryIcon />,
+              title: t.student.noCourses,
+              body: (
+                <Stack useFlexGap spacing="0.5rem">
+                  <Typography variant="body1">{t.student.coursesWillAppear}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {t.student.coursesEmptyRenewHint}
+                  </Typography>
+                </Stack>
+              ),
+              action: <Link href="/my/products">{t.student.myProducts}</Link>,
+            }}
+            data-testid="my-courses-empty-state"
+          />
         ) : (
           <Box
             sx={{
               display: 'grid',
               gap: '1rem',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
             }}
           >
             {courses.data.courses.map((course) => (
@@ -173,7 +164,6 @@ export const MyCoursesPage = () => {
             ))}
           </Box>
         )}
-      </Box>
-    </Container>
+    </MemberSurface>
   );
 };

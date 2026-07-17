@@ -74,6 +74,7 @@ export interface Messages {
     magicLinkIdle: string;
     magicLinkPending: string;
     magicLinkRequested: string;
+    magicLinkRequestedBody: (params: { email: string }) => string;
     magicLinkFetching: string;
     openMagicLink: string;
     demoAccount: string;
@@ -92,6 +93,7 @@ export interface Messages {
   tenant: {
     choose: string;
     eachOwnDomain: string;
+    welcome: string;
     create: string;
     nameLabel: string;
     slugLabel: string;
@@ -417,6 +419,10 @@ export interface Messages {
     colActions: string;
     manage: string;
     remove: string;
+    removing: string;
+    removeConfirmTitle: string;
+    removeConfirmIntro: (params: { email: string }) => string;
+    removeImpact: (params: { grants: number; completedLessons: number }) => string;
     exportFailed: string;
     allMembersBack: string;
     joined: string;
@@ -608,6 +614,8 @@ export interface Messages {
     billingHeading: string;
     billingIntro: string;
     managePayments: string;
+    preferencesHeading: string;
+    preferencesIntro: string;
   };
   resetPassword: {
     title: string;
@@ -619,6 +627,7 @@ export interface Messages {
     submitPending: string;
     mismatch: string;
     tooShort: (params: { min: number }) => string;
+    missingTokenTitle: string;
     missingToken: string;
     successTitle: string;
     successBody: string;
@@ -638,6 +647,7 @@ export interface Messages {
   };
   checkout: {
     loading: string;
+    checkoutEyebrow: string;
     eyebrow: (params: { tenant: string }) => string;
     unavailableTitle: string;
     unavailableBody: string;
@@ -658,6 +668,7 @@ export interface Messages {
     successEyebrow: string;
     successTitle: string;
     successBody: string;
+    goToLogin: string;
     cancelledEyebrow: string;
     cancelledTitle: string;
     cancelledBody: string;

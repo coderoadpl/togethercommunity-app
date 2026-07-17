@@ -80,6 +80,8 @@ export const pl: Messages = {
     magicLinkIdle: 'Wyślij mi magiczny link',
     magicLinkPending: 'wysyłanie magicznego linku…',
     magicLinkRequested: 'Magiczny link został wysłany.',
+    magicLinkRequestedBody: ({ email }) =>
+      format('Sprawdź skrzynkę {email}. Link zaloguje Cię bez wpisywania hasła.', { email }),
     magicLinkFetching: 'pobieranie deweloperskiego magicznego linku…',
     openMagicLink: 'Otwórz magiczny link',
     demoAccount: 'konto demo:',
@@ -99,9 +101,10 @@ export const pl: Messages = {
   tenant: {
     choose: 'Wybierz przestrzeń',
     eachOwnDomain: 'każda przestrzeń ma własną domenę',
+    welcome: 'Witaj w Together. Otwórz istniejącą przestrzeń albo utwórz nową.',
     create: 'Utwórz przestrzeń',
     nameLabel: 'nazwa',
-    slugLabel: 'slug',
+    slugLabel: 'adres przestrzeni',
     enterNameToPreview: 'Wpisz nazwę, aby zobaczyć podgląd adresu przestrzeni.',
     creating: 'tworzenie przestrzeni…',
     createButton: 'utwórz przestrzeń',
@@ -467,6 +470,22 @@ export const pl: Messages = {
     colActions: 'Akcje',
     manage: 'Zarządzaj',
     remove: 'Usuń',
+    removing: 'Usuwanie…',
+    removeConfirmTitle: 'Usunąć uczestnika?',
+    removeConfirmIntro: ({ email }) =>
+      format('Zaraz trwale usuniesz uczestnika {email}. Tej operacji nie można cofnąć.', { email }),
+    removeImpact: ({ grants, completedLessons }) =>
+      format('Skutki: {grants} {grantNoun} oraz postęp obejmujący {completedLessons} {lessonNoun}.', {
+        grants,
+        completedLessons,
+        grantNoun: plural(grants, 'przyznany dostęp', 'przyznane dostępy', 'przyznanych dostępów'),
+        lessonNoun: plural(
+          completedLessons,
+          'ukończoną lekcję',
+          'ukończone lekcje',
+          'ukończonych lekcji',
+        ),
+      }),
     exportFailed: 'Eksport nie powiódł się',
     allMembersBack: '← wszyscy uczestnicy',
     joined: 'Dołączenie',
@@ -676,6 +695,8 @@ export const pl: Messages = {
     billingHeading: 'Płatności',
     billingIntro: 'Zarządzaj subskrypcją, metodami płatności i fakturami.',
     managePayments: 'Zarządzaj płatnościami',
+    preferencesHeading: 'Wygląd i język',
+    preferencesIntro: 'Wybierz wygląd stron uczestnika i język interfejsu.',
   },
   resetPassword: {
     title: 'Ustaw nowe hasło',
@@ -687,6 +708,7 @@ export const pl: Messages = {
     submitPending: 'zapisywanie…',
     mismatch: 'Hasła nie są takie same.',
     tooShort: ({ min }) => format('Hasło musi mieć co najmniej {min} znaków.', { min }),
+    missingTokenTitle: 'Link do ustawienia hasła jest nieprawidłowy',
     missingToken: 'Brakuje tokenu resetu w adresie. Poproś o nowy link na stronie konta.',
     successTitle: 'Hasło zostało ustawione',
     successBody: 'Możesz teraz zalogować się nowym hasłem.',
@@ -707,6 +729,7 @@ export const pl: Messages = {
   },
   checkout: {
     loading: 'Ładowanie płatności…',
+    checkoutEyebrow: 'płatność',
     eyebrow: ({ tenant }) => format('płatność · {tenant}', { tenant }),
     unavailableTitle: 'Ten produkt jest niedostępny',
     unavailableBody: 'Link do płatności może być nieaktualny lub produkt jest wciąż wersją roboczą.',
@@ -727,6 +750,7 @@ export const pl: Messages = {
     successEyebrow: 'płatność przyjęta',
     successTitle: 'Sprawdź swoją skrzynkę e-mail',
     successBody: 'Dostęp zostanie nadany po potwierdzeniu płatności przez Stripe. Wyślemy Ci wiadomość z magicznym linkiem.',
+    goToLogin: 'Przejdź do logowania',
     cancelledEyebrow: 'płatność anulowana',
     cancelledTitle: 'Płatność nie została ukończona',
     cancelledBody: 'Nie pobraliśmy opłaty. Możesz bezpiecznie spróbować ponownie.',

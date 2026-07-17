@@ -428,6 +428,6 @@ describe('CourseStructurePage', () => {
     );
     await renderPage(<CourseStructurePage courseId="course-9" />);
 
-    expect(await screen.findByRole('heading', { name: pl.courseTree.courseNotFound })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: pl.courseTree.courseNotFound })).toBeInTheDocument();
   });
 });

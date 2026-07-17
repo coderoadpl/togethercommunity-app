@@ -3,11 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { StatusView } from '../../components/layout/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { DashboardPanel } from './DashboardPanel.js';
 import { CourseDetail } from './courses/CourseDetail.js';
 import { CoursesListPanel } from './courses/CoursesPanel.js';
-import { MutationError } from './courses/feedback.js';
 import { LessonsSection } from './courses/LessonsSection.js';
 import { IntegrationsPanel } from './integrations/IntegrationsPanel.js';
 import { MemberDetail } from './members/MemberDetail.js';
@@ -31,8 +31,8 @@ export const PanelCourseDetailRoute = () => {
 
   const back = () => void navigate({ to: '/panel/courses' });
 
-  if (courses.isPending) return <Typography variant="body1">{t.courses.loadingCourse}</Typography>;
-  if (courses.isError) return <MutationError error={courses.error} />;
+  if (courses.isPending) return <StatusView state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
+  if (courses.isError) return <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
 
   const course = courses.data.courses.find((entry) => entry.id === courseId);
   if (!course) return <Navigate to="/panel/courses" />;
@@ -53,8 +53,8 @@ export const PanelMemberDetailRoute = () => {
 
   const back = () => void navigate({ to: '/panel/members' });
 
-  if (members.isPending) return <Typography variant="body1">{t.members.loading}</Typography>;
-  if (members.isError) return <MutationError error={members.error} />;
+  if (members.isPending) return <StatusView state={{ kind: 'loading', label: t.members.loading }} />;
+  if (members.isError) return <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />;
 
   const member = members.data.members.find((entry) => entry.id === memberId);
   if (!member) return <Navigate to="/panel/members" />;

@@ -1,20 +1,20 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
-  Box,
   Button,
   FormControl,
   FormLabel,
   Link,
   OutlinedInput,
-  Paper,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
+import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { FinePrint, Wordmark } from '../../theme.js';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -49,19 +49,22 @@ export const ResetPasswordPage = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-      <Paper
-        variant="outlined"
-        sx={{ width: '100%', maxWidth: '23rem', px: '1.8rem', pt: '2rem', pb: '1.6rem' }}
-      >
-        <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          Together
-        </Wordmark>
-        <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          {t.resetPassword.eyebrow({ host: window.location.hostname })}
-        </Eyebrow>
-
-        {resetPassword.isSuccess ? (
+    <FocusCard eyebrow={t.resetPassword.eyebrow({ host: window.location.hostname })}>
+        {!token ? (
+          <StatusView
+            state={{
+              kind: 'not-found',
+              title: t.resetPassword.missingTokenTitle,
+              body: t.resetPassword.missingToken,
+              action: (
+                <Button component="a" href="/login" variant="contained">
+                  {t.resetPassword.goToLogin}
+                </Button>
+              ),
+            }}
+            data-testid="reset-missing-token"
+          />
+        ) : resetPassword.isSuccess ? (
           <Stack useFlexGap spacing="0.8rem" data-testid="reset-success">
             <Wordmark variant="h2" component="p">
               {t.resetPassword.successTitle}
@@ -128,7 +131,6 @@ export const ResetPasswordPage = () => {
             </FinePrint>
           </>
         )}
-      </Paper>
-    </Box>
+    </FocusCard>
   );
 };

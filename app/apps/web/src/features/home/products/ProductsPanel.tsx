@@ -29,6 +29,7 @@ import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -302,11 +303,11 @@ export const ProductsPanel = () => {
           />
         </Stack>
         {products.isPending ? (
-          <Typography variant="body1">{t.products.loading}</Typography>
+          <StatusView state={{ kind: 'loading', label: t.products.loading }} />
         ) : products.isError ? (
-          <Alert>{localizeError(products.error, t)}</Alert>
+          <StatusView state={{ kind: 'error', message: localizeError(products.error, t) }} />
         ) : products.data.products.length === 0 ? (
-          <Typography variant="body1">{t.products.empty}</Typography>
+          <StatusView state={{ kind: 'empty', title: t.products.empty }} />
         ) : visibleProducts.length === 0 ? (
           <Typography variant="body1">{t.products.noMatches}</Typography>
         ) : (

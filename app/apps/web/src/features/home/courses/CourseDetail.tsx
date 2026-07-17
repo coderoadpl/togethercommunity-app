@@ -2,10 +2,6 @@ import { useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   FormLabel,
@@ -25,7 +21,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Chapter, Course, CourseLesson, CourseModule } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { useTranslations, type Messages } from '../../../i18n/index.js';
+import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { CardTitle, Eyebrow, TreeChapterTitle, TreeModuleTitle } from '../../../theme.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { MutationError, newId } from './feedback.js';
@@ -443,10 +440,11 @@ const ModuleCard = ({
       {updateModule.isError ? <MutationError error={updateModule.error} /> : null}
 
       {chapterToRemove ? (
-        <Dialog open onClose={() => setChapterToRemove(null)} aria-labelledby="chapter-delete-title">
-          <DialogTitle id="chapter-delete-title">{t.courses.removeChapterConfirmTitle}</DialogTitle>
-          <DialogContent>
-            <Stack useFlexGap spacing="0.6rem" sx={{ pt: '0.25rem' }}>
+        <ConfirmDialog
+          open
+          title={t.courses.removeChapterConfirmTitle}
+          body={
+            <>
               <Typography variant="body1">
                 {t.courses.removeChapterConfirmIntro({ name: chapterToRemove.name })}
               </Typography>
@@ -460,26 +458,18 @@ const ModuleCard = ({
                   {t.courses.removeChapterSharedWarning({ count: module.courseIds.length - 1 })}
                 </Typography>
               ) : null}
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button variant="text" onClick={() => setChapterToRemove(null)} disabled={pending}>
-              {t.common.cancel}
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              data-testid="chapter-delete-confirm"
-              disabled={pending}
-              onClick={() => {
-                removeChapter(chapterToRemove.id);
-                setChapterToRemove(null);
-              }}
-            >
-              {t.courses.removeChapterConfirm}
-            </Button>
-          </DialogActions>
-        </Dialog>
+            </>
+          }
+          confirmLabel={t.courses.removeChapterConfirm}
+          cancelLabel={t.common.cancel}
+          pending={pending}
+          onClose={() => setChapterToRemove(null)}
+          onConfirm={() => {
+            removeChapter(chapterToRemove.id);
+            setChapterToRemove(null);
+          }}
+          confirmTestId="chapter-delete-confirm"
+        />
       ) : null}
     </Paper>
   );
@@ -617,10 +607,10 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const detachModule = useMutation({ ...actions.detachModule, onSuccess: invalidateTree });
 
   if (modules.isPending || lessons.isPending) {
-    return <Typography variant="body1">{t.courses.loadingCourse}</Typography>;
+    return <StatusView state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
-  if (modules.isError) return <MutationError error={modules.error} />;
-  if (lessons.isError) return <MutationError error={lessons.error} />;
+  if (modules.isError) return <StatusView state={{ kind: 'error', message: localizeError(modules.error, t) }} />;
+  if (lessons.isError) return <StatusView state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
 
   const attached = orderAttachedModules(
     course,
@@ -656,7 +646,7 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
         {reorderModules.isError ? <MutationError error={reorderModules.error} /> : null}
         {detachModule.isError ? <MutationError error={detachModule.error} /> : null}
         {attached.length === 0 ? (
-          <Typography variant="body1">{t.courses.noModulesInCourse}</Typography>
+          <StatusView state={{ kind: 'empty', title: t.courses.noModulesInCourse }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {attached.map((module, index) => (
@@ -677,10 +667,11 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
       </Box>
 
       {moduleToDetach ? (
-        <Dialog open onClose={() => setModuleToDetach(null)} aria-labelledby="module-detach-title">
-          <DialogTitle id="module-detach-title">{t.courses.detachModuleConfirmTitle}</DialogTitle>
-          <DialogContent>
-            <Stack useFlexGap spacing="0.6rem" sx={{ pt: '0.25rem' }}>
+        <ConfirmDialog
+          open
+          title={t.courses.detachModuleConfirmTitle}
+          body={
+            <>
               <Typography variant="body1">
                 {t.courses.detachModuleConfirmIntro({ name: moduleToDetach.name })}
               </Typography>
@@ -689,26 +680,18 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
                   {t.courses.detachModuleSharedNote({ count: moduleToDetach.courseIds.length - 1 })}
                 </Typography>
               ) : null}
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button variant="text" onClick={() => setModuleToDetach(null)} disabled={detachModule.isPending}>
-              {t.common.cancel}
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              data-testid="module-detach-confirm"
-              disabled={detachModule.isPending}
-              onClick={() => {
-                detachModule.mutate({ courseId: course.id, moduleId: moduleToDetach.id });
-                setModuleToDetach(null);
-              }}
-            >
-              {t.courses.detachModuleConfirm}
-            </Button>
-          </DialogActions>
-        </Dialog>
+            </>
+          }
+          confirmLabel={t.courses.detachModuleConfirm}
+          cancelLabel={t.common.cancel}
+          pending={detachModule.isPending}
+          onClose={() => setModuleToDetach(null)}
+          onConfirm={() => {
+            detachModule.mutate({ courseId: course.id, moduleId: moduleToDetach.id });
+            setModuleToDetach(null);
+          }}
+          confirmTestId="module-detach-confirm"
+        />
       ) : null}
     </Stack>
   );

@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { useLanguage, useTranslations } from '../../i18n/index.js';
+import { StatusView } from '../../components/layout/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatDate } from '../../lib/format.js';
 import { EntryDate, StatTileButton, StatTileIcon, StatTileLabel, StatTileValue } from '../../theme.js';
-import { MutationError } from './courses/feedback.js';
 import {
   COURSES_ICON_PATH,
   MEMBERS_ICON_PATH,
@@ -61,11 +61,11 @@ export const DashboardPanel = () => {
   const members = useQuery(actions.members);
 
   if (products.isPending || courses.isPending || members.isPending) {
-    return <Typography variant="body1">{t.dashboard.loading}</Typography>;
+    return <StatusView state={{ kind: 'loading', label: t.dashboard.loading }} />;
   }
-  if (products.isError) return <MutationError error={products.error} />;
-  if (courses.isError) return <MutationError error={courses.error} />;
-  if (members.isError) return <MutationError error={members.error} />;
+  if (products.isError) return <StatusView state={{ kind: 'error', message: localizeError(products.error, t) }} />;
+  if (courses.isError) return <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
+  if (members.isError) return <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />;
 
   const published = products.data.products.filter((product) => product.published).length;
   const draft = products.data.products.length - published;
@@ -137,9 +137,7 @@ export const DashboardPanel = () => {
           </Button>
         </Stack>
         {recentMembers.length === 0 ? (
-          <Typography variant="body1" sx={{ mt: '0.75rem' }}>
-            {t.members.empty}
-          </Typography>
+          <StatusView state={{ kind: 'empty', title: t.members.empty }} surface={false} />
         ) : (
           <List disablePadding>
             {recentMembers.map((member) => (

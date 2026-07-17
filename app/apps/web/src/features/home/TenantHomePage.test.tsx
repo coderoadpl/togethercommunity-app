@@ -85,5 +85,7 @@ describe('TenantHomePage dispatcher', () => {
     );
     await renderHome();
     expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
+    expect(screen.getByText(pl.tenant.welcome)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.tenant.slugLabel)).toBeInTheDocument();
   });
 });

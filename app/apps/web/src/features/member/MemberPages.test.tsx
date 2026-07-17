@@ -50,7 +50,7 @@ describe('member pages', () => {
     await renderPage(MyProductsPage, '/my');
 
     expect(await screen.findByRole('heading', { name: pl.student.myProducts })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Intro Course/ })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /Intro Course/ })).toHaveAttribute(
       'href',
       '/my/course/course-1',
     );

@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Badge, Box, Button, Divider, IconButton, Menu, Tooltip } from '@mui/material';
+import { Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, Tooltip, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -27,7 +27,7 @@ const BellIcon = () => (
   </NotificationBellIcon>
 );
 
-export const NotificationBell = () => {
+export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const navigate = useNavigate();
@@ -37,18 +37,20 @@ export const NotificationBell = () => {
   const open = Boolean(anchorEl);
 
   useEffect(() => {
+    if (!live) return;
     const stream = connectNotificationsStream({
       onEvent: () => void queryClient.invalidateQueries(actions.notificationsInvalidates()),
       onFallback: () => setPolling(true),
     });
     return () => stream.close();
-  }, [queryClient]);
+  }, [live, queryClient]);
 
   const unread = useQuery({
     ...actions.unreadNotifications,
+    enabled: live,
     refetchInterval: polling ? POLL_INTERVAL_MS : false,
   });
-  const list = useQuery({ ...actions.notifications, enabled: open });
+  const list = useQuery({ ...actions.notifications, enabled: live && open });
 
   const markRead = useMutation({
     ...actions.markNotificationRead,
@@ -76,9 +78,8 @@ export const NotificationBell = () => {
   const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];
 
-  return (
-    <>
-      <Tooltip title={t.notifications.bell}>
+  const trigger = tabLabel === undefined ? (
+    <Tooltip title={t.notifications.bell}>
         <IconButton
           color="inherit"
           size="small"
@@ -92,7 +93,26 @@ export const NotificationBell = () => {
             <BellIcon />
           </Badge>
         </IconButton>
-      </Tooltip>
+    </Tooltip>
+  ) : (
+    <ButtonBase
+      data-testid="notification-tab"
+      aria-label={t.notifications.bell}
+      aria-haspopup="true"
+      aria-expanded={open ? true : undefined}
+      onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+      sx={{ minWidth: 0, py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
+    >
+      <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
+        <BellIcon />
+      </Badge>
+      <Typography variant="caption" component="span">{tabLabel}</Typography>
+    </ButtonBase>
+  );
+
+  return (
+    <>
+      {trigger}
       <Menu
         anchorEl={anchorEl}
         open={open}

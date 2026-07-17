@@ -1,23 +1,22 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
-  Box,
   Button,
-  Container,
   FormControl,
   FormLabel,
   Link,
   OutlinedInput,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
+import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CardTitle, DataValue, Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { CardTitle, DataValue, FinePrint } from '../../theme.js';
 
 export const CheckoutPage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
@@ -59,50 +58,45 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (checkoutStatus === 'success') {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-        <Paper variant="outlined" sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}>
-          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>Together</Wordmark>
-          <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>{t.checkout.successEyebrow}</Eyebrow>
-          <Stack useFlexGap spacing="1rem">
-            <CardTitle variant="h1">{t.checkout.successTitle}</CardTitle>
-            <Typography variant="body1">{t.checkout.successBody}</Typography>
-          </Stack>
-        </Paper>
-      </Box>
+      <FocusCard eyebrow={t.checkout.successEyebrow}>
+        <Stack useFlexGap spacing="1rem">
+          <CardTitle variant="h1">{t.checkout.successTitle}</CardTitle>
+          <Typography variant="body1">{t.checkout.successBody}</Typography>
+          <Button component="a" href="/login" variant="contained" fullWidth>
+            {t.checkout.goToLogin}
+          </Button>
+        </Stack>
+      </FocusCard>
     );
   }
 
   if (checkoutStatus === 'cancelled') {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-        <Paper variant="outlined" sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}>
-          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>Together</Wordmark>
-          <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>{t.checkout.cancelledEyebrow}</Eyebrow>
-          <Stack useFlexGap spacing="1rem">
-            <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
-            <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
-            <Button variant="contained" color="secondary" onClick={retry}>{t.checkout.retry}</Button>
-          </Stack>
-        </Paper>
-      </Box>
+      <FocusCard eyebrow={t.checkout.cancelledEyebrow}>
+        <Stack useFlexGap spacing="1rem">
+          <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
+          <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
+          <Button variant="contained" color="secondary" onClick={retry}>{t.checkout.retry}</Button>
+        </Stack>
+      </FocusCard>
     );
   }
 
   if (offer.isPending || paymentConfig.isPending) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Typography variant="h2" component="p">
-          {t.checkout.loading}
-        </Typography>
-      </Container>
+      <FocusCard eyebrow={t.checkout.checkoutEyebrow} width="wide">
+        <StatusView state={{ kind: 'loading', label: t.checkout.loading }} />
+      </FocusCard>
     );
   }
 
   if (offer.isError || paymentConfig.isError) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <Alert>{localizeError(offer.error ?? paymentConfig.error, t)}</Alert>
-      </Container>
+      <FocusCard eyebrow={t.checkout.checkoutEyebrow} width="wide">
+        <StatusView
+          state={{ kind: 'error', message: localizeError(offer.error ?? paymentConfig.error, t) }}
+        />
+      </FocusCard>
     );
   }
 
@@ -110,65 +104,49 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (!product) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-        <Paper variant="outlined" sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}>
-          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-            Together
-          </Wordmark>
-          <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>
-            {offer.data.tenant.name}
-          </Eyebrow>
-          <CardTitle variant="h1">{t.checkout.unavailableTitle}</CardTitle>
-          <Typography variant="body1" sx={{ mt: '1rem' }}>
-            {t.checkout.unavailableBody}
-          </Typography>
-        </Paper>
-      </Box>
+      <FocusCard eyebrow={offer.data.tenant.name}>
+        <StatusView
+          state={{
+            kind: 'not-found',
+            title: t.checkout.unavailableTitle,
+            body: t.checkout.unavailableBody,
+            action: (
+              <Button component="a" href="/login" variant="contained">
+                {t.checkout.goToLogin}
+              </Button>
+            ),
+          }}
+        />
+      </FocusCard>
     );
   }
 
   if (purchaseComplete) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-        <Paper variant="outlined" sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}>
-          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-            Together
-          </Wordmark>
-          <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>
-            {t.checkout.paymentSimulatedEyebrow}
-          </Eyebrow>
-          <Stack useFlexGap spacing="1rem">
-            <CardTitle variant="h1">
-              {simulatePurchase.data?.alreadyOwned ? t.checkout.alreadyOwnedTitle : t.checkout.accessGrantedTitle}
-            </CardTitle>
-            {simulatePurchase.data?.alreadyOwned ? (
-              <Typography variant="body1">{t.checkout.alreadyOwnedNote}</Typography>
-            ) : null}
-            <Typography variant="body1">{product.title}</Typography>
-            {magicLinkUrl ? <Link href={magicLinkUrl}>{t.checkout.openCourse}</Link> : null}
-            <FinePrint variant="caption" component="p">
-              {magicLinkUrl ? t.checkout.productionNote : t.checkout.noMagicLinkNote}
-            </FinePrint>
-          </Stack>
-        </Paper>
-      </Box>
+      <FocusCard eyebrow={t.checkout.paymentSimulatedEyebrow}>
+        <Stack useFlexGap spacing="1rem">
+          <CardTitle variant="h1">
+            {simulatePurchase.data?.alreadyOwned ? t.checkout.alreadyOwnedTitle : t.checkout.accessGrantedTitle}
+          </CardTitle>
+          {simulatePurchase.data?.alreadyOwned ? (
+            <Typography variant="body1">{t.checkout.alreadyOwnedNote}</Typography>
+          ) : null}
+          <Typography variant="body1">{product.title}</Typography>
+          {magicLinkUrl ? <Link href={magicLinkUrl}>{t.checkout.openCourse}</Link> : null}
+          <FinePrint variant="caption" component="p">
+            {magicLinkUrl ? t.checkout.productionNote : t.checkout.noMagicLinkNote}
+          </FinePrint>
+        </Stack>
+      </FocusCard>
     );
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-      <Paper
-        variant="outlined"
-        component="form"
-        onSubmit={submit}
-        sx={{ width: '100%', maxWidth: '31rem', px: '1.8rem', py: '2rem' }}
-      >
-        <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          Together
-        </Wordmark>
-        <Eyebrow variant="overline" component="p" sx={{ mb: '1.4rem' }}>
-          {t.checkout.eyebrow({ tenant: offer.data.tenant.name })}
-        </Eyebrow>
+    <FocusCard
+      eyebrow={t.checkout.eyebrow({ tenant: offer.data.tenant.name })}
+      width="wide"
+      onSubmit={submit}
+    >
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{product.title}</CardTitle>
           <Typography variant="body1">{product.description}</Typography>
@@ -240,7 +218,6 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             </Alert>
           ) : null}
         </Stack>
-      </Paper>
-    </Box>
+    </FocusCard>
   );
 };

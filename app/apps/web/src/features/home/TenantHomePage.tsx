@@ -12,7 +12,6 @@ import {
   ListItemButton,
   ListItemText,
   OutlinedInput,
-  Paper,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,9 +20,10 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
+import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { tenantUrl } from '../../lib/tenant.js';
-import { CardTitle, Eyebrow } from '../../theme.js';
+import { CardTitle } from '../../theme.js';
 
 export const TenantHomePage = () => {
   const navigate = useNavigate();
@@ -85,15 +85,11 @@ const PickTenant = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-      <Paper
-        variant="outlined"
-        sx={{ width: '100%', maxWidth: '29rem', px: '1.8rem', pt: '2rem', pb: '1.6rem' }}
-      >
+    <FocusCard eyebrow={t.tenant.eachOwnDomain} width="wide">
         <CardTitle variant="h1">{t.tenant.choose}</CardTitle>
-        <Eyebrow variant="overline" component="p">
-          {t.tenant.eachOwnDomain}
-        </Eyebrow>
+        <Typography variant="body1" sx={{ mt: '0.75rem' }}>
+          {t.tenant.welcome}
+        </Typography>
         {tenants.isPending ? (
           <Typography variant="h2" component="p" sx={{ py: 2 }}>
             {t.tenant.loading}
@@ -147,7 +143,6 @@ const PickTenant = () => {
             <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>
           ) : null}
         </Box>
-      </Paper>
-    </Box>
+    </FocusCard>
   );
 };

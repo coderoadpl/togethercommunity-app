@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Box, Container, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -7,13 +7,11 @@ import { ApiError } from '@core/client/index.js';
 import type { CourseStructureWithAccess } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import {
-  CardTitle,
   CourseCoverImage,
-  EmptyStateContent,
   Eyebrow,
-  LedgerHeader,
   StatTile,
   StatTileLabel,
   StatTileValue,
@@ -25,6 +23,7 @@ import {
   formatTotalDuration,
 } from './CourseRail.js';
 import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
+import { MemberSurface } from './MemberSurface.js';
 import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
 
 const isUnauthorized = (error: Error | null) =>
@@ -94,35 +93,36 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
 
   if (structure.isPending) {
     return (
-      <Container sx={{ maxWidth: '52rem', py: 6 }}>
-        <Typography variant="h2" component="p">
-          {t.courseTree.loadingCourse}
-        </Typography>
-      </Container>
+      <MemberSurface
+        title={t.student.myCourses}
+        eyebrow={t.courseTree.courseSyllabus}
+        width="wide"
+        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
+      />
     );
   }
 
   if (unauthorized) return null;
 
   if (structure.isError) {
+    const notFound = isNotFound(structure.error);
     return (
-      <Container sx={{ maxWidth: '52rem', py: 6 }}>
-        <Paper elevation={1} sx={{ p: '1.5rem' }}>
-          <CardTitle variant="h1">
-            {isNotFound(structure.error) ? t.courseTree.courseNotFound : t.courseTree.courseUnavailable}
-          </CardTitle>
-          <Typography variant="body1" sx={{ mt: '1rem' }}>
-            {isForbidden(structure.error)
-              ? t.student.staffNoMember
-              : isNotFound(structure.error)
-                ? t.courseTree.courseNotInLibrary
-                : localizeError(structure.error, t)}
-          </Typography>
-          <Box sx={{ mt: '1rem' }}>
-            <Link href="/my">{t.courseTree.backToMyCourses}</Link>
-          </Box>
-        </Paper>
-      </Container>
+      <MemberSurface
+        title={notFound ? t.courseTree.courseNotFound : t.student.myCourses}
+        eyebrow={t.courseTree.courseSyllabus}
+        width={notFound ? 'prose' : 'wide'}
+        state={notFound
+          ? {
+              kind: 'not-found',
+              title: t.courseTree.courseNotFound,
+              body: t.courseTree.courseNotInLibrary,
+              action: <Link href="/my">{t.courseTree.backToMyCourses}</Link>,
+            }
+          : {
+              kind: 'error',
+              message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
+            }}
+      />
     );
   }
 
@@ -131,70 +131,12 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
   const hasModules = course.modules.length > 0;
 
   return (
-    <Container disableGutters sx={{ maxWidth: '72rem !important', px: '1.25rem', pb: '6rem' }}>
-      <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '1rem' }}>
-          <Typography variant="h1">{course.name}</Typography>
-          <Box sx={{ flex: 1 }} />
-          <Link href="/my">{t.student.myCourses}</Link>
-        </Stack>
-        <Eyebrow variant="overline" component="p">
-          {t.courseTree.courseSyllabus}
-        </Eyebrow>
-      </LedgerHeader>
-
-      <Box component="section" sx={{ mt: '1.5rem' }}>
-        <CourseStatTiles structure={course} />
-      </Box>
-
-      <Box
-        component="section"
-        sx={{
-          mt: '1.5rem',
-          display: 'grid',
-          gap: '1.5rem',
-          alignItems: 'start',
-          gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 24rem' },
-        }}
-      >
-        <Stack useFlexGap sx={{ rowGap: '1.5rem', order: { xs: 2, md: 1 }, minWidth: 0 }}>
-          {catalogEntry?.imageUrl != null && (
-            <CourseCoverImage
-              src={catalogEntry.imageUrl}
-              alt={t.courseOverview.coverAlt({ name: course.name })}
-              data-testid="course-cover"
-            />
-          )}
-          {catalogEntry !== undefined && catalogEntry.description !== '' && (
-            <Paper elevation={1} sx={{ p: '1.5rem' }}>
-              <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
-                {t.courseOverview.aboutCourse}
-              </Eyebrow>
-              <Typography variant="body1">{catalogEntry.description}</Typography>
-            </Paper>
-          )}
-          {!hasModules && (
-            <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid="course-empty-state">
-              <EmptyStateContent useFlexGap sx={{ rowGap: '0.75rem' }}>
-                <EmptyCourseIcon />
-                <CardTitle variant="h2">{t.courseTree.emptyCourseTitle}</CardTitle>
-                <Typography variant="body1">{t.courseTree.noPublishedContent}</Typography>
-              </EmptyStateContent>
-            </Paper>
-          )}
-        </Stack>
-
-        <Stack
-          useFlexGap
-          sx={{
-            rowGap: '1.5rem',
-            order: { xs: 1, md: 2 },
-            position: { md: 'sticky' },
-            top: { md: '1.5rem' },
-            maxHeight: { md: 'calc(100vh - 3rem)' },
-            overflowY: { md: 'auto' },
-          }}
-        >
+    <MemberSurface
+      title={course.name}
+      eyebrow={t.courseTree.courseSyllabus}
+      width="wide"
+      rail={
+        <>
           <CourseProgressCard
             courseId={courseId}
             structure={course}
@@ -202,8 +144,38 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
           />
           {hasModules && <CourseDiscussionSearch courseId={courseId} structure={course} />}
           {hasModules && <CurriculumCard courseId={courseId} structure={course} />}
-        </Stack>
-      </Box>
-    </Container>
+        </>
+      }
+    >
+      <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
+        <CourseStatTiles structure={course} />
+        {catalogEntry?.imageUrl != null && (
+          <CourseCoverImage
+            src={catalogEntry.imageUrl}
+            alt={t.courseOverview.coverAlt({ name: course.name })}
+            data-testid="course-cover"
+          />
+        )}
+        {catalogEntry !== undefined && catalogEntry.description !== '' && (
+          <Paper elevation={1} sx={{ p: '1.5rem' }}>
+            <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+              {t.courseOverview.aboutCourse}
+            </Eyebrow>
+            <Typography variant="body1">{catalogEntry.description}</Typography>
+          </Paper>
+        )}
+        {!hasModules && (
+          <StatusView
+            state={{
+              kind: 'empty',
+              icon: <EmptyCourseIcon />,
+              title: t.courseTree.emptyCourseTitle,
+              body: t.courseTree.noPublishedContent,
+            }}
+            data-testid="course-empty-state"
+          />
+        )}
+      </Stack>
+    </MemberSurface>
   );
 };

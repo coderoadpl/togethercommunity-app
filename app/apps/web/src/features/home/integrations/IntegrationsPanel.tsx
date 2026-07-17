@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { StatusView } from '../../../components/layout/index.js';
 import { Eyebrow } from '../../../theme.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 
@@ -237,13 +238,9 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           <Typography variant="body2">{t.integrations.stripeDescription}</Typography>
 
           {secrets.isPending ? (
-            <Typography variant="body2" component="p">
-              {t.integrations.loading}
-            </Typography>
+            <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <Alert>
-              {localizeError(secrets.error, t)}
-            </Alert>
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
           ) : (
             <Stack useFlexGap spacing="1.25rem">
               <SecretField
@@ -308,11 +305,9 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           <Typography variant="body2">{t.integrations.bunnyDescription}</Typography>
 
           {secrets.isPending ? (
-            <Typography variant="body2" component="p">
-              {t.integrations.loading}
-            </Typography>
+            <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <Alert>{localizeError(secrets.error, t)}</Alert>
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
           ) : (
             <Stack useFlexGap spacing="1.25rem">
               <SecretField

@@ -1,11 +1,11 @@
-import { Alert, List, ListItem, ListItemText, Paper, Typography } from '@mui/material';
+import { Alert, List, ListItem, ListItemText, Paper } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
-import { useLanguage, useTranslations } from '../../../i18n/index.js';
+import { StatusView } from '../../../components/layout/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { Eyebrow } from '../../../theme.js';
 import { formatDateTime } from '../../../lib/format.js';
-import { MutationError } from './feedback.js';
 
 /**
  * Read-only "Historia zmian" list for a course. Each entry is a stored snapshot
@@ -24,11 +24,11 @@ export const HistoryPanel = ({ courseId }: { courseId: string }) => {
       </Eyebrow>
       <Alert severity="info">{t.courses.historyRestoreNote}</Alert>
       {history.isPending ? (
-        <Typography variant="body2">{t.courses.historyLoading}</Typography>
+        <StatusView state={{ kind: 'loading', label: t.courses.historyLoading }} />
       ) : history.isError ? (
-        <MutationError error={history.error} />
+        <StatusView state={{ kind: 'error', message: localizeError(history.error, t) }} />
       ) : history.data.versions.length === 0 ? (
-        <Typography variant="body2">{t.courses.historyEmpty}</Typography>
+        <StatusView state={{ kind: 'empty', title: t.courses.historyEmpty }} surface={false} />
       ) : (
         <List disablePadding dense>
           {history.data.versions.map((version) => (

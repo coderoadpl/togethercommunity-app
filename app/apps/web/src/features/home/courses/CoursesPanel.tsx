@@ -18,9 +18,10 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Course } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
-import { useLanguage, useTranslations } from '../../../i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
 import { MutationError } from './feedback.js';
@@ -128,11 +129,11 @@ export const CoursesListPanel = () => {
           />
         </Stack>
         {courses.isPending ? (
-          <Typography variant="body1">{t.courses.loading}</Typography>
+          <StatusView state={{ kind: 'loading', label: t.courses.loading }} />
         ) : courses.isError ? (
-          <MutationError error={courses.error} />
+          <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />
         ) : courses.data.courses.length === 0 ? (
-          <Typography variant="body1">{t.courses.empty}</Typography>
+          <StatusView state={{ kind: 'empty', title: t.courses.empty }} />
         ) : visibleCourses.length === 0 ? (
           <Typography variant="body1">{t.courses.noMatches}</Typography>
         ) : (

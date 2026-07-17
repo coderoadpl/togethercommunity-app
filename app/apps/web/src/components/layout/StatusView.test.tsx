@@ -67,4 +67,17 @@ describe('StatusView', () => {
     expect(screen.getByTestId('nf')).toHaveAttribute('data-state', 'not-found');
     expect(screen.getByText('Niczego tu nie ma')).toBeInTheDocument();
   });
+
+  it('can render an empty state inside an existing surface', () => {
+    render(
+      <StatusView
+        state={{ kind: 'empty', title: 'Brak danych' }}
+        surface={false}
+        data-testid="inline-empty"
+      />,
+    );
+
+    expect(screen.getByTestId('inline-empty')).toHaveAttribute('data-state', 'empty');
+    expect(screen.getByTestId('inline-empty')).not.toHaveClass('MuiPaper-root');
+  });
 });

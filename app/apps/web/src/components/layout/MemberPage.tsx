@@ -10,7 +10,7 @@ export interface BreadcrumbItem {
   href?: string;
 }
 
-interface MemberPageProps {
+export interface MemberPageProps {
   title: ReactNode;
   eyebrow: ReactNode;
   width?: 'prose' | 'wide';

@@ -3,12 +3,10 @@ import {
   Alert,
   Box,
   Button,
-  Divider,
   FormControl,
   FormLabel,
   Link,
   OutlinedInput,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -16,9 +14,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
+import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
-import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+import { FinePrint } from '../../theme.js';
 
 const baseDomainUrl = (): string => {
   const { protocol, port } = window.location;
@@ -53,24 +52,7 @@ export const RegisterPage = () => {
 
   if (registeredOnTenant) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-        <Paper
-          variant="outlined"
-          sx={{
-            width: '100%',
-            maxWidth: '25rem',
-            px: '1.8rem',
-            pt: '2rem',
-            pb: '1.6rem',
-            animation: 'settle 0.45s ease-out both',
-          }}
-        >
-          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-            Together
-          </Wordmark>
-          <Eyebrow variant="overline" component="p" sx={{ mb: '1.2rem' }}>
-            {t.auth.registeredTitle}
-          </Eyebrow>
+      <FocusCard eyebrow={t.auth.registeredTitle}>
           <Typography variant="body1" sx={{ mb: '1.4rem' }}>
             {t.auth.registeredOnTenantBody({ host: window.location.hostname })}
           </Typography>
@@ -85,32 +67,20 @@ export const RegisterPage = () => {
               <Link href="/login">{t.auth.registeredUseMagicLinkCta}</Link>
             </Box>
           </Stack>
-        </Paper>
-      </Box>
+      </FocusCard>
     );
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
-      <Paper
-        variant="outlined"
-        component="form"
-        onSubmit={submit}
-        sx={{
-          width: '100%',
-          maxWidth: '23rem',
-          px: '1.8rem',
-          pt: '2rem',
-          pb: '1.6rem',
-          animation: 'settle 0.45s ease-out both',
-        }}
-      >
-        <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          Together
-        </Wordmark>
-        <Eyebrow variant="overline" component="p" sx={{ mb: '1.6rem' }}>
-          {t.auth.createAccountEyebrow({ host: window.location.hostname })}
-        </Eyebrow>
+    <FocusCard
+      eyebrow={t.auth.createAccountEyebrow({ host: window.location.hostname })}
+      onSubmit={submit}
+      footer={
+        <FinePrint variant="caption" component="p">
+          {t.auth.alreadyHaveAccount} <Link href="/login">{t.auth.signInLink}</Link>
+        </FinePrint>
+      }
+    >
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="register-name">{t.auth.nameLabel}</FormLabel>
@@ -159,11 +129,6 @@ export const RegisterPage = () => {
             {localizeError(signUp.error, t)}
           </Alert>
         ) : null}
-        <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
-        <FinePrint variant="caption" component="p">
-          {t.auth.alreadyHaveAccount} <Link href="/login">{t.auth.signInLink}</Link>
-        </FinePrint>
-      </Paper>
-    </Box>
+    </FocusCard>
   );
 };

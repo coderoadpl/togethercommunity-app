@@ -12,10 +12,11 @@ export type PageState =
 
 interface StatusViewProps {
   state: PageState;
+  surface?: boolean;
   'data-testid'?: string;
 }
 
-export const StatusView = ({ state, 'data-testid': testId }: StatusViewProps) => {
+export const StatusView = ({ state, surface = true, 'data-testid': testId }: StatusViewProps) => {
   switch (state.kind) {
     case 'ready':
       return null;
@@ -39,16 +40,28 @@ export const StatusView = ({ state, 'data-testid': testId }: StatusViewProps) =>
         </Box>
       );
     case 'empty':
-    case 'not-found':
-      return (
-        <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid={testId} data-state={state.kind}>
-          <EmptyStateContent useFlexGap sx={{ rowGap: '0.75rem' }}>
-            {state.icon}
-            <CardTitle variant="h2">{state.title}</CardTitle>
-            {state.body !== undefined && <Typography variant="body1">{state.body}</Typography>}
-            {state.action !== undefined && <Box sx={{ mt: '0.25rem' }}>{state.action}</Box>}
-          </EmptyStateContent>
-        </Paper>
+    case 'not-found': {
+      const content = (
+        <EmptyStateContent
+          useFlexGap
+          sx={{ rowGap: '0.75rem' }}
+          {...(!surface ? { 'data-testid': testId, 'data-state': state.kind } : {})}
+        >
+          {state.icon}
+          <CardTitle variant="h2">{state.title}</CardTitle>
+          {state.body !== undefined && (
+            <Typography variant="body1" component="div">
+              {state.body}
+            </Typography>
+          )}
+          {state.action !== undefined && <Box sx={{ mt: '0.25rem' }}>{state.action}</Box>}
+        </EmptyStateContent>
       );
+      return surface ? (
+        <Paper elevation={1} sx={{ p: '2.5rem' }} data-testid={testId} data-state={state.kind}>
+          {content}
+        </Paper>
+      ) : content;
+    }
   }
 };

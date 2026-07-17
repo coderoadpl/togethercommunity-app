@@ -237,6 +237,8 @@ export const en: Messages = {
     unknownCourse: 'unknown course',
     levelAria: 'access level',
     proMode: 'advanced mode',
+    proModeHint:
+      'Off: grant access to whole courses. On: pick individual modules or lessons, or grant a whole course while excluding selected modules.',
     addFullCourse: 'add full course access',
     exclusionsLabel: 'excluded modules',
     noModulesToExclude: 'No modules attached to this course to exclude.',

@@ -231,6 +231,7 @@ export interface Messages {
     unknownCourse: string;
     levelAria: string;
     proMode: string;
+    proModeHint: string;
     addFullCourse: string;
     exclusionsLabel: string;
     noModulesToExclude: string;

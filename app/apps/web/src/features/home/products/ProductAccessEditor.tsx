@@ -6,6 +6,7 @@ import {
   Chip,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   List,
   ListItem,
@@ -199,19 +200,22 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
         )}
       </Box>
 
-      <FormControlLabel
-        control={
-          <Switch
-            size="small"
-            checked={pro}
-            onChange={(event) => {
-              setPro(event.target.checked);
-              resetDraft();
-            }}
-          />
-        }
-        label={t.access.proMode}
-      />
+      <Box>
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={pro}
+              onChange={(event) => {
+                setPro(event.target.checked);
+                resetDraft();
+              }}
+            />
+          }
+          label={t.access.proMode}
+        />
+        <FormHelperText data-testid="pro-mode-hint">{t.access.proModeHint}</FormHelperText>
+      </Box>
 
       {pro ? (
         <Box sx={{ display: 'grid', gap: '0.75rem' }}>

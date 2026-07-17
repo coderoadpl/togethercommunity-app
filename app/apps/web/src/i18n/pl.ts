@@ -243,6 +243,8 @@ export const pl: Messages = {
     unknownCourse: 'nieznany kurs',
     levelAria: 'poziom dostępu',
     proMode: 'tryb zaawansowany',
+    proModeHint:
+      'Wyłączony: dostęp do całych kursów. Włączony: wybór pojedynczych modułów lub lekcji albo cały kurs z wyłączeniem wybranych modułów.',
     addFullCourse: 'dodaj pełny dostęp do kursu',
     exclusionsLabel: 'wyłączone moduły',
     noModulesToExclude: 'Do tego kursu nie podpięto żadnych modułów do wyłączenia.',

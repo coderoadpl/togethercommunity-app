@@ -358,12 +358,29 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
   const [blocks, setBlocks] = useState<BlockDraft[]>(lesson ? lesson.contents.map(toDraft) : []);
   const [addType, setAddType] = useState<BlockType>('video');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.lessonsInvalidates());
   };
 
-  const createLesson = useMutation({ ...actions.createLesson, onSuccess: async () => { await invalidate(); onDone(); } });
+  const resetForm = () => {
+    setName('');
+    setDuration('');
+    setBlocks([]);
+    setAddType('video');
+    setValidationError(null);
+    nameInputRef.current?.focus();
+  };
+
+  const createLesson = useMutation({
+    ...actions.createLesson,
+    onSuccess: async () => {
+      await invalidate();
+      resetForm();
+      onDone();
+    },
+  });
   const updateLesson = useMutation({ ...actions.updateLesson, onSuccess: async () => { await invalidate(); onDone(); } });
 
   const pending = createLesson.isPending || updateLesson.isPending;
@@ -412,7 +429,13 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
       </Typography>
       <FormControl fullWidth>
         <FormLabel htmlFor="lesson-name">{t.common.name}</FormLabel>
-        <OutlinedInput id="lesson-name" value={name} onChange={(event) => setName(event.target.value)} required />
+        <OutlinedInput
+          id="lesson-name"
+          value={name}
+          inputRef={nameInputRef}
+          onChange={(event) => setName(event.target.value)}
+          required
+        />
       </FormControl>
       <FormControl sx={{ maxWidth: '14rem' }}>
         <FormLabel htmlFor="lesson-duration">{t.lessons.durationLabel}</FormLabel>

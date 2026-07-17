@@ -7,6 +7,7 @@ import {
   FormLabel,
   OutlinedInput,
   Paper,
+  Skeleton,
   Stack,
   Typography,
 } from '@mui/material';
@@ -46,23 +47,32 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         <Typography variant="body2">{t.billing.intro}</Typography>
         <FormControl fullWidth>
           <FormLabel htmlFor="billing-portal-url">{t.billing.urlLabel}</FormLabel>
-          <OutlinedInput
-            id="billing-portal-url"
-            type="url"
-            value={value}
-            disabled={!canEdit || settings.isPending}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder={t.billing.placeholder}
-            inputProps={{ 'data-testid': 'billing-portal-url' }}
-          />
+          {settings.isPending ? (
+            <Skeleton
+              variant="rounded"
+              data-testid="billing-portal-url-loading"
+              sx={{ height: '3.5rem' }}
+            />
+          ) : (
+            <OutlinedInput
+              id="billing-portal-url"
+              type="url"
+              value={value}
+              disabled={!canEdit || !settings.isSuccess}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder={t.billing.placeholder}
+              inputProps={{ 'data-testid': 'billing-portal-url' }}
+            />
+          )}
         </FormControl>
+        {settings.isError ? <Alert>{localizeError(settings.error, t)}</Alert> : null}
         {canEdit ? (
           <Box>
             <Button
               type="submit"
               variant="outlined"
               data-testid="billing-portal-save"
-              disabled={updateSettings.isPending}
+              disabled={updateSettings.isPending || !settings.isSuccess}
             >
               {updateSettings.isPending ? t.billing.saving : t.billing.save}
             </Button>

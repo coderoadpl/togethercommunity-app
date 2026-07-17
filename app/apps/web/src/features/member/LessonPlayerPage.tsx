@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
   Box,
   Breadcrumbs,
@@ -7,9 +7,11 @@ import {
   Container,
   Link,
   Paper,
+  Skeleton,
   Stack,
   Typography,
 } from '@mui/material';
+import type { SxProps, Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
@@ -73,6 +75,25 @@ const sortBlocks = (blocks: readonly LessonBlock[]): LessonBlock[] =>
     .sort((a, b) => BLOCK_RANK[a.block.type] - BLOCK_RANK[b.block.type] || a.index - b.index)
     .map((entry) => entry.block);
 
+const MediaIframe = ({
+  frameSx,
+  ...iframeProps
+}: { frameSx: SxProps<Theme> } & ComponentProps<typeof LessonMediaIframe>) => {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <LessonMediaFrame sx={frameSx}>
+      {loaded ? null : (
+        <Skeleton
+          variant="rectangular"
+          data-testid="lesson-media-skeleton"
+          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+        />
+      )}
+      <LessonMediaIframe {...iframeProps} onLoad={() => setLoaded(true)} />
+    </LessonMediaFrame>
+  );
+};
+
 const BlockBody = ({ block }: { block: LessonBlock }) => {
   const t = useTranslations();
   if (block.type === 'video') {
@@ -84,28 +105,26 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
       );
     }
     return (
-      <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
-        <LessonMediaIframe
-          data-testid="lesson-video"
-          src={`https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`}
-          title={t.lesson.videoTitle}
-          allow={VIDEO_ALLOW}
-          allowFullScreen
-        />
-      </LessonMediaFrame>
+      <MediaIframe
+        frameSx={{ aspectRatio: '16 / 9' }}
+        data-testid="lesson-video"
+        src={`https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`}
+        title={t.lesson.videoTitle}
+        allow={VIDEO_ALLOW}
+        allowFullScreen
+      />
     );
   }
 
   if (block.type === 'pdf') {
     return (
       <Stack useFlexGap spacing="0.75rem">
-        <LessonMediaFrame sx={{ aspectRatio: '10 / 7' }}>
-          <LessonMediaIframe
-            data-testid="lesson-pdf"
-            src={block.pdfUrl}
-            title={block.name ?? t.lesson.pdfTitle}
-          />
-        </LessonMediaFrame>
+        <MediaIframe
+          frameSx={{ aspectRatio: '10 / 7', minHeight: '24rem' }}
+          data-testid="lesson-pdf"
+          src={block.pdfUrl}
+          title={block.name ?? t.lesson.pdfTitle}
+        />
         <Box>
           <Button
             component="a"
@@ -123,15 +142,14 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
 
   if (block.type === 'embed') {
     return (
-      <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
-        <LessonMediaIframe
-          data-testid="lesson-embed"
-          src={block.embedUrl}
-          title={t.lesson.embedTitle}
-          allow={VIDEO_ALLOW}
-          allowFullScreen
-        />
-      </LessonMediaFrame>
+      <MediaIframe
+        frameSx={{ aspectRatio: '16 / 9' }}
+        data-testid="lesson-embed"
+        src={block.embedUrl}
+        title={t.lesson.embedTitle}
+        allow={VIDEO_ALLOW}
+        allowFullScreen
+      />
     );
   }
 

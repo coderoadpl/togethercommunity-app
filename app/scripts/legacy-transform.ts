@@ -13,6 +13,50 @@ export interface Anomaly {
   detail: string;
 }
 
+interface LegacyModuleIdentity {
+  id: string;
+  title: string;
+}
+
+interface LegacyLessonIdentity {
+  id: string;
+  title: string;
+}
+
+export const collectOrphanContentAnomalies = (args: {
+  modules: LegacyModuleIdentity[];
+  lessons: LegacyLessonIdentity[];
+  courseIdsByModuleId: ReadonlyMap<string, ReadonlySet<string>>;
+  moduleIdsByLessonId: ReadonlyMap<string, ReadonlySet<string>>;
+  mappedCourseIds: ReadonlySet<string>;
+}): Anomaly[] => {
+  const moduleHasTenant = (moduleId: string): boolean =>
+    [...(args.courseIdsByModuleId.get(moduleId) ?? [])].some((courseId) =>
+      args.mappedCourseIds.has(courseId),
+    );
+  const anomalies: Anomaly[] = [];
+  for (const module of args.modules) {
+    if (!moduleHasTenant(module.id)) {
+      anomalies.push({
+        kind: 'module-without-tenant',
+        subject: `course-modules/${module.id}`,
+        detail: `module "${module.title}" belongs to no mapped course and was not exported`,
+      });
+    }
+  }
+  for (const lesson of args.lessons) {
+    const hasTenant = [...(args.moduleIdsByLessonId.get(lesson.id) ?? [])].some(moduleHasTenant);
+    if (!hasTenant) {
+      anomalies.push({
+        kind: 'lesson-without-tenant',
+        subject: `course-lessons/${lesson.id}`,
+        detail: `lesson "${lesson.title}" is attached to no module belonging to a mapped course and was not exported`,
+      });
+    }
+  }
+  return anomalies;
+};
+
 const objectIdString = z.string().min(1);
 
 export const legacyAccessItemSchema = z.object({

@@ -353,6 +353,49 @@ export const resolveImportTenants = async (
       .limit(1);
     const row = rows[0];
     if (row) {
+      if (opts.apply) {
+        const ownerRows = await db
+          .select({ id: tenantAdmins.id })
+          .from(tenantAdmins)
+          .where(and(eq(tenantAdmins.tenantId, row.id), eq(tenantAdmins.role, 'owner')))
+          .limit(1);
+        const ownerRow = ownerRows[0];
+        if (ownerRow === undefined && opts.ownerEmail === null) {
+          throw new ImportFailure(
+            `Target tenant "${mapping.target}" has no owner admin; pass --owner-email to backfill it`,
+          );
+        }
+        const owner = ownerRow === undefined && opts.ownerEmail !== null
+          ? await gateway.ensureImportedUser({
+              email: opts.ownerEmail,
+              name: null,
+              passwordMarker: null,
+            })
+          : null;
+        await db.transaction(async (tx) => {
+          if (owner !== null) {
+            await tx
+              .insert(tenantAdmins)
+              .values({
+                id: `admin-${row.slug}`,
+                tenantId: row.id,
+                userId: owner.userId,
+                role: 'owner',
+              })
+              .onConflictDoNothing();
+          }
+          await tx
+            .insert(tenantDomains)
+            .values({
+              id: `domain-${row.slug}`,
+              tenantId: row.id,
+              domain: `${row.slug}.localhost`,
+              kind: 'subdomain',
+              verified: true,
+            })
+            .onConflictDoNothing();
+        });
+      }
       resolved.push({
         bundleSlug: mapping.bundleSlug,
         tenantId: row.id,
@@ -383,25 +426,27 @@ export const resolveImportTenants = async (
         passwordMarker: null,
       });
       const now = opts.nowIso();
-      await db
-        .insert(tenants)
-        .values({ id: tenantId, slug: mapping.target, name: mapping.target, createdAt: now });
-      await db.insert(tenantAdmins).values({
-        id: `admin-${mapping.target}`,
-        tenantId,
-        userId: owner.userId,
-        role: 'owner',
-      });
-      await db
-        .insert(tenantDomains)
-        .values({
-          id: `domain-${mapping.target}`,
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(tenants)
+          .values({ id: tenantId, slug: mapping.target, name: mapping.target, createdAt: now });
+        await tx.insert(tenantAdmins).values({
+          id: `admin-${mapping.target}`,
           tenantId,
-          domain: `${mapping.target}.localhost`,
-          kind: 'subdomain',
-          verified: true,
-        })
-        .onConflictDoNothing();
+          userId: owner.userId,
+          role: 'owner',
+        });
+        await tx
+          .insert(tenantDomains)
+          .values({
+            id: `domain-${mapping.target}`,
+            tenantId,
+            domain: `${mapping.target}.localhost`,
+            kind: 'subdomain',
+            verified: true,
+          })
+          .onConflictDoNothing();
+      });
     }
     resolved.push({
       bundleSlug: mapping.bundleSlug,

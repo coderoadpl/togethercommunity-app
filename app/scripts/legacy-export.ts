@@ -8,6 +8,7 @@ import { MongoClient, ObjectId } from 'mongodb';
 import { z } from 'zod';
 
 import {
+  collectOrphanContentAnomalies,
   dedupeProgress,
   legacyAccessItemSchema,
   legacyChapterSchema,
@@ -384,6 +385,16 @@ const main = async (): Promise<void> => {
       }
       return slugs;
     };
+
+    anomalies.push(
+      ...collectOrphanContentAnomalies({
+        modules: modules.map((module) => ({ id: module._id, title: module.title })),
+        lessons: lessons.map((lesson) => ({ id: lesson._id, title: lesson.name })),
+        courseIdsByModuleId,
+        moduleIdsByLessonId,
+        mappedCourseIds: new Set(tenantByCourseId.keys()),
+      }),
+    );
 
     const videoById = new Map<string, VideoPointer>();
     for (const video of videoFiles) {

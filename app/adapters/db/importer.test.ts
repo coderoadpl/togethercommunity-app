@@ -13,7 +13,13 @@ import {
 import { deriveLegacyPasswordHash } from '@adapters/auth/legacy-password.js';
 
 import { createDb, type Db } from './client.js';
-import { runImport, type ImportTarget, type KindReport, type TenantBundle } from './importer.js';
+import {
+  resolveImportTenants,
+  runImport,
+  type ImportTarget,
+  type KindReport,
+  type TenantBundle,
+} from './importer.js';
 import {
   account,
   courseModules,
@@ -22,6 +28,8 @@ import {
   members,
   productGrants,
   products,
+  tenantAdmins,
+  tenantDomains,
   tenants,
   user,
 } from './schema.js';
@@ -230,6 +238,74 @@ beforeAll(async () => {
 }, 60000);
 
 describe('importer', () => {
+  it('backfills owner admin and domain when a prior tenant-only creation is resumed', async () => {
+    const tenantId = 'tenant-import-resume';
+    const tenantSlug = 'import-resume';
+    const ownerEmail = 'import-resume-owner@together.dev';
+    await db.insert(tenants).values({
+      id: tenantId,
+      slug: tenantSlug,
+      name: 'Import Resume',
+      createdAt: nowIso(),
+    });
+
+    const resolved = await resolveImportTenants(
+      db,
+      gateway,
+      [{ bundleSlug: 'legacy-resume', target: tenantSlug }],
+      { createMissing: true, ownerEmail, apply: true, nowIso },
+    );
+
+    expect(resolved).toEqual([
+      {
+        bundleSlug: 'legacy-resume',
+        tenantId,
+        tenantSlug,
+        tenantName: 'Import Resume',
+        created: false,
+      },
+    ]);
+    const ownerUsers = await db.select().from(user).where(eq(user.email, ownerEmail));
+    const adminRows = await db
+      .select()
+      .from(tenantAdmins)
+      .where(eq(tenantAdmins.tenantId, tenantId));
+    expect(adminRows).toEqual([
+      {
+        id: `admin-${tenantSlug}`,
+        tenantId,
+        userId: ownerUsers[0]?.id,
+        role: 'owner',
+      },
+    ]);
+    const domainRows = await db
+      .select()
+      .from(tenantDomains)
+      .where(eq(tenantDomains.tenantId, tenantId));
+    expect(domainRows).toEqual([
+      {
+        id: `domain-${tenantSlug}`,
+        tenantId,
+        domain: `${tenantSlug}.localhost`,
+        kind: 'subdomain',
+        verified: true,
+      },
+    ]);
+
+    await resolveImportTenants(
+      db,
+      gateway,
+      [{ bundleSlug: 'legacy-resume', target: tenantSlug }],
+      { createMissing: true, ownerEmail, apply: true, nowIso },
+    );
+    expect(
+      await db.select().from(tenantAdmins).where(eq(tenantAdmins.tenantId, tenantId)),
+    ).toHaveLength(1);
+    expect(
+      await db.select().from(tenantDomains).where(eq(tenantDomains.tenantId, tenantId)),
+    ).toHaveLength(1);
+  }, 30000);
+
   it('dry-run plans creates without writing anything', async () => {
     const result = await runImport(db, gateway, targets(buildBundle()), {
       apply: false,

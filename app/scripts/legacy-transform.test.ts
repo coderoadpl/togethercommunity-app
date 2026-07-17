@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
 
 import {
+  collectOrphanContentAnomalies,
   dedupeProgress,
   legacyAccessItemSchema,
   legacyChapterSchema,
@@ -23,6 +24,51 @@ const emptyLookups: AccessItemLookups = {
   courseIdsByModuleId: new Map(),
   moduleIdsByLessonId: new Map(),
 };
+
+describe('collectOrphanContentAnomalies', () => {
+  it('names modules and lessons that cannot be assigned to a tenant', () => {
+    const anomalies = collectOrphanContentAnomalies({
+      modules: [
+        { id: 'm-mapped', title: 'Mapped module' },
+        { id: 'm-orphan', title: 'Lost module' },
+      ],
+      lessons: [
+        { id: 'l-mapped', title: 'Mapped lesson' },
+        { id: 'l-unattached', title: 'Loose lesson' },
+        { id: 'l-orphan-module', title: 'Lesson under lost module' },
+      ],
+      courseIdsByModuleId: new Map([
+        ['m-mapped', new Set(['c-mapped'])],
+        ['m-orphan', new Set(['c-unmapped'])],
+      ]),
+      moduleIdsByLessonId: new Map([
+        ['l-mapped', new Set(['m-mapped'])],
+        ['l-orphan-module', new Set(['m-orphan'])],
+      ]),
+      mappedCourseIds: new Set(['c-mapped']),
+    });
+
+    expect(anomalies).toEqual([
+      {
+        kind: 'module-without-tenant',
+        subject: 'course-modules/m-orphan',
+        detail: 'module "Lost module" belongs to no mapped course and was not exported',
+      },
+      {
+        kind: 'lesson-without-tenant',
+        subject: 'course-lessons/l-unattached',
+        detail:
+          'lesson "Loose lesson" is attached to no module belonging to a mapped course and was not exported',
+      },
+      {
+        kind: 'lesson-without-tenant',
+        subject: 'course-lessons/l-orphan-module',
+        detail:
+          'lesson "Lesson under lost module" is attached to no module belonging to a mapped course and was not exported',
+      },
+    ]);
+  });
+});
 
 describe('transformAccessItems', () => {
   it('maps a course-level item and drops its module/lesson leftovers', () => {

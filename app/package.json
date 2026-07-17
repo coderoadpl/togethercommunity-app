@@ -27,6 +27,7 @@
     "shots:parity": "tsx scripts/parity-screenshots.ts",
     "shots:themes": "tsx scripts/theme-screenshots.ts",
     "legacy:export": "tsx scripts/legacy-export.ts",
+    "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
     "e2e:poc": "tsx scripts/poc-e2e.ts"
   },

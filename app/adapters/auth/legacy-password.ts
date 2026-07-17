@@ -1,4 +1,4 @@
-import { pbkdf2, timingSafeEqual } from 'node:crypto';
+import { pbkdf2, pbkdf2Sync, timingSafeEqual } from 'node:crypto';
 
 import { verifyPassword as verifyDefaultPassword } from 'better-auth/crypto';
 
@@ -14,6 +14,17 @@ interface LegacyCredential {
 
 export const toLegacyPasswordHash = ({ salt, hash }: LegacyCredential): string =>
   `${PAYLOAD_PBKDF2_MARKER}$${salt}$${hash}`;
+
+export const isLegacyPasswordHash = (stored: string): boolean =>
+  stored.startsWith(`${PAYLOAD_PBKDF2_MARKER}$`);
+
+export const deriveLegacyPasswordHash = (password: string, salt: string): string =>
+  toLegacyPasswordHash({
+    salt,
+    hash: pbkdf2Sync(password, salt, PAYLOAD_ITERATIONS, PAYLOAD_KEYLEN, PAYLOAD_DIGEST).toString(
+      'hex',
+    ),
+  });
 
 const parseLegacyCredential = (stored: string): LegacyCredential | null => {
   const parts = stored.split('$');

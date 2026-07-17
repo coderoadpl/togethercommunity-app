@@ -10,19 +10,27 @@ import {
   OutlinedInput,
   Paper,
   Stack,
+  Typography,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
 import { Eyebrow, FinePrint, Wordmark } from '../../theme.js';
+
+const baseDomainUrl = (): string => {
+  const { protocol, port } = window.location;
+  return `${protocol}//${appBaseDomain()}${port ? `:${port}` : ''}`;
+};
 
 export const RegisterPage = () => {
   const t = useTranslations();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [registeredOnTenant, setRegisteredOnTenant] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -30,6 +38,10 @@ export const RegisterPage = () => {
     ...actions.signUp,
     onSuccess: async () => {
       await queryClient.invalidateQueries();
+      if (hostHasTenantSubdomain(window.location.hostname)) {
+        setRegisteredOnTenant(true);
+        return;
+      }
       await navigate({ to: '/' });
     },
   });
@@ -38,6 +50,45 @@ export const RegisterPage = () => {
     event.preventDefault();
     signUp.mutate({ name, email, password });
   };
+
+  if (registeredOnTenant) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            width: '100%',
+            maxWidth: '25rem',
+            px: '1.8rem',
+            pt: '2rem',
+            pb: '1.6rem',
+            animation: 'settle 0.45s ease-out both',
+          }}
+        >
+          <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
+            Together
+          </Wordmark>
+          <Eyebrow variant="overline" component="p" sx={{ mb: '1.2rem' }}>
+            {t.auth.registeredTitle}
+          </Eyebrow>
+          <Typography variant="body1" sx={{ mb: '1.4rem' }}>
+            {t.auth.registeredOnTenantBody({ host: window.location.hostname })}
+          </Typography>
+          <Stack useFlexGap spacing="0.9rem">
+            <Button variant="contained" fullWidth component="a" href={baseDomainUrl()}>
+              {t.auth.registeredCreateOwnCta}
+            </Button>
+            <Box>
+              <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
+                {t.auth.registeredBoughtHint}
+              </FinePrint>
+              <Link href="/login">{t.auth.registeredUseMagicLinkCta}</Link>
+            </Box>
+          </Stack>
+        </Paper>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>

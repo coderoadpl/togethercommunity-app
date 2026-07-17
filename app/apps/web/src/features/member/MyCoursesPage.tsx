@@ -152,6 +152,12 @@ export const MyCoursesPage = () => {
               <EmptyLibraryIcon />
               <CardTitle variant="h1">{t.student.noCourses}</CardTitle>
               <Typography variant="body1">{t.student.coursesWillAppear}</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: '0.25rem' }}>
+                {t.student.coursesEmptyRenewHint}
+              </Typography>
+              <Link href="/my/products" sx={{ mt: '0.25rem' }}>
+                {t.student.myProducts}
+              </Link>
             </EmptyStateContent>
           </Paper>
         ) : (

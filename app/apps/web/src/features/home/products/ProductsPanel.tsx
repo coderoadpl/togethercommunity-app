@@ -9,6 +9,7 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
+  IconButton,
   List,
   ListItem,
   ListItemText,
@@ -16,7 +17,10 @@ import {
   OutlinedInput,
   Paper,
   Select,
+  Snackbar,
   Stack,
+  SvgIcon,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -58,6 +62,12 @@ const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
   );
 };
 
+const CopyLinkGlyph = () => (
+  <SvgIcon fontSize="small" aria-hidden viewBox="0 0 24 24">
+    <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+  </SvgIcon>
+);
+
 const ProductRow = ({
   product,
   issue,
@@ -69,6 +79,7 @@ const ProductRow = ({
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [showAccess, setShowAccess] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const publishProduct = useMutation({
     ...actions.publishProduct,
@@ -78,6 +89,12 @@ const ProductRow = ({
   });
 
   const accessCount = product.accessItems.length;
+
+  const copyCheckoutLink = () => {
+    const url = `${window.location.origin}/checkout/${product.id}`;
+    void navigator.clipboard?.writeText(url);
+    setCopied(true);
+  };
 
   return (
     <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="product-row">
@@ -89,6 +106,16 @@ const ProductRow = ({
           <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
         ) : null}
         <Box sx={{ flex: 1 }} />
+        <Tooltip title={t.products.copyCheckoutLink}>
+          <IconButton
+            size="small"
+            onClick={copyCheckoutLink}
+            aria-label={t.products.copyCheckoutLink}
+            data-testid={`copy-checkout-${product.id}`}
+          >
+            <CopyLinkGlyph />
+          </IconButton>
+        </Tooltip>
         {product.published ? null : (
           <Button
             variant="text"
@@ -99,6 +126,13 @@ const ProductRow = ({
           </Button>
         )}
       </Stack>
+      <Snackbar
+        open={copied}
+        autoHideDuration={3000}
+        onClose={() => setCopied(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        message={t.products.checkoutLinkCopied}
+      />
       <Stack useFlexGap spacing="0.2rem">
         <span>
           <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue> ·{' '}

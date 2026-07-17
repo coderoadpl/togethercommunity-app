@@ -83,6 +83,12 @@ export const en: Messages = {
     createAccount: 'create account',
     alreadyHaveAccount: 'Already have an account?',
     signInLink: 'Sign in',
+    registeredTitle: 'Account created',
+    registeredOnTenantBody: ({ host }) =>
+      `${host} is another creator's space — your new account does not have access to any course here yet.`,
+    registeredCreateOwnCta: 'Go to the home page to create your own space',
+    registeredBoughtHint: 'Bought a course here? Sign in with the magic link sent to your email.',
+    registeredUseMagicLinkCta: 'Sign in with a magic link',
   },
   tenant: {
     choose: 'Choose a space',
@@ -224,6 +230,8 @@ export const en: Messages = {
     missingLessonsLabel: 'missing lessons',
     unreachableModulesLabel: 'modules detached from the course',
     unreachableLessonsLabel: 'lessons detached from the course',
+    copyCheckoutLink: 'Copy purchase link',
+    checkoutLinkCopied: 'Purchase link copied',
   },
   access: {
     loading: 'loading access data…',
@@ -522,6 +530,13 @@ export const en: Messages = {
     courseNotFound: 'Course not found',
     productNotInLibrary: 'This product is not in your library.',
     backToMyProducts: 'Back to my products',
+    grantActiveLabel: 'Active',
+    grantExpiredLabel: ({ date }) => `Expired ${date}`,
+    grantUpcomingLabel: ({ date }) => `Starts ${date}`,
+    grantUpcomingNote: ({ date }) => `Access opens on ${date}.`,
+    renewAccess: 'Renew access',
+    coursesEmptyRenewHint:
+      'Already have a product? Check its access status in your products — if it has expired, you can renew it there.',
   },
   courseTree: {
     lockedTooltip: 'Content locked',

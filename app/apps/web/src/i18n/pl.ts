@@ -89,6 +89,12 @@ export const pl: Messages = {
     createAccount: 'załóż konto',
     alreadyHaveAccount: 'Masz już konto?',
     signInLink: 'Zaloguj się',
+    registeredTitle: 'Konto utworzone',
+    registeredOnTenantBody: ({ host }) =>
+      `${host} to przestrzeń innego twórcy — Twoje nowe konto nie ma tu jeszcze dostępu do żadnego kursu.`,
+    registeredCreateOwnCta: 'Przejdź do strony głównej i załóż własną przestrzeń',
+    registeredBoughtHint: 'Kupiłeś tutaj kurs? Zaloguj się linkiem magicznym wysłanym na Twój e-mail.',
+    registeredUseMagicLinkCta: 'Zaloguj się linkiem magicznym',
   },
   tenant: {
     choose: 'Wybierz przestrzeń',
@@ -230,6 +236,8 @@ export const pl: Messages = {
     missingLessonsLabel: 'brakujące lekcje',
     unreachableModulesLabel: 'moduły odłączone od kursu',
     unreachableLessonsLabel: 'lekcje odłączone od kursu',
+    copyCheckoutLink: 'Kopiuj link do zakupu',
+    checkoutLinkCopied: 'Skopiowano link do zakupu',
   },
   access: {
     loading: 'ładowanie danych o dostępie…',
@@ -536,6 +544,13 @@ export const pl: Messages = {
     courseNotFound: 'Nie znaleziono kursu',
     productNotInLibrary: 'Tego produktu nie ma w Twojej bibliotece.',
     backToMyProducts: 'Wróć do moich produktów',
+    grantActiveLabel: 'Aktywny',
+    grantExpiredLabel: ({ date }) => `Wygasł ${date}`,
+    grantUpcomingLabel: ({ date }) => `Rozpocznie się ${date}`,
+    grantUpcomingNote: ({ date }) => `Dostęp otworzy się ${date}.`,
+    renewAccess: 'Odnów dostęp',
+    coursesEmptyRenewHint:
+      'Masz już produkt? Sprawdź status dostępu w swoich produktach — jeśli wygasł, możesz go tam odnowić.',
   },
   courseTree: {
     lockedTooltip: 'Treść zablokowana',

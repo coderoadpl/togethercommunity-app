@@ -83,6 +83,11 @@ export interface Messages {
     createAccount: string;
     alreadyHaveAccount: string;
     signInLink: string;
+    registeredTitle: string;
+    registeredOnTenantBody: (params: { host: string }) => string;
+    registeredCreateOwnCta: string;
+    registeredBoughtHint: string;
+    registeredUseMagicLinkCta: string;
   };
   tenant: {
     choose: string;
@@ -218,6 +223,8 @@ export interface Messages {
     missingLessonsLabel: string;
     unreachableModulesLabel: string;
     unreachableLessonsLabel: string;
+    copyCheckoutLink: string;
+    checkoutLinkCopied: string;
   };
   access: {
     loading: string;
@@ -474,6 +481,12 @@ export interface Messages {
     courseNotFound: string;
     productNotInLibrary: string;
     backToMyProducts: string;
+    grantActiveLabel: string;
+    grantExpiredLabel: (params: { date: string }) => string;
+    grantUpcomingLabel: (params: { date: string }) => string;
+    grantUpcomingNote: (params: { date: string }) => string;
+    renewAccess: string;
+    coursesEmptyRenewHint: string;
   };
   courseTree: {
     lockedTooltip: string;

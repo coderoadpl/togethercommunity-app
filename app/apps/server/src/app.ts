@@ -563,6 +563,9 @@ export const buildApp = (deps: AppDeps) => {
               description: product.description,
               priceCents: product.priceCents,
               currency: product.currency,
+              grantStatus: product.grantStatus,
+              grantStartsAt: product.grantStartsAt,
+              grantExpiresAt: product.grantExpiresAt,
             })),
           })
         : result,

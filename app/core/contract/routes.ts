@@ -18,6 +18,7 @@ import {
   courseHistoryQuerySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
+  grantWindowStatusSchema,
   languageSchema,
   listStreamVideosInputSchema,
   m2mEnrollInputSchema,
@@ -146,6 +147,9 @@ export const myProductsOutputSchema = z.object({
       description: z.string(),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
+      grantStatus: grantWindowStatusSchema,
+      grantStartsAt: z.string().datetime(),
+      grantExpiresAt: z.string().datetime().nullable(),
     }),
   ),
 });

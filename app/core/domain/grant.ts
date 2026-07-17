@@ -1,8 +1,22 @@
 import { z } from 'zod';
 
+import { productSchema } from './product.js';
+
 export const grantSourceSchema = z.enum(['simulated', 'manual', 'stripe']);
 
 export type GrantSource = z.infer<typeof grantSourceSchema>;
+
+export const grantWindowStatusSchema = z.enum(['active', 'upcoming', 'expired']);
+
+export type GrantWindowStatus = z.infer<typeof grantWindowStatusSchema>;
+
+export const grantedProductSchema = productSchema.extend({
+  grantStatus: grantWindowStatusSchema,
+  grantStartsAt: z.string().datetime(),
+  grantExpiresAt: z.string().datetime().nullable(),
+});
+
+export type GrantedProduct = z.infer<typeof grantedProductSchema>;
 
 export const productGrantSchema = z.object({
   id: z.string(),

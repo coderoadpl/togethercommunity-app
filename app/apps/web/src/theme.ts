@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, ListItemButton, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ButtonBase, LinearProgress, Link, ListItemButton, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -2352,6 +2352,12 @@ export const DataValue = styled('span')(({ theme }) => ({
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
   color: theme.moneyColor,
+}));
+
+export const MemberProductLink = styled(Link)(({ theme }) => ({
+  fontWeight: 700,
+  color: theme.palette.text.primary,
+  textDecorationColor: alpha(theme.palette.text.primary, 0.4),
 }));
 
 export const PublishedStatus = styled('span')(({ theme }) => ({

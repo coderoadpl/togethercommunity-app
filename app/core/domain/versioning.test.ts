@@ -13,6 +13,7 @@ import {
   readSnapshot,
   runUpcastChain,
   shapeGuardInstructions,
+  snapshotPayloadsEqual,
   type EntityKind,
 } from './versioning.js';
 
@@ -104,5 +105,32 @@ describe('buildSnapshot', () => {
   it('fails internally when the entity does not match the current schema', () => {
     const result = buildSnapshot('product', { id: 'p1' });
     expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+});
+
+describe('snapshotPayloadsEqual', () => {
+  it('treats objects with different key order as equal', () => {
+    expect(
+      snapshotPayloadsEqual(
+        { title: 'A', priceCents: 100, nested: { b: 2, a: 1 } },
+        { nested: { a: 1, b: 2 }, priceCents: 100, title: 'A' },
+      ),
+    ).toBe(true);
+  });
+
+  it('distinguishes payloads that differ in a value', () => {
+    expect(snapshotPayloadsEqual({ title: 'A' }, { title: 'B' })).toBe(false);
+  });
+
+  it('keeps array order significant', () => {
+    expect(snapshotPayloadsEqual({ ids: ['a', 'b'] }, { ids: ['b', 'a'] })).toBe(false);
+  });
+
+  it('ignores explicitly undefined properties', () => {
+    expect(snapshotPayloadsEqual({ title: 'A', legacyId: undefined }, { title: 'A' })).toBe(true);
+  });
+
+  it('distinguishes null from a missing property', () => {
+    expect(snapshotPayloadsEqual({ title: 'A', legacyId: null }, { title: 'A' })).toBe(false);
   });
 });

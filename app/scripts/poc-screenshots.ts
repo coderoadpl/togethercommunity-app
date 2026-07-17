@@ -208,7 +208,9 @@ const captureBuyerJourney = async (
   await page.getByLabel('email').fill(buyerEmail);
   await simulateButton.click();
 
-  await page.getByText('You have access').waitFor({ state: 'visible', timeout: 20000 });
+  await page
+    .getByText(/Access granted|You already have access/)
+    .waitFor({ state: 'visible', timeout: 20000 });
   const magicLink = page.getByRole('link', { name: 'Open your course' });
   await magicLink.waitFor({ state: 'visible', timeout: 20000 });
   const magicLinkUrl = await magicLink.getAttribute('href');

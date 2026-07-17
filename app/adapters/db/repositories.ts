@@ -13,6 +13,7 @@ import {
   productGrantSchema,
   processedPaymentEventSchema,
   productSchema,
+  snapshotPayloadsEqual,
   staffRoleSchema,
   tenantApiKeySchema,
   tenantSecretSchema,
@@ -127,6 +128,26 @@ const parseSecret = (row: typeof tenantSecrets.$inferSelect): TenantSecret =>
  * the mutation that supersedes it.
  */
 const insertEntityVersion = async (executor: Db, tenantId: string, version: EntityVersionRecord): Promise<void> => {
+  const latest = await executor
+    .select({ schemaVersion: entityVersions.schemaVersion, payload: entityVersions.payload })
+    .from(entityVersions)
+    .where(
+      and(
+        eq(entityVersions.tenantId, tenantId),
+        eq(entityVersions.entityKind, version.entityKind),
+        eq(entityVersions.entityId, version.entityId),
+      ),
+    )
+    .orderBy(desc(entityVersions.createdAt))
+    .limit(1);
+  const latestRow = latest[0];
+  if (
+    latestRow &&
+    latestRow.schemaVersion === version.schemaVersion &&
+    snapshotPayloadsEqual(latestRow.payload, version.payload)
+  ) {
+    return;
+  }
   await executor.insert(entityVersions).values({
     id: version.id,
     tenantId,

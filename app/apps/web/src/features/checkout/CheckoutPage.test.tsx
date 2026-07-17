@@ -57,7 +57,41 @@ describe('CheckoutPage', () => {
 
     const link = await screen.findByRole('link', { name: pl.checkout.openCourse });
     expect(link).toHaveAttribute('href', 'https://acme.test/magic');
+    expect(screen.getByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(screen.queryByText(pl.checkout.alreadyOwnedTitle)).not.toBeInTheDocument();
     expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
+  });
+
+  it('tells a repeat buyer they already own the product', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+      http.post('/api/dev/simulate-purchase', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            memberId: 'm1',
+            productId: 'course-1',
+            alreadyOwned: true,
+            magicLink: {
+              email: 'buyer@together.dev',
+              url: 'https://acme.test/magic',
+              token: 'token-1',
+            },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
+
+    expect(await screen.findByRole('heading', { name: pl.checkout.alreadyOwnedTitle })).toBeInTheDocument();
+    expect(screen.getByText(pl.checkout.alreadyOwnedNote)).toBeInTheDocument();
   });
 
   it('shows the Stripe primary action when the tenant is configured', async () => {

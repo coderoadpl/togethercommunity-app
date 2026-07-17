@@ -227,9 +227,9 @@ export const en: Messages = {
     addFullCourse: 'add full course access',
     exclusionsLabel: 'excluded modules',
     noModulesToExclude: 'No modules attached to this course to exclude.',
-    wholeCourseSummary: ({ course }) => format('Whole course {course}', { course }),
+    wholeCourseSummary: ({ course }) => format('{course} — whole course', { course }),
     wholeCourseExceptSummary: ({ course, count }) =>
-      format('Whole course {course} except {count} {noun}', {
+      format('{course} — whole course except {count} {noun}', {
         course,
         count,
         noun: plural(count, 'module', 'modules'),
@@ -324,6 +324,7 @@ export const en: Messages = {
     historyUnknownAuthor: 'unknown',
     historyEntry: ({ version, date, author }) =>
       format('schema v{version} · {date} · {author}', { version, date, author }),
+    historyEntryId: ({ id }) => format('version id: {id}', { id }),
   },
   lessons: {
     heading: 'Lessons',
@@ -610,7 +611,9 @@ export const en: Messages = {
     unavailableTitle: 'This product is not available',
     unavailableBody: 'The checkout link may be old, or the product may still be a draft.',
     paymentSimulatedEyebrow: 'payment simulated',
-    accessGrantedTitle: 'You have access',
+    accessGrantedTitle: 'Access granted',
+    alreadyOwnedTitle: 'You already have access',
+    alreadyOwnedNote: 'This purchase changed nothing — the product was already in your library.',
     productionNote: 'In production, Together would send this link by email.',
     noMagicLinkNote: 'The purchase was simulated, but no dev magic link is exposed.',
     openCourse: 'Open your course',

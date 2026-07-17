@@ -11,6 +11,9 @@ export const formatPrice = (priceCents: number, currency: string) =>
 export const formatDate = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium' }).format(new Date(value));
 
+export const formatDateTime = (value: string, language: string): string =>
+  new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+
 const RELATIVE_STEPS: Array<{ limitMs: number; unitMs: number; unit: Intl.RelativeTimeFormatUnit }> = [
   { limitMs: 60_000, unitMs: 1_000, unit: 'second' },
   { limitMs: 3_600_000, unitMs: 60_000, unit: 'minute' },

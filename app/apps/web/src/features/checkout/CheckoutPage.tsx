@@ -138,7 +138,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             {t.checkout.paymentSimulatedEyebrow}
           </Eyebrow>
           <Stack useFlexGap spacing="1rem">
-            <CardTitle variant="h1">{t.checkout.accessGrantedTitle}</CardTitle>
+            <CardTitle variant="h1">
+              {simulatePurchase.data?.alreadyOwned ? t.checkout.alreadyOwnedTitle : t.checkout.accessGrantedTitle}
+            </CardTitle>
+            {simulatePurchase.data?.alreadyOwned ? (
+              <Typography variant="body1">{t.checkout.alreadyOwnedNote}</Typography>
+            ) : null}
             <Typography variant="body1">{product.title}</Typography>
             {magicLinkUrl ? <Link href={magicLinkUrl}>{t.checkout.openCourse}</Link> : null}
             <FinePrint variant="caption" component="p">

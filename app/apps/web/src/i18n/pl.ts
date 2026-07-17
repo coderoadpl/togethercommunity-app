@@ -233,9 +233,9 @@ export const pl: Messages = {
     addFullCourse: 'dodaj pełny dostęp do kursu',
     exclusionsLabel: 'wyłączone moduły',
     noModulesToExclude: 'Do tego kursu nie podpięto żadnych modułów do wyłączenia.',
-    wholeCourseSummary: ({ course }) => format('Cały kurs {course}', { course }),
+    wholeCourseSummary: ({ course }) => format('{course} — cały kurs', { course }),
     wholeCourseExceptSummary: ({ course, count }) =>
-      format('Cały kurs {course} bez {count} {noun}', {
+      format('{course} — cały kurs bez {count} {noun}', {
         course,
         count,
         noun: plural(count, 'modułu', 'modułów', 'modułów'),
@@ -338,6 +338,7 @@ export const pl: Messages = {
     historyUnknownAuthor: 'nieznany',
     historyEntry: ({ version, date, author }) =>
       format('schemat v{version} · {date} · {author}', { version, date, author }),
+    historyEntryId: ({ id }) => format('id wersji: {id}', { id }),
   },
   lessons: {
     heading: 'Lekcje',
@@ -625,6 +626,8 @@ export const pl: Messages = {
     unavailableBody: 'Link do płatności może być nieaktualny lub produkt jest wciąż wersją roboczą.',
     paymentSimulatedEyebrow: 'płatność zasymulowana',
     accessGrantedTitle: 'Dostęp przyznany',
+    alreadyOwnedTitle: 'Masz już dostęp',
+    alreadyOwnedNote: 'Ten zakup niczego nie zmienił — ten produkt był już w Twojej bibliotece.',
     productionNote: 'W wersji produkcyjnej Together wysłałoby ten link e-mailem.',
     noMagicLinkNote: 'Płatność została zasymulowana, ale deweloperski magiczny link nie jest udostępniany.',
     openCourse: 'Otwórz swój kurs',

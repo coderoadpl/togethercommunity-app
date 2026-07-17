@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { Eyebrow } from '../../../theme.js';
-import { formatDate } from '../../../lib/format.js';
+import { formatDateTime } from '../../../lib/format.js';
 import { MutationError } from './feedback.js';
 
 /**
@@ -36,9 +36,10 @@ export const HistoryPanel = ({ courseId }: { courseId: string }) => {
               <ListItemText
                 primary={t.courses.historyEntry({
                   version: version.schemaVersion,
-                  date: formatDate(version.createdAt, language),
+                  date: formatDateTime(version.createdAt, language),
                   author: version.createdBy ?? t.courses.historyUnknownAuthor,
                 })}
+                secondary={t.courses.historyEntryId({ id: version.id })}
               />
             </ListItem>
           ))}

@@ -112,6 +112,25 @@ export const buildSnapshot = (kind: EntityKind, entity: unknown): Result<Version
   return ok({ schemaVersion: CURRENT_SNAPSHOT_SCHEMA_VERSION[kind], payload: parsed.data });
 };
 
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(z.record(z.unknown()).parse(value))
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`);
+    return `{${entries.join(',')}}`;
+  }
+  return value === undefined ? 'null' : JSON.stringify(value);
+};
+
+/**
+ * Key-order-insensitive payload equality, used to skip writing a snapshot
+ * identical to the latest stored one (a save that changed nothing).
+ */
+export const snapshotPayloadsEqual = (left: unknown, right: unknown): boolean =>
+  canonicalJson(left) === canonicalJson(right);
+
 // --- shape guard -----------------------------------------------------------
 
 const stringCheckSignature = (check: z.ZodStringCheck): string => {

@@ -298,6 +298,7 @@ export interface Messages {
     historyRestoreNote: string;
     historyUnknownAuthor: string;
     historyEntry: (params: { version: number; date: string; author: string }) => string;
+    historyEntryId: (params: { id: string }) => string;
   };
   lessons: {
     heading: string;
@@ -574,6 +575,8 @@ export interface Messages {
     unavailableBody: string;
     paymentSimulatedEyebrow: string;
     accessGrantedTitle: string;
+    alreadyOwnedTitle: string;
+    alreadyOwnedNote: string;
     productionNote: string;
     noMagicLinkNote: string;
     openCourse: string;

@@ -39,6 +39,7 @@ describe('HistoryPanel', () => {
     expect(
       await screen.findByText((content) => content.includes('schemat v1') && content.includes('creator@together.dev')),
     ).toBeInTheDocument();
+    expect(screen.getByText(pl.courses.historyEntryId({ id: 'version-1' }))).toBeInTheDocument();
   });
 
   it('shows the empty state when a course has no snapshots yet', async () => {

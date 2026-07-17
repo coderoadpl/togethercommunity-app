@@ -404,6 +404,17 @@ export interface Messages {
     sourceSimulated: string;
     revokeAccess: string;
     revokeConfirm: (params: { product: string; email: string }) => string;
+    learningHeading: string;
+    loadingLearning: string;
+    lastActivity: string;
+    noActivity: string;
+    noAccessibleCourses: string;
+    colCourse: string;
+    colProgress: string;
+    colLatestCompleted: string;
+    colCourseActivity: string;
+    lessonsProgress: (params: { completed: number; total: number }) => string;
+    noLessonCompleted: string;
   };
   student: {
     myCourses: string;

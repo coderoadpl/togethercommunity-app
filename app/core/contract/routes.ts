@@ -22,6 +22,7 @@ import {
   m2mEnrollInputSchema,
   memberExportFileSchema,
   memberGrantSchema,
+  memberLearningSummarySchema,
   memberWithProductIdsSchema,
   muteThreadInputSchema,
   revokeGrantInputSchema,
@@ -164,6 +165,10 @@ export const memberRemoveOutputSchema = z.object({
 
 export const memberGrantsOutputSchema = z.object({
   grants: z.array(memberGrantSchema),
+});
+
+export const memberLearningSummaryOutputSchema = z.object({
+  summary: memberLearningSummarySchema,
 });
 
 export const grantCreateInputSchema = grantProductToMemberInputSchema;
@@ -570,6 +575,7 @@ export const API_ROUTES = {
   members: { method: 'GET', path: '/api/members' },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
+  memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
@@ -643,6 +649,7 @@ export const API_PATHS = {
   members: API_ROUTES.members.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
+  memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberRemove: API_ROUTES.memberRemove.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,

@@ -175,6 +175,7 @@ export interface MemberCourseProgressRepository {
     tenantId: string,
     input: { memberId: string; courseId: string },
   ): Promise<MemberCourseProgress | null>;
+  listByMember(tenantId: string, memberId: string): Promise<MemberCourseProgress[]>;
   findOrCreate(
     tenantId: string,
     input: { id: string; memberId: string; courseId: string; now: string },

@@ -451,6 +451,18 @@ export const pl: Messages = {
         'Odebrać produkt {product} uczestnikowi {email}? Dostęp wygaśnie natychmiast; konto uczestnika pozostaje aktywne.',
         { product, email },
       ),
+    learningHeading: 'Aktywność edukacyjna',
+    loadingLearning: 'ładowanie aktywności…',
+    lastActivity: 'Ostatnia aktywność',
+    noActivity: 'brak aktywności',
+    noAccessibleCourses: 'Brak kursów w dostępie.',
+    colCourse: 'Kurs',
+    colProgress: 'Postęp',
+    colLatestCompleted: 'Ostatnia ukończona lekcja',
+    colCourseActivity: 'Ostatnia aktywność',
+    lessonsProgress: ({ completed, total }) =>
+      format('{completed} z {total} lekcji', { completed, total }),
+    noLessonCompleted: 'jeszcze żadna',
   },
   student: {
     myCourses: 'Moje kursy',

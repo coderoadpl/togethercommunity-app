@@ -437,6 +437,22 @@ export const en: Messages = {
         'Revoke {product} for {email}? The grant expires immediately; the member keeps their account.',
         { product, email },
       ),
+    learningHeading: 'Learning activity',
+    loadingLearning: 'loading learning activity…',
+    lastActivity: 'Last activity',
+    noActivity: 'no activity yet',
+    noAccessibleCourses: 'No accessible courses.',
+    colCourse: 'Course',
+    colProgress: 'Progress',
+    colLatestCompleted: 'Latest completed lesson',
+    colCourseActivity: 'Last activity',
+    lessonsProgress: ({ completed, total }) =>
+      format('{completed} of {total} {noun}', {
+        completed,
+        total,
+        noun: total === 1 ? 'lesson' : 'lessons',
+      }),
+    noLessonCompleted: 'none yet',
   },
   student: {
     myCourses: 'My courses',

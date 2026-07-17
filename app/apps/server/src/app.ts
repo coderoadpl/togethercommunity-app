@@ -82,6 +82,7 @@ import {
   revokeTenantApiKey,
   getAccessibleLesson,
   getCourseStructureWithAccess,
+  getMemberLearningSummary,
   getNextLesson,
   getProgress,
   getPublicOffer,
@@ -576,6 +577,15 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.memberGrants, async (c) => {
     const result = await listMemberGrants({ identity: c.get('identity') }, c.req.param('memberId'), deps);
     return respond(result.ok ? ok({ grants: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberLearningSummary, async (c) => {
+    const result = await getMemberLearningSummary(
+      { identity: c.get('identity') },
+      c.req.param('memberId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ summary: result.value }) : result);
   });
 
   app.delete(API_PATHS.memberRemove, async (c) => {

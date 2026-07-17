@@ -1330,6 +1330,22 @@ member
   );
 
 member
+  .command('learning <memberId>')
+  .description('Learning summary: last activity plus per-course progress and latest completed lesson')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [memberId]) => {
+      emit(await ctx.api.memberLearningSummary(memberId), ctx.json, (data) => {
+        const header = `last activity: ${data.summary.lastActivityAt ?? 'none'}`;
+        const rows = data.summary.courses.map(
+          (c) =>
+            `${c.courseName}\t${c.completedLessonCount}/${c.accessibleLessonCount} lessons\tlatest: ${c.latestCompletedLesson?.name ?? 'none'}\tactive: ${c.lastActivityAt ?? 'never'}`,
+        );
+        return [header, ...rows].join('\n');
+      });
+    }),
+  );
+
+member
   .command('remove <memberId>')
   .description('Remove a member and tenant-scoped grants without deleting the account')
   .action(

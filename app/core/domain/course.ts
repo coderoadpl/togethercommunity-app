@@ -143,6 +143,24 @@ export const memberCourseProgressSchema = z.object({
 
 export type MemberCourseProgress = z.infer<typeof memberCourseProgressSchema>;
 
+export const memberCourseLearningSummarySchema = z.object({
+  courseId: z.string(),
+  courseName: z.string(),
+  completedLessonCount: z.number().int().nonnegative(),
+  accessibleLessonCount: z.number().int().nonnegative(),
+  lastActivityAt: z.string().datetime().nullable(),
+  latestCompletedLesson: z.object({ lessonId: z.string(), name: z.string() }).nullable(),
+});
+
+export type MemberCourseLearningSummary = z.infer<typeof memberCourseLearningSummarySchema>;
+
+export const memberLearningSummarySchema = z.object({
+  lastActivityAt: z.string().datetime().nullable(),
+  courses: z.array(memberCourseLearningSummarySchema),
+});
+
+export type MemberLearningSummary = z.infer<typeof memberLearningSummarySchema>;
+
 export const accessStatusSchema = z.enum([
   'not-accessible',
   'partially-accessible',

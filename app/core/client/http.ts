@@ -26,6 +26,7 @@ import {
   m2mEnrollOutputSchema,
   meOutputSchema,
   memberGrantsOutputSchema,
+  memberLearningSummaryOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
   membersExportOutputSchema,
@@ -297,6 +298,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.memberGrants.method,
       API_ROUTES.memberGrants.path.replace(':memberId', encodeURIComponent(memberId)),
       memberGrantsOutputSchema,
+      undefined,
+      signal,
+    ),
+  memberLearningSummary: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberLearningSummary.method,
+      API_ROUTES.memberLearningSummary.path.replace(':memberId', encodeURIComponent(memberId)),
+      memberLearningSummaryOutputSchema,
       undefined,
       signal,
     ),

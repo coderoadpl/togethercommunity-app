@@ -15,6 +15,7 @@ export * from './usecases/m2m-enroll.js';
 export * from './usecases/fulfill-enrollment.js';
 export * from './usecases/my-products.js';
 export * from './usecases/members.js';
+export * from './usecases/member-learning.js';
 export * from './usecases/tenants.js';
 export * from './usecases/create-tenant.js';
 export * from './usecases/course-management.js';

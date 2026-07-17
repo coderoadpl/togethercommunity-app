@@ -213,6 +213,8 @@ const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressReposit
     rows.find(
       (r) => r.tenantId === tenantId && r.memberId === input.memberId && r.courseId === input.courseId,
     ) ?? null,
+  listByMember: async (tenantId, memberId) =>
+    rows.filter((r) => r.tenantId === tenantId && r.memberId === memberId),
   findOrCreate: async (tenantId, input) => ({
     id: input.id,
     tenantId,

@@ -10,6 +10,7 @@ import {
   DialogTitle,
   FormControl,
   FormLabel,
+  LinearProgress,
   MenuItem,
   OutlinedInput,
   Paper,
@@ -29,7 +30,7 @@ import type { GrantSource, MemberGrant, MemberWithProductIds } from '@core/domai
 
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
-import { formatDate } from '../../../lib/format.js';
+import { formatDate, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
 
@@ -101,6 +102,100 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
       </Stack>
       {grant.isError ? <MutationError error={grant.error} /> : null}
     </Paper>
+  );
+};
+
+const completionPercent = (completed: number, total: number): number =>
+  total === 0 ? 0 : Math.round((completed / total) * 100);
+
+const ActivityTime = ({ value }: { value: string }) => {
+  const { language } = useLanguage();
+  return (
+    <EntryDate component="time" dateTime={value}>
+      {formatRelativeTime(value, language)}
+    </EntryDate>
+  );
+};
+
+const LearningSummary = ({ memberId }: { memberId: string }) => {
+  const t = useTranslations();
+  const summary = useQuery(actions.memberLearningSummary(memberId));
+
+  return (
+    <Box component="section">
+      <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
+        {t.members.learningHeading}
+      </Typography>
+      {summary.isPending ? (
+        <Typography variant="body1">{t.members.loadingLearning}</Typography>
+      ) : summary.isError ? (
+        <MutationError error={summary.error} />
+      ) : (
+        <Stack useFlexGap spacing="1rem">
+          <Typography variant="body2">
+            {t.members.lastActivity}:{' '}
+            {summary.data.summary.lastActivityAt === null ? (
+              t.members.noActivity
+            ) : (
+              <ActivityTime value={summary.data.summary.lastActivityAt} />
+            )}
+          </Typography>
+          {summary.data.summary.courses.length === 0 ? (
+            <Typography variant="body1">{t.members.noAccessibleCourses}</Typography>
+          ) : (
+            <TableContainer>
+              <Table size="small" aria-label={t.members.learningHeading}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{t.members.colCourse}</TableCell>
+                    <TableCell>{t.members.colProgress}</TableCell>
+                    <TableCell>{t.members.colLatestCompleted}</TableCell>
+                    <TableCell>{t.members.colCourseActivity}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {summary.data.summary.courses.map((course) => {
+                    const percent = completionPercent(
+                      course.completedLessonCount,
+                      course.accessibleLessonCount,
+                    );
+                    return (
+                      <TableRow key={course.courseId} data-testid="learning-summary-row">
+                        <TableCell>{course.courseName}</TableCell>
+                        <TableCell>
+                          <Stack useFlexGap spacing="0.35rem" sx={{ minWidth: '9rem' }}>
+                            <Typography variant="body2">
+                              {t.members.lessonsProgress({
+                                completed: course.completedLessonCount,
+                                total: course.accessibleLessonCount,
+                              })}{' '}
+                              · {percent}%
+                            </Typography>
+                            <LinearProgress variant="determinate" value={percent} />
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          {course.latestCompletedLesson === null
+                            ? t.members.noLessonCompleted
+                            : course.latestCompletedLesson.name}
+                        </TableCell>
+                        <TableCell>
+                          {course.lastActivityAt === null ? (
+                            t.members.noActivity
+                          ) : (
+                            <ActivityTime value={course.lastActivityAt} />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Stack>
+      )}
+    </Box>
   );
 };
 
@@ -194,6 +289,8 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           {formatDate(member.createdAt, language)}
         </EntryDate>
       </Typography>
+
+      <LearningSummary memberId={member.id} />
 
       <GrantForm memberId={member.id} onGranted={refresh} />
 

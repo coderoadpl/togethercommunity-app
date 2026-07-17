@@ -189,6 +189,8 @@ const productRepo = (store: Product[], versions: EntityVersionRecord[] = []): Pr
 
 const progressRepo = (store: MemberCourseProgress[] = []): MemberCourseProgressRepository => ({
   findByMemberAndCourse: async () => null,
+  listByMember: async (tenantId, memberId) =>
+    store.filter((progress) => progress.tenantId === tenantId && progress.memberId === memberId),
   findOrCreate: async (_tenantId, { id, memberId, courseId, now: createdAt }) => ({
     id,
     tenantId: _tenantId,

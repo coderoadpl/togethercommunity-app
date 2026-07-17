@@ -480,6 +480,25 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         })
       : null;
   },
+  listByMember: async (tenantId, memberId) => {
+    const rows = await db
+      .select()
+      .from(memberCourseProgress)
+      .where(
+        and(
+          eq(memberCourseProgress.tenantId, tenantId),
+          eq(memberCourseProgress.memberId, memberId),
+        ),
+      );
+    return rows.map((row) =>
+      parseProgress({
+        ...row,
+        lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+        lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+        lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+      }),
+    );
+  },
   findOrCreate: async (tenantId, input) => {
     await db
       .insert(memberCourseProgress)

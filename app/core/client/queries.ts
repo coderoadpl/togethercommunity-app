@@ -133,6 +133,7 @@ export const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
   grants: (memberId: string) => ['members', 'grants', memberId] as const,
+  learningSummary: (memberId: string) => ['members', 'learning-summary', memberId] as const,
 };
 
 export const authScopes = {
@@ -287,6 +288,12 @@ export const memberGrantsQuery = (api: ApiClient, memberId: string) =>
   defineQuery({
     queryKey: membersScopes.grants(memberId),
     call: ({ signal }) => api.listMemberGrants(memberId, signal),
+  });
+
+export const memberLearningSummaryQuery = (api: ApiClient, memberId: string) =>
+  defineQuery({
+    queryKey: membersScopes.learningSummary(memberId),
+    call: ({ signal }) => api.memberLearningSummary(memberId, signal),
   });
 
 export const grantProductToMemberMutation = (api: ApiClient) =>

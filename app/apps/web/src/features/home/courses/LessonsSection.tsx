@@ -26,7 +26,7 @@ import DOMPurify from 'dompurify';
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -421,10 +421,7 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
   };
 
   return (
-    <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1.25rem', display: 'grid', gap: '1rem' }}>
-      <Typography variant="h2" component="h3">
-        {lesson ? t.lessons.editLesson : t.lessons.newLesson}
-      </Typography>
+    <SectionCard title={lesson ? t.lessons.editLesson : t.lessons.newLesson} onSubmit={submit}>
       <FormControl fullWidth>
         <FormLabel htmlFor="lesson-name">{t.common.name}</FormLabel>
         <OutlinedInput
@@ -541,7 +538,7 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
 
       {validationError ? <Typography variant="caption" role="alert">{validationError}</Typography> : null}
       {mutationError ? <MutationError error={mutationError} /> : null}
-    </Paper>
+    </SectionCard>
   );
 };
 
@@ -617,7 +614,7 @@ export const LessonsSection = () => {
   const paged = usePagedList(visibleLessons, `${query}|${typeFilter}`);
 
   return (
-    <Stack useFlexGap spacing="1.5rem">
+    <PanelPage title={t.sections.lessons}>
       <LessonForm key={editing?.id ?? 'new'} lesson={editing} onDone={() => setEditing(null)} />
 
       <Box component="section">
@@ -706,6 +703,6 @@ export const LessonsSection = () => {
       </Box>
 
       {deleting ? <LessonDeleteDialog lesson={deleting} onClose={() => setDeleting(null)} /> : null}
-    </Stack>
+    </PanelPage>
   );
 };

@@ -8,7 +8,6 @@ import {
   LinearProgress,
   MenuItem,
   OutlinedInput,
-  Paper,
   Select,
   Stack,
   Table,
@@ -29,7 +28,7 @@ import type {
 } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
@@ -63,10 +62,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
   };
 
   return (
-    <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }}>
-      <Typography variant="h2" component="h3">
-        {t.members.grantProduct}
-      </Typography>
+    <SectionCard title={t.members.grantProduct} onSubmit={submit}>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }} size="small">
           <FormLabel htmlFor="grant-product">{t.members.productLabel}</FormLabel>
@@ -102,7 +98,7 @@ const GrantForm = ({ memberId, onGranted }: { memberId: string; onGranted: () =>
         </Button>
       </Stack>
       {grant.isError ? <MutationError error={grant.error} /> : null}
-    </Paper>
+    </SectionCard>
   );
 };
 
@@ -314,16 +310,17 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
   });
 
   return (
-    <Stack useFlexGap spacing="1.5rem">
-      <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Button variant="text" onClick={onBack}>
-          {t.members.allMembersBack}
-        </Button>
-        <Typography variant="h2" component="h2">
-          {member.email}
-        </Typography>
-      </Stack>
-
+    <PanelPage
+      title={member.email}
+      backTo={{
+        label: t.members.allMembersBack,
+        href: '/panel/members',
+        onClick: (event) => {
+          event.preventDefault();
+          onBack();
+        },
+      }}
+    >
       <Typography variant="body2">
         {t.members.joined}{' '}
         <EntryDate component="time" dateTime={member.createdAt}>
@@ -402,6 +399,6 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           if (revoking) revoke.mutate({ grantId: revoking.id });
         }}
       />
-    </Stack>
+    </PanelPage>
   );
 };

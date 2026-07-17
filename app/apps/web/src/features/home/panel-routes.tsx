@@ -1,9 +1,8 @@
-import { Paper, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/index.js';
+import { PanelPage } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { DashboardPanel } from './DashboardPanel.js';
 import { CourseDetail } from './courses/CourseDetail.js';
@@ -31,8 +30,8 @@ export const PanelCourseDetailRoute = () => {
 
   const back = () => void navigate({ to: '/panel/courses' });
 
-  if (courses.isPending) return <StatusView state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
-  if (courses.isError) return <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
+  if (courses.isPending) return <PanelPage title={t.sections.courses} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
+  if (courses.isError) return <PanelPage title={t.sections.courses} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
 
   const course = courses.data.courses.find((entry) => entry.id === courseId);
   if (!course) return <Navigate to="/panel/courses" />;
@@ -53,8 +52,8 @@ export const PanelMemberDetailRoute = () => {
 
   const back = () => void navigate({ to: '/panel/members' });
 
-  if (members.isPending) return <StatusView state={{ kind: 'loading', label: t.members.loading }} />;
-  if (members.isError) return <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />;
+  if (members.isPending) return <PanelPage title={t.sections.members} state={{ kind: 'loading', label: t.members.loading }} />;
+  if (members.isError) return <PanelPage title={t.sections.members} state={{ kind: 'error', message: localizeError(members.error, t) }} />;
 
   const member = members.data.members.find((entry) => entry.id === memberId);
   if (!member) return <Navigate to="/panel/members" />;
@@ -70,14 +69,10 @@ export const PanelIntegrationsRoute = () => {
 export const PanelSalesRoute = () => {
   const t = useTranslations();
   return (
-    <Paper elevation={1} sx={{ p: '1.5rem' }}>
-      <Typography variant="h2" component="h2">
-        {t.sections.sales}
-      </Typography>
-      <Typography variant="body1" sx={{ mt: '1rem' }}>
-        {t.sections.comingSoon}
-      </Typography>
-    </Paper>
+    <PanelPage
+      title={t.sections.sales}
+      state={{ kind: 'empty', title: t.sections.comingSoon }}
+    />
   );
 };
 

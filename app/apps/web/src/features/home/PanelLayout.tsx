@@ -298,7 +298,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar />
-        <Box sx={{ maxWidth: '60rem', mx: 'auto', px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
+        <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
           <Outlet />
         </Box>
       </Box>

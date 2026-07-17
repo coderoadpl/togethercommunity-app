@@ -7,7 +7,6 @@ import {
   FormControl,
   FormLabel,
   OutlinedInput,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -16,8 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { StatusView } from '../../../components/layout/index.js';
-import { Eyebrow } from '../../../theme.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 
 const SecretField = ({
@@ -222,20 +220,8 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
     (settings.data?.settings.bunnyStreamLibraryId ?? null) !== null;
 
   return (
-    <Paper elevation={1} sx={{ p: '1.5rem' }}>
-      <Stack useFlexGap spacing="1.5rem">
-        <Box sx={{ display: 'grid', gap: '0.4rem' }}>
-          <Typography variant="h2" component="h2">
-            {t.integrations.heading}
-          </Typography>
-          <Typography variant="body2">{t.integrations.intro}</Typography>
-        </Box>
-
-        <Box sx={{ display: 'grid', gap: '1rem' }}>
-          <Eyebrow variant="overline" component="h3">
-            {t.integrations.stripeHeading}
-          </Eyebrow>
-          <Typography variant="body2">{t.integrations.stripeDescription}</Typography>
+    <PanelPage title={t.integrations.heading} description={t.integrations.intro}>
+        <SectionCard title={t.integrations.stripeHeading} description={t.integrations.stripeDescription}>
 
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
@@ -296,13 +282,9 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
               </Alert>
             ) : null}
           </Box>
-        </Box>
+        </SectionCard>
 
-        <Box sx={{ display: 'grid', gap: '1rem' }}>
-          <Eyebrow variant="overline" component="h3">
-            {t.integrations.bunnyHeading}
-          </Eyebrow>
-          <Typography variant="body2">{t.integrations.bunnyDescription}</Typography>
+        <SectionCard title={t.integrations.bunnyHeading} description={t.integrations.bunnyDescription}>
 
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
@@ -320,8 +302,7 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           )}
 
           <BunnyTestConnection ready={bunnyReady} />
-        </Box>
-      </Stack>
-    </Paper>
+        </SectionCard>
+    </PanelPage>
   );
 };

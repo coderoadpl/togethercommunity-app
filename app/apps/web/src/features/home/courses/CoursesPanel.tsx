@@ -8,7 +8,6 @@ import {
   ListItem,
   ListItemText,
   OutlinedInput,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -18,7 +17,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Course } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -53,10 +52,7 @@ const CreateCourseForm = () => {
   };
 
   return (
-    <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '1rem' }}>
-      <Typography variant="h2" component="h3">
-        {t.courses.newCourse}
-      </Typography>
+    <SectionCard title={t.courses.newCourse} onSubmit={submit}>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-name">{t.common.name}</FormLabel>
         <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required />
@@ -84,7 +80,7 @@ const CreateCourseForm = () => {
         {createCourse.isPending ? t.courses.creating : t.courses.create}
       </Button>
       {createCourse.isError ? <MutationError error={createCourse.error} /> : null}
-    </Paper>
+    </SectionCard>
   );
 };
 
@@ -109,7 +105,7 @@ export const CoursesListPanel = () => {
   const paged = usePagedList(visibleCourses, query);
 
   return (
-    <Stack useFlexGap spacing="2rem">
+    <PanelPage title={t.sections.courses}>
       <CreateCourseForm />
       <Box component="section">
         <Stack
@@ -169,6 +165,6 @@ export const CoursesListPanel = () => {
         )}
         <ListPagination paged={paged} testId="courses-pagination" />
       </Box>
-    </Stack>
+    </PanelPage>
   );
 };

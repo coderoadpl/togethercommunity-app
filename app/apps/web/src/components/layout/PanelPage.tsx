@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { Box, Link, Stack, Typography } from '@mui/material';
 
 import { StatusView, type PageState } from './StatusView.js';
+import { PAGE_WIDTH } from './widths.js';
 
 interface PanelPageProps {
   /** Quiet h1 (decision D1): title + optional description, no eyebrow or rule. */
@@ -9,7 +10,7 @@ interface PanelPageProps {
   description?: ReactNode;
   /** Primary action, top-right; wraps under the title on narrow viewports. */
   action?: ReactNode;
-  backTo?: { label: ReactNode; href: string };
+  backTo?: { label: ReactNode; href: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
   state?: PageState;
   children?: ReactNode;
   'data-testid'?: string;
@@ -27,11 +28,11 @@ export const PanelPage = ({
   const statusOnly = state !== undefined && state.kind !== 'ready';
 
   return (
-    <Box data-testid={testId}>
+    <Box data-testid={testId} sx={{ maxWidth: PAGE_WIDTH.panel, mx: 'auto' }}>
       <Box component="header" sx={{ mb: '1.5rem' }}>
         {backTo !== undefined && (
           <Box sx={{ mb: '0.75rem' }}>
-            <Link href={backTo.href}>{backTo.label}</Link>
+            <Link href={backTo.href} onClick={backTo.onClick}>{backTo.label}</Link>
           </Box>
         )}
         <Stack

@@ -21,9 +21,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Chapter, Course, CourseLesson, CourseModule } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
-import { CardTitle, Eyebrow, TreeChapterTitle, TreeModuleTitle } from '../../../theme.js';
+import { Eyebrow, TreeChapterTitle, TreeModuleTitle } from '../../../theme.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { MutationError, newId } from './feedback.js';
 
@@ -496,10 +496,7 @@ const CreateModuleForm = ({ courseId }: { courseId: string }) => {
   };
 
   return (
-    <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }}>
-      <Typography variant="h2" component="h3">
-        {t.courses.newModule}
-      </Typography>
+    <SectionCard title={t.courses.newModule} onSubmit={submit}>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }}>
           <FormLabel htmlFor="new-module-title">{t.products.titleLabel}</FormLabel>
@@ -519,7 +516,7 @@ const CreateModuleForm = ({ courseId }: { courseId: string }) => {
         </Button>
       </Stack>
       {createModule.isError ? <MutationError error={createModule.error} /> : null}
-    </Paper>
+    </SectionCard>
   );
 };
 
@@ -545,10 +542,7 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
   };
 
   return (
-    <Paper elevation={1} component="form" onSubmit={submit} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }}>
-      <Typography variant="h2" component="h3">
-        {t.courses.attachExisting}
-      </Typography>
+    <SectionCard title={t.courses.attachExisting} onSubmit={submit}>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
         <FormControl sx={{ flex: 1 }}>
           <FormLabel htmlFor="attach-module">{t.courses.moduleLabel}</FormLabel>
@@ -574,7 +568,7 @@ const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: Co
         </Button>
       </Stack>
       {attachModule.isError ? <MutationError error={attachModule.error} /> : null}
-    </Paper>
+    </SectionCard>
   );
 };
 
@@ -607,10 +601,10 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const detachModule = useMutation({ ...actions.detachModule, onSuccess: invalidateTree });
 
   if (modules.isPending || lessons.isPending) {
-    return <StatusView state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
+    return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
-  if (modules.isError) return <StatusView state={{ kind: 'error', message: localizeError(modules.error, t) }} />;
-  if (lessons.isError) return <StatusView state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
+  if (modules.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(modules.error, t) }} />;
+  if (lessons.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
 
   const attached = orderAttachedModules(
     course,
@@ -625,16 +619,17 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   };
 
   return (
-    <Stack useFlexGap spacing="1.5rem">
-      <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Button variant="text" onClick={onBack}>
-          {t.courses.allCourses}
-        </Button>
-        <CardTitle variant="h1" component="h2">
-          {course.name}
-        </CardTitle>
-      </Stack>
-
+    <PanelPage
+      title={course.name}
+      backTo={{
+        label: t.courses.allCourses,
+        href: '/panel/courses',
+        onClick: (event) => {
+          event.preventDefault();
+          onBack();
+        },
+      }}
+    >
       <CreateModuleForm courseId={course.id} />
       <AttachModuleForm courseId={course.id} modules={unattached} />
       <HistoryPanel courseId={course.id} />
@@ -693,6 +688,6 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
           confirmTestId="module-detach-confirm"
         />
       ) : null}
-    </Stack>
+    </PanelPage>
   );
 };

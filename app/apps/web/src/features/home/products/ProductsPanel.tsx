@@ -29,7 +29,7 @@ import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -212,17 +212,8 @@ export const ProductsPanel = () => {
   };
 
   return (
-    <Stack useFlexGap spacing="2rem">
-      <Paper
-        elevation={1}
-        component="form"
-        onSubmit={submit}
-        sx={{ p: '1rem', display: 'grid', gap: '1rem' }}
-      >
-        <Typography variant="h2" component="h2">
-          {t.products.newProduct}
-        </Typography>
-        <Stack useFlexGap spacing="1rem">
+    <PanelPage title={t.sections.products}>
+      <SectionCard title={t.products.newProduct} onSubmit={submit}>
           <FormControl fullWidth>
             <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
             <OutlinedInput
@@ -279,11 +270,10 @@ export const ProductsPanel = () => {
           <Button type="submit" variant="contained" disabled={createProduct.isPending}>
             {createProduct.isPending ? t.products.creating : t.products.create}
           </Button>
-        </Stack>
         {createProduct.isError ? (
           <Alert>{localizeError(createProduct.error, t)}</Alert>
         ) : null}
-      </Paper>
+      </SectionCard>
 
       <Box component="section">
         <Stack
@@ -323,6 +313,6 @@ export const ProductsPanel = () => {
         )}
         <ListPagination paged={paged} testId="products-pagination" />
       </Box>
-    </Stack>
+    </PanelPage>
   );
 };

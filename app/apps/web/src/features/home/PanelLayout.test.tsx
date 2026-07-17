@@ -115,7 +115,7 @@ describe('Creator panel routing', () => {
     }
     expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('heading', { name: pl.members.heading })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
   });
 
   it('shows the dashboard overview at /panel index', async () => {
@@ -126,7 +126,7 @@ describe('Creator panel routing', () => {
 
     expect(await screen.findByTestId('dashboard-tiles')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/panel');
-    expect(screen.getByRole('heading', { name: pl.dashboard.heading })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.dashboard.heading, level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('section-dashboard')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
   });
@@ -141,7 +141,7 @@ describe('Creator panel routing', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/panel/courses'));
     expect(screen.getByTestId('section-courses')).toHaveAttribute('aria-current', 'page');
-    expect(await screen.findByRole('heading', { name: pl.courses.heading })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.courses.heading, level: 1 })).toBeInTheDocument();
   });
 
   it('shows the coming-soon copy on the sales section', async () => {

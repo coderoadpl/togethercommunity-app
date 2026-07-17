@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Alert,
-  Box,
   Button,
   Chip,
   Paper,
@@ -21,7 +20,7 @@ import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, PanelPage, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -101,17 +100,10 @@ export const MembersPanel = () => {
   const paged = usePagedList(visibleMembers, `${query}|${grantFilter}`);
 
   return (
-    <Paper elevation={1} sx={{ p: '1.5rem' }}>
-      <Stack useFlexGap spacing="1.5rem">
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ flexWrap: 'wrap', alignItems: 'baseline', columnGap: '1rem', rowGap: '0.6rem' }}
-        >
-          <Typography variant="h2" component="h2">
-            {t.members.heading}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
+    <PanelPage
+      title={t.members.heading}
+      action={
+        <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ flexWrap: 'wrap' }}>
           <Button
             variant="outlined"
             data-testid="export-csv"
@@ -129,7 +121,10 @@ export const MembersPanel = () => {
             {exporting === 'json' ? t.members.exporting : t.members.exportJson}
           </Button>
         </Stack>
-
+      }
+    >
+    <Paper elevation={1} sx={{ p: '1.5rem' }}>
+      <Stack useFlexGap spacing="1.5rem">
         <Stack
           direction="row"
           useFlexGap
@@ -274,5 +269,6 @@ export const MembersPanel = () => {
         data-testid="member-remove-dialog"
       />
     </Paper>
+    </PanelPage>
   );
 };

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/index.js';
+import { PanelPage, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatDate } from '../../lib/format.js';
 import { EntryDate, StatTileButton, StatTileIcon, StatTileLabel, StatTileValue } from '../../theme.js';
@@ -61,11 +61,11 @@ export const DashboardPanel = () => {
   const members = useQuery(actions.members);
 
   if (products.isPending || courses.isPending || members.isPending) {
-    return <StatusView state={{ kind: 'loading', label: t.dashboard.loading }} />;
+    return <PanelPage title={t.dashboard.heading} state={{ kind: 'loading', label: t.dashboard.loading }} />;
   }
-  if (products.isError) return <StatusView state={{ kind: 'error', message: localizeError(products.error, t) }} />;
-  if (courses.isError) return <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
-  if (members.isError) return <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />;
+  if (products.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(products.error, t) }} />;
+  if (courses.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
+  if (members.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(members.error, t) }} />;
 
   const published = products.data.products.filter((product) => product.published).length;
   const draft = products.data.products.length - published;
@@ -78,11 +78,7 @@ export const DashboardPanel = () => {
     .slice(0, RECENT_MEMBERS_LIMIT);
 
   return (
-    <Stack useFlexGap spacing="1.5rem">
-      <Typography variant="h2" component="h2">
-        {t.dashboard.heading}
-      </Typography>
-
+    <PanelPage title={t.dashboard.heading}>
       <Box
         data-testid="dashboard-tiles"
         sx={{
@@ -174,6 +170,6 @@ export const DashboardPanel = () => {
           </List>
         )}
       </Paper>
-    </Stack>
+    </PanelPage>
   );
 };

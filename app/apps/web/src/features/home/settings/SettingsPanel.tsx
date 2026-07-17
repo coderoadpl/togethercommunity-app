@@ -6,14 +6,13 @@ import {
   FormControl,
   FormLabel,
   OutlinedInput,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
-import { StatusView } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { Eyebrow } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
@@ -39,12 +38,7 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   };
 
   return (
-    <Paper elevation={1} sx={{ p: '1.5rem' }}>
-      <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.8rem' }}>
-        <Typography variant="h2" component="h2">
-          {t.billing.heading}
-        </Typography>
-        <Typography variant="body2">{t.billing.intro}</Typography>
+    <SectionCard title={t.billing.heading} description={t.billing.intro} onSubmit={submit}>
         <FormControl fullWidth>
           <FormLabel htmlFor="billing-portal-url">{t.billing.urlLabel}</FormLabel>
           {settings.isPending ? (
@@ -85,8 +79,7 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           </Typography>
         ) : null}
         {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
-      </Box>
-    </Paper>
+    </SectionCard>
   );
 };
 
@@ -116,12 +109,8 @@ const SecurityPanel = () => {
   };
 
   return (
-    <Paper elevation={1} sx={{ p: '1.5rem' }}>
+    <SectionCard title={t.security.heading}>
       <Stack useFlexGap spacing="1.75rem">
-        <Typography variant="h2" component="h2">
-          {t.security.heading}
-        </Typography>
-
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <Eyebrow variant="overline" component="h3">
             {t.security.passkeys}
@@ -213,16 +202,17 @@ const SecurityPanel = () => {
           </Box>
         ) : null}
       </Stack>
-    </Paper>
+    </SectionCard>
   );
 };
 
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
+  const t = useTranslations();
   return (
-    <Stack useFlexGap spacing="1.5rem">
+    <PanelPage title={t.sections.settings}>
       <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <SecurityPanel />
-    </Stack>
+    </PanelPage>
   );
 };

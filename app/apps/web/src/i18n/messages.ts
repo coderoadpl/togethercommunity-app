@@ -539,6 +539,10 @@ export interface Messages {
     heading: string;
     eyebrow: string;
     loading: string;
+    errorTitle: string;
+    errorBody: string;
+    retry: string;
+    retrying: string;
     empty: string;
     lockedNote: string;
     composerLabel: string;

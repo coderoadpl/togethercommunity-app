@@ -16,6 +16,11 @@ npm run build:web
 npm run dev:server   # API + SPA on http://localhost:48730
 ```
 
+The dev server serves the built SPA from `dist/web`, not directly from
+`apps/web/src`. `npm run dev:server` and `npm run db:reseed` compare mtimes and
+rebuild a stale bundle automatically. After pulling changes, run
+`npm run build:web` before starting the server if you use another entry point.
+
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
 sign in as `creator@together.dev` / `demo1234` on studio, or
 `creator2@together.dev` / `demo1234` on acme. Each tenant domain shows its own

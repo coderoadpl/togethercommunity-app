@@ -8,7 +8,7 @@
     "together": "./apps/cli/bin.js"
   },
   "scripts": {
-    "dev:server": "tsx watch --env-file-if-exists=.env apps/server/src/entry.node.ts",
+    "dev:server": "tsx scripts/ensure-web-bundle.ts && tsx watch --env-file-if-exists=.env apps/server/src/entry.node.ts",
     "dev:web": "vite --config apps/web/vite.config.ts",
     "build": "npm run build:web && npm run typecheck",
     "build:web": "vite build --config apps/web/vite.config.ts",
@@ -21,7 +21,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx adapters/db/migrate.ts",
     "db:seed": "tsx adapters/db/seed.ts",
-    "db:reseed": "tsx adapters/db/reseed.ts",
+    "db:reseed": "tsx scripts/ensure-web-bundle.ts && tsx adapters/db/reseed.ts",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "tsx scripts/smoke.ts",
     "shots:poc": "tsx scripts/poc-screenshots.ts",

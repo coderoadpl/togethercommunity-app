@@ -12,7 +12,7 @@ export const postSchema = z.object({
   parentPostId: z.string().min(1).nullable(),
   rootPostId: z.string().min(1),
   authorUserId: z.string().min(1),
-  authorDisplay: z.string().min(1),
+  authorDisplay: z.string().trim().min(1),
   // Default keeps rows persisted before this field existed parseable.
   authorIsStaff: z.boolean().default(false),
   body: z.string().min(1).max(5000),
@@ -86,7 +86,7 @@ export const threadReplyNotificationPayloadSchema = z.object({
   // Defaults keep rows persisted before these fields existed parseable.
   courseId: z.string().min(1).nullable().default(null),
   lessonName: z.string().default(''),
-  authorDisplay: z.string().min(1),
+  authorDisplay: z.string().trim().min(1),
   snippet: z.string(),
 });
 

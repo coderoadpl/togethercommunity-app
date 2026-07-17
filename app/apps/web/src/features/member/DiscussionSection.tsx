@@ -479,7 +479,29 @@ export const DiscussionSection = ({ lessonId }: { lessonId: string }) => {
       ) : discussion.isPending ? (
         <Typography variant="body2">{t.discussion.loading}</Typography>
       ) : discussion.isError ? (
-        <Alert>{localizeError(discussion.error, t)}</Alert>
+        <Alert
+          severity="error"
+          data-testid="discussion-error"
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              disabled={discussion.isFetching}
+              onClick={() => {
+                void discussion.refetch();
+              }}
+            >
+              {discussion.isFetching ? t.discussion.retrying : t.discussion.retry}
+            </Button>
+          }
+        >
+          <Typography variant="subtitle2" component="p">
+            {t.discussion.errorTitle}
+          </Typography>
+          <Typography variant="body2" component="p">
+            {t.discussion.errorBody}
+          </Typography>
+        </Alert>
       ) : subthreadRoot !== null ? (
         <Stack useFlexGap sx={{ rowGap: '1rem' }}>
           <Box>

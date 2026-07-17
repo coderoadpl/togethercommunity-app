@@ -36,6 +36,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   muteThread,
+  resolveAuthorDisplay,
   searchPosts,
   subscribeThread,
   unreadNotificationCount,
@@ -374,6 +375,31 @@ const allAccess = product('all', [{ level: 'course', courseId: 'c1' }]);
 const previewAccess = product('preview', [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
 
 describe('community use-cases', () => {
+  it('resolves a non-empty post author from names, tagged e-mails, or a localized fallback', () => {
+    expect(resolveAuthorDisplay({ name: '  Ada Lovelace  ', email: 'ignored@example.com' })).toBe(
+      'Ada Lovelace',
+    );
+    expect(resolveAuthorDisplay({ name: '', email: 'audit-r3-member+jhkglk@example.com' })).toBe(
+      'Audit R3 Member',
+    );
+    expect(resolveAuthorDisplay({ email: 'jan.kowalski@example.com' })).toBe('Jan Kowalski');
+    expect(resolveAuthorDisplay({ name: '   ', email: '' })).toBe('Uczestnik');
+    expect(resolveAuthorDisplay({}, 'en')).toBe('Participant');
+  });
+
+  it('never sends a blank author display across the post write boundary', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const created = await createPost(
+      ctx({ name: '', email: 'audit-r3-member+jhkglk@example.com' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'hello' },
+      d,
+    );
+    expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Audit R3 Member' } });
+    expect(d.posts).toBeInstanceOf(FakePosts);
+    if (!(d.posts instanceof FakePosts)) return;
+    expect(d.posts.rows[0]?.authorDisplay).toBe('Audit R3 Member');
+  });
+
   it('creates a 10-level reply chain with the root post id preserved', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);

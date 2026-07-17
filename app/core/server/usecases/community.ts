@@ -4,11 +4,13 @@ import {
   deletePostInputSchema,
   err,
   forbidden,
+  internal,
   listDiscussionInputSchema,
   muteThreadInputSchema,
   notificationListInputSchema,
   notificationMarkReadInputSchema,
   ok,
+  postSchema,
   searchPostsInputSchema,
   subscribeThreadInputSchema,
   tenantNotFound,
@@ -20,6 +22,7 @@ import {
   type CourseModule,
   type Discussion,
   type DiscussionPost,
+  type Language,
   type Notification,
   type Post,
   type PostSearchHit,
@@ -71,6 +74,40 @@ interface ActorScope extends TenantScope {
 interface MemberScope extends ActorScope {
   memberId: string;
 }
+
+interface DisplayNameIdentity {
+  name?: string | null;
+  email?: string | null;
+}
+
+const PARTICIPANT_DISPLAY: Record<Language, string> = {
+  pl: 'Uczestnik',
+  en: 'Participant',
+};
+
+const capitalizeDisplayPart = (part: string, language: Language): string => {
+  const locale = language === 'pl' ? 'pl-PL' : 'en-US';
+  const normalized = part.toLocaleLowerCase(locale);
+  return `${normalized.slice(0, 1).toLocaleUpperCase(locale)}${normalized.slice(1)}`;
+};
+
+/** Resolve a stable, non-empty display name before a post crosses the write boundary. */
+export const resolveAuthorDisplay = (
+  identity: DisplayNameIdentity,
+  language: Language = DEFAULT_LANGUAGE,
+): string => {
+  const name = identity.name?.trim() ?? '';
+  if (name.length > 0) return name;
+
+  const localPart = (identity.email?.trim().split('@')[0] ?? '').split('+')[0] ?? '';
+  const fromEmail = localPart
+    .split(/[._-]+/u)
+    .filter((part) => part.length > 0)
+    .map((part) => capitalizeDisplayPart(part, language))
+    .join(' ')
+    .trim();
+  return fromEmail.length > 0 ? fromEmail : PARTICIPANT_DISPLAY[language];
+};
 
 const requireTenant = (ctx: Ctx): Result<TenantScope, AppError> =>
   ctx.identity.tenantId ? ok({ tenantId: ctx.identity.tenantId }) : err(tenantNotFound('Select a tenant'));
@@ -272,7 +309,7 @@ export const createPost = async (
     }
     rootPostId = parentPost.rootPostId;
   }
-  const post: Post = {
+  const postRecord = postSchema.safeParse({
     id: parentPost === null ? rootPostId : deps.ids.nextId(),
     tenantId: actor.value.tenantId,
     contextKind: parsed.data.contextKind,
@@ -280,13 +317,15 @@ export const createPost = async (
     parentPostId: parentPost?.id ?? null,
     rootPostId,
     authorUserId: actor.value.userId,
-    authorDisplay: ctx.identity.name,
+    authorDisplay: resolveAuthorDisplay(ctx.identity),
     authorIsStaff: ctx.identity.staffRole !== null,
     body,
     createdAt: deps.clock.nowIso(),
     editedAt: null,
     deletedAt: null,
-  };
+  });
+  if (!postRecord.success) return err(internal('Could not create a valid discussion post'));
+  const post = postRecord.data;
   const created = await deps.posts.createPost(actor.value.tenantId, post);
   await deps.threadSubscriptions.upsert(actor.value.tenantId, {
     userId: actor.value.userId,

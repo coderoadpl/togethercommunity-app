@@ -64,6 +64,35 @@ const okDiscussion = (
   );
 
 describe('DiscussionSection', () => {
+  it('shows a discussion-specific error and retries the failed request', async () => {
+    let reads = 0;
+    server.use(
+      okMe(),
+      http.get('/api/discussion', () => {
+        reads += 1;
+        return reads === 1
+          ? HttpResponse.json(
+              { ok: false, error: { code: 'internal', message: 'Internal error' } },
+              { status: 500 },
+            )
+          : HttpResponse.json({
+              ok: true,
+              data: { discussion: { threads: [], nextCursor: null, viewerSubscriptions: {} } },
+            });
+      }),
+    );
+
+    renderWithProviders(<DiscussionSection lessonId="l1" />);
+
+    const error = await screen.findByTestId('discussion-error');
+    expect(error).toHaveTextContent(pl.discussion.errorTitle);
+    expect(error).toHaveTextContent(pl.discussion.errorBody);
+    await userEvent.setup().click(within(error).getByRole('button', { name: pl.discussion.retry }));
+
+    expect(await screen.findByTestId('discussion-empty')).toHaveTextContent(pl.discussion.empty);
+    expect(reads).toBe(2);
+  });
+
   it('hides the composer behind a friendly note when the lesson discussion is not accessible', async () => {
     server.use(
       okMe(),

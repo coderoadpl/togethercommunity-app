@@ -11,6 +11,8 @@ import { z } from 'zod';
 
 import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 
+import { ensureWebBundleFresh } from './web-bundle-freshness.js';
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 
@@ -1014,6 +1016,8 @@ let server: ChildProcess | null = null;
 try {
   console.log('smoke: checking lockfile drift...');
   checkLockfileDrift();
+  console.log('smoke: assuring the server-served web bundle is fresh...');
+  await ensureWebBundleFresh(rootDir);
   console.log('smoke: preparing isolated database...');
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(smokeDatabaseUrl);

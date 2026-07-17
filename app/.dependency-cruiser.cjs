@@ -23,7 +23,9 @@ const webExternal =
   'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|msw|react|react-dom|vite|vitest)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
 const scriptsExternal =
-  'node_modules/(@core/contract|@adapters/auth|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
+  'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
+const scriptsTestExternal =
+  'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|vitest|zod)(/|$)';
 
 module.exports = {
   forbidden: [
@@ -218,8 +220,14 @@ module.exports = {
     {
       name: 'scripts-external-allowlist',
       severity: 'error',
-      from: { path: '^scripts' },
+      from: { path: '^scripts', pathNot: '\\.test\\.tsx?$' },
       to: { path: external, pathNot: scriptsExternal },
+    },
+    {
+      name: 'scripts-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^scripts/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: scriptsTestExternal },
     },
     {
       name: 'web-ui-is-presentational',

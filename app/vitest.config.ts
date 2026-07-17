@@ -25,6 +25,7 @@ export default defineConfig({
             'apps/server/**/*.test.ts',
             'apps/server/**/*.test.tsx',
             'eslint-plugin-together/**/*.test.js',
+            'scripts/**/*.test.ts',
           ],
         },
       },

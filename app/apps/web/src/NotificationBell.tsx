@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, Tooltip, Typography } from '@mui/material';
+import { Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, SvgIcon, Tooltip, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -21,10 +21,20 @@ import {
 
 const POLL_INTERVAL_MS = 30_000;
 
+const BELL_PATH =
+  'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z';
+
 const BellIcon = () => (
   <NotificationBellIcon aria-hidden viewBox="0 0 24 24">
-    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
+    <path d={BELL_PATH} />
   </NotificationBellIcon>
+);
+
+/** Tab-bar variant: default SvgIcon size so the label baseline matches the sibling tabs. */
+const TabBellIcon = () => (
+  <SvgIcon aria-hidden viewBox="0 0 24 24">
+    <path d={BELL_PATH} />
+  </SvgIcon>
 );
 
 export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean }) => {
@@ -104,7 +114,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       sx={{ minWidth: 0, py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
     >
       <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
-        <BellIcon />
+        <TabBellIcon />
       </Badge>
       <Typography variant="caption" component="span">{tabLabel}</Typography>
     </ButtonBase>

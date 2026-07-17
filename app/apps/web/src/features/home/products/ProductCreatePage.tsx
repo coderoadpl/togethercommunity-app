@@ -53,7 +53,7 @@ export const ProductCreatePage = () => {
       title={t.products.newProduct}
       backTo={{ label: t.products.allProducts, href: '/panel/products' }}
     >
-      <SectionCard title={t.products.newProduct} onSubmit={submit}>
+      <SectionCard title={t.products.detailsHeading} onSubmit={submit}>
         <FormControl fullWidth>
           <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
           <OutlinedInput id="product-title" value={title} onChange={(event) => setTitle(event.target.value)} required />

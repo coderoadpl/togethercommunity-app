@@ -50,7 +50,7 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
   };
 
   return (
-    <SectionCard title={t.courses.newCourse} onSubmit={submit}>
+    <SectionCard title={t.courses.detailsHeading} onSubmit={submit}>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-name">{t.common.name}</FormLabel>
         <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required />

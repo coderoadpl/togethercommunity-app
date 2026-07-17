@@ -67,7 +67,7 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   return (
-    <Paper elevation={8} square>
+    <Paper elevation={8} square sx={{ pb: 'env(safe-area-inset-bottom)' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
         <TabLink
           href="/my"

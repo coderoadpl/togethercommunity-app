@@ -17,8 +17,13 @@ export interface MemberPageProps {
   /** Utility nav in the header row: links + NotificationBell + MemberAccountMenu. */
   nav?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
-  /** Sticky right column (24rem) on md+, rendered above the content on xs. */
+  /** Sticky right column (24rem) on md+. */
   rail?: ReactNode;
+  /**
+   * Where the rail lands on xs: 'before' (course overview — progress summary
+   * leads) or 'after' (lesson player — the lesson itself must come first).
+   */
+  mobileRail?: 'before' | 'after';
   /** Persistent bottom tab bar, xs only (decision D4); caller supplies the tabs. */
   bottomNav?: ReactNode;
   state?: PageState;
@@ -42,6 +47,7 @@ export const MemberPage = ({
   nav,
   breadcrumbs,
   rail,
+  mobileRail = 'before',
   bottomNav,
   state,
   children,
@@ -56,7 +62,10 @@ export const MemberPage = ({
       sx={{
         maxWidth: `${PAGE_WIDTH[width]} !important`,
         px: '1.25rem',
-        pb: bottomNav === undefined ? '6rem' : { xs: '7.5rem', sm: '6rem' },
+        pb:
+          bottomNav === undefined
+            ? '6rem'
+            : { xs: 'calc(7.5rem + env(safe-area-inset-bottom))', sm: '6rem' },
       }}
       data-testid={testId}
     >
@@ -88,12 +97,14 @@ export const MemberPage = ({
             gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 24rem' },
           }}
         >
-          <Box sx={{ order: { xs: 2, md: 1 }, minWidth: 0 }}>{body}</Box>
+          <Box sx={{ order: { xs: mobileRail === 'before' ? 2 : 1, md: 1 }, minWidth: 0 }}>
+            {body}
+          </Box>
           <Stack
             useFlexGap
             sx={{
               rowGap: '1.5rem',
-              order: { xs: 1, md: 2 },
+              order: { xs: mobileRail === 'before' ? 1 : 2, md: 2 },
               position: { md: 'sticky' },
               top: { md: '1.5rem' },
               maxHeight: { md: 'calc(100vh - 3rem)' },

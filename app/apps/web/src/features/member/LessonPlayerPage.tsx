@@ -218,6 +218,7 @@ const LockedView = ({
       {...(structure === undefined
         ? {}
         : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
+      mobileRail="after"
     >
       <SectionCard
         title={product?.title ?? t.lesson.contentLocked}
@@ -408,6 +409,7 @@ export const LessonPlayerPage = ({
               />
             ),
           })}
+      mobileRail="after"
     >
       <Box sx={{ minWidth: 0 }}>
         <Stack component="section" useFlexGap spacing="1.5rem">

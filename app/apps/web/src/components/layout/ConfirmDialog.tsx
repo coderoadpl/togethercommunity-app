@@ -29,9 +29,14 @@ export const ConfirmDialog = ({
   'data-testid': testId,
 }: ConfirmDialogProps) => {
   const titleId = useId();
+  // Escape/backdrop must not dismiss a confirm whose mutation is in flight —
+  // the cancel button is already disabled while pending.
+  const close = () => {
+    if (!pending) onClose();
+  };
 
   return (
-    <Dialog open={open} onClose={onClose} aria-labelledby={titleId} data-testid={testId}>
+    <Dialog open={open} onClose={close} aria-labelledby={titleId} data-testid={testId}>
       <DialogTitle id={titleId}>{title}</DialogTitle>
       <DialogContent>
         <Stack useFlexGap spacing="0.75rem" sx={{ pt: '0.25rem' }}>

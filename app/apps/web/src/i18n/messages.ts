@@ -201,6 +201,7 @@ export interface Messages {
   };
   products: {
     newProduct: string;
+    detailsHeading: string;
     titleLabel: string;
     priceLabel: string;
     priceHelper: string;
@@ -268,6 +269,7 @@ export interface Messages {
     lessonsTab: string;
     tabsAria: string;
     newCourse: string;
+    detailsHeading: string;
     titleLabel: string;
     imageUrl: string;
     creating: string;
@@ -328,6 +330,7 @@ export interface Messages {
     historyHeading: string;
     historyLoading: string;
     historyEmpty: string;
+    historyEmptyBody: string;
     historyRestoreNote: string;
     historyUnknownAuthor: string;
     historyEntry: (params: { version: number; date: string; author: string }) => string;
@@ -348,8 +351,8 @@ export interface Messages {
     typeFilterAria: string;
     typeFilterAll: string;
     edit: string;
-    editLesson: string;
     newLesson: string;
+    detailsHeading: string;
     contentBlocks: string;
     noBlocks: string;
     blockTypeLabel: string;

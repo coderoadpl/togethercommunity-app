@@ -418,7 +418,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   };
 
   return (
-    <SectionCard title={lesson ? t.lessons.editLesson : t.lessons.newLesson} onSubmit={submit}>
+    <SectionCard title={t.lessons.detailsHeading} onSubmit={submit}>
       <FormControl fullWidth>
         <FormLabel htmlFor="lesson-name">{t.common.name}</FormLabel>
         <OutlinedInput

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-17
 **Input:** [`tasks/ux-screen-inventory.md`](./ux-screen-inventory.md) (44 screens, 96 screenshots), `apps/web/src/theme.ts`, the `together/sx-layout-only` lint rule, and the composition idioms in `MyCoursesPage.tsx`, `PanelLayout.tsx`, `ProductsPanel.tsx`, `LoginPage.tsx`.
-**Status:** proposal for owner review — no implementation.
+**Status:** migration executed (S1–S3 + panel skeleton + list-first) and visually QA'd across 7 themes — see §7.
 
 ---
 
@@ -262,3 +262,76 @@ The repo's spirit: conventions are lint rules with shrink-only baselines, layeri
 ---
 
 *Prepared from the 2026-07-17 inventory; no code was changed. Implementation starts only after D1–D6 are decided, in the stage order of §4.*
+
+---
+
+## 7. Migration executed (status — 2026-07-17)
+
+D1–D6 are resolved (see [`tasks/ux-decisions.md`](./ux-decisions.md)); the migration
+was implemented on `poc-together` and closed with a final visual-QA pass across
+all 7 theme modes.
+
+### Per-stage summary
+
+- **S0 — primitives + harness — DONE** (`a891cf9`). Layout components in
+  `apps/web/src/components/layout/`, the 4 width tokens (D3), sentence-case
+  button typography (D6, `textTransform: 'none'` per mode in `theme.ts`), and the
+  `npm run visual` pixelmatch harness (3 themes × 2 viewports, goldens in
+  `tasks/visual-goldens/`).
+- **S1 — StatusView + ConfirmDialog — DONE** (`93f67d8`). All ad-hoc
+  pending/error/empty branches route through `StatusView`; destructive actions
+  (member remove, progress reset, lesson/post delete) go through `ConfirmDialog`.
+  QA hardening: `ConfirmDialog` now ignores Escape/backdrop while its mutation is
+  in flight (no dismiss-mid-request; cancel is already disabled when pending).
+- **S2 — FocusCard — DONE** (`93f67d8`). Auth + checkout screens (login, register,
+  reset, magic-link-sent, checkout offer/success/cancelled/unavailable, tenant
+  not-found, tenant picker) on `FocusCard(narrow|wide)`.
+- **S3 — MemberPage + bottom tab bar — DONE** (`93f67d8`, D4). Member surface on
+  `MemberPage`; xs gets the persistent 4-destination bottom tab bar
+  (courses / products / notifications+badge / account). QA hardening: bottom nav
+  and page bottom-padding now honour `env(safe-area-inset-bottom)`; `MemberPage`
+  gained a `mobileRail` prop so the lesson player stacks the lesson *before* the
+  curriculum rail on xs (`after`) while course overview keeps the progress rail
+  first (`before`); the notification tab bell renders at default `SvgIcon` size so
+  its label baseline matches sibling tabs.
+- **S4 — PanelPage + SectionCard — DONE** (`8651bab`). Quiet h1 header (D1); panel
+  pages re-sectioned into `SectionCard`s. Create-form section titles unified on a
+  single `detailsHeading` string per kind.
+- **S5 — ListSection + list-first + create subpages — DONE** (`6da5706`, D2/D5).
+  Panel lists are list-first; `+ Dodaj` navigates to dedicated
+  `/panel/<kind>/new` create subpages; lesson editing on the deep-linkable
+  `/panel/lessons/:id` route. Course history moved from an `Alert` to a quiet
+  `FinePrint` note + a `StatusView(empty)` with body copy.
+- **S6 — redesigns — DONE** (locked-lesson upsell: page chrome + product/price +
+  single CTA + curriculum rail). Dashboard first-run checklist and course-detail
+  outline redesign remain as follow-ups (see remaining work).
+
+### Enforcement status
+
+- `together/sx-layout-only` — structural + visual tiers active, baselines empty
+  (zero debt). Raw structural sx outside `components/layout/**` + `theme.ts` errors.
+- `no-restricted-imports` for skeleton MUI (`Container`/`AppBar`/`Drawer`/`Toolbar`)
+  scoped to the layout directory; dependency-cruiser keeps `components/layout/**`
+  data- and i18n-free.
+- `npm run visual` is the reviewed-golden gate (3 themes × 2 viewports, 78 shots);
+  goldens are updated only via `npm run visual:update` with the change that caused
+  them. Final QA re-ran green: `npm run check` + `npm run smoke` + `npm run visual`
+  all pass; a manual walk of the 4 themes the goldens don't cover (logbook,
+  quiet-studio, signal-mono, steady-frame) confirmed member + panel screens hold
+  on desktop 1440 and mobile 390 with no per-theme layout breaks, tab-bar overlap,
+  or dev-chrome collisions.
+
+### Remaining work (deferred)
+
+- **Storybook + Lost Pixel (OSS) spike** (decision point 2/3) — not started; the
+  in-repo `npm run visual` harness stands in for now. Confirm Lost Pixel in a
+  short spike before adopting; expand goldens toward atomic-design stories in
+  mobile+desktop from day one.
+- **Deferred redesigns:** dashboard first-run onboarding checklist (its own core
+  domain + isolated UI per decision 6), panel course-detail outline redesign, and
+  the inline module-create form on panel course detail (still top-of-list; not a
+  D2 create-subpage yet).
+- **A11y runtime scanning** (axe-core in the screenshot pipeline) — lowest owner
+  priority, not started.
+- **PL/EN terminology glossary** — microcopy aligned to sentence case during the
+  refactor; the standalone glossary artifact is still pending.

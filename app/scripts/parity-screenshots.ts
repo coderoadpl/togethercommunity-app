@@ -552,11 +552,12 @@ const captureCreatorPanel = async (
   await page.evaluate(() => window.scrollBy(0, -24));
   await shoot(page, '12-panel-course-editor.png');
 
-  await page.getByRole('button', { name: '← all courses' }).click();
+  await page.getByRole('link', { name: '← all courses' }).click();
   await page.getByTestId('section-lessons').click();
   const lessonRow = page.getByTestId('lesson-row').filter({ hasText: fixture.mediaLessonName }).first();
   await lessonRow.waitFor({ state: 'visible', timeout: 20000 });
   await lessonRow.getByRole('button', { name: 'edit' }).click();
+  await page.waitForURL('**/panel/lessons/*', { timeout: 20000 });
   await page.getByRole('heading', { name: 'Edit lesson' }).waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('block-type').filter({ hasText: 'video' }).first().waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('block-type').filter({ hasText: 'pdf' }).first().waitFor({ state: 'visible', timeout: 20000 });

@@ -23,9 +23,9 @@ import { pl } from '../../../i18n/pl.js';
 import { PanelCourseDetailRoute } from '../panel-routes.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
-import { CoursesListPanel } from './CoursesPanel.js';
+import { CourseCreatePage, CoursesListPanel } from './CoursesPanel.js';
 
-const renderCoursesPanel = async () => {
+const renderCoursesPanel = async (initialEntry = '/panel/courses') => {
   const rootRoute = createRootRoute();
   const listRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -37,9 +37,14 @@ const renderCoursesPanel = async () => {
     path: '/panel/courses/$courseId',
     component: PanelCourseDetailRoute,
   });
+  const createRoutePage = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/courses/new',
+    component: CourseCreatePage,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([listRoute, detailRoute]),
-    history: createMemoryHistory({ initialEntries: ['/panel/courses'] }),
+    routeTree: rootRoute.addChildren([listRoute, createRoutePage, detailRoute]),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
@@ -103,7 +108,8 @@ describe('CoursesPanel courses tab', () => {
 
     expect(await screen.findByText('Launch Kit')).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText(pl.common.name), 'Growth Course');
+    await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
+    await userEvent.type(await screen.findByLabelText(pl.common.name), 'Growth Course');
     await userEvent.type(screen.getByLabelText(pl.common.description), 'Grow fast');
     await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
 
@@ -126,7 +132,7 @@ describe('CoursesPanel courses tab', () => {
       ),
     );
 
-    await renderCoursesPanel();
+    await renderCoursesPanel('/panel/courses/new');
 
     await userEvent.type(screen.getByLabelText(pl.common.name), 'X');
     await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));

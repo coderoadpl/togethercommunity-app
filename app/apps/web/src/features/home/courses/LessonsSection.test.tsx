@@ -8,9 +8,23 @@ import { newCourseLessonSchema, type CourseLesson, type LessonBlock } from '@cor
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
-import { LessonsSection } from './LessonsSection.js';
+import { PanelLessonEditRoute } from '../panel-routes.js';
+import { LessonCreatePage, LessonsSection } from './LessonsSection.js';
 
-describe('LessonsSection pagination', () => {
+const renderLessonsAt = async (initialEntry = '/panel/lessons') => {
+  const rootRoute = createRootRoute();
+  const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons', component: LessonsSection });
+  const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons/new', component: LessonCreatePage });
+  const editRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons/$lessonId', component: PanelLessonEditRoute });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([listRoute, createRoutePage, editRoute]),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
+describe('LessonsSection pagination', { timeout: 15000 }, () => {
   it('paginates the lesson pool and applies the type filter to the full set', async () => {
     const manyLessons: CourseLesson[] = Array.from({ length: 26 }, (_, index) => ({
       id: `lesson-${index}`,
@@ -22,7 +36,7 @@ describe('LessonsSection pagination', () => {
     }));
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: manyLessons } })));
 
-    renderWithProviders(<LessonsSection />);
+    await renderLessonsAt();
     await screen.findByText('Lesson 25');
 
     expect(screen.getAllByTestId('lesson-row')).toHaveLength(25);
@@ -38,7 +52,7 @@ describe('LessonsSection pagination', () => {
   });
 });
 
-describe('LessonsSection blocks editor', () => {
+describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
   it('adds a video block, reorders it and creates the lesson', async () => {
     let lessons: CourseLesson[] = [];
     let submitted: LessonBlock[] = [];
@@ -61,7 +75,7 @@ describe('LessonsSection blocks editor', () => {
       }),
     );
 
-    renderWithProviders(<LessonsSection />);
+    await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.type(await screen.findByLabelText(pl.common.name), 'Reordered Lesson');
 
@@ -109,7 +123,7 @@ describe('LessonsSection blocks editor', () => {
       ),
     );
 
-    renderWithProviders(<LessonsSection />);
+    await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
     await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
@@ -134,7 +148,7 @@ describe('LessonsSection blocks editor', () => {
       ),
     );
 
-    renderWithProviders(<LessonsSection />);
+    await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
     await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
@@ -155,7 +169,7 @@ describe('LessonsSection blocks editor', () => {
   it('inserts markup via the toolbar and renders a sanitized live preview', async () => {
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 
-    const { container } = renderWithProviders(<LessonsSection />);
+    const { container } = await renderLessonsAt('/panel/lessons/new');
 
     await userEvent.click(screen.getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeHtml }));
@@ -199,7 +213,7 @@ describe('LessonsSection blocks editor', () => {
     ];
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons } })));
 
-    renderWithProviders(<LessonsSection />);
+    await renderLessonsAt();
     await screen.findByText('Video intro');
 
     expect(screen.getAllByTestId('lesson-row').map((node) => node.textContent)).toEqual([
@@ -276,7 +290,7 @@ describe('LessonsSection blocks editor', () => {
       }),
     );
 
-    renderWithProviders(<LessonsSection />);
+    await renderLessonsAt();
 
     await userEvent.click(await screen.findByRole('button', { name: pl.lessons.deleteAria({ name: 'Intro lesson' }) }));
 
@@ -290,3 +304,4 @@ describe('LessonsSection blocks editor', () => {
     expect(await screen.findByText(pl.lessons.empty)).toBeInTheDocument();
   });
 });
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';

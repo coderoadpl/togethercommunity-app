@@ -24,6 +24,7 @@ export const pl: Messages = {
     name: 'nazwa',
     description: 'opis',
     noOptions: 'Brak opcji',
+    add: 'Dodaj',
   },
   pagination: {
     rowsPerPage: 'Wierszy na stronę:',
@@ -241,6 +242,11 @@ export const pl: Messages = {
     unreachableLessonsLabel: 'lekcje odłączone od kursu',
     copyCheckoutLink: 'Kopiuj link do zakupu',
     checkoutLinkCopied: 'Skopiowano link do zakupu',
+    statusFilterAria: 'Filtr statusu publikacji',
+    filterAll: 'wszystkie',
+    filterPublished: 'opublikowane',
+    filterDraft: 'wersje robocze',
+    allProducts: '← wszystkie produkty',
   },
   access: {
     loading: 'ładowanie danych o dostępie…',
@@ -375,6 +381,10 @@ export const pl: Messages = {
     historyEntryId: ({ id }) => format('id wersji: {id}', { id }),
     historySubjectCourse: ({ name }) => format('kurs: {name}', { name }),
     historySubjectModule: ({ name }) => format('moduł: {name}', { name }),
+    structureFilterAria: 'Filtr struktury kursu',
+    filterAll: 'wszystkie',
+    filterWithModules: 'z modułami',
+    filterWithoutModules: 'bez modułów',
   },
   lessons: {
     heading: 'Lekcje',
@@ -449,6 +459,7 @@ export const pl: Messages = {
     videoPickerPrevPage: 'poprzednia strona',
     videoPickerNextPage: 'następna strona',
     videoPickerManualHint: 'Możesz też wpisać identyfikatory ręcznie w polach poniżej.',
+    allLessons: '← wszystkie lekcje',
   },
   members: {
     heading: 'Uczestnicy',

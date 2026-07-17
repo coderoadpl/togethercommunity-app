@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,17 +6,11 @@ import {
   Chip,
   Collapse,
   Divider,
-  FormControl,
-  FormHelperText,
-  FormLabel,
   IconButton,
   List,
   ListItem,
   ListItemText,
-  MenuItem,
-  OutlinedInput,
   Paper,
-  Select,
   Snackbar,
   Stack,
   SvgIcon,
@@ -24,12 +18,12 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
-import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -165,141 +159,62 @@ export const ProductsPanel = () => {
   const t = useTranslations();
   const products = useQuery(actions.products);
   const accessIssues = useQuery(actions.productAccessIssues);
-  const queryClient = useQueryClient();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('0');
-  const [currency, setCurrency] = useState<string>('PLN');
-  const [priceError, setPriceError] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
   const query = useDebouncedValue(search);
-
-  const invalidateProducts = async () => {
-    await queryClient.invalidateQueries(actions.productsInvalidates());
-  };
 
   const visibleProducts = (products.data?.products ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .filter((product) => matchesQuery(query, product.title));
-  const paged = usePagedList(visibleProducts, query);
-
-  const createProduct = useMutation({
-    ...actions.createProduct,
-    onSuccess: async () => {
-      setTitle('');
-      setDescription('');
-      setPrice('0');
-      setCurrency('PLN');
-      setPriceError(false);
-      await invalidateProducts();
-    },
-  });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const parsedPrice = priceMajorSchema.safeParse(price);
-    if (!parsedPrice.success) {
-      setPriceError(true);
-      return;
-    }
-    setPriceError(false);
-    createProduct.mutate({
-      title,
-      description,
-      priceCents: parsedPrice.data,
-      currency,
-    });
-  };
+    .filter((product) => matchesQuery(query, product.title))
+    .filter((product) => statusFilter === 'all' || (statusFilter === 'published' ? product.published : !product.published));
+  const paged = usePagedList(visibleProducts, `${query}|${statusFilter}`);
+  const filterLabels = {
+    all: t.products.filterAll,
+    published: t.products.filterPublished,
+    draft: t.products.filterDraft,
+  } as const;
 
   return (
-    <PanelPage title={t.sections.products}>
-      <SectionCard title={t.products.newProduct} onSubmit={submit}>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
-            <OutlinedInput
-              id="product-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-            />
-          </FormControl>
-          <FormControl fullWidth>
-            <FormLabel htmlFor="product-description">{t.common.description}</FormLabel>
-            <OutlinedInput
-              id="product-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              multiline
-              minRows={3}
-            />
-          </FormControl>
-          <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
-            <FormControl fullWidth error={priceError}>
-              <FormLabel htmlFor="product-price">{t.products.priceLabel}</FormLabel>
-              <OutlinedInput
-                id="product-price"
-                type="text"
-                inputProps={{ inputMode: 'decimal', 'aria-describedby': 'product-price-helper' }}
-                value={price}
-                onChange={(event) => {
-                  setPriceError(false);
-                  setPrice(event.target.value);
-                }}
-                required
-              />
-              <FormHelperText id="product-price-helper">
-                {priceError ? t.products.priceInvalid : t.products.priceHelper}
-              </FormHelperText>
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="product-currency">{t.products.currencyLabel}</FormLabel>
-              <Select
-                id="product-currency"
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value)}
-                inputProps={{ 'aria-label': t.products.currencyLabel }}
-              >
-                {SUPPORTED_CURRENCIES.map((code) => (
-                  <MenuItem key={code} value={code}>
-                    {code}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
-          <Button type="submit" variant="contained" disabled={createProduct.isPending}>
-            {createProduct.isPending ? t.products.creating : t.products.create}
-          </Button>
-        {createProduct.isError ? (
-          <Alert>{localizeError(createProduct.error, t)}</Alert>
-        ) : null}
-      </SectionCard>
-
-      <Box component="section">
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ mb: '1rem', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
-        >
-          <Typography variant="h2" component="h2">
-            {t.products.heading}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
+    <PanelPage
+      title={t.sections.products}
+      action={<Button component={Link} to="/panel/products/new" variant="contained">+ {t.common.add}</Button>}
+    >
+      <ListSection
+        toolbar={{
+          search: (
           <SearchField
             value={search}
             onChange={setSearch}
             placeholder={t.products.searchPlaceholder}
             testId="products-search"
           />
-        </Stack>
+          ),
+          filters: (
+            <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label={t.products.statusFilterAria}>
+              {(['all', 'published', 'draft'] as const).map((value) => (
+                <Chip
+                  key={value}
+                  size="small"
+                  clickable
+                  variant={statusFilter === value ? 'filled' : 'outlined'}
+                  color={statusFilter === value ? 'primary' : 'default'}
+                  label={filterLabels[value]}
+                  aria-pressed={statusFilter === value}
+                  onClick={() => setStatusFilter(value)}
+                />
+              ))}
+            </Stack>
+          ),
+        }}
+        pagination={products.isSuccess && visibleProducts.length > 0 ? <ListPagination paged={paged} testId="products-pagination" /> : undefined}
+        isEmpty={products.isSuccess && products.data.products.length === 0}
+        empty={<StatusView state={{ kind: 'empty', title: t.products.empty, action: <Button component={Link} to="/panel/products/new">+ {t.common.add}</Button> }} />}
+        noMatches={products.isSuccess && products.data.products.length > 0 && visibleProducts.length === 0 ? <Typography variant="body1">{t.products.noMatches}</Typography> : undefined}
+      >
         {products.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.products.loading }} />
         ) : products.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(products.error, t) }} />
-        ) : products.data.products.length === 0 ? (
-          <StatusView state={{ kind: 'empty', title: t.products.empty }} />
-        ) : visibleProducts.length === 0 ? (
-          <Typography variant="body1">{t.products.noMatches}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
             {paged.pageItems.map((product) => (
@@ -311,8 +226,7 @@ export const ProductsPanel = () => {
             ))}
           </Stack>
         )}
-        <ListPagination paged={paged} testId="products-pagination" />
-      </Box>
+      </ListSection>
     </PanelPage>
   );
 };

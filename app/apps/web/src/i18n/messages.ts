@@ -21,6 +21,7 @@ export interface Messages {
     name: string;
     description: string;
     noOptions: string;
+    add: string;
   };
   pagination: {
     rowsPerPage: string;
@@ -227,6 +228,11 @@ export interface Messages {
     unreachableLessonsLabel: string;
     copyCheckoutLink: string;
     checkoutLinkCopied: string;
+    statusFilterAria: string;
+    filterAll: string;
+    filterPublished: string;
+    filterDraft: string;
+    allProducts: string;
   };
   access: {
     loading: string;
@@ -328,6 +334,10 @@ export interface Messages {
     historyEntryId: (params: { id: string }) => string;
     historySubjectCourse: (params: { name: string }) => string;
     historySubjectModule: (params: { name: string }) => string;
+    structureFilterAria: string;
+    filterAll: string;
+    filterWithModules: string;
+    filterWithoutModules: string;
   };
   lessons: {
     heading: string;
@@ -398,6 +408,7 @@ export interface Messages {
     videoPickerPrevPage: string;
     videoPickerNextPage: string;
     videoPickerManualHint: string;
+    allLessons: string;
   };
   members: {
     heading: string;

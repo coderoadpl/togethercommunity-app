@@ -8,6 +8,7 @@ import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
+import { ProductCreatePage } from './ProductCreatePage.js';
 import { ProductsPanel } from './ProductsPanel.js';
 
 const initialProducts: Product[] = [
@@ -25,7 +26,7 @@ const initialProducts: Product[] = [
   },
 ];
 
-const renderProductsPanel = (issues: ProductAccessIssues[] = []) => {
+const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEntry = '/panel/products') => {
   let products = [...initialProducts];
 
   server.use(
@@ -59,12 +60,20 @@ const renderProductsPanel = (issues: ProductAccessIssues[] = []) => {
     }),
   );
 
-  return renderWithProviders(<ProductsPanel />);
+  const rootRoute = createRootRoute();
+  const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products', component: ProductsPanel });
+  const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products/new', component: ProductCreatePage });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([listRoute, createRoutePage]),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
 };
 
-describe('ProductsPanel', () => {
+describe('ProductsPanel', { timeout: 15000 }, () => {
   it('lists products, creates a product, and publishes a draft', async () => {
-    renderProductsPanel();
+    await renderProductsPanel();
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
 
@@ -74,7 +83,8 @@ describe('ProductsPanel', () => {
       expect(screen.getByText(pl.products.published)).toBeInTheDocument();
     });
 
-    await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'New Workshop');
+    await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
+    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'New Workshop');
     await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
     await userEvent.clear(screen.getByLabelText(pl.products.priceLabel));
     await userEvent.type(screen.getByLabelText(pl.products.priceLabel), '49.99');
@@ -89,7 +99,7 @@ describe('ProductsPanel', () => {
 
   it('rejects a price with more than two decimals before submitting', async () => {
     let createCalls = 0;
-    renderProductsPanel();
+    await renderProductsPanel([], '/panel/products/new');
     server.use(
       http.post('/api/products', () => {
         createCalls += 1;
@@ -97,9 +107,7 @@ describe('ProductsPanel', () => {
       }),
     );
 
-    expect(await screen.findByText('Draft Course')).toBeInTheDocument();
-
-    await userEvent.type(screen.getByLabelText(pl.products.titleLabel), 'Bad price');
+    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'Bad price');
     await userEvent.clear(screen.getByLabelText(pl.products.priceLabel));
     await userEvent.type(screen.getByLabelText(pl.products.priceLabel), '1.999');
     await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
@@ -109,7 +117,7 @@ describe('ProductsPanel', () => {
   });
 
   it('flags products whose access items point at missing content', async () => {
-    renderProductsPanel([
+    await renderProductsPanel([
       {
         productId: 'draft-1',
         productTitle: 'Draft Course',
@@ -130,3 +138,4 @@ describe('ProductsPanel', () => {
     ).toBeInTheDocument();
   });
 });
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';

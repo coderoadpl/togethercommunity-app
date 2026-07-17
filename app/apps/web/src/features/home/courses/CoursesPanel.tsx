@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
-  Box,
   Button,
+  Chip,
   FormControl,
   FormLabel,
   List,
@@ -12,12 +12,12 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import type { Course } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -25,7 +25,7 @@ import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
 import { MutationError } from './feedback.js';
 
-const CreateCourseForm = () => {
+const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
@@ -34,11 +34,9 @@ const CreateCourseForm = () => {
 
   const createCourse = useMutation({
     ...actions.createCourse,
-    onSuccess: async () => {
-      setName('');
-      setDescription('');
-      setImageUrl('');
+    onSuccess: async ({ course }) => {
       await queryClient.invalidateQueries(actions.coursesInvalidates());
+      onCreated(course.id);
     },
   });
 
@@ -91,6 +89,7 @@ export const CoursesListPanel = () => {
   const courses = useQuery(actions.courses);
   const modules = useQuery(actions.modules);
   const [search, setSearch] = useState('');
+  const [structureFilter, setStructureFilter] = useState<'all' | 'with-modules' | 'without-modules'>('all');
   const query = useDebouncedValue(search);
 
   const moduleCount = (course: Course): number =>
@@ -101,37 +100,59 @@ export const CoursesListPanel = () => {
 
   const visibleCourses = (courses.data?.courses ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .filter((course) => matchesQuery(query, course.name));
-  const paged = usePagedList(visibleCourses, query);
+    .filter((course) => matchesQuery(query, course.name))
+    .filter((course) => {
+      if (structureFilter === 'all') return true;
+      return structureFilter === 'with-modules' ? moduleCount(course) > 0 : moduleCount(course) === 0;
+    });
+  const paged = usePagedList(visibleCourses, `${query}|${structureFilter}`);
+  const filterLabels = {
+    all: t.courses.filterAll,
+    'with-modules': t.courses.filterWithModules,
+    'without-modules': t.courses.filterWithoutModules,
+  } as const;
 
   return (
-    <PanelPage title={t.sections.courses}>
-      <CreateCourseForm />
-      <Box component="section">
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ mb: '1rem', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
-        >
-          <Typography variant="h2" component="h3">
-            {t.courses.heading}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
+    <PanelPage
+      title={t.sections.courses}
+      action={<Button component={Link} to="/panel/courses/new" variant="contained">+ {t.common.add}</Button>}
+    >
+      <ListSection
+        toolbar={{
+          search: (
           <SearchField
             value={search}
             onChange={setSearch}
             placeholder={t.courses.searchPlaceholder}
             testId="courses-search"
           />
-        </Stack>
+          ),
+          filters: (
+            <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label={t.courses.structureFilterAria}>
+              {(['all', 'with-modules', 'without-modules'] as const).map((value) => (
+                <Chip
+                  key={value}
+                  size="small"
+                  clickable
+                  variant={structureFilter === value ? 'filled' : 'outlined'}
+                  color={structureFilter === value ? 'primary' : 'default'}
+                  label={filterLabels[value]}
+                  aria-pressed={structureFilter === value}
+                  onClick={() => setStructureFilter(value)}
+                />
+              ))}
+            </Stack>
+          ),
+        }}
+        pagination={courses.isSuccess && visibleCourses.length > 0 ? <ListPagination paged={paged} testId="courses-pagination" /> : undefined}
+        isEmpty={courses.isSuccess && courses.data.courses.length === 0}
+        empty={<StatusView state={{ kind: 'empty', title: t.courses.empty, action: <Button component={Link} to="/panel/courses/new">+ {t.common.add}</Button> }} />}
+        noMatches={courses.isSuccess && courses.data.courses.length > 0 && visibleCourses.length === 0 ? <Typography variant="body1">{t.courses.noMatches}</Typography> : undefined}
+      >
         {courses.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.courses.loading }} />
         ) : courses.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />
-        ) : courses.data.courses.length === 0 ? (
-          <StatusView state={{ kind: 'empty', title: t.courses.empty }} />
-        ) : visibleCourses.length === 0 ? (
-          <Typography variant="body1">{t.courses.noMatches}</Typography>
         ) : (
           <List disablePadding dense>
             {paged.pageItems.map((course) => (
@@ -163,8 +184,20 @@ export const CoursesListPanel = () => {
             ))}
           </List>
         )}
-        <ListPagination paged={paged} testId="courses-pagination" />
-      </Box>
+      </ListSection>
+    </PanelPage>
+  );
+};
+
+export const CourseCreatePage = () => {
+  const t = useTranslations();
+  const navigate = useNavigate();
+
+  return (
+    <PanelPage title={t.courses.newCourse} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }}>
+      <CreateCourseForm
+        onCreated={(courseId) => void navigate({ to: '/panel/courses/$courseId', params: { courseId } })}
+      />
     </PanelPage>
   );
 };

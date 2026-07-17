@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Chip,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -20,7 +19,7 @@ import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -123,54 +122,47 @@ export const MembersPanel = () => {
         </Stack>
       }
     >
-    <Paper elevation={1} sx={{ p: '1.5rem' }}>
-      <Stack useFlexGap spacing="1.5rem">
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
-        >
+      <ListSection
+        toolbar={{
+          search: (
           <SearchField
             value={search}
             onChange={setSearch}
             placeholder={t.members.searchPlaceholder}
             testId="members-search"
           />
-          <Stack
-            direction="row"
-            useFlexGap
-            spacing="0.4rem"
-            role="group"
-            aria-label={t.members.grantFilterAria}
-            sx={{ flexWrap: 'wrap' }}
-          >
-            {GRANT_FILTERS.map((value) => (
-              <Chip
-                key={value}
-                size="small"
-                clickable
-                variant={grantFilter === value ? 'filled' : 'outlined'}
-                color={grantFilter === value ? 'primary' : 'default'}
-                label={grantFilterLabel(t, value)}
-                aria-pressed={grantFilter === value}
-                data-testid={`members-grant-filter-${value}`}
-                onClick={() => setGrantFilter(value)}
-              />
-            ))}
-          </Stack>
-        </Stack>
-
+          ),
+          filters: (
+            <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label={t.members.grantFilterAria}>
+              {GRANT_FILTERS.map((value) => (
+                <Chip
+                  key={value}
+                  size="small"
+                  clickable
+                  variant={grantFilter === value ? 'filled' : 'outlined'}
+                  color={grantFilter === value ? 'primary' : 'default'}
+                  label={grantFilterLabel(t, value)}
+                  aria-pressed={grantFilter === value}
+                  data-testid={`members-grant-filter-${value}`}
+                  onClick={() => setGrantFilter(value)}
+                />
+              ))}
+            </Stack>
+          ),
+        }}
+        pagination={members.isSuccess && visibleMembers.length > 0 ? <ListPagination paged={paged} testId="members-pagination" /> : undefined}
+        isEmpty={members.isSuccess && members.data.members.length === 0}
+        empty={<StatusView state={{ kind: 'empty', title: t.members.empty }} />}
+        noMatches={members.isSuccess && members.data.members.length > 0 && visibleMembers.length === 0 ? <Typography variant="body1">{t.members.noMatches}</Typography> : undefined}
+      >
         {members.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.members.loading }} />
         ) : members.isError ? (
           <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />
-        ) : members.data.members.length === 0 ? (
-          <StatusView state={{ kind: 'empty', title: t.members.empty }} surface={false} />
-        ) : visibleMembers.length === 0 ? (
-          <Typography variant="body1">{t.members.noMatches}</Typography>
         ) : (
-          <TableContainer>
-            <Table size="small" aria-label={t.members.heading}>
+          <ResponsiveTable>
+            <TableContainer>
+              <Table size="small" aria-label={t.members.heading}>
               <TableHead>
                 <TableRow>
                   <TableCell>{t.members.colEmail}</TableCell>
@@ -209,14 +201,13 @@ export const MembersPanel = () => {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
-            <ListPagination paged={paged} testId="members-pagination" />
-          </TableContainer>
+              </Table>
+            </TableContainer>
+          </ResponsiveTable>
         )}
-
-        {exportError !== null ? <Alert>{exportError}</Alert> : null}
-        {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
-      </Stack>
+      </ListSection>
+      {exportError !== null ? <Alert>{exportError}</Alert> : null}
+      {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
       <ConfirmDialog
         open={removing !== null}
         title={t.members.removeConfirmTitle}
@@ -268,7 +259,6 @@ export const MembersPanel = () => {
         }}
         data-testid="member-remove-dialog"
       />
-    </Paper>
     </PanelPage>
   );
 };

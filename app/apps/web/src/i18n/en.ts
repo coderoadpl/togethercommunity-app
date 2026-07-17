@@ -18,6 +18,7 @@ export const en: Messages = {
     name: 'name',
     description: 'description',
     noOptions: 'No options',
+    add: 'Add',
   },
   pagination: {
     rowsPerPage: 'Rows per page:',
@@ -235,6 +236,11 @@ export const en: Messages = {
     unreachableLessonsLabel: 'lessons detached from the course',
     copyCheckoutLink: 'Copy purchase link',
     checkoutLinkCopied: 'Purchase link copied',
+    statusFilterAria: 'Publication status filter',
+    filterAll: 'all',
+    filterPublished: 'published',
+    filterDraft: 'drafts',
+    allProducts: '← all products',
   },
   access: {
     loading: 'loading access data…',
@@ -361,6 +367,10 @@ export const en: Messages = {
     historyEntryId: ({ id }) => format('version id: {id}', { id }),
     historySubjectCourse: ({ name }) => format('course: {name}', { name }),
     historySubjectModule: ({ name }) => format('module: {name}', { name }),
+    structureFilterAria: 'Course structure filter',
+    filterAll: 'all',
+    filterWithModules: 'with modules',
+    filterWithoutModules: 'without modules',
   },
   lessons: {
     heading: 'Lessons',
@@ -435,6 +445,7 @@ export const en: Messages = {
     videoPickerPrevPage: 'previous page',
     videoPickerNextPage: 'next page',
     videoPickerManualHint: 'You can also type the ids manually in the fields below.',
+    allLessons: '← all lessons',
   },
   members: {
     heading: 'Members',

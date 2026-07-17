@@ -54,14 +54,18 @@ import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
 import {
   PanelCourseDetailRoute,
+  PanelCourseCreateRoute,
   PanelCoursesRoute,
   PanelIndexRoute,
   PanelIntegrationsRoute,
   PanelLayout,
   PanelLessonsRoute,
+  PanelLessonCreateRoute,
+  PanelLessonEditRoute,
   PanelMemberDetailRoute,
   PanelMembersRoute,
   PanelProductsRoute,
+  PanelProductCreateRoute,
   PanelSalesRoute,
   PanelSettingsRoute,
 } from './routes/panel.js';
@@ -165,10 +169,20 @@ const panelProductsRoute = createRoute({
   path: 'products',
   component: PanelProductsRoute,
 });
+const panelProductCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'products/new',
+  component: PanelProductCreateRoute,
+});
 const panelCoursesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'courses',
   component: PanelCoursesRoute,
+});
+const panelCourseCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'courses/new',
+  component: PanelCourseCreateRoute,
 });
 const panelCourseDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -179,6 +193,16 @@ const panelLessonsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'lessons',
   component: PanelLessonsRoute,
+});
+const panelLessonCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'lessons/new',
+  component: PanelLessonCreateRoute,
+});
+const panelLessonEditRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'lessons/$lessonId',
+  component: PanelLessonEditRoute,
 });
 const panelMembersRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
@@ -222,9 +246,13 @@ const router = createRouter({
     panelLayoutRoute.addChildren([
       panelIndexRoute,
       panelProductsRoute,
+      panelProductCreateRoute,
       panelCoursesRoute,
+      panelCourseCreateRoute,
       panelCourseDetailRoute,
       panelLessonsRoute,
+      panelLessonCreateRoute,
+      panelLessonEditRoute,
       panelMembersRoute,
       panelMemberDetailRoute,
       panelSalesRoute,

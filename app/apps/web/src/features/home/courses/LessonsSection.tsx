@@ -21,12 +21,13 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -346,7 +347,7 @@ const BlockFields = ({
   }
 };
 
-const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: () => void }) => {
+const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved: (lessonId: string) => void }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [name, setName] = useState(lesson?.name ?? '');
@@ -362,24 +363,20 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
     await queryClient.invalidateQueries(actions.lessonsInvalidates());
   };
 
-  const resetForm = () => {
-    setName('');
-    setDuration('');
-    setBlocks([]);
-    setAddType('video');
-    setValidationError(null);
-    nameInputRef.current?.focus();
-  };
-
   const createLesson = useMutation({
     ...actions.createLesson,
-    onSuccess: async () => {
+    onSuccess: async ({ lesson: created }) => {
       await invalidate();
-      resetForm();
-      onDone();
+      onSaved(created.id);
     },
   });
-  const updateLesson = useMutation({ ...actions.updateLesson, onSuccess: async () => { await invalidate(); onDone(); } });
+  const updateLesson = useMutation({
+    ...actions.updateLesson,
+    onSuccess: async ({ lesson: updated }) => {
+      await invalidate();
+      onSaved(updated.id);
+    },
+  });
 
   const pending = createLesson.isPending || updateLesson.isPending;
   const mutationError = createLesson.error ?? updateLesson.error;
@@ -529,11 +526,6 @@ const LessonForm = ({ lesson, onDone }: { lesson: CourseLesson | null; onDone: (
         <Button type="submit" variant="contained" disabled={pending || name.trim().length === 0}>
           {pending ? t.lessons.saving : lesson ? t.lessons.saveLesson : t.lessons.createLesson}
         </Button>
-        {lesson ? (
-          <Button variant="text" onClick={onDone} disabled={pending}>
-            {t.common.cancel}
-          </Button>
-        ) : null}
       </Stack>
 
       {validationError ? <Typography variant="caption" role="alert">{validationError}</Typography> : null}
@@ -600,8 +592,8 @@ const LessonDeleteDialog = ({ lesson, onClose }: { lesson: CourseLesson; onClose
 export const LessonsSection = () => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const lessons = useQuery(actions.lessons);
-  const [editing, setEditing] = useState<CourseLesson | null>(null);
   const [deleting, setDeleting] = useState<CourseLesson | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<BlockType | 'all'>('all');
@@ -614,56 +606,47 @@ export const LessonsSection = () => {
   const paged = usePagedList(visibleLessons, `${query}|${typeFilter}`);
 
   return (
-    <PanelPage title={t.sections.lessons}>
-      <LessonForm key={editing?.id ?? 'new'} lesson={editing} onDone={() => setEditing(null)} />
-
-      <Box component="section">
-        <Stack
-          direction="row"
-          useFlexGap
-          sx={{ mb: '0.75rem', flexWrap: 'wrap', alignItems: 'center', columnGap: '1rem', rowGap: '0.6rem' }}
-        >
-          <Typography variant="h2" component="h3">
-            {t.lessons.heading}
-          </Typography>
-          <Box sx={{ flex: 1 }} />
+    <PanelPage
+      title={t.sections.lessons}
+      action={<Button component={Link} to="/panel/lessons/new" variant="contained">+ {t.common.add}</Button>}
+    >
+      <ListSection
+        toolbar={{
+          search: (
           <SearchField
             value={search}
             onChange={setSearch}
             placeholder={t.lessons.searchPlaceholder}
             testId="lessons-search"
           />
-        </Stack>
-        <Stack
-          direction="row"
-          useFlexGap
-          spacing="0.4rem"
-          role="group"
-          aria-label={t.lessons.typeFilterAria}
-          sx={{ mb: '1rem', flexWrap: 'wrap' }}
-        >
-          {TYPE_FILTERS.map((value) => (
-            <Chip
-              key={value}
-              size="small"
-              clickable
-              variant={typeFilter === value ? 'filled' : 'outlined'}
-              color={typeFilter === value ? 'primary' : 'default'}
-              label={value === 'all' ? t.lessons.typeFilterAll : blockTypeLabel(t, value)}
-              aria-pressed={typeFilter === value}
-              data-testid={`lessons-type-filter-${value}`}
-              onClick={() => setTypeFilter(value)}
-            />
-          ))}
-        </Stack>
+          ),
+          filters: (
+            <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label={t.lessons.typeFilterAria}>
+              {TYPE_FILTERS.map((value) => (
+                <Chip
+                  key={value}
+                  size="small"
+                  clickable
+                  variant={typeFilter === value ? 'filled' : 'outlined'}
+                  color={typeFilter === value ? 'primary' : 'default'}
+                  label={value === 'all' ? t.lessons.typeFilterAll : blockTypeLabel(t, value)}
+                  aria-pressed={typeFilter === value}
+                  data-testid={`lessons-type-filter-${value}`}
+                  onClick={() => setTypeFilter(value)}
+                />
+              ))}
+            </Stack>
+          ),
+        }}
+        pagination={lessons.isSuccess && visibleLessons.length > 0 ? <ListPagination paged={paged} testId="lessons-pagination" /> : undefined}
+        isEmpty={lessons.isSuccess && lessons.data.lessons.length === 0}
+        empty={<StatusView state={{ kind: 'empty', title: t.lessons.empty, action: <Button component={Link} to="/panel/lessons/new">+ {t.common.add}</Button> }} />}
+        noMatches={lessons.isSuccess && lessons.data.lessons.length > 0 && visibleLessons.length === 0 ? <Typography variant="body1">{t.lessons.noMatches}</Typography> : undefined}
+      >
         {lessons.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.lessons.loading }} />
         ) : lessons.isError ? (
           <StatusView state={{ kind: 'error', message: errorMessage(lessons.error, t) }} />
-        ) : lessons.data.lessons.length === 0 ? (
-          <StatusView state={{ kind: 'empty', title: t.lessons.empty }} />
-        ) : visibleLessons.length === 0 ? (
-          <Typography variant="body1">{t.lessons.noMatches}</Typography>
         ) : (
           <List disablePadding dense>
             {paged.pageItems.map((lesson) => (
@@ -672,7 +655,10 @@ export const LessonsSection = () => {
                 data-testid="lesson-row"
                 secondaryAction={
                   <Stack direction="row" useFlexGap spacing="0.25rem">
-                    <Button variant="text" onClick={() => setEditing(lesson)}>
+                    <Button
+                      variant="text"
+                      onClick={() => void navigate({ to: '/panel/lessons/$lessonId', params: { lessonId: lesson.id } })}
+                    >
                       {t.lessons.edit}
                     </Button>
                     <Button
@@ -699,10 +685,38 @@ export const LessonsSection = () => {
             ))}
           </List>
         )}
-        <ListPagination paged={paged} testId="lessons-pagination" />
-      </Box>
+      </ListSection>
 
       {deleting ? <LessonDeleteDialog lesson={deleting} onClose={() => setDeleting(null)} /> : null}
+    </PanelPage>
+  );
+};
+
+export const LessonCreatePage = () => {
+  const t = useTranslations();
+  const navigate = useNavigate();
+
+  return (
+    <PanelPage title={t.lessons.newLesson} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }}>
+      <LessonForm
+        lesson={null}
+        onSaved={(lessonId) => void navigate({ to: '/panel/lessons/$lessonId', params: { lessonId } })}
+      />
+    </PanelPage>
+  );
+};
+
+export const LessonEditPage = ({ lesson }: { lesson: CourseLesson }) => {
+  const t = useTranslations();
+  const navigate = useNavigate();
+
+  return (
+    <PanelPage title={lesson.name} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }}>
+      <LessonForm
+        key={lesson.id}
+        lesson={lesson}
+        onSaved={() => void navigate({ to: '/panel/lessons' })}
+      />
     </PanelPage>
   );
 };

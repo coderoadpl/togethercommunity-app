@@ -6,20 +6,23 @@ import { PanelPage } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { DashboardPanel } from './DashboardPanel.js';
 import { CourseDetail } from './courses/CourseDetail.js';
-import { CoursesListPanel } from './courses/CoursesPanel.js';
-import { LessonsSection } from './courses/LessonsSection.js';
+import { CourseCreatePage, CoursesListPanel } from './courses/CoursesPanel.js';
+import { LessonCreatePage, LessonEditPage, LessonsSection } from './courses/LessonsSection.js';
 import { IntegrationsPanel } from './integrations/IntegrationsPanel.js';
 import { MemberDetail } from './members/MemberDetail.js';
 import { MembersPanel } from './members/MembersPanel.js';
 import { usePanelContext } from './panel-context.js';
+import { ProductCreatePage } from './products/ProductCreatePage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 
 export const PanelIndexRoute = () => <DashboardPanel />;
 
 export const PanelProductsRoute = () => <ProductsPanel />;
+export const PanelProductCreateRoute = () => <ProductCreatePage />;
 
 export const PanelCoursesRoute = () => <CoursesListPanel />;
+export const PanelCourseCreateRoute = () => <CourseCreatePage />;
 
 export const PanelCourseDetailRoute = () => {
   const t = useTranslations();
@@ -40,6 +43,22 @@ export const PanelCourseDetailRoute = () => {
 };
 
 export const PanelLessonsRoute = () => <LessonsSection />;
+export const PanelLessonCreateRoute = () => <LessonCreatePage />;
+
+export const PanelLessonEditRoute = () => {
+  const t = useTranslations();
+  const params = useParams({ strict: false });
+  const lessonId = params.lessonId ?? '';
+  const lessons = useQuery(actions.lessons);
+
+  if (lessons.isPending) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'loading', label: t.lessons.loading }} />;
+  if (lessons.isError) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
+
+  const lesson = lessons.data.lessons.find((entry) => entry.id === lessonId);
+  if (!lesson) return <Navigate to="/panel/lessons" />;
+
+  return <LessonEditPage lesson={lesson} />;
+};
 
 export const PanelMembersRoute = () => <MembersPanel />;
 

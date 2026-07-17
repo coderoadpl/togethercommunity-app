@@ -137,6 +137,112 @@ const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
   assert(seed.code === 0, `Seed failed:\n${seed.stdout}${seed.stderr}`);
 };
 
+const DEMO_TENANT_IDS = ['tenant-studio', 'tenant-acme', 'tenant-akademia'];
+const CANONICAL_JS_MODULE_IDS = ['module-js-podstawy', 'module-js-dom', 'module-js-projekty'];
+const CANONICAL_AKTYWNY_COMPLETED = ['lesson-js-zmienne-1', 'lesson-js-zmienne-2'];
+const CANONICAL_AKTYWNY_LAST_VIEWED = 'lesson-js-funkcje-1';
+
+const idRowsSchema = z.array(z.object({ id: z.string() }));
+const moduleOrderRowSchema = z.object({ module_order: z.array(z.string()) });
+const progressRowSchema = z.object({
+  completed_lesson_ids: z.array(z.string()),
+  last_viewed_lesson_id: z.string().nullable(),
+});
+
+const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
+  const now = new Date().toISOString();
+  await client.query(
+    `insert into courses (id, tenant_id, name, description, created_at) values ('AUDYT-kurs', 'tenant-studio', 'AUDYT kurs', '', $1)`,
+    [now],
+  );
+  await client.query(
+    `insert into course_lessons (id, tenant_id, name, created_at) values ('AUDYT-lekcja', 'tenant-studio', 'AUDYT lekcja', $1)`,
+    [now],
+  );
+  await client.query(
+    `insert into course_modules (id, tenant_id, title, created_at) values ('AUDYT-modul', 'tenant-studio', 'AUDYT modul', $1)`,
+    [now],
+  );
+  await client.query(
+    `insert into products (id, tenant_id, title, description, price_cents, currency, created_at) values ('AUDYT-produkt', 'tenant-studio', 'AUDYT produkt', '', 12300, 'PLN', $1)`,
+    [now],
+  );
+  await client.query(
+    `insert into product_grants (id, tenant_id, member_id, product_id, source, created_at) values ('AUDYT-grant', 'tenant-studio', 'member-studio-aktywny', 'AUDYT-produkt', 'manual', $1)`,
+    [now],
+  );
+  await client.query(
+    `update courses set module_order = '["module-js-projekty","module-js-podstawy","module-js-dom"]'::jsonb where id = 'course-js'`,
+  );
+  await client.query(
+    `update member_course_progress
+     set completed_lesson_ids = '["lesson-js-demo-video","lesson-js-zmienne-1","lesson-js-zmienne-2","lesson-js-funkcje-1","lesson-js-funkcje-2","lesson-js-dom-1","lesson-js-dom-2","lesson-js-projekt-1"]'::jsonb,
+         last_viewed_lesson_id = 'lesson-js-projekt-1'
+     where id = 'progress-member-studio-aktywny'`,
+  );
+};
+
+const verifyReseedRestoresCanonicalState = async (databaseUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  try {
+    await client.connect();
+    await polluteDemoTenants(client);
+
+    const reseed = await run(tsxBin, ['adapters/db/reseed.ts'], { DATABASE_URL: databaseUrl });
+    assert(reseed.code === 0, `Reseed failed:\n${reseed.stdout}${reseed.stderr}`);
+
+    const orderResult = await client.query(
+      `select module_order from courses where id = 'course-js'`,
+    );
+    assert(orderResult.rowCount === 1, 'reseed: course-js should exist after reseed');
+    const orderRow = moduleOrderRowSchema.parse(orderResult.rows[0]);
+    assert(
+      orderRow.module_order.length === 0,
+      `reseed: course-js module_order should be the canonical [] (createdAt fallback), got ${JSON.stringify(orderRow.module_order)}`,
+    );
+    const modulesResult = await client.query(
+      `select id from course_modules where tenant_id = 'tenant-studio' and course_ids ? 'course-js' order by created_at, id`,
+    );
+    const moduleIds = idRowsSchema.parse(modulesResult.rows).map((row) => row.id);
+    assert(
+      JSON.stringify(moduleIds) === JSON.stringify(CANONICAL_JS_MODULE_IDS),
+      `reseed: JS course modules should resolve to the canonical 1-2-3 order ${JSON.stringify(CANONICAL_JS_MODULE_IDS)}, got ${JSON.stringify(moduleIds)}`,
+    );
+
+    const progressResult = await client.query(
+      `select completed_lesson_ids, last_viewed_lesson_id from member_course_progress
+       where tenant_id = 'tenant-studio' and member_id = 'member-studio-aktywny' and course_id = 'course-js'`,
+    );
+    assert(progressResult.rowCount === 1, 'reseed: kursant.aktywny should have exactly one course-js progress row');
+    const progressRow = progressRowSchema.parse(progressResult.rows[0]);
+    assert(
+      JSON.stringify(progressRow.completed_lesson_ids) === JSON.stringify(CANONICAL_AKTYWNY_COMPLETED),
+      `reseed: kursant.aktywny should have exactly the seeded partial progress ${JSON.stringify(CANONICAL_AKTYWNY_COMPLETED)}, got ${JSON.stringify(progressRow.completed_lesson_ids)}`,
+    );
+    assert(
+      progressRow.last_viewed_lesson_id === CANONICAL_AKTYWNY_LAST_VIEWED,
+      `reseed: kursant.aktywny last viewed lesson should be ${CANONICAL_AKTYWNY_LAST_VIEWED}, got ${String(progressRow.last_viewed_lesson_id)}`,
+    );
+
+    const leftoversResult = await client.query(
+      `select id from courses where tenant_id = any($1) and (id like 'AUDYT%' or name like 'AUDYT%')
+       union all select id from course_lessons where tenant_id = any($1) and (id like 'AUDYT%' or name like 'AUDYT%')
+       union all select id from course_modules where tenant_id = any($1) and (id like 'AUDYT%' or title like 'AUDYT%')
+       union all select id from products where tenant_id = any($1) and (id like 'AUDYT%' or title like 'AUDYT%')
+       union all select id from product_grants where tenant_id = any($1) and (id like 'AUDYT%' or product_id like 'AUDYT%')
+       union all select id from members where tenant_id = any($1) and id like 'AUDYT%'`,
+      [DEMO_TENANT_IDS],
+    );
+    const leftoverIds = idRowsSchema.parse(leftoversResult.rows).map((row) => row.id);
+    assert(
+      leftoverIds.length === 0,
+      `reseed: no AUDYT-* entities should survive a reseed, found ${JSON.stringify(leftoverIds)}`,
+    );
+  } finally {
+    await client.end();
+  }
+};
+
 const bootServer = async (
   port: number,
   databaseUrl: string,
@@ -900,6 +1006,8 @@ try {
   console.log('smoke: preparing isolated database...');
   await setupDatabase(baseDatabaseUrl);
   await migrateAndSeed(smokeDatabaseUrl);
+  console.log('smoke: verifying db:reseed restores the canonical demo state...');
+  await verifyReseedRestoresCanonicalState(smokeDatabaseUrl);
   const port = await ephemeralPort();
   console.log(`smoke: booting server on port ${port}...`);
   const webDistDir = mkdtempSync(join(tmpdir(), 'smoke-web-'));

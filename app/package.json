@@ -21,6 +21,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx adapters/db/migrate.ts",
     "db:seed": "tsx adapters/db/seed.ts",
+    "db:reseed": "tsx adapters/db/reseed.ts",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "tsx scripts/smoke.ts",
     "shots:poc": "tsx scripts/poc-screenshots.ts",

@@ -28,6 +28,10 @@ one session spans all tenant subdomains.
 `npm run db:seed` provisions a rich, idempotent demo dataset (deterministic ids
 throughout, e.g. `course-js`, `lesson-js-zmienne-1`) meant for manually testing
 feature parity. Re-running the seed never duplicates anything.
+`npm run db:reseed` restores a pristine demo before audits/demos: it wipes all
+data in the three demo tenants (studio/acme/akademia) — including any leftovers
+and mutated progress from previous sessions — and re-runs the seed, leaving
+exactly the canonical state. Other tenants (e.g. imported ones) are untouched.
 
 **Tenants and owners** (owners sign in with password `demo1234`):
 

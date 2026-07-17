@@ -30,6 +30,7 @@ import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
+import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
@@ -67,6 +68,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   ThreadSubscriptionRepository,
+  VideoLibraryPort,
 } from '@core/server/index.js';
 
 import type { Env } from './env.js';
@@ -105,6 +107,7 @@ export interface AppDeps {
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
+  videoLibrary: VideoLibraryPort;
   email: EmailPort;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -209,6 +212,7 @@ export const createDeps = (env: Env): AppDeps => {
     secretCrypto,
     secretResolver,
     payment,
+    videoLibrary: createBunnyVideoLibrary(),
     email,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),

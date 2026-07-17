@@ -112,6 +112,9 @@ const deps = (input: {
       expireCheckoutSession: async () => ok({ expired: true }),
       verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test', objectId: null, checkoutSession: null }),
     },
+    videoLibrary: {
+      listVideos: async () => ok({ videos: [], totalItems: 0 }),
+    },
     processedPaymentEvents: {
       findByEventId: async () => null,
       findByObjectAndType: async () => null,
@@ -245,7 +248,7 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null } : null,
+        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,

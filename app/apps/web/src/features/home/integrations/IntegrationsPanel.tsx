@@ -114,9 +114,99 @@ const previewFor = (
   key: TenantSecretKey,
 ): string | null => secrets?.find((secret) => secret.key === key)?.maskedPreview ?? null;
 
+const BunnyLibraryIdField = () => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const value = draft ?? settings.data?.settings.bunnyStreamLibraryId ?? '';
+
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      setDraft(null);
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    updateSettings.mutate({ bunnyStreamLibraryId: value.trim() === '' ? null : value.trim() });
+  };
+
+  return (
+    <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.6rem' }}>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="bunny-library-id">{t.integrations.bunnyLibraryIdLabel}</FormLabel>
+        <OutlinedInput
+          id="bunny-library-id"
+          value={value}
+          disabled={settings.isPending}
+          onChange={(event) => setDraft(event.target.value)}
+          inputProps={{ 'data-testid': 'bunny-library-id' }}
+        />
+        <Typography variant="caption" component="p" sx={{ mt: '0.35rem' }}>
+          {t.integrations.bunnyLibraryIdHelper}
+        </Typography>
+      </FormControl>
+      <Box>
+        <Button
+          type="submit"
+          variant="outlined"
+          data-testid="bunny-library-id-save"
+          disabled={updateSettings.isPending || settings.isPending}
+        >
+          {updateSettings.isPending ? t.integrations.saving : t.integrations.save}
+        </Button>
+      </Box>
+      {updateSettings.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="bunny-library-id-saved">
+          {t.integrations.saved}
+        </Typography>
+      ) : null}
+      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+      {settings.isError ? <Alert>{localizeError(settings.error, t)}</Alert> : null}
+    </Box>
+  );
+};
+
+const BunnyTestConnection = ({ ready }: { ready: boolean }) => {
+  const t = useTranslations();
+  const testConnection = useMutation(actions.testBunnyConnection);
+  return (
+    <Box sx={{ display: 'grid', gap: '0.5rem' }}>
+      <Button
+        type="button"
+        variant="contained"
+        data-testid="bunny-test-connection"
+        disabled={testConnection.isPending || !ready}
+        onClick={() => testConnection.mutate(undefined)}
+        sx={{ justifySelf: 'start' }}
+      >
+        {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
+      </Button>
+      {!ready ? (
+        <Typography variant="caption" component="p" data-testid="bunny-test-hint">
+          {t.integrations.bunnySaveFirst}
+        </Typography>
+      ) : null}
+      {testConnection.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="bunny-test-result">
+          {testConnection.data.diagnostic}
+        </Typography>
+      ) : null}
+      {testConnection.isError ? (
+        <Alert data-testid="bunny-test-error">{localizeError(testConnection.error, t)}</Alert>
+      ) : null}
+    </Box>
+  );
+};
+
 export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
   const t = useTranslations();
   const secrets = useQuery(actions.tenantSecrets);
+  const settings = useQuery(actions.tenantSettings);
   const testConnection = useMutation(actions.testStripeConnection);
 
   const webhookUrl = `${window.location.origin}/api/webhooks/stripe/${tenantId}`;
@@ -125,6 +215,10 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'stripe.restrictedKey') !== null &&
     previewFor(storedSecrets, 'stripe.webhookSecret') !== null;
+  const bunnyReady =
+    storedSecrets !== undefined &&
+    previewFor(storedSecrets, 'bunny.apiKey') !== null &&
+    (settings.data?.settings.bunnyStreamLibraryId ?? null) !== null;
 
   return (
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -205,6 +299,32 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
               </Alert>
             ) : null}
           </Box>
+        </Box>
+
+        <Box sx={{ display: 'grid', gap: '1rem' }}>
+          <Eyebrow variant="overline" component="h3">
+            {t.integrations.bunnyHeading}
+          </Eyebrow>
+          <Typography variant="body2">{t.integrations.bunnyDescription}</Typography>
+
+          {secrets.isPending ? (
+            <Typography variant="body2" component="p">
+              {t.integrations.loading}
+            </Typography>
+          ) : secrets.isError ? (
+            <Alert>{localizeError(secrets.error, t)}</Alert>
+          ) : (
+            <Stack useFlexGap spacing="1.25rem">
+              <SecretField
+                secretKey="bunny.apiKey"
+                label={t.integrations.bunnyApiKeyLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'bunny.apiKey')}
+              />
+              <BunnyLibraryIdField />
+            </Stack>
+          )}
+
+          <BunnyTestConnection ready={bunnyReady} />
         </Box>
       </Stack>
     </Paper>

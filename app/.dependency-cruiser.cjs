@@ -15,6 +15,8 @@ const adapterCryptoExternal = 'node_modules/zod(/|$)';
 const adapterCryptoTestExternal = 'node_modules/vitest(/|$)';
 const adapterPaymentExternal = 'node_modules/stripe(/|$)';
 const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
+const adapterVideoExternal = 'node_modules/zod(/|$)';
+const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appServerExternal =
@@ -186,6 +188,18 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/payment/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterPaymentTestExternal },
+    },
+    {
+      name: 'adapter-video-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/video', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterVideoExternal },
+    },
+    {
+      name: 'adapter-video-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/video/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterVideoTestExternal },
     },
     {
       name: 'adapter-notifications-external-allowlist',

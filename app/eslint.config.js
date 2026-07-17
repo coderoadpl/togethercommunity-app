@@ -190,6 +190,7 @@ export default tseslint.config(
         { type: 'adapter-domains', pattern: 'adapters/domain-provisioning/**', mode: 'full' },
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
+        { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
@@ -247,6 +248,7 @@ export default tseslint.config(
                 'adapter-domains',
                 'adapter-email',
                 'adapter-payment',
+                'adapter-video',
               ],
               allow: [
                 'core-domain',
@@ -258,6 +260,7 @@ export default tseslint.config(
                 'adapter-domains',
                 'adapter-email',
                 'adapter-payment',
+                'adapter-video',
               ],
             },
             {
@@ -272,6 +275,7 @@ export default tseslint.config(
                 'adapter-domains',
                 'adapter-email',
                 'adapter-payment',
+                'adapter-video',
                 'app-server',
               ],
             },
@@ -396,6 +400,10 @@ export default tseslint.config(
             {
               from: ['adapter-payment'],
               allow: ['node:crypto', 'stripe'],
+            },
+            {
+              from: ['adapter-video'],
+              allow: ['zod'],
             },
             {
               from: ['app-server'],
@@ -597,6 +605,19 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-payment'], allow: ['node:crypto', 'stripe', 'vitest'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/video/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-video'], allow: ['vitest', 'zod'] }],
         },
       ],
     },

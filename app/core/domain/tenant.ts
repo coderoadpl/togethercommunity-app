@@ -13,15 +13,24 @@ export type Tenant = z.infer<typeof tenantSchema>;
 
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
+  bunnyStreamLibraryId: z.string().nullable(),
 });
 
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
 
+/** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
   billingPortalUrl: z
     .union([z.string().url(), z.literal('')])
     .nullable()
-    .transform((value) => (value === '' || value === null ? null : value)),
+    .transform((value) => (value === '' || value === null ? null : value))
+    .optional(),
+  bunnyStreamLibraryId: z
+    .string()
+    .trim()
+    .nullable()
+    .transform((value) => (value === '' || value === null ? null : value))
+    .optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

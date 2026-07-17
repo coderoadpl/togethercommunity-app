@@ -1245,19 +1245,30 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
   },
   findSettings: async (tenantId) => {
     const rows = await db
-      .select({ billingPortalUrl: tenants.billingPortalUrl })
+      .select({
+        billingPortalUrl: tenants.billingPortalUrl,
+        bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
+      })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
     const row = rows[0];
-    return row ? { billingPortalUrl: row.billingPortalUrl } : null;
+    return row
+      ? { billingPortalUrl: row.billingPortalUrl, bunnyStreamLibraryId: row.bunnyStreamLibraryId }
+      : null;
   },
   updateSettings: async (tenantId, settings): Promise<TenantSettings> => {
     await db
       .update(tenants)
-      .set({ billingPortalUrl: settings.billingPortalUrl })
+      .set({
+        billingPortalUrl: settings.billingPortalUrl,
+        bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
+      })
       .where(eq(tenants.id, tenantId));
-    return { billingPortalUrl: settings.billingPortalUrl };
+    return {
+      billingPortalUrl: settings.billingPortalUrl,
+      bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
+    };
   },
   createTenantWithOwnerGrant: async (input) =>
     db.transaction(async (tx) => {

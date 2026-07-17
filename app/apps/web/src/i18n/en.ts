@@ -40,6 +40,12 @@ export const en: Messages = {
     messageValidation: 'Please check the details you entered and try again.',
     messageConflict: 'Someone changed this in the meantime. Refresh and try again.',
     messageTenantNotFound: 'There is no such space.',
+    messageIntegrationNotConfigured:
+      'This integration is not configured yet. Fill in its details in the Integrations section.',
+    messageIntegrationAuth:
+      'The external service rejected the stored key. Check the key in the Integrations section.',
+    messageIntegrationUnavailable:
+      'The external service is temporarily unavailable. Please try again in a moment.',
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',
     messageUnknown: 'Something went wrong. Please try again.',
   },
@@ -175,6 +181,13 @@ export const en: Messages = {
     webhookUrlLabel: 'Webhook URL for the Stripe dashboard',
     webhookUrlHint: 'Paste this into Stripe → Developers → Webhooks.',
     loading: 'loading integrations…',
+    bunnyHeading: 'Bunny Stream',
+    bunnyDescription:
+      'Enter your Bunny Stream library API key and library id to pick lesson videos without pasting ids by hand.',
+    bunnyApiKeyLabel: 'library API key (Stream API key)',
+    bunnyLibraryIdLabel: 'library id',
+    bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
+    bunnySaveFirst: 'Save the API key and library id first to test the connection.',
   },
   products: {
     newProduct: 'New product',
@@ -385,6 +398,20 @@ export const en: Messages = {
     deleteReferencesLoading: 'checking references…',
     deleteConfirm: 'delete lesson',
     deleting: 'deleting…',
+    videoPickFromBunny: 'Pick from Bunny Stream',
+    videoPickerTitle: 'Pick a video from Bunny Stream',
+    videoPickerSearchPlaceholder: 'Search videos by title…',
+    videoPickerLoading: 'loading videos…',
+    videoPickerEmptyLibrary: 'The library is empty. Upload a video in the Bunny Stream dashboard and come back here.',
+    videoPickerNoMatches: 'No videos match your search.',
+    videoPickerNotConfigured:
+      'The Bunny Stream integration is not configured. Add the API key and library id in the Integrations section, or type the ids manually below.',
+    videoPickerOpenIntegrations: 'Open Integrations',
+    videoPickerSelectAria: ({ title }) => format('pick the video “{title}”', { title }),
+    videoPickerPageInfo: ({ page, pages }) => format('page {page} of {pages}', { page, pages }),
+    videoPickerPrevPage: 'previous page',
+    videoPickerNextPage: 'next page',
+    videoPickerManualHint: 'You can also type the ids manually in the fields below.',
   },
   members: {
     heading: 'Members',

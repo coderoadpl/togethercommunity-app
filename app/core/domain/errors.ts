@@ -6,6 +6,9 @@ export const ERROR_CODES = [
   'validation',
   'conflict',
   'tenant_not_found',
+  'integration_not_configured',
+  'integration_auth',
+  'integration_unavailable',
   'internal',
 ] as const;
 
@@ -35,5 +38,14 @@ export const validation = (message: string, details?: unknown): AppError =>
 
 export const tenantNotFound = (message = 'Unknown tenant'): AppError =>
   appError('tenant_not_found', message);
+
+export const integrationNotConfigured = (message = 'Integration is not configured'): AppError =>
+  appError('integration_not_configured', message);
+
+export const integrationAuth = (message = 'The integration rejected the stored credentials'): AppError =>
+  appError('integration_auth', message);
+
+export const integrationUnavailable = (message = 'The integration is unreachable'): AppError =>
+  appError('integration_unavailable', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

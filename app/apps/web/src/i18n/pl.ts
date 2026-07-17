@@ -46,6 +46,12 @@ export const pl: Messages = {
     messageValidation: 'Sprawdź wprowadzone dane i spróbuj ponownie.',
     messageConflict: 'Ktoś zmienił te dane w międzyczasie. Odśwież stronę i spróbuj ponownie.',
     messageTenantNotFound: 'Nie ma takiej przestrzeni.',
+    messageIntegrationNotConfigured:
+      'Ta integracja nie jest jeszcze skonfigurowana. Uzupełnij dane w sekcji Integracje.',
+    messageIntegrationAuth:
+      'Usługa zewnętrzna odrzuciła zapisany klucz. Sprawdź klucz w sekcji Integracje.',
+    messageIntegrationUnavailable:
+      'Usługa zewnętrzna jest chwilowo niedostępna. Spróbuj ponownie za chwilę.',
     messageInternal: 'Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.',
     messageUnknown: 'Coś poszło nie tak. Spróbuj ponownie.',
   },
@@ -181,6 +187,13 @@ export const pl: Messages = {
     webhookUrlLabel: 'URL webhooka dla panelu Stripe',
     webhookUrlHint: 'Wklej ten adres w panelu Stripe → Deweloperzy → Webhooki.',
     loading: 'ładowanie integracji…',
+    bunnyHeading: 'Bunny Stream',
+    bunnyDescription:
+      'Podaj klucz API biblioteki Bunny Stream oraz jej identyfikator, aby wybierać wideo do lekcji bez ręcznego wklejania identyfikatorów.',
+    bunnyApiKeyLabel: 'klucz API biblioteki (Stream API key)',
+    bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
+    bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
+    bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
   },
   products: {
     newProduct: 'Nowy produkt',
@@ -399,6 +412,20 @@ export const pl: Messages = {
     deleteReferencesLoading: 'sprawdzanie powiązań…',
     deleteConfirm: 'usuń lekcję',
     deleting: 'usuwanie…',
+    videoPickFromBunny: 'Wybierz z Bunny Stream',
+    videoPickerTitle: 'Wybierz wideo z Bunny Stream',
+    videoPickerSearchPlaceholder: 'Szukaj wideo po tytule…',
+    videoPickerLoading: 'ładowanie wideo…',
+    videoPickerEmptyLibrary: 'Biblioteka jest pusta. Wgraj wideo w panelu Bunny Stream i wróć tutaj.',
+    videoPickerNoMatches: 'Żadne wideo nie pasuje do wyszukiwania.',
+    videoPickerNotConfigured:
+      'Integracja z Bunny Stream nie jest skonfigurowana. Dodaj klucz API i identyfikator biblioteki w sekcji Integracje, albo wpisz identyfikatory ręcznie poniżej.',
+    videoPickerOpenIntegrations: 'Przejdź do Integracji',
+    videoPickerSelectAria: ({ title }) => format('wybierz wideo „{title}”', { title }),
+    videoPickerPageInfo: ({ page, pages }) => format('strona {page} z {pages}', { page, pages }),
+    videoPickerPrevPage: 'poprzednia strona',
+    videoPickerNextPage: 'następna strona',
+    videoPickerManualHint: 'Możesz też wpisać identyfikatory ręcznie w polach poniżej.',
   },
   members: {
     heading: 'Uczestnicy',

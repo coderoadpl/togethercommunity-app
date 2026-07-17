@@ -29,6 +29,12 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageConflict;
     case 'tenant_not_found':
       return t.errors.messageTenantNotFound;
+    case 'integration_not_configured':
+      return t.errors.messageIntegrationNotConfigured;
+    case 'integration_auth':
+      return t.errors.messageIntegrationAuth;
+    case 'integration_unavailable':
+      return t.errors.messageIntegrationUnavailable;
     case 'internal':
       return t.errors.messageInternal;
   }

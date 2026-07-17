@@ -24,7 +24,7 @@ const stubMe = () =>
 
 const stubSettings = (billingPortalUrl: string | null) =>
   http.get('*/api/tenant/settings', () =>
-    HttpResponse.json({ ok: true, data: { settings: { billingPortalUrl } } }),
+    HttpResponse.json({ ok: true, data: { settings: { billingPortalUrl, bunnyStreamLibraryId: null } } }),
   );
 
 const renderAccount = async () => {

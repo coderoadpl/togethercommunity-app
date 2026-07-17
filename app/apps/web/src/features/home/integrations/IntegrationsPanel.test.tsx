@@ -10,8 +10,17 @@ import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { IntegrationsPanel } from './IntegrationsPanel.js';
 
-const renderPanel = (initial: TenantSecretMasked[] = []) => {
+interface TestSettings {
+  billingPortalUrl: string | null;
+  bunnyStreamLibraryId: string | null;
+}
+
+const renderPanel = (
+  initial: TenantSecretMasked[] = [],
+  initialSettings: TestSettings = { billingPortalUrl: null, bunnyStreamLibraryId: null },
+) => {
   let secrets = [...initial];
+  let settings = { ...initialSettings };
 
   server.use(
     http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets } })),
@@ -19,7 +28,7 @@ const renderPanel = (initial: TenantSecretMasked[] = []) => {
       const body = await request.json();
       const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
       const secret: TenantSecretMasked = {
-        key: key === 'stripe.webhookSecret' ? 'stripe.webhookSecret' : 'stripe.restrictedKey',
+        key: key === 'stripe.webhookSecret' ? 'stripe.webhookSecret' : key === 'bunny.apiKey' ? 'bunny.apiKey' : 'stripe.restrictedKey',
         maskedPreview: '••••2345',
         updatedAt: '2026-07-12T10:00:00.000Z',
       };
@@ -30,8 +39,22 @@ const renderPanel = (initial: TenantSecretMasked[] = []) => {
       secrets = secrets.filter((s) => s.key !== params.key);
       return HttpResponse.json({ ok: true, data: { key: params.key } });
     }),
+    http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.post('/api/tenant/settings', async ({ request }) => {
+      const body = await request.json();
+      if (typeof body === 'object' && body !== null && 'bunnyStreamLibraryId' in body) {
+        settings = { ...settings, bunnyStreamLibraryId: body.bunnyStreamLibraryId === null ? null : String(body.bunnyStreamLibraryId) };
+      }
+      return HttpResponse.json({ ok: true, data: { settings } });
+    }),
     http.post('/api/integrations/stripe/test', () =>
       HttpResponse.json({ ok: true, data: { ok: true, diagnostic: 'Stripe accepted the credentials.' } }),
+    ),
+    http.post('/api/integrations/bunny/test', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { ok: true, diagnostic: 'Bunny Stream accepted the API key. Library lib-1 contains 3 video(s).' },
+      }),
     ),
   );
 
@@ -82,6 +105,30 @@ describe('IntegrationsPanel', () => {
     const hint = await screen.findByTestId('stripe-test-hint');
     expect(hint).toHaveTextContent(pl.integrations.saveKeysFirst);
     expect(screen.getByTestId('stripe-test-connection')).toBeDisabled();
+  });
+
+  it('guards the Bunny test button until the key and library id are stored', async () => {
+    renderPanel();
+    const hint = await screen.findByTestId('bunny-test-hint');
+    expect(hint).toHaveTextContent(pl.integrations.bunnySaveFirst);
+    expect(screen.getByTestId('bunny-test-connection')).toBeDisabled();
+  });
+
+  it('saves the Bunny library id and reports the connection diagnostic', async () => {
+    renderPanel([
+      { key: 'bunny.apiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    await userEvent.type(await screen.findByTestId('bunny-library-id'), 'lib-1');
+    await userEvent.click(screen.getByTestId('bunny-library-id-save'));
+    expect(await screen.findByTestId('bunny-library-id-saved')).toHaveTextContent(pl.integrations.saved);
+
+    const testButton = screen.getByTestId('bunny-test-connection');
+    await waitFor(() => {
+      expect(testButton).toBeEnabled();
+    });
+    await userEvent.click(testButton);
+    expect(await screen.findByTestId('bunny-test-result')).toHaveTextContent('3 video(s)');
   });
 
   it('removes a configured secret', async () => {

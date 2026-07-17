@@ -39,5 +39,16 @@ export const updateTenantSettings = async (
   }
   const parsed = updateTenantSettingsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid tenant settings', parsed.error.flatten()));
-  return ok(await deps.tenants.updateSettings(ctx.identity.tenantId, parsed.data));
+  const current = await deps.tenants.findSettings(ctx.identity.tenantId);
+  if (!current) return err(tenantNotFound());
+  return ok(
+    await deps.tenants.updateSettings(ctx.identity.tenantId, {
+      billingPortalUrl:
+        parsed.data.billingPortalUrl === undefined ? current.billingPortalUrl : parsed.data.billingPortalUrl,
+      bunnyStreamLibraryId:
+        parsed.data.bunnyStreamLibraryId === undefined
+          ? current.bunnyStreamLibraryId
+          : parsed.data.bunnyStreamLibraryId,
+    }),
+  );
 };

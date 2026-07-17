@@ -19,6 +19,7 @@ import {
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   languageSchema,
+  listStreamVideosInputSchema,
   m2mEnrollInputSchema,
   memberExportFileSchema,
   memberGrantSchema,
@@ -43,6 +44,7 @@ import {
   searchPostsInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
+  streamVideoPageSchema,
   subscribeThreadInputSchema,
   tenantApiKeyPublicSchema,
   tenantSchema,
@@ -506,6 +508,17 @@ export const stripeTestConnectionOutputSchema = z.object({
   diagnostic: z.string(),
 });
 
+export const bunnyVideosInputSchema = listStreamVideosInputSchema;
+
+export const bunnyVideosOutputSchema = z.object({
+  page: streamVideoPageSchema,
+});
+
+export const bunnyTestConnectionOutputSchema = z.object({
+  ok: z.literal(true),
+  diagnostic: z.string(),
+});
+
 export const m2mEnrollRequestSchema = m2mEnrollInputSchema;
 
 export type M2mEnrollRequest = z.input<typeof m2mEnrollRequestSchema>;
@@ -589,6 +602,8 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
+  bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
+  bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
@@ -661,6 +676,8 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   stripeTestConnection: API_ROUTES.stripeTestConnection.path,
+  bunnyVideos: API_ROUTES.bunnyVideos.path,
+  bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
   tenantSettings: API_ROUTES.tenantSettings.path,

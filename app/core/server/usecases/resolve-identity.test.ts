@@ -42,7 +42,7 @@ const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
   findBySlug: async (slug) => tenantList.find((tenant) => tenant.slug === slug) ?? null,
-  findSettings: async () => ({ billingPortalUrl: null }),
+  findSettings: async () => ({ billingPortalUrl: null, bunnyStreamLibraryId: null }),
   updateSettings: async (_tenantId, settings) => settings,
   createTenantWithOwnerGrant: async (input) => ({
     id: input.tenant.id,

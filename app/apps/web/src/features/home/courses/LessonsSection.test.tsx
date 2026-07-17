@@ -60,6 +60,70 @@ describe('LessonsSection blocks editor', () => {
     expect(await screen.findByText('Reordered Lesson')).toBeInTheDocument();
   });
 
+  it('fills the video ids from the Bunny Stream picker', async () => {
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/integrations/bunny/videos', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            page: {
+              libraryId: 'lib-9',
+              videos: [
+                { id: 'guid-1', title: 'Intro video', lengthSeconds: 95, uploadedAt: '2026-07-01T10:00:00.000Z' },
+              ],
+              totalItems: 1,
+              page: 1,
+              pageSize: 24,
+            },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<LessonsSection />);
+
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
+    await userEvent.click(await screen.findByTestId('bunny-picker-video'));
+
+    expect(screen.getByLabelText('streamVideoId')).toHaveValue('guid-1');
+    expect(screen.getByLabelText('streamLibraryId')).toHaveValue('lib-9');
+    expect(screen.getByLabelText('storageKey')).toHaveValue('guid-1');
+  });
+
+  it('keeps manual fields and shows a settings hint when Bunny Stream is not configured', async () => {
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/integrations/bunny/videos', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: { code: 'integration_not_configured', message: 'Save a Bunny Stream API key first' },
+          },
+          { status: 412 },
+        ),
+      ),
+    );
+
+    renderWithProviders(<LessonsSection />);
+
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
+
+    expect(await screen.findByTestId('bunny-picker-not-configured')).toHaveTextContent(
+      pl.lessons.videoPickerNotConfigured,
+    );
+    expect(screen.getByRole('link', { name: pl.lessons.videoPickerOpenIntegrations })).toHaveAttribute(
+      'href',
+      '/panel/integrations',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
+    expect(screen.getByLabelText('storageKey')).toBeInTheDocument();
+    expect(screen.getByLabelText('streamVideoId')).toBeInTheDocument();
+  });
+
   it('inserts markup via the toolbar and renders a sanitized live preview', async () => {
     server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
 

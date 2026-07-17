@@ -4,6 +4,8 @@ import { createBetterAuthClientAdapter } from '@adapters/auth/client-adapter.js'
 import {
   authConfigQuery,
   attachModuleMutation,
+  bunnyVideosQuery,
+  testBunnyConnectionMutation,
   detachModuleMutation,
   deleteLessonMutation,
   lessonReferencesQuery,
@@ -187,6 +189,8 @@ export const actions = {
   setTenantSecret: setTenantSecretMutation(apiClient),
   deleteTenantSecret: deleteTenantSecretMutation(apiClient),
   testStripeConnection: testStripeConnectionMutation(apiClient),
+  bunnyVideos: (input: { search?: string; page?: number }) => bunnyVideosQuery(apiClient, input),
+  testBunnyConnection: testBunnyConnectionMutation(apiClient),
   tenantSecretsInvalidates,
   tenantSettings: tenantSettingsQuery(apiClient),
   updateTenantSettings: updateTenantSettingsMutation(apiClient),

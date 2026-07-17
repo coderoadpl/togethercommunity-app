@@ -16,6 +16,7 @@ import type {
   ProcessedPaymentEvent,
   Result,
   StaffRole,
+  StreamVideo,
   Notification,
   Post,
   PostSearchHit,
@@ -267,6 +268,21 @@ export interface PaymentProvider {
     signatureHeader: string;
     webhookSecret: string;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
+}
+
+/**
+ * Lists videos in an external streaming library (Bunny Stream in production).
+ * Credentials arrive per call so the adapter stays stateless and the use-case
+ * controls which tenant secret is decrypted.
+ */
+export interface VideoLibraryPort {
+  listVideos(input: {
+    apiKey: string;
+    libraryId: string;
+    search: string | null;
+    page: number;
+    perPage: number;
+  }): Promise<Result<{ videos: StreamVideo[]; totalItems: number }, AppError>>;
 }
 
 export interface ProcessedPaymentEventRepository {

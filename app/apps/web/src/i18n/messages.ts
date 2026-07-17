@@ -43,6 +43,9 @@ export interface Messages {
     messageValidation: string;
     messageConflict: string;
     messageTenantNotFound: string;
+    messageIntegrationNotConfigured: string;
+    messageIntegrationAuth: string;
+    messageIntegrationUnavailable: string;
     messageInternal: string;
     messageUnknown: string;
   };
@@ -173,6 +176,12 @@ export interface Messages {
     webhookUrlLabel: string;
     webhookUrlHint: string;
     loading: string;
+    bunnyHeading: string;
+    bunnyDescription: string;
+    bunnyApiKeyLabel: string;
+    bunnyLibraryIdLabel: string;
+    bunnyLibraryIdHelper: string;
+    bunnySaveFirst: string;
   };
   products: {
     newProduct: string;
@@ -356,6 +365,19 @@ export interface Messages {
     deleteReferencesLoading: string;
     deleteConfirm: string;
     deleting: string;
+    videoPickFromBunny: string;
+    videoPickerTitle: string;
+    videoPickerSearchPlaceholder: string;
+    videoPickerLoading: string;
+    videoPickerEmptyLibrary: string;
+    videoPickerNoMatches: string;
+    videoPickerNotConfigured: string;
+    videoPickerOpenIntegrations: string;
+    videoPickerSelectAria: (params: { title: string }) => string;
+    videoPickerPageInfo: (params: { page: number; pages: number }) => string;
+    videoPickerPrevPage: string;
+    videoPickerNextPage: string;
+    videoPickerManualHint: string;
   };
   members: {
     heading: string;

@@ -8,6 +8,7 @@ import {
   TENANT_HEADER,
   apiKeyCreateInputSchema,
   apiKeyRevokeInputSchema,
+  bunnyVideosInputSchema,
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
   courseUpdateInputSchema,
@@ -120,6 +121,8 @@ import {
   resolveTenant,
   setTenantSecret,
   simulatePurchase,
+  listBunnyVideos,
+  testBunnyConnection,
   testStripeConnection,
   fulfillStripeWebhook,
   updateCourse,
@@ -668,6 +671,20 @@ export const buildApp = (deps: AppDeps) => {
     );
     return respond(result);
   });
+
+  app.get(API_PATHS.bunnyVideos, async (c) => {
+    const parsed = bunnyVideosInputSchema.safeParse({
+      search: c.req.query('search'),
+      page: c.req.query('page') ?? 1,
+    });
+    if (!parsed.success) return respond(err(validation('Invalid video listing query', parsed.error.flatten())));
+    const result = await listBunnyVideos({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ page: result.value }) : result);
+  });
+
+  app.post(API_PATHS.bunnyTestConnection, async (c) =>
+    respond(await testBunnyConnection({ identity: c.get('identity') }, deps)),
+  );
 
   app.post(API_PATHS.products, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);

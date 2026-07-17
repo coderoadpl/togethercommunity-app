@@ -22,6 +22,9 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingValidation;
     case 'conflict':
       return t.errors.headingConflict;
+    case 'integration_not_configured':
+    case 'integration_auth':
+    case 'integration_unavailable':
     case 'internal':
       return t.errors.headingGeneric;
   }

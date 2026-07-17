@@ -30,7 +30,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
   const repo: TenantRepository = {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
-    findSettings: async () => ({ billingPortalUrl: null }),
+    findSettings: async () => ({ billingPortalUrl: null, bunnyStreamLibraryId: null }),
     updateSettings: async (_tenantId, settings) => settings,
     createTenantWithOwnerGrant: async (input) => {
       const tenant = {

@@ -151,6 +151,11 @@ export const tenantSecretsScopes = {
   lists: () => ['tenant-secrets', 'list'] as const,
 };
 
+export const bunnyScopes = {
+  all: () => ['bunny'] as const,
+  videos: (search: string, page: number) => ['bunny', 'videos', search, page] as const,
+};
+
 export const tenantSettingsScopes = {
   all: () => ['tenant-settings'] as const,
 };
@@ -585,6 +590,18 @@ export const testStripeConnectionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
     call: () => api.testStripeConnection(),
+  });
+
+export const bunnyVideosQuery = (api: ApiClient, input: { search?: string; page?: number } = {}) =>
+  defineQuery({
+    queryKey: bunnyScopes.videos(input.search ?? '', input.page ?? 1),
+    call: ({ signal }) => api.listBunnyVideos(input, signal),
+  });
+
+export const testBunnyConnectionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'bunny-test'],
+    call: () => api.testBunnyConnection(),
   });
 
 export const tenantSecretsInvalidates = () => ({ queryKey: tenantSecretsScopes.lists() });

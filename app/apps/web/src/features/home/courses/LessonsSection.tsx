@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import {
   Box,
   Button,
@@ -34,6 +34,7 @@ import { matchesQuery, SearchField, useDebouncedValue } from '../../../component
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { Eyebrow, LessonHtmlContent } from '../../../theme.js';
+import { BunnyVideoPickerDialog } from './BunnyVideoPickerDialog.js';
 import { errorMessage, MutationError } from './feedback.js';
 
 type BlockType = LessonBlock['type'];
@@ -241,6 +242,59 @@ const HtmlBlockEditor = ({
   );
 };
 
+const VideoBlockFields = ({
+  draft,
+  index,
+  onChange,
+  field,
+}: {
+  draft: Extract<BlockDraft, { type: 'video' }>;
+  index: number;
+  onChange: (next: BlockDraft) => void;
+  field: (label: string, key: string, value: string, update: (value: string) => void) => ReactElement;
+}) => {
+  const t = useTranslations();
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  return (
+    <Stack useFlexGap spacing="0.6rem">
+      <Box>
+        <Button
+          size="small"
+          variant="outlined"
+          data-testid={`block-${index}-bunny-picker`}
+          onClick={() => setPickerOpen(true)}
+        >
+          {t.lessons.videoPickFromBunny}
+        </Button>
+      </Box>
+      {field('storageKey', 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
+      {field('streamVideoId', 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
+        onChange({ ...draft, streamVideoId }),
+      )}
+      {field('streamLibraryId', 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
+        onChange({ ...draft, streamLibraryId }),
+      )}
+      {field('streamCollectionId', 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
+        onChange({ ...draft, streamCollectionId }),
+      )}
+      {pickerOpen ? (
+        <BunnyVideoPickerDialog
+          onClose={() => setPickerOpen(false)}
+          onSelect={(video, libraryId) =>
+            onChange({
+              ...draft,
+              streamVideoId: video.id,
+              streamLibraryId: libraryId,
+              storageKey: draft.storageKey.trim().length > 0 ? draft.storageKey : video.id,
+            })
+          }
+        />
+      ) : null}
+    </Stack>
+  );
+};
+
 const BlockFields = ({
   draft,
   index,
@@ -266,20 +320,7 @@ const BlockFields = ({
 
   switch (draft.type) {
     case 'video':
-      return (
-        <Stack useFlexGap spacing="0.6rem">
-          {field('storageKey', 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
-          {field('streamVideoId', 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
-            onChange({ ...draft, streamVideoId }),
-          )}
-          {field('streamLibraryId', 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
-            onChange({ ...draft, streamLibraryId }),
-          )}
-          {field('streamCollectionId', 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
-            onChange({ ...draft, streamCollectionId }),
-          )}
-        </Stack>
-      );
+      return <VideoBlockFields draft={draft} index={index} onChange={onChange} field={field} />;
     case 'embed':
       return field('embedUrl', 'embedUrl', draft.embedUrl, (embedUrl) => onChange({ ...draft, embedUrl }));
     case 'pdf':

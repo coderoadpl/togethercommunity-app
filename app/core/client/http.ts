@@ -7,6 +7,8 @@ import {
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
   authConfigOutputSchema,
+  bunnyTestConnectionOutputSchema,
+  bunnyVideosOutputSchema,
   courseOutputSchema,
   checkoutSessionOutputSchema,
   courseStructureOutputSchema,
@@ -653,6 +655,29 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.stripeTestConnection.method,
       API_ROUTES.stripeTestConnection.path,
       stripeTestConnectionOutputSchema,
+      {},
+      signal,
+    ),
+  listBunnyVideos: (input: { search?: string; page?: number } = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.search !== undefined && input.search !== '') params.set('search', input.search);
+    if (input.page !== undefined) params.set('page', String(input.page));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.bunnyVideos.method,
+      suffix.length > 0 ? `${API_ROUTES.bunnyVideos.path}?${suffix}` : API_ROUTES.bunnyVideos.path,
+      bunnyVideosOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  testBunnyConnection: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.bunnyTestConnection.method,
+      API_ROUTES.bunnyTestConnection.path,
+      bunnyTestConnectionOutputSchema,
       {},
       signal,
     ),

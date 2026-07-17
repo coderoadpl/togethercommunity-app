@@ -587,6 +587,7 @@ export interface Messages {
     backToDiscussion: string;
     loadMore: string;
     searchLabel: string;
+    searchWholeWordsHint: string;
     searching: string;
     searchEmpty: string;
     searchCourseHeading: string;

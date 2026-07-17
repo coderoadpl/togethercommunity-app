@@ -318,6 +318,9 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
         onChange={(event) => setTerm(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': 'discussion-search-input' } }}
       />
+      <Typography variant="caption" color="text.secondary" data-testid="discussion-search-hint">
+        {t.discussion.searchWholeWordsHint}
+      </Typography>
       {enabled && (
         <Box data-testid="discussion-search-results">
           {search.isPending ? (

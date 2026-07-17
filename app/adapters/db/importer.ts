@@ -1368,7 +1368,7 @@ const verifyTenant = async (
     expectedInDb: progressExpected,
     matchedInDb: progressMatched,
     extraLegacyInDb: 0,
-    pass: progressMatched >= progressExpected,
+    pass: progressMatched === progressExpected,
   });
 
   const tenantEmails = [...new Set(bundle.users.map((row) => normalizeEmail(row.email)))];

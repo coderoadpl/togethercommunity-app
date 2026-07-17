@@ -56,9 +56,9 @@ const filterModules = (
           ...chapter,
           lessons: chapter.lessons.filter((lesson) => matchesLesson(lesson, needle)),
         }))
-        .filter((chapter) => needle === '' || chapter.lessons.length > 0),
+        .filter((chapter) => chapter.lessons.length > 0),
     }))
-    .filter((module) => needle === '' || module.chapters.length > 0);
+    .filter((module) => module.chapters.length > 0);
 
 const LessonRow = ({
   lesson,

@@ -382,6 +382,9 @@ describe('DiscussionSection', () => {
     const user = userEvent.setup();
     renderWithProviders(<DiscussionSection lessonId="l1" />);
 
+    expect(await screen.findByTestId('discussion-search-hint')).toHaveTextContent(
+      pl.discussion.searchWholeWordsHint,
+    );
     await user.type(await screen.findByTestId('discussion-search-input'), 'silnik');
 
     const hit = await screen.findByTestId('search-hit-h1');

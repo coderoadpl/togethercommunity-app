@@ -88,6 +88,9 @@ describe('CourseDiscussionSearch', () => {
     renderWithProviders(<CourseDiscussionSearch courseId="course-1" structure={structure} />);
 
     expect(screen.getByText(pl.discussion.searchCourseHeading)).toBeInTheDocument();
+    expect(screen.getByTestId('course-search-hint')).toHaveTextContent(
+      pl.discussion.searchWholeWordsHint,
+    );
 
     await user.type(screen.getByTestId('course-discussion-search-input'), 'silnik');
 

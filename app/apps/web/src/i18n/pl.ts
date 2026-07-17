@@ -653,6 +653,8 @@ export const pl: Messages = {
     backToDiscussion: 'Wróć do całej dyskusji',
     loadMore: 'Pokaż więcej wątków',
     searchLabel: 'Szukaj w tej dyskusji',
+    searchWholeWordsHint:
+      "Wyszukiwanie dopasowuje całe słowa — spróbuj innej formy, np. „zmienna” zamiast „zmiennych”.",
     searching: 'szukanie…',
     searchEmpty: 'Brak wyników dla tego zapytania.',
     searchCourseHeading: 'Szukaj w dyskusjach',

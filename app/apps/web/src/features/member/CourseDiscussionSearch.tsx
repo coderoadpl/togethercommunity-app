@@ -69,6 +69,9 @@ export const CourseDiscussionSearch = ({
           placeholder={t.discussion.searchCoursePlaceholder}
           testId="course-discussion-search-input"
         />
+        <Typography variant="caption" color="text.secondary" data-testid="course-search-hint">
+          {t.discussion.searchWholeWordsHint}
+        </Typography>
         {enabled &&
           (search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>

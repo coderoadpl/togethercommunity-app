@@ -166,6 +166,45 @@ describe('CourseStructurePage', () => {
     expect(screen.getByText('Closures Deep Dive')).toBeInTheDocument();
   });
 
+  it('does not render modules or chapters without lessons in the member tree', async () => {
+    mockPage({
+      body: {
+        ...structure,
+        modules: [
+          ...structure.modules,
+          {
+            id: 'm-empty',
+            name: 'Empty module',
+            accessStatus: 'fully-accessible',
+            completionStatus: 'not-completed',
+            chapters: [],
+          },
+          {
+            id: 'm-empty-chapter',
+            name: 'Module with empty chapter',
+            accessStatus: 'fully-accessible',
+            completionStatus: 'not-completed',
+            chapters: [
+              {
+                id: 'c-empty',
+                name: 'Empty chapter',
+                accessStatus: 'fully-accessible',
+                completionStatus: 'not-completed',
+                lessons: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    expect(await screen.findByText('01 - Fundamentals')).toBeInTheDocument();
+    expect(screen.queryByText('Empty module')).not.toBeInTheDocument();
+    expect(screen.queryByText('Module with empty chapter')).not.toBeInTheDocument();
+    expect(screen.queryByText('Empty chapter')).not.toBeInTheDocument();
+  });
+
   it('decorates the three access states with the right icons and disabled behavior', async () => {
     mockPage();
     await renderPage(<CourseStructurePage courseId="course-1" />);

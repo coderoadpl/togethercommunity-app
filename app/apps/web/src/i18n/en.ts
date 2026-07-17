@@ -639,6 +639,8 @@ export const en: Messages = {
     backToDiscussion: 'Back to the full discussion',
     loadMore: 'Show more threads',
     searchLabel: 'Search this discussion',
+    searchWholeWordsHint:
+      'Search matches whole words — try another word form, e.g. “variable” instead of “variables”.',
     searching: 'searching…',
     searchEmpty: 'No results for this query.',
     searchCourseHeading: 'Search discussions',

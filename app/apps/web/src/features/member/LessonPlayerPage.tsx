@@ -276,17 +276,28 @@ export const LessonPlayerPage = ({
     });
   }, [lesson.isSuccess, structure.isPending, location, courseId, lessonId, lastViewed]);
 
-  const [optimisticDone, setOptimisticDone] = useState(false);
+  const [optimisticDone, setOptimisticDone] = useState<boolean | null>(null);
   const completedFromServer =
     progress.data?.progress.completedLessonIds.includes(lessonId) ?? false;
-  const completed = completedFromServer || optimisticDone;
+  const completed = optimisticDone ?? completedFromServer;
 
   const complete = useMutation({
     ...actions.completeLesson,
     onMutate: () => setOptimisticDone(true),
-    onError: () => setOptimisticDone(false),
+    onError: () => setOptimisticDone(null),
     onSettled: async () => {
       await queryClient.invalidateQueries(actions.studentCourseInvalidates());
+      setOptimisticDone(null);
+    },
+  });
+
+  const uncomplete = useMutation({
+    ...actions.uncompleteLesson,
+    onMutate: () => setOptimisticDone(false),
+    onError: () => setOptimisticDone(null),
+    onSettled: async () => {
+      await queryClient.invalidateQueries(actions.studentCourseInvalidates());
+      setOptimisticDone(null);
     },
   });
 
@@ -410,15 +421,27 @@ export const LessonPlayerPage = ({
           useFlexGap
           sx={{ alignItems: { sm: 'center' }, columnGap: '1rem', rowGap: '1rem' }}
         >
-          <Button
-            variant="outlined"
-            data-testid="mark-complete"
-            onClick={() => complete.mutate({ lessonId })}
-            disabled={completed || complete.isPending}
-            startIcon={completed ? <CompletionFull /> : undefined}
-          >
-            {completed ? t.lesson.completed : t.lesson.markCompleted}
-          </Button>
+          {completed ? (
+            <Button
+              variant="outlined"
+              data-testid="unmark-complete"
+              onClick={() => uncomplete.mutate({ lessonId })}
+              disabled={uncomplete.isPending}
+              startIcon={<CompletionFull />}
+              title={t.lesson.unmarkCompletedHint}
+            >
+              {t.lesson.unmarkCompleted}
+            </Button>
+          ) : (
+            <Button
+              variant="outlined"
+              data-testid="mark-complete"
+              onClick={() => complete.mutate({ lessonId })}
+              disabled={complete.isPending}
+            >
+              {t.lesson.markCompleted}
+            </Button>
+          )}
           {nextHref !== null && (
             <Button
               variant="contained"

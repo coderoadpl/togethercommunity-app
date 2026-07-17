@@ -482,6 +482,14 @@ export const en: Messages = {
         noun: total === 1 ? 'lesson' : 'lessons',
       }),
     noLessonCompleted: 'none yet',
+    resetProgress: 'Reset progress',
+    resettingProgress: 'resetting…',
+    resetProgressTitle: 'Reset course progress?',
+    resetProgressConfirm: ({ count, course }) =>
+      format(
+        'This removes {count} completed {noun} in "{course}" and clears the saved resume position. This cannot be undone.',
+        { count, course, noun: count === 1 ? 'lesson' : 'lessons' },
+      ),
   },
   student: {
     myCourses: 'My courses',
@@ -552,6 +560,8 @@ export const en: Messages = {
     browseCourses: 'Browse courses',
     markCompleted: 'Mark as completed',
     completed: 'Completed',
+    unmarkCompleted: 'Completed — undo',
+    unmarkCompletedHint: 'Click to unmark this lesson as completed',
     completeContinue: 'Complete & continue',
     courseCompleted: 'Course completed',
     lastLesson: 'This is the last lesson',

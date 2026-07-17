@@ -5,6 +5,7 @@ import {
   type Course,
   type CourseModule,
   type Identity,
+  type Member,
   type MemberCourseProgress,
   type Product,
   type ProductGrant,
@@ -17,9 +18,18 @@ import type {
   CourseRepository,
   IdGenerator,
   MemberCourseProgressRepository,
+  MemberRepository,
   ProductGrantRepository,
 } from '../ports.js';
-import { getProgress, markLessonCompleted, updateLastViewed, type ProgressDeps } from './progress.js';
+import {
+  getProgress,
+  markLessonCompleted,
+  resetMemberCourseProgress,
+  unmarkLessonCompleted,
+  updateLastViewed,
+  type ProgressDeps,
+  type ResetMemberCourseProgressDeps,
+} from './progress.js';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -252,6 +262,158 @@ describe('markLessonCompleted', () => {
       deps(store.repo),
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
+describe('unmarkLessonCompleted', () => {
+  it('removes a completed lesson and keeps the rest', async () => {
+    const store = makeProgressStore();
+    const d = deps(store.repo);
+    await markLessonCompleted(ctx({}), 'l1', d);
+    await markLessonCompleted(ctx({}), 'l2', d);
+    const result = await unmarkLessonCompleted(ctx({}), 'l1', d);
+    expect(result).toMatchObject({ ok: true, value: { completedLessonIds: ['l2'] } });
+    expect(nn(store.rows[0]).completedLessonIds).toEqual(['l2']);
+  });
+
+  it('keeps lastViewed pointers untouched', async () => {
+    const store = makeProgressStore();
+    const d = deps(store.repo);
+    await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l1', moduleId: 'm1' }, d);
+    await markLessonCompleted(ctx({}), 'l1', d);
+    const result = await unmarkLessonCompleted(ctx({}), 'l1', d);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { completedLessonIds: [], lastViewedLessonId: 'l1', lastViewedModuleId: 'm1' },
+    });
+  });
+
+  it('is an idempotent no-op success when the lesson is not completed', async () => {
+    const store = makeProgressStore();
+    const result = await unmarkLessonCompleted(ctx({}), 'l1', deps(store.repo));
+    expect(result).toMatchObject({ ok: true, value: { completedLessonIds: [] } });
+  });
+
+  it('forbids un-marking an inaccessible lesson', async () => {
+    const store = makeProgressStore();
+    const result = await unmarkLessonCompleted(ctx({}), 'l1', deps(store.repo, [], []));
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.rows).toHaveLength(0);
+  });
+
+  it('is not found for an unknown lesson', async () => {
+    const store = makeProgressStore();
+    const result = await unmarkLessonCompleted(ctx({}), 'nope', deps(store.repo));
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('forbids non-members', async () => {
+    const store = makeProgressStore();
+    const result = await unmarkLessonCompleted(
+      ctx({ memberId: null, staffRole: 'owner' }),
+      'l1',
+      deps(store.repo),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
+const mem1: Member = {
+  id: 'mem1',
+  tenantId: 't1',
+  userId: 'u-mem1',
+  email: 'member@together.dev',
+  displayName: null,
+  tags: [],
+  marketingConsents: {},
+  externalCustomerIds: {},
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+const membersRepo = (rows: Member[]): MemberRepository => ({
+  findById: async (tenantId, memberId) =>
+    rows.find((r) => r.tenantId === tenantId && r.id === memberId) ?? null,
+  findByEmail: async () => null,
+  listWithProductIds: async () => [],
+  create: async () => undefined,
+  updateEmail: async () => null,
+  delete: async () => false,
+});
+
+const resetDeps = (progress: MemberCourseProgressRepository): ResetMemberCourseProgressDeps => ({
+  members: membersRepo([mem1]),
+  courses: coursesRepo([c1]),
+  progress,
+  clock,
+});
+
+describe('resetMemberCourseProgress', () => {
+  const staffCtx = ctx({ memberId: null, staffRole: 'admin' });
+
+  it('clears completed lessons and lastViewed, reporting the cleared count', async () => {
+    const store = makeProgressStore();
+    const d = deps(store.repo);
+    await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l2', moduleId: 'm1' }, d);
+    await markLessonCompleted(ctx({}), 'l1', d);
+    await markLessonCompleted(ctx({}), 'l2', d);
+
+    const result = await resetMemberCourseProgress(
+      staffCtx,
+      { memberId: 'mem1', courseId: 'c1' },
+      resetDeps(store.repo),
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: { memberId: 'mem1', courseId: 'c1', clearedLessonCount: 2 },
+    });
+    const row = nn(store.rows[0]);
+    expect(row.completedLessonIds).toEqual([]);
+    expect(row.lastViewedLessonId).toBeUndefined();
+    expect(row.lastViewedModuleId).toBeUndefined();
+  });
+
+  it('succeeds with zero cleared lessons when no progress row exists', async () => {
+    const store = makeProgressStore();
+    const result = await resetMemberCourseProgress(
+      staffCtx,
+      { memberId: 'mem1', courseId: 'c1' },
+      resetDeps(store.repo),
+    );
+    expect(result).toEqual({
+      ok: true,
+      value: { memberId: 'mem1', courseId: 'c1', clearedLessonCount: 0 },
+    });
+    expect(store.rows).toHaveLength(0);
+  });
+
+  it('forbids non-staff', async () => {
+    const store = makeProgressStore();
+    const result = await resetMemberCourseProgress(
+      ctx({}),
+      { memberId: 'mem1', courseId: 'c1' },
+      resetDeps(store.repo),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('is not found for an unknown member', async () => {
+    const store = makeProgressStore();
+    const result = await resetMemberCourseProgress(
+      staffCtx,
+      { memberId: 'ghost', courseId: 'c1' },
+      resetDeps(store.repo),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('is not found for an unknown course', async () => {
+    const store = makeProgressStore();
+    const result = await resetMemberCourseProgress(
+      staffCtx,
+      { memberId: 'mem1', courseId: 'ghost' },
+      resetDeps(store.repo),
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });
 

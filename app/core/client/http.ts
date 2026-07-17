@@ -29,6 +29,7 @@ import {
   meOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
+  memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
   membersExportOutputSchema,
@@ -73,6 +74,8 @@ import {
   type HttpMethod,
   type LastViewedInput,
   type LessonCompleteInput,
+  type LessonUncompleteInput,
+  type MemberProgressResetInput,
   type LessonCreateInput,
   type LessonUpdateInput,
   type M2mEnrollRequest,
@@ -312,6 +315,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  resetMemberProgress: (input: MemberProgressResetInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberProgressReset.method,
+      API_ROUTES.memberProgressReset.path.replace(':memberId', encodeURIComponent(input.memberId)),
+      memberProgressResetOutputSchema,
+      { courseId: input.courseId },
+      signal,
+    ),
   grantProductToMember: (input: GrantCreateInput, signal?: AbortSignal) =>
     request(
       options,
@@ -471,6 +483,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.studentLessonComplete.method,
       API_ROUTES.studentLessonComplete.path,
+      progressOutputSchema,
+      input,
+      signal,
+    ),
+  uncompleteLesson: (input: LessonUncompleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLessonUncomplete.method,
+      API_ROUTES.studentLessonUncomplete.path,
       progressOutputSchema,
       input,
       signal,

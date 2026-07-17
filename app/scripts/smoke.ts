@@ -825,6 +825,17 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
     progress.progress.completedLessonIds.length === 1,
     'the course progress should report exactly one completed lesson',
   );
+
+  const uncompleted = progressSchema.parse(
+    expectOk(
+      await acme(['student', 'uncomplete', lessonOne.lesson.id], studentHome),
+      'student flow: un-mark completed lesson',
+    ),
+  );
+  assert(
+    uncompleted.progress.completedLessonIds.length === 0,
+    'un-marking the lesson should remove it from progress',
+  );
 };
 
 const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {

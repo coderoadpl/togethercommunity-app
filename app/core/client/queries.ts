@@ -19,8 +19,10 @@ import type {
   GrantRevokeInput,
   LastViewedInput,
   LessonCompleteInput,
+  LessonUncompleteInput,
   LessonCreateInput,
   LessonUpdateInput,
+  MemberProgressResetInput,
   MemberRemoveInput,
   ModuleAttachInput,
   ModuleDetachInput,
@@ -301,6 +303,12 @@ export const memberLearningSummaryQuery = (api: ApiClient, memberId: string) =>
     call: ({ signal }) => api.memberLearningSummary(memberId, signal),
   });
 
+export const resetMemberProgressMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'reset-progress'],
+    call: (input: MemberProgressResetInput) => api.resetMemberProgress(input),
+  });
+
 export const grantProductToMemberMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...membersScopes.all(), 'grant'],
@@ -466,6 +474,12 @@ export const completeLessonMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...studentScopes.all(), 'complete-lesson'],
     call: (input: LessonCompleteInput) => api.completeLesson(input),
+  });
+
+export const uncompleteLessonMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...studentScopes.all(), 'uncomplete-lesson'],
+    call: (input: LessonUncompleteInput) => api.uncompleteLesson(input),
   });
 
 export const updateLastViewedMutation = (api: ApiClient) =>
@@ -636,6 +650,10 @@ export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() }
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
 
 export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: membersScopes.grants(memberId) });
+
+export const memberLearningSummaryInvalidates = (memberId: string) => ({
+  queryKey: membersScopes.learningSummary(memberId),
+});
 
 /** Invalidation filter progress mutations apply to refresh a course's tree. */
 export const studentCourseInvalidates = () => ({ queryKey: studentScopes.all() });

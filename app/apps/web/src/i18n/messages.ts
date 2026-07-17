@@ -438,6 +438,10 @@ export interface Messages {
     colCourseActivity: string;
     lessonsProgress: (params: { completed: number; total: number }) => string;
     noLessonCompleted: string;
+    resetProgress: string;
+    resettingProgress: string;
+    resetProgressTitle: string;
+    resetProgressConfirm: (params: { count: number; course: string }) => string;
   };
   student: {
     myCourses: string;
@@ -508,6 +512,8 @@ export interface Messages {
     browseCourses: string;
     markCompleted: string;
     completed: string;
+    unmarkCompleted: string;
+    unmarkCompletedHint: string;
     completeContinue: string;
     courseCompleted: string;
     lastLesson: string;

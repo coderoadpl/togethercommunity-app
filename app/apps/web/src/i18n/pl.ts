@@ -492,6 +492,18 @@ export const pl: Messages = {
     lessonsProgress: ({ completed, total }) =>
       format('{completed} z {total} lekcji', { completed, total }),
     noLessonCompleted: 'jeszcze żadna',
+    resetProgress: 'Resetuj postęp',
+    resettingProgress: 'resetowanie…',
+    resetProgressTitle: 'Zresetować postęp kursu?',
+    resetProgressConfirm: ({ count, course }) =>
+      format(
+        'Z kursu „{course}” usuniesz {count} {noun} oraz zapamiętane miejsce wznowienia nauki. Tej operacji nie można cofnąć.',
+        {
+          count,
+          course,
+          noun: plural(count, 'ukończoną lekcję', 'ukończone lekcje', 'ukończonych lekcji'),
+        },
+      ),
   },
   student: {
     myCourses: 'Moje kursy',
@@ -562,6 +574,8 @@ export const pl: Messages = {
     browseCourses: 'Przeglądaj kursy',
     markCompleted: 'Oznacz jako ukończoną',
     completed: 'Ukończono',
+    unmarkCompleted: 'Ukończona — cofnij oznaczenie',
+    unmarkCompletedHint: 'Kliknij, aby cofnąć oznaczenie lekcji jako ukończonej',
     completeContinue: 'Ukończ i przejdź dalej',
     courseCompleted: 'Kurs ukończony',
     lastLesson: 'To ostatnia lekcja',

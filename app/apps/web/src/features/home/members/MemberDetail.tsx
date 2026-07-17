@@ -26,7 +26,12 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { GrantSource, MemberGrant, MemberWithProductIds } from '@core/domain/index.js';
+import type {
+  GrantSource,
+  MemberCourseLearningSummary,
+  MemberGrant,
+  MemberWithProductIds,
+} from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -119,7 +124,17 @@ const ActivityTime = ({ value }: { value: string }) => {
 
 const LearningSummary = ({ memberId }: { memberId: string }) => {
   const t = useTranslations();
+  const queryClient = useQueryClient();
   const summary = useQuery(actions.memberLearningSummary(memberId));
+  const [resetting, setResetting] = useState<MemberCourseLearningSummary | null>(null);
+
+  const reset = useMutation({
+    ...actions.resetMemberProgress,
+    onSuccess: async () => {
+      setResetting(null);
+      await queryClient.invalidateQueries(actions.memberLearningSummaryInvalidates(memberId));
+    },
+  });
 
   return (
     <Box component="section">
@@ -151,6 +166,7 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
                     <TableCell>{t.members.colProgress}</TableCell>
                     <TableCell>{t.members.colLatestCompleted}</TableCell>
                     <TableCell>{t.members.colCourseActivity}</TableCell>
+                    <TableCell align="right">{t.members.colActions}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -186,6 +202,17 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
                             <ActivityTime value={course.lastActivityAt} />
                           )}
                         </TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            variant="text"
+                            color="error"
+                            data-testid="reset-progress"
+                            onClick={() => setResetting(course)}
+                          >
+                            {t.members.resetProgress}
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -193,8 +220,37 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
               </Table>
             </TableContainer>
           )}
+          {reset.isError ? <MutationError error={reset.error} /> : null}
         </Stack>
       )}
+
+      <Dialog open={resetting !== null} onClose={() => setResetting(null)}>
+        <DialogTitle>{t.members.resetProgressTitle}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {t.members.resetProgressConfirm({
+              count: resetting?.completedLessonCount ?? 0,
+              course: resetting?.courseName ?? '',
+            })}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="text" onClick={() => setResetting(null)}>
+            {t.common.cancel}
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            data-testid="reset-progress-confirm"
+            disabled={reset.isPending}
+            onClick={() => {
+              if (resetting) reset.mutate({ memberId, courseId: resetting.courseId });
+            }}
+          >
+            {reset.isPending ? t.members.resettingProgress : t.members.resetProgress}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

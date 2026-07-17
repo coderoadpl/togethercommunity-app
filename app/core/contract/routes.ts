@@ -173,6 +173,21 @@ export const memberLearningSummaryOutputSchema = z.object({
   summary: memberLearningSummarySchema,
 });
 
+export const memberProgressResetInputSchema = z.object({
+  memberId: z.string().min(1),
+  courseId: z.string().min(1),
+});
+
+export type MemberProgressResetInput = z.input<typeof memberProgressResetInputSchema>;
+
+export const memberProgressResetOutputSchema = z.object({
+  reset: z.object({
+    memberId: z.string(),
+    courseId: z.string(),
+    clearedLessonCount: z.number().int().nonnegative(),
+  }),
+});
+
 export const grantCreateInputSchema = grantProductToMemberInputSchema;
 
 export type GrantCreateInput = z.input<typeof grantCreateInputSchema>;
@@ -361,6 +376,10 @@ export const lessonCompleteInputSchema = z.object({
 });
 
 export type LessonCompleteInput = z.input<typeof lessonCompleteInputSchema>;
+
+export const lessonUncompleteInputSchema = lessonCompleteInputSchema;
+
+export type LessonUncompleteInput = z.input<typeof lessonUncompleteInputSchema>;
 
 export const lastViewedInputSchema = updateLastViewedInputSchema;
 
@@ -568,6 +587,7 @@ export const API_ROUTES = {
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
   studentLessonComplete: { method: 'POST', path: '/api/student/lessons/complete' },
+  studentLessonUncomplete: { method: 'POST', path: '/api/student/lessons/uncomplete' },
   studentLessonNext: { method: 'GET', path: '/api/student/lessons/next' },
   studentLastViewed: { method: 'POST', path: '/api/student/progress/last-viewed' },
   studentProgress: { method: 'GET', path: '/api/student/progress' },
@@ -589,6 +609,7 @@ export const API_ROUTES = {
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
+  memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
@@ -644,6 +665,7 @@ export const API_PATHS = {
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,
   studentLessonComplete: API_ROUTES.studentLessonComplete.path,
+  studentLessonUncomplete: API_ROUTES.studentLessonUncomplete.path,
   studentLessonNext: API_ROUTES.studentLessonNext.path,
   studentLastViewed: API_ROUTES.studentLastViewed.path,
   studentProgress: API_ROUTES.studentProgress.path,
@@ -665,6 +687,7 @@ export const API_PATHS = {
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
+  memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,

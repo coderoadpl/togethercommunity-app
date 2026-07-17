@@ -964,6 +964,17 @@ student
   );
 
 student
+  .command('uncomplete <lessonId>')
+  .description('Un-mark a completed lesson (no-op when not completed)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [lessonId]) => {
+      emit(await ctx.api.uncompleteLesson({ lessonId }), ctx.json, (data) =>
+        `completed ${data.progress.completedLessonIds.length} lesson(s) in course ${data.progress.courseId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+student
   .command('next <lessonId>')
   .description('Next lesson after the given lesson')
   .action(
@@ -1343,6 +1354,24 @@ member
         return [header, ...rows].join('\n');
       });
     }),
+  );
+
+member
+  .command('reset-progress <memberId>')
+  .description('Clear a member completed lessons and resume position in one course (staff only)')
+  .requiredOption('--course <courseId>')
+  .action(
+    withInput(
+      z.tuple([z.string().min(1), z.object({ course: z.string().min(1) })]),
+      async (ctx, [memberId, options]) => {
+        emit(
+          await ctx.api.resetMemberProgress({ memberId, courseId: options.course }),
+          ctx.json,
+          (data) =>
+            `reset progress for member ${data.reset.memberId.slice(0, 8)} in course ${data.reset.courseId.slice(0, 8)}: cleared ${data.reset.clearedLessonCount} lesson(s)`,
+        );
+      },
+    ),
   );
 
 member

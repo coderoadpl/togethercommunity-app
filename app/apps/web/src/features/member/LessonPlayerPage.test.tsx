@@ -249,10 +249,37 @@ describe('LessonPlayerPage', () => {
     const readsBefore = progressReads;
     await user.click(button);
 
-    await waitFor(() => expect(within(button).getByTestId('completion-full')).toBeInTheDocument());
-    expect(button).toBeDisabled();
+    const unmarkButton = await screen.findByTestId('unmark-complete');
+    expect(within(unmarkButton).getByTestId('completion-full')).toBeInTheDocument();
+    expect(unmarkButton).toBeEnabled();
     expect(completeCalls).toBe(1);
     await waitFor(() => expect(progressReads).toBeGreaterThan(readsBefore));
+  });
+
+  it('un-marks a completed lesson and restores the mark button', async () => {
+    let uncompleteCalls = 0;
+    server.use(
+      okNext(null),
+      okStructure(),
+      okLesson(allBlocks),
+      http.get('/api/student/progress', () => {
+        const done = uncompleteCalls > 0 ? [] : ['l1'];
+        return HttpResponse.json({ ok: true, data: { progress: progress(done) } });
+      }),
+      http.post('/api/student/lessons/uncomplete', () => {
+        uncompleteCalls += 1;
+        return HttpResponse.json({ ok: true, data: { progress: progress([]) } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const unmarkButton = await screen.findByTestId('unmark-complete');
+    await user.click(unmarkButton);
+
+    await waitFor(() => expect(screen.getByTestId('mark-complete')).toBeInTheDocument());
+    expect(uncompleteCalls).toBe(1);
   });
 
   it('links to the server-computed next lesson and shows completion at course end', async () => {

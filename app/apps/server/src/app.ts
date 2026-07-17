@@ -16,8 +16,10 @@ import {
   grantRevokeInputSchema,
   lessonCompleteInputSchema,
   lessonCreateInputSchema,
+  lessonUncompleteInputSchema,
   lessonUpdateInputSchema,
   lastViewedInputSchema,
+  memberProgressResetInputSchema,
   memberRemoveInputSchema,
   m2mEnrollRequestSchema,
   moduleAttachInputSchema,
@@ -116,6 +118,7 @@ import {
   markLessonCompleted,
   publishProduct,
   removeMember,
+  resetMemberCourseProgress,
   resolveIdentity,
   revokeGrant,
   resolveTenant,
@@ -125,6 +128,7 @@ import {
   testBunnyConnection,
   testStripeConnection,
   fulfillStripeWebhook,
+  unmarkLessonCompleted,
   updateCourse,
   updateLastViewed,
   updateLesson,
@@ -591,6 +595,18 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ summary: result.value }) : result);
   });
 
+  app.post(API_PATHS.memberProgressReset, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = memberProgressResetInputSchema.safeParse(
+      typeof body === 'object' && body !== null
+        ? { ...body, memberId: c.req.param('memberId') }
+        : { memberId: c.req.param('memberId') },
+    );
+    if (!parsed.success) return respond(err(validation('Invalid progress reset payload', parsed.error.flatten())));
+    const result = await resetMemberCourseProgress({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ reset: result.value }) : result);
+  });
+
   app.delete(API_PATHS.memberRemove, async (c) => {
     const parsed = memberRemoveInputSchema.safeParse({ memberId: c.req.param('memberId') });
     if (!parsed.success) return respond(err(validation('Invalid member id', parsed.error.flatten())));
@@ -848,6 +864,14 @@ export const buildApp = (deps: AppDeps) => {
     const parsed = lessonCompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson completion payload', parsed.error.flatten())));
     const result = await markLessonCompleted({ identity: c.get('identity') }, parsed.data.lessonId, deps);
+    return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
+  });
+
+  app.post(API_PATHS.studentLessonUncomplete, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lessonUncompleteInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid lesson un-completion payload', parsed.error.flatten())));
+    const result = await unmarkLessonCompleted({ identity: c.get('identity') }, parsed.data.lessonId, deps);
     return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
   });
 

@@ -201,6 +201,7 @@ export default tseslint.config(
           mode: 'full',
           capture: ['feature'],
         },
+        { type: 'web-layout', pattern: 'apps/web/src/components/layout/**', mode: 'full' },
         { type: 'web-ui', pattern: 'apps/web/src/components/ui/**', mode: 'full' },
         { type: 'web-lib', pattern: 'apps/web/src/lib/**', mode: 'full' },
         { type: 'web-test', pattern: 'apps/web/src/test/**', mode: 'full' },
@@ -290,6 +291,7 @@ export default tseslint.config(
                 'web-api',
                 'web-routes',
                 'web-features',
+                'web-layout',
                 'web-ui',
                 'web-lib',
                 'web-theme',
@@ -308,13 +310,14 @@ export default tseslint.config(
             },
             {
               from: ['web-routes'],
-              allow: ['web-routes', 'web-features', 'web-ui', 'web-lib'],
+              allow: ['web-routes', 'web-features', 'web-layout', 'web-ui', 'web-lib'],
             },
             {
               from: ['web-features'],
               allow: [
                 ['web-features', { feature: '${from.feature}' }],
                 'web-api',
+                'web-layout',
                 'web-ui',
                 'web-lib',
                 'web-theme',
@@ -343,6 +346,12 @@ export default tseslint.config(
             {
               from: ['web-test'],
               allow: ['web-test'],
+            },
+            {
+              // Layout primitives are structure-only: theme atoms in, feature
+              // data/i18n out (ux-layout-system §5.3); callers pass strings.
+              from: ['web-layout'],
+              allow: ['web-layout', 'web-theme'],
             },
             {
               from: ['web-ui'],
@@ -455,6 +464,16 @@ export default tseslint.config(
                 '@testing-library/user-event',
                 'dompurify',
                 'msw',
+                'react',
+                'vitest',
+              ],
+            },
+            {
+              from: ['web-layout'],
+              allow: [
+                '@mui/material',
+                '@testing-library/react',
+                '@testing-library/user-event',
                 'react',
                 'vitest',
               ],

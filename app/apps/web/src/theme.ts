@@ -65,6 +65,7 @@ export const createPlainTheme = (accentHue?: number): Theme =>
     typography: {
       h1: { fontSize: '2.125rem', fontWeight: 400 },
       h2: { fontSize: '1.25rem', fontWeight: 500 },
+      button: { textTransform: 'none' },
     },
   });
 
@@ -596,6 +597,8 @@ export const createSignalMonoTheme = (): Theme =>
         fontWeight: 600,
         letterSpacing: '0.1em',
         lineHeight: 1.4,
+        // Deliberate exception to the app-wide sentence-case default (D6):
+        // uppercase microtype is core to Signal Mono's identity.
         textTransform: 'uppercase',
       },
       caption: { fontSize: '0.78rem', lineHeight: 1.5, color: SIGNAL_INK_SOFT },
@@ -1416,6 +1419,8 @@ export const createScoreboardTheme = (): Theme =>
         fontWeight: 600,
         letterSpacing: '0.04em',
         lineHeight: 1.4,
+        // Deliberate exception to the app-wide sentence-case default (D6):
+        // Scoreboard's sports-graphics identity depends on uppercase labels.
         textTransform: 'uppercase',
       },
       caption: { fontSize: '0.78rem', lineHeight: 1.5, color: SCORE_INK_SOFT },
@@ -2097,6 +2102,7 @@ export const createAppTheme = (accentHue = 24): Theme => {
         letterSpacing: '0.14em',
         lineHeight: 'normal',
         fontWeight: 400,
+        textTransform: 'none',
       },
       caption: { fontSize: '0.72rem', lineHeight: `${GRID}px`, color: INK_SOFT },
     },

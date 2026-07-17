@@ -69,6 +69,16 @@ module.exports = {
       to: { path: '^(core/server|adapters/db|adapters/domain-provisioning|apps/(server|cli))' },
     },
     {
+      name: 'web-layout-structure-only',
+      severity: 'error',
+      comment:
+        'Layout primitives carry structure only: theme atoms in, feature data / api / i18n / core out (ux-layout-system §5.3)',
+      from: { path: '^apps/web/src/components/layout' },
+      to: {
+        path: '^(core/|adapters/|apps/web/src/(features/|routes/|i18n/|api\\.ts|NotificationBell))',
+      },
+    },
+    {
       name: 'cli-is-a-pure-api-client',
       severity: 'error',
       from: { path: '^apps/cli' },

@@ -43,7 +43,19 @@ const auth = createAuth(db, {
 
 const PASSWORD = 'demo1234';
 
-const baseTime = Date.now();
+/**
+ * SEED_BASE_TIME (ISO timestamp) pins all relative seed dates, so the visual
+ * regression harness gets identical rendered dates on every run.
+ */
+const parseBaseTime = (): number => {
+  const raw = process.env['SEED_BASE_TIME'];
+  if (raw === undefined) return Date.now();
+  const parsed = Date.parse(raw);
+  if (Number.isNaN(parsed)) throw new Error(`SEED_BASE_TIME is not a valid timestamp: ${raw}`);
+  return parsed;
+};
+
+const baseTime = parseBaseTime();
 let sequence = 0;
 const nextIso = (): string => new Date(baseTime + sequence++ * 1000).toISOString();
 
@@ -1001,7 +1013,22 @@ if (progressSpecs.length > 0) {
         updatedAt: nextIso(),
       })),
     )
-    .onConflictDoNothing();
+    // Converge on the canonical demo progress: browsing the demo member (for
+    // example the visual harness) moves last-viewed, and a reseed must undo it.
+    .onConflictDoUpdate({
+      target: [
+        memberCourseProgress.tenantId,
+        memberCourseProgress.memberId,
+        memberCourseProgress.courseId,
+      ],
+      set: {
+        completedLessonIds: sql`excluded.completed_lesson_ids`,
+        lastViewedLessonId: sql`excluded.last_viewed_lesson_id`,
+        lastViewedModuleId: sql`excluded.last_viewed_module_id`,
+        lastViewedChapterId: sql`excluded.last_viewed_chapter_id`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    });
 }
 
 const studioCreatorUserId = creatorUserIds.get('tenant-studio') ?? '';

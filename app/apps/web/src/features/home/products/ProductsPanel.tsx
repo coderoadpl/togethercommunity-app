@@ -25,6 +25,7 @@ import { priceMajorSchema, SUPPORTED_CURRENCIES } from '@core/domain/index.js';
 import type { Product, ProductAccessIssues } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
@@ -145,6 +146,7 @@ export const ProductsPanel = () => {
   const visibleProducts = (products.data?.products ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
     .filter((product) => matchesQuery(query, product.title));
+  const paged = usePagedList(visibleProducts, query);
 
   const createProduct = useMutation({
     ...actions.createProduct,
@@ -275,7 +277,7 @@ export const ProductsPanel = () => {
           <Typography variant="body1">{t.products.noMatches}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
-            {visibleProducts.map((product) => (
+            {paged.pageItems.map((product) => (
               <ProductRow
                 key={product.id}
                 product={product}
@@ -284,6 +286,7 @@ export const ProductsPanel = () => {
             ))}
           </Stack>
         )}
+        <ListPagination paged={paged} testId="products-pagination" />
       </Box>
     </Stack>
   );

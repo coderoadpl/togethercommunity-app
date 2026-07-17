@@ -25,6 +25,14 @@ export const pl: Messages = {
     description: 'opis',
     noOptions: 'Brak opcji',
   },
+  pagination: {
+    rowsPerPage: 'Wierszy na stronę:',
+    displayedRows: ({ from, to, count }) => format('{from}–{to} z {count}', { from, to, count }),
+    firstPage: 'Pierwsza strona',
+    lastPage: 'Ostatnia strona',
+    nextPage: 'Następna strona',
+    previousPage: 'Poprzednia strona',
+  },
   refresh: {
     failed: ({ message }) => format('nie udało się odświeżyć — {message}', { message }),
   },

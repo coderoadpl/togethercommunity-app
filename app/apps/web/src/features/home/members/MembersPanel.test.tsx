@@ -99,4 +99,35 @@ describe('MembersPanel', () => {
     await userEvent.click(screen.getByTestId('members-grant-filter-all'));
     await waitFor(() => expect(screen.getAllByTestId('member-row')).toHaveLength(3));
   });
+
+  it('paginates long member lists and searches across all pages', async () => {
+    const manyMembers: MemberWithProductIds[] = Array.from({ length: 30 }, (_, index) => ({
+      id: `member-page-${index}`,
+      email: `member${String(index).padStart(2, '0')}@together.dev`,
+      displayName: null,
+      tags: [],
+      marketingConsents: {},
+      externalCustomerIds: {},
+      createdAt: new Date(Date.UTC(2026, 5, 1, 0, index)).toISOString(),
+      productIds: [],
+      activeProductIds: [],
+    }));
+    server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: manyMembers } })));
+
+    renderWithProviders(<MembersPanel />);
+    await screen.findByText('member29@together.dev');
+
+    expect(screen.getAllByTestId('member-row')).toHaveLength(25);
+    expect(screen.getByTestId('members-pagination')).toHaveTextContent(
+      pl.pagination.displayedRows({ from: 1, to: 25, count: 30 }),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: pl.pagination.nextPage }));
+    expect(screen.getAllByTestId('member-row')).toHaveLength(5);
+    expect(screen.getByText('member00@together.dev')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByTestId('members-search'), 'member29');
+    await waitFor(() => expect(screen.getAllByTestId('member-row')).toHaveLength(1));
+    expect(screen.getByText('member29@together.dev')).toBeInTheDocument();
+  });
 });

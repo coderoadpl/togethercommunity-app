@@ -18,6 +18,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { Course } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
@@ -104,6 +105,7 @@ export const CoursesListPanel = () => {
   const visibleCourses = (courses.data?.courses ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
     .filter((course) => matchesQuery(query, course.name));
+  const paged = usePagedList(visibleCourses, query);
 
   return (
     <Stack useFlexGap spacing="2rem">
@@ -134,8 +136,8 @@ export const CoursesListPanel = () => {
         ) : visibleCourses.length === 0 ? (
           <Typography variant="body1">{t.courses.noMatches}</Typography>
         ) : (
-          <List disablePadding>
-            {visibleCourses.map((course) => (
+          <List disablePadding dense>
+            {paged.pageItems.map((course) => (
               <ListItem
                 key={course.id}
                 data-testid="course-row"
@@ -164,6 +166,7 @@ export const CoursesListPanel = () => {
             ))}
           </List>
         )}
+        <ListPagination paged={paged} testId="courses-pagination" />
       </Box>
     </Stack>
   );

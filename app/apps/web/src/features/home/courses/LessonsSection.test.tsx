@@ -10,6 +10,34 @@ import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { LessonsSection } from './LessonsSection.js';
 
+describe('LessonsSection pagination', () => {
+  it('paginates the lesson pool and applies the type filter to the full set', async () => {
+    const manyLessons: CourseLesson[] = Array.from({ length: 26 }, (_, index) => ({
+      id: `lesson-${index}`,
+      tenantId: 't1',
+      name: `Lesson ${String(index).padStart(2, '0')}`,
+      contents: index === 0 ? [{ type: 'html', html: '<p>intro</p>' }] : [],
+      legacyId: null,
+      createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
+    }));
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: manyLessons } })));
+
+    renderWithProviders(<LessonsSection />);
+    await screen.findByText('Lesson 25');
+
+    expect(screen.getAllByTestId('lesson-row')).toHaveLength(25);
+
+    await userEvent.click(screen.getByRole('button', { name: pl.pagination.nextPage }));
+    expect(screen.getAllByTestId('lesson-row')).toHaveLength(1);
+    expect(screen.getByText('Lesson 00')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('lessons-type-filter-html'));
+    await waitFor(() => expect(screen.getAllByTestId('lesson-row')).toHaveLength(1));
+    expect(screen.getByText('Lesson 00')).toBeInTheDocument();
+    expect(screen.queryByTestId('lessons-pagination')).not.toBeInTheDocument();
+  });
+});
+
 describe('LessonsSection blocks editor', () => {
   it('adds a video block, reorders it and creates the lesson', async () => {
     let lessons: CourseLesson[] = [];

@@ -19,6 +19,14 @@ export const en: Messages = {
     description: 'description',
     noOptions: 'No options',
   },
+  pagination: {
+    rowsPerPage: 'Rows per page:',
+    displayedRows: ({ from, to, count }) => format('{from}–{to} of {count}', { from, to, count }),
+    firstPage: 'First page',
+    lastPage: 'Last page',
+    nextPage: 'Next page',
+    previousPage: 'Previous page',
+  },
   refresh: {
     failed: ({ message }) => format("couldn't refresh — {message}", { message }),
   },

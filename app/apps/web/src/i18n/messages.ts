@@ -22,6 +22,14 @@ export interface Messages {
     description: string;
     noOptions: string;
   };
+  pagination: {
+    rowsPerPage: string;
+    displayedRows: (params: { from: number; to: number; count: number }) => string;
+    firstPage: string;
+    lastPage: string;
+    nextPage: string;
+    previousPage: string;
+  };
   refresh: {
     failed: (params: { message: string }) => string;
   };

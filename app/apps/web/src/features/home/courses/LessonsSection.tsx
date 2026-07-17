@@ -30,6 +30,7 @@ import DOMPurify from 'dompurify';
 import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
@@ -622,6 +623,7 @@ export const LessonsSection = () => {
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
     .filter((lesson) => matchesQuery(query, lesson.name))
     .filter((lesson) => typeFilter === 'all' || lesson.contents.some((block) => block.type === typeFilter));
+  const paged = usePagedList(visibleLessons, `${query}|${typeFilter}`);
 
   return (
     <Stack useFlexGap spacing="1.5rem">
@@ -677,8 +679,8 @@ export const LessonsSection = () => {
         ) : visibleLessons.length === 0 ? (
           <Typography variant="body1">{t.lessons.noMatches}</Typography>
         ) : (
-          <List disablePadding>
-            {visibleLessons.map((lesson) => (
+          <List disablePadding dense>
+            {paged.pageItems.map((lesson) => (
               <ListItem
                 key={lesson.id}
                 data-testid="lesson-row"
@@ -711,6 +713,7 @@ export const LessonsSection = () => {
             ))}
           </List>
         )}
+        <ListPagination paged={paged} testId="lessons-pagination" />
       </Box>
 
       {deleting ? <LessonDeleteDialog lesson={deleting} onClose={() => setDeleting(null)} /> : null}

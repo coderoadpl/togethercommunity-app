@@ -21,6 +21,7 @@ import { ApiError } from '@core/client/index.js';
 import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
@@ -85,6 +86,7 @@ export const MembersPanel = () => {
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
     .filter((member) => matchesQuery(query, member.email, member.displayName))
     .filter((member) => matchesGrantFilter(member, grantFilter));
+  const paged = usePagedList(visibleMembers, `${query}|${grantFilter}`);
 
   return (
     <Paper elevation={1} sx={{ p: '1.5rem' }}>
@@ -172,7 +174,7 @@ export const MembersPanel = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {visibleMembers.map((member) => (
+                {paged.pageItems.map((member) => (
                   <TableRow key={member.id} data-testid="member-row">
                     <TableCell>{member.email}</TableCell>
                     <TableCell>{member.displayName ?? '—'}</TableCell>
@@ -201,6 +203,7 @@ export const MembersPanel = () => {
                 ))}
               </TableBody>
             </Table>
+            <ListPagination paged={paged} testId="members-pagination" />
           </TableContainer>
         )}
 

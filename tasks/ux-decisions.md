@@ -13,9 +13,11 @@
    sx-layout lint rule so raw layout `sx` is only allowed inside the layout
    components directory; think through **atomic design** as the organizing
    model for the component catalog; add **Storybook** plus an open-source,
-   self-hosted Chromatic-style visual regression tool (candidates: Lost Pixel
-   OSS mode, Loki, storycap+reg-suit — pick via a short spike, baselines
-   stored in-repo; we already have playwright-core + pixelmatch).
+   self-hosted Chromatic-style visual regression tool. Owner leaning
+   (2026-07-17): **Lost Pixel (OSS mode) is the preferred candidate** — still
+   confirm with a short spike before committing (fallbacks: Loki,
+   storycap+reg-suit); baselines stored in-repo; we already have
+   playwright-core + pixelmatch.
 3. **Mobile-first is mandatory** — Storybook stories and visual tests run in
    BOTH mobile and desktop viewports for every story.
 4. **A11y runtime scanning** — accepted but explicitly LOWEST priority of the

@@ -40,6 +40,36 @@
 - Implementation is gated on: (a) owner review of `ux-layout-system.md`
   decision points, (b) audit-r3 fix loop completion (avoid refactor collisions).
 
+## Layout-system decision points D1-D6 — RESOLVED (owner, 2026-07-17)
+
+- **D1 Panel page titles:** quiet h1 (title + description + action, no eyebrow);
+  the ledger header stays the member-side signature. (per recommendation)
+- **D2 Create flows:** dedicated **create subpages** (`/panel/<kind>/new`) —
+  NOT dialogs. Lists become list-first; the header "+ Dodaj" action navigates
+  to the create page. (owner overrode the dialog recommendation)
+- **D3 Width scale:** collapse to 4 tokens (28/32 focus, 44 prose, 60 panel,
+  72 wide); "Moje kursy" moves to wide 72rem with a 3-up card grid. (per rec)
+- **D4 Member mobile nav:** **bottom tab bar** on xs (owner choice over the
+  account-menu fold) — persistent bottom navigation for member destinations
+  (courses / products / notifications / account), notification badge on the
+  bell tab; floating theme/language dev chrome must stop overlapping content.
+- **D5 Lesson editing:** dedicated route `/panel/lessons/:id` (PanelPage +
+  SectionCards), deep-linkable; consistent with D2. (per recommendation)
+- **D6 Button casing:** sentence case everywhere, set once per theme mode in
+  theme.ts (a theme MAY override deliberately, default is consistency). (per rec)
+
+## Import decision — expiresAt = null (owner, 2026-07-17)
+
+Non-issue: the legacy schema has `expiresAt` required, and the real data
+confirms 0/780 enrollments with null. Current importer behavior stays; the
+production-import gate on this question is LIFTED. (Defensive posture: the
+importer already records an anomaly if such a row ever appears.)
+
+## Next features sprint (after the UX refactor) — owner pick
+
+**Subscriptions / recurring payments** (FR-33 + product types). Spaces/feed
+and tenant branding stay in the backlog for the sprint after.
+
 ## Execution order (owner: "your preferred order, stick to the list")
 
 1. Audit-r3 MUST/SHOULD fixes via model routing (separate track, first).

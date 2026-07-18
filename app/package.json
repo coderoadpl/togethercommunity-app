@@ -32,7 +32,8 @@
     "legacy:export": "tsx scripts/legacy-export.ts",
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
-    "e2e:poc": "tsx scripts/poc-e2e.ts"
+    "e2e:poc": "tsx scripts/poc-e2e.ts",
+    "e2e:subs": "tsx scripts/subs-e2e.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1085.0",

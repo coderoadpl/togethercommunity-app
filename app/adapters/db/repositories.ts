@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import {
+  SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
   courseLessonSchema,
   courseModuleSchema,
@@ -1271,6 +1272,9 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
       return row ? parseSubscription(row) : null;
     },
     countActive: async (tenantId, now) => {
+      const graceCutoff = new Date(
+        Date.parse(now) - SUBSCRIPTION_GRACE_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
       const rows = await db
         .select({ value: sql<number>`count(*)::int` })
         .from(memberSubscriptions)
@@ -1278,7 +1282,7 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
           and(
             eq(memberSubscriptions.tenantId, tenantId),
             inArray(memberSubscriptions.status, ['active', 'past_due']),
-            sql`${memberSubscriptions.currentPeriodEnd}::timestamptz + interval '3 days' >= ${now}::timestamptz`,
+            sql`${memberSubscriptions.currentPeriodEnd}::timestamptz >= ${graceCutoff}::timestamptz`,
           ),
         );
       return rows[0]?.value ?? 0;

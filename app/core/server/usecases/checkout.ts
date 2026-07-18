@@ -61,13 +61,14 @@ export const createCheckoutSession = async (
   }
 
   const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
+  const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     productId: product.id,
     productName: product.title,
     priceCents: price?.amountCents ?? product.priceCents,
     currency: price?.currency ?? product.currency,
-    successUrl: `${checkoutPath}?status=success&session_id={CHECKOUT_SESSION_ID}`,
+    successUrl: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${checkoutPath}?status=cancelled`,
     ...(parsed.data.email === undefined ? {} : { customerEmail: parsed.data.email }),
     ...(parsed.data.language === undefined ? {} : { language: parsed.data.language }),

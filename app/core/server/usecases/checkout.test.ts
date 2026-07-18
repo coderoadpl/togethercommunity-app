@@ -80,11 +80,73 @@ describe('createCheckoutSession', () => {
         priceCents: 4900,
         currency: 'PLN',
         successUrl:
-          'https://alpha.example.com/checkout/product-1?status=success&session_id={CHECKOUT_SESSION_ID}',
+          'https://alpha.example.com/checkout/product-1?status=success&purchase_kind=one_time&session_id={CHECKOUT_SESSION_ID}',
         cancelUrl: 'https://alpha.example.com/checkout/product-1?status=cancelled',
         customerEmail: 'buyer@example.com',
         language: 'pl',
       },
     ]);
+  });
+
+  it('marks a recurring-price return as a subscription success', async () => {
+    const calls: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
+    const deps: CheckoutDeps = {
+      products: {
+        listByTenant: async () => [],
+        listPublishedByTenant: async () => [],
+        findById: async () => product,
+        create: async () => undefined,
+        updateAccessItems: async () => null,
+        setPublished: async () => undefined,
+        bumpContentVersion: async () => undefined,
+      },
+      prices: {
+        listByProduct: async () => [],
+        listActiveByProducts: async () => [],
+        findById: async () => ({
+          id: 'price-monthly',
+          tenantId: 'tenant-a',
+          productId: product.id,
+          kind: 'recurring',
+          interval: 'month',
+          amountCents: 3900,
+          currency: 'PLN',
+          active: true,
+          createdAt: '2026-07-18T10:00:00.000Z',
+        }),
+        create: async () => undefined,
+        setActive: async () => null,
+      },
+      tenantSecrets: {
+        listByTenant: async () => [],
+        findByKey: async (_tenantId, key) => secret(key),
+        upsert: async (_tenantId, value) => value,
+        delete: async () => false,
+      },
+      payment: {
+        createCheckoutSession: async (input) => {
+          calls.push(input);
+          return ok({ url: 'https://checkout.stripe.test/cs_sub', sessionId: 'cs_sub' });
+        },
+        expireCheckoutSession: async () => ok({ expired: true }),
+        verifyWebhookEvent: async () =>
+          ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
+      },
+    };
+    const checkout = await import('./checkout.js');
+    const result = await checkout.createCheckoutSession(
+      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      'https://alpha.example.com',
+      { productId: product.id, priceId: 'price-monthly' },
+      deps,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(calls[0]).toMatchObject({
+      priceId: 'price-monthly',
+      recurringInterval: 'month',
+      successUrl:
+        'https://alpha.example.com/checkout/product-1?status=success&purchase_kind=subscription&session_id={CHECKOUT_SESSION_ID}',
+    });
   });
 });

@@ -506,6 +506,12 @@ export interface Messages {
     grantUpcomingLabel: (params: { date: string }) => string;
     grantUpcomingNote: (params: { date: string }) => string;
     renewAccess: string;
+    subscriptionActiveLabel: string;
+    subscriptionPastDueLabel: string;
+    subscriptionCanceledLabel: (params: { date: string }) => string;
+    subscriptionRenewalDate: (params: { date: string }) => string;
+    subscriptionAccessUntil: (params: { date: string }) => string;
+    manageSubscription: string;
     coursesEmptyRenewHint: string;
   };
   courseTree: {
@@ -673,6 +679,10 @@ export interface Messages {
     noMagicLinkNote: string;
     openCourse: string;
     emailLabel: string;
+    priceChoiceLabel: string;
+    buyPrice: (params: { price: string }) => string;
+    subscribeMonthlyPrice: (params: { price: string }) => string;
+    subscribeYearlyPrice: (params: { price: string }) => string;
     submitIdle: string;
     submitPending: string;
     freeIdle: string;
@@ -682,6 +692,8 @@ export interface Messages {
     successEyebrow: string;
     successTitle: string;
     successBody: string;
+    subscriptionSuccessTitle: string;
+    subscriptionSuccessBody: string;
     goToLogin: string;
     cancelledEyebrow: string;
     cancelledTitle: string;

@@ -40,6 +40,10 @@ describe('member pages', () => {
   it('lists my products with course links', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+      http.get('/api/tenant/settings', () => HttpResponse.json({
+        ok: true,
+        data: { settings: { billingPortalUrl: null, bunnyStreamLibraryId: null } },
+      })),
       http.get('/api/me', () =>
         HttpResponse.json({
           ok: true,
@@ -55,6 +59,70 @@ describe('member pages', () => {
       'href',
       '/my/course/course-1',
     );
+  });
+
+  it('shows active, past-due and canceled subscription states with billing management', async () => {
+    server.use(
+      http.get('/api/my/products', () => HttpResponse.json({
+        ok: true,
+        data: {
+          products: [
+            {
+              ...productsBody.products[0],
+              id: 'active',
+              subscription: {
+                id: 'sub-active',
+                status: 'active',
+                currentPeriodEnd: '2026-08-18T00:00:00.000Z',
+                cancelAtPeriodEnd: false,
+              },
+            },
+            {
+              ...productsBody.products[0],
+              id: 'past-due',
+              subscription: {
+                id: 'sub-past-due',
+                status: 'past_due',
+                currentPeriodEnd: '2026-08-19T00:00:00.000Z',
+                cancelAtPeriodEnd: false,
+              },
+            },
+            {
+              ...productsBody.products[0],
+              id: 'canceled',
+              subscription: {
+                id: 'sub-canceled',
+                status: 'canceled',
+                currentPeriodEnd: '2026-08-20T00:00:00.000Z',
+                cancelAtPeriodEnd: false,
+              },
+            },
+          ],
+        },
+      })),
+      http.get('/api/tenant/settings', () => HttpResponse.json({
+        ok: true,
+        data: {
+          settings: {
+            billingPortalUrl: 'https://billing.stripe.com/p/login/example',
+            bunnyStreamLibraryId: null,
+          },
+        },
+      })),
+    );
+
+    await renderPage(MyProductsPage, '/my/products');
+
+    expect(await screen.findByTestId('subscription-status-active')).toHaveTextContent(
+      pl.student.subscriptionActiveLabel,
+    );
+    expect(screen.getByTestId('subscription-status-past-due')).toHaveTextContent(
+      pl.student.subscriptionPastDueLabel,
+    );
+    expect(screen.getByTestId('subscription-status-canceled')).toHaveTextContent('Anulowana — dostęp do');
+    expect(screen.getByTestId('subscription-date-active')).toHaveTextContent('Odnowienie:');
+    expect(screen.getByTestId('subscription-date-canceled')).toHaveTextContent('Dostęp do:');
+    expect(screen.getAllByRole('link', { name: pl.student.manageSubscription })).toHaveLength(3);
   });
 
   it('renders the course stub for a purchased product', async () => {

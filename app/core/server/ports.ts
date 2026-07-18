@@ -9,10 +9,16 @@ import type {
   Member,
   MemberGrant,
   MemberCourseProgress,
+  MemberSubscription,
   MemberWithProductIds,
   Membership,
+  Order,
+  OrderListItem,
+  OrderStatus,
+  PriceKind,
   Product,
   ProductGrant,
+  ProductPrice,
   ProcessedPaymentEvent,
   Result,
   StaffRole,
@@ -242,12 +248,26 @@ export interface PaymentWebhookEvent {
   objectId: string | null;
   checkoutSession: {
     email: string | null;
+    subscriptionId: string | null;
     metadata: {
       tenantId: string | null;
       productId: string | null;
+      priceId: string | null;
       memberEmail: string | null;
       language: string | null;
     };
+  } | null;
+  invoice?: {
+    subscriptionId: string | null;
+    amountCents: number | null;
+    currency: string | null;
+    periodEnd: string | null;
+  } | null;
+  subscription?: {
+    id: string;
+    status: string | null;
+    cancelAtPeriodEnd: boolean;
+    currentPeriodEnd: string | null;
   } | null;
 }
 
@@ -262,6 +282,8 @@ export interface PaymentProvider {
     cancelUrl: string;
     customerEmail?: string;
     language?: string;
+    priceId?: string;
+    recurringInterval?: 'month' | 'year';
   }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
   expireCheckoutSession(input: {
     tenantId: string;
@@ -287,6 +309,42 @@ export interface VideoLibraryPort {
     page: number;
     perPage: number;
   }): Promise<Result<{ videos: StreamVideo[]; totalItems: number }, AppError>>;
+}
+
+export interface ProductPriceRepository {
+  listByProduct(tenantId: string, productId: string): Promise<ProductPrice[]>;
+  listActiveByProducts(tenantId: string, productIds: string[]): Promise<ProductPrice[]>;
+  findById(tenantId: string, id: string): Promise<ProductPrice | null>;
+  create(tenantId: string, price: ProductPrice): Promise<void>;
+  setActive(tenantId: string, id: string, active: boolean): Promise<ProductPrice | null>;
+}
+
+export interface OrderListQuery {
+  status?: OrderStatus;
+  productId?: string;
+  kind?: PriceKind;
+  search?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface OrderRepository {
+  create(tenantId: string, order: Order): Promise<void>;
+  list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
+  revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;
+  countSince(tenantId: string, sinceIso: string): Promise<number>;
+}
+
+export interface MemberSubscriptionRepository {
+  findById(tenantId: string, id: string): Promise<MemberSubscription | null>;
+  findByProviderSubscriptionId(
+    tenantId: string,
+    providerSubscriptionId: string,
+  ): Promise<MemberSubscription | null>;
+  listForMember(tenantId: string, memberId: string): Promise<MemberSubscription[]>;
+  create(tenantId: string, subscription: MemberSubscription): Promise<void>;
+  update(tenantId: string, subscription: MemberSubscription): Promise<MemberSubscription | null>;
+  countActive(tenantId: string, now: string): Promise<number>;
 }
 
 export interface ProcessedPaymentEventRepository {

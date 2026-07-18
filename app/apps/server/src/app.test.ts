@@ -84,6 +84,27 @@ const deps = (input: {
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
     },
+    prices: {
+      listByProduct: async () => [],
+      listActiveByProducts: async () => [],
+      findById: async () => null,
+      create: async () => undefined,
+      setActive: async () => null,
+    },
+    orders: {
+      create: async () => undefined,
+      list: async () => ({ orders: [], total: 0 }),
+      revenueSince: async () => [],
+      countSince: async () => 0,
+    },
+    subscriptions: {
+      findById: async () => null,
+      findByProviderSubscriptionId: async () => null,
+      listForMember: async () => [],
+      create: async () => undefined,
+      update: async () => null,
+      countActive: async () => 0,
+    },
     tenantApiKeys: {
       listByTenant: async () => [],
       create: async () => undefined,

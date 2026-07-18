@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EmailMessage, Member, Product, ProductGrant, TenantApiKey } from '@core/domain/index.js';
+import type { EmailMessage, Member, Order, Product, ProductGrant, TenantApiKey } from '@core/domain/index.js';
 
 import type {
   ApiKeyCrypto,
@@ -41,6 +41,7 @@ interface Sent {
 interface Harness {
   deps: M2mEnrollDeps;
   grants: ProductGrant[];
+  orders: Order[];
   sent: Sent[];
   captured: string[];
 }
@@ -52,6 +53,7 @@ const harness = (options: {
 }): Harness => {
   const grants: ProductGrant[] = options.grants ? [...options.grants] : [];
   const members: Member[] = [];
+  const orders: Order[] = [];
   const sent: Sent[] = [];
   const captured: string[] = [];
   let seq = 0;
@@ -121,6 +123,7 @@ const harness = (options: {
 
   return {
     grants,
+    orders,
     sent,
     captured,
     deps: {
@@ -130,6 +133,21 @@ const harness = (options: {
       authPort,
       email,
       devMagicLinks,
+      prices: {
+        listByProduct: async () => [],
+        listActiveByProducts: async () => [],
+        findById: async () => null,
+        create: async () => undefined,
+        setActive: async () => null,
+      },
+      orders: {
+        create: async (_t, order) => {
+          orders.push(order);
+        },
+        list: async () => ({ orders: [], total: 0 }),
+        revenueSince: async () => [],
+        countSince: async () => 0,
+      },
       ids: { nextId: () => `grant-${(seq += 1)}` },
       clock: { nowIso: () => NOW },
       appBaseUrl: 'https://tenant.example',
@@ -173,6 +191,15 @@ describe('m2mEnroll', () => {
     expect(h.grants[0]?.startsAt).toBe(NOW);
     expect(h.grants[0]?.expiresAt).toBe(NEW_EXPIRY);
     expect(h.grants[0]?.source).toBe('manual');
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({
+      kind: 'one_time',
+      status: 'paid',
+      amountCents: 0,
+      priceId: null,
+      provider: 'simulated',
+      providerObjectIds: { m2m: 'enroll' },
+    });
   });
 
   it('renews an active grant by extending its expiry, keeping startsAt', async () => {

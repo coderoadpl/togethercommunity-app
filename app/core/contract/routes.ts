@@ -20,8 +20,17 @@ import {
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
   languageSchema,
+  listOrdersQuerySchema,
   listStreamVideosInputSchema,
   m2mEnrollInputSchema,
+  memberSubscriptionSchema,
+  memberSubscriptionSummarySchema,
+  newProductPriceSchema,
+  orderListItemSchema,
+  priceIntervalSchema,
+  priceKindSchema,
+  productPriceSchema,
+  salesSummarySchema,
   memberExportFileSchema,
   memberGrantSchema,
   memberLearningSummarySchema,
@@ -104,6 +113,14 @@ export const productsListOutputSchema = z.object({
   products: z.array(productSchema),
 });
 
+export const publicOfferPriceSchema = z.object({
+  id: z.string(),
+  kind: priceKindSchema,
+  interval: priceIntervalSchema.nullable(),
+  amountCents: z.number().int().nonnegative(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+});
+
 export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),
@@ -117,6 +134,7 @@ export const publicOfferOutputSchema = z.object({
       description: z.string(),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
+      prices: z.array(publicOfferPriceSchema),
     }),
   ),
 });
@@ -150,6 +168,7 @@ export const myProductsOutputSchema = z.object({
       grantStatus: grantWindowStatusSchema,
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
+      subscription: memberSubscriptionSummarySchema.nullable(),
     }),
   ),
 });
@@ -221,6 +240,7 @@ export const magicLinkSchema = z.object({
 export const simulatePurchaseInputSchema = z.object({
   email: z.string().email(),
   productId: z.string().min(1),
+  priceId: z.string().min(1).optional(),
   language: languageSchema.default('pl'),
 });
 
@@ -230,7 +250,57 @@ export const simulatePurchaseOutputSchema = z.object({
   memberId: z.string(),
   productId: z.string(),
   alreadyOwned: z.boolean(),
+  subscriptionId: z.string().nullable(),
+  orderId: z.string().nullable(),
   magicLink: magicLinkSchema.nullable(),
+});
+
+export const productPricesListOutputSchema = z.object({
+  prices: z.array(productPriceSchema),
+});
+
+export const productPriceCreateInputSchema = newProductPriceSchema;
+
+export type ProductPriceCreateInput = z.input<typeof productPriceCreateInputSchema>;
+
+export const productPriceCreateOutputSchema = z.object({
+  price: productPriceSchema,
+});
+
+export const productPriceDeactivateInputSchema = z.object({
+  id: z.string().min(1),
+});
+
+export type ProductPriceDeactivateInput = z.input<typeof productPriceDeactivateInputSchema>;
+
+export const productPriceDeactivateOutputSchema = z.object({
+  price: productPriceSchema,
+});
+
+export const ordersListQuerySchema = listOrdersQuerySchema;
+
+export type OrdersListQueryInput = z.input<typeof ordersListQuerySchema>;
+
+export const ordersListOutputSchema = z.object({
+  orders: z.array(orderListItemSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
+});
+
+export const salesSummaryOutputSchema = z.object({
+  summary: salesSummarySchema,
+});
+
+export const subscriptionSimulateInputSchema = z.object({
+  subscriptionId: z.string().min(1),
+});
+
+export type SubscriptionSimulateInput = z.input<typeof subscriptionSimulateInputSchema>;
+
+export const subscriptionSimulateOutputSchema = z.object({
+  subscription: memberSubscriptionSchema,
+  processed: z.boolean(),
 });
 
 export const devMagicLinkOutputSchema = z.object({
@@ -573,6 +643,11 @@ export const API_ROUTES = {
   productsPublish: { method: 'POST', path: '/api/products/publish' },
   productsAccessItems: { method: 'POST', path: '/api/products/access-items' },
   productsAccessIssues: { method: 'GET', path: '/api/products/access-issues' },
+  productPricesCreate: { method: 'POST', path: '/api/products/prices' },
+  productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
+  productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
+  orders: { method: 'GET', path: '/api/orders' },
+  salesSummary: { method: 'GET', path: '/api/sales/summary' },
   courses: { method: 'GET', path: '/api/courses' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
@@ -619,6 +694,8 @@ export const API_ROUTES = {
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
+  devSubscriptionSimulateCycle: { method: 'POST', path: '/api/dev/subscriptions/simulate-cycle' },
+  devSubscriptionSimulateFailure: { method: 'POST', path: '/api/dev/subscriptions/simulate-failure' },
   devMagicLink: { method: 'GET', path: '/api/dev/magic-link' },
   devEmail: { method: 'GET', path: '/api/dev/email' },
   apiKeys: { method: 'GET', path: '/api/api-keys' },
@@ -652,6 +729,11 @@ export const API_PATHS = {
   productsPublish: API_ROUTES.productsPublish.path,
   productsAccessItems: API_ROUTES.productsAccessItems.path,
   productsAccessIssues: API_ROUTES.productsAccessIssues.path,
+  productPricesCreate: API_ROUTES.productPricesCreate.path,
+  productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
+  productPrices: API_ROUTES.productPrices.path,
+  orders: API_ROUTES.orders.path,
+  salesSummary: API_ROUTES.salesSummary.path,
   courses: API_ROUTES.courses.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,
   coursesHistory: API_ROUTES.coursesHistory.path,
@@ -697,6 +779,8 @@ export const API_PATHS = {
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
+  devSubscriptionSimulateCycle: API_ROUTES.devSubscriptionSimulateCycle.path,
+  devSubscriptionSimulateFailure: API_ROUTES.devSubscriptionSimulateFailure.path,
   devMagicLink: API_ROUTES.devMagicLink.path,
   devEmail: API_ROUTES.devEmail.path,
   apiKeys: API_ROUTES.apiKeys.path,

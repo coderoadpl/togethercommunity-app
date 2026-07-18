@@ -41,6 +41,12 @@ import {
   notificationsListOutputSchema,
   notificationsReadAllOutputSchema,
   notificationsUnreadOutputSchema,
+  ordersListOutputSchema,
+  productPriceCreateOutputSchema,
+  productPriceDeactivateOutputSchema,
+  productPricesListOutputSchema,
+  salesSummaryOutputSchema,
+  subscriptionSimulateOutputSchema,
   discussionOutputSchema,
   postOutputSchema,
   postsSearchOutputSchema,
@@ -86,6 +92,10 @@ import {
   type ModuleUpdateInput,
   type NotificationReadInput,
   type NotificationsListInput,
+  type OrdersListQueryInput,
+  type ProductPriceCreateInput,
+  type ProductPriceDeactivateInput,
+  type SubscriptionSimulateInput,
   type DiscussionGetInput,
   type PostCreateInput,
   type PostDeleteInput,
@@ -271,6 +281,78 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.productsPublish.method,
       API_ROUTES.productsPublish.path,
       productsPublishOutputSchema,
+      input,
+      signal,
+    ),
+  listProductPrices: (productId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productPrices.method,
+      API_ROUTES.productPrices.path.replace(':productId', encodeURIComponent(productId)),
+      productPricesListOutputSchema,
+      undefined,
+      signal,
+    ),
+  createProductPrice: (input: ProductPriceCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productPricesCreate.method,
+      API_ROUTES.productPricesCreate.path,
+      productPriceCreateOutputSchema,
+      input,
+      signal,
+    ),
+  deactivateProductPrice: (input: ProductPriceDeactivateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productPriceDeactivate.method,
+      API_ROUTES.productPriceDeactivate.path,
+      productPriceDeactivateOutputSchema,
+      input,
+      signal,
+    ),
+  listOrders: (input: OrdersListQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.productId !== undefined) params.set('productId', input.productId);
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.search !== undefined) params.set('search', input.search);
+    if (input.page !== undefined) params.set('page', String(input.page));
+    if (input.pageSize !== undefined) params.set('pageSize', String(input.pageSize));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.orders.method,
+      suffix.length > 0 ? `${API_ROUTES.orders.path}?${suffix}` : API_ROUTES.orders.path,
+      ordersListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  salesSummary: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.salesSummary.method,
+      API_ROUTES.salesSummary.path,
+      salesSummaryOutputSchema,
+      undefined,
+      signal,
+    ),
+  simulateSubscriptionCycle: (input: SubscriptionSimulateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.devSubscriptionSimulateCycle.method,
+      API_ROUTES.devSubscriptionSimulateCycle.path,
+      subscriptionSimulateOutputSchema,
+      input,
+      signal,
+    ),
+  simulateSubscriptionFailure: (input: SubscriptionSimulateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.devSubscriptionSimulateFailure.method,
+      API_ROUTES.devSubscriptionSimulateFailure.path,
+      subscriptionSimulateOutputSchema,
       input,
       signal,
     ),

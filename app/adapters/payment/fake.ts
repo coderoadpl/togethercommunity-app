@@ -46,20 +46,43 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
     const event = stripeWebhookPayloadSchema.safeParse(parsed);
     if (!event.success) return err(validation('Webhook payload does not match the Stripe event shape'));
     const object = event.data.data.object;
+    const type = event.data.type;
+    const epochToIso = (seconds: number | null | undefined): string | null =>
+      seconds == null ? null : new Date(seconds * 1000).toISOString();
     return ok({
       id: event.data.id,
-      type: event.data.type,
+      type,
       objectId: object.id,
       checkoutSession:
-        event.data.type === 'checkout.session.completed'
+        type === 'checkout.session.completed'
           ? {
               email: object.customer_details?.email ?? object.customer_email ?? null,
+              subscriptionId: object.subscription ?? null,
               metadata: {
                 tenantId: object.metadata?.tenantId ?? null,
                 productId: object.metadata?.productId ?? null,
+                priceId: object.metadata?.priceId || null,
                 memberEmail: object.metadata?.memberEmail || null,
                 language: object.metadata?.language || null,
               },
+            }
+          : null,
+      invoice:
+        type === 'invoice.paid' || type === 'invoice.payment_failed'
+          ? {
+              subscriptionId: object.subscription ?? null,
+              amountCents: object.amount_total ?? null,
+              currency: object.currency?.toUpperCase() ?? null,
+              periodEnd: epochToIso(object.period_end),
+            }
+          : null,
+      subscription:
+        type === 'customer.subscription.updated' || type === 'customer.subscription.deleted'
+          ? {
+              id: object.id,
+              status: object.status ?? null,
+              cancelAtPeriodEnd: object.cancel_at_period_end ?? false,
+              currentPeriodEnd: epochToIso(object.current_period_end),
             }
           : null,
     });

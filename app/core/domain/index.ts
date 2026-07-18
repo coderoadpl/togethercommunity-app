@@ -13,4 +13,5 @@ export * from './tenant.js';
 export * from './tenant-secret.js';
 export * from './stream-video.js';
 export * from './payment.js';
+export * from './commerce.js';
 export * from './versioning.js';

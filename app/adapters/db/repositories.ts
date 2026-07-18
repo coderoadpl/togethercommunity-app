@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   computeCourseModuleName,
@@ -8,7 +8,10 @@ import {
   entityHistoryEntrySchema,
   memberCourseProgressSchema,
   memberGrantSchema,
+  memberSubscriptionSchema,
   notificationSchema,
+  orderListItemSchema,
+  productPriceSchema,
   postSchema,
   productGrantSchema,
   processedPaymentEventSchema,
@@ -22,8 +25,11 @@ import {
   type CourseModule,
   type MemberCourseProgress,
   type MemberGrant,
+  type MemberSubscription,
   type Membership,
   type Notification,
+  type OrderListItem,
+  type ProductPrice,
   type Post,
   type PostSearchHit,
   type Product,
@@ -45,7 +51,10 @@ import type {
   HealthPort,
   MemberRepository,
   MemberCourseProgressRepository,
+  MemberSubscriptionRepository,
   NotificationRepository,
+  OrderRepository,
+  ProductPriceRepository,
   PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
@@ -70,9 +79,12 @@ import {
   entityVersions,
   memberCourseProgress,
   members,
+  memberSubscriptions,
   notifications,
+  orders,
   posts,
   productGrants,
+  productPrices,
   processedPaymentEvents,
   products,
   tenantAdmins,
@@ -1028,6 +1040,247 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         .orderBy(asc(productGrants.createdAt))
     ).map(parseProduct),
 });
+
+const parseProductPrice = (price: ProductPrice): ProductPrice => productPriceSchema.parse(price);
+
+const parseSubscription = (subscription: MemberSubscription): MemberSubscription =>
+  memberSubscriptionSchema.parse(subscription);
+
+export const createProductPriceRepository = (db: Db): ProductPriceRepository => ({
+  listByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productPrices)
+        .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId)))
+        .orderBy(asc(productPrices.createdAt))
+    ).map(parseProductPrice),
+  listActiveByProducts: async (tenantId, productIds) => {
+    if (productIds.length === 0) return [];
+    return (
+      await db
+        .select()
+        .from(productPrices)
+        .where(
+          and(
+            eq(productPrices.tenantId, tenantId),
+            eq(productPrices.active, true),
+            inArray(productPrices.productId, productIds),
+          ),
+        )
+        .orderBy(asc(productPrices.createdAt))
+    ).map(parseProductPrice);
+  },
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(productPrices)
+      .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, id)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseProductPrice(row) : null;
+  },
+  create: async (tenantId, price) => {
+    await db.insert(productPrices).values({
+      id: price.id,
+      tenantId,
+      productId: price.productId,
+      kind: price.kind,
+      interval: price.interval,
+      amountCents: price.amountCents,
+      currency: price.currency,
+      active: price.active,
+      createdAt: price.createdAt,
+    });
+  },
+  setActive: async (tenantId, id, active) => {
+    const rows = await db
+      .update(productPrices)
+      .set({ active })
+      .where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.id, id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseProductPrice(row) : null;
+  },
+});
+
+export const createOrderRepository = (db: Db): OrderRepository => {
+  const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
+    const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
+    if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
+    if (query.productId !== undefined) conditions.push(eq(orders.productId, query.productId));
+    if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
+    if (query.search !== undefined) {
+      const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+      const search = or(ilike(members.email, pattern), ilike(members.displayName, pattern));
+      if (search) conditions.push(search);
+    }
+    return conditions;
+  };
+
+  return {
+    create: async (tenantId, order) => {
+      await db.insert(orders).values({
+        id: order.id,
+        tenantId,
+        memberId: order.memberId,
+        productId: order.productId,
+        priceId: order.priceId,
+        kind: order.kind,
+        status: order.status,
+        amountCents: order.amountCents,
+        currency: order.currency,
+        provider: order.provider,
+        providerObjectIds: order.providerObjectIds,
+        createdAt: order.createdAt,
+      });
+    },
+    list: async (tenantId, query) => {
+      const conditions = conditionsFor(tenantId, query);
+      const rows = await db
+        .select({
+          order: orders,
+          memberEmail: members.email,
+          memberName: members.displayName,
+          productTitle: products.title,
+        })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .where(and(...conditions))
+        .orderBy(desc(orders.createdAt), desc(orders.id))
+        .limit(query.pageSize)
+        .offset((query.page - 1) * query.pageSize);
+      const totals = await db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .where(and(...conditions));
+      return {
+        orders: rows.map(
+          (row): OrderListItem =>
+            orderListItemSchema.parse({
+              ...row.order,
+              memberEmail: row.memberEmail,
+              memberName: row.memberName,
+              productTitle: row.productTitle,
+            }),
+        ),
+        total: totals[0]?.value ?? 0,
+      };
+    },
+    revenueSince: async (tenantId, sinceIso) =>
+      db
+        .select({
+          currency: orders.currency,
+          amountCents: sql<number>`coalesce(sum(${orders.amountCents}), 0)::int`,
+        })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.tenantId, tenantId),
+            eq(orders.status, 'paid'),
+            sql`${orders.createdAt}::timestamptz >= ${sinceIso}::timestamptz`,
+          ),
+        )
+        .groupBy(orders.currency),
+    countSince: async (tenantId, sinceIso) => {
+      const rows = await db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.tenantId, tenantId),
+            sql`${orders.createdAt}::timestamptz >= ${sinceIso}::timestamptz`,
+          ),
+        );
+      return rows[0]?.value ?? 0;
+    },
+  };
+};
+
+export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRepository => {
+  const toRow = (tenantId: string, subscription: MemberSubscription) => ({
+    id: subscription.id,
+    tenantId,
+    memberId: subscription.memberId,
+    productId: subscription.productId,
+    priceId: subscription.priceId,
+    provider: subscription.provider,
+    providerSubscriptionId: subscription.providerSubscriptionId,
+    status: subscription.status,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    createdAt: subscription.createdAt,
+    updatedAt: subscription.updatedAt,
+  });
+
+  return {
+    findById: async (tenantId, id) => {
+      const rows = await db
+        .select()
+        .from(memberSubscriptions)
+        .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.id, id)))
+        .limit(1);
+      const row = rows[0];
+      return row ? parseSubscription(row) : null;
+    },
+    findByProviderSubscriptionId: async (tenantId, providerSubscriptionId) => {
+      const rows = await db
+        .select()
+        .from(memberSubscriptions)
+        .where(
+          and(
+            eq(memberSubscriptions.tenantId, tenantId),
+            eq(memberSubscriptions.providerSubscriptionId, providerSubscriptionId),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      return row ? parseSubscription(row) : null;
+    },
+    listForMember: async (tenantId, memberId) =>
+      (
+        await db
+          .select()
+          .from(memberSubscriptions)
+          .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.memberId, memberId)))
+          .orderBy(asc(memberSubscriptions.createdAt))
+      ).map(parseSubscription),
+    create: async (tenantId, subscription) => {
+      await db.insert(memberSubscriptions).values(toRow(tenantId, subscription));
+    },
+    update: async (tenantId, subscription) => {
+      const rows = await db
+        .update(memberSubscriptions)
+        .set({
+          status: subscription.status,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          providerSubscriptionId: subscription.providerSubscriptionId,
+          updatedAt: subscription.updatedAt,
+        })
+        .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.id, subscription.id)))
+        .returning();
+      const row = rows[0];
+      return row ? parseSubscription(row) : null;
+    },
+    countActive: async (tenantId, now) => {
+      const rows = await db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(memberSubscriptions)
+        .where(
+          and(
+            eq(memberSubscriptions.tenantId, tenantId),
+            inArray(memberSubscriptions.status, ['active', 'past_due']),
+            sql`${memberSubscriptions.currentPeriodEnd}::timestamptz + interval '3 days' >= ${now}::timestamptz`,
+          ),
+        );
+      return rows[0]?.value ?? 0;
+    },
+  };
+};
 
 export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => ({
   listByTenant: async (tenantId) =>

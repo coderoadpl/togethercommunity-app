@@ -28,6 +28,9 @@ import {
   moduleUpdateInputSchema,
   notificationReadInputSchema,
   notificationsListInputSchema,
+  productPriceCreateInputSchema,
+  productPriceDeactivateInputSchema,
+  subscriptionSimulateInputSchema,
   discussionGetInputSchema,
   postCreateInputSchema,
   postDeleteInputSchema,
@@ -105,6 +108,9 @@ import {
   searchPosts,
   subscribeThread,
   unreadNotificationCount,
+  createProductPrice,
+  deactivateProductPrice,
+  getSalesSummary,
   listCourses,
   listLessons,
   listMemberGrants,
@@ -112,6 +118,10 @@ import {
   listModules,
   listMyCourses,
   listMyProducts,
+  listOrders,
+  listProductPrices,
+  simulateSubscriptionCycle,
+  simulateSubscriptionFailure,
   listProductAccessIssues,
   listMyTenants,
   listProducts,
@@ -417,7 +427,15 @@ export const buildApp = (deps: AppDeps) => {
       const parsed = simulatePurchaseInputSchema.safeParse(body);
       if (!parsed.success) return respond(err(validation('Invalid purchase payload', parsed.error.flatten())));
 
-      const result = await simulatePurchase(tenant.value.tenant.id, parsed.data.email, parsed.data.productId, deps);
+      const result = await simulatePurchase(
+        tenant.value.tenant.id,
+        {
+          email: parsed.data.email,
+          productId: parsed.data.productId,
+          ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
+        },
+        deps,
+      );
       if (!result.ok) return respond(result);
 
       const baseUrl = magicLinkBaseUrl(
@@ -459,6 +477,30 @@ export const buildApp = (deps: AppDeps) => {
 
       return respond(await devGrantProduct(tenant.value.tenant.id, parsed.data, deps));
     });
+
+    const simulateSubscriptionRoute = (
+      path: string,
+      run: typeof simulateSubscriptionCycle,
+    ): void => {
+      app.post(path, async (c) => {
+        const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+        if (!tenant.ok) return respond(tenant);
+        if (!tenant.value) return respond(err(tenantNotFound()));
+
+        const body: unknown = await c.req.json().catch(() => null);
+        const parsed = subscriptionSimulateInputSchema.safeParse(body);
+        if (!parsed.success) return respond(err(validation('Invalid subscription payload', parsed.error.flatten())));
+
+        const result = await run(tenant.value.tenant, parsed.data.subscriptionId, {
+          ...deps,
+          exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
+        });
+        return respond(result);
+      });
+    };
+
+    simulateSubscriptionRoute(API_PATHS.devSubscriptionSimulateCycle, simulateSubscriptionCycle);
+    simulateSubscriptionRoute(API_PATHS.devSubscriptionSimulateFailure, simulateSubscriptionFailure);
   }
 
   app.post(API_PATHS.m2mEnroll, async (c) => {
@@ -566,6 +608,7 @@ export const buildApp = (deps: AppDeps) => {
               grantStatus: product.grantStatus,
               grantStartsAt: product.grantStartsAt,
               grantExpiresAt: product.grantExpiresAt,
+              subscription: product.subscription,
             })),
           })
         : result,
@@ -739,6 +782,45 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.productsAccessIssues, async (c) => {
     const result = await listProductAccessIssues({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ issues: result.value }) : result);
+  });
+
+  app.get(API_PATHS.productPrices, async (c) => {
+    const result = await listProductPrices({ identity: c.get('identity') }, c.req.param('productId'), deps);
+    return respond(result.ok ? ok({ prices: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productPricesCreate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productPriceCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid price payload', parsed.error.flatten())));
+    const result = await createProductPrice({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ price: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productPriceDeactivate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productPriceDeactivateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid price payload', parsed.error.flatten())));
+    const result = await deactivateProductPrice({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ price: result.value }) : result);
+  });
+
+  app.get(API_PATHS.orders, async (c) => {
+    const query = {
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+      ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
+      ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
+    };
+    const result = await listOrders({ identity: c.get('identity') }, query, deps);
+    return respond(result);
+  });
+
+  app.get(API_PATHS.salesSummary, async (c) => {
+    const result = await getSalesSummary({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ summary: result.value }) : result);
   });
 
   app.get(API_PATHS.courses, async (c) => {

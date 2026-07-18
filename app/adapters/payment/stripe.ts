@@ -1,6 +1,14 @@
 import Stripe from 'stripe';
 
-import { err, ok, validation, type AppError, type Result } from '@core/domain/index.js';
+import {
+  err,
+  ok,
+  stripeInvoiceObjectSchema,
+  stripeSubscriptionObjectSchema,
+  validation,
+  type AppError,
+  type Result,
+} from '@core/domain/index.js';
 import type { PaymentProvider, PaymentWebhookEvent, TenantSecretResolver } from '@core/server/index.js';
 
 /**
@@ -24,7 +32,7 @@ export const stripeCheckoutSessionParams = (
 ): Stripe.Checkout.SessionCreateParams => {
   const locale = localeFor(input.language);
   return {
-    mode: 'payment',
+    mode: input.recurringInterval === undefined ? 'payment' : 'subscription',
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     ...(input.customerEmail === undefined ? {} : { customer_email: input.customerEmail }),
@@ -36,14 +44,70 @@ export const stripeCheckoutSessionParams = (
           currency: input.currency.toLowerCase(),
           unit_amount: input.priceCents,
           product_data: { name: input.productName },
+          ...(input.recurringInterval === undefined
+            ? {}
+            : { recurring: { interval: input.recurringInterval } }),
         },
       },
     ],
     metadata: {
       tenantId: input.tenantId,
       productId: input.productId,
+      priceId: input.priceId ?? '',
       memberEmail: input.customerEmail ?? '',
       language: input.language ?? '',
+    },
+  };
+};
+
+const epochToIso = (seconds: number | null | undefined): string | null =>
+  seconds == null ? null : new Date(seconds * 1000).toISOString();
+
+const idOrNull = (value: unknown): string | null => {
+  if (typeof value === 'string') return value;
+  if (value !== null && typeof value === 'object' && 'id' in value && typeof value.id === 'string') {
+    return value.id;
+  }
+  return null;
+};
+
+const toInvoiceEvent = (eventId: string, type: string, object: unknown): PaymentWebhookEvent | null => {
+  const invoice = stripeInvoiceObjectSchema.safeParse(object);
+  if (!invoice.success) return null;
+  const subscriptionId =
+    idOrNull(invoice.data.subscription) ??
+    idOrNull(invoice.data.parent?.subscription_details?.subscription);
+  const amount = type === 'invoice.paid' ? invoice.data.amount_paid : invoice.data.amount_due;
+  const linePeriodEnd = invoice.data.lines?.data[0]?.period?.end;
+  return {
+    id: eventId,
+    type,
+    objectId: invoice.data.id,
+    checkoutSession: null,
+    invoice: {
+      subscriptionId,
+      amountCents: amount ?? null,
+      currency: invoice.data.currency?.toUpperCase() ?? null,
+      periodEnd: epochToIso(linePeriodEnd ?? invoice.data.period_end),
+    },
+  };
+};
+
+const toSubscriptionEvent = (eventId: string, type: string, object: unknown): PaymentWebhookEvent | null => {
+  const subscription = stripeSubscriptionObjectSchema.safeParse(object);
+  if (!subscription.success) return null;
+  const periodEnd =
+    subscription.data.current_period_end ?? subscription.data.items?.data[0]?.current_period_end;
+  return {
+    id: eventId,
+    type,
+    objectId: subscription.data.id,
+    checkoutSession: null,
+    subscription: {
+      id: subscription.data.id,
+      status: subscription.data.status ?? null,
+      cancelAtPeriodEnd: subscription.data.cancel_at_period_end ?? false,
+      currentPeriodEnd: epochToIso(periodEnd),
     },
   };
 };
@@ -97,14 +161,24 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             objectId: session.id,
             checkoutSession: {
               email: session.customer_details?.email ?? session.customer_email ?? null,
+              subscriptionId: idOrNull(session.subscription),
               metadata: {
                 tenantId: session.metadata?.tenantId ?? null,
                 productId: session.metadata?.productId ?? null,
+                priceId: session.metadata?.priceId || null,
                 memberEmail: session.metadata?.memberEmail || null,
                 language: session.metadata?.language || null,
               },
             },
           });
+        }
+        if (event.type === 'invoice.paid' || event.type === 'invoice.payment_failed') {
+          const mapped = toInvoiceEvent(event.id, event.type, event.data.object);
+          if (mapped) return ok(mapped);
+        }
+        if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+          const mapped = toSubscriptionEvent(event.id, event.type, event.data.object);
+          if (mapped) return ok(mapped);
         }
         const object = event.data.object;
         return ok({

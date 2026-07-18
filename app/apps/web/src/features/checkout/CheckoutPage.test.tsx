@@ -18,6 +18,7 @@ const offerBody = {
       description: 'Start here.',
       priceCents: 4900,
       currency: 'PLN',
+      prices: [],
     },
   ],
 };
@@ -38,6 +39,8 @@ describe('CheckoutPage', () => {
             memberId: 'm1',
             productId: 'course-1',
             alreadyOwned: false,
+            subscriptionId: null,
+            orderId: null,
             magicLink: {
               email: 'buyer@together.dev',
               url: 'https://acme.test/magic',
@@ -98,6 +101,8 @@ describe('CheckoutPage', () => {
             memberId: 'm1',
             productId: 'course-1',
             alreadyOwned: true,
+            subscriptionId: null,
+            orderId: null,
             magicLink: {
               email: 'buyer@together.dev',
               url: 'https://acme.test/magic',

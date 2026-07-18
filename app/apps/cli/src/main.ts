@@ -82,6 +82,31 @@ const productCreateOptionsSchema = z.object({
 const simulatePurchaseOptionsSchema = z.object({
   email: z.string().email(),
   product: z.string().min(1),
+  priceId: z.string().min(1).optional(),
+});
+const priceAddOptionsSchema = z.object({
+  product: z.string().min(1),
+  kind: z.enum(['one_time', 'recurring']),
+  interval: z.enum(['month', 'year']).optional(),
+  priceCents: centsSchema.optional(),
+  price: priceMajorSchema.optional(),
+  currency: currencySchema.optional(),
+});
+const ordersListOptionsSchema = z.object({
+  status: z.enum(['paid', 'pending', 'failed', 'refunded']).optional(),
+  product: z.string().min(1).optional(),
+  kind: z.enum(['one_time', 'recurring']).optional(),
+  search: z.string().min(1).optional(),
+  page: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'page must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+  pageSize: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'page-size must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
 });
 const checkoutSessionOptionsSchema = z.object({
   product: z.string().min(1),
@@ -627,6 +652,166 @@ product
     }),
   );
 
+const priceCommand = program.command('price').description('Product prices in the active tenant (staff only)');
+
+const formatPrice = (price: {
+  id: string;
+  kind: string;
+  interval: string | null;
+  amountCents: number;
+  currency: string;
+  active: boolean;
+}): string => {
+  const cadence = price.kind === 'recurring' ? `recurring/${price.interval ?? '?'}` : 'one-time';
+  return `- ${price.amountCents} ${price.currency}  ${cadence}  [${price.active ? 'active' : 'inactive'}]  (${price.id})`;
+};
+
+priceCommand
+  .command('add')
+  .description('Add a price to a product')
+  .requiredOption('--product <id>')
+  .requiredOption('--kind <kind>', 'one_time or recurring')
+  .option('--interval <interval>', 'month or year (required for recurring)')
+  .option('--price-cents <cents>', 'amount in integer cents')
+  .option('--price <amount>', 'amount in currency units, e.g. 199 or 199.99')
+  .option('--currency <currency>', '3-letter uppercase currency code')
+  .action(
+    withInput(z.tuple([priceAddOptionsSchema]), async (ctx, [options]) => {
+      if (options.price !== undefined && options.priceCents !== undefined) {
+        emit(err(validation('Provide only one of --price and --price-cents')), ctx.json, () => '');
+        return;
+      }
+      const amountCents = options.price ?? options.priceCents;
+      if (amountCents === undefined) {
+        emit(
+          err(validation('Provide an amount with --price (currency units) or --price-cents (integer cents)')),
+          ctx.json,
+          () => '',
+        );
+        return;
+      }
+      emit(
+        await ctx.api.createProductPrice({
+          productId: options.product,
+          kind: options.kind,
+          amountCents,
+          ...(options.interval === undefined ? {} : { interval: options.interval }),
+          ...(options.currency === undefined ? {} : { currency: options.currency }),
+        }),
+        ctx.json,
+        (data) => `created price: ${formatPrice(data.price)}`,
+      );
+    }),
+  );
+
+priceCommand
+  .command('list')
+  .description('List the prices of a product')
+  .requiredOption('--product <id>')
+  .action(
+    withInput(z.tuple([z.object({ product: z.string().min(1) })]), async (ctx, [options]) => {
+      emit(await ctx.api.listProductPrices(options.product), ctx.json, (data) =>
+        data.prices.length === 0 ? 'no prices' : data.prices.map(formatPrice).join('\n'),
+      );
+    }),
+  );
+
+priceCommand
+  .command('deactivate <id>')
+  .description('Deactivate a price (existing subscriptions keep renewing)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.deactivateProductPrice({ id }), ctx.json, (data) =>
+        `deactivated price: ${formatPrice(data.price)}`,
+      );
+    }),
+  );
+
+const ordersCommand = program.command('orders').description('Sales ledger of the active tenant (staff only)');
+
+ordersCommand
+  .command('list')
+  .description('List orders with filters, search and paging')
+  .option('--status <status>', 'paid, pending, failed or refunded')
+  .option('--product <id>')
+  .option('--kind <kind>', 'one_time or recurring')
+  .option('--search <text>', 'search by member e-mail or name')
+  .option('--page <n>')
+  .option('--page-size <n>')
+  .action(
+    withInput(z.tuple([ordersListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listOrders({
+          ...(options.status === undefined ? {} : { status: options.status }),
+          ...(options.product === undefined ? {} : { productId: options.product }),
+          ...(options.kind === undefined ? {} : { kind: options.kind }),
+          ...(options.search === undefined ? {} : { search: options.search }),
+          ...(options.page === undefined ? {} : { page: options.page }),
+          ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
+        }),
+        ctx.json,
+        (data) =>
+          data.orders.length === 0
+            ? `no orders (total ${data.total})`
+            : [
+                ...data.orders.map(
+                  (order) =>
+                    `${order.createdAt}\t${order.status}\t${order.amountCents} ${order.currency}\t${order.kind}\t${order.productTitle}\t${order.memberEmail}\t(${order.id.slice(0, 8)})`,
+                ),
+                `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
+              ].join('\n'),
+      );
+    }),
+  );
+
+ordersCommand.command('summary').description('Dashboard sales summary (last 30 days)').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.salesSummary(), ctx.json, (data) => {
+      const revenue =
+        data.summary.revenueLast30Days.length === 0
+          ? '0'
+          : data.summary.revenueLast30Days
+              .map((entry) => `${entry.amountCents} ${entry.currency}`)
+              .join(', ');
+      return `revenue 30d: ${revenue}\norders 30d: ${data.summary.ordersLast30Days}\nactive subscriptions: ${data.summary.activeSubscriptions}`;
+    });
+  }),
+);
+
+const subscriptionCommand = program
+  .command('subscription')
+  .description('Dev-only subscription lifecycle simulation');
+
+const formatSubscription = (subscription: {
+  id: string;
+  status: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+}): string =>
+  `subscription ${subscription.id.slice(0, 8)}: ${subscription.status}, period ends ${subscription.currentPeriodEnd}${subscription.cancelAtPeriodEnd ? ', cancels at period end' : ''}`;
+
+subscriptionCommand
+  .command('simulate-cycle <subscriptionId>')
+  .description('Simulate the next paid invoice cycle (dev endpoint)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [subscriptionId]) => {
+      emit(await ctx.api.simulateSubscriptionCycle({ subscriptionId }), ctx.json, (data) =>
+        formatSubscription(data.subscription),
+      );
+    }),
+  );
+
+subscriptionCommand
+  .command('simulate-failure <subscriptionId>')
+  .description('Simulate a failed invoice payment (dev endpoint)')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [subscriptionId]) => {
+      emit(await ctx.api.simulateSubscriptionFailure({ subscriptionId }), ctx.json, (data) =>
+        formatSubscription(data.subscription),
+      );
+    }),
+  );
+
 const course = program.command('course').description('Courses in the active tenant (staff only)');
 
 course.command('list').description('List courses').action(
@@ -1160,6 +1345,7 @@ program
   .description('Simulate a purchase (dev endpoint): grant a product to a buyer email')
   .requiredOption('--email <email>')
   .requiredOption('--product <id>')
+  .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
   .action(
     withInput(z.tuple([simulatePurchaseOptionsSchema]), async (ctx, [options]) => {
       if (!ctx.tenant) {
@@ -1167,12 +1353,17 @@ program
         return;
       }
       emit(
-        await ctx.api.simulatePurchase({ email: options.email, productId: options.product }),
+        await ctx.api.simulatePurchase({
+          email: options.email,
+          productId: options.product,
+          ...(options.priceId === undefined ? {} : { priceId: options.priceId }),
+        }),
         ctx.json,
         (data) => {
           const status = data.alreadyOwned ? 'already owned' : 'granted';
+          const subscription = data.subscriptionId ? `\nsubscription: ${data.subscriptionId}` : '';
           const link = data.magicLink ? `\nmagic link: ${data.magicLink.url}` : '';
-          return `${status}: product ${data.productId} for member ${data.memberId}${link}`;
+          return `${status}: product ${data.productId} for member ${data.memberId}${subscription}${link}`;
         },
       );
     }),

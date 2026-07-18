@@ -43,6 +43,15 @@ const memberGrant = (overrides: Partial<MemberGrant> = {}): MemberGrant => ({
 
 const clock: Clock = { nowIso: () => '2026-07-15T00:00:00.000Z' };
 
+const subscriptions = {
+  findById: async () => null,
+  findByProviderSubscriptionId: async () => null,
+  listForMember: async () => [],
+  create: async () => undefined,
+  update: async () => null,
+  countActive: async () => 0,
+};
+
 const grants = (products: Product[], memberGrants: MemberGrant[]): ProductGrantRepository => ({
   findById: async () => null,
   findGrant: async () => null,
@@ -59,6 +68,7 @@ describe('listMyProducts', () => {
     const result = await listMyProducts({ identity: identity('t-acme', 'member-1') }, {
       grants: grants([granted], [memberGrant()]),
       clock,
+      subscriptions,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -72,6 +82,7 @@ describe('listMyProducts', () => {
         memberGrant({ expiresAt: '2026-07-08T00:00:00.000Z', active: false }),
       ]),
       clock,
+      subscriptions,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -85,6 +96,7 @@ describe('listMyProducts', () => {
         memberGrant({ startsAt: '2026-07-20T00:00:00.000Z', active: false }),
       ]),
       clock,
+      subscriptions,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -99,6 +111,7 @@ describe('listMyProducts', () => {
         memberGrant({ id: 'new', startsAt: '2026-07-10T00:00:00.000Z', active: true }),
       ]),
       clock,
+      subscriptions,
     });
     expect(result).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'active' }] });
     if (result.ok) expect(result.value).toHaveLength(1);
@@ -108,6 +121,7 @@ describe('listMyProducts', () => {
     const result = await listMyProducts({ identity: identity('t-acme', null) }, {
       grants: grants([granted], []),
       clock,
+      subscriptions,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
@@ -116,6 +130,7 @@ describe('listMyProducts', () => {
     const result = await listMyProducts({ identity: identity(null, null) }, {
       grants: grants([], []),
       clock,
+      subscriptions,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });

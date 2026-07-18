@@ -40,6 +40,13 @@ describe('createCheckoutSession', () => {
         setPublished: async () => undefined,
         bumpContentVersion: async () => undefined,
       },
+      prices: {
+        listByProduct: async () => [],
+        listActiveByProducts: async () => [],
+        findById: async () => null,
+        create: async () => undefined,
+        setActive: async () => null,
+      },
       tenantSecrets: {
         listByTenant: async () => [],
         findByKey: async (tenantId, key) => (tenantId === 'tenant-a' ? secret(key) : null),

@@ -11,10 +11,13 @@ import {
   createHealthPort,
   createMemberCourseProgressRepository,
   createMemberRepository,
+  createMemberSubscriptionRepository,
   createNotificationRepository,
+  createOrderRepository,
   createPostRepository,
   createPurchaseRepository,
   createProductGrantRepository,
+  createProductPriceRepository,
   createProcessedPaymentEventRepository,
   createProductRepository,
   createTenantAccessReader,
@@ -56,11 +59,14 @@ import type {
   IdGenerator,
   MemberCourseProgressRepository,
   MemberRepository,
+  MemberSubscriptionRepository,
   NotificationChannelPort,
   NotificationRepository,
+  OrderRepository,
   PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
+  ProductPriceRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
   RealtimeBusPort,
@@ -102,6 +108,9 @@ export interface AppDeps {
   links: DiscussionLinkPort;
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
+  prices: ProductPriceRepository;
+  orders: OrderRepository;
+  subscriptions: MemberSubscriptionRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
@@ -208,6 +217,9 @@ export const createDeps = (env: Env): AppDeps => {
     links,
     progress: createMemberCourseProgressRepository(db),
     grants: createProductGrantRepository(db),
+    prices: createProductPriceRepository(db),
+    orders: createOrderRepository(db),
+    subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),

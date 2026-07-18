@@ -25,6 +25,14 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   createdAt: '2026-07-12T00:00:00.000Z',
 });
 
+const noPrices = {
+  listByProduct: async () => [],
+  listActiveByProducts: async () => [],
+  findById: async () => null,
+  create: async () => undefined,
+  setActive: async () => null,
+};
+
 const fakeProducts = (initial: Product[]): ProductRepository => ({
   listByTenant: async (tenantId) => initial.filter((candidate) => candidate.tenantId === tenantId),
   listPublishedByTenant: async (tenantId) =>
@@ -45,6 +53,7 @@ describe('getPublicOffer', () => {
         product('draft', 't-acme', false),
         product('other', 't-other', true),
       ]),
+      prices: noPrices,
     });
 
     expect(result).toEqual({
@@ -59,6 +68,7 @@ describe('getPublicOffer', () => {
             description: 'Description published',
             priceCents: 1000,
             currency: 'PLN',
+            prices: [],
           },
         ],
       },
@@ -66,7 +76,7 @@ describe('getPublicOffer', () => {
   });
 
   it('takes a resolved tenant instead of an identity-scoped context', async () => {
-    const result = await getPublicOffer(tenant, { products: fakeProducts([]) });
+    const result = await getPublicOffer(tenant, { products: fakeProducts([]), prices: noPrices });
 
     expect(result).toMatchObject({
       ok: true,

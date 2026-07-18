@@ -34,6 +34,7 @@ export type CreateApiKeyInput = z.input<typeof createApiKeyInputSchema>;
 export const m2mEnrollInputSchema = z.object({
   email: z.string().email(),
   productId: z.string().min(1),
+  priceId: z.string().min(1).optional(),
   expiresAt: z.string().datetime().nullable().optional(),
   language: transactionalLanguageSchema.optional(),
   doNotSendEmail: z.boolean().optional(),

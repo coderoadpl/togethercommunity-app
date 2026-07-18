@@ -42,7 +42,81 @@ describe('fake Stripe webhook verification', () => {
         objectId: 'cs_123',
         checkoutSession: {
           email: 'buyer@example.com',
-          metadata: { tenantId: 'tenant-a', productId: 'product-1', memberEmail: null, language: 'pl' },
+          subscriptionId: null,
+          metadata: {
+            tenantId: 'tenant-a',
+            productId: 'product-1',
+            priceId: null,
+            memberEmail: null,
+            language: 'pl',
+          },
+        },
+        invoice: null,
+        subscription: null,
+      },
+    });
+  });
+
+  it('maps invoice and subscription events onto the lifecycle event shape', async () => {
+    const invoicePayload = JSON.stringify({
+      id: 'evt_inv',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          id: 'in_123',
+          subscription: 'sub_123',
+          amount_total: 2900,
+          currency: 'pln',
+          period_end: 1700000000,
+        },
+      },
+    });
+    const invoiceResult = await provider.verifyWebhookEvent({
+      payloadRaw: invoicePayload,
+      signatureHeader: signature(invoicePayload),
+      webhookSecret: secret,
+    });
+    expect(invoiceResult).toMatchObject({
+      ok: true,
+      value: {
+        type: 'invoice.paid',
+        objectId: 'in_123',
+        invoice: {
+          subscriptionId: 'sub_123',
+          amountCents: 2900,
+          currency: 'PLN',
+          periodEnd: '2023-11-14T22:13:20.000Z',
+        },
+      },
+    });
+
+    const subscriptionPayload = JSON.stringify({
+      id: 'evt_sub',
+      type: 'customer.subscription.updated',
+      data: {
+        object: {
+          id: 'sub_123',
+          status: 'active',
+          cancel_at_period_end: true,
+          current_period_end: 1700000000,
+        },
+      },
+    });
+    const subscriptionResult = await provider.verifyWebhookEvent({
+      payloadRaw: subscriptionPayload,
+      signatureHeader: signature(subscriptionPayload),
+      webhookSecret: secret,
+    });
+    expect(subscriptionResult).toMatchObject({
+      ok: true,
+      value: {
+        type: 'customer.subscription.updated',
+        objectId: 'sub_123',
+        subscription: {
+          id: 'sub_123',
+          status: 'active',
+          cancelAtPeriodEnd: true,
+          currentPeriodEnd: '2023-11-14T22:13:20.000Z',
         },
       },
     });

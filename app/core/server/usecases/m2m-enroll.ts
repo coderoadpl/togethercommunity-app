@@ -11,8 +11,14 @@ import {
   type TenantApiKey,
 } from '@core/domain/index.js';
 
-import type { ApiKeyCrypto, TenantApiKeyRepository } from '../ports.js';
+import type {
+  ApiKeyCrypto,
+  OrderRepository,
+  ProductPriceRepository,
+  TenantApiKeyRepository,
+} from '../ports.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
+import { appendOrder } from './subscription-lifecycle.js';
 
 export interface ApiKeyAuthDeps {
   tenantApiKeys: TenantApiKeyRepository;
@@ -31,7 +37,10 @@ export const authenticateApiKey = async (
   return ok(found);
 };
 
-export type M2mEnrollDeps = FulfillEnrollmentDeps;
+export interface M2mEnrollDeps extends FulfillEnrollmentDeps {
+  prices: ProductPriceRepository;
+  orders: OrderRepository;
+}
 
 export interface M2mEnrollResult {
   memberId: string;
@@ -48,7 +57,12 @@ export const m2mEnroll = async (
   const parsed = m2mEnrollInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid enrollment payload', parsed.error.flatten()));
 
-  return fulfillEnrollment(
+  const price = parsed.data.priceId ? await deps.prices.findById(tenant.id, parsed.data.priceId) : null;
+  if (parsed.data.priceId && (!price || price.productId !== parsed.data.productId)) {
+    return err(validation(`No price "${parsed.data.priceId}" for product "${parsed.data.productId}"`));
+  }
+
+  const fulfilled = await fulfillEnrollment(
     tenant,
     {
       email: parsed.data.email,
@@ -60,4 +74,22 @@ export const m2mEnroll = async (
     },
     deps,
   );
+  if (!fulfilled.ok) return fulfilled;
+
+  await appendOrder(
+    tenant.id,
+    {
+      memberId: fulfilled.value.memberId,
+      productId: parsed.data.productId,
+      priceId: price?.id ?? null,
+      kind: price?.kind ?? 'one_time',
+      status: 'paid',
+      amountCents: price?.amountCents ?? 0,
+      currency: price?.currency ?? 'PLN',
+      provider: 'simulated',
+      providerObjectIds: { m2m: 'enroll', grant: fulfilled.value.grantId },
+    },
+    deps,
+  );
+  return fulfilled;
 };

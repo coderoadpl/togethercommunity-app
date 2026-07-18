@@ -91,6 +91,94 @@ export const products = pgTable(
   ],
 );
 
+export const productPrices = pgTable(
+  'product_prices',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
+    interval: text('interval', { enum: ['month', 'year'] }),
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('product_prices_tenantId_idx').on(table.tenantId),
+    index('product_prices_tenant_product_idx').on(table.tenantId, table.productId),
+  ],
+);
+
+export const orders = pgTable(
+  'orders',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
+    kind: text('kind', { enum: ['one_time', 'recurring'] }).notNull(),
+    status: text('status', { enum: ['paid', 'pending', 'failed', 'refunded'] }).notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull(),
+    provider: text('provider', { enum: ['stripe', 'simulated'] }).notNull(),
+    providerObjectIds: jsonb('provider_object_ids')
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('orders_tenant_created_idx').on(table.tenantId, table.createdAt.desc()),
+    index('orders_tenant_member_idx').on(table.tenantId, table.memberId),
+    index('orders_tenant_product_idx').on(table.tenantId, table.productId),
+  ],
+);
+
+export const memberSubscriptions = pgTable(
+  'member_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    priceId: text('price_id')
+      .notNull()
+      .references(() => productPrices.id, { onDelete: 'restrict' }),
+    provider: text('provider', { enum: ['stripe', 'simulated'] }).notNull(),
+    providerSubscriptionId: text('provider_subscription_id'),
+    status: text('status', { enum: ['active', 'past_due', 'canceled'] }).notNull(),
+    currentPeriodEnd: text('current_period_end').notNull(),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('member_subscriptions_tenantId_idx').on(table.tenantId),
+    index('member_subscriptions_tenant_member_idx').on(table.tenantId, table.memberId),
+    uniqueIndex('member_subscriptions_provider_sub_uidx')
+      .on(table.tenantId, table.providerSubscriptionId)
+      .where(sql`${table.providerSubscriptionId} is not null`),
+  ],
+);
+
 export const productGrants = pgTable(
   'product_grants',
   {

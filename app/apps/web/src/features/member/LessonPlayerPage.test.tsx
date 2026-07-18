@@ -374,6 +374,7 @@ describe('LessonPlayerPage', () => {
               description: 'Wszystkie lekcje',
               priceCents: 19900,
               currency: 'PLN',
+              prices: [],
             }],
           },
         }),

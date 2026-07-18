@@ -12,9 +12,12 @@ import {
   courses,
   memberCourseProgress,
   members,
+  memberSubscriptions,
   notifications,
+  orders,
   posts,
   productGrants,
+  productPrices,
   products,
   tenantAdmins,
   tenantDomains,
@@ -602,6 +605,45 @@ const demoProducts: ProductDef[] = [
     priceCents: 29900,
     accessItems: [{ level: 'course', courseId: 'course-akademia' }],
   },
+  {
+    id: 'product-club',
+    tenantId: 'tenant-studio',
+    title: 'Klub Studio — subskrypcja',
+    description: 'Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.',
+    priceCents: 4900,
+    accessItems: [
+      { level: 'course', courseId: 'course-js' },
+      { level: 'course', courseId: 'course-react' },
+    ],
+  },
+];
+
+interface PriceDef {
+  id: string;
+  tenantId: string;
+  productId: string;
+  kind: 'one_time' | 'recurring';
+  interval: 'month' | 'year' | null;
+  amountCents: number;
+}
+
+const subscriptionPriceDefs: PriceDef[] = [
+  {
+    id: 'price-club-monthly',
+    tenantId: 'tenant-studio',
+    productId: 'product-club',
+    kind: 'recurring',
+    interval: 'month',
+    amountCents: 4900,
+  },
+  {
+    id: 'price-club-yearly',
+    tenantId: 'tenant-studio',
+    productId: 'product-club',
+    kind: 'recurring',
+    interval: 'year',
+    amountCents: 49900,
+  },
 ];
 
 interface MemberSpec {
@@ -713,6 +755,19 @@ const demoMemberDefs: DemoMemberDef[] = [
       productId: 'product-free-preview',
       startsAt: relativeIso(-3),
       expiresAt: null,
+    },
+  },
+  {
+    id: 'member-studio-abonent',
+    userId: 'user-kursant-abonent',
+    tenantId: 'tenant-studio',
+    email: 'kursant.abonent@together.dev',
+    displayName: 'Kursant Abonent',
+    grant: {
+      id: 'grant-studio-abonent',
+      productId: 'product-club',
+      startsAt: relativeIso(-40),
+      expiresAt: relativeIso(23),
     },
   },
   {
@@ -997,6 +1052,149 @@ await db
   )
   .onConflictDoNothing();
 
+const oneTimePriceDefs: PriceDef[] = [
+  { id: 'price-product-studio-kurs-101', tenantId: 'tenant-studio', productId: 'product-studio-kurs-101', kind: 'one_time', interval: null, amountCents: 19900 },
+  { id: 'price-product-studio-warsztat', tenantId: 'tenant-studio', productId: 'product-studio-warsztat', kind: 'one_time', interval: null, amountCents: 49900 },
+  { id: 'price-product-acme-course', tenantId: 'tenant-acme', productId: 'product-acme-course', kind: 'one_time', interval: null, amountCents: 9900 },
+  ...demoProducts
+    .filter((product) => product.id !== 'product-club')
+    .map((product) => ({
+      id: `price-${product.id}`,
+      tenantId: product.tenantId,
+      productId: product.id,
+      kind: 'one_time' as const,
+      interval: null,
+      amountCents: product.priceCents,
+    })),
+];
+
+await db
+  .insert(productPrices)
+  .values(
+    [...oneTimePriceDefs, ...subscriptionPriceDefs].map((price) => ({
+      id: price.id,
+      tenantId: price.tenantId,
+      productId: price.productId,
+      kind: price.kind,
+      interval: price.interval,
+      amountCents: price.amountCents,
+      currency: 'PLN',
+      active: true,
+      createdAt: nextIso(),
+    })),
+  )
+  .onConflictDoNothing();
+
+await db
+  .insert(memberSubscriptions)
+  .values([
+    {
+      id: 'subscription-studio-abonent',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-abonent',
+      productId: 'product-club',
+      priceId: 'price-club-monthly',
+      provider: 'simulated' as const,
+      providerSubscriptionId: 'sim_sub_seed_abonent',
+      status: 'active' as const,
+      currentPeriodEnd: relativeIso(20),
+      cancelAtPeriodEnd: false,
+      createdAt: relativeIso(-40),
+      updatedAt: relativeIso(-10),
+    },
+  ])
+  .onConflictDoNothing();
+
+interface OrderDef {
+  id: string;
+  memberId: string;
+  productId: string;
+  priceId: string;
+  kind: 'one_time' | 'recurring';
+  status: 'paid' | 'failed';
+  amountCents: number;
+  providerObjectIds: Record<string, string>;
+  createdAt: string;
+}
+
+const orderDefs: OrderDef[] = [
+  {
+    id: 'order-studio-aktywny-js',
+    memberId: 'member-studio-aktywny',
+    productId: 'product-js-full',
+    priceId: 'price-product-js-full',
+    kind: 'one_time',
+    status: 'paid',
+    amountCents: 39900,
+    providerObjectIds: { checkoutSession: 'sim_cs_seed_aktywny' },
+    createdAt: relativeIso(-30),
+  },
+  {
+    id: 'order-studio-modul-dom',
+    memberId: 'member-studio-modul',
+    productId: 'product-js-dom-module',
+    priceId: 'price-product-js-dom-module',
+    kind: 'one_time',
+    status: 'paid',
+    amountCents: 9900,
+    providerObjectIds: { checkoutSession: 'sim_cs_seed_modul' },
+    createdAt: relativeIso(-14),
+  },
+  {
+    id: 'order-studio-abonent-start',
+    memberId: 'member-studio-abonent',
+    productId: 'product-club',
+    priceId: 'price-club-monthly',
+    kind: 'recurring',
+    status: 'paid',
+    amountCents: 4900,
+    providerObjectIds: { checkoutSession: 'sim_cs_seed_abonent', subscription: 'sim_sub_seed_abonent' },
+    createdAt: relativeIso(-40),
+  },
+  {
+    id: 'order-studio-abonent-cycle-1',
+    memberId: 'member-studio-abonent',
+    productId: 'product-club',
+    priceId: 'price-club-monthly',
+    kind: 'recurring',
+    status: 'paid',
+    amountCents: 4900,
+    providerObjectIds: { invoice: 'sim_in_seed_abonent_1', subscription: 'sim_sub_seed_abonent' },
+    createdAt: relativeIso(-10),
+  },
+  {
+    id: 'order-studio-abonent-retry',
+    memberId: 'member-studio-abonent',
+    productId: 'product-club',
+    priceId: 'price-club-monthly',
+    kind: 'recurring',
+    status: 'failed',
+    amountCents: 4900,
+    providerObjectIds: { invoice: 'sim_in_seed_abonent_fail', subscription: 'sim_sub_seed_abonent' },
+    createdAt: relativeIso(-11),
+  },
+];
+
+await db
+  .insert(orders)
+  .values(
+    orderDefs.map((order) => ({
+      id: order.id,
+      tenantId: 'tenant-studio',
+      memberId: order.memberId,
+      productId: order.productId,
+      priceId: order.priceId,
+      kind: order.kind,
+      status: order.status,
+      amountCents: order.amountCents,
+      currency: 'PLN',
+      provider: 'simulated' as const,
+      providerObjectIds: order.providerObjectIds,
+      createdAt: order.createdAt,
+    })),
+  )
+  .onConflictDoNothing();
+
 if (progressSpecs.length > 0) {
   await db
     .insert(memberCourseProgress)
@@ -1260,5 +1458,6 @@ for (const member of memberSpecs) {
   console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
 }
 console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
+console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for kursant.abonent@together.dev, demo orders on studio');
 console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 process.exit(0);

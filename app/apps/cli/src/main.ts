@@ -518,6 +518,28 @@ tenant
     }),
   );
 
+const onboarding = program.command('onboarding').description('Creator onboarding checklist');
+
+const onboardingLines = (data: { onboarding: { steps: { id: string; done: boolean; target: string }[]; dismissed: boolean } }): string => {
+  const done = data.onboarding.steps.filter((step) => step.done).length;
+  return [
+    `onboarding: ${done}/${data.onboarding.steps.length} done${data.onboarding.dismissed ? ' (dismissed)' : ''}`,
+    ...data.onboarding.steps.map((step) => `[${step.done ? 'x' : ' '}] ${step.id}\t${step.target}`),
+  ].join('\n');
+};
+
+onboarding.command('show').description('Show the checklist for the active tenant').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.getOnboarding(), ctx.json, onboardingLines);
+  }),
+);
+
+onboarding.command('dismiss').description('Hide the checklist for the active tenant').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.dismissOnboarding(), ctx.json, onboardingLines);
+  }),
+);
+
 const product = program.command('product').description('Products in the active tenant');
 
 product.command('list').description('List products').action(

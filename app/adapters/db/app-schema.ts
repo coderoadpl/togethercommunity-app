@@ -13,6 +13,7 @@ export const tenants = pgTable(
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
     bunnyStreamLibraryId: text('bunny_stream_library_id'),
+    onboardingDismissedAt: text('onboarding_dismissed_at'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );

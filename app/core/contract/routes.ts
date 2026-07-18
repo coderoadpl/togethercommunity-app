@@ -14,6 +14,7 @@ import {
   lessonReferencesSchema,
   listDiscussionInputSchema,
   createApiKeyInputSchema,
+  creatorOnboardingSchema,
   courseHistoryEntrySchema,
   courseHistoryQuerySchema,
   entityVersionDetailSchema,
@@ -601,6 +602,10 @@ export const tenantSettingsOutputSchema = z.object({
   settings: tenantSettingsSchema,
 });
 
+export const onboardingOutputSchema = z.object({
+  onboarding: creatorOnboardingSchema,
+});
+
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
@@ -720,6 +725,8 @@ export const API_ROUTES = {
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
+  onboarding: { method: 'GET', path: '/api/onboarding' },
+  onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
 } as const;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -804,6 +811,8 @@ export const API_PATHS = {
   m2mEnroll: API_ROUTES.m2mEnroll.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
+  onboarding: API_ROUTES.onboarding.path,
+  onboardingDismiss: API_ROUTES.onboardingDismiss.path,
 } as const;
 
 /**

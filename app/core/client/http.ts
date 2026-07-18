@@ -70,6 +70,7 @@ import {
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
+  onboardingOutputSchema,
   threadSubscriptionOutputSchema,
   type ApiKeyCreateInput,
   type ApiKeyRevokeInput,
@@ -818,6 +819,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.tenantSettingsUpdate.path,
       tenantSettingsOutputSchema,
       input,
+      signal,
+    ),
+  getOnboarding: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.onboarding.method,
+      API_ROUTES.onboarding.path,
+      onboardingOutputSchema,
+      undefined,
+      signal,
+    ),
+  dismissOnboarding: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.onboardingDismiss.method,
+      API_ROUTES.onboardingDismiss.path,
+      onboardingOutputSchema,
+      {},
       signal,
     ),
 });

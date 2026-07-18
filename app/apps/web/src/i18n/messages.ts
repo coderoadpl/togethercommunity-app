@@ -134,6 +134,20 @@ export interface Messages {
     activeSubscriptions: string;
     orders30Days: string;
   };
+  onboarding: {
+    title: string;
+    progress: (params: { done: number; total: number }) => string;
+    dismiss: string;
+    stepDone: string;
+    stepOpen: string;
+    steps: {
+      courseWithLesson: string;
+      productWithPrice: string;
+      publishedProduct: string;
+      firstMember: string;
+      paymentsConfigured: string;
+    };
+  };
   sales: {
     loading: string;
     empty: string;

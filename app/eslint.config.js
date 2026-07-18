@@ -139,7 +139,7 @@ const QUERY_CLIENT_SINGLETON_PATTERN = {
  */
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', 'dist/**', 'drizzle/**'],
+    ignores: ['node_modules/**', 'dist/**', 'drizzle/**', 'storybook-static/**', 'out/**'],
   },
   {
     files: ['**/*.js', '**/*.mjs'],
@@ -791,6 +791,27 @@ export default tseslint.config(
     files: ['apps/server/src/entry.*.ts', 'apps/server/src/env.ts'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    // Storybook stories are dev-only visual fixtures, not part of the layered
+    // runtime graph: they compose layout primitives with inline mock data and
+    // therefore opt out of the app-web boundary and layout-sx conventions.
+    files: ['apps/web/src/stories/**/*.{ts,tsx}'],
+    rules: {
+      'boundaries/element-types': 'off',
+      'boundaries/external': 'off',
+      'together/query-descriptors-only': 'off',
+      'together/sx-layout-only': 'off',
+      'no-restricted-globals': 'off',
+    },
+  },
+  {
+    // Storybook + Lost Pixel config files live outside the layered graph.
+    files: ['.storybook/**/*.{ts,tsx}', 'lostpixel.config.ts'],
+    rules: {
+      'boundaries/element-types': 'off',
+      'boundaries/external': 'off',
     },
   },
 );

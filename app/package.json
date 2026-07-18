@@ -33,7 +33,11 @@
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
     "e2e:poc": "tsx scripts/poc-e2e.ts",
-    "e2e:subs": "tsx scripts/subs-e2e.ts"
+    "e2e:subs": "tsx scripts/subs-e2e.ts",
+    "storybook": "storybook dev -p 9009 --no-open",
+    "storybook:build": "storybook build -o storybook-static",
+    "visual:stories": "npm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel",
+    "visual:stories:update": "npm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel update"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1085.0",
@@ -71,6 +75,9 @@
   "devDependencies": {
     "@opentelemetry/core": "^2.9.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
+    "@storybook/react-vite": "^10.5.2",
+    "lost-pixel": "^3.22.0",
+    "storybook": "^10.5.2",
     "@tanstack/eslint-plugin-query": "^5.101.2",
     "@tanstack/react-query-devtools": "^5.101.2",
     "@testing-library/jest-dom": "^6.9.1",

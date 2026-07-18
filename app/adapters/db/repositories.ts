@@ -1112,7 +1112,11 @@ export const createOrderRepository = (db: Db): OrderRepository => {
     if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
-      const search = or(ilike(members.email, pattern), ilike(members.displayName, pattern));
+      const search = or(
+        ilike(members.email, pattern),
+        ilike(members.displayName, pattern),
+        ilike(products.title, pattern),
+      );
       if (search) conditions.push(search);
     }
     return conditions;

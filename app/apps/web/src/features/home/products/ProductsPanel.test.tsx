@@ -3,12 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { Product, ProductAccessIssues } from '@core/domain/index.js';
+import type { Product, ProductAccessIssues, ProductPrice } from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { ProductCreatePage } from './ProductCreatePage.js';
+import { ProductEditorPage } from './ProductEditorPage.js';
 import { ProductsPanel } from './ProductsPanel.js';
 
 const initialProducts: Product[] = [
@@ -28,6 +29,7 @@ const initialProducts: Product[] = [
 
 const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEntry = '/panel/products') => {
   let products = [...initialProducts];
+  let prices: ProductPrice[] = [];
 
   server.use(
     http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products } })),
@@ -38,8 +40,8 @@ const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEn
         tenantId: 't1',
         title: 'New Workshop',
         description: 'Hands-on session',
-        priceCents: 4900,
-        currency: 'EUR',
+        priceCents: 0,
+        currency: 'PLN',
         published: false,
         accessItems: [],
         legacyId: null,
@@ -48,6 +50,36 @@ const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEn
       products = [...products, product];
       return HttpResponse.json({ ok: true, data: { product } });
     }),
+    http.get('/api/products/:productId/prices', () =>
+      HttpResponse.json({ ok: true, data: { prices } }),
+    ),
+    http.post('/api/products/prices', async ({ request }) => {
+      const body = await request.json();
+      const parsed = typeof body === 'object' && body !== null ? body : {};
+      const price: ProductPrice = {
+        id: 'price-1',
+        tenantId: 't1',
+        productId: 'draft-1',
+        kind: 'one_time',
+        interval: null,
+        amountCents: 'amountCents' in parsed && typeof parsed.amountCents === 'number' ? parsed.amountCents : 0,
+        currency: 'PLN',
+        active: true,
+        createdAt: '2026-07-12T12:00:00.000Z',
+      };
+      prices = [price];
+      return HttpResponse.json({ ok: true, data: { price } });
+    }),
+    http.post('/api/products/prices/deactivate', () => {
+      const existing = prices[0];
+      if (existing === undefined) return HttpResponse.json({ ok: false }, { status: 404 });
+      const price: ProductPrice = { ...existing, active: false };
+      prices = [price];
+      return HttpResponse.json({ ok: true, data: { price } });
+    }),
+    http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [] } })),
+    http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
+    http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
     http.post('/api/products/publish', () => {
       const draft = products.find((candidate) => !candidate.published);
       if (!draft) return HttpResponse.json({ ok: false }, { status: 404 });
@@ -63,8 +95,16 @@ const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEn
   const rootRoute = createRootRoute();
   const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products', component: ProductsPanel });
   const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/products/new', component: ProductCreatePage });
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/products/$productId',
+    component: () => {
+      const product = products.find((candidate) => candidate.id === 'product-2') ?? products[0];
+      return product === undefined ? null : <ProductEditorPage product={product} />;
+    },
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([listRoute, createRoutePage]),
+    routeTree: rootRoute.addChildren([listRoute, createRoutePage, detailRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -72,7 +112,7 @@ const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEn
 };
 
 describe('ProductsPanel', { timeout: 15000 }, () => {
-  it('lists products, creates a product, and publishes a draft', async () => {
+  it('lists products, creates a product without the legacy price field, and publishes a draft', async () => {
     await renderProductsPanel();
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
@@ -86,34 +126,25 @@ describe('ProductsPanel', { timeout: 15000 }, () => {
     await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
     await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'New Workshop');
     await userEvent.type(screen.getByLabelText(pl.common.description), 'Hands-on session');
-    await userEvent.clear(screen.getByLabelText(pl.products.priceLabel));
-    await userEvent.type(screen.getByLabelText(pl.products.priceLabel), '49.99');
-
-    await userEvent.click(screen.getByRole('combobox', { name: pl.products.currencyLabel }));
-    await userEvent.click(await screen.findByRole('option', { name: 'EUR' }));
-
     await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
 
-    expect(await screen.findByText('New Workshop')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'New Workshop', level: 1 })).toBeInTheDocument();
+    expect(screen.getByTestId('prices-section')).toBeInTheDocument();
   });
 
-  it('rejects a price with more than two decimals before submitting', async () => {
-    let createCalls = 0;
-    await renderProductsPanel([], '/panel/products/new');
-    server.use(
-      http.post('/api/products', () => {
-        createCalls += 1;
-        return HttpResponse.json({ ok: false }, { status: 400 });
-      }),
-    );
+  it('adds a price and deactivates it through the confirmation dialog', async () => {
+    await renderProductsPanel([], '/panel/products/draft-1');
 
-    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'Bad price');
-    await userEvent.clear(screen.getByLabelText(pl.products.priceLabel));
-    await userEvent.type(screen.getByLabelText(pl.products.priceLabel), '1.999');
-    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+    await userEvent.type(await screen.findByLabelText(pl.products.priceLabel), '49.99');
+    await userEvent.click(screen.getByRole('button', { name: pl.products.addPrice }));
 
-    expect(await screen.findByText(pl.products.priceInvalid)).toBeInTheDocument();
-    expect(createCalls).toBe(0);
+    expect(await screen.findByTestId('price-row')).toHaveTextContent('49,99');
+    await userEvent.click(screen.getByRole('button', { name: pl.products.deactivate }));
+    expect(await screen.findByText(pl.products.deactivateBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.products.deactivateConfirm }));
+
+    await waitFor(() => expect(screen.getByTestId('price-row')).toHaveTextContent(pl.products.inactive));
+    expect(screen.queryByRole('button', { name: pl.products.deactivate })).not.toBeInTheDocument();
   });
 
   it('flags products whose access items point at missing content', async () => {

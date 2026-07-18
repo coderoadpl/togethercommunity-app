@@ -64,6 +64,18 @@ describe('DashboardPanel', () => {
         HttpResponse.json({ ok: true, data: { courses: [course('c1')] } }),
       ),
       http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members } })),
+      http.get('/api/sales/summary', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            summary: {
+              revenueLast30Days: [{ currency: 'PLN', amountCents: 14700 }],
+              activeSubscriptions: 2,
+              ordersLast30Days: 4,
+            },
+          },
+        }),
+      ),
     );
 
     renderWithProviders(<DashboardPanel />);
@@ -76,6 +88,9 @@ describe('DashboardPanel', () => {
     expect(screen.getByTestId('dashboard-tile-courses')).toHaveTextContent('1');
     expect(screen.getByTestId('dashboard-tile-members')).toHaveTextContent('6');
     expect(screen.getByTestId('dashboard-tile-grants')).toHaveTextContent('3');
+    expect(screen.getByTestId('dashboard-tile-revenue')).toHaveTextContent('147');
+    expect(screen.getByTestId('dashboard-tile-subscriptions')).toHaveTextContent('2');
+    expect(screen.getByTestId('dashboard-tile-orders')).toHaveTextContent('4');
 
     const recent = screen.getAllByTestId('dashboard-member-row');
     expect(recent).toHaveLength(5);

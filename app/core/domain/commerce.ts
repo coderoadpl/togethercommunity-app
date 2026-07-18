@@ -95,6 +95,18 @@ export const orderListItemSchema = orderSchema.extend({
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
 
+export const orderExportFormatSchema = z.enum(['csv', 'json']);
+
+export type OrderExportFormat = z.infer<typeof orderExportFormatSchema>;
+
+export const orderExportFileSchema = z.object({
+  filename: z.string(),
+  mimeType: z.string(),
+  content: z.string(),
+});
+
+export type OrderExportFile = z.infer<typeof orderExportFileSchema>;
+
 export const listOrdersQuerySchema = z.object({
   status: orderStatusSchema.optional(),
   productId: z.string().min(1).optional(),
@@ -103,6 +115,12 @@ export const listOrdersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+export const exportOrdersQuerySchema = listOrdersQuerySchema
+  .omit({ page: true, pageSize: true })
+  .extend({ format: orderExportFormatSchema });
+
+export type ExportOrdersQueryInput = z.input<typeof exportOrdersQuerySchema>;
 
 export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>;
 export type ListOrdersQueryInput = z.input<typeof listOrdersQuerySchema>;

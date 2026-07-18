@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Box, Button, List, ListItem, ListItemText, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -5,7 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { actions } from '../../api.js';
 import { PanelPage, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { formatDate } from '../../lib/format.js';
+import { formatDate, formatPrice } from '../../lib/format.js';
 import { EntryDate, StatTileButton, StatTileIcon, StatTileLabel, StatTileValue } from '../../theme.js';
 import {
   COURSES_ICON_PATH,
@@ -26,7 +27,7 @@ const DashboardTile = ({
 }: {
   iconPath: string;
   label: string;
-  value: number;
+  value: ReactNode;
   detail?: string | undefined;
   to: string;
   testId: string;
@@ -59,13 +60,15 @@ export const DashboardPanel = () => {
   const products = useQuery(actions.products);
   const courses = useQuery(actions.courses);
   const members = useQuery(actions.members);
+  const sales = useQuery(actions.salesSummary);
 
-  if (products.isPending || courses.isPending || members.isPending) {
+  if (products.isPending || courses.isPending || members.isPending || sales.isPending) {
     return <PanelPage title={t.dashboard.heading} state={{ kind: 'loading', label: t.dashboard.loading }} />;
   }
   if (products.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(products.error, t) }} />;
   if (courses.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
   if (members.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(members.error, t) }} />;
+  if (sales.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(sales.error, t) }} />;
 
   const published = products.data.products.filter((product) => product.published).length;
   const draft = products.data.products.length - published;
@@ -76,6 +79,11 @@ export const DashboardPanel = () => {
   const recentMembers = members.data.members
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, RECENT_MEMBERS_LIMIT);
+  const revenue = sales.data.summary.revenueLast30Days.length === 0
+    ? formatPrice(0, 'PLN', language)
+    : sales.data.summary.revenueLast30Days
+        .map((entry) => formatPrice(entry.amountCents, entry.currency, language))
+        .join(' + ');
 
   return (
     <PanelPage title={t.dashboard.heading}>
@@ -115,6 +123,27 @@ export const DashboardPanel = () => {
           value={activeGrants}
           to="/panel/members"
           testId="dashboard-tile-grants"
+        />
+        <DashboardTile
+          iconPath={SALES_ICON_PATH}
+          label={t.dashboard.revenue30Days}
+          value={revenue}
+          to="/panel/sales"
+          testId="dashboard-tile-revenue"
+        />
+        <DashboardTile
+          iconPath={SALES_ICON_PATH}
+          label={t.dashboard.activeSubscriptions}
+          value={sales.data.summary.activeSubscriptions}
+          to="/panel/sales"
+          testId="dashboard-tile-subscriptions"
+        />
+        <DashboardTile
+          iconPath={SALES_ICON_PATH}
+          label={t.dashboard.orders30Days}
+          value={sales.data.summary.ordersLast30Days}
+          to="/panel/sales"
+          testId="dashboard-tile-orders"
         />
       </Box>
 

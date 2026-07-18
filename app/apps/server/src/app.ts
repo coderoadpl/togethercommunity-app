@@ -30,6 +30,7 @@ import {
   notificationsListInputSchema,
   productPriceCreateInputSchema,
   productPriceDeactivateInputSchema,
+  ordersExportQuerySchema,
   subscriptionSimulateInputSchema,
   discussionGetInputSchema,
   postCreateInputSchema,
@@ -83,6 +84,7 @@ import {
   getContentVersion,
   devGrantProduct,
   exportMembers,
+  exportOrders,
   listTenantApiKeys,
   m2mEnroll,
   revokeTenantApiKey,
@@ -816,6 +818,19 @@ export const buildApp = (deps: AppDeps) => {
     };
     const result = await listOrders({ identity: c.get('identity') }, query, deps);
     return respond(result);
+  });
+
+  app.get(API_PATHS.ordersExport, async (c) => {
+    const query = {
+      format: c.req.query('format'),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+    };
+    const parsed = ordersExportQuerySchema.safeParse(query);
+    if (!parsed.success) return respond(err(validation('Invalid orders export query', parsed.error.flatten())));
+    return respond(await exportOrders({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.salesSummary, async (c) => {

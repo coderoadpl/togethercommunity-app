@@ -4,8 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
-  Divider,
   IconButton,
   List,
   ListItem,
@@ -27,9 +25,8 @@ import { ListSection, PanelPage, StatusView } from '../../../components/layout/i
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatDate, formatPrice } from '../../../lib/format.js';
+import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
-import { ProductAccessEditor } from './ProductAccessEditor.js';
 
 const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
   const t = useTranslations();
@@ -73,7 +70,6 @@ const ProductRow = ({
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
-  const [showAccess, setShowAccess] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const publishProduct = useMutation({
@@ -130,7 +126,6 @@ const ProductRow = ({
       />
       <Stack useFlexGap spacing="0.2rem">
         <span>
-          <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue> ·{' '}
           {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
           <DataValue>{accessCount}</DataValue> {t.products.accessItemNoun({ count: accessCount })}
         </span>
@@ -140,14 +135,15 @@ const ProductRow = ({
       </Stack>
       {issue ? <AccessIssues issue={issue} /> : null}
       <Box>
-        <Button size="small" variant="text" onClick={() => setShowAccess((open) => !open)}>
-          {showAccess ? t.products.hideAccess : t.products.editAccess}
+        <Button
+          size="small"
+          variant="text"
+          component="a"
+          href={`/panel/products/${encodeURIComponent(product.id)}`}
+        >
+          {t.products.manage}
         </Button>
       </Box>
-      <Collapse in={showAccess} unmountOnExit>
-        <Divider sx={{ mb: '0.75rem' }} />
-        <ProductAccessEditor product={product} />
-      </Collapse>
       {publishProduct.isError ? (
         <Alert>{localizeError(publishProduct.error, t)}</Alert>
       ) : null}

@@ -13,13 +13,32 @@ import { MemberDetail } from './members/MemberDetail.js';
 import { MembersPanel } from './members/MembersPanel.js';
 import { usePanelContext } from './panel-context.js';
 import { ProductCreatePage } from './products/ProductCreatePage.js';
+import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
+import { SalesPanel } from './sales/SalesPanel.js';
 
 export const PanelIndexRoute = () => <DashboardPanel />;
 
 export const PanelProductsRoute = () => <ProductsPanel />;
 export const PanelProductCreateRoute = () => <ProductCreatePage />;
+
+export const PanelProductDetailRoute = () => {
+  const t = useTranslations();
+  const params = useParams({ strict: false });
+  const productId = params.productId ?? '';
+  const products = useQuery(actions.products);
+
+  if (products.isPending) {
+    return <PanelPage title={t.sections.products} state={{ kind: 'loading', label: t.products.loading }} />;
+  }
+  if (products.isError) {
+    return <PanelPage title={t.sections.products} state={{ kind: 'error', message: localizeError(products.error, t) }} />;
+  }
+  const product = products.data.products.find((entry) => entry.id === productId);
+  if (!product) return <Navigate to="/panel/products" />;
+  return <ProductEditorPage product={product} />;
+};
 
 export const PanelCoursesRoute = () => <CoursesListPanel />;
 export const PanelCourseCreateRoute = () => <CourseCreatePage />;
@@ -85,14 +104,6 @@ export const PanelIntegrationsRoute = () => {
   return <IntegrationsPanel tenantId={tenant.id} />;
 };
 
-export const PanelSalesRoute = () => {
-  const t = useTranslations();
-  return (
-    <PanelPage
-      title={t.sections.sales}
-      state={{ kind: 'empty', title: t.sections.comingSoon }}
-    />
-  );
-};
+export const PanelSalesRoute = () => <SalesPanel />;
 
 export const PanelSettingsRoute = () => <SettingsPanel />;

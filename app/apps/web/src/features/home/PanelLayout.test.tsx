@@ -54,6 +54,15 @@ const commonHandlers = () => {
     http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
     http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
     http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
+    http.get('/api/sales/summary', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { summary: { revenueLast30Days: [], activeSubscriptions: 0, ordersLast30Days: 0 } },
+      }),
+    ),
+    http.get('/api/orders', () =>
+      HttpResponse.json({ ok: true, data: { orders: [], total: 0, page: 1, pageSize: 25 } }),
+    ),
   );
 };
 
@@ -144,13 +153,14 @@ describe('Creator panel routing', () => {
     expect(await screen.findByRole('heading', { name: pl.courses.heading, level: 1 })).toBeInTheDocument();
   });
 
-  it('shows the coming-soon copy on the sales section', async () => {
+  it('shows the sales ledger empty state and keeps the navigation active', async () => {
     stubViewport(true);
     commonHandlers();
 
     await renderPanelAt('/panel/sales');
 
-    expect(await screen.findByText(pl.sections.comingSoon)).toBeInTheDocument();
+    expect(await screen.findByText(pl.sales.empty)).toBeInTheDocument();
+    expect(screen.getByTestId('section-sales')).toHaveAttribute('aria-current', 'page');
   });
 
   it('signs out from the account menu in the app bar', async () => {

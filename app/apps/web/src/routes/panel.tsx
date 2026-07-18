@@ -12,6 +12,7 @@ export {
   PanelMembersRoute,
   PanelProductsRoute,
   PanelProductCreateRoute,
+  PanelProductDetailRoute,
   PanelSalesRoute,
   PanelSettingsRoute,
 } from '../features/home/panel-routes.js';

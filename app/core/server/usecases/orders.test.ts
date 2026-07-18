@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, OrderListItem } from '@core/domain/index.js';
+import { orderListItemSchema, type Identity, type OrderListItem } from '@core/domain/index.js';
 
 import type { OrderListQuery } from '../ports.js';
-import { getSalesSummary, listOrders, type OrdersDeps } from './orders.js';
+import { exportOrders, getSalesSummary, listOrders, type OrdersDeps } from './orders.js';
 
 const identity = (staffRole: 'owner' | 'admin' | null, tenantId: string | null = 't1'): Identity => ({
   userId: 'u1',
@@ -134,5 +134,26 @@ describe('getSalesSummary', () => {
         activeSubscriptions: 2,
       },
     });
+  });
+});
+
+describe('exportOrders', () => {
+  it('exports every row matching filters rather than only the first page', async () => {
+    const rows = Array.from({ length: 205 }, (_value, index) =>
+      orderItem(`o${index}`, { status: index === 204 ? 'failed' : 'paid' }),
+    );
+    const h = harness(rows);
+    const result = await exportOrders(
+      { identity: identity('owner') },
+      { format: 'json', status: 'paid' },
+      h.deps,
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { filename: 'sales-alpha.json' } });
+    if (!result.ok) return;
+    const exported = orderListItemSchema.array().parse(JSON.parse(result.value.content));
+    expect(exported).toHaveLength(204);
+    expect(h.queries).toHaveLength(3);
+    expect(h.queries.every((query) => query.status === 'paid' && query.pageSize === 100)).toBe(true);
   });
 });

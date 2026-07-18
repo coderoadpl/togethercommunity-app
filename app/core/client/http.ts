@@ -42,6 +42,7 @@ import {
   notificationsReadAllOutputSchema,
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
+  ordersExportOutputSchema,
   productPriceCreateOutputSchema,
   productPriceDeactivateOutputSchema,
   productPricesListOutputSchema,
@@ -93,6 +94,7 @@ import {
   type NotificationReadInput,
   type NotificationsListInput,
   type OrdersListQueryInput,
+  type OrdersExportQueryInput,
   type ProductPriceCreateInput,
   type ProductPriceDeactivateInput,
   type SubscriptionSimulateInput,
@@ -325,6 +327,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.orders.method,
       suffix.length > 0 ? `${API_ROUTES.orders.path}?${suffix}` : API_ROUTES.orders.path,
       ordersListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  exportOrders: (input: OrdersExportQueryInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ format: input.format });
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.productId !== undefined) params.set('productId', input.productId);
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.search !== undefined) params.set('search', input.search);
+    return request(
+      options,
+      API_ROUTES.ordersExport.method,
+      `${API_ROUTES.ordersExport.path}?${params.toString()}`,
+      ordersExportOutputSchema,
       undefined,
       signal,
     );

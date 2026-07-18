@@ -37,13 +37,17 @@ import type {
   PostsSearchInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
+  ProductPriceCreateInput,
+  ProductPriceDeactivateInput,
+  OrdersListQueryInput,
+  OrdersExportQueryInput,
   SimulatePurchaseInput,
   TenantCreateInput,
   TenantSecretDeleteInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '@core/contract/index.js';
-import type { DevGrantInput, MemberExportFormat, NewProductInput } from '@core/domain/index.js';
+import type { DevGrantInput, MemberExportFormat, NewProductInput, OrderExportFormat } from '@core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -125,6 +129,18 @@ export const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
   issues: () => ['products', 'issues'] as const,
+};
+
+export const productPricesScopes = {
+  all: () => ['product-prices'] as const,
+  list: (productId: string) => ['product-prices', 'list', productId] as const,
+};
+
+export const salesScopes = {
+  all: () => ['sales'] as const,
+  orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
+  export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
+  summary: () => ['sales', 'summary'] as const,
 };
 
 export const myProductsScopes = {
@@ -274,6 +290,48 @@ export const membersQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: membersScopes.all(),
     call: ({ signal }) => api.listMembers(signal),
+  });
+
+export const productPricesQuery = (api: ApiClient, productId: string) =>
+  defineQuery({
+    queryKey: productPricesScopes.list(productId),
+    call: ({ signal }) => api.listProductPrices(productId, signal),
+  });
+
+export const productPricesInvalidates = (productId: string) => ({
+  queryKey: productPricesScopes.list(productId),
+});
+
+export const createProductPriceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productPricesScopes.all(), 'create'],
+    call: (input: ProductPriceCreateInput) => api.createProductPrice(input),
+  });
+
+export const deactivateProductPriceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productPricesScopes.all(), 'deactivate'],
+    call: (input: ProductPriceDeactivateInput) => api.deactivateProductPrice(input),
+  });
+
+export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
+  defineQuery({
+    queryKey: salesScopes.orders(input),
+    call: ({ signal }) => api.listOrders(input, signal),
+  });
+
+export const ordersExportQuery = (api: ApiClient, input: OrdersExportQueryInput) =>
+  defineQuery({
+    queryKey: salesScopes.export(input.format, input),
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportOrders(input, signal),
+  });
+
+export const salesSummaryQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: salesScopes.summary(),
+    call: ({ signal }) => api.salesSummary(signal),
   });
 
 export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =>

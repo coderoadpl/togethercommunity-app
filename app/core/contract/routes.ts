@@ -30,6 +30,8 @@ import {
   priceIntervalSchema,
   priceKindSchema,
   productPriceSchema,
+  orderExportFileSchema,
+  exportOrdersQuerySchema,
   salesSummarySchema,
   memberExportFileSchema,
   memberGrantSchema,
@@ -287,6 +289,12 @@ export const ordersListOutputSchema = z.object({
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
 });
+
+export const ordersExportQuerySchema = exportOrdersQuerySchema;
+
+export type OrdersExportQueryInput = z.input<typeof ordersExportQuerySchema>;
+
+export const ordersExportOutputSchema = orderExportFileSchema;
 
 export const salesSummaryOutputSchema = z.object({
   summary: salesSummarySchema,
@@ -647,6 +655,7 @@ export const API_ROUTES = {
   productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
   orders: { method: 'GET', path: '/api/orders' },
+  ordersExport: { method: 'GET', path: '/api/orders/export' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
   courses: { method: 'GET', path: '/api/courses' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
@@ -733,6 +742,7 @@ export const API_PATHS = {
   productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
   productPrices: API_ROUTES.productPrices.path,
   orders: API_ROUTES.orders.path,
+  ordersExport: API_ROUTES.ordersExport.path,
   salesSummary: API_ROUTES.salesSummary.path,
   courses: API_ROUTES.courses.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,

@@ -26,6 +26,8 @@ import {
   discussionQuery,
   devMagicLinkQuery,
   createProductMutation,
+  createProductPriceMutation,
+  deactivateProductPriceMutation,
   deleteTenantSecretMutation,
   enableTwoFactorMutation,
   grantProductToMemberMutation,
@@ -56,9 +58,14 @@ import {
   unreadNotificationsQuery,
   postsSearchQuery,
   productsInvalidates,
+  productPricesQuery,
+  productPricesInvalidates,
   publicOfferQuery,
   publicPaymentConfigQuery,
   productsQuery,
+  ordersQuery,
+  ordersExportQuery,
+  salesSummaryQuery,
   publishProductMutation,
   registerPasskeyMutation,
   requestMagicLinkMutation,
@@ -92,7 +99,12 @@ import {
   updateLastViewedMutation,
   verifyTotpMutation,
 } from '@core/client/index.js';
-import type { DiscussionGetInput, PostsSearchInput } from '@core/contract/index.js';
+import type {
+  DiscussionGetInput,
+  OrdersExportQueryInput,
+  OrdersListQueryInput,
+  PostsSearchInput,
+} from '@core/contract/index.js';
 import type { MemberExportFormat } from '@core/domain/index.js';
 
 /**
@@ -126,10 +138,17 @@ export const actions = {
   createTenant: createTenantMutation(apiClient),
   products: productsQuery(apiClient),
   createProduct: createProductMutation(apiClient),
+  productPrices: (productId: string) => productPricesQuery(apiClient, productId),
+  createProductPrice: createProductPriceMutation(apiClient),
+  deactivateProductPrice: deactivateProductPriceMutation(apiClient),
+  productPricesInvalidates,
   publishProduct: publishProductMutation(apiClient),
   updateProductAccessItems: updateProductAccessItemsMutation(apiClient),
   productAccessIssues: productAccessIssuesQuery(apiClient),
   productsInvalidates,
+  orders: (input: OrdersListQueryInput) => ordersQuery(apiClient, input),
+  ordersExport: (input: OrdersExportQueryInput) => ordersExportQuery(apiClient, input),
+  salesSummary: salesSummaryQuery(apiClient),
   myProducts: myProductsQuery(apiClient),
   members: membersQuery(apiClient),
   membersExport: (format: MemberExportFormat) => membersExportQuery(apiClient, format),

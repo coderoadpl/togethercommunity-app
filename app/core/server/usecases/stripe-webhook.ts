@@ -177,24 +177,6 @@ export const fulfillStripeWebhook = async (
   if (!HANDLED_EVENT_TYPES.has(event.type)) return ok({ processed: false });
   if (!event.objectId) return err(validation('Payment event is missing its object id'));
 
-  const priorEvent = await deps.processedPaymentEvents.findByEventId(tenant.id, event.id);
-  if (priorEvent) return ok({ processed: false });
-  const priorObject = await deps.processedPaymentEvents.findByObjectAndType(
-    tenant.id,
-    event.objectId,
-    event.type,
-  );
-  if (priorObject) return ok({ processed: false });
-
-  const applied =
-    event.type === 'checkout.session.completed'
-      ? await applyCheckoutCompleted(tenant, event, provider, deps)
-      : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
-        ? await applyInvoiceEvent(tenant, event, deps)
-        : await applySubscriptionEvent(tenant, event, deps);
-  if (!applied.ok) return applied;
-  if (!applied.value.processed) return ok({ processed: false });
-
   const processedEvent: ProcessedPaymentEvent = {
     id: event.id,
     tenantId: tenant.id,
@@ -202,6 +184,19 @@ export const fulfillStripeWebhook = async (
     objectId: event.objectId,
     processedAt: deps.clock.nowIso(),
   };
-  const created = await deps.processedPaymentEvents.create(tenant.id, processedEvent);
-  return ok({ processed: created });
+  const claimed = await deps.processedPaymentEvents.claim(tenant.id, processedEvent);
+  if (!claimed) return ok({ processed: false });
+
+  const applied =
+    event.type === 'checkout.session.completed'
+      ? await applyCheckoutCompleted(tenant, event, provider, deps)
+      : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
+        ? await applyInvoiceEvent(tenant, event, deps)
+        : await applySubscriptionEvent(tenant, event, deps);
+
+  if (!applied.ok || !applied.value.processed) {
+    await deps.processedPaymentEvents.release(tenant.id, event.id);
+    return applied.ok ? ok({ processed: false }) : applied;
+  }
+  return ok({ processed: true });
 };

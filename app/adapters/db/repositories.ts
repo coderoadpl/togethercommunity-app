@@ -15,7 +15,6 @@ import {
   productPriceSchema,
   postSchema,
   productGrantSchema,
-  processedPaymentEventSchema,
   productSchema,
   snapshotPayloadsEqual,
   staffRoleSchema,
@@ -32,10 +31,8 @@ import {
   type OrderListItem,
   type ProductPrice,
   type Post,
-  type PostSearchHit,
   type Product,
   type ProductGrant,
-  type ProcessedPaymentEvent,
   type StaffRole,
   type TenantApiKey,
   type TenantSecret,
@@ -57,6 +54,7 @@ import type {
   OrderRepository,
   ProductPriceRepository,
   PostRepository,
+  PostSearchRow,
   PurchaseRepository,
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
@@ -71,6 +69,7 @@ import type {
 } from '@core/server/index.js';
 
 import type { Db } from './client.js';
+import { buildPrefixTsquery } from './post-search-query.js';
 import {
   courseLessons,
   courseModules,
@@ -105,9 +104,6 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 const parseProduct = (product: Product): Product => productSchema.parse(product);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
-
-const parseProcessedPaymentEvent = (event: ProcessedPaymentEvent): ProcessedPaymentEvent =>
-  processedPaymentEventSchema.parse(event);
 
 const parseLesson = (
   lesson: Omit<CourseLesson, 'durationMinutes'> & { durationMinutes: number | null },
@@ -685,6 +681,8 @@ export const createPostRepository = (db: Db): PostRepository => ({
   },
   search: async (tenantId, query) => {
     if (query.lessonIds.length === 0) return [];
+    const tsquery = buildPrefixTsquery(query.query);
+    if (tsquery === null) return [];
     const rows = await db
       .select({
         post: posts,
@@ -697,13 +695,13 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, 'lesson'),
           inArray(posts.contextId, query.lessonIds),
           sql`${posts.deletedAt} is null`,
-          sql`body_tsvector @@ plainto_tsquery('simple', ${query.query})`,
+          sql`body_tsvector @@ to_tsquery('simple', ${tsquery})`,
         ),
       )
       .orderBy(desc(posts.createdAt))
       .limit(query.limit);
     return rows.map(
-      (row): PostSearchHit => ({
+      (row): PostSearchRow => ({
         post: parsePost(row.post),
         lessonId: row.post.contextId,
         snippet: row.snippet,
@@ -1397,37 +1395,18 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
 });
 
 export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => ({
-  findByEventId: async (tenantId, eventId) => {
-    const rows = await db
-      .select()
-      .from(processedPaymentEvents)
-      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)))
-      .limit(1);
-    const row = rows[0];
-    return row ? parseProcessedPaymentEvent(row) : null;
-  },
-  findByObjectAndType: async (tenantId, objectId, type) => {
-    const rows = await db
-      .select()
-      .from(processedPaymentEvents)
-      .where(
-        and(
-          eq(processedPaymentEvents.tenantId, tenantId),
-          eq(processedPaymentEvents.objectId, objectId),
-          eq(processedPaymentEvents.type, type),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    return row ? parseProcessedPaymentEvent(row) : null;
-  },
-  create: async (tenantId, event) => {
+  claim: async (tenantId, event) => {
     const rows = await db
       .insert(processedPaymentEvents)
       .values({ ...event, tenantId })
       .onConflictDoNothing()
       .returning({ id: processedPaymentEvents.id });
     return rows.length > 0;
+  },
+  release: async (tenantId, eventId) => {
+    await db
+      .delete(processedPaymentEvents)
+      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)));
   },
 });
 

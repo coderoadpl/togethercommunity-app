@@ -144,7 +144,7 @@ const PendingPostView = ({ author, body }: { author: string; body: string }) => 
 const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: number; actions: ThreadActions }) => {
   const t = useTranslations();
   const deleted = post.deletedAt !== null;
-  const own = a.viewer !== null && a.viewer.userId === post.authorUserId;
+  const own = a.viewer !== null && post.isOwn;
   const canReply = a.viewer !== null && !deleted;
   const canEdit = own && !deleted;
   const canDelete = (own || (a.viewer?.canModerate ?? false)) && !deleted;

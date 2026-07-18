@@ -48,7 +48,7 @@ import {
   notificationSchema,
   newProductSchema,
   nextLessonSchema,
-  postSchema,
+  publicPostSchema,
   postSearchHitSchema,
   productAccessIssuesSchema,
   productSchema,
@@ -489,7 +489,7 @@ export const postDeleteInputSchema = deletePostInputSchema;
 export type PostDeleteInput = z.input<typeof postDeleteInputSchema>;
 
 export const postOutputSchema = z.object({
-  post: postSchema,
+  post: publicPostSchema,
 });
 
 export const discussionGetInputSchema = listDiscussionInputSchema;

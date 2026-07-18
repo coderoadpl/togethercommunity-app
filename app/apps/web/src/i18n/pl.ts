@@ -363,6 +363,7 @@ export const pl: Messages = {
     modulesHeading: 'Moduły',
     noModulesInCourse: 'Ten kurs nie ma jeszcze żadnych modułów.',
     newModule: 'Nowy moduł',
+    addModule: 'Dodaj moduł',
     prefixLabel: 'prefiks',
     creatingModule: 'Tworzenie…',
     createModule: 'Utwórz moduł',
@@ -740,7 +741,7 @@ export const pl: Messages = {
     loadMore: 'Pokaż więcej wątków',
     searchLabel: 'Szukaj w tej dyskusji',
     searchWholeWordsHint:
-      "Wyszukiwanie dopasowuje całe słowa — spróbuj innej formy, np. „zmienna” zamiast „zmiennych”.",
+      "Wyszukiwanie dopasowuje początek słowa — wpisz sam rdzeń, np. „zmienn”, aby znaleźć „zmienna” i „zmiennych”.",
     searching: 'szukanie…',
     searchEmpty: 'Brak wyników dla tego zapytania.',
     searchCourseHeading: 'Szukaj w dyskusjach',

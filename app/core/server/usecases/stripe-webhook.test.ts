@@ -212,18 +212,18 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
       listGrantedProducts: async () => [],
     },
     processedPaymentEvents: {
-      findByEventId: async (tenantId, eventId) => {
-        const event = events.get(eventId);
-        return event?.tenantId === tenantId ? event : null;
-      },
-      findByObjectAndType: async (tenantId, objectId, type) =>
-        Array.from(events.values()).find(
-          (event) => event.tenantId === tenantId && event.objectId === objectId && event.type === type,
-        ) ?? null,
-      create: async (tenantId, event) => {
+      claim: async (tenantId, event) => {
         if (events.has(event.id)) return false;
+        for (const existing of events.values()) {
+          if (existing.tenantId === tenantId && existing.objectId === event.objectId && existing.type === event.type) {
+            return false;
+          }
+        }
         events.set(event.id, { ...event, tenantId });
         return true;
+      },
+      release: async (_tenantId, eventId) => {
+        events.delete(eventId);
       },
     },
     email: {
@@ -287,6 +287,23 @@ describe('fulfillStripeWebhook', () => {
       provider: 'stripe',
       providerObjectIds: { checkoutSession: 'cs-1' },
     });
+  });
+
+  it('appends exactly one order when two duplicate deliveries race the same event', async () => {
+    const h = harness();
+    const [first, second] = await Promise.all([
+      fulfillStripeWebhook(tenantA, completedEvent(), h.deps),
+      fulfillStripeWebhook(tenantA, completedEvent(), h.deps),
+    ]);
+
+    const outcomes = [first, second];
+    expect(outcomes).toContainEqual({ ok: true, value: { processed: true } });
+    expect(outcomes).toContainEqual({ ok: true, value: { processed: false } });
+    expect(h.orders).toHaveLength(1);
+    expect(h.members.size).toBe(1);
+    expect(h.grants.size).toBe(1);
+    expect(h.events.size).toBe(1);
+    expect(h.sent).toEqual(['buyer@example.com']);
   });
 
   it('rejects tenant metadata mismatch before creating a member or grant', async () => {

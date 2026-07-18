@@ -17,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 
 import type { Chapter, Course, CourseLesson, CourseModule } from '@core/domain/index.js';
 
@@ -475,51 +476,6 @@ const ModuleCard = ({
   );
 };
 
-const CreateModuleForm = ({ courseId }: { courseId: string }) => {
-  const t = useTranslations();
-  const queryClient = useQueryClient();
-  const [title, setTitle] = useState('');
-  const [prefix, setPrefix] = useState('');
-
-  const createModule = useMutation({
-    ...actions.createModule,
-    onSuccess: async () => {
-      setTitle('');
-      setPrefix('');
-      await queryClient.invalidateQueries(actions.modulesInvalidates());
-    },
-  });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    createModule.mutate({ courseIds: [courseId], title: title.trim(), prefix: prefix.trim() || null });
-  };
-
-  return (
-    <SectionCard title={t.courses.newModule} onSubmit={submit}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-end' }}>
-        <FormControl sx={{ flex: 1 }}>
-          <FormLabel htmlFor="new-module-title">{t.products.titleLabel}</FormLabel>
-          <OutlinedInput
-            id="new-module-title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            required
-          />
-        </FormControl>
-        <FormControl sx={{ flex: 1 }}>
-          <FormLabel htmlFor="new-module-prefix">{t.courses.prefixLabel}</FormLabel>
-          <OutlinedInput id="new-module-prefix" value={prefix} onChange={(event) => setPrefix(event.target.value)} />
-        </FormControl>
-        <Button type="submit" variant="contained" disabled={createModule.isPending || title.trim().length === 0}>
-          {createModule.isPending ? t.courses.creatingModule : t.courses.createModule}
-        </Button>
-      </Stack>
-      {createModule.isError ? <MutationError error={createModule.error} /> : null}
-    </SectionCard>
-  );
-};
-
 const AttachModuleForm = ({ courseId, modules }: { courseId: string; modules: CourseModule[] }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -585,6 +541,7 @@ const orderAttachedModules = (course: Course, attached: CourseModule[]): CourseM
 
 export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () => void }) => {
   const t = useTranslations();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
@@ -629,8 +586,18 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
           onBack();
         },
       }}
+      action={
+        <Button
+          variant="contained"
+          data-testid="add-module"
+          onClick={() =>
+            void navigate({ to: '/panel/courses/$courseId/modules/new', params: { courseId: course.id } })
+          }
+        >
+          + {t.courses.addModule}
+        </Button>
+      }
     >
-      <CreateModuleForm courseId={course.id} />
       <AttachModuleForm courseId={course.id} modules={unattached} />
       <HistoryPanel courseId={course.id} />
 

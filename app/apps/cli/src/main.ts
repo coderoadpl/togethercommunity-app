@@ -108,6 +108,14 @@ const ordersListOptionsSchema = z.object({
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
 });
+const ordersExportOptionsSchema = z.object({
+  format: z.enum(['csv', 'json']),
+  status: z.enum(['paid', 'pending', 'failed', 'refunded']).optional(),
+  product: z.string().min(1).optional(),
+  kind: z.enum(['one_time', 'recurring']).optional(),
+  search: z.string().min(1).optional(),
+  out: z.string().min(1).optional(),
+});
 const checkoutSessionOptionsSchema = z.object({
   product: z.string().min(1),
   email: z.string().email().optional(),
@@ -760,6 +768,33 @@ ordersCommand
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),
+      );
+    }),
+  );
+
+ordersCommand
+  .command('export')
+  .description('Export orders as CSV or JSON, mirroring the web sales export')
+  .requiredOption('--format <format>', 'csv or json')
+  .option('--status <status>', 'paid, pending, failed or refunded')
+  .option('--product <id>')
+  .option('--kind <kind>', 'one_time or recurring')
+  .option('--search <text>', 'search by member e-mail or name')
+  .option('--out <file>', 'write the export to a file instead of stdout')
+  .action(
+    withInput(z.tuple([ordersExportOptionsSchema]), async (ctx, [options]) => {
+      const result = await ctx.api.exportOrders({
+        format: options.format,
+        ...(options.status === undefined ? {} : { status: options.status }),
+        ...(options.product === undefined ? {} : { productId: options.product }),
+        ...(options.kind === undefined ? {} : { kind: options.kind }),
+        ...(options.search === undefined ? {} : { search: options.search }),
+      });
+      if (result.ok && options.out !== undefined) {
+        await writeFile(options.out, result.value.content);
+      }
+      emit(result, ctx.json, (file) =>
+        options.out !== undefined ? `wrote ${file.filename} to ${options.out}` : file.content,
       );
     }),
   );

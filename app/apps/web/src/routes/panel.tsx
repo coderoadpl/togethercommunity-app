@@ -2,6 +2,7 @@ export { PanelLayout } from '../features/home/PanelLayout.js';
 export {
   PanelCourseDetailRoute,
   PanelCourseCreateRoute,
+  PanelModuleCreateRoute,
   PanelCoursesRoute,
   PanelIndexRoute,
   PanelIntegrationsRoute,

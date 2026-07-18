@@ -7,6 +7,7 @@ import { localizeError, useTranslations } from '../../i18n/index.js';
 import { DashboardPanel } from './DashboardPanel.js';
 import { CourseDetail } from './courses/CourseDetail.js';
 import { CourseCreatePage, CoursesListPanel } from './courses/CoursesPanel.js';
+import { ModuleCreatePage } from './courses/ModuleCreatePage.js';
 import { LessonCreatePage, LessonEditPage, LessonsSection } from './courses/LessonsSection.js';
 import { IntegrationsPanel } from './integrations/IntegrationsPanel.js';
 import { MemberDetail } from './members/MemberDetail.js';
@@ -42,6 +43,25 @@ export const PanelProductDetailRoute = () => {
 
 export const PanelCoursesRoute = () => <CoursesListPanel />;
 export const PanelCourseCreateRoute = () => <CourseCreatePage />;
+
+export const PanelModuleCreateRoute = () => {
+  const t = useTranslations();
+  const params = useParams({ strict: false });
+  const courseId = params.courseId ?? '';
+  const courses = useQuery(actions.courses);
+
+  if (courses.isPending) {
+    return <PanelPage title={t.courses.newModule} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
+  }
+  if (courses.isError) {
+    return <PanelPage title={t.courses.newModule} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
+  }
+
+  const course = courses.data.courses.find((entry) => entry.id === courseId);
+  if (!course) return <Navigate to="/panel/courses" />;
+
+  return <ModuleCreatePage courseId={course.id} courseName={course.name} />;
+};
 
 export const PanelCourseDetailRoute = () => {
   const t = useTranslations();

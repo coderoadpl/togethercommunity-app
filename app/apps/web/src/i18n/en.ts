@@ -349,6 +349,7 @@ export const en: Messages = {
     modulesHeading: 'Modules',
     noModulesInCourse: 'No modules in this course yet.',
     newModule: 'New module',
+    addModule: 'Add module',
     prefixLabel: 'prefix',
     creatingModule: 'Creating…',
     createModule: 'Create module',
@@ -721,7 +722,7 @@ export const en: Messages = {
     loadMore: 'Show more threads',
     searchLabel: 'Search this discussion',
     searchWholeWordsHint:
-      'Search matches whole words — try another word form, e.g. “variable” instead of “variables”.',
+      'Search matches the start of a word — type just the stem, e.g. “variab”, to find “variable” and “variables”.',
     searching: 'searching…',
     searchEmpty: 'No results for this query.',
     searchCourseHeading: 'Search discussions',

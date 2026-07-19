@@ -25,7 +25,7 @@ const webExternal =
   'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|msw|react|react-dom|vite|vitest)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
 const scriptsExternal =
-  'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
+  'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|axe-core|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
 const scriptsTestExternal =
   'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|vitest|zod)(/|$)';
 

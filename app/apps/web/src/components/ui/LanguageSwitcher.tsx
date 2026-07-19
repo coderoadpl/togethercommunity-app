@@ -32,6 +32,12 @@ export const LanguageSwitcher = ({ inline = false }: { inline?: boolean }) => {
   if (inline) return group;
 
   return (
-    <Box sx={{ position: 'fixed', top: 10, right: 214, zIndex: (t) => t.zIndex.appBar }}>{group}</Box>
+    <Box
+      role="region"
+      aria-label={t.common.language}
+      sx={{ position: 'fixed', top: 10, right: 214, zIndex: (t) => t.zIndex.appBar }}
+    >
+      {group}
+    </Box>
   );
 };

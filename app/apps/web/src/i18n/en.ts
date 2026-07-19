@@ -274,6 +274,7 @@ export const en: Messages = {
     pricesDescription: 'Add one-time or recurring prices. Inactive prices stay attached to historical orders.',
     pricesEmpty: 'This product has no prices yet.',
     addPrice: 'Add price',
+    actionsLabel: 'Actions',
     kindLabel: 'price kind',
     oneTime: 'one-time',
     recurring: 'recurring',

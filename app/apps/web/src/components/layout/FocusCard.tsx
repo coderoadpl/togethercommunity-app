@@ -32,6 +32,7 @@ export const FocusCard = ({
   'data-testid': testId,
 }: FocusCardProps) => (
   <Box
+    component="main"
     sx={{
       minHeight: '100vh',
       display: 'grid',

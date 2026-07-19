@@ -97,10 +97,14 @@ export const MemberPage = ({
             gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 24rem' },
           }}
         >
-          <Box sx={{ order: { xs: mobileRail === 'before' ? 2 : 1, md: 1 }, minWidth: 0 }}>
+          <Box
+            component="main"
+            sx={{ order: { xs: mobileRail === 'before' ? 2 : 1, md: 1 }, minWidth: 0 }}
+          >
             {body}
           </Box>
           <Stack
+            component="aside"
             useFlexGap
             sx={{
               rowGap: '1.5rem',
@@ -115,7 +119,7 @@ export const MemberPage = ({
           </Stack>
         </Box>
       ) : (
-        <Box component="section" sx={{ mt: '2.5rem' }}>
+        <Box component="main" sx={{ mt: '2.5rem' }}>
           {body}
         </Box>
       )}

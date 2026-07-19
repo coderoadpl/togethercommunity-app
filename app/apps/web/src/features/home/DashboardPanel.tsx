@@ -153,7 +153,7 @@ export const DashboardPanel = () => {
           useFlexGap
           sx={{ flexWrap: 'wrap', alignItems: 'baseline', columnGap: '1rem', rowGap: '0.5rem' }}
         >
-          <Typography variant="h2" component="h3">
+          <Typography variant="h2" component="h2">
             {t.dashboard.recentMembers}
           </Typography>
           <Box sx={{ flex: 1 }} />

@@ -130,7 +130,7 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
 
   return (
     <Box component="section">
-      <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
+      <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
         {t.members.learningHeading}
       </Typography>
       {summary.isPending ? (
@@ -179,7 +179,11 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
                               })}{' '}
                               · {percent}%
                             </Typography>
-                            <LinearProgress variant="determinate" value={percent} />
+                            <LinearProgress
+                              variant="determinate"
+                              value={percent}
+                              aria-label={`${course.courseName} — ${percent}%`}
+                            />
                           </Stack>
                         </TableCell>
                         <TableCell>
@@ -333,7 +337,7 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
       <GrantForm memberId={member.id} onGranted={refresh} />
 
       <Box component="section">
-        <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
+        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
           {t.members.grantedProducts}
         </Typography>
         {grants.isPending ? (

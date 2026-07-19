@@ -56,8 +56,8 @@ export const welcomeSetPassword = (
 
   return emailMessageSchema.parse({
     subject: `Cześć, Twoje konto ${input.tenantName} jest gotowe`,
-    html: `<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny jedną godzinę. Jeśli przestanie działać, poproś o nowy link resetowania hasła na stronie logowania.</p>`,
-    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} zostało utworzone.\n\nZanim zaczniesz, ustaw swoje hasło: ${input.actionUrl}\n\nLink do ustawienia hasła jest ważny jedną godzinę. Jeśli przestanie działać, poproś o nowy link resetowania hasła na stronie logowania.`,
+    html: `<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>`,
+    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} zostało utworzone.\n\nZanim zaczniesz, ustaw swoje hasło: ${input.actionUrl}\n\nLink do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.`,
   });
 };
 
@@ -77,8 +77,8 @@ export const resetPassword = (
 
   return emailMessageSchema.parse({
     subject: 'Zresetuj hasło',
-    html: `<p>Cześć!</p><p>Kliknij poniższy link, aby zresetować hasło:</p><p>${actionLink}</p><p>Link do zmiany hasła jest ważny jedną godzinę.</p>`,
-    text: `Cześć!\n\nOtwórz poniższy link, aby zresetować hasło:\n${input.actionUrl}\n\nLink do zmiany hasła jest ważny jedną godzinę.`,
+    html: `<p>Cześć!</p><p>Kliknij poniższy link, aby zresetować hasło:</p><p>${actionLink}</p><p>Link do zresetowania hasła jest ważny przez godzinę.</p>`,
+    text: `Cześć!\n\nOtwórz poniższy link, aby zresetować hasło:\n${input.actionUrl}\n\nLink do zresetowania hasła jest ważny przez godzinę.`,
   });
 };
 
@@ -125,7 +125,7 @@ export const magicLink = (
 
   return emailMessageSchema.parse({
     subject: `Zaloguj się do ${input.tenantName}`,
-    html: `<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli nie prosisz o tę wiadomość, możesz ją zignorować.</p>`,
-    text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli nie prosisz o tę wiadomość, możesz ją zignorować.`,
+    html: `<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>`,
+    text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.`,
   });
 };

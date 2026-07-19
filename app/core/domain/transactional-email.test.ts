@@ -11,7 +11,7 @@ describe('welcomeSetPassword', () => {
       }),
     ).toMatchInlineSnapshot(`
       {
-        "html": "<p>Cześć!</p><p>Twoje konto na platformie Acme Courses zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: <a href="https://acme.localhost/set-password?token=abc">Ustaw hasło</a></p><p>Link do ustawienia hasła jest ważny jedną godzinę. Jeśli przestanie działać, poproś o nowy link resetowania hasła na stronie logowania.</p>",
+        "html": "<p>Cześć!</p><p>Twoje konto na platformie Acme Courses zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: <a href="https://acme.localhost/set-password?token=abc">Ustaw hasło</a></p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>",
         "subject": "Cześć, Twoje konto Acme Courses jest gotowe",
         "text": "Cześć!
 
@@ -19,7 +19,7 @@ describe('welcomeSetPassword', () => {
 
       Zanim zaczniesz, ustaw swoje hasło: https://acme.localhost/set-password?token=abc
 
-      Link do ustawienia hasła jest ważny jedną godzinę. Jeśli przestanie działać, poproś o nowy link resetowania hasła na stronie logowania.",
+      Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.",
       }
     `);
   });
@@ -65,14 +65,14 @@ describe('resetPassword', () => {
   it('renders the Polish template', () => {
     expect(resetPassword('pl', { actionUrl: 'https://acme.localhost/reset?token=abc' })).toMatchInlineSnapshot(`
       {
-        "html": "<p>Cześć!</p><p>Kliknij poniższy link, aby zresetować hasło:</p><p><a href="https://acme.localhost/reset?token=abc">Zresetuj hasło</a></p><p>Link do zmiany hasła jest ważny jedną godzinę.</p>",
+        "html": "<p>Cześć!</p><p>Kliknij poniższy link, aby zresetować hasło:</p><p><a href="https://acme.localhost/reset?token=abc">Zresetuj hasło</a></p><p>Link do zresetowania hasła jest ważny przez godzinę.</p>",
         "subject": "Zresetuj hasło",
         "text": "Cześć!
 
       Otwórz poniższy link, aby zresetować hasło:
       https://acme.localhost/reset?token=abc
 
-      Link do zmiany hasła jest ważny jedną godzinę.",
+      Link do zresetowania hasła jest ważny przez godzinę.",
       }
     `);
   });
@@ -99,14 +99,14 @@ describe('magicLink', () => {
       magicLink('pl', { tenantName: 'Acme Courses', url: 'https://acme.localhost/magic?token=abc' }),
     ).toMatchInlineSnapshot(`
       {
-        "html": "<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do Acme Courses:</p><p><a href="https://acme.localhost/magic?token=abc">Zaloguj się</a></p><p>Jeśli nie prosisz o tę wiadomość, możesz ją zignorować.</p>",
+        "html": "<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do Acme Courses:</p><p><a href="https://acme.localhost/magic?token=abc">Zaloguj się</a></p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>",
         "subject": "Zaloguj się do Acme Courses",
         "text": "Cześć!
 
       Użyj tego linku, aby zalogować się do Acme Courses:
       https://acme.localhost/magic?token=abc
 
-      Jeśli nie prosisz o tę wiadomość, możesz ją zignorować.",
+      Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.",
       }
     `);
   });

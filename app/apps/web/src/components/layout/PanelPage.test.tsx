@@ -37,13 +37,13 @@ describe('PanelPage', () => {
 
   it('renders a StatusView instead of children for non-ready states', () => {
     render(
-      <PanelPage title="Członkowie" state={{ kind: 'error', message: 'Nie udało się wczytać' }}>
+      <PanelPage title="Uczestnicy" state={{ kind: 'error', message: 'Nie udało się wczytać' }}>
         <p>Nie powinno się pojawić</p>
       </PanelPage>,
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent('Nie udało się wczytać');
     expect(screen.queryByText('Nie powinno się pojawić')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1, name: 'Członkowie' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Uczestnicy' })).toBeInTheDocument();
   });
 });

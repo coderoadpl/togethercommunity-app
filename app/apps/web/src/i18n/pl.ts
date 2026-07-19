@@ -203,6 +203,10 @@ export const pl: Messages = {
       lesson.length > 0
         ? format('{author} odpowiedział(a) w dyskusji „{lesson}”', { author, lesson })
         : format('{author} odpowiedział(a) w dyskusji', { author }),
+    spacePost: ({ author, space }) =>
+      space.length > 0
+        ? format('{author} dodał(a) nowy wpis w strefie „{space}”', { author, space })
+        : format('{author} dodał(a) nowy wpis w strefie', { author }),
   },
   security: {
     heading: 'Bezpieczeństwo',
@@ -762,6 +766,38 @@ export const pl: Messages = {
     searchCourseHeading: 'Szukaj w dyskusjach',
     searchCoursePlaceholder: 'Szukaj we wszystkich lekcjach…',
     searchCourseEmpty: 'Nic nie znaleziono w dyskusjach tego kursu.',
+  },
+  community: {
+    tab: 'Społeczność',
+    heading: 'Społeczność',
+    listEyebrow: 'strefy społeczności',
+    loadingSpaces: 'ładowanie stref…',
+    noSpacesTitle: 'Brak stref',
+    noSpacesBody: 'Strefy społeczności, do których masz dostęp, pojawią się tutaj.',
+    staffNoMember: 'To konto ma tu uprawnienia zespołu, ale nie ma jeszcze profilu uczestnika.',
+    membersOnly: 'Dla wszystkich uczestników',
+    productGated: 'Dla posiadaczy produktu',
+    followingChip: 'Obserwujesz',
+    feedEyebrow: 'strefa',
+    aboutHeading: 'O strefie',
+    noDescription: 'Ta strefa nie ma jeszcze opisu.',
+    follow: 'Obserwuj strefę',
+    following: 'Obserwujesz',
+    unfollow: 'Przestań obserwować',
+    composerLabel: 'Twój wpis',
+    composerPlaceholder: 'Podziel się czymś ze strefą…',
+    post: 'Opublikuj',
+    posting: 'publikowanie…',
+    loadingFeed: 'ładowanie strefy…',
+    emptyFeed: 'Nikt jeszcze nic nie napisał w tej strefie. Zacznij rozmowę!',
+    openThread: 'Otwórz wątek',
+    reactAria: ({ emoji }) => format('Zareaguj: {emoji}', { emoji }),
+    spaceNotFoundTitle: 'Nie znaleziono strefy',
+    spaceNotFoundBody: 'Tej strefy nie ma albo nie masz do niej dostępu.',
+    backToSpaces: 'Wróć do stref',
+    backToFeed: 'Wróć do strefy',
+    threadTitle: 'Wątek',
+    threadEyebrow: 'wątek w strefie',
   },
   account: {
     menuAccount: 'Konto',

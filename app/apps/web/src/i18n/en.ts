@@ -197,6 +197,10 @@ export const en: Messages = {
       lesson.length > 0
         ? format('{author} replied in the "{lesson}" discussion', { author, lesson })
         : format('{author} replied in a discussion', { author }),
+    spacePost: ({ author, space }) =>
+      space.length > 0
+        ? format('{author} posted in the “{space}” space', { author, space })
+        : format('{author} posted in a space', { author }),
   },
   security: {
     heading: 'Security',
@@ -743,6 +747,38 @@ export const en: Messages = {
     searchCourseHeading: 'Search discussions',
     searchCoursePlaceholder: 'Search across all lessons…',
     searchCourseEmpty: 'Nothing found in this course’s discussions.',
+  },
+  community: {
+    tab: 'Community',
+    heading: 'Community',
+    listEyebrow: 'community spaces',
+    loadingSpaces: 'loading spaces…',
+    noSpacesTitle: 'No spaces yet',
+    noSpacesBody: 'Community spaces you have access to will appear here.',
+    staffNoMember: 'This account has staff access here, but no member profile yet.',
+    membersOnly: 'For all members',
+    productGated: 'For product holders',
+    followingChip: 'Following',
+    feedEyebrow: 'space',
+    aboutHeading: 'About this space',
+    noDescription: 'This space has no description yet.',
+    follow: 'Follow space',
+    following: 'Following',
+    unfollow: 'Unfollow',
+    composerLabel: 'Your post',
+    composerPlaceholder: 'Share something with the space…',
+    post: 'Post',
+    posting: 'posting…',
+    loadingFeed: 'loading space…',
+    emptyFeed: 'Nobody has posted in this space yet. Start the conversation!',
+    openThread: 'Open thread',
+    reactAria: ({ emoji }) => format('React: {emoji}', { emoji }),
+    spaceNotFoundTitle: 'Space not found',
+    spaceNotFoundBody: 'This space does not exist or you do not have access to it.',
+    backToSpaces: 'Back to spaces',
+    backToFeed: 'Back to the space',
+    threadTitle: 'Thread',
+    threadEyebrow: 'thread in the space',
   },
   account: {
     menuAccount: 'Account',

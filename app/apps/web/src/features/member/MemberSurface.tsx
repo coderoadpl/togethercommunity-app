@@ -10,6 +10,7 @@ import { useTranslations } from '../../i18n/index.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 import { AccountIcon } from './account-icons.js';
+import { CommunityIcon } from './community-icons.js';
 
 const CoursesIcon = () => (
   <SvgIcon aria-hidden viewBox="0 0 24 24">
@@ -32,6 +33,7 @@ const HeaderNavigation = ({ liveNotifications }: { liveNotifications: boolean })
       sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', columnGap: '1rem' }}
     >
       <Link href="/my">{t.student.myCourses}</Link>
+      <Link href="/community">{t.community.tab}</Link>
       <Link href="/my/products">{t.student.myProducts}</Link>
       <NotificationBell live={liveNotifications} />
       <MemberAccountMenu />
@@ -68,12 +70,18 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   return (
     <Paper elevation={8} square sx={{ pb: 'env(safe-area-inset-bottom)' }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
         <TabLink
           href="/my"
           label={t.student.myCourses}
           current={pathname === '/my'}
           icon={<CoursesIcon />}
+        />
+        <TabLink
+          href="/community"
+          label={t.community.tab}
+          current={pathname.startsWith('/community')}
+          icon={<CommunityIcon />}
         />
         <TabLink
           href="/my/products"

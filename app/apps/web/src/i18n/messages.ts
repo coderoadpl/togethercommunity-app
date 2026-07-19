@@ -191,6 +191,7 @@ export interface Messages {
     loading: string;
     markAllRead: string;
     threadReply: (params: { author: string; lesson: string }) => string;
+    spacePost: (params: { author: string; space: string }) => string;
   };
   security: {
     heading: string;
@@ -682,6 +683,38 @@ export interface Messages {
     searchCourseHeading: string;
     searchCoursePlaceholder: string;
     searchCourseEmpty: string;
+  };
+  community: {
+    tab: string;
+    heading: string;
+    listEyebrow: string;
+    loadingSpaces: string;
+    noSpacesTitle: string;
+    noSpacesBody: string;
+    staffNoMember: string;
+    membersOnly: string;
+    productGated: string;
+    followingChip: string;
+    feedEyebrow: string;
+    aboutHeading: string;
+    noDescription: string;
+    follow: string;
+    following: string;
+    unfollow: string;
+    composerLabel: string;
+    composerPlaceholder: string;
+    post: string;
+    posting: string;
+    loadingFeed: string;
+    emptyFeed: string;
+    openThread: string;
+    reactAria: (params: { emoji: string }) => string;
+    spaceNotFoundTitle: string;
+    spaceNotFoundBody: string;
+    backToSpaces: string;
+    backToFeed: string;
+    threadTitle: string;
+    threadEyebrow: string;
   };
   account: {
     menuAccount: string;

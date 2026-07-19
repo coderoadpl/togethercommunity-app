@@ -72,12 +72,15 @@ import {
   PanelSettingsRoute,
 } from './routes/panel.js';
 import {
+  CommunityRoute,
   CourseRoute,
   CourseStructureRoute,
   LessonPlayerRoute,
   MemberAccountRoute,
   MyCoursesRoute,
   MyProductsRoute,
+  SpaceFeedRoute,
+  SpaceThreadRoute,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute } from './routes/reset-password.js';
@@ -154,6 +157,21 @@ const accountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/account',
   component: MemberAccountRoute,
+});
+const communityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/community',
+  component: CommunityRoute,
+});
+const spaceFeedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/community/$spaceId',
+  component: SpaceFeedRoute,
+});
+const spaceThreadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/community/$spaceId/posts/$postId',
+  component: SpaceThreadRoute,
 });
 
 const panelLayoutRoute = createRoute({
@@ -255,6 +273,9 @@ const router = createRouter({
     registerRoute,
     resetPasswordRoute,
     accountRoute,
+    communityRoute,
+    spaceFeedRoute,
+    spaceThreadRoute,
     panelLayoutRoute.addChildren([
       panelIndexRoute,
       panelProductsRoute,

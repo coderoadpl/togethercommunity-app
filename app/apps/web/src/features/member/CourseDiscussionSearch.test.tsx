@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { CourseStructureWithAccess, Post } from '@core/domain/index.js';
+import type { CourseStructureWithAccess, PublicPost } from '@core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -49,14 +49,14 @@ const structure: CourseStructureWithAccess = {
   ],
 };
 
-const post = (id: string, lessonId: string, body: string): Post => ({
+const post = (id: string, lessonId: string, body: string): PublicPost => ({
   id,
   tenantId: 't1',
   contextKind: 'lesson',
   contextId: lessonId,
   parentPostId: null,
   rootPostId: id,
-  authorUserId: 'u2',
+  isOwn: false,
   authorDisplay: 'Ola Autorka',
   authorIsStaff: false,
   body,

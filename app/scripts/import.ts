@@ -20,6 +20,7 @@ import {
   type TenantMapping,
   type VerificationReport,
 } from '@adapters/db/importer.js';
+import { assertSafeBundleSlug } from './import-bundle-slug.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -193,7 +194,7 @@ const readBundleFile = <S extends z.ZodTypeAny>(
 };
 
 const loadTenantBundle = (bundleDir: string, bundleSlug: string): TenantBundle => {
-  const tenantDir = join(bundleDir, 'tenants', bundleSlug);
+  const tenantDir = join(bundleDir, 'tenants', assertSafeBundleSlug(bundleSlug));
   return {
     users: readBundleFile(join(tenantDir, 'users.json'), bundleUserSchema),
     courses: readBundleFile(join(tenantDir, 'courses.json'), bundleCourseSchema),

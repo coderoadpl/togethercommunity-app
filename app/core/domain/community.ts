@@ -23,6 +23,16 @@ export const postSchema = z.object({
 
 export type Post = z.output<typeof postSchema>;
 
+/**
+ * What a client is allowed to see: the raw authorUserId is dropped and ownership is
+ * pre-computed server-side into isOwn (author checks and moderation stay on the server).
+ */
+export const publicPostSchema = postSchema.omit({ authorUserId: true }).extend({
+  isOwn: z.boolean(),
+});
+
+export type PublicPost = z.output<typeof publicPostSchema>;
+
 export const createPostInputSchema = z.object({
   contextKind: postContextKindSchema,
   contextId: z.string().min(1),
@@ -117,18 +127,18 @@ export const notificationMarkReadInputSchema = z.object({
 
 export type NotificationMarkReadInput = z.input<typeof notificationMarkReadInputSchema>;
 
-export type DiscussionPost = Post & {
+export type DiscussionPost = PublicPost & {
   replies: DiscussionPost[];
   replyCount: number;
 };
 
-type DiscussionPostInput = z.input<typeof postSchema> & {
+type DiscussionPostInput = z.input<typeof publicPostSchema> & {
   replies: DiscussionPostInput[];
   replyCount: number;
 };
 
 export const discussionPostSchema: z.ZodType<DiscussionPost, z.ZodTypeDef, DiscussionPostInput> =
-  postSchema.extend({
+  publicPostSchema.extend({
     replies: z.lazy(() => z.array(discussionPostSchema)),
     replyCount: z.number().int().nonnegative(),
   });
@@ -147,7 +157,7 @@ export const discussionSchema = z.object({
 export type Discussion = z.output<typeof discussionSchema>;
 
 export const postSearchHitSchema = z.object({
-  post: postSchema,
+  post: publicPostSchema,
   lessonId: z.string().min(1),
   snippet: z.string(),
 });

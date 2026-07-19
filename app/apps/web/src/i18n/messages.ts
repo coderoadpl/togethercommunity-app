@@ -334,6 +334,7 @@ export interface Messages {
     modulesHeading: string;
     noModulesInCourse: string;
     newModule: string;
+    addModule: string;
     prefixLabel: string;
     creatingModule: string;
     createModule: string;

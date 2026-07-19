@@ -55,6 +55,7 @@ import { LoginRoute } from './routes/login.js';
 import {
   PanelCourseDetailRoute,
   PanelCourseCreateRoute,
+  PanelModuleCreateRoute,
   PanelCoursesRoute,
   PanelIndexRoute,
   PanelIntegrationsRoute,
@@ -190,6 +191,11 @@ const panelCourseCreateRoute = createRoute({
   path: 'courses/new',
   component: PanelCourseCreateRoute,
 });
+const panelModuleCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'courses/$courseId/modules/new',
+  component: PanelModuleCreateRoute,
+});
 const panelCourseDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'courses/$courseId',
@@ -256,6 +262,7 @@ const router = createRouter({
       panelProductDetailRoute,
       panelCoursesRoute,
       panelCourseCreateRoute,
+      panelModuleCreateRoute,
       panelCourseDetailRoute,
       panelLessonsRoute,
       panelLessonCreateRoute,

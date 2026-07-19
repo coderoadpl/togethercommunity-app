@@ -416,6 +416,39 @@ describe('community use-cases', () => {
     expect(d.posts.rows[0]?.authorDisplay).toBe('Audit R3 Member');
   });
 
+  it('projects posts to a public shape: isOwn per viewer, never the raw author id', async () => {
+    const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
+    const mine = await createPost(
+      ctx({ userId: 'u1', memberId: 'm1' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'mine' },
+      d,
+    );
+    expect(mine.ok).toBe(true);
+    if (!mine.ok) return;
+    expect(mine.value.isOwn).toBe(true);
+    expect(mine.value).not.toHaveProperty('authorUserId');
+
+    await createPost(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'theirs' },
+      d,
+    );
+
+    const listed = await listDiscussion(
+      ctx({ userId: 'u2', memberId: 'm2' }),
+      { contextKind: 'lesson', contextId: 'l1' },
+      d,
+    );
+    expect(listed.ok).toBe(true);
+    if (!listed.ok) return;
+    const byBody = new Map(listed.value.threads.map((thread) => [thread.body, thread]));
+    expect(byBody.get('mine')?.isOwn).toBe(false);
+    expect(byBody.get('theirs')?.isOwn).toBe(true);
+    for (const thread of listed.value.threads) {
+      expect(thread).not.toHaveProperty('authorUserId');
+    }
+  });
+
   it('creates a 10-level reply chain with the root post id preserved', async () => {
     const d = deps([allAccess], [grant('m1', 'all')]);
     const root = await createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'root' }, d);

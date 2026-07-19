@@ -25,7 +25,6 @@ import type {
   StreamVideo,
   Notification,
   Post,
-  PostSearchHit,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -108,6 +107,12 @@ export interface CourseLessonRepository {
   delete(tenantId: string, id: string): Promise<boolean>;
 }
 
+export interface PostSearchRow {
+  post: Post;
+  lessonId: string;
+  snippet: string;
+}
+
 export interface PostRepository {
   createPost(tenantId: string, post: Post): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
@@ -121,7 +126,7 @@ export interface PostRepository {
   search(
     tenantId: string,
     query: { query: string; lessonIds: string[]; limit: number },
-  ): Promise<PostSearchHit[]>;
+  ): Promise<PostSearchRow[]>;
 }
 
 export interface ThreadSubscription {
@@ -348,9 +353,14 @@ export interface MemberSubscriptionRepository {
 }
 
 export interface ProcessedPaymentEventRepository {
-  findByEventId(tenantId: string, eventId: string): Promise<ProcessedPaymentEvent | null>;
-  findByObjectAndType(tenantId: string, objectId: string, type: string): Promise<ProcessedPaymentEvent | null>;
-  create(tenantId: string, event: ProcessedPaymentEvent): Promise<boolean>;
+  /**
+   * Records the event before its effects run and returns whether this call won the insert.
+   * The event-id primary key and the object+type unique index make the write atomic, so a
+   * duplicate delivery racing the original loses here instead of double-applying the effects.
+   */
+  claim(tenantId: string, event: ProcessedPaymentEvent): Promise<boolean>;
+  /** Undoes a claim whose effects did not apply, so a later redelivery can reprocess it. */
+  release(tenantId: string, eventId: string): Promise<void>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */

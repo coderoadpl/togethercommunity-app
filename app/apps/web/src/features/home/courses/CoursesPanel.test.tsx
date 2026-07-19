@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   detachModuleFromCourseInputSchema,
+  newCourseModuleSchema,
   updateCourseInputSchema,
   updateCourseModuleInputSchema,
   type Course,
@@ -20,7 +21,7 @@ import {
 } from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
-import { PanelCourseDetailRoute } from '../panel-routes.js';
+import { PanelCourseDetailRoute, PanelModuleCreateRoute } from '../panel-routes.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { CourseCreatePage, CoursesListPanel } from './CoursesPanel.js';
@@ -42,8 +43,13 @@ const renderCoursesPanel = async (initialEntry = '/panel/courses') => {
     path: '/panel/courses/new',
     component: CourseCreatePage,
   });
+  const moduleCreateRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/courses/$courseId/modules/new',
+    component: PanelModuleCreateRoute,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([listRoute, createRoutePage, detailRoute]),
+    routeTree: rootRoute.addChildren([listRoute, createRoutePage, moduleCreateRoute, detailRoute]),
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
@@ -177,6 +183,35 @@ describe('CoursesPanel courses tab', () => {
     await waitFor(() => {
       expect(within(screen.getByTestId('module-card')).getByText('Intro lesson')).toBeInTheDocument();
     });
+  });
+
+  it('creates a module on the dedicated subpage and returns to the course', async () => {
+    let modules: CourseModule[] = [];
+    const created: Array<{ title: string }> = [];
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules', async ({ request }) => {
+        const body = newCourseModuleSchema.parse(await request.json());
+        created.push({ title: body.title });
+        const module = courseModule({ id: 'module-9', title: body.title, chapters: [] });
+        modules = [module];
+        return HttpResponse.json({ ok: true, data: { module } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    await userEvent.click(await screen.findByTestId('add-module'));
+
+    const titleField = await screen.findByLabelText(pl.products.titleLabel);
+    await userEvent.type(titleField, 'Module Nine');
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.createModule }));
+
+    expect(await screen.findByTestId('module-card')).toBeInTheDocument();
+    expect(created).toEqual([expect.objectContaining({ title: 'Module Nine' })]);
   });
 
   it('auto-fills the display name, enables add on pick, and warns on a duplicate lesson', async () => {

@@ -137,9 +137,8 @@ const deps = (input: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
     },
     processedPaymentEvents: {
-      findByEventId: async () => null,
-      findByObjectAndType: async () => null,
-      create: async () => true,
+      claim: async () => true,
+      release: async () => undefined,
     },
     purchases: {
       createMemberGrant: async (purchase) => ({

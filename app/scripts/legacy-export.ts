@@ -24,9 +24,9 @@ import {
   type PdfPointer,
   type VideoPointer,
 } from './legacy-transform.js';
+import { BackupArgError, resolveBackupsDir } from './legacy-export-args.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const BACKUPS_DIR = '~/legacy-backups';
 const CONTAINER = 'together-import-mongo';
 const MONGO_IMAGE = 'mongo:6';
 const DUMP_DB = 'test';
@@ -72,13 +72,13 @@ const runOrFail = async (cmd: string, args: string[], what: string): Promise<Run
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-const newestBackup = (): string => {
-  const candidates = readdirSync(BACKUPS_DIR)
+const newestBackup = (backupsDir: string): string => {
+  const candidates = readdirSync(backupsDir)
     .filter((name) => name.endsWith('.tar.gz'))
     .sort();
   const newest = candidates.at(-1);
-  if (newest === undefined) throw new ExportFailure(`No .tar.gz backups found in ${BACKUPS_DIR}`);
-  return join(BACKUPS_DIR, newest);
+  if (newest === undefined) throw new ExportFailure(`No .tar.gz backups found in ${backupsDir}`);
+  return join(backupsDir, newest);
 };
 
 const normalizeBson = (value: unknown): unknown => {
@@ -236,7 +236,7 @@ const main = async (): Promise<void> => {
   const config = configSchema.parse(
     JSON.parse(readFileSync(join(rootDir, 'scripts/legacy-export.config.json'), 'utf8')),
   );
-  const backupFile = newestBackup();
+  const backupFile = newestBackup(resolveBackupsDir(process.argv.slice(2)));
   const port = 49100 + Math.floor(Math.random() * 800);
   const anomalies: Anomaly[] = [];
 
@@ -742,7 +742,7 @@ const main = async (): Promise<void> => {
 try {
   await main();
 } catch (error) {
-  if (error instanceof ExportFailure) {
+  if (error instanceof ExportFailure || error instanceof BackupArgError) {
     console.error(`legacy-export: ${error.message}`);
     process.exit(1);
   }

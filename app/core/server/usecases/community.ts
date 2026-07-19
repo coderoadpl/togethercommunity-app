@@ -26,6 +26,7 @@ import {
   type Notification,
   type Post,
   type PostSearchHit,
+  type PublicPost,
   type Result,
   type ThreadSubscriptionState,
 } from '@core/domain/index.js';
@@ -207,7 +208,23 @@ const accessibleLessons = (
   return ids;
 };
 
-const nestReplies = (rootId: string, replies: Post[]): DiscussionPost[] => {
+const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
+  id: post.id,
+  tenantId: post.tenantId,
+  contextKind: post.contextKind,
+  contextId: post.contextId,
+  parentPostId: post.parentPostId,
+  rootPostId: post.rootPostId,
+  authorDisplay: post.authorDisplay,
+  authorIsStaff: post.authorIsStaff,
+  body: post.body,
+  createdAt: post.createdAt,
+  editedAt: post.editedAt,
+  deletedAt: post.deletedAt,
+  isOwn: post.authorUserId === viewerUserId,
+});
+
+const nestReplies = (rootId: string, replies: Post[], viewerUserId: string): DiscussionPost[] => {
   const byParent = new Map<string, Post[]>();
   for (const reply of replies) {
     const parentId = reply.parentPostId ?? rootId;
@@ -216,7 +233,7 @@ const nestReplies = (rootId: string, replies: Post[]): DiscussionPost[] => {
   const build = (post: Post): DiscussionPost => {
     const children = byParent.get(post.id) ?? [];
     return {
-      ...renderPost(post),
+      ...toPublicPost(renderPost(post), viewerUserId),
       replyCount: children.length,
       replies: children.map(build),
     };
@@ -307,7 +324,7 @@ export const createPost = async (
   ctx: Ctx,
   input: unknown,
   deps: CommunityDeps,
-): Promise<Result<Post, AppError>> => {
+): Promise<Result<PublicPost, AppError>> => {
   const actor = requireMemberOrStaff(ctx);
   if (!actor.ok) return actor;
   const parsed = createPostInputSchema.safeParse(input);
@@ -355,7 +372,7 @@ export const createPost = async (
     });
     if (!notified.ok) return notified;
   }
-  return ok(created);
+  return ok(toPublicPost(created, actor.value.userId));
 };
 
 export const listDiscussion = async (
@@ -377,9 +394,13 @@ export const listDiscussion = async (
   });
   const threads = await Promise.all(
     listed.threads.map(async (thread) => ({
-      ...renderPost(thread.post),
+      ...toPublicPost(renderPost(thread.post), scope.value.userId),
       replyCount: thread.replyCount,
-      replies: nestReplies(thread.post.id, await deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId)),
+      replies: nestReplies(
+        thread.post.id,
+        await deps.posts.listReplies(scope.value.tenantId, thread.post.rootPostId),
+        scope.value.userId,
+      ),
     })),
   );
   const subscriptions = await deps.threadSubscriptions.listForUser(scope.value.tenantId, {
@@ -397,7 +418,7 @@ export const editPost = async (
   ctx: Ctx,
   input: unknown,
   deps: CommunityDeps,
-): Promise<Result<Post, AppError>> => {
+): Promise<Result<PublicPost, AppError>> => {
   const actor = requireActor(ctx);
   if (!actor.ok) return actor;
   const parsed = updatePostInputSchema.safeParse(input);
@@ -412,14 +433,14 @@ export const editPost = async (
     body,
     editedAt: deps.clock.nowIso(),
   });
-  return updated ? ok(updated) : err(validation('Post not found'));
+  return updated ? ok(toPublicPost(updated, actor.value.userId)) : err(validation('Post not found'));
 };
 
 export const deletePost = async (
   ctx: Ctx,
   input: unknown,
   deps: CommunityDeps,
-): Promise<Result<Post, AppError>> => {
+): Promise<Result<PublicPost, AppError>> => {
   const actor = requireActor(ctx);
   if (!actor.ok) return actor;
   const parsed = deletePostInputSchema.safeParse(input);
@@ -433,7 +454,7 @@ export const deletePost = async (
     id: post.id,
     deletedAt: deps.clock.nowIso(),
   });
-  return deleted ? ok(deleted) : err(validation('Post not found'));
+  return deleted ? ok(toPublicPost(deleted, actor.value.userId)) : err(validation('Post not found'));
 };
 
 export const subscribeThread = async (
@@ -488,7 +509,20 @@ export const searchPosts = async (
   const requested = parsed.data.lessonIds ?? [...accessible.value];
   const lessonIds = requested.filter((lessonId) => accessible.value.has(lessonId));
   if (lessonIds.length === 0) return ok([]);
-  return ok(await deps.posts.search(tenant.value.tenantId, { query: parsed.data.query, lessonIds, limit: parsed.data.limit }));
+  const rows = await deps.posts.search(tenant.value.tenantId, {
+    query: parsed.data.query,
+    lessonIds,
+    limit: parsed.data.limit,
+  });
+  return ok(
+    rows.map(
+      (row): PostSearchHit => ({
+        post: toPublicPost(row.post, ctx.identity.userId),
+        lessonId: row.lessonId,
+        snippet: row.snippet,
+      }),
+    ),
+  );
 };
 
 export const listNotifications = async (

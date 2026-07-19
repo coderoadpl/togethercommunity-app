@@ -3,20 +3,20 @@ import { userEvent } from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { createPostInputSchema, type DiscussionPost, type Post } from '@core/domain/index.js';
+import { createPostInputSchema, type DiscussionPost, type PublicPost } from '@core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { DiscussionSection } from './DiscussionSection.js';
 
-const post = (input: Partial<Post> & { id: string }): Post => ({
+const post = (input: Partial<PublicPost> & { id: string }): PublicPost => ({
   tenantId: 't1',
   contextKind: 'lesson',
   contextId: 'l1',
   parentPostId: null,
   rootPostId: input.id,
-  authorUserId: 'u2',
+  isOwn: false,
   authorDisplay: 'Ola Autorka',
   authorIsStaff: false,
   body: 'Treść wpisu',
@@ -26,7 +26,7 @@ const post = (input: Partial<Post> & { id: string }): Post => ({
   ...input,
 });
 
-const asThread = (root: Post, replies: DiscussionPost[] = []): DiscussionPost => ({
+const asThread = (root: PublicPost, replies: DiscussionPost[] = []): DiscussionPost => ({
   ...root,
   replyCount: replies.length,
   replies,
@@ -187,7 +187,7 @@ describe('DiscussionSection', () => {
         return HttpResponse.json({
           ok: true,
           data: {
-            post: post({ id: 'n1', parentPostId: 'c7', rootPostId: 'r1', body: body.body, authorUserId: 'u1' }),
+            post: post({ id: 'n1', parentPostId: 'c7', rootPostId: 'r1', body: body.body, isOwn: true }),
           },
         });
       }),
@@ -232,7 +232,7 @@ describe('DiscussionSection', () => {
     let discussionReads = 0;
     const root = asThread(post({ id: 'r1', body: 'Pytanie o silnik' }));
     const reply = asThread(
-      post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: 'Moja odpowiedź', authorUserId: 'u1', authorDisplay: 'Jan Uczestnik' }),
+      post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: 'Moja odpowiedź', isOwn: true, authorDisplay: 'Jan Uczestnik' }),
     );
     server.use(
       okMe(),
@@ -254,7 +254,7 @@ describe('DiscussionSection', () => {
         bodies.push(body);
         await delay(80);
         replied = true;
-        return HttpResponse.json({ ok: true, data: { post: post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: body.body, authorUserId: 'u1' }) } });
+        return HttpResponse.json({ ok: true, data: { post: post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: body.body, isOwn: true }) } });
       }),
     );
 
@@ -317,7 +317,7 @@ describe('DiscussionSection', () => {
   it('lets staff delete any post after a confirmation dialog', async () => {
     const deletedIds: string[] = [];
     let removed = false;
-    const root = asThread(post({ id: 'r1', body: 'Do moderacji', authorUserId: 'u2' }));
+    const root = asThread(post({ id: 'r1', body: 'Do moderacji', isOwn: false }));
     server.use(
       okMe('owner'),
       http.get('/api/discussion', () =>

@@ -266,6 +266,7 @@ export interface Messages {
     pricesDescription: string;
     pricesEmpty: string;
     addPrice: string;
+    actionsLabel: string;
     kindLabel: string;
     oneTime: string;
     recurring: string;

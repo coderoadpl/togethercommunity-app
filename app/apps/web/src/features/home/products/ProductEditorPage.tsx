@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Chip,
   FormControl,
@@ -130,7 +131,20 @@ const PricesSection = ({ product }: { product: Product }) => {
                   <TableCell>{t.sales.amount}</TableCell>
                   <TableCell>{t.products.currencyLabel}</TableCell>
                   <TableCell>{t.sales.status}</TableCell>
-                  <TableCell />
+                  <TableCell align="right">
+                    <Box
+                      component="span"
+                      sx={{
+                        position: 'absolute',
+                        width: 1,
+                        height: 1,
+                        overflow: 'hidden',
+                        clip: 'rect(0 0 0 0)',
+                      }}
+                    >
+                      {t.products.actionsLabel}
+                    </Box>
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>

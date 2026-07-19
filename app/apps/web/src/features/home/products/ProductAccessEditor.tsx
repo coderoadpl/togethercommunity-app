@@ -175,7 +175,7 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
   return (
     <Stack useFlexGap spacing="1rem" data-testid={`access-editor-${product.id}`}>
       <Box>
-        <Typography variant="overline" component="h4">
+        <Typography variant="overline" component="h3">
           {t.access.heading}
         </Typography>
         {items.length === 0 ? (

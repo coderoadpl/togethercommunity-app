@@ -61,11 +61,43 @@ export const createPlainTheme = (accentHue?: number): Theme =>
   createTheme({
     ...(accentHue === undefined
       ? {}
-      : { palette: { primary: { main: `hsl(${accentHue} 62% 42%)` } } }),
+      : {
+          palette: {
+            // The accent doubles as button text on white and as the AppBar fill;
+            // darkened to hsl 70%/28% so both directions clear AA (5.3:1 on white).
+            // contrastText is pinned white — at this darkness MUI would otherwise
+            // auto-pick near-black, which fails on the accent-filled AppBar.
+            primary: {
+              main: `hsl(${accentHue} 70% 28%)`,
+              dark: `hsl(${accentHue} 74% 22%)`,
+              contrastText: '#ffffff',
+            },
+          },
+        }),
     typography: {
       h1: { fontSize: '2.125rem', fontWeight: 400 },
       h2: { fontSize: '1.25rem', fontWeight: 500 },
       button: { textTransform: 'none' },
+    },
+    components: {
+      // The tenant switchers sit inline inside the primary-filled AppBar; their
+      // stock dark control text is illegible on the accent, so force solid white
+      // (semi-transparent whites do not reach AA on a mid-tone fill).
+      MuiAppBar: {
+        styleOverrides: {
+          colorPrimary: {
+            '& .MuiToggleButton-root': { color: '#ffffff' },
+            '& .MuiToggleButton-root.Mui-selected': {
+              color: '#ffffff',
+              backgroundColor: 'rgba(0, 0, 0, 0.25)',
+            },
+            '& .MuiFormLabel-root': { color: '#ffffff' },
+            '& .MuiInputBase-input': { color: '#ffffff' },
+            '& .MuiSvgIcon-root': { color: '#ffffff' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.6)' },
+          },
+        },
+      },
     },
   });
 
@@ -94,7 +126,7 @@ const SHADCN_FONT =
 const SHADCN_BG = '#fafafa';
 const SHADCN_SURFACE = '#ffffff';
 const SHADCN_INK = '#09090b';
-const SHADCN_INK_SOFT = '#71717a';
+const SHADCN_INK_SOFT = '#64646b';
 const SHADCN_PRIMARY = '#18181b';
 const SHADCN_PRIMARY_HOVER = '#27272a';
 const SHADCN_MUTED = '#f4f4f5';
@@ -102,7 +134,7 @@ const SHADCN_BORDER = '#e4e4e7';
 const SHADCN_BORDER_STRONG = '#d4d4d8';
 const SHADCN_RING = '#a1a1aa';
 const SHADCN_DESTRUCTIVE = '#dc2626';
-const SHADCN_SUCCESS = '#16a34a';
+const SHADCN_SUCCESS = '#15803d';
 const SHADCN_SHADOW_XS = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
 const SHADCN_SHADOW_MD = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)';
 const SHADCN_SHADOW_LG = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)';
@@ -785,6 +817,10 @@ export const createSignalMonoTheme = (): Theme =>
           },
           label: { padding: '0.22rem 0.55rem' },
           outlined: { border: `1px solid ${SIGNAL_DIVIDER}`, backgroundColor: SIGNAL_SURFACE },
+          filled: {
+            '&.MuiChip-colorSuccess': { backgroundColor: '#177049', color: SIGNAL_SURFACE },
+            '&.MuiChip-colorError': { backgroundColor: SIGNAL_ERROR, color: SIGNAL_SURFACE },
+          },
         },
       },
       MuiToggleButtonGroup: {
@@ -1569,6 +1605,9 @@ export const createScoreboardTheme = (): Theme =>
           },
           label: { padding: '0.2rem 0.55rem' },
           outlined: { border: `1.5px solid ${SCORE_INK}`, backgroundColor: SCORE_SURFACE },
+          filled: {
+            '&.MuiChip-colorError': { backgroundColor: SCORE_ERROR, color: SCORE_SURFACE },
+          },
           colorSecondary: {
             backgroundColor: SCORE_ACCENT,
             color: SCORE_INK,
@@ -2144,6 +2183,10 @@ export const createAppTheme = (accentHue = 24): Theme => {
             borderRadius: 0,
             '&:hover': { background: 'none', color: '#a03123', borderBottomColor: '#a03123' },
           },
+          outlined: {
+            color: accentInk,
+            borderColor: alpha(accentInk, 0.5),
+          },
         },
       },
       MuiChip: {
@@ -2157,6 +2200,9 @@ export const createAppTheme = (accentHue = 24): Theme => {
             textTransform: 'uppercase',
             letterSpacing: '0.12em',
             fontSize: '0.72rem',
+          },
+          filled: {
+            '&.MuiChip-colorPrimary': { backgroundColor: accentInk, color: PAPER },
           },
         },
       },
@@ -2427,10 +2473,10 @@ export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   '& .MuiListItemIcon-root': { color: 'inherit', minWidth: 34 },
   '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.06) },
   '&.Mui-selected': {
-    color: theme.palette.primary.main,
+    color: theme.palette.primary.dark,
     backgroundColor: alpha(theme.palette.primary.main, 0.1),
     boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
-    '& .MuiListItemIcon-root': { color: theme.palette.primary.main },
+    '& .MuiListItemIcon-root': { color: theme.palette.primary.dark },
     '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.16) },
   },
 }));
@@ -2707,7 +2753,7 @@ export const AuthorChip = styled('span')(({ theme }) => ({
   fontWeight: 700,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: theme.palette.primary.main,
+  color: theme.palette.primary.dark,
   backgroundColor: alpha(theme.palette.primary.main, 0.12),
   border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
 }));
@@ -2730,7 +2776,7 @@ export const PostBody = styled(Typography)<AsElement>({
 
 export const DeletedPostText = styled(Typography)<AsElement>(({ theme }) => ({
   fontStyle: 'italic',
-  color: theme.palette.text.disabled,
+  color: theme.palette.text.secondary,
 }));
 
 export const NotificationDot = styled('span', {

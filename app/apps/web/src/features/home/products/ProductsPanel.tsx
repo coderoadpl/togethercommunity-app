@@ -40,7 +40,7 @@ const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
 
   return (
     <Box data-testid="product-access-issues">
-      <Typography variant="overline" component="h4">
+      <Typography variant="overline" component="h3">
         {t.products.accessIssuesHeading}
       </Typography>
       <List disablePadding dense>
@@ -90,7 +90,7 @@ const ProductRow = ({
   return (
     <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="product-row">
       <Stack direction="row" useFlexGap spacing="1rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <Typography variant="h2" component="h3">
+        <Typography variant="h2" component="h2">
           {product.title}
         </Typography>
         {issue ? (

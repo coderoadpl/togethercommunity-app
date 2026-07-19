@@ -280,6 +280,7 @@ export const pl: Messages = {
     pricesDescription: 'Dodaj ceny jednorazowe lub cykliczne. Nieaktywne ceny pozostają przy historycznych zamówieniach.',
     pricesEmpty: 'Ten produkt nie ma jeszcze żadnych cen.',
     addPrice: 'Dodaj cenę',
+    actionsLabel: 'Akcje',
     kindLabel: 'rodzaj ceny',
     oneTime: 'jednorazowa',
     recurring: 'cykliczna',

@@ -30,7 +30,11 @@ export const ThemeSwitcher = ({ inline = false }: { inline?: boolean }) => {
   if (inline) return <Box sx={{ width: 168 }}>{selector}</Box>;
 
   return (
-    <Box sx={{ position: 'fixed', top: 10, right: 12, zIndex: (t) => t.zIndex.appBar, width: 190 }}>
+    <Box
+      role="region"
+      aria-label={t.common.theme}
+      sx={{ position: 'fixed', top: 10, right: 12, zIndex: (t) => t.zIndex.appBar, width: 190 }}
+    >
       {selector}
     </Box>
   );

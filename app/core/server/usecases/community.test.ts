@@ -31,6 +31,7 @@ import type {
 import {
   createPost,
   deletePost,
+  editPost,
   listDiscussion,
   listNotifications,
   markAllNotificationsRead,
@@ -579,5 +580,101 @@ describe('community use-cases', () => {
     await markNotificationRead(ctx({ userId: 'u1', memberId: 'm1' }), { id: listed.value.notifications[0]?.id }, d);
     expect(await unreadNotificationCount(ctx({ userId: 'u1', memberId: 'm1' }), d)).toEqual({ ok: true, value: { unread: 1 } });
     expect(await markAllNotificationsRead(ctx({ userId: 'u1', memberId: 'm1' }), d)).toEqual({ ok: true, value: { read: 1 } });
+  });
+});
+
+describe('community guard and error branches', () => {
+  const memberCtx = ctx();
+  const access = () => deps([allAccess], [grant('m1', 'all')]);
+
+  const seedPost = async (d: CommunityDeps): Promise<string> => {
+    const created = await createPost(memberCtx, { contextKind: 'lesson', contextId: 'l1', body: 'Hello world' }, d);
+    if (!created.ok) throw new Error('seed failed');
+    return created.value.id;
+  };
+
+  it('forbids discussion use by a non-member non-staff identity and needs a tenant', async () => {
+    const d = access();
+    expect(
+      await createPost(ctx({ memberId: null, staffRole: null }), { contextKind: 'lesson', contextId: 'l1', body: 'x' }, d),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await listNotifications(ctx({ tenantId: null }), {}, d)).toMatchObject({
+      ok: false,
+      error: { code: 'tenant_not_found' },
+    });
+    expect(await searchPosts(ctx({ tenantId: null }), { query: 'x' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'tenant_not_found' },
+    });
+  });
+
+  it('rejects malformed payloads with validation errors', async () => {
+    const d = access();
+    expect(await createPost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await editPost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await deletePost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await subscribeThread(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await markNotificationRead(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects a post whose body sanitizes to empty', async () => {
+    const d = access();
+    const result = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l1', body: '<script>alert(1)</script>' },
+      d,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects a reply whose parent belongs to another discussion', async () => {
+    const d = access();
+    const rootId = await seedPost(d);
+    const result = await createPost(
+      memberCtx,
+      { contextKind: 'lesson', contextId: 'l2', body: 'reply', parentPostId: rootId },
+      d,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('lets only the author edit, and the author or staff delete', async () => {
+    const d = access();
+    const id = await seedPost(d);
+    expect(await editPost(ctx({ userId: 'u2', memberId: 'm2' }), { id, body: 'hijacked body' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(await editPost(memberCtx, { id, body: 'edited body text' }, d)).toMatchObject({ ok: true });
+    expect(await deletePost(ctx({ userId: 'u3', memberId: 'm3' }), { id }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(await deletePost(ctx({ userId: 'u9', memberId: null, staffRole: 'admin' }), { id }, d)).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('is a validation error to edit, delete or subscribe to a missing post', async () => {
+    const d = access();
+    expect(await editPost(memberCtx, { id: 'missing', body: 'some body text' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(await deletePost(memberCtx, { id: 'missing' }, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await subscribeThread(memberCtx, { rootPostId: 'missing' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(await markNotificationRead(memberCtx, { id: 'missing' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  });
+
+  it('mutes a thread and returns an empty search when the member has no lesson access', async () => {
+    const d = deps([], []);
+    expect(await muteThread(memberCtx, { rootPostId: 'id-1' }, d)).toMatchObject({ ok: true });
+    expect(await searchPosts(memberCtx, { query: 'anything' }, d)).toMatchObject({ ok: true, value: [] });
   });
 });

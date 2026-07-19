@@ -7,3 +7,4 @@ node_modules/
 app/dist/
 app/out/
 app/storybook-static/
+app/coverage/

@@ -1,0 +1,51 @@
+{
+  "note": "Per-layer coverage floors (rounded down from achieved). Enforced by `npm run coverage:check`. Raise a floor only after `npm run coverage` shows the layer safely above the new number.",
+  "generatedFrom": "npm run coverage",
+  "floors": {
+    "core/domain": {
+      "lines": 90,
+      "branches": 90,
+      "functions": 94
+    },
+    "core/contract": {
+      "lines": 100,
+      "branches": 100,
+      "functions": 100
+    },
+    "core/server": {
+      "lines": 96,
+      "branches": 80,
+      "functions": 94
+    },
+    "core/client": {
+      "lines": 90,
+      "branches": 97,
+      "functions": 86
+    },
+    "adapters": {
+      "lines": 71,
+      "branches": 77,
+      "functions": 65
+    },
+    "apps/web": {
+      "lines": 84,
+      "branches": 81,
+      "functions": 66
+    },
+    "apps/cli": {
+      "lines": 1,
+      "branches": 77,
+      "functions": 33
+    },
+    "apps/server": {
+      "lines": 36,
+      "branches": 67,
+      "functions": 75
+    },
+    "scripts": {
+      "lines": 6,
+      "branches": 69,
+      "functions": 55
+    }
+  }
+}

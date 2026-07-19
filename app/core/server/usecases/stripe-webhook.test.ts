@@ -475,6 +475,26 @@ describe('simulated subscription lifecycle', () => {
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(expiresBefore);
   });
 
+  it('is not found when simulating a cycle for an unknown subscription', async () => {
+    const h = harness({ prices: [monthlyPrice('tenant-a')] });
+    const result = await simulateSubscriptionCycle(tenantA, 'missing-sub', h.deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('rejects simulating a subscription that has no provider subscription id', async () => {
+    const h = await subscribedHarness();
+    h.subscriptions.set(h.subscription.id, { ...h.subscription, providerSubscriptionId: null });
+    const result = await simulateSubscriptionCycle(tenantA, h.subscription.id, h.deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects simulating a failure on an already-canceled subscription', async () => {
+    const h = await subscribedHarness();
+    h.subscriptions.set(h.subscription.id, { ...h.subscription, status: 'canceled' });
+    const result = await simulateSubscriptionFailure(tenantA, h.subscription.id, h.deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('cancels instead of renewing when cancelAtPeriodEnd is set', async () => {
     const h = await subscribedHarness();
     await fulfillStripeWebhook(

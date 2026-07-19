@@ -657,6 +657,19 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/cli/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['app-cli'], allow: ['vitest'] }],
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: {
       '@tanstack/query': tanstackQuery,

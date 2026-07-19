@@ -137,6 +137,47 @@ describe('getSalesSummary', () => {
   });
 });
 
+describe('exportOrders — CSV', () => {
+  it('quotes fields and neutralizes spreadsheet formulas, blanking a null member name', async () => {
+    const rows = [
+      orderItem('o1', { memberName: '=SUM(A1:A9)', memberEmail: 'a@together.dev' }),
+      orderItem('o2', { memberName: null, productTitle: 'Course, Deluxe' }),
+    ];
+    const h = harness(rows);
+    const result = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
+
+    expect(result).toMatchObject({ ok: true, value: { filename: 'sales-alpha.csv', mimeType: 'text/csv; charset=utf-8' } });
+    if (!result.ok) return;
+    const lines = result.value.content.split('\n');
+    expect(lines[0]).toBe('date,member,email,product,kind,amount_cents,currency,status');
+    expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
+    expect(lines[2]).toContain('""');
+    expect(lines[2]).toContain('"Course, Deluxe"');
+  });
+
+  it('falls back to the tenant id in the filename when no slug is present', async () => {
+    const h = harness([orderItem('o1')]);
+    const result = await exportOrders(
+      { identity: { ...identity('owner'), tenantSlug: null } },
+      { format: 'csv' },
+      h.deps,
+    );
+    expect(result).toMatchObject({ ok: true, value: { filename: 'sales-t1.csv' } });
+  });
+
+  it('rejects an invalid export query and forbids non-staff', async () => {
+    const h = harness();
+    expect(await exportOrders({ identity: identity('owner') }, { format: 'xml' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(await exportOrders({ identity: identity(null) }, { format: 'csv' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+});
+
 describe('exportOrders', () => {
   it('exports every row matching filters rather than only the first page', async () => {
     const rows = Array.from({ length: 205 }, (_value, index) =>

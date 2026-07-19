@@ -148,6 +148,13 @@
       "when": 1784620000000,
       "tag": "0020_onboarding_dismissed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784740000000,
+      "tag": "0021_tenant_branding",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import {
   magicLink as magicLinkTemplate,
   normalizeEmail,
   resetPassword as resetPasswordTemplate,
+  type EmailBranding,
 } from '@core/domain/index.js';
 import type { AuthPort, EmailPort } from '@core/server/index.js';
 import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
@@ -42,6 +43,7 @@ export interface MagicLinkDeliveryContext {
   mode: 'email' | 'capture';
   /** Host-derived base URL: the verify link is rebased onto this so it lands on the requesting domain. */
   baseUrl?: string;
+  branding?: EmailBranding;
 }
 
 const rebaseUrl = (rawUrl: string, base: string): string => {
@@ -109,7 +111,11 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           if (context.mode === 'capture') {
             capturedLinks.set(normalizedEmail, { url: deliveredUrl, token });
           } else {
-            const message = magicLinkTemplate(context.language, { tenantName, url: deliveredUrl });
+            const message = magicLinkTemplate(context.language, {
+              tenantName,
+              url: deliveredUrl,
+              ...(context.branding === undefined ? {} : { branding: context.branding }),
+            });
             const sent = await settings.email.send({ to: normalizedEmail, ...message });
             if (!sent.ok) throw new Error(sent.error.message);
           }
@@ -196,13 +202,14 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       return { userId: afterConflict.user.id, created: false };
     }
   },
-  requestMagicLink: async ({ email, callbackURL, tenantName, language, baseUrl }) => {
+  requestMagicLink: async ({ email, callbackURL, tenantName, language, baseUrl, branding }) => {
     const normalizedEmail = normalizeEmail(email);
     auth.setMagicLinkDeliveryContext(normalizedEmail, {
       tenantName: tenantName ?? 'Together',
       language: language ?? 'pl',
       mode: 'email',
       ...(baseUrl ? { baseUrl } : {}),
+      ...(branding === undefined ? {} : { branding }),
     });
     await auth.api.signInMagicLink({
       body: { email: normalizedEmail, callbackURL },

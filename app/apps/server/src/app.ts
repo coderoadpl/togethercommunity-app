@@ -61,6 +61,7 @@ import {
   unauthorized,
   validation,
   type AppError,
+  type EmailBranding,
   type Identity,
   type MemberCourseProgress,
   type ProgressView,
@@ -216,16 +217,23 @@ const magicLinkBaseUrl = (
   return `${proto}://${hostHeader}`;
 };
 
+const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
+  const settings = await deps.tenants.findSettings(tenantId);
+  return settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+};
+
 const issueMagicLink = async (
   deps: AppDeps,
-  input: { email: string; tenantName: string; language: string; baseUrl: string },
+  input: { email: string; tenantId: string; tenantName: string; language: string; baseUrl: string },
 ) => {
+  const branding = await emailBranding(deps, input.tenantId);
   await deps.authPort.requestMagicLink({
     email: input.email,
     callbackURL: input.baseUrl,
     tenantName: input.tenantName,
     language: input.language,
     baseUrl: input.baseUrl,
+    ...(branding === undefined ? {} : { branding }),
   });
   return deps.devMagicLinks.findByEmail(input.email);
 };
@@ -368,11 +376,13 @@ export const buildApp = (deps: AppDeps) => {
       const resolved = tenant.ok ? tenant.value : null;
       const source: TenantSource = resolved?.source ?? 'subdomain';
       const headerLanguage = languageSchema.safeParse(c.req.header(MAGIC_LINK_LANGUAGE_HEADER));
+      const branding = resolved ? await emailBranding(deps, resolved.tenant.id) : undefined;
       deps.auth.setMagicLinkDeliveryContext(parsedBody.data.email, {
         ...(resolved ? { tenantName: resolved.tenant.name } : {}),
         language: headerLanguage.success ? headerLanguage.data : 'pl',
         mode: 'email',
         baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
+        ...(branding === undefined ? {} : { branding }),
       });
     }
     return deps.auth.handler(
@@ -450,6 +460,7 @@ export const buildApp = (deps: AppDeps) => {
       );
       const issuedMagicLink = await issueMagicLink(deps, {
         email: parsed.data.email,
+        tenantId: tenant.value.tenant.id,
         tenantName: tenant.value.tenant.name,
         language: parsed.data.language,
         baseUrl,

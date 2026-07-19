@@ -2446,6 +2446,18 @@ export const TenantSwatch = styled(Box)(({ theme }) => ({
   boxShadow: `0.3rem 0.3rem 0 ${alpha(theme.palette.primary.main, 0.09)}`,
 }));
 
+/** Live accent preview in the branding settings; transparent until a valid color is typed. */
+export const BrandSwatch = styled(Box, {
+  shouldForwardProp: (prop) => prop !== 'swatchColor',
+})<{ swatchColor: string | null }>(({ theme, swatchColor }) => ({
+  width: '2.1rem',
+  height: '2.1rem',
+  flexShrink: 0,
+  borderRadius: '0.4rem',
+  border: `1px solid ${theme.palette.divider}`,
+  backgroundColor: swatchColor ?? 'transparent',
+}));
+
 export const LedgerNav = styled(Stack)<AsElement>(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));

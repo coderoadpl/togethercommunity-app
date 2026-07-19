@@ -791,6 +791,22 @@ export const en: Messages = {
     configured: 'configured',
     notConfigured: 'not set',
   },
+  branding: {
+    heading: 'Branding',
+    intro:
+      'Point to your logo, pick an accent color and set a favicon. Empty fields keep the stock look.',
+    logoLabel: 'logo URL',
+    logoPlaceholder: 'https://example.com/logo.svg',
+    accentLabel: 'accent color',
+    accentPlaceholder: '#0E7490',
+    accentInvalid: 'Enter the color as #RRGGBB, e.g. #0E7490.',
+    previewHint: 'The swatch previews the accent live; members see the new look after saving.',
+    faviconLabel: 'favicon URL',
+    faviconPlaceholder: 'https://example.com/favicon.svg',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Saved.',
+  },
   checkout: {
     loading: 'Loading checkout…',
     checkoutEyebrow: 'checkout',

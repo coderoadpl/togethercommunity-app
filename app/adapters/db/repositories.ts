@@ -1504,13 +1504,22 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       .select({
         billingPortalUrl: tenants.billingPortalUrl,
         bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
+        logoUrl: tenants.logoUrl,
+        accentColor: tenants.accentColor,
+        faviconUrl: tenants.faviconUrl,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
     const row = rows[0];
     return row
-      ? { billingPortalUrl: row.billingPortalUrl, bunnyStreamLibraryId: row.bunnyStreamLibraryId }
+      ? {
+          billingPortalUrl: row.billingPortalUrl,
+          bunnyStreamLibraryId: row.bunnyStreamLibraryId,
+          logoUrl: row.logoUrl,
+          accentColor: row.accentColor,
+          faviconUrl: row.faviconUrl,
+        }
       : null;
   },
   updateSettings: async (tenantId, settings): Promise<TenantSettings> => {
@@ -1519,11 +1528,17 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       .set({
         billingPortalUrl: settings.billingPortalUrl,
         bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
+        logoUrl: settings.logoUrl,
+        accentColor: settings.accentColor,
+        faviconUrl: settings.faviconUrl,
       })
       .where(eq(tenants.id, tenantId));
     return {
       billingPortalUrl: settings.billingPortalUrl,
       bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
+      logoUrl: settings.logoUrl,
+      accentColor: settings.accentColor,
+      faviconUrl: settings.faviconUrl,
     };
   },
   createTenantWithOwnerGrant: async (input) =>

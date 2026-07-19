@@ -39,6 +39,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 
+import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.js';
 import { LanguageSwitcher } from './components/ui/LanguageSwitcher.js';
@@ -296,9 +297,11 @@ createRoot(container).render(
           <ErrorBoundary fallback={renderRootErrorFallback} onError={reportError}>
             <QueryClientProvider client={queryClient}>
               <RefreshSnackbar />
-              <TenantGate>
-                <RouterProvider router={router} />
-              </TenantGate>
+              <TenantBrandingBoundary>
+                <TenantGate>
+                  <RouterProvider router={router} />
+                </TenantGate>
+              </TenantBrandingBoundary>
               {import.meta.env.DEV ? (
                 <Suspense fallback={null}>
                   <ReactQueryDevtools />

@@ -14,6 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
+import { BrandMark } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
@@ -87,7 +88,7 @@ export const LoginPage = () => {
 
   if (requestedMagicEmail) {
     return (
-      <FocusCard eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+      <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
         <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
           <CardTitle variant="h1">{t.auth.magicLinkRequested}</CardTitle>
           <Typography variant="body1">
@@ -110,7 +111,7 @@ export const LoginPage = () => {
   }
 
   return (
-    <FocusCard eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+    <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
         <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="login-email">{t.auth.emailLabel}</FormLabel>

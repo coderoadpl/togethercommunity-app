@@ -14,6 +14,8 @@ export interface MemberPageProps {
   title: ReactNode;
   eyebrow: ReactNode;
   width?: 'prose' | 'wide';
+  /** Tenant logo slot at the top of the ledger header; callers render nothing when unbranded. */
+  logo?: ReactNode;
   /** Utility nav in the header row: links + NotificationBell + MemberAccountMenu. */
   nav?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
@@ -44,6 +46,7 @@ export const MemberPage = ({
   title,
   eyebrow,
   width = 'prose',
+  logo,
   nav,
   breadcrumbs,
   rail,
@@ -70,6 +73,7 @@ export const MemberPage = ({
       data-testid={testId}
     >
       <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
+        {logo}
         {breadcrumbs !== undefined && breadcrumbs.length > 0 && (
           <Breadcrumbs aria-label="breadcrumb" sx={{ mb: '0.75rem' }}>
             {breadcrumbs.map((item, index) => (

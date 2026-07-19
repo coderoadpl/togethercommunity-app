@@ -810,6 +810,22 @@ export const pl: Messages = {
     configured: 'skonfigurowano',
     notConfigured: 'nie ustawiono',
   },
+  branding: {
+    heading: 'Branding',
+    intro:
+      'Wskaż adres logo, wybierz kolor akcentu i ustaw faviconę. Puste pola zachowują domyślny wygląd.',
+    logoLabel: 'adres logo',
+    logoPlaceholder: 'https://example.com/logo.svg',
+    accentLabel: 'kolor akcentu',
+    accentPlaceholder: '#0E7490',
+    accentInvalid: 'Podaj kolor w formacie #RRGGBB, np. #0E7490.',
+    previewHint: 'Próbka pokazuje akcent na żywo; uczestnicy zobaczą nowy wygląd po zapisaniu.',
+    faviconLabel: 'adres favicony',
+    faviconPlaceholder: 'https://example.com/favicon.svg',
+    save: 'Zapisz',
+    saving: 'Zapisywanie…',
+    saved: 'Zapisano.',
+  },
   checkout: {
     loading: 'Ładowanie płatności…',
     checkoutEyebrow: 'płatność',

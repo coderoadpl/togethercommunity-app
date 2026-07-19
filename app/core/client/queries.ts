@@ -36,6 +36,7 @@ import type {
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
+  SpaceArchiveInput,
   SpaceCreateInput,
   SpaceDeleteInput,
   SpaceFeedGetInput,
@@ -227,6 +228,7 @@ export const discussionScopes = {
 export const spacesScopes = {
   all: () => ['spaces'] as const,
   lists: () => ['spaces', 'list'] as const,
+  staff: () => ['spaces', 'staff'] as const,
   feed: (spaceId: string, limit?: number) => ['spaces', 'feed', spaceId, limit ?? null] as const,
 };
 
@@ -607,6 +609,18 @@ export const spacesQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: spacesScopes.lists(),
     call: ({ signal }) => api.listSpaces(signal),
+  });
+
+export const staffSpacesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: spacesScopes.staff(),
+    call: ({ signal }) => api.listStaffSpaces(signal),
+  });
+
+export const archiveSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'archive'],
+    call: (input: SpaceArchiveInput) => api.archiveSpace(input),
   });
 
 export const createSpaceMutation = (api: ApiClient) =>

@@ -16,8 +16,10 @@ import {
   memberSpaceSchema,
   reactToPostInputSchema,
   reactionSummarySchema,
+  setSpaceArchivedInputSchema,
   spaceFeedSchema,
   spaceSchema,
+  staffSpaceSchema,
   updateSpaceInputSchema,
   detachModuleFromCourseInputSchema,
   discussionSchema,
@@ -527,6 +529,10 @@ export const spacesListOutputSchema = z.object({
   spaces: z.array(memberSpaceSchema),
 });
 
+export const staffSpacesListOutputSchema = z.object({
+  spaces: z.array(staffSpaceSchema),
+});
+
 export const spaceCreateInputSchema = createSpaceInputSchema;
 
 export type SpaceCreateInput = z.input<typeof spaceCreateInputSchema>;
@@ -538,6 +544,10 @@ export type SpaceUpdateInput = z.input<typeof spaceUpdateInputSchema>;
 export const spaceDeleteInputSchema = deleteSpaceInputSchema;
 
 export type SpaceDeleteInput = z.input<typeof spaceDeleteInputSchema>;
+
+export const spaceArchiveInputSchema = setSpaceArchivedInputSchema;
+
+export type SpaceArchiveInput = z.input<typeof spaceArchiveInputSchema>;
 
 export const spaceOutputSchema = z.object({
   space: spaceSchema,
@@ -755,8 +765,10 @@ export const API_ROUTES = {
   postsReact: { method: 'POST', path: '/api/posts/react' },
   postsUnreact: { method: 'POST', path: '/api/posts/unreact' },
   spaces: { method: 'GET', path: '/api/spaces' },
+  spacesStaff: { method: 'GET', path: '/api/spaces/staff' },
   spacesCreate: { method: 'POST', path: '/api/spaces' },
   spacesUpdate: { method: 'POST', path: '/api/spaces/update' },
+  spacesArchive: { method: 'POST', path: '/api/spaces/archive' },
   spacesDelete: { method: 'DELETE', path: '/api/spaces/:spaceId' },
   spaceFeed: { method: 'GET', path: '/api/spaces/:spaceId/feed' },
   spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
@@ -852,7 +864,9 @@ export const API_PATHS = {
   postsReact: API_ROUTES.postsReact.path,
   postsUnreact: API_ROUTES.postsUnreact.path,
   spaces: API_ROUTES.spaces.path,
+  spacesStaff: API_ROUTES.spacesStaff.path,
   spacesUpdate: API_ROUTES.spacesUpdate.path,
+  spacesArchive: API_ROUTES.spacesArchive.path,
   spacesDelete: API_ROUTES.spacesDelete.path,
   spaceFeed: API_ROUTES.spaceFeed.path,
   spaceFollow: API_ROUTES.spaceFollow.path,

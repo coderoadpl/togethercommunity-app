@@ -37,6 +37,7 @@ const space = (input: Partial<MemberSpace> & { id: string }): MemberSpace => ({
   visibility: 'members',
   productIds: [],
   position: 0,
+  archivedAt: null,
   createdAt: '2026-07-20T08:00:00.000Z',
   isFollowing: false,
   ...input,

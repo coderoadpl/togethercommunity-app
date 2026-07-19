@@ -57,6 +57,7 @@ import {
   spaceFollowOutputSchema,
   spaceOutputSchema,
   spacesListOutputSchema,
+  staffSpacesListOutputSchema,
   productsAccessItemsOutputSchema,
   productsAccessIssuesOutputSchema,
   progressOutputSchema,
@@ -111,6 +112,7 @@ import {
   type PostReactInput,
   type PostUpdateInput,
   type PostsSearchInput,
+  type SpaceArchiveInput,
   type SpaceCreateInput,
   type SpaceDeleteInput,
   type SpaceFeedGetInput,
@@ -704,6 +706,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   listSpaces: (signal?: AbortSignal) =>
     request(options, API_ROUTES.spaces.method, API_ROUTES.spaces.path, spacesListOutputSchema, undefined, signal),
+  listStaffSpaces: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.spacesStaff.method, API_ROUTES.spacesStaff.path, staffSpacesListOutputSchema, undefined, signal),
+  archiveSpace: (input: SpaceArchiveInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.spacesArchive.method, API_ROUTES.spacesArchive.path, spaceOutputSchema, input, signal),
   createSpace: (input: SpaceCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.spacesCreate.method, API_ROUTES.spacesCreate.path, spaceOutputSchema, input, signal),
   updateSpace: (input: SpaceUpdateInput, signal?: AbortSignal) =>

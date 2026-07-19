@@ -408,6 +408,7 @@ export const spaces = pgTable(
     visibility: text('visibility', { enum: ['members', 'product'] }).notNull(),
     productIds: jsonb('product_ids').$type<string[]>().notNull().default([]),
     position: integer('position').notNull().default(0),
+    archivedAt: text('archived_at'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

@@ -398,7 +398,9 @@ const emptySpacesRepo: SpaceRepository = {
   findBySlug: async () => null,
   create: async () => undefined,
   update: async () => null,
+  setArchived: async () => null,
   delete: async () => false,
+  stats: async () => new Map(),
 };
 
 const deps = (

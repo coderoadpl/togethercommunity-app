@@ -236,7 +236,9 @@ const deps = (input: {
       findBySlug: async () => null,
       create: async () => undefined,
       update: async () => null,
+      setArchived: async () => null,
       delete: async () => false,
+      stats: async () => new Map(),
     },
     reactions: {
       add: async () => true,

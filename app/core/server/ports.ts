@@ -29,6 +29,7 @@ import type {
   ReactionEmoji,
   ReactionSummary,
   Space,
+  SpaceStats,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -141,12 +142,14 @@ export interface PostRepository {
 }
 
 export interface SpaceRepository {
-  list(tenantId: string): Promise<Space[]>;
+  list(tenantId: string, options?: { includeArchived?: boolean }): Promise<Space[]>;
   findById(tenantId: string, id: string): Promise<Space | null>;
   findBySlug(tenantId: string, slug: string): Promise<Space | null>;
   create(tenantId: string, space: Space): Promise<void>;
   update(tenantId: string, space: Space): Promise<Space | null>;
+  setArchived(tenantId: string, input: { id: string; archivedAt: string | null }): Promise<Space | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+  stats(tenantId: string, spaceIds: string[]): Promise<Map<string, SpaceStats>>;
 }
 
 export interface PostReactionRepository {

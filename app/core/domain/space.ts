@@ -19,10 +19,25 @@ export const spaceSchema = z.object({
   visibility: spaceVisibilitySchema,
   productIds: z.array(z.string().min(1)).default([]),
   position: z.number().int().nonnegative(),
+  archivedAt: z.string().datetime().nullable().default(null),
   createdAt: z.string().datetime(),
 });
 
 export type Space = z.output<typeof spaceSchema>;
+
+export const spaceStatsSchema = z.object({
+  posts: z.number().int().nonnegative(),
+  followers: z.number().int().nonnegative(),
+});
+
+export type SpaceStats = z.output<typeof spaceStatsSchema>;
+
+/** A space as its creator sees it in the panel: with engagement stats resolved server-side. */
+export const staffSpaceSchema = spaceSchema.extend({
+  stats: spaceStatsSchema,
+});
+
+export type StaffSpace = z.output<typeof staffSpaceSchema>;
 
 /** A space as a member sees it: with the viewer's follow state resolved server-side. */
 export const memberSpaceSchema = spaceSchema.extend({
@@ -58,6 +73,13 @@ export const deleteSpaceInputSchema = z.object({
 });
 
 export type DeleteSpaceInput = z.input<typeof deleteSpaceInputSchema>;
+
+export const setSpaceArchivedInputSchema = z.object({
+  id: z.string().min(1),
+  archived: z.boolean(),
+});
+
+export type SetSpaceArchivedInput = z.input<typeof setSpaceArchivedInputSchema>;
 
 export const REACTION_EMOJIS = ['👍', '❤️', '🎉', '💡', '😂'] as const;
 

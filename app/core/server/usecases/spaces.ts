@@ -12,6 +12,7 @@ import {
   postSnippet,
   reactToPostInputSchema,
   renderPost,
+  setSpaceArchivedInputSchema,
   spaceSchema,
   toPublicPost,
   updateSpaceInputSchema,
@@ -25,6 +26,7 @@ import {
   type Result,
   type Space,
   type SpaceFeed,
+  type StaffSpace,
 } from '@core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -143,6 +145,40 @@ export const deleteSpace = async (
   if (!parsed.success) return err(validation('Invalid space delete payload', parsed.error.flatten()));
   const deleted = await deps.spaces.delete(staff.value.tenantId, parsed.data.id);
   return deleted ? ok({ spaceId: parsed.data.id }) : err(notFound('Space not found'));
+};
+
+/** Soft archive/restore: an archived space is hidden from members but keeps its posts and followers. */
+export const setSpaceArchived = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: SpacesDeps,
+): Promise<Result<Space, AppError>> => {
+  const staff = requireStaff(ctx);
+  if (!staff.ok) return staff;
+  const parsed = setSpaceArchivedInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid space archive payload', parsed.error.flatten()));
+  const updated = await deps.spaces.setArchived(staff.value.tenantId, {
+    id: parsed.data.id,
+    archivedAt: parsed.data.archived ? deps.clock.nowIso() : null,
+  });
+  return updated ? ok(updated) : err(notFound('Space not found'));
+};
+
+/** Panel listing: every space including archived, each with its post and follower counts. */
+export const listSpacesForStaff = async (
+  ctx: Ctx,
+  deps: SpacesDeps,
+): Promise<Result<StaffSpace[], AppError>> => {
+  const staff = requireStaff(ctx);
+  if (!staff.ok) return staff;
+  const spaces = await deps.spaces.list(staff.value.tenantId, { includeArchived: true });
+  const stats = await deps.spaces.stats(
+    staff.value.tenantId,
+    spaces.map((space) => space.id),
+  );
+  return ok(
+    spaces.map((space): StaffSpace => ({ ...space, stats: stats.get(space.id) ?? { posts: 0, followers: 0 } })),
+  );
 };
 
 export const listSpacesForMember = async (

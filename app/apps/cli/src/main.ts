@@ -1529,6 +1529,48 @@ space
   );
 
 space
+  .command('archive')
+  .description('Archive a space — hidden from members, content kept (staff)')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.archiveSpace({ id: options.space, archived: true }), ctx.json, (data) =>
+        `archived space ${data.space.name} (${data.space.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+space
+  .command('restore')
+  .description('Restore an archived space (staff)')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.archiveSpace({ id: options.space, archived: false }), ctx.json, (data) =>
+        `restored space ${data.space.name} (${data.space.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+space
+  .command('stats')
+  .description('List spaces with post and follower counts (staff)')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.listStaffSpaces(), ctx.json, (data) =>
+        data.spaces.length === 0
+          ? 'no spaces'
+          : data.spaces
+              .map(
+                (item) =>
+                  `${item.id.slice(0, 8)} ${item.name}${item.archivedAt === null ? '' : ' (archived)'} — ${item.stats.posts} posts, ${item.stats.followers} followers`,
+              )
+              .join('\n'),
+      );
+    }),
+  );
+
+space
   .command('feed')
   .description('Show a space feed (newest first)')
   .requiredOption('--space <spaceId>')

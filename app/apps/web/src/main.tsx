@@ -70,6 +70,9 @@ import {
   PanelProductDetailRoute,
   PanelSalesRoute,
   PanelSettingsRoute,
+  PanelSpacesRoute,
+  PanelSpaceCreateRoute,
+  PanelSpaceDetailRoute,
 } from './routes/panel.js';
 import {
   CommunityRoute,
@@ -244,6 +247,21 @@ const panelMemberDetailRoute = createRoute({
   path: 'members/$memberId',
   component: PanelMemberDetailRoute,
 });
+const panelSpacesRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces',
+  component: PanelSpacesRoute,
+});
+const panelSpaceCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/new',
+  component: PanelSpaceCreateRoute,
+});
+const panelSpaceDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId',
+  component: PanelSpaceDetailRoute,
+});
 const panelSalesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'sales',
@@ -290,6 +308,9 @@ const router = createRouter({
       panelLessonEditRoute,
       panelMembersRoute,
       panelMemberDetailRoute,
+      panelSpacesRoute,
+      panelSpaceCreateRoute,
+      panelSpaceDetailRoute,
       panelSalesRoute,
       panelIntegrationsRoute,
       panelSettingsRoute,

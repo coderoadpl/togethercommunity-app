@@ -17,6 +17,9 @@ import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 import { SalesPanel } from './sales/SalesPanel.js';
+import { SpacesPanel } from './spaces/SpacesPanel.js';
+import { SpaceCreatePage } from './spaces/SpaceCreatePage.js';
+import { SpaceEditPage } from './spaces/SpaceEditPage.js';
 
 export const PanelProductsRoute = () => <ProductsPanel />;
 export const PanelProductCreateRoute = () => <ProductCreatePage />;
@@ -114,6 +117,26 @@ export const PanelMemberDetailRoute = () => {
   if (!member) return <Navigate to="/panel/members" />;
 
   return <MemberDetail member={member} onBack={back} />;
+};
+
+export const PanelSpacesRoute = () => <SpacesPanel />;
+export const PanelSpaceCreateRoute = () => <SpaceCreatePage />;
+
+export const PanelSpaceDetailRoute = () => {
+  const t = useTranslations();
+  const params = useParams({ strict: false });
+  const spaceId = params.spaceId ?? '';
+  const spaces = useQuery(actions.staffSpaces);
+
+  if (spaces.isPending) {
+    return <PanelPage title={t.sections.spaces} state={{ kind: 'loading', label: t.spacesPanel.loading }} />;
+  }
+  if (spaces.isError) {
+    return <PanelPage title={t.sections.spaces} state={{ kind: 'error', message: localizeError(spaces.error, t) }} />;
+  }
+  const space = spaces.data.spaces.find((entry) => entry.id === spaceId);
+  if (!space) return <Navigate to="/panel/spaces" />;
+  return <SpaceEditPage space={space} />;
 };
 
 export const PanelIntegrationsRoute = () => {

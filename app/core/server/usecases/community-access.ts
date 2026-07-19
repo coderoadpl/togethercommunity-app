@@ -172,6 +172,7 @@ export const spaceContextAccess = async (
   const space = await deps.spaces.findById(tenant.value.tenantId, spaceId);
   if (!space) return err(notFound('Space not found'));
   if (ctx.identity.staffRole) return ok(space);
+  if (space.archivedAt !== null) return err(notFound('Space not found'));
   const member = memberScope(ctx);
   if (!member) return err(forbidden('Only members can access spaces'));
   return (await spaceVisibleToMemberScope(member, space, deps))

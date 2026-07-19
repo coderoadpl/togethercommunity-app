@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -796,12 +796,16 @@ export const createThreadSubscriptionRepository = (db: Db): ThreadSubscriptionRe
 });
 
 export const createSpaceRepository = (db: Db): SpaceRepository => ({
-  list: async (tenantId) =>
+  list: async (tenantId, options) =>
     (
       await db
         .select()
         .from(spaces)
-        .where(eq(spaces.tenantId, tenantId))
+        .where(
+          options?.includeArchived
+            ? eq(spaces.tenantId, tenantId)
+            : and(eq(spaces.tenantId, tenantId), isNull(spaces.archivedAt)),
+        )
         .orderBy(asc(spaces.position), asc(spaces.createdAt), asc(spaces.id))
     ).map(parseSpace),
   findById: async (tenantId, id) => {
@@ -840,12 +844,53 @@ export const createSpaceRepository = (db: Db): SpaceRepository => ({
     const row = rows[0];
     return row ? parseSpace(row) : null;
   },
+  setArchived: async (tenantId, input) => {
+    const rows = await db
+      .update(spaces)
+      .set({ archivedAt: input.archivedAt })
+      .where(and(eq(spaces.tenantId, tenantId), eq(spaces.id, input.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseSpace(row) : null;
+  },
   delete: async (tenantId, id) => {
     const rows = await db
       .delete(spaces)
       .where(and(eq(spaces.tenantId, tenantId), eq(spaces.id, id)))
       .returning({ id: spaces.id });
     return rows.length > 0;
+  },
+  stats: async (tenantId, spaceIds) => {
+    const result = new Map<string, { posts: number; followers: number }>();
+    if (spaceIds.length === 0) return result;
+    for (const id of spaceIds) result.set(id, { posts: 0, followers: 0 });
+    const postRows = await db
+      .select({ spaceId: posts.contextId, count: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, 'space'),
+          inArray(posts.contextId, spaceIds),
+          isNull(posts.deletedAt),
+        ),
+      )
+      .groupBy(posts.contextId);
+    for (const row of postRows) {
+      result.set(row.spaceId, { ...(result.get(row.spaceId) ?? { posts: 0, followers: 0 }), posts: row.count });
+    }
+    const followerRows = await db
+      .select({ spaceId: spaceSubscriptions.spaceId, count: sql<number>`count(*)::int` })
+      .from(spaceSubscriptions)
+      .where(and(eq(spaceSubscriptions.tenantId, tenantId), inArray(spaceSubscriptions.spaceId, spaceIds)))
+      .groupBy(spaceSubscriptions.spaceId);
+    for (const row of followerRows) {
+      result.set(row.spaceId, {
+        ...(result.get(row.spaceId) ?? { posts: 0, followers: 0 }),
+        followers: row.count,
+      });
+    }
+    return result;
   },
 });
 

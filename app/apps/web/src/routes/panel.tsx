@@ -18,6 +18,9 @@ export {
   PanelProductDetailRoute,
   PanelSalesRoute,
   PanelSettingsRoute,
+  PanelSpacesRoute,
+  PanelSpaceCreateRoute,
+  PanelSpaceDetailRoute,
 } from '../features/home/panel-routes.js';
 
 /**

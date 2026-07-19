@@ -39,7 +39,9 @@ import {
   followSpace,
   getSpaceFeed,
   listSpacesForMember,
+  listSpacesForStaff,
   reactToPost,
+  setSpaceArchived,
   unfollowSpace,
   unreactToPost,
   updateSpace,
@@ -71,6 +73,7 @@ const space = (overrides: Partial<Space>): Space => ({
   visibility: 'members',
   productIds: [],
   position: 0,
+  archivedAt: null,
   createdAt: NOW,
   ...overrides,
 });
@@ -123,9 +126,9 @@ class MutableClock implements Clock {
 class FakeSpaces implements SpaceRepository {
   constructor(readonly rows: Space[]) {}
 
-  async list(tenantId: string): Promise<Space[]> {
+  async list(tenantId: string, options?: { includeArchived?: boolean }): Promise<Space[]> {
     return this.rows
-      .filter((item) => item.tenantId === tenantId)
+      .filter((item) => item.tenantId === tenantId && (options?.includeArchived || item.archivedAt === null))
       .sort((a, b) => a.position - b.position);
   }
 
@@ -148,11 +151,24 @@ class FakeSpaces implements SpaceRepository {
     return item;
   }
 
+  async setArchived(tenantId: string, input: { id: string; archivedAt: string | null }): Promise<Space | null> {
+    const index = this.rows.findIndex((row) => row.tenantId === tenantId && row.id === input.id);
+    const row = this.rows[index];
+    if (!row) return null;
+    const next: Space = { ...row, archivedAt: input.archivedAt };
+    this.rows[index] = next;
+    return next;
+  }
+
   async delete(tenantId: string, id: string): Promise<boolean> {
     const index = this.rows.findIndex((row) => row.tenantId === tenantId && row.id === id);
     if (index < 0) return false;
     this.rows.splice(index, 1);
     return true;
+  }
+
+  async stats(_tenantId: string, spaceIds: string[]): Promise<Map<string, { posts: number; followers: number }>> {
+    return new Map(spaceIds.map((id) => [id, { posts: 0, followers: 0 }]));
   }
 }
 
@@ -579,6 +595,69 @@ describe('space CRUD', () => {
       ok: false,
       error: { code: 'not_found' },
     });
+  });
+});
+
+describe('space archive', () => {
+  it('is staff-only', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const denied = await setSpaceArchived(ctx(), { id: 's-open', archived: true }, f.deps);
+    expect(denied).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('hides an archived space from members but keeps it for staff, and restores it', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const staff = ctx({ staffRole: 'owner', memberId: null });
+
+    const archived = await setSpaceArchived(staff, { id: 's-open', archived: true }, f.deps);
+    expect(archived).toMatchObject({ ok: true });
+    if (!archived.ok) return;
+    expect(archived.value.archivedAt).not.toBeNull();
+
+    const memberList = await listSpacesForMember(ctx(), f.deps);
+    expect(memberList).toMatchObject({ ok: true });
+    if (!memberList.ok) return;
+    expect(memberList.value).toHaveLength(0);
+
+    const memberFeed = await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps);
+    expect(memberFeed).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    const staffList = await listSpacesForStaff(staff, f.deps);
+    expect(staffList).toMatchObject({ ok: true });
+    if (!staffList.ok) return;
+    expect(staffList.value.map((item) => item.id)).toEqual(['s-open']);
+    expect(staffList.value[0]?.archivedAt).not.toBeNull();
+
+    const restored = await setSpaceArchived(staff, { id: 's-open', archived: false }, f.deps);
+    expect(restored).toMatchObject({ ok: true, value: { archivedAt: null } });
+    const restoredList = await listSpacesForMember(ctx(), f.deps);
+    if (!restoredList.ok) return;
+    expect(restoredList.value.map((item) => item.id)).toEqual(['s-open']);
+  });
+
+  it('reports not_found for an unknown space', async () => {
+    const f = fixture({ spaces: [] });
+    const staff = ctx({ staffRole: 'owner', memberId: null });
+    expect(await setSpaceArchived(staff, { id: 'nope', archived: true }, f.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+});
+
+describe('space stats for staff', () => {
+  it('lists every space with post and follower counts', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const staff = ctx({ staffRole: 'owner', memberId: null });
+    const listed = await listSpacesForStaff(staff, f.deps);
+    expect(listed).toMatchObject({ ok: true });
+    if (!listed.ok) return;
+    expect(listed.value[0]).toMatchObject({ id: 's-open', stats: { posts: 0, followers: 0 } });
+  });
+
+  it('rejects non-staff', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    expect(await listSpacesForStaff(ctx(), f.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });
 

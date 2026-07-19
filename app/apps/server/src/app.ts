@@ -38,6 +38,7 @@ import {
   postReactInputSchema,
   postUpdateInputSchema,
   postsSearchInputSchema,
+  spaceArchiveInputSchema,
   spaceCreateInputSchema,
   spaceDeleteInputSchema,
   spaceFeedGetInputSchema,
@@ -121,7 +122,9 @@ import {
   createSpace,
   updateSpace,
   deleteSpace,
+  setSpaceArchived,
   listSpacesForMember,
+  listSpacesForStaff,
   getSpaceFeed,
   followSpace,
   unfollowSpace,
@@ -1104,6 +1107,19 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.spaces, async (c) => {
     const result = await listSpacesForMember({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ spaces: result.value }) : result);
+  });
+
+  app.get(API_PATHS.spacesStaff, async (c) => {
+    const result = await listSpacesForStaff({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ spaces: result.value }) : result);
+  });
+
+  app.post(API_PATHS.spacesArchive, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = spaceArchiveInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid space archive payload', parsed.error.flatten())));
+    const result = await setSpaceArchived({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ space: result.value }) : result);
   });
 
   app.post(API_PATHS.spaces, async (c) => {

@@ -43,6 +43,7 @@ const bodiesFor = async (query: string): Promise<string[]> => {
   const hits = await createPostRepository(db).search(TENANT_ID, {
     query,
     lessonIds: [LESSON_ID],
+    spaceIds: [],
     limit: 50,
   });
   return hits.map((hit) => hit.post.body).sort();

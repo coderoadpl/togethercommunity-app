@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const postContextKindSchema = z.literal('lesson');
+export const postContextKindSchema = z.enum(['lesson', 'space']);
 
 export type PostContextKind = z.output<typeof postContextKindSchema>;
 
@@ -79,16 +79,22 @@ export type MuteThreadInput = z.input<typeof muteThreadInputSchema>;
 export const searchPostsInputSchema = z.object({
   query: z.string().trim().min(1),
   lessonIds: z.array(z.string().min(1)).optional(),
+  spaceIds: z.array(z.string().min(1)).optional(),
   limit: z.number().int().min(1).max(50).default(20),
 });
 
 export type SearchPostsInput = z.input<typeof searchPostsInputSchema>;
 
-export const notificationKindSchema = z.literal('thread-reply');
+export const notificationKindSchema = z.enum(['thread-reply', 'space-post']);
 
 export type NotificationKind = z.output<typeof notificationKindSchema>;
 
-export const threadReplyNotificationPayloadSchema = z.object({
+/**
+ * One payload shape for every notification kind so clients render without
+ * narrowing: `lessonName` holds the lesson name for lesson contexts and the
+ * space name for space contexts (courseId stays null there).
+ */
+export const notificationPayloadSchema = z.object({
   rootPostId: z.string().min(1),
   postId: z.string().min(1),
   contextKind: postContextKindSchema,
@@ -100,14 +106,14 @@ export const threadReplyNotificationPayloadSchema = z.object({
   snippet: z.string(),
 });
 
-export type ThreadReplyNotificationPayload = z.output<typeof threadReplyNotificationPayloadSchema>;
+export type NotificationPayload = z.output<typeof notificationPayloadSchema>;
 
 export const notificationSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),
   recipientUserId: z.string().min(1),
   kind: notificationKindSchema,
-  payload: threadReplyNotificationPayloadSchema,
+  payload: notificationPayloadSchema,
   readAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -158,8 +164,34 @@ export type Discussion = z.output<typeof discussionSchema>;
 
 export const postSearchHitSchema = z.object({
   post: publicPostSchema,
+  /** The post's contextId: a lesson id for lesson posts, a space id for space posts. */
   lessonId: z.string().min(1),
   snippet: z.string(),
 });
 
 export type PostSearchHit = z.output<typeof postSearchHitSchema>;
+
+export const DELETED_POST_PLACEHOLDER = 'Wpis usunięty';
+
+/** Soft-deleted posts keep the thread shape but never leak their body. */
+export const renderPost = (post: Post): Post =>
+  post.deletedAt === null ? post : { ...post, body: DELETED_POST_PLACEHOLDER };
+
+/** Client projection: the raw author id is dropped, ownership pre-computed into isOwn. */
+export const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
+  id: post.id,
+  tenantId: post.tenantId,
+  contextKind: post.contextKind,
+  contextId: post.contextId,
+  parentPostId: post.parentPostId,
+  rootPostId: post.rootPostId,
+  authorDisplay: post.authorDisplay,
+  authorIsStaff: post.authorIsStaff,
+  body: post.body,
+  createdAt: post.createdAt,
+  editedAt: post.editedAt,
+  deletedAt: post.deletedAt,
+  isOwn: post.authorUserId === viewerUserId,
+});
+
+export const postSnippet = (body: string): string => body.replace(/\s+/g, ' ').slice(0, 180);

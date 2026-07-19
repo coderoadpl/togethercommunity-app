@@ -9,6 +9,7 @@ import {
   type Member,
   type Notification,
   type Post,
+  type PostContextKind,
   type Product,
   type ProductGrant,
 } from '@core/domain/index.js';
@@ -24,6 +25,9 @@ import type {
   NotificationRepository,
   PostRepository,
   ProductGrantRepository,
+  SpaceRepository,
+  SpaceSubscription,
+  SpaceSubscriptionRepository,
   TenantAccessReader,
   ThreadSubscription,
   ThreadSubscriptionRepository,
@@ -201,7 +205,13 @@ class FakePosts implements PostRepository {
 
   async listThreadsForContext(
     tenantId: string,
-    query: { contextKind: 'lesson'; contextId: string; cursor?: string; limit: number },
+    query: {
+      contextKind: PostContextKind;
+      contextId: string;
+      cursor?: string;
+      limit: number;
+      order?: 'asc' | 'desc';
+    },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }> {
     const roots = this.rows
       .filter(
@@ -241,13 +251,18 @@ class FakePosts implements PostRepository {
     return next;
   }
 
-  async search(tenantId: string, query: { query: string; lessonIds: string[]; limit: number }) {
+  async search(
+    tenantId: string,
+    query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
+  ) {
     return this.rows
       .filter(
         (post) =>
           post.tenantId === tenantId &&
           post.deletedAt === null &&
-          query.lessonIds.includes(post.contextId) &&
+          (post.contextKind === 'lesson'
+            ? query.lessonIds.includes(post.contextId)
+            : query.spaceIds.includes(post.contextId)) &&
           post.body.toLowerCase().includes(query.query.toLowerCase()),
       )
       .slice(0, query.limit)
@@ -347,6 +362,45 @@ class FakeNotifications implements NotificationRepository {
   }
 }
 
+class FakeSpaceSubscriptions implements SpaceSubscriptionRepository {
+  readonly rows: SpaceSubscription[] = [];
+
+  async follow(tenantId: string, input: { userId: string; spaceId: string; createdAt: string }): Promise<void> {
+    const exists = this.rows.some(
+      (item) => item.tenantId === tenantId && item.userId === input.userId && item.spaceId === input.spaceId,
+    );
+    if (!exists) this.rows.push({ tenantId, userId: input.userId, spaceId: input.spaceId, createdAt: input.createdAt });
+  }
+
+  async unfollow(tenantId: string, input: { userId: string; spaceId: string }): Promise<boolean> {
+    const index = this.rows.findIndex(
+      (item) => item.tenantId === tenantId && item.userId === input.userId && item.spaceId === input.spaceId,
+    );
+    if (index < 0) return false;
+    this.rows.splice(index, 1);
+    return true;
+  }
+
+  async listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]> {
+    return this.rows.filter((item) => item.tenantId === tenantId && item.spaceId === spaceId);
+  }
+
+  async listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]> {
+    return this.rows.filter(
+      (item) => item.tenantId === tenantId && item.userId === input.userId && input.spaceIds.includes(item.spaceId),
+    );
+  }
+}
+
+const emptySpacesRepo: SpaceRepository = {
+  list: async () => [],
+  findById: async () => null,
+  findBySlug: async () => null,
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+};
+
 const deps = (
   accessProducts: Product[],
   accessGrants: ProductGrant[] = [],
@@ -356,6 +410,7 @@ const deps = (
     { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW },
     { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW },
     { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW },
+    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW },
   ];
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
@@ -371,6 +426,8 @@ const deps = (
   return {
     posts: new FakePosts(),
     threadSubscriptions: new FakeSubscriptions(),
+    spaceSubscriptions: new FakeSpaceSubscriptions(),
+    spaces: emptySpacesRepo,
     notifications: new FakeNotifications(),
     notificationChannels: [],
     courses: coursesRepo,
@@ -381,6 +438,7 @@ const deps = (
     links: {
       lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/my/courses/${courseId ?? 'none'}/lessons/${lessonId}`,
+      spaceUrl: ({ tenantSlug, spaceId }) => `http://${tenantSlug ?? 'app'}.localhost/my/spaces/${spaceId}`,
     },
     ids: new SequenceIds(),
     clock,
@@ -414,6 +472,16 @@ describe('community use-cases', () => {
     expect(d.posts).toBeInstanceOf(FakePosts);
     if (!(d.posts instanceof FakePosts)) return;
     expect(d.posts.rows[0]?.authorDisplay).toBe('Audit R3 Member');
+  });
+
+  it('prefers the member displayName override over the account name', async () => {
+    const d = deps([allAccess], [grant('m4', 'all')]);
+    const created = await createPost(
+      ctx({ userId: 'u4', memberId: 'm4', name: 'Jan Testowy', email: 'u4@example.com' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'hello' },
+      d,
+    );
+    expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Kapitan Świt' } });
   });
 
   it('projects posts to a public shape: isOwn per viewer, never the raw author id', async () => {

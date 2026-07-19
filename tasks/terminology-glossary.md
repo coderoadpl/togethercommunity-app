@@ -56,6 +56,9 @@ here first, then use it.
 | thread | **wątek** | **thread** | |
 | post (a message in a thread) | **wpis** | **post** | Verb: „Opublikuj" / "Post". Reply = „odpowiedź" / "reply", verb „Odpowiedz" / "Reply". |
 | follow a thread | **obserwuj wątek** | **follow thread** | Muted = „wyciszono" / "muted". |
+| community space (feed area inside a tenant) | **strefa** | **space** | DECIDED (2026-07-20, spaces core): „przestrzeń" is taken by tenant, so community spaces are „strefy" („strefa Społeczność", „wpis w strefie"). EN keeps "space" — tenant copy avoids the bare noun there, so no collision in practice. „Strefa" inflects normally: „w strefie", „obserwuj strefę". |
+| reaction (emoji on a post) | **reakcja** | **reaction** | Closed emoji set: 👍 ❤️ 🎉 💡 😂. Verb: „zareaguj" / "react". |
+| follow a space | **obserwuj strefę** | **follow space** | Same verb as thread follow; unfollow = „przestań obserwować" / "unfollow". |
 
 ## Platform
 
@@ -181,3 +184,6 @@ key, PDF, HTML, CSV, JSON) — gloss in parentheses when a PL label exists
     „ukończona" — payments are „dokańczane", courses are „ukańczane").
 21. `student.grantUpcomingNote` aligned with its label: „Dostęp rozpocznie
     się {date}." (was „otworzy się").
+22. community space = **strefa** / **space** (rejected: „przestrzeń" — tenant,
+    „kanał" — chat-like, „grupa" — collides with FB groups). New notification
+    kind copy: space post = „nowy wpis w strefie" / "new post in the space".

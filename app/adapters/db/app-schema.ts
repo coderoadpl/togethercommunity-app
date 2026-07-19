@@ -372,7 +372,7 @@ export const posts = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    contextKind: text('context_kind', { enum: ['lesson'] }).notNull(),
+    contextKind: text('context_kind', { enum: ['lesson', 'space'] }).notNull(),
     contextId: text('context_id').notNull(),
     parentPostId: text('parent_post_id'),
     rootPostId: text('root_post_id').notNull(),
@@ -392,6 +392,68 @@ export const posts = pgTable(
       table.createdAt,
     ),
     index('posts_tenant_root_idx').on(table.tenantId, table.rootPostId),
+  ],
+);
+
+export const spaces = pgTable(
+  'spaces',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    visibility: text('visibility', { enum: ['members', 'product'] }).notNull(),
+    productIds: jsonb('product_ids').$type<string[]>().notNull().default([]),
+    position: integer('position').notNull().default(0),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('spaces_tenantId_idx').on(table.tenantId),
+    uniqueIndex('spaces_tenant_slug_uidx').on(table.tenantId, table.slug),
+  ],
+);
+
+export const postReactions = pgTable(
+  'post_reactions',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    postId: text('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    emoji: text('emoji').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('post_reactions_tenant_post_idx').on(table.tenantId, table.postId),
+    uniqueIndex('post_reactions_post_user_emoji_uidx').on(table.postId, table.userId, table.emoji),
+  ],
+);
+
+export const spaceSubscriptions = pgTable(
+  'space_subscriptions',
+  {
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    spaceId: text('space_id')
+      .notNull()
+      .references(() => spaces.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('space_subscriptions_tenant_space_idx').on(table.tenantId, table.spaceId),
+    uniqueIndex('space_subscriptions_tenant_user_space_uidx').on(
+      table.tenantId,
+      table.userId,
+      table.spaceId,
+    ),
   ],
 );
 
@@ -424,7 +486,7 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
-    kind: text('kind', { enum: ['thread-reply'] }).notNull(),
+    kind: text('kind', { enum: ['thread-reply', 'space-post'] }).notNull(),
     payload: jsonb('payload').notNull(),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),

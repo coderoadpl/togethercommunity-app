@@ -9,6 +9,7 @@ export * from './grant.js';
 export * from './api-key.js';
 export * from './course.js';
 export * from './community.js';
+export * from './space.js';
 export * from './tenant.js';
 export * from './tenant-secret.js';
 export * from './onboarding.js';

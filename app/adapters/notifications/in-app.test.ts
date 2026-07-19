@@ -27,8 +27,8 @@ const notification: Notification = {
 const context: NotificationDeliveryContext = {
   recipientEmail: 'u2@example.com',
   tenantName: 'Tenant',
-  lessonName: 'Lesson 1',
-  lessonUrl: 'http://acme.localhost/my/courses/c1/lessons/l1',
+  contextName: 'Lesson 1',
+  contextUrl: 'http://acme.localhost/my/courses/c1/lessons/l1',
   language: 'pl',
 };
 

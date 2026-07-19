@@ -59,6 +59,7 @@ import type {
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  OnboardingStateRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
   TenantDomainRepository,
@@ -1541,6 +1542,23 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         contentVersion: 1,
       };
     }),
+});
+
+export const createOnboardingStateRepository = (db: Db): OnboardingStateRepository => ({
+  findDismissedAt: async (tenantId) => {
+    const rows = await db
+      .select({ onboardingDismissedAt: tenants.onboardingDismissedAt })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    return rows[0]?.onboardingDismissedAt ?? null;
+  },
+  dismiss: async (tenantId, dismissedAt) => {
+    await db
+      .update(tenants)
+      .set({ onboardingDismissedAt: dismissedAt })
+      .where(eq(tenants.id, tenantId));
+  },
 });
 
 export const createTenantAccessReader = (db: Db): TenantAccessReader => {

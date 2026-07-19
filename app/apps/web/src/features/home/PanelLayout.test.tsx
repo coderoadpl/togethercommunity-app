@@ -11,9 +11,9 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
+import { DashboardPanel } from './DashboardPanel.js';
 import {
   PanelCoursesRoute,
-  PanelIndexRoute,
   PanelIntegrationsRoute,
   PanelLessonsRoute,
   PanelMembersRoute,
@@ -69,7 +69,7 @@ const commonHandlers = () => {
 const renderPanelAt = async (initialPath: string) => {
   const rootRoute = createRootRoute();
   const layoutRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: PanelLayout });
-  const indexRoute = createRoute({ getParentRoute: () => layoutRoute, path: '/', component: PanelIndexRoute });
+  const indexRoute = createRoute({ getParentRoute: () => layoutRoute, path: '/', component: DashboardPanel });
   const productsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'products', component: PanelProductsRoute });
   const coursesRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'courses', component: PanelCoursesRoute });
   const lessonsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'lessons', component: PanelLessonsRoute });

@@ -413,6 +413,12 @@ export interface TenantDomainRepository {
   listVerifiedDomains(): Promise<TenantDomain[]>;
 }
 
+/** The only persisted onboarding state; every checklist step is recomputed on read. */
+export interface OnboardingStateRepository {
+  findDismissedAt(tenantId: string): Promise<string | null>;
+  dismiss(tenantId: string, dismissedAt: string): Promise<void>;
+}
+
 export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 
 export interface TenantRepository {

@@ -2429,6 +2429,12 @@ export const PublishedStatus = styled('span')(({ theme }) => ({
       }),
 }));
 
+export const ChecklistDoneLabel = styled('span')(({ theme }) => ({
+  textDecoration: 'line-through',
+  textDecorationColor: alpha(theme.palette.text.primary, 0.4),
+  color: theme.palette.text.secondary,
+}));
+
 export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
 
 export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({

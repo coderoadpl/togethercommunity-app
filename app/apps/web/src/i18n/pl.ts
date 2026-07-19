@@ -143,6 +143,20 @@ export const pl: Messages = {
     activeSubscriptions: 'Aktywne subskrypcje',
     orders30Days: 'Zamówienia — 30 dni',
   },
+  onboarding: {
+    title: 'Pierwsze kroki',
+    progress: ({ done, total }) => format('{done} z {total} gotowe', { done, total }),
+    dismiss: 'Ukryj listę',
+    stepDone: 'gotowe',
+    stepOpen: 'do zrobienia',
+    steps: {
+      courseWithLesson: 'Utwórz kurs z pierwszą lekcją',
+      productWithPrice: 'Dodaj produkt z aktywną ceną',
+      publishedProduct: 'Opublikuj produkt, aby udostępnić link do zakupu',
+      firstMember: 'Powitaj pierwszego uczestnika',
+      paymentsConfigured: 'Skonfiguruj płatności',
+    },
+  },
   sales: {
     loading: 'ładowanie sprzedaży…',
     empty: 'Nie masz jeszcze żadnych zamówień.',

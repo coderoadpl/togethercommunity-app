@@ -148,6 +148,16 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-dashboard',
+    auth: 'creator',
+    path: '/panel',
+    ready: async (page) => {
+      await page.getByTestId('onboarding-checklist').waitFor(visible);
+      await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
+      await page.getByTestId('dashboard-member-row').first().waitFor(visible);
+    },
+  },
+  {
     name: 'panel-products',
     auth: 'creator',
     path: '/panel/products',

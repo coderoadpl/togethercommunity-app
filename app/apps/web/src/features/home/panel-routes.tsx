@@ -4,7 +4,6 @@ import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
 import { actions } from '../../api.js';
 import { PanelPage } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { DashboardPanel } from './DashboardPanel.js';
 import { CourseDetail } from './courses/CourseDetail.js';
 import { CourseCreatePage, CoursesListPanel } from './courses/CoursesPanel.js';
 import { ModuleCreatePage } from './courses/ModuleCreatePage.js';
@@ -18,8 +17,6 @@ import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 import { SalesPanel } from './sales/SalesPanel.js';
-
-export const PanelIndexRoute = () => <DashboardPanel />;
 
 export const PanelProductsRoute = () => <ProductsPanel />;
 export const PanelProductCreateRoute = () => <ProductCreatePage />;

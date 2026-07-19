@@ -280,6 +280,10 @@ const deps = (input: {
         contentVersion: 1,
       }),
     },
+    onboardingState: {
+      findDismissedAt: async () => null,
+      dismiss: async () => undefined,
+    },
     tenantAccess: {
       listTenantsForStaff: async () => memberships,
       findStaffGrant: async () => null,

@@ -98,6 +98,8 @@ import {
   getTenantSecretsMasked,
   getTenantSettings,
   updateTenantSettings,
+  getCreatorOnboarding,
+  dismissCreatorOnboarding,
   grantProductToMember,
   createPost,
   deletePost,
@@ -726,6 +728,16 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid tenant settings payload', parsed.error.flatten())));
     const result = await updateTenantSettings({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ settings: result.value }) : result);
+  });
+
+  app.get(API_PATHS.onboarding, async (c) => {
+    const result = await getCreatorOnboarding({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ onboarding: result.value }) : result);
+  });
+
+  app.post(API_PATHS.onboardingDismiss, async (c) => {
+    const result = await dismissCreatorOnboarding({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ onboarding: result.value }) : result);
   });
 
   app.post(API_PATHS.stripeTestConnection, async (c) => {

@@ -20,6 +20,7 @@ import {
   createProductPriceRepository,
   createProcessedPaymentEventRepository,
   createProductRepository,
+  createOnboardingStateRepository,
   createTenantAccessReader,
   createTenantApiKeyRepository,
   createTenantDomainRepository,
@@ -69,6 +70,7 @@ import type {
   ProductPriceRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  OnboardingStateRepository,
   RealtimeBusPort,
   TenantAccessReader,
   TenantApiKeyRepository,
@@ -125,6 +127,7 @@ export interface AppDeps {
   devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
+  onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
   health: HealthPort;
   ids: IdGenerator;
@@ -234,6 +237,7 @@ export const createDeps = (env: Env): AppDeps => {
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
     tenants: createTenantRepository(db),
+    onboardingState: createOnboardingStateRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),
     ids: { nextId: () => randomUUID() },

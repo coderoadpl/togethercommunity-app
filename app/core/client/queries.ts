@@ -178,6 +178,10 @@ export const tenantSettingsScopes = {
   all: () => ['tenant-settings'] as const,
 };
 
+export const onboardingScopes = {
+  all: () => ['onboarding'] as const,
+};
+
 export const coursesScopes = {
   all: () => ['courses'] as const,
   lists: () => ['courses', 'list'] as const,
@@ -690,6 +694,20 @@ export const updateTenantSettingsMutation = (api: ApiClient) =>
   });
 
 export const tenantSettingsInvalidates = () => ({ queryKey: tenantSettingsScopes.all() });
+
+export const onboardingQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: onboardingScopes.all(),
+    call: ({ signal }) => api.getOnboarding(signal),
+  });
+
+export const dismissOnboardingMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...onboardingScopes.all(), 'dismiss'],
+    call: () => api.dismissOnboarding(),
+  });
+
+export const onboardingInvalidates = () => ({ queryKey: onboardingScopes.all() });
 
 /** Invalidation filters for the course tree editor (courses, modules, lessons). */
 export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });

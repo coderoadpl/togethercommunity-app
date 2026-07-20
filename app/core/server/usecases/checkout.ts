@@ -6,6 +6,7 @@ import {
   validation,
   type AppError,
   type CheckoutSessionInput,
+  type Product,
   type ProductPrice,
   type Result,
   type Tenant,
@@ -25,6 +26,11 @@ export interface CheckoutDeps {
   payment: PaymentProvider;
 }
 
+export interface CheckoutSelection {
+  product: Product;
+  price: ProductPrice | null;
+}
+
 export const getPaymentConfig = async (
   tenantId: string,
   deps: Pick<CheckoutDeps, 'tenantSecrets'>,
@@ -34,6 +40,55 @@ export const getPaymentConfig = async (
     deps.tenantSecrets.findByKey(tenantId, 'stripe.webhookSecret'),
   ]);
   return ok({ stripeConfigured: key !== null && webhookSecret !== null });
+};
+
+export const validateCheckoutSelection = async (
+  tenantId: string,
+  input: Pick<CheckoutSessionInput, 'productId' | 'priceId'>,
+  deps: Pick<CheckoutDeps, 'products' | 'prices'>,
+): Promise<Result<CheckoutSelection, AppError>> => {
+  const product = await deps.products.findById(tenantId, input.productId);
+  if (!product || !product.published) {
+    return err(notFound(`No published product "${input.productId}" in this tenant`));
+  }
+
+  let price: ProductPrice | null = null;
+  if (input.priceId !== undefined) {
+    price = await deps.prices.findById(tenantId, input.priceId);
+    if (!price || price.productId !== product.id || !price.active) {
+      return err(notFound(`No active price "${input.priceId}" for this product`));
+    }
+  }
+
+  return ok({ product, price });
+};
+
+export const startCheckoutSession = async (
+  tenant: Tenant,
+  tenantBaseUrl: string,
+  input: CheckoutSessionInput,
+  selection: CheckoutSelection,
+  deps: Pick<CheckoutDeps, 'payment'>,
+): Promise<Result<{ url: string }, AppError>> => {
+  const { product, price } = selection;
+  const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
+  const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
+  const created = await deps.payment.createCheckoutSession({
+    tenantId: tenant.id,
+    productId: product.id,
+    productName: product.title,
+    priceCents: price?.amountCents ?? product.priceCents,
+    currency: price?.currency ?? product.currency,
+    successUrl: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${checkoutPath}?status=cancelled`,
+    ...(input.email === undefined ? {} : { customerEmail: input.email }),
+    ...(input.language === undefined ? {} : { language: input.language }),
+    ...(price === null ? {} : { priceId: price.id }),
+    ...(price !== null && price.kind === 'recurring' && price.interval !== null
+      ? { recurringInterval: price.interval }
+      : {}),
+  });
+  return created.ok ? ok({ url: created.value.url }) : created;
 };
 
 export const createCheckoutSession = async (
@@ -49,33 +104,7 @@ export const createCheckoutSession = async (
   if (!configured.ok) return configured;
   if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
 
-  const product = await deps.products.findById(tenant.id, parsed.data.productId);
-  if (!product || !product.published) return err(notFound(`No published product "${parsed.data.productId}" in this tenant`));
-
-  let price: ProductPrice | null = null;
-  if (parsed.data.priceId !== undefined) {
-    price = await deps.prices.findById(tenant.id, parsed.data.priceId);
-    if (!price || price.productId !== product.id || !price.active) {
-      return err(notFound(`No active price "${parsed.data.priceId}" for this product`));
-    }
-  }
-
-  const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
-  const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
-  const created = await deps.payment.createCheckoutSession({
-    tenantId: tenant.id,
-    productId: product.id,
-    productName: product.title,
-    priceCents: price?.amountCents ?? product.priceCents,
-    currency: price?.currency ?? product.currency,
-    successUrl: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${checkoutPath}?status=cancelled`,
-    ...(parsed.data.email === undefined ? {} : { customerEmail: parsed.data.email }),
-    ...(parsed.data.language === undefined ? {} : { language: parsed.data.language }),
-    ...(price === null ? {} : { priceId: price.id }),
-    ...(price !== null && price.kind === 'recurring' && price.interval !== null
-      ? { recurringInterval: price.interval }
-      : {}),
-  });
-  return created.ok ? ok({ url: created.value.url }) : created;
+  const selection = await validateCheckoutSelection(tenant.id, parsed.data, deps);
+  if (!selection.ok) return selection;
+  return startCheckoutSession(tenant, tenantBaseUrl, parsed.data, selection.value, deps);
 };

@@ -5,12 +5,19 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import { createPostInputSchema, reactToPostInputSchema, type MemberSpace, type SpaceFeedItem } from '@core/domain/index.js';
+import {
+  createPostInputSchema,
+  reactToPostInputSchema,
+  type DiscussionPost,
+  type MemberSpace,
+  type SpaceFeedItem,
+} from '@core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
+import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
 
 const okMe = () =>
@@ -69,6 +76,17 @@ const okFeed = (spaceId: string, items: SpaceFeedItem[], isFollowing = false) =>
     HttpResponse.json({
       ok: true,
       data: { feed: { spaceId, items, nextCursor: null, isFollowing } },
+    }),
+  );
+
+const okDiscussion = (
+  threads: DiscussionPost[],
+  viewerSubscriptions: Record<string, 'subscribed' | 'muted'> = {},
+) =>
+  http.get('/api/discussion', () =>
+    HttpResponse.json({
+      ok: true,
+      data: { discussion: { threads, nextCursor: null, viewerSubscriptions } },
     }),
   );
 
@@ -179,6 +197,34 @@ describe('community pages', () => {
     await waitFor(() => expect(reactCalls).toEqual([{ postId: 'p1', emoji: '👍' }]));
     await waitFor(() => expect(screen.getByTestId('reaction-p1-👍')).toHaveAttribute('aria-pressed', 'true'));
     expect(screen.getByTestId('reaction-p1-👍')).toHaveTextContent('2');
+  });
+
+  it('mutes a followed thread from the space thread surface', async () => {
+    const muteCalls: unknown[] = [];
+    const root: DiscussionPost = {
+      ...feedItem({ id: 'p1', body: 'Obserwowany wątek' }),
+      replies: [],
+    };
+    server.use(
+      okMe(),
+      noNotifications(),
+      okSpaces([space({ id: 's1', name: 'Ogólna' })]),
+      okDiscussion([root], { p1: 'subscribed' }),
+      http.post('/api/discussion/mute', async ({ request }) => {
+        muteCalls.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { rootPostId: 'p1' } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    const toggle = await screen.findByTestId('follow-toggle-p1');
+    expect(toggle).toHaveTextContent(pl.discussion.following);
+    await user.click(toggle);
+
+    await waitFor(() => expect(muteCalls).toEqual([{ rootPostId: 'p1' }]));
+    expect(screen.getByTestId('follow-toggle-p1')).toHaveTextContent(pl.discussion.mutedState);
   });
 
   it('hides a gated space the member cannot access behind a not-found state', async () => {

@@ -26,6 +26,7 @@ const member: Member = {
 
 const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): TenantAccessReader => ({
   listTenantsForStaff: async () => memberships,
+  listStaffForTenant: async () => [],
   findStaffGrant: async (_userId, lookup) =>
     memberships.find((m) =>
       'tenantId' in lookup ? m.tenant.id === lookup.tenantId : m.tenant.slug === lookup.tenantSlug,

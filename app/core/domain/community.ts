@@ -85,7 +85,7 @@ export const searchPostsInputSchema = z.object({
 
 export type SearchPostsInput = z.input<typeof searchPostsInputSchema>;
 
-export const notificationKindSchema = z.enum(['thread-reply', 'space-post']);
+export const notificationKindSchema = z.enum(['thread-reply', 'space-post', 'lesson-question']);
 
 export type NotificationKind = z.output<typeof notificationKindSchema>;
 

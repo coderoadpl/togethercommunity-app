@@ -50,7 +50,7 @@ export interface M2mEnrollResult {
 }
 
 export const m2mEnroll = async (
-  tenant: Pick<Tenant, 'id' | 'name'>,
+  tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   input: M2mEnrollInput,
   deps: M2mEnrollDeps,
 ): Promise<Result<M2mEnrollResult, AppError>> => {

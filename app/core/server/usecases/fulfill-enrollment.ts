@@ -27,6 +27,7 @@ export interface FulfillEnrollmentDeps extends EnsureMemberDeps {
   email: EmailPort;
   devMagicLinks: DevMagicLinkReader;
   appBaseUrl: string;
+  baseDomain: string;
   exposeMagicLinks: boolean;
 }
 
@@ -38,7 +39,7 @@ export interface FulfillEnrollmentResult {
 }
 
 export const fulfillEnrollment = async (
-  tenant: Pick<Tenant, 'id' | 'name'>,
+  tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   input: {
     email: string;
     productId: string;
@@ -63,9 +64,12 @@ export const fulfillEnrollment = async (
 
   let magicLink: FulfillEnrollmentResult['magicLink'] = null;
   if (input.sendEmail) {
+    const tenantBaseUrl = new URL(deps.appBaseUrl);
+    tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
     const created = await deps.authPort.createEnrollmentMagicLink({
       email: member.value.email,
-      callbackURL: deps.appBaseUrl,
+      callbackURL: tenantBaseUrl.toString(),
+      baseUrl: tenantBaseUrl.toString(),
       tenantName: tenant.name,
       language: input.language,
     });

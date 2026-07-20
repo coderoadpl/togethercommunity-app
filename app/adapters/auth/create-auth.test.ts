@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeEmail } from '@core/domain/index.js';
+import { err, normalizeEmail, ok, validation } from '@core/domain/index.js';
 import { createDb } from '@adapters/db/client.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '@adapters/db/repositories.js';
 
-import { createAuth, createAuthPort } from './create-auth.js';
+import { createAuth, createAuthPort, type AuthSettings } from './create-auth.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 
-const buildAuth = () => {
+const buildAuth = (
+  enforceSignUpConsent: NonNullable<AuthSettings['enforceSignUpConsent']> = async () =>
+    ok({ recorded: false }),
+) => {
   const db = createDb('node-postgres', connectionString);
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
@@ -22,6 +25,7 @@ const buildAuth = () => {
     email: createDevEmailPort(db),
     defaultTenantName: 'Together',
     google: null,
+    enforceSignUpConsent,
   });
   return {
     auth,
@@ -30,6 +34,69 @@ const buildAuth = () => {
     emails: createDevEmailReader(db),
   };
 };
+
+const signUp = (auth: ReturnType<typeof buildAuth>['auth'], email: string, termsAccepted?: boolean) =>
+  auth.handler(
+    new Request('http://studio.localhost:48730/api/auth/sign-up/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'studio.localhost:48730',
+        origin: 'http://studio.localhost:48730',
+      },
+      body: JSON.stringify({
+        name: 'Ada',
+        email,
+        password: 'secret12',
+        ...(termsAccepted === undefined ? {} : { termsAccepted }),
+      }),
+    }),
+  );
+
+describe('email sign-up consent', () => {
+  it('rejects signup before account creation when configured legal terms are not accepted', async () => {
+    const { auth } = buildAuth(async ({ accepted }) =>
+      accepted === true
+        ? ok({ recorded: true })
+        : err(validation('Accepting the terms and privacy policy is required')),
+    );
+    const email = `signup-no-consent-${Date.now()}@together.dev`;
+
+    const response = await signUp(auth, email);
+    const { internalAdapter } = await auth.$context;
+
+    expect(response.status).toBe(400);
+    expect(await internalAdapter.findUserByEmail(email)).toBeNull();
+  });
+
+  it('records accepted consent and creates the account on a configured tenant', async () => {
+    const acceptedEmails: string[] = [];
+    const { auth } = buildAuth(async ({ accepted, email }) => {
+      if (accepted !== true) return err(validation('Accepting the terms and privacy policy is required'));
+      acceptedEmails.push(email);
+      return ok({ recorded: true });
+    });
+    const email = `signup-consent-${Date.now()}@together.dev`;
+
+    const response = await signUp(auth, email, true);
+    const { internalAdapter } = await auth.$context;
+
+    expect(response.status).toBe(200);
+    expect(acceptedEmails).toEqual([email]);
+    expect(await internalAdapter.findUserByEmail(email)).not.toBeNull();
+  });
+
+  it('keeps signup unchanged when the tenant has no configured legal URLs', async () => {
+    const { auth } = buildAuth(async () => ok({ recorded: false }));
+    const email = `signup-no-legal-${Date.now()}@together.dev`;
+
+    const response = await signUp(auth, email);
+    const { internalAdapter } = await auth.$context;
+
+    expect(response.status).toBe(200);
+    expect(await internalAdapter.findUserByEmail(email)).not.toBeNull();
+  });
+});
 
 describe('createAuthPort.ensureUser', () => {
   it('creates a passwordless account once and is idempotent on the same email', async () => {
@@ -93,6 +160,24 @@ describe('createAuthPort.requestMagicLink', () => {
 
     const link = await magicLinks.findByEmail(normalizeEmail(email));
     expect(new URL(link?.url ?? '').host).toBe('localhost:48730');
+  });
+});
+
+describe('createAuthPort.createEnrollmentMagicLink', () => {
+  it('rebases the captured enrollment link onto the tenant host', async () => {
+    const { authPort } = buildAuth();
+    const email = `enrollment-${Date.now()}@together.dev`;
+
+    const created = await authPort.createEnrollmentMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/',
+      baseUrl: 'http://studio.localhost:48730',
+      tenantName: 'Studio',
+      language: 'en',
+    });
+
+    expect(new URL(created.url).host).toBe('studio.localhost:48730');
+    expect(new URL(created.url).host).not.toBe('localhost:48730');
   });
 });
 

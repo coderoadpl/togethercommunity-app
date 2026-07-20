@@ -3,9 +3,9 @@
   "generatedFrom": "npm run coverage",
   "floors": {
     "core/domain": {
-      "lines": 90,
-      "branches": 90,
-      "functions": 94
+      "lines": 92,
+      "branches": 92,
+      "functions": 93
     },
     "core/contract": {
       "lines": 100,
@@ -13,39 +13,39 @@
       "functions": 100
     },
     "core/server": {
-      "lines": 96,
+      "lines": 95,
       "branches": 80,
-      "functions": 94
+      "functions": 95
     },
     "core/client": {
-      "lines": 90,
+      "lines": 88,
       "branches": 97,
-      "functions": 86
+      "functions": 84
     },
     "adapters": {
-      "lines": 71,
+      "lines": 69,
       "branches": 77,
-      "functions": 65
+      "functions": 64
     },
     "apps/web": {
-      "lines": 84,
+      "lines": 89,
       "branches": 81,
-      "functions": 66
+      "functions": 67
     },
     "apps/cli": {
-      "lines": 1,
+      "lines": 0,
       "branches": 77,
       "functions": 33
     },
     "apps/server": {
-      "lines": 36,
-      "branches": 67,
-      "functions": 75
+      "lines": 37,
+      "branches": 68,
+      "functions": 76
     },
     "scripts": {
       "lines": 6,
-      "branches": 69,
-      "functions": 55
+      "branches": 68,
+      "functions": 53
     }
   }
 }

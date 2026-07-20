@@ -211,6 +211,10 @@ export const pl: Messages = {
       lesson.length > 0
         ? format('{author} odpowiedział(a) w dyskusji „{lesson}”', { author, lesson })
         : format('{author} odpowiedział(a) w dyskusji', { author }),
+    lessonQuestion: ({ author, lesson }) =>
+      lesson.length > 0
+        ? format('{author} zadał(a) pytanie pod lekcją „{lesson}”', { author, lesson })
+        : format('{author} zadał(a) pytanie do lekcji', { author }),
     spacePost: ({ author, space }) =>
       space.length > 0
         ? format('{author} dodał(a) nowy wpis w strefie „{space}”', { author, space })

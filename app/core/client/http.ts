@@ -127,6 +127,7 @@ import {
   type TenantSecretDeleteInput,
   type TenantSecretSetInput,
   type TenantSettingsUpdateInput,
+  type TermsConsentRequest,
   type WriteMethod,
 } from '@core/contract/index.js';
 import {
@@ -250,13 +251,13 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
-  recordTermsConsent: (signal?: AbortSignal) =>
+  recordTermsConsent: (input: TermsConsentRequest, signal?: AbortSignal) =>
     request(
       options,
       API_ROUTES.termsConsent.method,
       API_ROUTES.termsConsent.path,
       termsConsentOutputSchema,
-      {},
+      input,
       signal,
     ),
   deliverStripeWebhook: (tenantId: string, payloadRaw: string, signatureHeader: string, signal?: AbortSignal) =>

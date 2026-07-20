@@ -199,6 +199,7 @@ export interface Messages {
     loading: string;
     markAllRead: string;
     threadReply: (params: { author: string; lesson: string }) => string;
+    lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
   };
   security: {

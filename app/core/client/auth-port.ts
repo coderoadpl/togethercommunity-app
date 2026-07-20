@@ -16,7 +16,12 @@ export interface TwoFactorEnrollment {
  * Auth side effects are commands, so every method returns a write-tagged result.
  */
 export interface AuthClientPort {
-  signUp(input: { name: string; email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
+  signUp(input: {
+    name: string;
+    email: string;
+    password: string;
+    termsAccepted?: boolean;
+  }): Promise<WriteResult<AuthSessionResult>>;
   signIn(input: { email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   requestMagicLink(input: { email: string; callbackURL: string; language?: string }): Promise<WriteResult<void>>;
   /** Send a password-reset email (used by members to set or reset their password). */

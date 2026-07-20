@@ -179,6 +179,12 @@ export const termsConsentOutputSchema = z.object({
   recorded: z.boolean(),
 });
 
+export const termsConsentRequestSchema = z.object({
+  accepted: z.boolean(),
+});
+
+export type TermsConsentRequest = z.input<typeof termsConsentRequestSchema>;
+
 export const stripeWebhookOutputSchema = z.object({
   received: z.literal(true),
   processed: z.boolean(),

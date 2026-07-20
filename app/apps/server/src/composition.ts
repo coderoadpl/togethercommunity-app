@@ -92,6 +92,9 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
+import { enforceTermsConsent, resolveTenant } from '@core/server/index.js';
+import { ok } from '@core/domain/index.js';
+import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
 import type { Env } from './env.js';
 
@@ -163,7 +166,11 @@ export interface AppDeps {
 export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
+  const tenants = createTenantRepository(db);
+  const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
+  const ids = { nextId: () => randomUUID() };
+  const clock = { nowIso: () => new Date().toISOString() };
   const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
   const payment =
@@ -183,8 +190,14 @@ export const createDeps = (env: Env): AppDeps => {
   };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
-      tenantUrl(tenantSlug, courseId === null ? '/my' : `/my/courses/${courseId}/lessons/${lessonId}`),
-    spaceUrl: ({ tenantSlug, spaceId }) => tenantUrl(tenantSlug, `/my/spaces/${spaceId}`),
+      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId)),
+    spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
+      tenantUrl(
+        tenantSlug,
+        rootPostId === undefined
+          ? communitySpacePath(spaceId)
+          : communityPostPath(spaceId, rootPostId),
+      ),
   };
 
   const google =
@@ -210,6 +223,20 @@ export const createDeps = (env: Env): AppDeps => {
     email,
     defaultTenantName: 'Together',
     google,
+    enforceSignUpConsent: async ({ request, email: signUpEmail, accepted }) => {
+      const resolved = await resolveTenant(
+        request.headers.get('host') ?? new URL(request.url).host,
+        request.headers.get(TENANT_HEADER),
+        { tenantDomains, tenants, baseDomain: env.APP_BASE_DOMAIN },
+      );
+      if (!resolved.ok) return resolved;
+      if (resolved.value === null) return ok({ recorded: false });
+      return enforceTermsConsent(
+        resolved.value.tenant.id,
+        { accepted, userId: null, email: signUpEmail, source: 'register' },
+        { tenants, consents, ids, clock },
+      );
+    },
     trustedOrigins: async () => {
       const domains = await tenantDomains.listVerifiedDomains();
       return [
@@ -262,13 +289,13 @@ export const createDeps = (env: Env): AppDeps => {
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
-    tenants: createTenantRepository(db),
-    consents: createTermsConsentRepository(db),
+    tenants,
+    consents,
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),
-    ids: { nextId: () => randomUUID() },
-    clock: { nowIso: () => new Date().toISOString() },
+    ids,
+    clock,
     baseDomain: env.APP_BASE_DOMAIN,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {

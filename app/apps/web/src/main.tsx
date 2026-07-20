@@ -38,6 +38,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
+import { MEMBER_ROUTE_PATHS } from '@core/contract/index.js';
 
 import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';
@@ -144,7 +145,7 @@ const courseStructureRoute = createRoute({
 });
 const lessonPlayerRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/my/courses/$courseId/lessons/$lessonId',
+  path: MEMBER_ROUTE_PATHS.lesson,
   component: LessonPlayerRoute,
 });
 const registerRoute = createRoute({
@@ -169,12 +170,12 @@ const communityRoute = createRoute({
 });
 const spaceFeedRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/community/$spaceId',
+  path: MEMBER_ROUTE_PATHS.communitySpace,
   component: SpaceFeedRoute,
 });
 const spaceThreadRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/community/$spaceId/posts/$postId',
+  path: MEMBER_ROUTE_PATHS.communityPost,
   component: SpaceThreadRoute,
 });
 

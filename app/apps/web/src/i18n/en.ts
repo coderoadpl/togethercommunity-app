@@ -205,6 +205,10 @@ export const en: Messages = {
       lesson.length > 0
         ? format('{author} replied in the "{lesson}" discussion', { author, lesson })
         : format('{author} replied in a discussion', { author }),
+    lessonQuestion: ({ author, lesson }) =>
+      lesson.length > 0
+        ? format('{author} asked a question under “{lesson}”', { author, lesson })
+        : format('{author} asked a lesson question', { author }),
     spacePost: ({ author, space }) =>
       space.length > 0
         ? format('{author} posted in the “{space}” space', { author, space })

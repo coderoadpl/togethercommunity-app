@@ -185,8 +185,37 @@ const applyPaymentAdjustment = async (
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
     if (!refunded) return ok({ processed: false });
   }
-  const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId);
-  if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
+  const remainingPaidOrders = await deps.paymentRefunds.listPaidOrdersForMemberProduct(
+    tenant.id,
+    order.memberId,
+    order.productId,
+  );
+  let remainingPaidAccess = remainingPaidOrders.some((candidate) => candidate.kind === 'one_time');
+  if (!remainingPaidAccess) {
+    const providerSubscriptionIds = new Set(
+      remainingPaidOrders
+        .map((candidate) => candidate.providerObjectIds['subscription'])
+        .filter((id): id is string => id !== undefined),
+    );
+    for (const providerSubscriptionId of providerSubscriptionIds) {
+      const [latest, subscription] = await Promise.all([
+        deps.paymentRefunds.findLatestSubscriptionOrder(tenant.id, providerSubscriptionId),
+        deps.subscriptions.findByProviderSubscriptionId(tenant.id, providerSubscriptionId),
+      ]);
+      if (
+        latest?.status === 'paid' &&
+        subscription?.productId === order.productId &&
+        subscription.currentPeriodEnd >= deps.clock.nowIso()
+      ) {
+        remainingPaidAccess = true;
+        break;
+      }
+    }
+  }
+  if (!remainingPaidAccess) {
+    const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId);
+    if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
+  }
 
   const providerSubscriptionId = order.providerObjectIds['subscription'];
   const invoiceId = order.providerObjectIds['invoice'];

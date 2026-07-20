@@ -54,6 +54,7 @@ import {
   tenantSecretDeleteInputSchema,
   tenantSecretSetInputSchema,
   tenantSettingsUpdateInputSchema,
+  termsConsentRequestSchema,
   toEnvelope,
 } from '@core/contract/index.js';
 import {
@@ -79,7 +80,6 @@ import {
   detachModuleFromCourse,
   authenticateApiKey,
   createCourse,
-  createCheckoutSession,
   createLesson,
   createModule,
   createProduct,
@@ -103,6 +103,7 @@ import {
   getPlayableLesson,
   getPublicOffer,
   getPaymentConfig,
+  startCheckoutSession,
   getTenantSecretsMasked,
   getTenantSettings,
   updateTenantSettings,
@@ -158,6 +159,7 @@ import {
   resolveTenant,
   setTenantSecret,
   simulatePurchase,
+  validateCheckoutSelection,
   listBunnyVideos,
   testBunnyConnection,
   testStripeConnection,
@@ -346,6 +348,13 @@ export const buildApp = (deps: AppDeps) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
+    const configured = await getPaymentConfig(tenant.value.tenant.id, deps);
+    if (!configured.ok) return respondPublic(configured);
+    if (!configured.value.stripeConfigured) {
+      return respondPublic(err(validation('Stripe is not configured for this tenant')));
+    }
+    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
+    if (!selection.ok) return respondPublic(selection);
     const consent = await enforceTermsConsent(
       tenant.value.tenant.id,
       {
@@ -363,7 +372,9 @@ export const buildApp = (deps: AppDeps) => {
       tenant.value.source,
       deps.appBaseUrl,
     );
-    return respondPublic(await createCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, deps));
+    return respondPublic(
+      await startCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, selection.value, deps),
+    );
   });
 
   // Public path (not the authenticated /api/* block): a freshly registered
@@ -374,10 +385,15 @@ export const buildApp = (deps: AppDeps) => {
     if (!tenant.value) return respondPublic(err(tenantNotFound()));
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     if (!user) return respondPublic(err(unauthorized()));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = termsConsentRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return respondPublic(err(validation('Invalid consent payload', parsed.error.flatten())));
+    }
     return respondPublic(
       await enforceTermsConsent(
         tenant.value.tenant.id,
-        { accepted: true, userId: user.userId, email: user.email, source: 'register' },
+        { accepted: parsed.data.accepted, userId: user.userId, email: user.email, source: 'register' },
         deps,
       ),
     );
@@ -487,6 +503,9 @@ export const buildApp = (deps: AppDeps) => {
       const body: unknown = await c.req.json().catch(() => null);
       const parsed = simulatePurchaseInputSchema.safeParse(body);
       if (!parsed.success) return respond(err(validation('Invalid purchase payload', parsed.error.flatten())));
+
+      const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
+      if (!selection.ok) return respond(selection);
 
       const consent = await enforceTermsConsent(
         tenant.value.tenant.id,

@@ -1,4 +1,4 @@
-import { ok, spacePost, threadReply } from '@core/domain/index.js';
+import { lessonQuestion, ok, spacePost, threadReply } from '@core/domain/index.js';
 import type { EmailPort, NotificationChannelPort } from '@core/server/index.js';
 
 export const createEmailNotificationChannel = (email: EmailPort): NotificationChannelPort => ({
@@ -13,7 +13,15 @@ export const createEmailNotificationChannel = (email: EmailPort): NotificationCh
             snippet: notification.payload.snippet,
             url: context.contextUrl,
           })
-        : threadReply(context.language, {
+        : notification.kind === 'lesson-question'
+          ? lessonQuestion(context.language, {
+              tenantName: context.tenantName,
+              lessonName: context.contextName,
+              authorDisplay: notification.payload.authorDisplay,
+              snippet: notification.payload.snippet,
+              url: context.contextUrl,
+            })
+          : threadReply(context.language, {
             tenantName: context.tenantName,
             lessonName: context.contextName,
             authorDisplay: notification.payload.authorDisplay,

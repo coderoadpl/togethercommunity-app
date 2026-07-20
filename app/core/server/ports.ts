@@ -238,7 +238,7 @@ export interface DiscussionLinkPort {
     courseId: string | null;
     lessonId: string;
   }): string;
-  spaceUrl(input: { tenantSlug: string | null; spaceId: string }): string;
+  spaceUrl(input: { tenantSlug: string | null; spaceId: string; rootPostId?: string }): string;
 }
 
 export interface MemberCourseProgressRepository {
@@ -424,6 +424,7 @@ export interface PaymentRefundRepository {
     providerObjectIds: Record<string, string>,
   ): Promise<Order | null>;
   findLatestSubscriptionOrder(tenantId: string, providerSubscriptionId: string): Promise<Order | null>;
+  listPaidOrdersForMemberProduct(tenantId: string, memberId: string, productId: string): Promise<Order[]>;
   markOrderRefunded(tenantId: string, orderId: string): Promise<Order | null>;
 }
 
@@ -531,6 +532,7 @@ export interface TermsConsentRepository {
 
 export interface TenantAccessReader {
   listTenantsForStaff(userId: string): Promise<Membership[]>;
+  listStaffForTenant(tenantId: string): Promise<Array<{ userId: string; email: string }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
   findMember(userId: string, tenantId: string): Promise<Member | null>;
 }
@@ -565,6 +567,7 @@ export interface AuthPort {
   createEnrollmentMagicLink(input: {
     email: string;
     callbackURL: string;
+    baseUrl: string;
     tenantName: string;
     language: string;
   }): Promise<{ url: string }>;

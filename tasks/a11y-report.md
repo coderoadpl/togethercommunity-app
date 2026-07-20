@@ -73,8 +73,11 @@ the audit.
 
 ## Re-run (post-fix, clean)
 
+Re-verified 2026-07-20 after the round-2 audit fixes (consent, refund, space
+mute UI); numbers unchanged from the post-fix baseline.
+
 ```
-a11y: 161 renders scanned in ~170s
+a11y: 161 renders scanned in 179.5s
 a11y: 14 total violations across 1 rules:
   [moderate] heading-order — 14x (all themes; screens: lesson)   ← waived
 a11y: PASS — no serious/critical violations (moderate/minor only).

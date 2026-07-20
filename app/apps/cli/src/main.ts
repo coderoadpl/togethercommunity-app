@@ -271,6 +271,9 @@ const spacePostOptionsSchema = z.object({
   space: z.string().min(1),
   body: z.string().min(1),
 });
+const spaceReplyOptionsSchema = spacePostOptionsSchema.extend({
+  parent: z.string().min(1),
+});
 const spaceIdOptionsSchema = z.object({
   space: z.string().min(1),
 });
@@ -1611,6 +1614,27 @@ space
         await ctx.api.createPost({ contextKind: 'space', contextId: options.space, body: options.body }),
         ctx.json,
         (data) => `posted ${data.post.id.slice(0, 8)} in space ${data.post.contextId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+space
+  .command('reply')
+  .description('Reply to a post in a space feed')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--parent <postId>')
+  .requiredOption('--body <text>')
+  .action(
+    withInput(z.tuple([spaceReplyOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createPost({
+          contextKind: 'space',
+          contextId: options.space,
+          parentPostId: options.parent,
+          body: options.body,
+        }),
+        ctx.json,
+        (data) => `replied ${data.post.id.slice(0, 8)} to thread ${data.post.rootPostId.slice(0, 8)}`,
       );
     }),
   );

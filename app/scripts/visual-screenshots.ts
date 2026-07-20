@@ -60,6 +60,17 @@ interface ScreenSpec {
 
 const visible = { state: 'visible', timeout: 20000 } as const;
 
+// The unread badge lives on the header bell on sm+ and on the bottom
+// tab-bar bell on xs (decision D4) — wait on the instance this viewport
+// actually shows, otherwise a shot can land before the async count arrives.
+const waitForUnreadBadge = async (page: Page): Promise<void> => {
+  const width = page.viewportSize()?.width ?? 0;
+  const bellTestId = width < 600 ? 'notification-tab' : 'notification-bell';
+  await page
+    .locator(`[data-testid="${bellTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
+    .waitFor(visible);
+};
+
 const SCREENS: ScreenSpec[] = [
   {
     name: 'login',
@@ -82,14 +93,7 @@ const SCREENS: ScreenSpec[] = [
     ready: async (page) => {
       await page.getByTestId('course-card-course-js').waitFor(visible);
       await page.getByTestId('completion-course-js').waitFor(visible);
-      // The unread badge lives on the header bell on sm+ and on the bottom
-      // tab-bar bell on xs (decision D4) — wait on the instance this viewport
-      // actually shows.
-      const width = page.viewportSize()?.width ?? 0;
-      const bellTestId = width < 600 ? 'notification-tab' : 'notification-bell';
-      await page
-        .locator(`[data-testid="${bellTestId}"] .MuiBadge-badge:not(.MuiBadge-invisible)`)
-        .waitFor(visible);
+      await waitForUnreadBadge(page);
     },
   },
   {
@@ -145,6 +149,36 @@ const SCREENS: ScreenSpec[] = [
       await page.getByLabel('breadcrumb').waitFor(visible);
       await page.getByTestId('discussion-composer').waitFor(visible);
       await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
+    },
+  },
+  {
+    name: 'community',
+    auth: 'member',
+    path: '/community',
+    ready: async (page) => {
+      await page.getByTestId('space-card-space-studio-spolecznosc').waitFor(visible);
+      await page.getByTestId('space-card-space-studio-klub-js').waitFor(visible);
+      await waitForUnreadBadge(page);
+    },
+  },
+  {
+    name: 'space-feed',
+    auth: 'member',
+    path: '/community/space-studio-spolecznosc',
+    ready: async (page) => {
+      await page.getByTestId('post-body-post-spolecznosc-hello').waitFor(visible);
+      await page.getByTestId('reaction-post-spolecznosc-hello-👍').waitFor(visible);
+      await page.getByTestId('space-follow-toggle').waitFor(visible);
+      await waitForUnreadBadge(page);
+    },
+  },
+  {
+    name: 'panel-spaces',
+    auth: 'creator',
+    path: '/panel/spaces',
+    ready: async (page) => {
+      await page.getByTestId('space-manage-space-studio-spolecznosc').waitFor(visible);
+      await page.getByTestId('space-manage-space-studio-klub-js').waitFor(visible);
     },
   },
   {

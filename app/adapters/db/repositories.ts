@@ -137,6 +137,19 @@ const parseMemberGrant = (grant: MemberGrant): MemberGrant => memberGrantSchema.
 
 const parsePost = (post: typeof posts.$inferSelect): Post => postSchema.parse(post);
 
+/**
+ * Thread pagination cursors are `createdAt|id` tuples: a bare timestamp
+ * cursor would skip or repeat root posts created in the same millisecond.
+ */
+const threadCursor = (post: { createdAt: string; id: string }): string => `${post.createdAt}|${post.id}`;
+
+const parseThreadCursor = (cursor: string): { createdAt: string; id: string } => {
+  const separator = cursor.indexOf('|');
+  return separator === -1
+    ? { createdAt: cursor, id: '' }
+    : { createdAt: cursor.slice(0, separator), id: cursor.slice(separator + 1) };
+};
+
 const parseSpace = (space: typeof spaces.$inferSelect): Space => spaceSchema.parse(space);
 
 const parseNotification = (notification: typeof notifications.$inferSelect): Notification =>
@@ -632,6 +645,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
   },
   listThreadsForContext: async (tenantId, query) => {
     const descending = query.order === 'desc';
+    const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);
     const rows = await db
       .select()
       .from(posts)
@@ -641,12 +655,12 @@ export const createPostRepository = (db: Db): PostRepository => ({
           eq(posts.contextKind, query.contextKind),
           eq(posts.contextId, query.contextId),
           sql`${posts.parentPostId} is null`,
-          ...(query.cursor === undefined
+          ...(cursor === null
             ? []
             : [
                 descending
-                  ? sql`${posts.createdAt} < ${query.cursor}`
-                  : sql`${posts.createdAt} > ${query.cursor}`,
+                  ? sql`(${posts.createdAt}, ${posts.id}) < (${cursor.createdAt}, ${cursor.id})`
+                  : sql`(${posts.createdAt}, ${posts.id}) > (${cursor.createdAt}, ${cursor.id})`,
               ]),
         ),
       )
@@ -671,10 +685,11 @@ export const createPostRepository = (db: Db): PostRepository => ({
         return { post: parsePost(post), replyCount: counts[0]?.value ?? 0 };
       }),
     );
+    const last = page.at(-1);
     return {
       threads,
       // Cursor = last item of the page, so the overflow row opens the next page.
-      nextCursor: overflow ? (page.at(-1)?.createdAt ?? null) : null,
+      nextCursor: overflow && last ? threadCursor(last) : null,
     };
   },
   listReplies: async (tenantId, rootPostId) =>

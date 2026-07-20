@@ -195,6 +195,7 @@ class FakePosts implements PostRepository {
     },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }> {
     const descending = query.order === 'desc';
+    const cursorOf = (post: Post): string => `${post.createdAt}|${post.id}`;
     const roots = this.rows
       .filter(
         (post) =>
@@ -203,13 +204,12 @@ class FakePosts implements PostRepository {
           post.contextId === query.contextId &&
           post.parentPostId === null &&
           (query.cursor === undefined ||
-            (descending ? post.createdAt < query.cursor : post.createdAt > query.cursor)),
+            (descending ? cursorOf(post) < query.cursor : cursorOf(post) > query.cursor)),
       )
-      .sort((a, b) =>
-        descending ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt),
-      );
+      .sort((a, b) => (descending ? cursorOf(b).localeCompare(cursorOf(a)) : cursorOf(a).localeCompare(cursorOf(b))));
     const page = roots.slice(0, query.limit);
     const overflow = roots[query.limit];
+    const last = page.at(-1);
     return {
       threads: page.map((post) => ({
         post,
@@ -217,7 +217,7 @@ class FakePosts implements PostRepository {
           (reply) => reply.tenantId === tenantId && reply.rootPostId === post.rootPostId && reply.id !== post.id,
         ).length,
       })),
-      nextCursor: overflow ? (page.at(-1)?.createdAt ?? null) : null,
+      nextCursor: overflow && last ? cursorOf(last) : null,
     };
   }
 

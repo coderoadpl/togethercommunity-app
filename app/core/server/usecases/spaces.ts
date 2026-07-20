@@ -97,7 +97,9 @@ export const createSpace = async (
     description: parsed.data.description ?? null,
     visibility: parsed.data.visibility,
     productIds: parsed.data.productIds ?? [],
-    position: parsed.data.position ?? (await deps.spaces.list(staff.value.tenantId)).length,
+    position:
+      parsed.data.position ??
+      (await deps.spaces.list(staff.value.tenantId, { includeArchived: true })).length,
     createdAt: deps.clock.nowIso(),
   });
   if (!record.success) return err(validation('Invalid space payload', record.error.flatten()));

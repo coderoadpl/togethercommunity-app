@@ -428,6 +428,30 @@ const notificationReadSchema = z.object({
 const searchHitsSchema = z.object({
   hits: z.array(z.object({ post: z.object({ id: z.string() }), lessonId: z.string(), snippet: z.string() })),
 });
+const spaceSchema = z.object({
+  space: z.object({ id: z.string(), name: z.string(), visibility: z.string(), archivedAt: z.string().nullable() }),
+});
+const spacesListSchema = z.object({
+  spaces: z.array(z.object({ id: z.string(), name: z.string(), isFollowing: z.boolean() })),
+});
+const staffSpacesSchema = z.object({
+  spaces: z.array(
+    z.object({
+      id: z.string(),
+      archivedAt: z.string().nullable(),
+      stats: z.object({ posts: z.number(), followers: z.number() }),
+    }),
+  ),
+});
+const reactionsSchema = z.array(z.object({ emoji: z.string(), count: z.number(), viewerReacted: z.boolean() }));
+const spaceFeedSchema = z.object({
+  feed: z.object({
+    spaceId: z.string(),
+    isFollowing: z.boolean(),
+    items: z.array(z.object({ id: z.string(), replyCount: z.number(), reactions: reactionsSchema })),
+  }),
+});
+const reactedSchema = z.object({ postId: z.string(), reactions: reactionsSchema });
 
 const readEnvelope = (result: Run, label: string): unknown => {
   try {
@@ -1010,6 +1034,189 @@ const driveCommunityFlow = async (port: number, homes: string[]): Promise<void> 
   );
 };
 
+const driveSpacesFlow = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const staffHome = mkdtempSync(join(tmpdir(), 'smoke-spaces-staff-'));
+  const entitledHome = mkdtempSync(join(tmpdir(), 'smoke-spaces-entitled-'));
+  const moduleOnlyHome = mkdtempSync(join(tmpdir(), 'smoke-spaces-module-'));
+  homes.push(staffHome, entitledHome, moduleOnlyHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const studio = (args: string[], home: string): Promise<Run> =>
+    cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
+
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator@together.dev', '--password', 'demo1234'], staffHome),
+    'spaces: staff login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.aktywny@together.dev'], entitledHome),
+    'spaces: entitled member login',
+  );
+  expectOk(
+    await cli(['--json', '--api-url', url, 'login-magic', '--email', 'kursant.modul@together.dev'], moduleOnlyHome),
+    'spaces: module-only member login',
+  );
+
+  const marker = `strefa${randomUUID().slice(0, 8)}`;
+  const open = spaceSchema.parse(
+    expectOk(
+      await studio(['space', 'create', '--slug', `${marker}-open`, '--name', `Strefa ${marker}`, '--visibility', 'members'], staffHome),
+      'spaces: staff creates a members space',
+    ),
+  ).space;
+  const gated = spaceSchema.parse(
+    expectOk(
+      await studio(
+        ['space', 'create', '--slug', `${marker}-vip`, '--name', `VIP ${marker}`, '--visibility', 'product', '--products', 'product-js-full'],
+        staffHome,
+      ),
+      'spaces: staff creates a product-gated space',
+    ),
+  ).space;
+  expectError(
+    await studio(['space', 'create', '--slug', `${marker}-open`, '--name', 'Duplikat', '--visibility', 'members'], staffHome),
+    'spaces: duplicate slug rejected',
+    EXIT_CODE_BY_ERROR_CODE.conflict,
+    'conflict',
+  );
+  expectError(
+    await studio(['space', 'create', '--slug', `${marker}-x`, '--name', 'X', '--visibility', 'members'], entitledHome),
+    'spaces: member cannot create spaces',
+    EXIT_CODE_BY_ERROR_CODE.forbidden,
+    'forbidden',
+  );
+
+  const entitledSpaces = spacesListSchema.parse(
+    expectOk(await studio(['space', 'list'], entitledHome), 'spaces: entitled member lists spaces'),
+  );
+  assert(
+    entitledSpaces.spaces.some((item) => item.id === open.id),
+    'entitled member should see the members space',
+  );
+  assert(
+    entitledSpaces.spaces.some((item) => item.id === gated.id),
+    'entitled member should see the product-gated space',
+  );
+  const moduleOnlySpaces = spacesListSchema.parse(
+    expectOk(await studio(['space', 'list'], moduleOnlyHome), 'spaces: module-only member lists spaces'),
+  );
+  assert(
+    moduleOnlySpaces.spaces.some((item) => item.id === open.id),
+    'module-only member should see the members space',
+  );
+  assert(
+    !moduleOnlySpaces.spaces.some((item) => item.id === gated.id),
+    'module-only member must NOT see the product-gated space',
+  );
+  expectError(
+    await studio(['space', 'feed', '--space', gated.id], moduleOnlyHome),
+    'spaces: module-only member cannot read the gated feed',
+    EXIT_CODE_BY_ERROR_CODE.forbidden,
+    'forbidden',
+  );
+
+  expectOk(await studio(['space', 'follow', '--space', open.id], moduleOnlyHome), 'spaces: follower follows');
+
+  const rooted = postCreatedSchema.parse(
+    expectOk(
+      await studio(['space', 'post', '--space', open.id, '--body', `Ogloszenie ${marker} dla wszystkich`], entitledHome),
+      'spaces: entitled member posts to the feed',
+    ),
+  );
+  assert(rooted.post.rootPostId === rooted.post.id, 'a space feed post should be its own thread root');
+
+  const followerInbox = notificationsListSchema.parse(
+    expectOk(await studio(['notifications', 'list'], moduleOnlyHome), 'spaces: follower notifications'),
+  );
+  const spacePostNotification = followerInbox.notifications.find(
+    (item) => item.payload.postId === rooted.post.id,
+  );
+  assert(spacePostNotification !== undefined, 'a new space post should notify followers');
+  assert(
+    spacePostNotification.kind === 'space-post',
+    `expected a space-post notification, got ${spacePostNotification.kind}`,
+  );
+  assert(spacePostNotification.readAt === null, 'the fresh space-post notification should be unread');
+
+  const reply = postCreatedSchema.parse(
+    expectOk(
+      await studio(
+        ['space', 'reply', '--space', open.id, '--parent', rooted.post.id, '--body', `Odpowiedz ${marker}`],
+        moduleOnlyHome,
+      ),
+      'spaces: follower replies in the thread',
+    ),
+  );
+  assert(reply.post.rootPostId === rooted.post.id, 'the space reply should join the original thread');
+  const authorInbox = notificationsListSchema.parse(
+    expectOk(await studio(['notifications', 'list'], entitledHome), 'spaces: author notifications'),
+  );
+  const replyNotification = authorInbox.notifications.find((item) => item.payload.postId === reply.post.id);
+  assert(replyNotification !== undefined, 'the space reply should notify the thread author');
+  assert(
+    replyNotification.kind === 'thread-reply',
+    `expected a thread-reply notification, got ${replyNotification.kind}`,
+  );
+
+  const reacted = reactedSchema.parse(
+    expectOk(
+      await studio(['discussion', 'react', '--post', rooted.post.id, '--emoji', '👍'], moduleOnlyHome),
+      'spaces: follower reacts',
+    ),
+  );
+  assert(
+    reacted.reactions.some((item) => item.emoji === '👍' && item.count === 1 && item.viewerReacted),
+    'the reaction should register with viewerReacted=true',
+  );
+  const feed = spaceFeedSchema.parse(
+    expectOk(await studio(['space', 'feed', '--space', open.id], entitledHome), 'spaces: author reads the feed'),
+  );
+  const feedItem = feed.feed.items.find((item) => item.id === rooted.post.id);
+  assert(feedItem !== undefined, 'the feed should contain the fresh post');
+  assert(feedItem.replyCount === 1, `the post should show one reply, got ${feedItem.replyCount}`);
+  assert(
+    feedItem.reactions.some((item) => item.emoji === '👍' && item.count === 1 && !item.viewerReacted),
+    'the feed should show the follower reaction without viewerReacted for the author',
+  );
+  const unreacted = reactedSchema.parse(
+    expectOk(
+      await studio(['discussion', 'unreact', '--post', rooted.post.id, '--emoji', '👍'], moduleOnlyHome),
+      'spaces: follower removes the reaction',
+    ),
+  );
+  assert(
+    !unreacted.reactions.some((item) => item.emoji === '👍'),
+    'removing the reaction should clear it from the summary',
+  );
+
+  const archived = spaceSchema.parse(
+    expectOk(await studio(['space', 'archive', '--space', open.id], staffHome), 'spaces: staff archives'),
+  ).space;
+  assert(archived.archivedAt !== null, 'archiving should set archivedAt');
+  const afterArchive = spacesListSchema.parse(
+    expectOk(await studio(['space', 'list'], moduleOnlyHome), 'spaces: member lists after archive'),
+  );
+  assert(
+    !afterArchive.spaces.some((item) => item.id === open.id),
+    'an archived space must disappear from member listings',
+  );
+  expectError(
+    await studio(['space', 'feed', '--space', open.id], entitledHome),
+    'spaces: archived feed hidden from members',
+    EXIT_CODE_BY_ERROR_CODE.not_found,
+    'not_found',
+  );
+  const staffView = staffSpacesSchema.parse(
+    expectOk(await studio(['space', 'stats'], staffHome), 'spaces: staff stats include archived'),
+  );
+  const archivedRow = staffView.spaces.find((item) => item.id === open.id);
+  assert(archivedRow !== undefined, 'staff stats should still list the archived space');
+  assert(archivedRow.archivedAt !== null, 'staff stats should mark the space archived');
+  assert(archivedRow.stats.posts === 2, `the archived space should keep its posts, got ${archivedRow.stats.posts}`);
+  assert(archivedRow.stats.followers === 1, `exactly one follower should be counted, got ${archivedRow.stats.followers}`);
+};
+
 const startedAt = Date.now();
 const homes: string[] = [];
 let server: ChildProcess | null = null;
@@ -1036,6 +1243,8 @@ try {
   await driveM2mFlow(port, homes);
   console.log('smoke: driving the community surface...');
   await driveCommunityFlow(port, homes);
+  console.log('smoke: driving the spaces surface...');
+  await driveSpacesFlow(port, homes);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

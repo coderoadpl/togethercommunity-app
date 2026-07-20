@@ -33,8 +33,15 @@ import type {
   DiscussionGetInput,
   PostCreateInput,
   PostDeleteInput,
+  PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
+  SpaceArchiveInput,
+  SpaceCreateInput,
+  SpaceDeleteInput,
+  SpaceFeedGetInput,
+  SpaceFollowInput,
+  SpaceUpdateInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
   ProductPriceCreateInput,
@@ -216,6 +223,13 @@ export const discussionScopes = {
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
   search: (query: string, lessonIds: readonly string[]) =>
     ['discussion', 'search', query, lessonIds.join(',')] as const,
+};
+
+export const spacesScopes = {
+  all: () => ['spaces'] as const,
+  lists: () => ['spaces', 'list'] as const,
+  staff: () => ['spaces', 'staff'] as const,
+  feed: (spaceId: string, limit?: number) => ['spaces', 'feed', spaceId, limit ?? null] as const,
 };
 
 export const notificationScopes = {
@@ -590,6 +604,74 @@ export const postsSearchQuery = (api: ApiClient, input: PostsSearchInput) =>
     queryKey: discussionScopes.search(input.query, input.lessonIds ?? []),
     call: ({ signal }) => api.searchPosts(input, signal),
   });
+
+export const spacesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: spacesScopes.lists(),
+    call: ({ signal }) => api.listSpaces(signal),
+  });
+
+export const staffSpacesQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: spacesScopes.staff(),
+    call: ({ signal }) => api.listStaffSpaces(signal),
+  });
+
+export const archiveSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'archive'],
+    call: (input: SpaceArchiveInput) => api.archiveSpace(input),
+  });
+
+export const createSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'create'],
+    call: (input: SpaceCreateInput) => api.createSpace(input),
+  });
+
+export const updateSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'update'],
+    call: (input: SpaceUpdateInput) => api.updateSpace(input),
+  });
+
+export const deleteSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'delete'],
+    call: (input: SpaceDeleteInput) => api.deleteSpace(input),
+  });
+
+export const spaceFeedQuery = (api: ApiClient, input: SpaceFeedGetInput) =>
+  defineQuery({
+    queryKey: spacesScopes.feed(input.spaceId, input.limit),
+    call: ({ signal }) => api.spaceFeed(input, signal),
+  });
+
+export const followSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'follow'],
+    call: (input: SpaceFollowInput) => api.followSpace(input),
+  });
+
+export const unfollowSpaceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'unfollow'],
+    call: (input: SpaceFollowInput) => api.unfollowSpace(input),
+  });
+
+export const reactToPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'react'],
+    call: (input: PostReactInput) => api.reactToPost(input),
+  });
+
+export const unreactToPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'unreact'],
+    call: (input: PostReactInput) => api.unreactToPost(input),
+  });
+
+export const spacesInvalidates = () => ({ queryKey: spacesScopes.all() });
 
 export const notificationsQuery = (api: ApiClient, input: NotificationsListInput = {}) =>
   defineQuery({

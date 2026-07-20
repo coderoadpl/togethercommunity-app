@@ -19,6 +19,8 @@ import {
   notFound,
   ok,
   priceMajorSchema,
+  reactionEmojiSchema,
+  spaceVisibilitySchema,
   tenantSecretKeySchema,
   transactionalLanguageSchema,
   updateCourseLessonInputSchema,
@@ -216,6 +218,64 @@ const discussionSearchOptionsSchema = z.object({
     .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
+});
+const reactionOptionsSchema = z.object({
+  post: z.string().min(1),
+  emoji: reactionEmojiSchema,
+});
+const spaceCreateOptionsSchema = z.object({
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().min(1).optional(),
+  visibility: spaceVisibilitySchema,
+  products: z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    )
+    .optional(),
+});
+const spaceUpdateOptionsSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  visibility: spaceVisibilitySchema.optional(),
+  products: z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    )
+    .optional(),
+  position: z
+    .string()
+    .regex(/^\d+$/, 'position must be a non-negative integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+});
+const spaceFeedOptionsSchema = z.object({
+  space: z.string().min(1),
+  limit: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+  cursor: z.string().min(1).optional(),
+});
+const spacePostOptionsSchema = z.object({
+  space: z.string().min(1),
+  body: z.string().min(1),
+});
+const spaceReplyOptionsSchema = spacePostOptionsSchema.extend({
+  parent: z.string().min(1),
+});
+const spaceIdOptionsSchema = z.object({
+  space: z.string().min(1),
 });
 const notificationsListOptionsSchema = z.object({
   limit: z
@@ -1347,8 +1407,258 @@ discussion
           data.hits.length === 0
             ? 'no matches'
             : data.hits
-                .map((hit) => `- lesson ${hit.lessonId.slice(0, 8)} ${hit.post.id.slice(0, 8)}: ${hit.snippet}`)
+                .map((hit) => `- ${hit.post.contextKind} ${hit.lessonId.slice(0, 8)} ${hit.post.id.slice(0, 8)}: ${hit.snippet}`)
                 .join('\n'),
+      );
+    }),
+  );
+
+discussion
+  .command('react')
+  .description('React to a post with an emoji (👍 ❤️ 🎉 💡 😂); idempotent')
+  .requiredOption('--post <postId>')
+  .requiredOption('--emoji <emoji>')
+  .action(
+    withInput(z.tuple([reactionOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.reactToPost({ postId: options.post, emoji: options.emoji }),
+        ctx.json,
+        (data) =>
+          `reactions on ${data.postId.slice(0, 8)}: ${
+            data.reactions.map((reaction) => `${reaction.emoji} ${reaction.count}`).join(' ') || 'none'
+          }`,
+      );
+    }),
+  );
+
+discussion
+  .command('unreact')
+  .description('Remove your emoji reaction from a post; idempotent')
+  .requiredOption('--post <postId>')
+  .requiredOption('--emoji <emoji>')
+  .action(
+    withInput(z.tuple([reactionOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.unreactToPost({ postId: options.post, emoji: options.emoji }),
+        ctx.json,
+        (data) =>
+          `reactions on ${data.postId.slice(0, 8)}: ${
+            data.reactions.map((reaction) => `${reaction.emoji} ${reaction.count}`).join(' ') || 'none'
+          }`,
+      );
+    }),
+  );
+
+const space = program.command('space').description('Community spaces');
+
+space
+  .command('list')
+  .description('List spaces you can see')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.listSpaces(), ctx.json, (data) =>
+        data.spaces.length === 0
+          ? 'no spaces'
+          : data.spaces
+              .map(
+                (item) =>
+                  `- ${item.name} [${item.slug}] ${item.visibility}${item.isFollowing ? ' (following)' : ''} (${item.id.slice(0, 8)})`,
+              )
+              .join('\n'),
+      );
+    }),
+  );
+
+space
+  .command('create')
+  .description('Create a space (staff)')
+  .requiredOption('--slug <slug>')
+  .requiredOption('--name <name>')
+  .requiredOption('--visibility <visibility>', "'members' or 'product'")
+  .option('--description <text>')
+  .option('--products <ids>', 'comma-separated product ids for product-gated spaces')
+  .action(
+    withInput(z.tuple([spaceCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createSpace({
+          slug: options.slug,
+          name: options.name,
+          visibility: options.visibility,
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.products === undefined ? {} : { productIds: options.products }),
+        }),
+        ctx.json,
+        (data) => `created space ${data.space.name} (${data.space.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+space
+  .command('update')
+  .description('Update a space (staff)')
+  .requiredOption('--id <spaceId>')
+  .option('--name <name>')
+  .option('--description <text>')
+  .option('--visibility <visibility>', "'members' or 'product'")
+  .option('--products <ids>', 'comma-separated product ids')
+  .option('--position <n>')
+  .action(
+    withInput(z.tuple([spaceUpdateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.updateSpace({
+          id: options.id,
+          ...(options.name === undefined ? {} : { name: options.name }),
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
+          ...(options.products === undefined ? {} : { productIds: options.products }),
+          ...(options.position === undefined ? {} : { position: options.position }),
+        }),
+        ctx.json,
+        (data) => `updated space ${data.space.name} (${data.space.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+space
+  .command('delete')
+  .description('Delete a space (staff)')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.deleteSpace({ id: options.space }), ctx.json, (data) =>
+        `deleted space ${data.spaceId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+space
+  .command('archive')
+  .description('Archive a space — hidden from members, content kept (staff)')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.archiveSpace({ id: options.space, archived: true }), ctx.json, (data) =>
+        `archived space ${data.space.name} (${data.space.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+space
+  .command('restore')
+  .description('Restore an archived space (staff)')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.archiveSpace({ id: options.space, archived: false }), ctx.json, (data) =>
+        `restored space ${data.space.name} (${data.space.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+space
+  .command('stats')
+  .description('List spaces with post and follower counts (staff)')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.listStaffSpaces(), ctx.json, (data) =>
+        data.spaces.length === 0
+          ? 'no spaces'
+          : data.spaces
+              .map(
+                (item) =>
+                  `${item.id.slice(0, 8)} ${item.name}${item.archivedAt === null ? '' : ' (archived)'} — ${item.stats.posts} posts, ${item.stats.followers} followers`,
+              )
+              .join('\n'),
+      );
+    }),
+  );
+
+space
+  .command('feed')
+  .description('Show a space feed (newest first)')
+  .requiredOption('--space <spaceId>')
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(
+    withInput(z.tuple([spaceFeedOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.spaceFeed({
+          spaceId: options.space,
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+          ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+        }),
+        ctx.json,
+        (data) =>
+          data.feed.items.length === 0
+            ? 'no posts'
+            : data.feed.items
+                .map((item) => {
+                  const reactions = item.reactions
+                    .map((reaction) => `${reaction.emoji} ${reaction.count}`)
+                    .join(' ');
+                  return `- ${item.authorDisplay}: ${item.body} (${item.id.slice(0, 8)}, ${item.replyCount} replies${reactions.length > 0 ? `, ${reactions}` : ''})`;
+                })
+                .join('\n'),
+      );
+    }),
+  );
+
+space
+  .command('post')
+  .description('Post to a space feed')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--body <text>')
+  .action(
+    withInput(z.tuple([spacePostOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createPost({ contextKind: 'space', contextId: options.space, body: options.body }),
+        ctx.json,
+        (data) => `posted ${data.post.id.slice(0, 8)} in space ${data.post.contextId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+space
+  .command('reply')
+  .description('Reply to a post in a space feed')
+  .requiredOption('--space <spaceId>')
+  .requiredOption('--parent <postId>')
+  .requiredOption('--body <text>')
+  .action(
+    withInput(z.tuple([spaceReplyOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createPost({
+          contextKind: 'space',
+          contextId: options.space,
+          parentPostId: options.parent,
+          body: options.body,
+        }),
+        ctx.json,
+        (data) => `replied ${data.post.id.slice(0, 8)} to thread ${data.post.rootPostId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+space
+  .command('follow')
+  .description('Follow a space to get notified about new posts')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.followSpace({ spaceId: options.space }), ctx.json, (data) =>
+        `following space ${data.spaceId.slice(0, 8)}`,
+      );
+    }),
+  );
+
+space
+  .command('unfollow')
+  .description('Stop following a space')
+  .requiredOption('--space <spaceId>')
+  .action(
+    withInput(z.tuple([spaceIdOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.unfollowSpace({ spaceId: options.space }), ctx.json, (data) =>
+        `unfollowed space ${data.spaceId.slice(0, 8)}`,
       );
     }),
   );

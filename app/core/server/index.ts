@@ -35,4 +35,6 @@ export * from './usecases/subscription-simulate.js';
 export * from './usecases/entitlements.js';
 export * from './usecases/lesson-media.js';
 export * from './usecases/progress.js';
+export * from './usecases/community-access.js';
 export * from './usecases/community.js';
+export * from './usecases/spaces.js';

@@ -50,7 +50,14 @@ import {
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
   postOutputSchema,
+  postReactOutputSchema,
   postsSearchOutputSchema,
+  spaceDeleteOutputSchema,
+  spaceFeedOutputSchema,
+  spaceFollowOutputSchema,
+  spaceOutputSchema,
+  spacesListOutputSchema,
+  staffSpacesListOutputSchema,
   productsAccessItemsOutputSchema,
   productsAccessIssuesOutputSchema,
   progressOutputSchema,
@@ -102,8 +109,15 @@ import {
   type DiscussionGetInput,
   type PostCreateInput,
   type PostDeleteInput,
+  type PostReactInput,
   type PostUpdateInput,
   type PostsSearchInput,
+  type SpaceArchiveInput,
+  type SpaceCreateInput,
+  type SpaceDeleteInput,
+  type SpaceFeedGetInput,
+  type SpaceFollowInput,
+  type SpaceUpdateInput,
   type ProductsAccessItemsInput,
   type ProductsPublishInput,
   type ReadMethod,
@@ -679,6 +693,62 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  reactToPost: (input: PostReactInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.postsReact.method, API_ROUTES.postsReact.path, postReactOutputSchema, input, signal),
+  unreactToPost: (input: PostReactInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsUnreact.method,
+      API_ROUTES.postsUnreact.path,
+      postReactOutputSchema,
+      input,
+      signal,
+    ),
+  listSpaces: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.spaces.method, API_ROUTES.spaces.path, spacesListOutputSchema, undefined, signal),
+  listStaffSpaces: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.spacesStaff.method, API_ROUTES.spacesStaff.path, staffSpacesListOutputSchema, undefined, signal),
+  archiveSpace: (input: SpaceArchiveInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.spacesArchive.method, API_ROUTES.spacesArchive.path, spaceOutputSchema, input, signal),
+  createSpace: (input: SpaceCreateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.spacesCreate.method, API_ROUTES.spacesCreate.path, spaceOutputSchema, input, signal),
+  updateSpace: (input: SpaceUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.spacesUpdate.method, API_ROUTES.spacesUpdate.path, spaceOutputSchema, input, signal),
+  deleteSpace: (input: SpaceDeleteInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.spacesDelete.method,
+      API_ROUTES.spacesDelete.path.replace(':spaceId', encodeURIComponent(input.id)),
+      spaceDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  spaceFeed: (input: SpaceFeedGetInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const path = API_ROUTES.spaceFeed.path.replace(':spaceId', encodeURIComponent(input.spaceId));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.spaceFeed.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      spaceFeedOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  followSpace: (input: SpaceFollowInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.spaceFollow.method, API_ROUTES.spaceFollow.path, spaceFollowOutputSchema, input, signal),
+  unfollowSpace: (input: SpaceFollowInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.spaceUnfollow.method,
+      API_ROUTES.spaceUnfollow.path,
+      spaceFollowOutputSchema,
+      input,
+      signal,
+    ),
   listNotifications: (input: NotificationsListInput = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (input.cursor !== undefined) params.set('cursor', input.cursor);

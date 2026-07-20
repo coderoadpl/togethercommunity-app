@@ -27,8 +27,8 @@ const notification: Notification = {
 const context: NotificationDeliveryContext = {
   recipientEmail: 'u2@example.com',
   tenantName: 'Kamperowo',
-  lessonName: 'Lekcja o hamakach',
-  lessonUrl: 'http://acme.localhost:48730/my/courses/c1/lessons/l1',
+  contextName: 'Lekcja o hamakach',
+  contextUrl: 'http://acme.localhost:48730/my/courses/c1/lessons/l1',
   language: 'pl',
 };
 
@@ -57,6 +57,34 @@ describe('email notification channel', () => {
     expect(sent[0]?.text).toContain('Świetne pytanie!');
     expect(sent[0]?.text).toContain('http://acme.localhost:48730/my/courses/c1/lessons/l1');
     expect(sent[0]?.html).toContain('Kamperowo');
+  });
+
+  it('renders the spacePost template for space-post notifications', async () => {
+    const { sent, port } = captureEmail();
+
+    const delivered = await createEmailNotificationChannel(port).deliver(
+      {
+        ...notification,
+        kind: 'space-post',
+        payload: {
+          ...notification.payload,
+          contextKind: 'space',
+          contextId: 's1',
+          courseId: null,
+          lessonName: 'Społeczność',
+        },
+      },
+      {
+        ...context,
+        contextName: 'Społeczność',
+        contextUrl: 'http://acme.localhost:48730/my/spaces/s1',
+      },
+    );
+
+    expect(delivered.ok).toBe(true);
+    expect(sent[0]?.subject).toContain('Społeczność');
+    expect(sent[0]?.subject).toContain('strefie');
+    expect(sent[0]?.text).toContain('http://acme.localhost:48730/my/spaces/s1');
   });
 
   it('skips recipients without an email address', async () => {

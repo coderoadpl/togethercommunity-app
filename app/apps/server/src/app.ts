@@ -35,8 +35,15 @@ import {
   discussionGetInputSchema,
   postCreateInputSchema,
   postDeleteInputSchema,
+  postReactInputSchema,
   postUpdateInputSchema,
   postsSearchInputSchema,
+  spaceArchiveInputSchema,
+  spaceCreateInputSchema,
+  spaceDeleteInputSchema,
+  spaceFeedGetInputSchema,
+  spaceFollowInputSchema,
+  spaceUpdateInputSchema,
   productsAccessItemsInputSchema,
   publicOfferOutputSchema,
   productsCreateInputSchema,
@@ -112,6 +119,17 @@ import {
   searchPosts,
   subscribeThread,
   unreadNotificationCount,
+  createSpace,
+  updateSpace,
+  deleteSpace,
+  setSpaceArchived,
+  listSpacesForMember,
+  listSpacesForStaff,
+  getSpaceFeed,
+  followSpace,
+  unfollowSpace,
+  reactToPost,
+  unreactToPost,
   createProductPrice,
   deactivateProductPrice,
   getSalesSummary,
@@ -1070,6 +1088,85 @@ export const buildApp = (deps: AppDeps) => {
     if (!parsed.success) return respond(err(validation('Invalid post search query', parsed.error.flatten())));
     const result = await searchPosts({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ hits: result.value }) : result);
+  });
+
+  app.post(API_PATHS.postsReact, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postReactInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid reaction payload', parsed.error.flatten())));
+    return respond(await reactToPost({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.postsUnreact, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postReactInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid reaction payload', parsed.error.flatten())));
+    return respond(await unreactToPost({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.spaces, async (c) => {
+    const result = await listSpacesForMember({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ spaces: result.value }) : result);
+  });
+
+  app.get(API_PATHS.spacesStaff, async (c) => {
+    const result = await listSpacesForStaff({ identity: c.get('identity') }, deps);
+    return respond(result.ok ? ok({ spaces: result.value }) : result);
+  });
+
+  app.post(API_PATHS.spacesArchive, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = spaceArchiveInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid space archive payload', parsed.error.flatten())));
+    const result = await setSpaceArchived({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ space: result.value }) : result);
+  });
+
+  app.post(API_PATHS.spaces, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = spaceCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid space payload', parsed.error.flatten())));
+    const result = await createSpace({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ space: result.value }) : result);
+  });
+
+  app.post(API_PATHS.spacesUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = spaceUpdateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid space update payload', parsed.error.flatten())));
+    const result = await updateSpace({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ space: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.spacesDelete, async (c) => {
+    const parsed = spaceDeleteInputSchema.safeParse({ id: c.req.param('spaceId') });
+    if (!parsed.success) return respond(err(validation('Invalid space id', parsed.error.flatten())));
+    return respond(await deleteSpace({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.get(API_PATHS.spaceFeed, async (c) => {
+    const parsed = spaceFeedGetInputSchema.safeParse({
+      spaceId: c.req.param('spaceId'),
+      cursor: c.req.query('cursor'),
+      ...(c.req.query('limit') === undefined ? {} : { limit: Number(c.req.query('limit')) }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid space feed query', parsed.error.flatten())));
+    const result = await getSpaceFeed({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ feed: result.value }) : result);
+  });
+
+  app.post(API_PATHS.spaceFollow, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = spaceFollowInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
+    return respond(await followSpace({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.spaceUnfollow, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = spaceFollowInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid space follow payload', parsed.error.flatten())));
+    return respond(await unfollowSpace({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.get(API_PATHS.notifications, async (c) => {

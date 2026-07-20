@@ -233,6 +233,27 @@ const deps = (input: {
       softDelete: async () => null,
       search: async () => [],
     },
+    spaces: {
+      list: async () => [],
+      findById: async () => null,
+      findBySlug: async () => null,
+      create: async () => undefined,
+      update: async () => null,
+      setArchived: async () => null,
+      delete: async () => false,
+      stats: async () => new Map(),
+    },
+    reactions: {
+      add: async () => true,
+      remove: async () => false,
+      summarize: async () => new Map(),
+    },
+    spaceSubscriptions: {
+      follow: async () => undefined,
+      unfollow: async () => false,
+      listFollowersForSpace: async () => [],
+      listForUser: async () => [],
+    },
     threadSubscriptions: {
       upsert: async (tenantId, subscription) => ({
         tenantId,
@@ -265,6 +286,7 @@ const deps = (input: {
     },
     links: {
       lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/lessons/${lessonId}`,
+      spaceUrl: ({ spaceId }) => `http://localhost/my/spaces/${spaceId}`,
     },
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,

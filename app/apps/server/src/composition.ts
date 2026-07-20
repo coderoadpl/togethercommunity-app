@@ -14,7 +14,10 @@ import {
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
+  createPostReactionRepository,
   createPostRepository,
+  createSpaceRepository,
+  createSpaceSubscriptionRepository,
   createPurchaseRepository,
   createProductGrantRepository,
   createProductPriceRepository,
@@ -73,7 +76,10 @@ import type {
   ProcessedPaymentEventRepository,
   ProductRepository,
   OnboardingStateRepository,
+  PostReactionRepository,
   RealtimeBusPort,
+  SpaceRepository,
+  SpaceSubscriptionRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
   TenantDomainRepository,
@@ -106,6 +112,9 @@ export interface AppDeps {
   members: MemberRepository;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
+  spaces: SpaceRepository;
+  reactions: PostReactionRepository;
+  spaceSubscriptions: SpaceSubscriptionRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   realtimeBus: RealtimeBusPort;
@@ -160,13 +169,16 @@ export const createDeps = (env: Env): AppDeps => {
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
   const realtimeBus = createRealtimeBus();
+  const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
+    const url = new URL(env.APP_BASE_URL);
+    if (tenantSlug !== null) url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
+    url.pathname = pathname;
+    return url.toString();
+  };
   const links: DiscussionLinkPort = {
-    lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) => {
-      const url = new URL(env.APP_BASE_URL);
-      if (tenantSlug !== null) url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
-      url.pathname = courseId === null ? '/my' : `/my/courses/${courseId}/lessons/${lessonId}`;
-      return url.toString();
-    },
+    lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
+      tenantUrl(tenantSlug, courseId === null ? '/my' : `/my/courses/${courseId}/lessons/${lessonId}`),
+    spaceUrl: ({ tenantSlug, spaceId }) => tenantUrl(tenantSlug, `/my/spaces/${spaceId}`),
   };
 
   const google =
@@ -214,6 +226,9 @@ export const createDeps = (env: Env): AppDeps => {
     members: createMemberRepository(db),
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
+    spaces: createSpaceRepository(db),
+    reactions: createPostReactionRepository(db),
+    spaceSubscriptions: createSpaceSubscriptionRepository(db),
     notifications: createNotificationRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),

@@ -25,6 +25,11 @@ import type {
   StreamVideo,
   Notification,
   Post,
+  PostContextKind,
+  ReactionEmoji,
+  ReactionSummary,
+  Space,
+  SpaceStats,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -118,15 +123,61 @@ export interface PostRepository {
   findById(tenantId: string, id: string): Promise<Post | null>;
   listThreadsForContext(
     tenantId: string,
-    query: { contextKind: 'lesson'; contextId: string; cursor?: string; limit: number },
+    query: {
+      contextKind: PostContextKind;
+      contextId: string;
+      cursor?: string;
+      limit: number;
+      /** 'asc' (lesson discussions, default) or 'desc' (space feeds, newest first). */
+      order?: 'asc' | 'desc';
+    },
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
   updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
   softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null>;
   search(
     tenantId: string,
-    query: { query: string; lessonIds: string[]; limit: number },
+    query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
   ): Promise<PostSearchRow[]>;
+}
+
+export interface SpaceRepository {
+  list(tenantId: string, options?: { includeArchived?: boolean }): Promise<Space[]>;
+  findById(tenantId: string, id: string): Promise<Space | null>;
+  findBySlug(tenantId: string, slug: string): Promise<Space | null>;
+  create(tenantId: string, space: Space): Promise<void>;
+  update(tenantId: string, space: Space): Promise<Space | null>;
+  setArchived(tenantId: string, input: { id: string; archivedAt: string | null }): Promise<Space | null>;
+  delete(tenantId: string, id: string): Promise<boolean>;
+  stats(tenantId: string, spaceIds: string[]): Promise<Map<string, SpaceStats>>;
+}
+
+export interface PostReactionRepository {
+  /** Idempotent: returns false when the (post, user, emoji) reaction already exists. */
+  add(
+    tenantId: string,
+    input: { postId: string; userId: string; emoji: ReactionEmoji; createdAt: string },
+  ): Promise<boolean>;
+  /** Idempotent: returns false when there was nothing to remove. */
+  remove(tenantId: string, input: { postId: string; userId: string; emoji: ReactionEmoji }): Promise<boolean>;
+  summarize(
+    tenantId: string,
+    input: { postIds: string[]; viewerUserId: string },
+  ): Promise<Map<string, ReactionSummary[]>>;
+}
+
+export interface SpaceSubscription {
+  tenantId: string;
+  userId: string;
+  spaceId: string;
+  createdAt: string;
+}
+
+export interface SpaceSubscriptionRepository {
+  follow(tenantId: string, input: { userId: string; spaceId: string; createdAt: string }): Promise<void>;
+  unfollow(tenantId: string, input: { userId: string; spaceId: string }): Promise<boolean>;
+  listFollowersForSpace(tenantId: string, spaceId: string): Promise<SpaceSubscription[]>;
+  listForUser(tenantId: string, input: { userId: string; spaceIds: string[] }): Promise<SpaceSubscription[]>;
 }
 
 export interface ThreadSubscription {
@@ -158,8 +209,9 @@ export interface NotificationRepository {
 export interface NotificationDeliveryContext {
   recipientEmail: string | null;
   tenantName: string;
-  lessonName: string;
-  lessonUrl: string;
+  /** Lesson name for lesson contexts, space name for space contexts. */
+  contextName: string;
+  contextUrl: string;
   language: string;
 }
 
@@ -184,6 +236,7 @@ export interface DiscussionLinkPort {
     courseId: string | null;
     lessonId: string;
   }): string;
+  spaceUrl(input: { tenantSlug: string | null; spaceId: string }): string;
 }
 
 export interface MemberCourseProgressRepository {

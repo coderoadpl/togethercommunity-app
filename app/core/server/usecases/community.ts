@@ -11,15 +11,14 @@ import {
   notificationMarkReadInputSchema,
   ok,
   postSchema,
+  postSnippet,
+  renderPost,
   searchPostsInputSchema,
   subscribeThreadInputSchema,
-  tenantNotFound,
+  toPublicPost,
   updatePostInputSchema,
   validation,
   type AppError,
-  type Course,
-  type CourseLesson,
-  type CourseModule,
   type Discussion,
   type DiscussionPost,
   type Language,
@@ -43,15 +42,30 @@ import type {
   NotificationRepository,
   PostRepository,
   ProductGrantRepository,
+  SpaceRepository,
+  SpaceSubscriptionRepository,
   TenantAccessReader,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { isLessonAccessibleByLookup, locateLesson, type AccessLookup } from './access.js';
+import { isLessonAccessibleByLookup, locateLesson } from './access.js';
+import {
+  accessibleLessonIds,
+  lessonContextAccess,
+  listAccessibleSpaces,
+  requireActor,
+  requireMemberOrStaff,
+  requireTenant,
+  spaceContextAccess,
+  spaceVisibleToMemberScope,
+} from './community-access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
+import { notifySpaceFollowers } from './spaces.js';
 
 export interface CommunityDeps {
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
+  spaceSubscriptions: SpaceSubscriptionRepository;
+  spaces: SpaceRepository;
   notifications: NotificationRepository;
   notificationChannels: NotificationChannelPort[];
   courses: CourseRepository;
@@ -62,18 +76,6 @@ export interface CommunityDeps {
   links: DiscussionLinkPort;
   ids: IdGenerator;
   clock: Clock;
-}
-
-interface TenantScope {
-  tenantId: string;
-}
-
-interface ActorScope extends TenantScope {
-  userId: string;
-}
-
-interface MemberScope extends ActorScope {
-  memberId: string;
 }
 
 interface DisplayNameIdentity {
@@ -110,29 +112,6 @@ export const resolveAuthorDisplay = (
   return fromEmail.length > 0 ? fromEmail : PARTICIPANT_DISPLAY[language];
 };
 
-const requireTenant = (ctx: Ctx): Result<TenantScope, AppError> =>
-  ctx.identity.tenantId ? ok({ tenantId: ctx.identity.tenantId }) : err(tenantNotFound('Select a tenant'));
-
-const requireActor = (ctx: Ctx): Result<ActorScope, AppError> => {
-  const tenant = requireTenant(ctx);
-  if (!tenant.ok) return tenant;
-  return ok({ tenantId: tenant.value.tenantId, userId: ctx.identity.userId });
-};
-
-const requireMemberOrStaff = (ctx: Ctx): Result<ActorScope, AppError> => {
-  const actor = requireActor(ctx);
-  if (!actor.ok) return actor;
-  if (!ctx.identity.staffRole && !ctx.identity.memberId) {
-    return err(forbidden('Only members or staff can use discussions'));
-  }
-  return actor;
-};
-
-const memberScope = (ctx: Ctx): MemberScope | null =>
-  ctx.identity.tenantId && ctx.identity.memberId
-    ? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }
-    : null;
-
 const sanitizeBody = (body: string): string =>
   body
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -141,88 +120,15 @@ const sanitizeBody = (body: string): string =>
     .replace(/\r\n/g, '\n')
     .trim();
 
-const lessonAccess = async (
+const contextAccess = async (
   ctx: Ctx,
-  lessonId: string,
-  deps: Pick<CommunityDeps, 'courses' | 'modules' | 'grants' | 'clock'>,
+  context: { contextKind: Post['contextKind']; contextId: string },
+  deps: CommunityDeps,
 ): Promise<Result<void, AppError>> => {
-  const tenant = requireTenant(ctx);
-  if (!tenant.ok) return tenant;
-  if (ctx.identity.staffRole) return ok(undefined);
-  const member = memberScope(ctx);
-  if (!member) return err(forbidden('Only members can access lesson discussions'));
-  const [courses, modules] = await Promise.all([
-    deps.courses.list(tenant.value.tenantId),
-    deps.modules.list(tenant.value.tenantId),
-  ]);
-  const location = locateLesson(lessonId, courses, modules);
-  if (!location) return err(forbidden('This lesson is not accessible'));
-  const lookup = await resolveMemberAccessLookup(member, deps);
-  return isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId,
-  })
-    ? ok(undefined)
-    : err(forbidden('This lesson is not accessible'));
+  if (context.contextKind === 'lesson') return lessonContextAccess(ctx, context.contextId, deps);
+  const space = await spaceContextAccess(ctx, context.contextId, deps);
+  return space.ok ? ok(undefined) : space;
 };
-
-const accessibleLessonIds = async (
-  ctx: Ctx,
-  deps: Pick<CommunityDeps, 'courses' | 'modules' | 'lessons' | 'grants' | 'clock'>,
-): Promise<Result<Set<string>, AppError>> => {
-  const tenant = requireTenant(ctx);
-  if (!tenant.ok) return tenant;
-  const [courses, modules, lessons] = await Promise.all([
-    deps.courses.list(tenant.value.tenantId),
-    deps.modules.list(tenant.value.tenantId),
-    deps.lessons.list(tenant.value.tenantId),
-  ]);
-  if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));
-  const member = memberScope(ctx);
-  if (!member) return err(forbidden('Only members can search discussions'));
-  const lookup = await resolveMemberAccessLookup(member, deps);
-  return ok(accessibleLessons(courses, modules, lessons, lookup));
-};
-
-const accessibleLessons = (
-  courses: Course[],
-  modules: CourseModule[],
-  lessons: CourseLesson[],
-  lookup: AccessLookup,
-): Set<string> => {
-  const ids = new Set<string>();
-  for (const lesson of lessons) {
-    const location = locateLesson(lesson.id, courses, modules);
-    if (
-      location &&
-      isLessonAccessibleByLookup(lookup, {
-        courseId: location.course.id,
-        moduleId: location.moduleId,
-        lessonId: lesson.id,
-      })
-    ) {
-      ids.add(lesson.id);
-    }
-  }
-  return ids;
-};
-
-const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
-  id: post.id,
-  tenantId: post.tenantId,
-  contextKind: post.contextKind,
-  contextId: post.contextId,
-  parentPostId: post.parentPostId,
-  rootPostId: post.rootPostId,
-  authorDisplay: post.authorDisplay,
-  authorIsStaff: post.authorIsStaff,
-  body: post.body,
-  createdAt: post.createdAt,
-  editedAt: post.editedAt,
-  deletedAt: post.deletedAt,
-  isOwn: post.authorUserId === viewerUserId,
-});
 
 const nestReplies = (rootId: string, replies: Post[], viewerUserId: string): DiscussionPost[] => {
   const byParent = new Map<string, Post[]>();
@@ -241,10 +147,60 @@ const nestReplies = (rootId: string, replies: Post[], viewerUserId: string): Dis
   return (byParent.get(rootId) ?? []).map(build);
 };
 
-const snippet = (body: string): string => body.replace(/\s+/g, ' ').slice(0, 180);
+interface ThreadContextInfo {
+  courseId: string | null;
+  contextName: string;
+  contextUrl: string;
+}
 
-const renderPost = (post: Post): Post =>
-  post.deletedAt === null ? post : { ...post, body: 'Wpis usunięty' };
+const threadContextInfo = async (
+  tenantId: string,
+  post: Post,
+  deps: CommunityDeps,
+  tenantSlug: string | null,
+): Promise<ThreadContextInfo> => {
+  if (post.contextKind === 'space') {
+    const space = await deps.spaces.findById(tenantId, post.contextId);
+    return {
+      courseId: null,
+      contextName: space?.name ?? '',
+      contextUrl: deps.links.spaceUrl({ tenantSlug, spaceId: post.contextId }),
+    };
+  }
+  const [courses, modules, lesson] = await Promise.all([
+    deps.courses.list(tenantId),
+    deps.modules.list(tenantId),
+    deps.lessons.findById(tenantId, post.contextId),
+  ]);
+  const location = locateLesson(post.contextId, courses, modules);
+  const courseId = location?.course.id ?? null;
+  return {
+    courseId,
+    contextName: lesson?.name ?? '',
+    contextUrl: deps.links.lessonDiscussionUrl({ tenantSlug, courseId, lessonId: post.contextId }),
+  };
+};
+
+const subscriberCanAccessContext = async (
+  tenantId: string,
+  memberId: string,
+  post: Post,
+  deps: CommunityDeps,
+): Promise<boolean> => {
+  if (post.contextKind === 'space') {
+    const space = await deps.spaces.findById(tenantId, post.contextId);
+    return space !== null && (await spaceVisibleToMemberScope({ tenantId, memberId }, space, deps));
+  }
+  const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
+  const location = locateLesson(post.contextId, courses, modules);
+  if (!location) return false;
+  const lookup = await resolveMemberAccessLookup({ tenantId, memberId }, deps);
+  return isLessonAccessibleByLookup(lookup, {
+    courseId: location.course.id,
+    moduleId: location.moduleId,
+    lessonId: post.contextId,
+  });
+};
 
 const notifySubscribers = async (
   tenantId: string,
@@ -254,38 +210,16 @@ const notifySubscribers = async (
 ): Promise<Result<void, AppError>> => {
   const subscribers = await deps.threadSubscriptions.listSubscribersForRoot(tenantId, post.rootPostId);
   if (subscribers.length === 0) return ok(undefined);
-  const [courses, modules, lesson] = await Promise.all([
-    deps.courses.list(tenantId),
-    deps.modules.list(tenantId),
-    deps.lessons.findById(tenantId, post.contextId),
-  ]);
-  const location = locateLesson(post.contextId, courses, modules);
-  const courseId = location?.course.id ?? null;
-  const lessonName = lesson?.name ?? '';
-  const lessonUrl = deps.links.lessonDiscussionUrl({
-    tenantSlug: tenant.tenantSlug,
-    courseId,
-    lessonId: post.contextId,
-  });
+  const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
   for (const subscriber of subscribers) {
     if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
     const [staffGrant, member] = await Promise.all([
       deps.tenantAccess.findStaffGrant(subscriber.userId, { tenantId }),
       deps.tenantAccess.findMember(subscriber.userId, tenantId),
     ]);
-    const memberCanAccess = async (): Promise<boolean> => {
-      if (!member || !location) return false;
-      const lookup = await resolveMemberAccessLookup(
-        { tenantId, memberId: member.id },
-        deps,
-      );
-      return isLessonAccessibleByLookup(lookup, {
-        courseId: location.course.id,
-        moduleId: location.moduleId,
-        lessonId: post.contextId,
-      });
-    };
-    if (staffGrant === null && !(await memberCanAccess())) continue;
+    const memberCanAccess =
+      member !== null && (await subscriberCanAccessContext(tenantId, member.id, post, deps));
+    if (staffGrant === null && !memberCanAccess) continue;
     const notification: Notification = {
       id: deps.ids.nextId(),
       tenantId,
@@ -296,10 +230,10 @@ const notifySubscribers = async (
         postId: post.id,
         contextKind: post.contextKind,
         contextId: post.contextId,
-        courseId,
-        lessonName,
+        courseId: context.courseId,
+        lessonName: context.contextName,
         authorDisplay: post.authorDisplay,
-        snippet: snippet(post.body),
+        snippet: postSnippet(post.body),
       },
       readAt: null,
       createdAt: deps.clock.nowIso(),
@@ -310,14 +244,24 @@ const notifySubscribers = async (
       const delivered = await channel.deliver(inserted, {
         recipientEmail,
         tenantName: tenant.tenantName,
-        lessonName,
-        lessonUrl,
+        contextName: context.contextName,
+        contextUrl: context.contextUrl,
         language: DEFAULT_LANGUAGE,
       });
       if (!delivered.ok) return delivered;
     }
   }
   return ok(undefined);
+};
+
+const resolvePostAuthorDisplay = async (ctx: Ctx, deps: CommunityDeps): Promise<string> => {
+  const tenantId = ctx.identity.tenantId;
+  if (tenantId !== null && ctx.identity.memberId !== null) {
+    const member = await deps.tenantAccess.findMember(ctx.identity.userId, tenantId);
+    const override = member?.displayName?.trim() ?? '';
+    if (override.length > 0) return override;
+  }
+  return resolveAuthorDisplay(ctx.identity);
 };
 
 export const createPost = async (
@@ -329,7 +273,7 @@ export const createPost = async (
   if (!actor.ok) return actor;
   const parsed = createPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post payload', parsed.error.flatten()));
-  const access = await lessonAccess(ctx, parsed.data.contextId, deps);
+  const access = await contextAccess(ctx, parsed.data, deps);
   if (!access.ok) return access;
   const body = sanitizeBody(parsed.data.body);
   if (body.length === 0) return err(validation('Post body is required after sanitization'));
@@ -350,7 +294,7 @@ export const createPost = async (
     parentPostId: parentPost?.id ?? null,
     rootPostId,
     authorUserId: actor.value.userId,
-    authorDisplay: resolveAuthorDisplay(ctx.identity),
+    authorDisplay: await resolvePostAuthorDisplay(ctx, deps),
     authorIsStaff: ctx.identity.staffRole !== null,
     body,
     createdAt: deps.clock.nowIso(),
@@ -365,12 +309,19 @@ export const createPost = async (
     rootPostId: created.rootPostId,
     createdAt: created.createdAt,
   });
+  const tenant = {
+    tenantName: ctx.identity.tenantName ?? 'Together',
+    tenantSlug: ctx.identity.tenantSlug,
+  };
   if (parentPost !== null) {
-    const notified = await notifySubscribers(actor.value.tenantId, created, deps, {
-      tenantName: ctx.identity.tenantName ?? 'Together',
-      tenantSlug: ctx.identity.tenantSlug,
-    });
+    const notified = await notifySubscribers(actor.value.tenantId, created, deps, tenant);
     if (!notified.ok) return notified;
+  } else if (created.contextKind === 'space') {
+    const space = await deps.spaces.findById(actor.value.tenantId, created.contextId);
+    if (space !== null) {
+      const notified = await notifySpaceFollowers(actor.value.tenantId, created, space, deps, tenant);
+      if (!notified.ok) return notified;
+    }
   }
   return ok(toPublicPost(created, actor.value.userId));
 };
@@ -384,7 +335,7 @@ export const listDiscussion = async (
   if (!scope.ok) return scope;
   const parsed = listDiscussionInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid discussion query', parsed.error.flatten()));
-  const access = await lessonAccess(ctx, parsed.data.contextId, deps);
+  const access = await contextAccess(ctx, parsed.data, deps);
   if (!access.ok) return access;
   const listed = await deps.posts.listThreadsForContext(scope.value.tenantId, {
     contextKind: parsed.data.contextKind,
@@ -468,7 +419,7 @@ export const subscribeThread = async (
   if (!parsed.success) return err(validation('Invalid thread subscription payload', parsed.error.flatten()));
   const root = await deps.posts.findById(actor.value.tenantId, parsed.data.rootPostId);
   if (!root) return err(validation('Thread not found'));
-  const access = await lessonAccess(ctx, root.contextId, deps);
+  const access = await contextAccess(ctx, root, deps);
   if (!access.ok) return access;
   await deps.threadSubscriptions.upsert(actor.value.tenantId, {
     userId: actor.value.userId,
@@ -506,12 +457,19 @@ export const searchPosts = async (
   if (!parsed.success) return err(validation('Invalid post search payload', parsed.error.flatten()));
   const accessible = await accessibleLessonIds(ctx, deps);
   if (!accessible.ok) return accessible;
-  const requested = parsed.data.lessonIds ?? [...accessible.value];
-  const lessonIds = requested.filter((lessonId) => accessible.value.has(lessonId));
-  if (lessonIds.length === 0) return ok([]);
+  const visibleSpaces = await listAccessibleSpaces(ctx, deps);
+  if (!visibleSpaces.ok) return visibleSpaces;
+  const accessibleSpaceIds = new Set(visibleSpaces.value.map((space) => space.id));
+  const requestedLessons = parsed.data.lessonIds ?? [...accessible.value];
+  const requestedSpaces = parsed.data.spaceIds ?? [...accessibleSpaceIds];
+  const lessonIds = requestedLessons.filter((lessonId) => accessible.value.has(lessonId));
+  const spaceIds = requestedSpaces.filter((spaceId) => accessibleSpaceIds.has(spaceId));
+  const onlyLessonsRequested = parsed.data.lessonIds !== undefined && parsed.data.spaceIds === undefined;
+  const onlySpacesRequested = parsed.data.spaceIds !== undefined && parsed.data.lessonIds === undefined;
   const rows = await deps.posts.search(tenant.value.tenantId, {
     query: parsed.data.query,
-    lessonIds,
+    lessonIds: onlySpacesRequested ? [] : lessonIds,
+    spaceIds: onlyLessonsRequested ? [] : spaceIds,
     limit: parsed.data.limit,
   });
   return ok(

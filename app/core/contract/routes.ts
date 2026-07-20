@@ -8,7 +8,19 @@ import {
   courseSchema,
   courseStructureWithAccessSchema,
   createPostInputSchema,
+  createSpaceInputSchema,
   deletePostInputSchema,
+  deleteSpaceInputSchema,
+  followSpaceInputSchema,
+  listSpaceFeedInputSchema,
+  memberSpaceSchema,
+  reactToPostInputSchema,
+  reactionSummarySchema,
+  setSpaceArchivedInputSchema,
+  spaceFeedSchema,
+  spaceSchema,
+  staffSpaceSchema,
+  updateSpaceInputSchema,
   detachModuleFromCourseInputSchema,
   discussionSchema,
   lessonReferencesSchema,
@@ -513,6 +525,64 @@ export const threadSubscriptionOutputSchema = z.object({
   rootPostId: z.string(),
 });
 
+export const spacesListOutputSchema = z.object({
+  spaces: z.array(memberSpaceSchema),
+});
+
+export const staffSpacesListOutputSchema = z.object({
+  spaces: z.array(staffSpaceSchema),
+});
+
+export const spaceCreateInputSchema = createSpaceInputSchema;
+
+export type SpaceCreateInput = z.input<typeof spaceCreateInputSchema>;
+
+export const spaceUpdateInputSchema = updateSpaceInputSchema;
+
+export type SpaceUpdateInput = z.input<typeof spaceUpdateInputSchema>;
+
+export const spaceDeleteInputSchema = deleteSpaceInputSchema;
+
+export type SpaceDeleteInput = z.input<typeof spaceDeleteInputSchema>;
+
+export const spaceArchiveInputSchema = setSpaceArchivedInputSchema;
+
+export type SpaceArchiveInput = z.input<typeof spaceArchiveInputSchema>;
+
+export const spaceOutputSchema = z.object({
+  space: spaceSchema,
+});
+
+export const spaceDeleteOutputSchema = z.object({
+  spaceId: z.string(),
+});
+
+export const spaceFeedGetInputSchema = listSpaceFeedInputSchema;
+
+export type SpaceFeedGetInput = z.input<typeof spaceFeedGetInputSchema>;
+
+export const spaceFeedOutputSchema = z.object({
+  feed: spaceFeedSchema,
+});
+
+export const spaceFollowInputSchema = followSpaceInputSchema;
+
+export type SpaceFollowInput = z.input<typeof spaceFollowInputSchema>;
+
+export const spaceFollowOutputSchema = z.object({
+  spaceId: z.string(),
+  isFollowing: z.boolean(),
+});
+
+export const postReactInputSchema = reactToPostInputSchema;
+
+export type PostReactInput = z.input<typeof postReactInputSchema>;
+
+export const postReactOutputSchema = z.object({
+  postId: z.string(),
+  reactions: z.array(reactionSummarySchema),
+});
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -692,6 +762,17 @@ export const API_ROUTES = {
   threadSubscribe: { method: 'POST', path: '/api/discussion/subscribe' },
   threadMute: { method: 'POST', path: '/api/discussion/mute' },
   postsSearch: { method: 'GET', path: '/api/posts/search' },
+  postsReact: { method: 'POST', path: '/api/posts/react' },
+  postsUnreact: { method: 'POST', path: '/api/posts/unreact' },
+  spaces: { method: 'GET', path: '/api/spaces' },
+  spacesStaff: { method: 'GET', path: '/api/spaces/staff' },
+  spacesCreate: { method: 'POST', path: '/api/spaces' },
+  spacesUpdate: { method: 'POST', path: '/api/spaces/update' },
+  spacesArchive: { method: 'POST', path: '/api/spaces/archive' },
+  spacesDelete: { method: 'DELETE', path: '/api/spaces/:spaceId' },
+  spaceFeed: { method: 'GET', path: '/api/spaces/:spaceId/feed' },
+  spaceFollow: { method: 'POST', path: '/api/spaces/follow' },
+  spaceUnfollow: { method: 'POST', path: '/api/spaces/unfollow' },
   notifications: { method: 'GET', path: '/api/notifications' },
   notificationRead: { method: 'POST', path: '/api/notifications/read' },
   notificationsReadAll: { method: 'POST', path: '/api/notifications/read-all' },
@@ -780,6 +861,16 @@ export const API_PATHS = {
   threadSubscribe: API_ROUTES.threadSubscribe.path,
   threadMute: API_ROUTES.threadMute.path,
   postsSearch: API_ROUTES.postsSearch.path,
+  postsReact: API_ROUTES.postsReact.path,
+  postsUnreact: API_ROUTES.postsUnreact.path,
+  spaces: API_ROUTES.spaces.path,
+  spacesStaff: API_ROUTES.spacesStaff.path,
+  spacesUpdate: API_ROUTES.spacesUpdate.path,
+  spacesArchive: API_ROUTES.spacesArchive.path,
+  spacesDelete: API_ROUTES.spacesDelete.path,
+  spaceFeed: API_ROUTES.spaceFeed.path,
+  spaceFollow: API_ROUTES.spaceFollow.path,
+  spaceUnfollow: API_ROUTES.spaceUnfollow.path,
   notifications: API_ROUTES.notifications.path,
   notificationRead: API_ROUTES.notificationRead.path,
   notificationsReadAll: API_ROUTES.notificationsReadAll.path,

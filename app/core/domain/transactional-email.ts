@@ -108,6 +108,32 @@ export const threadReply = (
   });
 };
 
+export const spacePost = (
+  language: string,
+  input: { tenantName: string; spaceName: string; authorDisplay: string; snippet: string; url: string },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const spaceName = escapeHtml(input.spaceName);
+  const author = escapeHtml(input.authorDisplay);
+  const snippet = escapeHtml(input.snippet);
+
+  if (languageOrDefault(language) === 'en') {
+    const actionLink = link(input.url, 'Open the space');
+    return emailMessageSchema.parse({
+      subject: `New post in “${input.spaceName}”`,
+      html: `<p>Hello!</p><p>${author} posted in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
+      text: `Hello!\n\n${input.authorDisplay} posted in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the space: ${input.url}`,
+    });
+  }
+
+  const actionLink = link(input.url, 'Otwórz strefę');
+  return emailMessageSchema.parse({
+    subject: `Nowy wpis w strefie „${input.spaceName}”`,
+    html: `<p>Cześć!</p><p>${author} opublikował(a) wpis w strefie „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
+    text: `Cześć!\n\n${input.authorDisplay} opublikował(a) wpis w strefie „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz strefę: ${input.url}`,
+  });
+};
+
 export const magicLink = (
   language: string,
   input: { tenantName: string; url: string },

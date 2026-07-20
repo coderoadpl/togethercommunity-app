@@ -74,7 +74,9 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
   const openNotification = (notification: Notification) => {
     setAnchorEl(null);
     if (notification.readAt === null) markRead.mutate({ id: notification.id });
-    if (notification.payload.courseId !== null) {
+    if (notification.payload.contextKind === 'space') {
+      void navigate({ to: '/community/$spaceId', params: { spaceId: notification.payload.contextId } });
+    } else if (notification.payload.courseId !== null) {
       void navigate({
         to: '/my/courses/$courseId/lessons/$lessonId',
         params: {
@@ -84,6 +86,17 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       });
     }
   };
+
+  const notificationTitle = (notification: Notification) =>
+    notification.kind === 'space-post'
+      ? t.notifications.spacePost({
+          author: notification.payload.authorDisplay,
+          space: notification.payload.lessonName,
+        })
+      : t.notifications.threadReply({
+          author: notification.payload.authorDisplay,
+          lesson: notification.payload.lessonName,
+        });
 
   const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];
@@ -159,10 +172,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
               {notification.readAt === null ? <UnreadDot aria-hidden /> : null}
               <Box sx={{ minWidth: 0 }}>
                 <NotificationTitle component="p" unread={notification.readAt === null}>
-                  {t.notifications.threadReply({
-                    author: notification.payload.authorDisplay,
-                    lesson: notification.payload.lessonName,
-                  })}
+                  {notificationTitle(notification)}
                 </NotificationTitle>
                 <NotificationSnippet variant="body2" component="p">
                   {notification.payload.snippet}

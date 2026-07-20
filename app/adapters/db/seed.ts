@@ -15,10 +15,13 @@ import {
   memberSubscriptions,
   notifications,
   orders,
+  postReactions,
   posts,
   productGrants,
   productPrices,
   products,
+  spaces,
+  spaceSubscriptions,
   tenantAdmins,
   tenantDomains,
   tenants,
@@ -1450,6 +1453,219 @@ await db
     },
   });
 
+interface SeedSpaceDef {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  visibility: 'members' | 'product';
+  productIds: string[];
+  position: number;
+}
+
+const spaceDefs: SeedSpaceDef[] = [
+  {
+    id: 'space-studio-spolecznosc',
+    slug: 'spolecznosc',
+    name: 'Społeczność',
+    description: 'Otwarta strefa dla wszystkich uczestników — przedstaw się i pogadaj z innymi.',
+    visibility: 'members',
+    productIds: [],
+    position: 0,
+  },
+  {
+    id: 'space-studio-klub-js',
+    slug: 'klub-js',
+    name: 'Klub JavaScriptu',
+    description: 'Strefa dla posiadaczy pełnego kursu JavaScript — projekty, code review, wyzwania.',
+    visibility: 'product',
+    productIds: ['product-js-full'],
+    position: 1,
+  },
+];
+
+await db
+  .insert(spaces)
+  .values(
+    spaceDefs.map((space) => ({
+      id: space.id,
+      tenantId: 'tenant-studio',
+      slug: space.slug,
+      name: space.name,
+      description: space.description,
+      visibility: space.visibility,
+      productIds: space.productIds,
+      position: space.position,
+      createdAt: relativeIso(-30),
+    })),
+  )
+  .onConflictDoUpdate({
+    target: spaces.id,
+    set: {
+      name: sql`excluded.name`,
+      description: sql`excluded.description`,
+      visibility: sql`excluded.visibility`,
+      productIds: sql`excluded.product_ids`,
+      position: sql`excluded.position`,
+    },
+  });
+
+const spacePosts: SeedPostDef[] = [
+  {
+    id: 'post-spolecznosc-hello',
+    contextId: 'space-studio-spolecznosc',
+    parentPostId: null,
+    rootPostId: 'post-spolecznosc-hello',
+    authorUserId: studioCreatorUserId,
+    authorDisplay: 'Studio Creator',
+    authorIsStaff: true,
+    body: 'Witajcie w Społeczności! To otwarta strefa dla wszystkich uczestników — przedstawcie się w komentarzach i napiszcie, czego się teraz uczycie.',
+    createdAt: relativeIso(-14),
+    deletedAt: null,
+  },
+  {
+    id: 'post-spolecznosc-hello-r1',
+    contextId: 'space-studio-spolecznosc',
+    parentPostId: 'post-spolecznosc-hello',
+    rootPostId: 'post-spolecznosc-hello',
+    authorUserId: aktywnyUserId,
+    authorDisplay: 'Kursant Aktywny',
+    authorIsStaff: false,
+    body: 'Cześć! Przerabiam właśnie moduł o DOM i powoli składam pierwszy własny projekt — licznik nawyków.',
+    createdAt: relativeIso(-13),
+    deletedAt: null,
+  },
+  {
+    id: 'post-spolecznosc-polecajki',
+    contextId: 'space-studio-spolecznosc',
+    parentPostId: null,
+    rootPostId: 'post-spolecznosc-polecajki',
+    authorUserId: freeUserId,
+    authorDisplay: 'Konto Free',
+    authorIsStaff: false,
+    body: 'Mała polecajka: strona javascript.info świetnie uzupełnia lekcje z kursu. Macie swoje ulubione materiały dodatkowe?',
+    createdAt: relativeIso(-6),
+    deletedAt: null,
+  },
+  {
+    id: 'post-klub-wyzwanie',
+    contextId: 'space-studio-klub-js',
+    parentPostId: null,
+    rootPostId: 'post-klub-wyzwanie',
+    authorUserId: studioCreatorUserId,
+    authorDisplay: 'Studio Creator',
+    authorIsStaff: true,
+    body: 'Wyzwanie tygodnia: napiszcie funkcję, która spłaszcza dowolnie zagnieżdżoną tablicę bez użycia Array.prototype.flat. Rozwiązania wrzucajcie w odpowiedziach!',
+    createdAt: relativeIso(-4),
+    deletedAt: null,
+  },
+  {
+    id: 'post-klub-wyzwanie-r1',
+    contextId: 'space-studio-klub-js',
+    parentPostId: 'post-klub-wyzwanie',
+    rootPostId: 'post-klub-wyzwanie',
+    authorUserId: aktywnyUserId,
+    authorDisplay: 'Kursant Aktywny',
+    authorIsStaff: false,
+    body: 'Moja wersja z rekurencją i reduce: reduce((acc, el) => acc.concat(Array.isArray(el) ? splaszcz(el) : el), []). Działa też dla pustych tablic.',
+    createdAt: relativeIso(-3),
+    deletedAt: null,
+  },
+];
+
+await db
+  .insert(posts)
+  .values(
+    spacePosts.map((post) => ({
+      id: post.id,
+      tenantId: 'tenant-studio',
+      contextKind: 'space' as const,
+      contextId: post.contextId,
+      parentPostId: post.parentPostId,
+      rootPostId: post.rootPostId,
+      authorUserId: post.authorUserId,
+      authorDisplay: post.authorDisplay,
+      authorIsStaff: post.authorIsStaff,
+      body: post.body,
+      createdAt: post.createdAt,
+      editedAt: null,
+      deletedAt: post.deletedAt,
+    })),
+  )
+  .onConflictDoUpdate({
+    target: posts.id,
+    set: {
+      body: sql`excluded.body`,
+      createdAt: sql`excluded.created_at`,
+      deletedAt: sql`excluded.deleted_at`,
+      authorUserId: sql`excluded.author_user_id`,
+      authorDisplay: sql`excluded.author_display`,
+      authorIsStaff: sql`excluded.author_is_staff`,
+    },
+  });
+
+const reactionDefs: Array<{ postId: string; userId: string; emoji: string; createdAt: string }> = [
+  { postId: 'post-spolecznosc-hello', userId: aktywnyUserId, emoji: '👍', createdAt: relativeIso(-13) },
+  { postId: 'post-spolecznosc-hello', userId: freeUserId, emoji: '👍', createdAt: relativeIso(-12) },
+  { postId: 'post-spolecznosc-hello', userId: modulUserId, emoji: '🎉', createdAt: relativeIso(-12) },
+  { postId: 'post-spolecznosc-polecajki', userId: aktywnyUserId, emoji: '💡', createdAt: relativeIso(-5) },
+  { postId: 'post-spolecznosc-polecajki', userId: studioCreatorUserId, emoji: '❤️', createdAt: relativeIso(-5) },
+  { postId: 'post-klub-wyzwanie', userId: aktywnyUserId, emoji: '🎉', createdAt: relativeIso(-4) },
+  { postId: 'post-klub-wyzwanie-r1', userId: studioCreatorUserId, emoji: '👍', createdAt: relativeIso(-3) },
+];
+
+await db
+  .insert(postReactions)
+  .values(
+    reactionDefs.map((reaction) => ({
+      tenantId: 'tenant-studio',
+      postId: reaction.postId,
+      userId: reaction.userId,
+      emoji: reaction.emoji,
+      createdAt: reaction.createdAt,
+    })),
+  )
+  .onConflictDoNothing();
+
+const spaceSubscriptionDefs: Array<{ userId: string; spaceId: string; createdAt: string }> = [
+  { userId: aktywnyUserId, spaceId: 'space-studio-spolecznosc', createdAt: relativeIso(-14) },
+  { userId: freeUserId, spaceId: 'space-studio-spolecznosc', createdAt: relativeIso(-10) },
+  { userId: studioCreatorUserId, spaceId: 'space-studio-spolecznosc', createdAt: relativeIso(-14) },
+  { userId: aktywnyUserId, spaceId: 'space-studio-klub-js', createdAt: relativeIso(-4) },
+  { userId: studioCreatorUserId, spaceId: 'space-studio-klub-js', createdAt: relativeIso(-4) },
+];
+
+await db
+  .insert(spaceSubscriptions)
+  .values(
+    spaceSubscriptionDefs.map((subscription) => ({
+      tenantId: 'tenant-studio',
+      userId: subscription.userId,
+      spaceId: subscription.spaceId,
+      createdAt: subscription.createdAt,
+    })),
+  )
+  .onConflictDoNothing();
+
+await db
+  .insert(threadSubscriptions)
+  .values(
+    [
+      { userId: studioCreatorUserId, rootPostId: 'post-spolecznosc-hello', createdAt: relativeIso(-14) },
+      { userId: aktywnyUserId, rootPostId: 'post-spolecznosc-hello', createdAt: relativeIso(-13) },
+      { userId: freeUserId, rootPostId: 'post-spolecznosc-polecajki', createdAt: relativeIso(-6) },
+      { userId: studioCreatorUserId, rootPostId: 'post-klub-wyzwanie', createdAt: relativeIso(-4) },
+      { userId: aktywnyUserId, rootPostId: 'post-klub-wyzwanie', createdAt: relativeIso(-3) },
+    ].map((subscription) => ({
+      tenantId: 'tenant-studio',
+      userId: subscription.userId,
+      rootPostId: subscription.rootPostId,
+      createdAt: subscription.createdAt,
+      mutedAt: null,
+    })),
+  )
+  .onConflictDoNothing();
+
 console.log('Seed applied:');
 for (const creator of creators) {
   console.log(`  creator  ${creator.email} / ${PASSWORD}  ->  ${creator.tenant.slug}`);
@@ -1458,6 +1674,7 @@ for (const member of memberSpecs) {
   console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
 }
 console.log('  community  discussions under course-js lessons; unread notification for kursant.aktywny@together.dev');
+console.log('  spaces   Społeczność (members) + Klub JavaScriptu (product-js-full) on studio, with posts/reactions/follows');
 console.log('  sales    product-club subscription (monthly+yearly), active simulated subscription for kursant.abonent@together.dev, demo orders on studio');
 console.log('  tenants  http://studio.localhost:48730  http://acme.localhost:48730  http://akademia.localhost:48730');
 process.exit(0);

@@ -1606,6 +1606,7 @@ export const createScoreboardTheme = (): Theme =>
           label: { padding: '0.2rem 0.55rem' },
           outlined: { border: `1.5px solid ${SCORE_INK}`, backgroundColor: SCORE_SURFACE },
           filled: {
+            '&.MuiChip-colorPrimary': { color: SCORE_SURFACE },
             '&.MuiChip-colorError': { backgroundColor: SCORE_ERROR, color: SCORE_SURFACE },
           },
           colorSecondary: {

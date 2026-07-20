@@ -70,14 +70,20 @@ import {
   PanelProductDetailRoute,
   PanelSalesRoute,
   PanelSettingsRoute,
+  PanelSpacesRoute,
+  PanelSpaceCreateRoute,
+  PanelSpaceDetailRoute,
 } from './routes/panel.js';
 import {
+  CommunityRoute,
   CourseRoute,
   CourseStructureRoute,
   LessonPlayerRoute,
   MemberAccountRoute,
   MyCoursesRoute,
   MyProductsRoute,
+  SpaceFeedRoute,
+  SpaceThreadRoute,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
 import { ResetPasswordRoute } from './routes/reset-password.js';
@@ -155,6 +161,21 @@ const accountRoute = createRoute({
   path: '/account',
   component: MemberAccountRoute,
 });
+const communityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/community',
+  component: CommunityRoute,
+});
+const spaceFeedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/community/$spaceId',
+  component: SpaceFeedRoute,
+});
+const spaceThreadRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/community/$spaceId/posts/$postId',
+  component: SpaceThreadRoute,
+});
 
 const panelLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -226,6 +247,21 @@ const panelMemberDetailRoute = createRoute({
   path: 'members/$memberId',
   component: PanelMemberDetailRoute,
 });
+const panelSpacesRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces',
+  component: PanelSpacesRoute,
+});
+const panelSpaceCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/new',
+  component: PanelSpaceCreateRoute,
+});
+const panelSpaceDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'spaces/$spaceId',
+  component: PanelSpaceDetailRoute,
+});
 const panelSalesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'sales',
@@ -255,6 +291,9 @@ const router = createRouter({
     registerRoute,
     resetPasswordRoute,
     accountRoute,
+    communityRoute,
+    spaceFeedRoute,
+    spaceThreadRoute,
     panelLayoutRoute.addChildren([
       panelIndexRoute,
       panelProductsRoute,
@@ -269,6 +308,9 @@ const router = createRouter({
       panelLessonEditRoute,
       panelMembersRoute,
       panelMemberDetailRoute,
+      panelSpacesRoute,
+      panelSpaceCreateRoute,
+      panelSpaceDetailRoute,
       panelSalesRoute,
       panelIntegrationsRoute,
       panelSettingsRoute,

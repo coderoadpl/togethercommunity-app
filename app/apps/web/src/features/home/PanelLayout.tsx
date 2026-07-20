@@ -53,6 +53,7 @@ import {
   SalesIcon,
   SettingsIcon,
   SignOutIcon,
+  SpacesIcon,
 } from './panel-icons.js';
 import { PanelContextProvider, type PanelTenant } from './panel-context.js';
 
@@ -62,6 +63,7 @@ type PanelSection =
   | 'courses'
   | 'lessons'
   | 'members'
+  | 'spaces'
   | 'sales'
   | 'integrations'
   | 'settings';
@@ -78,6 +80,7 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'courses', to: '/panel/courses' },
   { id: 'lessons', to: '/panel/lessons' },
   { id: 'members', to: '/panel/members' },
+  { id: 'spaces', to: '/panel/spaces' },
   { id: 'sales', to: '/panel/sales' },
   { id: 'integrations', to: '/panel/integrations' },
   { id: 'settings', to: '/panel/settings' },
@@ -103,6 +106,8 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <LessonsIcon />;
     case 'members':
       return <MembersIcon />;
+    case 'spaces':
+      return <SpacesIcon />;
     case 'sales':
       return <SalesIcon />;
     case 'integrations':

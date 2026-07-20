@@ -52,6 +52,7 @@ const completedEvent = (overrides?: {
   priceId?: string;
   subscriptionId?: string;
   email?: string;
+  paymentIntentId?: string;
 }): PaymentWebhookEvent => ({
   id: overrides?.id ?? 'evt-1',
   type: 'checkout.session.completed',
@@ -59,7 +60,7 @@ const completedEvent = (overrides?: {
   checkoutSession: {
     email: overrides?.email ?? 'buyer@example.com',
     subscriptionId: overrides?.subscriptionId ?? null,
-    paymentIntentId: 'pi-1',
+    paymentIntentId: overrides?.paymentIntentId ?? 'pi-1',
     metadata: {
       tenantId: overrides?.tenantId ?? 'tenant-a',
       productId: overrides?.productId ?? 'product-1',
@@ -91,14 +92,18 @@ const invoiceEvent = (input: {
   },
 });
 
-const refundEvent = (id = 'evt-refund'): PaymentWebhookEvent => ({
-  id,
-  type: 'charge.refunded',
-  objectId: 'ch-refund',
+const adjustmentEvent = (input: {
+  id?: string;
+  type?: 'charge.refunded' | 'charge.dispute.created';
+  paymentIntentId?: string;
+} = {}): PaymentWebhookEvent => ({
+  id: input.id ?? 'evt-refund',
+  type: input.type ?? 'charge.refunded',
+  objectId: input.id ?? 'ch-refund',
   checkoutSession: null,
   adjustment: {
     chargeId: 'ch-refund',
-    paymentIntentId: 'pi-1',
+    paymentIntentId: input.paymentIntentId ?? 'pi-1',
     invoiceId: null,
   },
 });
@@ -207,6 +212,14 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
               order.tenantId === tenantId &&
               order.providerObjectIds['subscription'] === providerSubscriptionId,
           ) ?? null,
+      listPaidOrdersForMemberProduct: async (tenantId, memberId, productId) =>
+        orders.filter(
+          (order) =>
+            order.tenantId === tenantId &&
+            order.memberId === memberId &&
+            order.productId === productId &&
+            order.status === 'paid',
+        ),
       markOrderRefunded: async (tenantId, orderId) => {
         const index = orders.findIndex(
           (order) => order.tenantId === tenantId && order.id === orderId && order.status !== 'refunded',
@@ -297,6 +310,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
     ids: { nextId: () => `id-${++sequence}` },
     clock: { nowIso: () => clockNow },
     appBaseUrl: 'https://alpha.example.com',
+    baseDomain: 'example.com',
     exposeMagicLinks: false,
   };
 
@@ -505,7 +519,7 @@ describe('fulfillStripeWebhook', () => {
     const h = harness();
     await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
 
-    const result = await fulfillStripeWebhook(tenantA, refundEvent(), h.deps, 'simulated');
+    const result = await fulfillStripeWebhook(tenantA, adjustmentEvent(), h.deps, 'simulated');
 
     expect(result).toEqual({ ok: true, value: { processed: true } });
     expect(h.orders[0]?.status).toBe('refunded');
@@ -516,7 +530,7 @@ describe('fulfillStripeWebhook', () => {
   it('applies a duplicate refund delivery exactly once', async () => {
     const h = harness();
     await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
-    const event = refundEvent();
+    const event = adjustmentEvent();
 
     const first = await fulfillStripeWebhook(tenantA, event, h.deps);
     const second = await fulfillStripeWebhook(tenantA, event, h.deps);
@@ -526,6 +540,44 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders[0]?.status).toBe('refunded');
     expect(h.refundTransitions()).toBe(1);
   });
+
+  it('keeps the grant when an older order is refunded and a newer paid order remains', async () => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
+    await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({ id: 'evt-2', objectId: 'cs-2', paymentIntentId: 'pi-2' }),
+      h.deps,
+    );
+
+    const result = await fulfillStripeWebhook(tenantA, adjustmentEvent(), h.deps);
+
+    expect(result).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders.map((order) => order.status)).toEqual(['refunded', 'paid']);
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBeNull();
+  });
+
+  it.each(['charge.refunded', 'charge.dispute.created'] as const)(
+    'revokes the grant when %s removes the last paid order',
+    async (type) => {
+      const h = harness();
+      await fulfillStripeWebhook(
+        tenantA,
+        completedEvent({ paymentIntentId: 'pi-last' }),
+        h.deps,
+      );
+
+      const result = await fulfillStripeWebhook(
+        tenantA,
+        adjustmentEvent({ id: `evt-${type}`, type, paymentIntentId: 'pi-last' }),
+        h.deps,
+      );
+
+      expect(result).toEqual({ ok: true, value: { processed: true } });
+      expect(h.orders[0]?.status).toBe('refunded');
+      expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    },
+  );
 });
 
 describe('simulated subscription lifecycle', () => {

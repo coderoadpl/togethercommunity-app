@@ -77,14 +77,27 @@ describe('email notification channel', () => {
       {
         ...context,
         contextName: 'Społeczność',
-        contextUrl: 'http://acme.localhost:48730/my/spaces/s1',
+        contextUrl: 'http://acme.localhost:48730/community/s1/posts/p1',
       },
     );
 
     expect(delivered.ok).toBe(true);
     expect(sent[0]?.subject).toContain('Społeczność');
     expect(sent[0]?.subject).toContain('strefie');
-    expect(sent[0]?.text).toContain('http://acme.localhost:48730/my/spaces/s1');
+    expect(sent[0]?.text).toContain('http://acme.localhost:48730/community/s1/posts/p1');
+  });
+
+  it('renders the lesson question template for lesson-question notifications', async () => {
+    const { sent, port } = captureEmail();
+
+    const delivered = await createEmailNotificationChannel(port).deliver(
+      { ...notification, kind: 'lesson-question' },
+      { ...context, language: 'en' },
+    );
+
+    expect(delivered.ok).toBe(true);
+    expect(sent[0]?.subject).toBe('New question under “Lekcja o hamakach”');
+    expect(sent[0]?.text).toContain('Ola asked a question');
   });
 
   it('skips recipients without an email address', async () => {

@@ -92,6 +92,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
+import { communityPostPath, communitySpacePath, lessonPath } from '@core/contract/index.js';
 
 import type { Env } from './env.js';
 
@@ -183,8 +184,14 @@ export const createDeps = (env: Env): AppDeps => {
   };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
-      tenantUrl(tenantSlug, courseId === null ? '/my' : `/my/courses/${courseId}/lessons/${lessonId}`),
-    spaceUrl: ({ tenantSlug, spaceId }) => tenantUrl(tenantSlug, `/my/spaces/${spaceId}`),
+      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId)),
+    spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
+      tenantUrl(
+        tenantSlug,
+        rootPostId === undefined
+          ? communitySpacePath(spaceId)
+          : communityPostPath(spaceId, rootPostId),
+      ),
   };
 
   const google =

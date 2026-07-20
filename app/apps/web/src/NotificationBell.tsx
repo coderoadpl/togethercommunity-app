@@ -93,10 +93,15 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
           author: notification.payload.authorDisplay,
           space: notification.payload.lessonName,
         })
-      : t.notifications.threadReply({
-          author: notification.payload.authorDisplay,
-          lesson: notification.payload.lessonName,
-        });
+      : notification.kind === 'lesson-question'
+        ? t.notifications.lessonQuestion({
+            author: notification.payload.authorDisplay,
+            lesson: notification.payload.lessonName,
+          })
+        : t.notifications.threadReply({
+            author: notification.payload.authorDisplay,
+            lesson: notification.payload.lessonName,
+          });
 
   const unreadCount = unread.data?.unread ?? 0;
   const notifications = list.data?.notifications ?? [];

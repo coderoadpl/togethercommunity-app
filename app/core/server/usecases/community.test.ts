@@ -417,6 +417,13 @@ const deps = (
   ];
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
+    listStaffForTenant: async (tenantId) =>
+      tenantId === 't1'
+        ? staffUserIds.map((userId) => ({
+            userId,
+            email: members.find((member) => member.userId === userId)?.email ?? `${userId}@example.com`,
+          }))
+        : [],
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && staffUserIds.includes(userId)
         ? {
@@ -441,7 +448,8 @@ const deps = (
     links: {
       lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
         `http://${tenantSlug ?? 'app'}.localhost/my/courses/${courseId ?? 'none'}/lessons/${lessonId}`,
-      spaceUrl: ({ tenantSlug, spaceId }) => `http://${tenantSlug ?? 'app'}.localhost/my/spaces/${spaceId}`,
+      spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
+        `http://${tenantSlug ?? 'app'}.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     ids: new SequenceIds(),
     clock,
@@ -575,6 +583,60 @@ describe('community use-cases', () => {
     );
   });
 
+  it('notifies and subscribes tenant staff when a member asks a lesson question', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')], ['u2', 'u3']);
+    const delivered: Array<{ recipient: string; email: string | null }> = [];
+    d.notificationChannels.push({
+      deliver: async (notification, context) => {
+        delivered.push({ recipient: notification.recipientUserId, email: context.recipientEmail });
+        return { ok: true, value: undefined };
+      },
+    });
+
+    const question = await createPost(
+      ctx({ userId: 'u1', memberId: 'm1', name: 'Asker' }),
+      { contextKind: 'lesson', contextId: 'l1', body: 'How does this work?' },
+      d,
+    );
+
+    expect(question.ok).toBe(true);
+    if (!question.ok) return;
+    expect(d.notifications).toBeInstanceOf(FakeNotifications);
+    if (!(d.notifications instanceof FakeNotifications)) return;
+    expect(d.notifications.rows).toEqual([
+      expect.objectContaining({ recipientUserId: 'u2', kind: 'lesson-question' }),
+      expect.objectContaining({ recipientUserId: 'u3', kind: 'lesson-question' }),
+    ]);
+    expect(delivered).toEqual([
+      { recipient: 'u2', email: 'u2@example.com' },
+      { recipient: 'u3', email: 'u3@example.com' },
+    ]);
+    expect(await d.threadSubscriptions.listSubscribersForRoot('t1', question.value.rootPostId)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: 'u1' }),
+        expect.objectContaining({ userId: 'u2' }),
+        expect.objectContaining({ userId: 'u3' }),
+      ]),
+    );
+
+    d.notifications.rows.splice(0);
+    await createPost(
+      ctx({ userId: 'u2', memberId: 'm2', staffRole: 'admin', name: 'Admin' }),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        parentPostId: question.value.id,
+        body: 'Here is the answer.',
+      },
+      d,
+    );
+    expect(d.notifications.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ recipientUserId: 'u1', kind: 'thread-reply' }),
+      ]),
+    );
+  });
+
   it('skips subscribers whose grant expired while still notifying staff subscribers', async () => {
     const expired = {
       ...grant('m2', 'all'),
@@ -594,6 +656,8 @@ describe('community use-cases', () => {
       d,
     );
     if (!root.ok) throw new Error('root failed');
+    delivered.splice(0);
+    if (d.notifications instanceof FakeNotifications) d.notifications.rows.splice(0);
     await d.threadSubscriptions.upsert('t1', {
       userId: 'u2',
       rootPostId: root.value.rootPostId,

@@ -228,9 +228,14 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       headers: new Headers(),
     });
   },
-  createEnrollmentMagicLink: async ({ email, callbackURL, tenantName, language }) => {
+  createEnrollmentMagicLink: async ({ email, callbackURL, baseUrl, tenantName, language }) => {
     const normalizedEmail = normalizeEmail(email);
-    auth.setMagicLinkDeliveryContext(normalizedEmail, { tenantName, language, mode: 'capture' });
+    auth.setMagicLinkDeliveryContext(normalizedEmail, {
+      tenantName,
+      language,
+      mode: 'capture',
+      baseUrl,
+    });
     await auth.api.signInMagicLink({
       body: { email: normalizedEmail, callbackURL },
       headers: new Headers(),

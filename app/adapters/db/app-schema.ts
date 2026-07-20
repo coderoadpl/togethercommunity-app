@@ -509,7 +509,7 @@ export const notifications = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     recipientUserId: text('recipient_user_id').notNull(),
-    kind: text('kind', { enum: ['thread-reply', 'space-post'] }).notNull(),
+    kind: text('kind', { enum: ['thread-reply', 'space-post', 'lesson-question'] }).notNull(),
     payload: jsonb('payload').notNull(),
     readAt: text('read_at'),
     createdAt: text('created_at').notNull(),

@@ -1490,6 +1490,21 @@ export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository =
     const row = rows[0];
     return row ? parseOrder(row) : null;
   },
+  listPaidOrdersForMemberProduct: async (tenantId, memberId, productId) => {
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.memberId, memberId),
+          eq(orders.productId, productId),
+          eq(orders.status, 'paid'),
+        ),
+      )
+      .orderBy(desc(orders.createdAt), desc(orders.id));
+    return rows.map(parseOrder);
+  },
   markOrderRefunded: async (tenantId, orderId) => {
     const rows = await db
       .update(orders)
@@ -1936,6 +1951,16 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         if (membership) memberships.push(membership);
       }
       return memberships;
+    },
+    listStaffForTenant: async (tenantId) => {
+      const rows = await db
+        .select({ userId: tenantAdmins.userId, email: user.email, staffRole: tenantAdmins.role })
+        .from(tenantAdmins)
+        .innerJoin(user, eq(tenantAdmins.userId, user.id))
+        .where(eq(tenantAdmins.tenantId, tenantId));
+      return rows.flatMap((row) =>
+        parseStaffRole(row.staffRole) === null ? [] : [{ userId: row.userId, email: row.email }],
+      );
     },
     findStaffGrant: async (userId, lookup) => {
       const tenantCondition =

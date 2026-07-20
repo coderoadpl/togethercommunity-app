@@ -346,7 +346,11 @@ export const notifySpaceFollowers = async (
 ): Promise<Result<void, AppError>> => {
   const followers = await deps.spaceSubscriptions.listFollowersForSpace(tenantId, space.id);
   if (followers.length === 0) return ok(undefined);
-  const spaceUrl = deps.links.spaceUrl({ tenantSlug: tenant.tenantSlug, spaceId: space.id });
+  const spaceUrl = deps.links.spaceUrl({
+    tenantSlug: tenant.tenantSlug,
+    spaceId: space.id,
+    rootPostId: post.rootPostId,
+  });
   for (const follower of followers) {
     if (follower.userId === post.authorUserId) continue;
     const [staffGrant, member] = await Promise.all([

@@ -164,7 +164,11 @@ const threadContextInfo = async (
     return {
       courseId: null,
       contextName: space?.name ?? '',
-      contextUrl: deps.links.spaceUrl({ tenantSlug, spaceId: post.contextId }),
+      contextUrl: deps.links.spaceUrl({
+        tenantSlug,
+        spaceId: post.contextId,
+        rootPostId: post.rootPostId,
+      }),
     };
   }
   const [courses, modules, lesson] = await Promise.all([
@@ -254,6 +258,55 @@ const notifySubscribers = async (
   return ok(undefined);
 };
 
+const notifyLessonQuestionStaff = async (
+  tenantId: string,
+  post: Post,
+  deps: CommunityDeps,
+  tenant: { tenantName: string; tenantSlug: string | null },
+): Promise<Result<void, AppError>> => {
+  const staff = await deps.tenantAccess.listStaffForTenant(tenantId);
+  if (staff.length === 0) return ok(undefined);
+  const context = await threadContextInfo(tenantId, post, deps, tenant.tenantSlug);
+  for (const recipient of staff) {
+    if (recipient.userId === post.authorUserId) continue;
+    await deps.threadSubscriptions.upsert(tenantId, {
+      userId: recipient.userId,
+      rootPostId: post.rootPostId,
+      createdAt: post.createdAt,
+    });
+    const notification: Notification = {
+      id: deps.ids.nextId(),
+      tenantId,
+      recipientUserId: recipient.userId,
+      kind: 'lesson-question',
+      payload: {
+        rootPostId: post.rootPostId,
+        postId: post.id,
+        contextKind: post.contextKind,
+        contextId: post.contextId,
+        courseId: context.courseId,
+        lessonName: context.contextName,
+        authorDisplay: post.authorDisplay,
+        snippet: postSnippet(post.body),
+      },
+      readAt: null,
+      createdAt: deps.clock.nowIso(),
+    };
+    const inserted = await deps.notifications.insert(tenantId, notification);
+    for (const channel of deps.notificationChannels) {
+      const delivered = await channel.deliver(inserted, {
+        recipientEmail: recipient.email,
+        tenantName: tenant.tenantName,
+        contextName: context.contextName,
+        contextUrl: context.contextUrl,
+        language: DEFAULT_LANGUAGE,
+      });
+      if (!delivered.ok) return delivered;
+    }
+  }
+  return ok(undefined);
+};
+
 const resolvePostAuthorDisplay = async (ctx: Ctx, deps: CommunityDeps): Promise<string> => {
   const tenantId = ctx.identity.tenantId;
   if (tenantId !== null && ctx.identity.memberId !== null) {
@@ -322,6 +375,9 @@ export const createPost = async (
       const notified = await notifySpaceFollowers(actor.value.tenantId, created, space, deps, tenant);
       if (!notified.ok) return notified;
     }
+  } else {
+    const notified = await notifyLessonQuestionStaff(actor.value.tenantId, created, deps, tenant);
+    if (!notified.ok) return notified;
   }
   return ok(toPublicPost(created, actor.value.userId));
 };

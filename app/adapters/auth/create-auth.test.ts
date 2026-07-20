@@ -96,6 +96,24 @@ describe('createAuthPort.requestMagicLink', () => {
   });
 });
 
+describe('createAuthPort.createEnrollmentMagicLink', () => {
+  it('rebases the captured enrollment link onto the tenant host', async () => {
+    const { authPort } = buildAuth();
+    const email = `enrollment-${Date.now()}@together.dev`;
+
+    const created = await authPort.createEnrollmentMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/',
+      baseUrl: 'http://studio.localhost:48730',
+      tenantName: 'Studio',
+      language: 'en',
+    });
+
+    expect(new URL(created.url).host).toBe('studio.localhost:48730');
+    expect(new URL(created.url).host).not.toBe('localhost:48730');
+  });
+});
+
 describe('reset password email', () => {
   it('rebases the reset link onto the requesting host and sends an English email', async () => {
     const { auth, authPort, emails } = buildAuth();

@@ -463,6 +463,7 @@ const fixture = (input: {
   };
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
+    listStaffForTenant: async () => [],
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && (input.staffUserIds ?? []).includes(userId)
         ? { tenant: { id: 't1', slug: 'tenant', name: 'Tenant', contentVersion: 1 }, staffRole: 'admin' }
@@ -484,8 +485,9 @@ const fixture = (input: {
     grants: grantRepo(input.grants ?? [], input.products ?? []),
     tenantAccess,
     links: {
-      lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/lessons/${lessonId}`,
-      spaceUrl: ({ spaceId }) => `http://tenant.localhost/my/spaces/${spaceId}`,
+      lessonDiscussionUrl: ({ lessonId }) => `http://tenant.localhost/my/courses/c1/lessons/${lessonId}`,
+      spaceUrl: ({ spaceId, rootPostId }) =>
+        `http://tenant.localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     ids: new SequenceIds(),
     clock: new MutableClock(),

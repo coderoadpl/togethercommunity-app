@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { magicLink, resetPassword, spacePost, threadReply, welcomeSetPassword } from './transactional-email.js';
+import {
+  lessonQuestion,
+  magicLink,
+  resetPassword,
+  spacePost,
+  threadReply,
+  welcomeSetPassword,
+} from './transactional-email.js';
 
 describe('welcomeSetPassword', () => {
   it('renders the Polish template', () => {
@@ -142,7 +149,7 @@ describe('notification opt-out footer', () => {
     spaceName: 'Społeczność',
     authorDisplay: 'Ola',
     snippet: 'Cześć wszystkim!',
-    url: 'https://acme.localhost/my/spaces/s1',
+    url: 'https://acme.localhost/community/s1/posts/p1',
   };
 
   it('links thread-mute management from the thread-reply mail in both languages', () => {
@@ -171,6 +178,18 @@ describe('notification opt-out footer', () => {
       `<a href="${postInput.url}">Manage notifications</a> (you can unfollow the space there)`,
     );
     expect(en.text).toContain(`Manage notifications (you can unfollow the space there): ${postInput.url}`);
+  });
+
+  it('renders lesson-question copy and thread management in both languages', () => {
+    const pl = lessonQuestion('pl', replyInput);
+    expect(pl.subject).toBe('Nowe pytanie pod lekcją „Zmienne”');
+    expect(pl.text).toContain('Ola zadał(a) pytanie pod lekcją „Zmienne”');
+    expect(pl.text).toContain('Zarządzaj powiadomieniami');
+
+    const en = lessonQuestion('en', replyInput);
+    expect(en.subject).toBe('New question under “Zmienne”');
+    expect(en.text).toContain('Ola asked a question under “Zmienne”');
+    expect(en.text).toContain('Manage notifications');
   });
 });
 

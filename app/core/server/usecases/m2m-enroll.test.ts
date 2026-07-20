@@ -18,7 +18,7 @@ const NOW = '2026-06-01T00:00:00.000Z';
 const FUTURE = '2026-12-01T00:00:00.000Z';
 const PAST = '2026-01-01T00:00:00.000Z';
 const NEW_EXPIRY = '2027-06-01T00:00:00.000Z';
-const TENANT = { id: 't1', name: 'Tenant One' };
+const TENANT = { id: 't1', name: 'Tenant One', slug: 'tenant-one' };
 
 const product = (id: string, published: boolean): Product => ({
   id,
@@ -43,7 +43,7 @@ interface Harness {
   grants: ProductGrant[];
   orders: Order[];
   sent: Sent[];
-  captured: string[];
+  captured: Array<{ email: string; callbackURL: string; baseUrl: string }>;
 }
 
 const harness = (options: {
@@ -55,7 +55,7 @@ const harness = (options: {
   const members: Member[] = [];
   const orders: Order[] = [];
   const sent: Sent[] = [];
-  const captured: string[] = [];
+  const captured: Array<{ email: string; callbackURL: string; baseUrl: string }> = [];
   let seq = 0;
 
   const productsRepo: ProductRepository = {
@@ -104,8 +104,8 @@ const harness = (options: {
     getAuthenticatedUser: async () => null,
     ensureUser: async () => ({ userId: 'u-new', created: true }),
     requestMagicLink: async () => undefined,
-    createEnrollmentMagicLink: async ({ email }) => {
-      captured.push(email);
+    createEnrollmentMagicLink: async ({ email, callbackURL, baseUrl }) => {
+      captured.push({ email, callbackURL, baseUrl });
       return { url: 'https://tenant.example/magic?token=abc' };
     },
   };
@@ -160,6 +160,7 @@ const harness = (options: {
       ids: { nextId: () => `grant-${(seq += 1)}` },
       clock: { nowIso: () => NOW },
       appBaseUrl: 'https://tenant.example',
+      baseDomain: 'example',
       exposeMagicLinks: options.exposeMagicLinks ?? false,
     },
   };
@@ -238,7 +239,9 @@ describe('m2mEnroll', () => {
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]?.to).toBe('fresh@together.dev');
     expect(h.sent[0]?.message.text).toContain('https://tenant.example/magic?token=abc');
-    expect(h.captured).toEqual(['fresh@together.dev']);
+    expect(h.captured).toEqual([
+      expect.objectContaining({ email: 'fresh@together.dev' }),
+    ]);
   });
 
   it('does not send an email when doNotSendEmail is set', async () => {
@@ -261,6 +264,18 @@ describe('m2mEnroll', () => {
     const hidden = harness({ products: [product('p1', true)], exposeMagicLinks: false });
     const withoutLink = await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, hidden.deps);
     expect(withoutLink.ok && withoutLink.value.magicLink).toBeNull();
+  });
+
+  it('requests the enrollment magic link on the tenant host', async () => {
+    const h = harness({ products: [product('p1', true)] });
+
+    await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+
+    expect(h.captured[0]).toMatchObject({
+      callbackURL: 'https://tenant-one.example/',
+      baseUrl: 'https://tenant-one.example/',
+    });
+    expect(new URL(h.captured[0]?.baseUrl ?? '').host).not.toBe('tenant.example');
   });
 
   it('is not found for an unpublished product', async () => {

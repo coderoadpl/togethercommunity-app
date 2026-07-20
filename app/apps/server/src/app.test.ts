@@ -100,6 +100,7 @@ const deps = (input: {
     paymentRefunds: {
       findOrderByProviderObjectIds: async () => null,
       findLatestSubscriptionOrder: async () => null,
+      listPaidOrdersForMemberProduct: async () => [],
       markOrderRefunded: async () => null,
     },
     subscriptions: {
@@ -290,8 +291,9 @@ const deps = (input: {
       subscribe: () => () => undefined,
     },
     links: {
-      lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/lessons/${lessonId}`,
-      spaceUrl: ({ spaceId }) => `http://localhost/my/spaces/${spaceId}`,
+      lessonDiscussionUrl: ({ lessonId }) => `http://localhost/my/courses/c1/lessons/${lessonId}`,
+      spaceUrl: ({ spaceId, rootPostId }) =>
+        `http://localhost/community/${spaceId}${rootPostId === undefined ? '' : `/posts/${rootPostId}`}`,
     },
     tenantDomains: {
       findByDomain: async (domain) => domains.find((candidate) => candidate.domain === domain) ?? null,
@@ -320,6 +322,7 @@ const deps = (input: {
     },
     tenantAccess: {
       listTenantsForStaff: async () => memberships,
+      listStaffForTenant: async () => [],
       findStaffGrant: async () => null,
       findMember: async (_userId, tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,

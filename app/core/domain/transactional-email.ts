@@ -149,6 +149,36 @@ export const threadReply = (
   });
 };
 
+export const lessonQuestion = (
+  language: string,
+  input: { tenantName: string; lessonName: string; authorDisplay: string; snippet: string; url: string },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const lessonName = escapeHtml(input.lessonName);
+  const author = escapeHtml(input.authorDisplay);
+  const snippet = escapeHtml(input.snippet);
+  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
+    pl: 'w dyskusji możesz wyciszyć ten wątek',
+    en: 'you can mute this thread in the discussion',
+  });
+
+  if (languageOrDefault(language) === 'en') {
+    const actionLink = link(input.url, 'Open the question');
+    return emailMessageSchema.parse({
+      subject: `New question under “${input.lessonName}”`,
+      html: `<p>Hello!</p><p>${author} asked a question under “${lessonName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${input.authorDisplay} asked a question under “${input.lessonName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the question: ${input.url}${footer.text}`,
+    });
+  }
+
+  const actionLink = link(input.url, 'Otwórz pytanie');
+  return emailMessageSchema.parse({
+    subject: `Nowe pytanie pod lekcją „${input.lessonName}”`,
+    html: `<p>Cześć!</p><p>${author} zadał(a) pytanie pod lekcją „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} zadał(a) pytanie pod lekcją „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz pytanie: ${input.url}${footer.text}`,
+  });
+};
+
 export const spacePost = (
   language: string,
   input: { tenantName: string; spaceName: string; authorDisplay: string; snippet: string; url: string },

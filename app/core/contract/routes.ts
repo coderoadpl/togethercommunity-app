@@ -72,6 +72,7 @@ import {
   streamVideoPageSchema,
   subscribeThreadInputSchema,
   tenantApiKeyPublicSchema,
+  tenantBrandingSchema,
   tenantSchema,
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
@@ -140,6 +141,7 @@ export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),
     name: z.string(),
+    branding: tenantBrandingSchema.default({}),
   }),
   contentVersion: z.number().int().positive(),
   products: z.array(

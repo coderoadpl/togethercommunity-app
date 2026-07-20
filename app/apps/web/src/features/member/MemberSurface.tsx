@@ -4,6 +4,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import { useRouterState } from '@tanstack/react-router';
 
+import { TenantLogo } from '../../branding.js';
 import { MemberPage } from '../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { useTranslations } from '../../i18n/index.js';
@@ -101,7 +102,7 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
   );
 };
 
-type Props = Omit<ComponentProps<typeof MemberPage>, 'nav' | 'bottomNav'>;
+type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav'>;
 
 export const MemberSurface = (props: Props) => {
   useSuppressGlobalChrome();
@@ -110,6 +111,7 @@ export const MemberSurface = (props: Props) => {
   return (
     <MemberPage
       {...props}
+      logo={<TenantLogo />}
       nav={<HeaderNavigation liveNotifications={!mobile} />}
       bottomNav={<BottomNavigation liveNotifications={mobile} />}
     />

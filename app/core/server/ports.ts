@@ -5,6 +5,7 @@ import type {
   CourseModule,
   EntityHistoryEntry,
   EntityKind,
+  EmailBranding,
   EmailMessage,
   Member,
   MemberGrant,
@@ -530,6 +531,7 @@ export interface AuthPort {
     language?: string;
     /** Host-derived base URL so the verify link lands on the requesting tenant domain. */
     baseUrl?: string;
+    branding?: EmailBranding;
   }): Promise<void>;
   /**
    * Generate a magic-link URL for enrollment WITHOUT sending the default

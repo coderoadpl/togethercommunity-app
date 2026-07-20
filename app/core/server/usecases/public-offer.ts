@@ -1,4 +1,5 @@
 import {
+  EMPTY_TENANT_BRANDING,
   ok,
   type AppError,
   type PriceInterval,
@@ -7,14 +8,16 @@ import {
   type ProductPrice,
   type Result,
   type Tenant,
+  type TenantBranding,
 } from '@core/domain/index.js';
 
-import type { ProductPriceRepository, ProductRepository } from '../ports.js';
+import type { ProductPriceRepository, ProductRepository, TenantRepository } from '../ports.js';
 
 export interface PublicOffer {
   tenant: {
     slug: string;
     name: string;
+    branding: TenantBranding;
   };
   contentVersion: number;
   products: PublicOfferProduct[];
@@ -40,6 +43,7 @@ export interface PublicOfferProduct {
 export interface PublicOfferDeps {
   products: ProductRepository;
   prices: ProductPriceRepository;
+  tenants: TenantRepository;
 }
 
 export const getPublicOffer = async (
@@ -57,10 +61,15 @@ export const getPublicOffer = async (
     bucket.push(toPublicPrice(price));
     pricesByProduct.set(price.productId, bucket);
   }
+  const settings = await deps.tenants.findSettings(tenant.id);
   return ok({
     tenant: {
       slug: tenant.slug,
       name: tenant.name,
+      branding:
+        settings === null
+          ? EMPTY_TENANT_BRANDING
+          : { logoUrl: settings.logoUrl, accentColor: settings.accentColor, faviconUrl: settings.faviconUrl },
     },
     contentVersion: tenant.contentVersion,
     products: products.map((product) => toPublicProduct(product, pricesByProduct.get(product.id) ?? [])),

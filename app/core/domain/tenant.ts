@@ -11,12 +11,40 @@ export const tenantSchema = z.object({
 
 export type Tenant = z.infer<typeof tenantSchema>;
 
+/** BYO pointer: an absolute URL or a root-relative path served by the app itself. */
+export const brandingAssetUrlSchema = z.union([z.string().url(), z.string().regex(/^\/\S+$/)]);
+
+export const accentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+export const tenantBrandingSchema = z.object({
+  logoUrl: brandingAssetUrlSchema.nullable().default(null),
+  accentColor: accentColorSchema.nullable().default(null),
+  faviconUrl: brandingAssetUrlSchema.nullable().default(null),
+});
+
+export type TenantBranding = z.output<typeof tenantBrandingSchema>;
+
+export const EMPTY_TENANT_BRANDING: TenantBranding = {
+  logoUrl: null,
+  accentColor: null,
+  faviconUrl: null,
+};
+
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
+  logoUrl: brandingAssetUrlSchema.nullable().default(null),
+  accentColor: accentColorSchema.nullable().default(null),
+  faviconUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
-export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
+export type TenantSettings = z.output<typeof tenantSettingsSchema>;
+
+const clearableBrandingAssetUrl = z
+  .union([brandingAssetUrlSchema, z.literal('')])
+  .nullable()
+  .transform((value) => (value === '' || value === null ? null : value))
+  .optional();
 
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
@@ -31,6 +59,13 @@ export const updateTenantSettingsInputSchema = z.object({
     .nullable()
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
+  logoUrl: clearableBrandingAssetUrl,
+  accentColor: z
+    .union([accentColorSchema, z.literal('')])
+    .nullable()
+    .transform((value) => (value === '' || value === null ? null : value))
+    .optional(),
+  faviconUrl: clearableBrandingAssetUrl,
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

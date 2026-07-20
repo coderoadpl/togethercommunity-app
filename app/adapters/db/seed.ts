@@ -811,6 +811,17 @@ await db
   .set({ billingPortalUrl: STUDIO_BILLING_PORTAL_URL })
   .where(eq(tenants.id, 'tenant-studio'));
 
+// Only akademia is branded; studio and acme stay on the stock look so the
+// unbranded visual goldens keep proving the no-branding identity property.
+await db
+  .update(tenants)
+  .set({
+    logoUrl: '/assets/akademia-logo.svg',
+    accentColor: '#0E7490',
+    faviconUrl: '/assets/akademia-logo.svg',
+  })
+  .where(eq(tenants.id, 'tenant-akademia'));
+
 await db
   .insert(tenantAdmins)
   .values(

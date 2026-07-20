@@ -813,6 +813,21 @@ export interface Messages {
     configured: string;
     notConfigured: string;
   };
+  branding: {
+    heading: string;
+    intro: string;
+    logoLabel: string;
+    logoPlaceholder: string;
+    accentLabel: string;
+    accentPlaceholder: string;
+    accentInvalid: string;
+    previewHint: string;
+    faviconLabel: string;
+    faviconPlaceholder: string;
+    save: string;
+    saving: string;
+    saved: string;
+  };
   checkout: {
     loading: string;
     checkoutEyebrow: string;

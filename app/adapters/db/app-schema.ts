@@ -14,6 +14,9 @@ export const tenants = pgTable(
     billingPortalUrl: text('billing_portal_url'),
     bunnyStreamLibraryId: text('bunny_stream_library_id'),
     onboardingDismissedAt: text('onboarding_dismissed_at'),
+    logoUrl: text('logo_url'),
+    accentColor: text('accent_color'),
+    faviconUrl: text('favicon_url'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );

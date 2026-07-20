@@ -39,24 +39,41 @@ const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, escapeHt
 const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 
+export interface EmailBranding {
+  logoUrl: string | null;
+  accentColor: string | null;
+}
+
+/** Tenant-branded header; an empty string (byte-identical mail) without branding. */
+const brandHeader = (branding: EmailBranding | undefined): string => {
+  if (branding === undefined || (branding.logoUrl === null && branding.accentColor === null)) return '';
+  const rule = `<div style="border-top:4px solid ${escapeHtml(branding.accentColor ?? '#191512')};margin-bottom:16px"></div>`;
+  const logo =
+    branding.logoUrl === null
+      ? ''
+      : `<img src="${escapeHtml(branding.logoUrl)}" alt="" height="32" style="display:block;height:32px;margin-bottom:16px" />`;
+  return `${rule}${logo}`;
+};
+
 export const welcomeSetPassword = (
   language: string,
-  input: { tenantName: string; actionUrl: string },
+  input: { tenantName: string; actionUrl: string; branding?: EmailBranding },
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
+  const header = brandHeader(input.branding);
   const actionLink = link(input.actionUrl, languageOrDefault(language) === 'en' ? 'Set password' : 'Ustaw hasło');
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Hello, your ${input.tenantName} account is ready`,
-      html: `<p>Hello!</p><p>Your account on ${tenantName} has been created.</p><p>Before you start, set your password: ${actionLink}</p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>`,
+      html: `${header}<p>Hello!</p><p>Your account on ${tenantName} has been created.</p><p>Before you start, set your password: ${actionLink}</p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>`,
       text: `Hello!\n\nYour account on ${input.tenantName} has been created.\n\nBefore you start, set your password: ${input.actionUrl}\n\nThe password setup link expires in one hour. If it stops working, request a new password reset from the login page.`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Cześć, Twoje konto ${input.tenantName} jest gotowe`,
-    html: `<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>`,
+    html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>`,
     text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} zostało utworzone.\n\nZanim zaczniesz, ustaw swoje hasło: ${input.actionUrl}\n\nLink do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.`,
   });
 };
@@ -136,22 +153,23 @@ export const spacePost = (
 
 export const magicLink = (
   language: string,
-  input: { tenantName: string; url: string },
+  input: { tenantName: string; url: string; branding?: EmailBranding },
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
+  const header = brandHeader(input.branding);
   const actionLink = link(input.url, languageOrDefault(language) === 'en' ? 'Sign in' : 'Zaloguj się');
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Sign in to ${input.tenantName}`,
-      html: `<p>Hello!</p><p>Use this link to sign in to ${tenantName}:</p><p>${actionLink}</p><p>If you did not request this email, you can ignore it.</p>`,
+      html: `${header}<p>Hello!</p><p>Use this link to sign in to ${tenantName}:</p><p>${actionLink}</p><p>If you did not request this email, you can ignore it.</p>`,
       text: `Hello!\n\nUse this link to sign in to ${input.tenantName}:\n${input.url}\n\nIf you did not request this email, you can ignore it.`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Zaloguj się do ${input.tenantName}`,
-    html: `<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>`,
+    html: `${header}<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>`,
     text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.`,
   });
 };

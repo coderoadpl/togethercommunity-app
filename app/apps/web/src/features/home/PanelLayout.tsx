@@ -23,6 +23,7 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '@core/client/index.js';
 
+import { useTenantBranding } from '../../branding.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
@@ -31,6 +32,7 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
+import { applyBranding } from '../../theme-branding.js';
 import { useThemeMode } from '../../theme-mode.js';
 import {
   AppBarTitle,
@@ -328,9 +330,10 @@ export const PanelLayout = () => {
     else if (memberOnly) void navigate({ to: '/my' });
   }, [unauthorized, noTenant, memberOnly, navigate]);
 
+  const branding = useTenantBranding();
   const theme = useMemo(
-    () => createThemeForMode(mode, tenant ? tenantHue(tenant.slug) : 0),
-    [mode, tenant],
+    () => applyBranding(createThemeForMode(mode, tenant ? tenantHue(tenant.slug) : 0), branding),
+    [mode, tenant, branding],
   );
 
   if (me.isPending) {

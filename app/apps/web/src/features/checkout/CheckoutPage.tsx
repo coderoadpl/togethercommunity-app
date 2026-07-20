@@ -16,6 +16,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
+import { BrandMark } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -85,7 +86,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
     return (
-      <FocusCard eyebrow={t.checkout.successEyebrow}>
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.successEyebrow}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">
             {subscriptionSuccess ? t.checkout.subscriptionSuccessTitle : t.checkout.successTitle}
@@ -103,7 +104,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (checkoutStatus === 'cancelled') {
     return (
-      <FocusCard eyebrow={t.checkout.cancelledEyebrow}>
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.cancelledEyebrow}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
@@ -115,7 +116,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (offer.isPending || paymentConfig.isPending) {
     return (
-      <FocusCard eyebrow={t.checkout.checkoutEyebrow} width="wide">
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.checkoutEyebrow} width="wide">
         <StatusView state={{ kind: 'loading', label: t.checkout.loading }} />
       </FocusCard>
     );
@@ -123,7 +124,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (offer.isError || paymentConfig.isError) {
     return (
-      <FocusCard eyebrow={t.checkout.checkoutEyebrow} width="wide">
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.checkoutEyebrow} width="wide">
         <StatusView
           state={{ kind: 'error', message: localizeError(offer.error ?? paymentConfig.error, t) }}
         />
@@ -133,7 +134,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (!product) {
     return (
-      <FocusCard eyebrow={offer.data.tenant.name}>
+      <FocusCard brand={<BrandMark />} eyebrow={offer.data.tenant.name}>
         <StatusView
           state={{
             kind: 'not-found',
@@ -155,7 +156,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (purchaseComplete) {
     return (
-      <FocusCard eyebrow={t.checkout.paymentSimulatedEyebrow}>
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.paymentSimulatedEyebrow}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">
             {simulatePurchase.data?.alreadyOwned
@@ -179,6 +180,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   return (
     <FocusCard
+      brand={<BrandMark />}
       eyebrow={t.checkout.eyebrow({ tenant: offer.data.tenant.name })}
       width="wide"
       onSubmit={submit}

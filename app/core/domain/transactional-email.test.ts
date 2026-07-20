@@ -128,3 +128,43 @@ describe('magicLink', () => {
     `);
   });
 });
+
+describe('email branding header', () => {
+  const input = {
+    tenantName: 'Akademia Samouka',
+    actionUrl: 'https://akademia.localhost/set-password?token=abc',
+  };
+
+  it('is byte-identical to the unbranded mail when both branding fields are null', () => {
+    expect(
+      welcomeSetPassword('pl', { ...input, branding: { logoUrl: null, accentColor: null } }),
+    ).toEqual(welcomeSetPassword('pl', input));
+    expect(
+      magicLink('en', {
+        tenantName: input.tenantName,
+        url: input.actionUrl,
+        branding: { logoUrl: null, accentColor: null },
+      }),
+    ).toEqual(magicLink('en', { tenantName: input.tenantName, url: input.actionUrl }));
+  });
+
+  it('prepends the accent rule and logo to the welcome mail', () => {
+    const message = welcomeSetPassword('pl', {
+      ...input,
+      branding: { logoUrl: 'https://akademia.localhost/assets/akademia-logo.svg', accentColor: '#0E7490' },
+    });
+    expect(message.html.startsWith('<div style="border-top:4px solid #0E7490;')).toBe(true);
+    expect(message.html).toContain('<img src="https://akademia.localhost/assets/akademia-logo.svg"');
+    expect(message.text).not.toContain('img');
+  });
+
+  it('brands the magic-link mail and escapes the logo URL', () => {
+    const message = magicLink('pl', {
+      tenantName: input.tenantName,
+      url: input.actionUrl,
+      branding: { logoUrl: 'https://x.dev/logo.svg?a=1&b=2', accentColor: null },
+    });
+    expect(message.html).toContain('<img src="https://x.dev/logo.svg?a=1&amp;b=2"');
+    expect(message.html.startsWith('<div style="border-top:4px solid #191512;')).toBe(true);
+  });
+});

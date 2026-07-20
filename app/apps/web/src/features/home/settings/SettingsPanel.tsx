@@ -11,10 +11,13 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { accentColorSchema } from '@core/domain/index.js';
+
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
-import { Eyebrow } from '../../../theme.js';
+import { BrandSwatch, Eyebrow } from '../../../theme.js';
+import { deriveBrandPalette } from '../../../theme-branding.js';
 import { usePanelContext } from '../panel-context.js';
 
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
@@ -79,6 +82,125 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           </Typography>
         ) : null}
         {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
+  const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
+  const [accentError, setAccentError] = useState(false);
+
+  const logoValue = logoUrl ?? settings.data?.settings.logoUrl ?? '';
+  const accentValue = accentColor ?? settings.data?.settings.accentColor ?? '';
+  const faviconValue = faviconUrl ?? settings.data?.settings.faviconUrl ?? '';
+  const accentValid = accentColorSchema.safeParse(accentValue.trim()).success;
+  const swatch = accentValid ? deriveBrandPalette(accentValue.trim()) : null;
+
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const accent = accentValue.trim();
+    if (accent !== '' && !accentValid) {
+      setAccentError(true);
+      return;
+    }
+    setAccentError(false);
+    updateSettings.mutate({
+      logoUrl: logoValue.trim() === '' ? null : logoValue.trim(),
+      accentColor: accent === '' ? null : accent,
+      faviconUrl: faviconValue.trim() === '' ? null : faviconValue.trim(),
+    });
+  };
+
+  const disabled = !canEdit || !settings.isSuccess;
+
+  return (
+    <SectionCard title={t.branding.heading} description={t.branding.intro} onSubmit={submit}>
+      {settings.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.common.loading }} data-testid="branding-loading" />
+      ) : (
+        <>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="branding-logo-url">{t.branding.logoLabel}</FormLabel>
+            <OutlinedInput
+              id="branding-logo-url"
+              value={logoValue}
+              disabled={disabled}
+              onChange={(event) => setLogoUrl(event.target.value)}
+              placeholder={t.branding.logoPlaceholder}
+              inputProps={{ 'data-testid': 'branding-logo-url' }}
+            />
+          </FormControl>
+          <FormControl fullWidth error={accentError}>
+            <FormLabel htmlFor="branding-accent-color">{t.branding.accentLabel}</FormLabel>
+            <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.75rem' }}>
+              <OutlinedInput
+                id="branding-accent-color"
+                value={accentValue}
+                disabled={disabled}
+                onChange={(event) => {
+                  setAccentColor(event.target.value);
+                  setAccentError(false);
+                }}
+                placeholder={t.branding.accentPlaceholder}
+                inputProps={{ 'data-testid': 'branding-accent-color' }}
+                sx={{ maxWidth: '11rem' }}
+              />
+              <BrandSwatch
+                aria-hidden
+                data-testid="branding-accent-swatch"
+                swatchColor={swatch === null ? null : swatch.main}
+              />
+            </Stack>
+            <Typography variant="caption" component="p" sx={{ mt: '0.35rem' }}>
+              {accentError ? t.branding.accentInvalid : t.branding.previewHint}
+            </Typography>
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="branding-favicon-url">{t.branding.faviconLabel}</FormLabel>
+            <OutlinedInput
+              id="branding-favicon-url"
+              value={faviconValue}
+              disabled={disabled}
+              onChange={(event) => setFaviconUrl(event.target.value)}
+              placeholder={t.branding.faviconPlaceholder}
+              inputProps={{ 'data-testid': 'branding-favicon-url' }}
+            />
+          </FormControl>
+        </>
+      )}
+      {settings.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t) }} />
+      ) : null}
+      {canEdit ? (
+        <Box>
+          <Button
+            type="submit"
+            variant="outlined"
+            data-testid="branding-save"
+            disabled={updateSettings.isPending || !settings.isSuccess}
+          >
+            {updateSettings.isPending ? t.branding.saving : t.branding.save}
+          </Button>
+        </Box>
+      ) : null}
+      {updateSettings.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="branding-saved">
+          {t.branding.saved}
+        </Typography>
+      ) : null}
+      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -212,6 +334,7 @@ export const SettingsPanel = () => {
   return (
     <PanelPage title={t.sections.settings}>
       <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+      <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <SecurityPanel />
     </PanelPage>
   );

@@ -125,6 +125,15 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async (input) => ({ url: `https://alpha.example.com/magic/${input.email}` }),
     },
+    tenants: {
+      findById: async () => null,
+      findBySlug: async () => null,
+      findSettings: async () => null,
+      updateSettings: async (_tenantId, next) => next,
+      createTenantWithOwnerGrant: async () => {
+        throw new Error('not used');
+      },
+    },
     members: {
       findById: async (tenantId, memberId) => {
         const member = members.get(`${tenantId}:${memberId}`);

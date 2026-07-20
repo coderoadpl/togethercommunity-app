@@ -296,7 +296,7 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null } : null,
+        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,

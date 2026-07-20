@@ -49,6 +49,9 @@ export const updateTenantSettings = async (
         parsed.data.bunnyStreamLibraryId === undefined
           ? current.bunnyStreamLibraryId
           : parsed.data.bunnyStreamLibraryId,
+      logoUrl: parsed.data.logoUrl === undefined ? current.logoUrl : parsed.data.logoUrl,
+      accentColor: parsed.data.accentColor === undefined ? current.accentColor : parsed.data.accentColor,
+      faviconUrl: parsed.data.faviconUrl === undefined ? current.faviconUrl : parsed.data.faviconUrl,
     }),
   );
 };

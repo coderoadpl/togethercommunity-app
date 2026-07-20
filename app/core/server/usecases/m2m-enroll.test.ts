@@ -130,6 +130,15 @@ const harness = (options: {
       products: productsRepo,
       grants: grantsRepo,
       members: membersRepo,
+      tenants: {
+        findById: async () => null,
+        findBySlug: async () => null,
+        findSettings: async () => null,
+        updateSettings: async (_tenantId, next) => next,
+        createTenantWithOwnerGrant: async () => {
+          throw new Error('not used');
+        },
+      },
       authPort,
       email,
       devMagicLinks,

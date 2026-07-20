@@ -10,13 +10,20 @@ import {
   type Tenant,
 } from '@core/domain/index.js';
 
-import type { DevMagicLinkReader, EmailPort, ProductGrantRepository, ProductRepository } from '../ports.js';
+import type {
+  DevMagicLinkReader,
+  EmailPort,
+  ProductGrantRepository,
+  ProductRepository,
+  TenantRepository,
+} from '../ports.js';
 import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
 import { createOrRenewGrant } from './grant-window.js';
 
 export interface FulfillEnrollmentDeps extends EnsureMemberDeps {
   products: ProductRepository;
   grants: ProductGrantRepository;
+  tenants: TenantRepository;
   email: EmailPort;
   devMagicLinks: DevMagicLinkReader;
   appBaseUrl: string;
@@ -62,7 +69,14 @@ export const fulfillEnrollment = async (
       tenantName: tenant.name,
       language: input.language,
     });
-    const message = welcomeSetPassword(input.language, { tenantName: tenant.name, actionUrl: created.url });
+    const settings = await deps.tenants.findSettings(tenant.id);
+    const message = welcomeSetPassword(input.language, {
+      tenantName: tenant.name,
+      actionUrl: created.url,
+      ...(settings === null
+        ? {}
+        : { branding: { logoUrl: settings.logoUrl, accentColor: settings.accentColor } }),
+    });
     const sent = await deps.email.send({ to: member.value.email, ...message });
     if (!sent.ok) return err(internal('Could not send the enrollment email'));
     if (deps.exposeMagicLinks) magicLink = await deps.devMagicLinks.findByEmail(member.value.email);

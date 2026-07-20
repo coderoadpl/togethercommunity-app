@@ -20,6 +20,8 @@ const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
 const adapterStorageTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
+const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
+const appCliTestExternal = 'node_modules/vitest(/|$)';
 const appServerExternal =
   'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
 const webExternal =
@@ -113,8 +115,14 @@ module.exports = {
     {
       name: 'core-contract-external-allowlist',
       severity: 'error',
-      from: { path: '^core/contract' },
+      from: { path: '^core/contract', pathNot: '\\.test\\.tsx?$' },
       to: { path: external, pathNot: coreContractExternal },
+    },
+    {
+      name: 'core-contract-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^core/contract/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: coreContractTestExternal },
     },
     {
       name: 'core-client-external-allowlist',
@@ -251,8 +259,14 @@ module.exports = {
     {
       name: 'app-cli-external-allowlist',
       severity: 'error',
-      from: { path: '^apps/cli' },
+      from: { path: '^apps/cli', pathNot: '\\.test\\.tsx?$' },
       to: { path: external, pathNot: cliExternal },
+    },
+    {
+      name: 'app-cli-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^apps/cli/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: appCliTestExternal },
     },
     {
       name: 'scripts-external-allowlist',

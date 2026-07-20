@@ -614,3 +614,79 @@ describe('course management use-cases', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });
+
+describe('course management guard and fallback branches', () => {
+  const owner = { identity: identity('t-acme', 'owner') };
+
+  it('rejects malformed create/update inputs with validation errors', async () => {
+    const d = deps();
+    expect(await createCourse(owner, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await updateCourse(owner, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await createModule(owner, { title: 5 }, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await updateModule(owner, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await updateLesson(owner, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await attachModuleToCourse(owner, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await detachModuleFromCourse(owner, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('reports not found when an update targets an absent entity', async () => {
+    const d = deps();
+    expect(await updateCourse(owner, { id: 'nope', name: 'X' }, d)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await updateModule(owner, { id: 'nope', title: 'X' }, d)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await updateLesson(owner, { id: 'nope', name: 'X' }, d)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await updateProductAccessItems(owner, { id: 'nope', accessItems: [] }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+
+  it('reports not found for attach/detach when the course or module is missing', async () => {
+    const missingCourse = deps({ modules: [module('m1', 't-acme')] });
+    expect(await attachModuleToCourse(owner, { courseId: 'c1', moduleId: 'm1' }, missingCourse)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+    expect(await detachModuleFromCourse(owner, { courseId: 'c1', moduleId: 'm1' }, missingCourse)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+
+    const missingModule = deps({ courses: [course('c1', 't-acme')] });
+    expect(await attachModuleToCourse(owner, { courseId: 'c1', moduleId: 'm1' }, missingModule)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+
+  it('is idempotent when detaching a module that is not attached to the course', async () => {
+    const d = deps({ courses: [course('c1', 't-acme')], modules: [module('m1', 't-acme')] });
+    const result = await detachModuleFromCourse(owner, { courseId: 'c1', moduleId: 'm1' }, d);
+    expect(result).toMatchObject({ ok: true, value: { id: 'm1' } });
+  });
+
+  it('keeps existing fields on a partial course update and can set an image url', async () => {
+    const store = [{ ...course('c1', 't-acme', ['m1']), description: 'Original', imageUrl: null }];
+    const d = deps({ courses: store, ids: ['snap-1'] });
+    const result = await updateCourse(owner, { id: 'c1', imageUrl: 'https://img.example/x.png' }, d);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { name: 'Course c1', description: 'Original', imageUrl: 'https://img.example/x.png' },
+    });
+  });
+
+  it('keeps the existing prefix when a module update omits it', async () => {
+    const existing = module('m1', 't-acme');
+    const store = [{ ...existing, prefix: '01', name: '01 - Module m1' }];
+    const d = deps({ modules: store, ids: ['snap-1'] });
+    const result = await updateModule(owner, { id: 'm1', title: 'Renamed' }, d);
+    expect(result).toMatchObject({ ok: true, value: { name: '01 - Renamed' } });
+  });
+
+  it('sets and then clears a lesson duration through updates', async () => {
+    const d = deps({ lessons: [lesson('l1', 't-acme')], ids: ['s1', 's2'] });
+    const withDuration = await updateLesson(owner, { id: 'l1', durationMinutes: 30 }, d);
+    expect(withDuration).toMatchObject({ ok: true, value: { durationMinutes: 30 } });
+    const cleared = await updateLesson(owner, { id: 'l1', durationMinutes: null }, d);
+    expect(cleared.ok && 'durationMinutes' in cleared.value).toBe(false);
+  });
+});

@@ -1,6 +1,8 @@
 import {
+  DELETED_MEMBER_DISPLAY,
   err,
   forbidden,
+  memberTombstone,
   notFound,
   ok,
   tenantNotFound,
@@ -12,10 +14,11 @@ import {
 } from '@core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { Clock, MemberRepository } from '../ports.js';
+import type { Clock, MemberErasurePort, MemberRepository } from '../ports.js';
 
 export interface MembersDeps {
   members: MemberRepository;
+  memberErasure: MemberErasurePort;
   clock: Clock;
 }
 
@@ -41,6 +44,7 @@ const CSV_HEADER = [
   'marketingConsents',
   'externalCustomerIds',
   'createdAt',
+  'deletedAt',
   'productIds',
 ];
 
@@ -56,6 +60,7 @@ const toCsv = (members: MemberWithProductIds[]): string =>
         neutralizeFormula(serializeRecord(member.marketingConsents)),
         neutralizeFormula(serializeRecord(member.externalCustomerIds)),
         member.createdAt,
+        member.deletedAt ?? '',
         member.productIds.join(';'),
       ]
         .map(quoteCsv)
@@ -98,7 +103,14 @@ export const removeMember = async (
   const tenant = requireStaffTenant(ctx);
   if (!tenant.ok) return tenant;
 
-  const removed = await deps.members.delete(tenant.value, input.memberId);
-  if (!removed) return err(notFound(`No member "${input.memberId}" in this tenant`));
+  const tombstone = memberTombstone(input.memberId);
+  const result = await deps.memberErasure.pseudonymize(tenant.value, {
+    memberId: input.memberId,
+    deletedAt: deps.clock.nowIso(),
+    tombstoneEmail: tombstone.email,
+    severedUserId: tombstone.userId,
+    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+  });
+  if (result === null) return err(notFound(`No member "${input.memberId}" in this tenant`));
   return ok({ memberId: input.memberId });
 };

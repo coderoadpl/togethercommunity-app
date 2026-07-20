@@ -266,6 +266,9 @@ export const pl: Messages = {
     bunnyDescription:
       'Podaj klucz API biblioteki Bunny Stream oraz jej identyfikator, aby wybierać wideo do lekcji bez ręcznego wklejania identyfikatorów.',
     bunnyApiKeyLabel: 'klucz API biblioteki (Stream API key)',
+    bunnySecurityKeyLabel: 'klucz bezpieczeństwa tokenów osadzania',
+    bunnySecurityHint:
+      'Bez klucza bezpieczeństwa osadzone wideo nie jest kontrolowane przez dostęp i każda osoba z linkiem może oglądać je także po odebraniu dostępu. Dodaj klucz i włącz uwierzytelnianie tokenem osadzania w Bunny, aby chronić odtwarzanie.',
     bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
@@ -571,19 +574,26 @@ export const pl: Messages = {
     removing: 'Usuwanie…',
     removeConfirmTitle: 'Usunąć uczestnika?',
     removeConfirmIntro: ({ email }) =>
-      format('Zaraz trwale usuniesz uczestnika {email}. Tej operacji nie można cofnąć.', { email }),
+      format(
+        'Zaraz usuniesz dane osobowe uczestnika {email}. Historia zamówień zostanie zachowana do celów księgowych. Tej operacji nie można cofnąć.',
+        { email },
+      ),
     removeImpact: ({ grants, completedLessons }) =>
-      format('Skutki: {grants} {grantNoun} oraz postęp obejmujący {completedLessons} {lessonNoun}.', {
-        grants,
-        completedLessons,
-        grantNoun: plural(grants, 'przyznany dostęp', 'przyznane dostępy', 'przyznanych dostępów'),
-        lessonNoun: plural(
+      format(
+        'Skutki: dane osobowe zostaną usunięte, historia zamówień zostanie zachowana. Odebrane zostaną {grants} {grantNoun}; zanonimizowany postęp obejmuje {completedLessons} {lessonNoun}.',
+        {
+          grants,
           completedLessons,
-          'ukończoną lekcję',
-          'ukończone lekcje',
-          'ukończonych lekcji',
-        ),
-      }),
+          grantNoun: plural(grants, 'przyznany dostęp', 'przyznane dostępy', 'przyznanych dostępów'),
+          lessonNoun: plural(
+            completedLessons,
+            'ukończoną lekcję',
+            'ukończone lekcje',
+            'ukończonych lekcji',
+          ),
+        },
+      ),
+    deletedBadge: 'Konto usunięte',
     exportFailed: 'Eksport nie powiódł się',
     allMembersBack: '← Wszyscy uczestnicy',
     joined: 'Data dołączenia',

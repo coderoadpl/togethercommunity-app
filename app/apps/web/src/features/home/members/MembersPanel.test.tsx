@@ -19,6 +19,7 @@ const members: MemberWithProductIds[] = [
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: '2026-07-12T10:00:00.000Z',
+    deletedAt: null,
     productIds: ['p1', 'p2'],
     activeProductIds: ['p1'],
   },
@@ -30,6 +31,7 @@ const members: MemberWithProductIds[] = [
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: '2026-07-12T11:00:00.000Z',
+    deletedAt: null,
     productIds: [],
     activeProductIds: [],
   },
@@ -41,6 +43,7 @@ const members: MemberWithProductIds[] = [
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: '2026-07-12T12:00:00.000Z',
+    deletedAt: null,
     productIds: ['p3'],
     activeProductIds: [],
   },
@@ -183,6 +186,35 @@ describe('MembersPanel', () => {
     await waitFor(() => expect(removed).toEqual(['member-1']));
   });
 
+  it('marks pseudonymized members and hides their remove action', async () => {
+    const withDeleted: MemberWithProductIds[] = [
+      ...members.slice(0, 1),
+      {
+        id: 'member-gone',
+        email: 'deleted-member-gone@anonymized.invalid',
+        displayName: null,
+        tags: [],
+        marketingConsents: {},
+        externalCustomerIds: {},
+        createdAt: '2026-07-12T13:00:00.000Z',
+        deletedAt: '2026-07-19T09:00:00.000Z',
+        productIds: ['p1'],
+        activeProductIds: [],
+      },
+    ];
+    server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: withDeleted } })));
+
+    renderWithProviders(<MembersPanel />);
+    const row = (await screen.findAllByTestId('member-row')).find((candidate) =>
+      candidate.textContent?.includes('deleted-member-gone@anonymized.invalid'),
+    );
+    expect(row).toBeDefined();
+    if (row === undefined) return;
+
+    expect(within(row).getByTestId('member-deleted-badge')).toHaveTextContent(pl.members.deletedBadge);
+    expect(within(row).queryByRole('button', { name: pl.members.remove })).toBeNull();
+  });
+
   it('paginates long member lists and searches across all pages', async () => {
     const manyMembers: MemberWithProductIds[] = Array.from({ length: 30 }, (_, index) => ({
       id: `member-page-${index}`,
@@ -192,6 +224,7 @@ describe('MembersPanel', () => {
       marketingConsents: {},
       externalCustomerIds: {},
       createdAt: new Date(Date.UTC(2026, 5, 1, 0, index)).toISOString(),
+      deletedAt: null,
       productIds: [],
       activeProductIds: [],
     }));

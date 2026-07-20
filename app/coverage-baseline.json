@@ -13,7 +13,7 @@
       "functions": 100
     },
     "core/server": {
-      "lines": 95,
+      "lines": 96,
       "branches": 80,
       "functions": 95
     },
@@ -23,9 +23,9 @@
       "functions": 84
     },
     "adapters": {
-      "lines": 69,
+      "lines": 70,
       "branches": 77,
-      "functions": 64
+      "functions": 65
     },
     "apps/web": {
       "lines": 89,

@@ -78,6 +78,7 @@ export const members = pgTable(
       .notNull()
       .default({}),
     createdAt: text('created_at').notNull(),
+    deletedAt: text('deleted_at'),
   },
   (table) => [
     index('members_tenantId_idx').on(table.tenantId),
@@ -146,7 +147,7 @@ export const orders = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id')
       .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
+      .references(() => members.id, { onDelete: 'no action' }),
     productId: text('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
@@ -178,7 +179,7 @@ export const memberSubscriptions = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id')
       .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
+      .references(() => members.id, { onDelete: 'no action' }),
     productId: text('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
@@ -211,7 +212,7 @@ export const productGrants = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id')
       .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
+      .references(() => members.id, { onDelete: 'no action' }),
     productId: text('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),

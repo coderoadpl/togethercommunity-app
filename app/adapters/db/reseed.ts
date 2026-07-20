@@ -8,7 +8,9 @@ import {
   entityVersions,
   memberCourseProgress,
   members,
+  memberSubscriptions,
   notifications,
+  orders,
   posts,
   processedPaymentEvents,
   productGrants,
@@ -35,6 +37,20 @@ const record = (table: string, rows: unknown[]): void => {
 };
 
 // Children before parents so the wipe holds even without ON DELETE CASCADE.
+record(
+  'orders',
+  await db
+    .delete(orders)
+    .where(inArray(orders.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: orders.id }),
+);
+record(
+  'member_subscriptions',
+  await db
+    .delete(memberSubscriptions)
+    .where(inArray(memberSubscriptions.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: memberSubscriptions.id }),
+);
 record(
   'product_grants',
   await db

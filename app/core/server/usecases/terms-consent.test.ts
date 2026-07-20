@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { TenantSettings, TermsConsent } from '@core/domain/index.js';
 import type { TenantRepository, TermsConsentRepository } from '../ports.js';
 
-import { enforceTermsConsent, tenantLegalUrls } from './terms-consent.js';
+import { enforceTermsConsent, tenantLegalUrls, validateTermsConsent } from './terms-consent.js';
 
 const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   billingPortalUrl: null,
@@ -101,5 +101,27 @@ describe('enforceTermsConsent', () => {
         acceptedAt: '2026-07-20T12:00:00.000Z',
       },
     ]);
+  });
+});
+
+describe('validateTermsConsent', () => {
+  it('reports whether acceptance is required without recording evidence', async () => {
+    const optional = harness(settings());
+    await expect(validateTermsConsent('tenant-a', undefined, optional.deps.tenants)).resolves.toEqual({
+      ok: true,
+      value: { required: false },
+    });
+
+    const required = harness(settings({ termsUrl: 'https://acme.test/terms' }));
+    await expect(validateTermsConsent('tenant-a', true, required.deps.tenants)).resolves.toEqual({
+      ok: true,
+      value: { required: true },
+    });
+    await expect(validateTermsConsent('tenant-a', undefined, required.deps.tenants)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(optional.recorded).toEqual([]);
+    expect(required.recorded).toEqual([]);
   });
 });

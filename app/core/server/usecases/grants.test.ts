@@ -60,6 +60,7 @@ const member = (id: string, tenantId: string): Member => ({
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt: PAST,
+  deletedAt: null,
 });
 
 const product = (id: string, tenantId: string): Product => ({
@@ -104,7 +105,6 @@ const harness = (options: { members?: Member[]; products?: Product[]; grants?: P
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
-    delete: async () => false,
   };
 
   const productsRepo: ProductRepository = {

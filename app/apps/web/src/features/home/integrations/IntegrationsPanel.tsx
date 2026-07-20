@@ -297,6 +297,14 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
                 label={t.integrations.bunnyApiKeyLabel}
                 maskedPreview={previewFor(secrets.data.secrets, 'bunny.apiKey')}
               />
+              <SecretField
+                secretKey="bunny.securityKey"
+                label={t.integrations.bunnySecurityKeyLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'bunny.securityKey')}
+              />
+              <Typography variant="caption" component="p">
+                {t.integrations.bunnySecurityHint}
+              </Typography>
               <BunnyLibraryIdField />
             </Stack>
           )}

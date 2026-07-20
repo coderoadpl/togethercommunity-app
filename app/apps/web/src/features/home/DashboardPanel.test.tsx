@@ -41,6 +41,7 @@ const member = (id: string, createdAt: string, activeProductIds: string[]): Memb
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt,
+  deletedAt: null,
   productIds: activeProductIds,
   activeProductIds,
 });

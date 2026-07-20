@@ -15,7 +15,7 @@ import { useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '@core/client/index.js';
-import type { CourseStructureWithAccess, LessonBlock } from '@core/domain/index.js';
+import type { CourseStructureWithAccess, LessonBlock, PlayableLessonBlock } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -68,7 +68,7 @@ const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
   }
 };
 
-const sortBlocks = (blocks: readonly LessonBlock[]): LessonBlock[] =>
+const sortBlocks = (blocks: readonly PlayableLessonBlock[]): PlayableLessonBlock[] =>
   blocks
     .map((block, index) => ({ block, index }))
     .sort((a, b) => BLOCK_RANK[a.block.type] - BLOCK_RANK[b.block.type] || a.index - b.index)
@@ -93,7 +93,7 @@ const MediaIframe = ({
   );
 };
 
-const BlockBody = ({ block }: { block: LessonBlock }) => {
+const BlockBody = ({ block }: { block: PlayableLessonBlock }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.streamLibraryId === undefined) {
@@ -107,7 +107,7 @@ const BlockBody = ({ block }: { block: LessonBlock }) => {
       <MediaIframe
         frameSx={{ aspectRatio: '16 / 9' }}
         data-testid="lesson-video"
-        src={`https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`}
+        src={block.embedUrl ?? `https://iframe.mediadelivery.net/embed/${block.streamLibraryId}/${block.streamVideoId}`}
         title={t.lesson.videoTitle}
         allow={VIDEO_ALLOW}
         allowFullScreen

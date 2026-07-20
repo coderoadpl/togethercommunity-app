@@ -22,6 +22,7 @@ const member: Member = {
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt: '2026-07-11T00:00:00.000Z',
+  deletedAt: null,
 };
 
 const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): TenantAccessReader => ({

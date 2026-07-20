@@ -129,6 +129,26 @@ export const courseLessonSchema = z.object({
 
 export type CourseLesson = z.infer<typeof courseLessonSchema>;
 
+const playableVideoLessonBlockSchema = videoLessonBlockSchema.extend({
+  embedUrl: z.string().url().optional(),
+});
+
+export const playableLessonBlockSchema = z.discriminatedUnion('type', [
+  playableVideoLessonBlockSchema,
+  embedLessonBlockSchema,
+  pdfLessonBlockSchema,
+  linkLessonBlockSchema,
+  htmlLessonBlockSchema,
+]);
+
+export type PlayableLessonBlock = z.infer<typeof playableLessonBlockSchema>;
+
+export const playableCourseLessonSchema = courseLessonSchema.extend({
+  contents: z.array(playableLessonBlockSchema),
+});
+
+export type PlayableCourseLesson = z.infer<typeof playableCourseLessonSchema>;
+
 export const memberCourseProgressSchema = z.object({
   id: z.string(),
   tenantId: z.string(),

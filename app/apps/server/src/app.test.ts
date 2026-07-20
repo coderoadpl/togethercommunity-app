@@ -73,7 +73,9 @@ const deps = (input: {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
-      delete: async () => false,
+    },
+    memberErasure: {
+      pseudonymize: async () => null,
     },
     grants: {
       findById: async () => null,
@@ -143,6 +145,9 @@ const deps = (input: {
     videoLibrary: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
     },
+    bunnyEmbedTokenSigner: {
+      sign: ({ videoId, expires }) => `${videoId}-${expires}`,
+    },
     fileUrlSigner: {
       presignGet: (input) => ok(input.url),
     },
@@ -162,6 +167,7 @@ const deps = (input: {
           marketingConsents: {},
           externalCustomerIds: {},
           createdAt: purchase.createdAt,
+          deletedAt: null,
         },
         grantCreated: true,
       }),

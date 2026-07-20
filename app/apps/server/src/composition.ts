@@ -10,6 +10,7 @@ import {
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
+  createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
   createNotificationRepository,
@@ -41,6 +42,7 @@ import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resol
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
+import { createBunnyEmbedTokenSigner } from '@adapters/crypto/bunny-embed-token-signer.js';
 import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
@@ -63,9 +65,11 @@ import type {
   EmailPort,
   DevMagicLinkReader,
   FileUrlSigner,
+  BunnyEmbedTokenSigner,
   HealthPort,
   IdGenerator,
   MemberCourseProgressRepository,
+  MemberErasurePort,
   MemberRepository,
   MemberSubscriptionRepository,
   NotificationChannelPort,
@@ -92,7 +96,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { enforceTermsConsent, resolveTenant } from '@core/server/index.js';
+import { enforceTermsConsent, resolveTenant, validateTermsConsent } from '@core/server/index.js';
 import { ok } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
@@ -117,6 +121,7 @@ export interface AppDeps {
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
+  memberErasure: MemberErasurePort;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaces: SpaceRepository;
@@ -142,6 +147,7 @@ export interface AppDeps {
   payment: PaymentProvider;
   videoLibrary: VideoLibraryPort;
   fileUrlSigner: FileUrlSigner;
+  bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
   email: EmailPort;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -223,7 +229,17 @@ export const createDeps = (env: Env): AppDeps => {
     email,
     defaultTenantName: 'Together',
     google,
-    enforceSignUpConsent: async ({ request, email: signUpEmail, accepted }) => {
+    validateSignUpConsent: async ({ request, accepted }) => {
+      const resolved = await resolveTenant(
+        request.headers.get('host') ?? new URL(request.url).host,
+        request.headers.get(TENANT_HEADER),
+        { tenantDomains, tenants, baseDomain: env.APP_BASE_DOMAIN },
+      );
+      if (!resolved.ok) return resolved;
+      if (resolved.value === null) return ok({ required: false });
+      return validateTermsConsent(resolved.value.tenant.id, accepted, tenants);
+    },
+    recordSignUpConsent: async ({ request, email: signUpEmail }) => {
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
@@ -233,7 +249,7 @@ export const createDeps = (env: Env): AppDeps => {
       if (resolved.value === null) return ok({ recorded: false });
       return enforceTermsConsent(
         resolved.value.tenant.id,
-        { accepted, userId: null, email: signUpEmail, source: 'register' },
+        { accepted: true, userId: null, email: signUpEmail, source: 'register' },
         { tenants, consents, ids, clock },
       );
     },
@@ -257,6 +273,7 @@ export const createDeps = (env: Env): AppDeps => {
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
+    memberErasure: createMemberErasureRepository(db),
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     spaces: createSpaceRepository(db),
@@ -284,6 +301,7 @@ export const createDeps = (env: Env): AppDeps => {
     secretResolver,
     payment,
     videoLibrary: createBunnyVideoLibrary(),
+    bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
     fileUrlSigner: createS3UrlSigner(),
     email,
     devEmails: createDevEmailReader(db),

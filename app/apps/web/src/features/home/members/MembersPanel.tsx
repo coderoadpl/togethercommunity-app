@@ -176,7 +176,13 @@ export const MembersPanel = () => {
                 {paged.pageItems.map((member) => (
                   <TableRow key={member.id} data-testid="member-row">
                     <TableCell>{member.email}</TableCell>
-                    <TableCell>{member.displayName ?? '—'}</TableCell>
+                    <TableCell>
+                      {member.deletedAt !== null ? (
+                        <Chip size="small" variant="outlined" label={t.members.deletedBadge} data-testid="member-deleted-badge" />
+                      ) : (
+                        member.displayName ?? '—'
+                      )}
+                    </TableCell>
                     <TableCell align="right">{member.productIds.length}</TableCell>
                     <TableCell>
                       <EntryDate component="time" dateTime={member.createdAt}>
@@ -188,14 +194,16 @@ export const MembersPanel = () => {
                         <Button size="small" onClick={() => openMember(member.id)}>
                           {t.members.manage}
                         </Button>
-                        <Button
-                          size="small"
-                          color="error"
-                          disabled={removeMember.isPending}
-                          onClick={() => setRemoving(member)}
-                        >
-                          {t.members.remove}
-                        </Button>
+                        {member.deletedAt === null ? (
+                          <Button
+                            size="small"
+                            color="error"
+                            disabled={removeMember.isPending}
+                            onClick={() => setRemoving(member)}
+                          >
+                            {t.members.remove}
+                          </Button>
+                        ) : null}
                       </Stack>
                     </TableCell>
                   </TableRow>

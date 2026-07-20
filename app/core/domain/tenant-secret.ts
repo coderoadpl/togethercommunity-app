@@ -4,6 +4,7 @@ export const tenantSecretKeySchema = z.enum([
   'stripe.restrictedKey',
   'stripe.webhookSecret',
   'bunny.apiKey',
+  'bunny.securityKey',
   's3.accessKeyId',
   's3.secretAccessKey',
 ]);

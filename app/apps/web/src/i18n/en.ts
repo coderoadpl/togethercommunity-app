@@ -260,6 +260,9 @@ export const en: Messages = {
     bunnyDescription:
       'Enter your Bunny Stream library API key and library id to pick lesson videos without pasting ids by hand.',
     bunnyApiKeyLabel: 'library API key (Stream API key)',
+    bunnySecurityKeyLabel: 'embed token security key',
+    bunnySecurityHint:
+      'Without a security key, video embeds are not access-controlled and anyone with the link can keep watching after access is revoked. Add the key and enable embed token authentication in Bunny to protect playback.',
     bunnyLibraryIdLabel: 'library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',
@@ -557,14 +560,21 @@ export const en: Messages = {
     removing: 'Removing…',
     removeConfirmTitle: 'Remove member?',
     removeConfirmIntro: ({ email }) =>
-      format('You are about to permanently remove {email}. This cannot be undone.', { email }),
+      format(
+        'You are about to erase the personal data of {email}. The order history will be kept for accounting. This cannot be undone.',
+        { email },
+      ),
     removeImpact: ({ grants, completedLessons }) =>
-      format('Impact: {grants} {grantNoun} and progress covering {completedLessons} completed {lessonNoun}.', {
-        grants,
-        completedLessons,
-        grantNoun: grants === 1 ? 'grant' : 'grants',
-        lessonNoun: completedLessons === 1 ? 'lesson' : 'lessons',
-      }),
+      format(
+        'Impact: personal data will be erased, the order history will be preserved. {grants} {grantNoun} will be revoked; anonymized progress covers {completedLessons} completed {lessonNoun}.',
+        {
+          grants,
+          completedLessons,
+          grantNoun: grants === 1 ? 'grant' : 'grants',
+          lessonNoun: completedLessons === 1 ? 'lesson' : 'lessons',
+        },
+      ),
+    deletedBadge: 'Account removed',
     exportFailed: 'Export failed',
     allMembersBack: '← All members',
     joined: 'Joined',

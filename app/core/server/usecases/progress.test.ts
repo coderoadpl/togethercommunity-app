@@ -328,6 +328,7 @@ const mem1: Member = {
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt: '2026-01-01T00:00:00.000Z',
+  deletedAt: null,
 };
 
 const membersRepo = (rows: Member[]): MemberRepository => ({
@@ -337,7 +338,6 @@ const membersRepo = (rows: Member[]): MemberRepository => ({
   listWithProductIds: async () => [],
   create: async () => undefined,
   updateEmail: async () => null,
-  delete: async () => false,
 });
 
 const resetDeps = (progress: MemberCourseProgressRepository): ResetMemberCourseProgressDeps => ({

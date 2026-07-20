@@ -246,6 +246,8 @@ export interface Messages {
     bunnyHeading: string;
     bunnyDescription: string;
     bunnyApiKeyLabel: string;
+    bunnySecurityKeyLabel: string;
+    bunnySecurityHint: string;
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
     bunnySaveFirst: string;
@@ -514,6 +516,7 @@ export interface Messages {
     removeConfirmTitle: string;
     removeConfirmIntro: (params: { email: string }) => string;
     removeImpact: (params: { grants: number; completedLessons: number }) => string;
+    deletedBadge: string;
     exportFailed: string;
     allMembersBack: string;
     joined: string;

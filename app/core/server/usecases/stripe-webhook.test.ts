@@ -167,7 +167,6 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
         members.set(`${tenantId}:${member.id}`, member);
       },
       updateEmail: async () => null,
-      delete: async () => false,
     },
     products: {
       listByTenant: async () => [],

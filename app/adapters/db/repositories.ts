@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -55,6 +55,7 @@ import type {
   EntityVersionRecord,
   EntityVersionRepository,
   HealthPort,
+  MemberErasurePort,
   MemberRepository,
   MemberCourseProgressRepository,
   MemberSubscriptionRepository,
@@ -1121,6 +1122,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         marketingConsents: members.marketingConsents,
         externalCustomerIds: members.externalCustomerIds,
         createdAt: members.createdAt,
+        deletedAt: members.deletedAt,
         productIds: sql<
           string[]
         >`coalesce(array_agg(${productGrants.productId}) filter (where ${productGrants.productId} is not null), '{}')`,
@@ -1142,6 +1144,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         members.marketingConsents,
         members.externalCustomerIds,
         members.createdAt,
+        members.deletedAt,
       )
       .orderBy(asc(members.createdAt)),
   create: async (tenantId, member) => {
@@ -1157,6 +1160,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         marketingConsents: member.marketingConsents,
         externalCustomerIds: member.externalCustomerIds,
         createdAt: member.createdAt,
+        deletedAt: member.deletedAt,
       })
       .onConflictDoNothing({ target: [members.tenantId, members.userId] });
   },
@@ -1168,13 +1172,77 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .returning();
     return rows[0] ?? null;
   },
-  delete: async (tenantId, memberId) => {
-    const rows = await db
-      .delete(members)
-      .where(and(eq(members.tenantId, tenantId), eq(members.id, memberId)))
-      .returning({ id: members.id });
-    return rows.length > 0;
-  },
+});
+
+export const createMemberErasureRepository = (db: Db): MemberErasurePort => ({
+  pseudonymize: async (tenantId, input) =>
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(members)
+        .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)))
+        .limit(1);
+      const member = rows[0];
+      if (!member) return null;
+      if (member.deletedAt !== null) return { alreadyDeleted: true, authUserErased: false };
+
+      await tx
+        .update(productGrants)
+        .set({ expiresAt: input.deletedAt })
+        .where(
+          and(
+            eq(productGrants.tenantId, tenantId),
+            eq(productGrants.memberId, input.memberId),
+            or(
+              isNull(productGrants.expiresAt),
+              sql`${productGrants.expiresAt}::timestamptz > ${input.deletedAt}::timestamptz`,
+            ),
+          ),
+        );
+
+      await tx
+        .update(memberSubscriptions)
+        .set({ status: 'canceled', cancelAtPeriodEnd: true, updatedAt: input.deletedAt })
+        .where(
+          and(
+            eq(memberSubscriptions.tenantId, tenantId),
+            eq(memberSubscriptions.memberId, input.memberId),
+            ne(memberSubscriptions.status, 'canceled'),
+          ),
+        );
+
+      await tx
+        .update(posts)
+        .set({ authorDisplay: input.postAuthorDisplay })
+        .where(and(eq(posts.tenantId, tenantId), eq(posts.authorUserId, member.userId)));
+
+      await tx
+        .update(members)
+        .set({
+          userId: input.severedUserId,
+          email: input.tombstoneEmail,
+          displayName: null,
+          tags: [],
+          marketingConsents: {},
+          externalCustomerIds: {},
+          deletedAt: input.deletedAt,
+        })
+        .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)));
+
+      const memberLinks = await tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(members)
+        .where(eq(members.userId, member.userId));
+      const staffLinks = await tx
+        .select({ value: sql<number>`count(*)::int` })
+        .from(tenantAdmins)
+        .where(eq(tenantAdmins.userId, member.userId));
+      const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0);
+      if (linked > 0) return { alreadyDeleted: false, authUserErased: false };
+
+      await tx.delete(user).where(eq(user.id, member.userId));
+      return { alreadyDeleted: false, authUserErased: true };
+    }),
 });
 
 export const createProductGrantRepository = (db: Db): ProductGrantRepository => ({

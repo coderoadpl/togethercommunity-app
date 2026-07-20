@@ -57,6 +57,7 @@ const member = (id: string): Member => ({
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt: PAST,
+  deletedAt: null,
 });
 
 const lesson = (id: string): CourseLesson => ({
@@ -197,7 +198,6 @@ const deps = (input: {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
-    delete: async () => false,
   };
 
   const grantsRepo: ProductGrantRepository = {

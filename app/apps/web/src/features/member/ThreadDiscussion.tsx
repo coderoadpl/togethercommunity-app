@@ -29,6 +29,34 @@ const MAX_INDENT = 5;
 const isForbidden = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'forbidden';
 
+const ThreadSubscriptionToggle = ({
+  rootPostId,
+  state,
+  onToggle,
+}: {
+  rootPostId: string;
+  state: ThreadSubscriptionState | 'none';
+  onToggle: () => void;
+}) => {
+  const t = useTranslations();
+  return (
+    <Button
+      size="small"
+      variant="text"
+      aria-pressed={state === 'subscribed'}
+      data-testid={`follow-toggle-${rootPostId}`}
+      onClick={onToggle}
+      startIcon={<NotificationDot active={state === 'subscribed'} aria-hidden />}
+    >
+      {state === 'subscribed'
+        ? t.discussion.following
+        : state === 'muted'
+          ? t.discussion.mutedState
+          : t.discussion.follow}
+    </Button>
+  );
+};
+
 export interface ThreadContext {
   contextKind: PostContextKind;
   contextId: string;
@@ -510,6 +538,13 @@ export const ThreadDiscussion = ({
             data-testid={`discussion-subthread-${subthreadRoot.id}`}
           >
             <PostView post={subthreadRoot} depth={1} actions={threadActions} />
+            {viewer !== null && (
+              <ThreadSubscriptionToggle
+                rootPostId={subthreadRoot.rootPostId}
+                state={subscriptionStateFor(subthreadRoot.rootPostId)}
+                onToggle={() => toggleSubscription(subthreadRoot.rootPostId)}
+              />
+            )}
           </DiscussionThread>
         </Stack>
       ) : (
@@ -558,20 +593,11 @@ export const ThreadDiscussion = ({
                           {t.discussion.replyCount({ count: thread.replyCount })}
                         </PostMetaText>
                         {viewer !== null && (
-                          <Button
-                            size="small"
-                            variant="text"
-                            aria-pressed={state === 'subscribed'}
-                            data-testid={`follow-toggle-${thread.rootPostId}`}
-                            onClick={() => toggleSubscription(thread.rootPostId)}
-                            startIcon={<NotificationDot active={state === 'subscribed'} aria-hidden />}
-                          >
-                            {state === 'subscribed'
-                              ? t.discussion.following
-                              : state === 'muted'
-                                ? t.discussion.mutedState
-                                : t.discussion.follow}
-                          </Button>
+                          <ThreadSubscriptionToggle
+                            rootPostId={thread.rootPostId}
+                            state={state}
+                            onToggle={() => toggleSubscription(thread.rootPostId)}
+                          />
                         )}
                       </Stack>
                     </Stack>

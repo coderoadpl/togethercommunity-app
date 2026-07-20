@@ -13,6 +13,7 @@ import {
   type Product,
   type Tenant,
   type TenantDomain,
+  type TermsConsent,
 } from '@core/domain/index.js';
 
 const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
@@ -503,6 +504,111 @@ const purchase = (
     headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
+
+const consentApp = (simulatedPayments: boolean) => {
+  const recorded: TermsConsent[] = [];
+  const base = deps();
+  const app = buildApp({
+    ...base,
+    tenants: {
+      ...base.tenants,
+      findSettings: async (tenantId) =>
+        tenantId === acme.id
+          ? {
+              billingPortalUrl: null,
+              bunnyStreamLibraryId: null,
+              logoUrl: null,
+              accentColor: null,
+              faviconUrl: null,
+              termsUrl: 'https://acme.example/terms-v2',
+              privacyUrl: 'https://acme.example/privacy-v3',
+            }
+          : null,
+    },
+    consents: {
+      ...base.consents,
+      record: async (_tenantId, consent) => {
+        recorded.push(consent);
+      },
+    },
+    tenantSecrets: {
+      ...base.tenantSecrets,
+      findByKey: async (tenantId, key) => ({
+        id: `secret-${key}`,
+        tenantId,
+        key,
+        ciphertext: 'ciphertext',
+        iv: 'iv',
+        authTag: 'auth-tag',
+        maskedPreview: '••••text',
+        updatedAt: '2026-07-12T00:00:00.000Z',
+      }),
+    },
+    devEndpoints: { simulatedPayments, exposeMagicLinks: false },
+  });
+  return { app, recorded };
+};
+
+describe('checkout consent ordering', () => {
+  it('records real-checkout consent only after validating the product', async () => {
+    const { app, recorded } = consentApp(false);
+    const request = (productId: string) =>
+      app.request(API_PATHS.checkoutSession, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', host: 'acme.localhost:48730' },
+        body: JSON.stringify({
+          email: 'buyer@together.dev',
+          productId,
+          termsAccepted: true,
+        }),
+      });
+
+    expect((await request('missing-product')).status).toBe(404);
+    expect(recorded).toEqual([]);
+    expect((await request('acme-published')).status).toBe(200);
+    expect(recorded).toEqual([
+      expect.objectContaining({
+        email: 'buyer@together.dev',
+        termsUrl: 'https://acme.example/terms-v2',
+        privacyUrl: 'https://acme.example/privacy-v3',
+        acceptedAt: '2026-07-12T00:00:00.000Z',
+      }),
+    ]);
+  });
+
+  it('records simulated-checkout consent only after validating the product', async () => {
+    const { app, recorded } = consentApp(true);
+
+    expect(
+      (
+        await purchase(
+          app,
+          { host: 'acme.localhost:48730' },
+          { email: 'buyer@together.dev', productId: 'missing-product', termsAccepted: true },
+        )
+      ).status,
+    ).toBe(404);
+    expect(recorded).toEqual([]);
+
+    expect(
+      (
+        await purchase(
+          app,
+          { host: 'acme.localhost:48730' },
+          { email: 'buyer@together.dev', productId: 'acme-published', termsAccepted: true },
+        )
+      ).status,
+    ).toBe(200);
+    expect(recorded).toEqual([
+      expect.objectContaining({
+        email: 'buyer@together.dev',
+        termsUrl: 'https://acme.example/terms-v2',
+        privacyUrl: 'https://acme.example/privacy-v3',
+        acceptedAt: '2026-07-12T00:00:00.000Z',
+      }),
+    ]);
+  });
+});
 
 describe('tenant-host magic links on checkout', () => {
   it('builds the verify link on the requesting tenant subdomain', async () => {

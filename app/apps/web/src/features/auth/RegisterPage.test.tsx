@@ -58,8 +58,8 @@ describe('RegisterPage', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  it('requires accepting the configured documents on a tenant host and records the consent', async () => {
-    let consentRecorded = 0;
+  it('requires accepting configured documents and submits consent with signup', async () => {
+    const signupBodies: unknown[] = [];
     server.use(
       http.get('/api/public/offer', () =>
         HttpResponse.json({
@@ -70,11 +70,10 @@ describe('RegisterPage', () => {
           }),
         }),
       ),
-      http.post('/api/public/terms-consent', () => {
-        consentRecorded += 1;
-        return HttpResponse.json({ ok: true, data: { recorded: true } });
+      http.post('*', async ({ request }) => {
+        signupBodies.push(await request.json());
+        return HttpResponse.json({ user: { id: 'u1' } });
       }),
-      http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
     );
 
     await renderRegisterPage('akademia.localhost');
@@ -97,7 +96,14 @@ describe('RegisterPage', () => {
     await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
     expect(await screen.findByText(pl.auth.registeredTitle)).toBeInTheDocument();
-    expect(consentRecorded).toBe(1);
+    expect(signupBodies).toEqual([
+      {
+        name: 'New Member',
+        email: 'member@together.dev',
+        password: 'demo1234',
+        termsAccepted: true,
+      },
+    ]);
   });
 
   it('shows no consent checkbox on a tenant without configured documents', async () => {

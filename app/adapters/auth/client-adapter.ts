@@ -97,6 +97,25 @@ const postCliAuth = async (
   return ok({ token });
 };
 
+const postBrowserSignUp = async (
+  baseUrl: string,
+  body: SignUpInput,
+): Promise<Result<AuthSessionResult, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(baseUrl === '' ? '/api/auth/sign-up/email' : new URL('/api/auth/sign-up/email', baseUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'include',
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error calling /api/auth/sign-up/email: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
+  return ok({ token: response.headers.get('set-auth-token') });
+};
+
 /** Better Auth implementation of the client-side auth port. */
 export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort => {
   const client = createAuthClient({
@@ -105,11 +124,7 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
   });
 
   return {
-    signUp: async ({ name, email, password }) => {
-      const token = null;
-      const response = await client.signUp.email({ name, email, password });
-      return toResult({ token }, response.error);
-    },
+    signUp: (input) => postBrowserSignUp(baseUrl, input),
     signIn: async ({ email, password }) => {
       const token = null;
       const response = await client.signIn.email({ email, password });

@@ -39,14 +39,10 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
   const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
   const legal = onTenantHost ? offer.data?.tenant.legal ?? null : null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
-  const recordConsent = useMutation(actions.recordTermsConsent);
 
   const signUp = useMutation({
     ...actions.signUp,
     onSuccess: async () => {
-      if (consentRequired) {
-        await recordConsent.mutateAsync().catch(() => undefined);
-      }
       await queryClient.invalidateQueries();
       if (onTenantHost) {
         setRegisteredOnTenant(true);
@@ -58,7 +54,12 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    signUp.mutate({ name, email, password });
+    signUp.mutate({
+      name,
+      email,
+      password,
+      ...(consentRequired ? { termsAccepted } : {}),
+    });
   };
 
   if (registeredOnTenant) {

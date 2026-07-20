@@ -268,10 +268,12 @@ export const createCheckoutSessionMutation = (api: ApiClient) =>
     call: (input: CheckoutSessionRequest) => api.createCheckoutSession(input),
   });
 
-export const recordTermsConsentMutation = (api: ApiClient): MutationDescriptor<{ recorded: boolean }, void> =>
+export const recordTermsConsentMutation = (
+  api: ApiClient,
+): MutationDescriptor<{ recorded: boolean }, { accepted: boolean }> =>
   defineMutation({
     mutationKey: ['terms-consent'] as const,
-    call: () => api.recordTermsConsent(),
+    call: (input) => api.recordTermsConsent(input),
   });
 
 export const authConfigQuery = (api: ApiClient) =>
@@ -832,7 +834,8 @@ export const discussionInvalidates = () => ({ queryKey: discussionScopes.all() }
 export const signUpMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-up'],
-    call: (input: { name: string; email: string; password: string }) => auth.signUp(input),
+    call: (input: { name: string; email: string; password: string; termsAccepted?: boolean }) =>
+      auth.signUp(input),
   });
 
 export const signInMutation = (auth: AuthClientPort) =>

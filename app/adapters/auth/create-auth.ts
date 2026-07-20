@@ -1,13 +1,18 @@
 import { passkey } from '@better-auth/passkey';
 import { betterAuth } from 'better-auth';
+import { createAuthMiddleware } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError } from 'better-auth/api';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
+import { z } from 'zod';
 
 import {
   magicLink as magicLinkTemplate,
   normalizeEmail,
   resetPassword as resetPasswordTemplate,
+  type AppError,
   type EmailBranding,
+  type Result,
 } from '@core/domain/index.js';
 import type { AuthPort, EmailPort } from '@core/server/index.js';
 import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
@@ -28,6 +33,11 @@ export interface AuthSettings {
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
+  enforceSignUpConsent?(input: {
+    request: Request;
+    email: string;
+    accepted: boolean | undefined;
+  }): Promise<Result<{ recorded: boolean }, AppError>>;
 }
 
 export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
@@ -35,6 +45,11 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
 export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset';
+
+const signUpConsentSchema = z.object({
+  email: z.string().email(),
+  termsAccepted: z.boolean().optional(),
+});
 
 export interface MagicLinkDeliveryContext {
   tenantName?: string;
@@ -92,6 +107,26 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         '/sign-in/email': { window: 60, max: 20 },
       },
     },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/sign-up/email') return;
+        if (settings.enforceSignUpConsent === undefined) return;
+        const parsed = signUpConsentSchema.safeParse(ctx.body);
+        if (!parsed.success) return;
+        const request = ctx.request ?? new Request(settings.baseUrl);
+        const consent = await settings.enforceSignUpConsent({
+          request,
+          email: parsed.data.email,
+          accepted: parsed.data.termsAccepted,
+        });
+        if (!consent.ok) {
+          throw APIError.from('BAD_REQUEST', {
+            code: consent.error.code,
+            message: consent.error.message,
+          });
+        }
+      }),
+    },
     emailAndPassword: {
       enabled: true,
       password: { verify: verifyPasswordWithLegacyFallback },
@@ -110,6 +145,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       : {}),
     plugins: [
       bearer(),
+      // Magic-link auto-signup intentionally defers consent until first checkout because enrollment and login share this path.
       magicLink({
         sendMagicLink: async ({ email, url, token }) => {
           const normalizedEmail = normalizeEmail(email);

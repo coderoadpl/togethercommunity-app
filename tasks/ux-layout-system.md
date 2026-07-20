@@ -313,7 +313,7 @@ all 7 theme modes.
 - `no-restricted-imports` for skeleton MUI (`Container`/`AppBar`/`Drawer`/`Toolbar`)
   scoped to the layout directory; dependency-cruiser keeps `components/layout/**`
   data- and i18n-free.
-- `npm run visual` is the reviewed-golden gate (3 themes × 2 viewports, 78 shots);
+- `npm run visual` is the reviewed-golden gate (3 themes × 2 viewports, 102 shots);
   goldens are updated only via `npm run visual:update` with the change that caused
   them. Final QA re-ran green: `npm run check` + `npm run smoke` + `npm run visual`
   all pass; a manual walk of the 4 themes the goldens don't cover (logbook,
@@ -321,16 +321,20 @@ all 7 theme modes.
   on desktop 1440 and mobile 390 with no per-theme layout breaks, tab-bar overlap,
   or dev-chrome collisions.
 
-### Remaining work (deferred)
+### Shipped tooling
 
-- **Storybook + Lost Pixel (OSS)** (decision point 2/3) — shipped in
+- **Storybook + Lost Pixel (OSS)** (decision point 2/3) — available in
   `app/.storybook/`, `app/lostpixel.config.ts`, and
   `app/tasks/lost-pixel-baselines/`; the screenshot harness now covers 102
   current goldens in `app/tasks/visual-goldens/`.
-- **Deferred redesigns:** dashboard first-run onboarding checklist (its own core
-  domain + isolated UI per decision 6), panel course-detail outline redesign, and
-  the inline module-create form on panel course detail (still top-of-list; not a
-  D2 create-subpage yet).
 - **A11y runtime scanning** — shipped via `app/scripts/a11y-scan.ts`, with the
   current findings recorded in `tasks/a11y-report.md`.
 - **PL/EN terminology glossary** — shipped as `tasks/terminology-glossary.md`.
+
+### Remaining work (deferred)
+
+- Dashboard first-run onboarding checklist with its own core domain and isolated
+  UI per decision 6.
+- Panel course-detail outline redesign.
+- Inline module-create form on panel course detail, which remains top-of-list
+  rather than a D2 create subpage.

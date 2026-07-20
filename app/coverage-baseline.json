@@ -3,9 +3,9 @@
   "generatedFrom": "npm run coverage",
   "floors": {
     "core/domain": {
-      "lines": 89,
-      "branches": 91,
-      "functions": 92
+      "lines": 92,
+      "branches": 92,
+      "functions": 93
     },
     "core/contract": {
       "lines": 100,
@@ -13,7 +13,7 @@
       "functions": 100
     },
     "core/server": {
-      "lines": 95,
+      "lines": 96,
       "branches": 80,
       "functions": 95
     },
@@ -25,7 +25,7 @@
     "adapters": {
       "lines": 70,
       "branches": 77,
-      "functions": 64
+      "functions": 65
     },
     "apps/web": {
       "lines": 89,

@@ -31,7 +31,7 @@ npm run coverage:baseline  # re-measure and rewrite coverage-baseline.json floor
 
 | Layer | Files | Lines | Branches | Functions |
 | --- | --- | --- | --- | --- |
-| core/domain | 29 | 89.4% (1600/1789) | 91.7% (176/192) | 92.1% (58/63) |
+| core/domain | 28 | 92.5% (1600/1730) | 92.1% (176/191) | 93.5% (58/62) |
 | core/contract | 5 | 100.0% (659/659) | 100.0% (7/7) | 100.0% (5/5) |
 | core/server | 42 | 96.0% (3862/4022) | 80.1% (1178/1470) | 95.7% (198/207) |
 | core/client | 4 | 88.5% (1246/1408) | 97.8% (356/364) | 85.0% (311/366) |
@@ -40,7 +40,7 @@ npm run coverage:baseline  # re-measure and rewrite coverage-baseline.json floor
 | apps/cli | 3 | 0.9% (18/2013) | 77.8% (7/9) | 33.3% (1/3) |
 | apps/server | 7 | 37.4% (497/1330) | 68.8% (77/112) | 76.0% (19/25) |
 | scripts | 18 | 6.3% (395/6275) | 68.8% (88/128) | 53.3% (16/30) |
-| **TOTAL** | 236 | 67.2% (25140/37386) | 81.4% (4394/5400) | 74.4% (1412/1897) |
+| **TOTAL** | 235 | 67.4% (25140/37327) | 81.4% (4394/5399) | 74.5% (1412/1896) |
 
 <!-- COVERAGE:END -->
 
@@ -60,7 +60,7 @@ coverage — see "What the unit numbers miss" below.
 
 **No — coverage was not uniformly "full", and now it is measured, honest, and
 ratcheted.** After this audit every gated layer clears its bar: the four core
-layers exceed **85% lines / 80% branches** (domain 89.4/91.7, contract 100/100,
+layers exceed **85% lines / 80% branches** (domain 92.5/92.1, contract 100/100,
 server 96.0/80.1, client 88.5/97.8) and **adapters clear 70% lines (70.1%)**.
 The high-risk surfaces the owner cares about — money/price math, entitlement
 edges, tenant isolation, auth/secret crypto, webhook transitions, error-code

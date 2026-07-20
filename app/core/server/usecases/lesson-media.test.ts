@@ -27,7 +27,12 @@ import type {
   ProductRepository,
   TenantSecretResolver,
 } from '../ports.js';
-import { getPlayableLesson, PDF_URL_TTL_SECONDS, type PlayableLessonDeps } from './lesson-media.js';
+import {
+  BUNNY_EMBED_URL_TTL_SECONDS,
+  getPlayableLesson,
+  PDF_URL_TTL_SECONDS,
+  type PlayableLessonDeps,
+} from './lesson-media.js';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 const S3_PDF_URL =
@@ -140,6 +145,13 @@ const lessonsRepo: CourseLessonRepository = {
   delete: async () => false,
 };
 
+const lessonsRepoWith = (lesson: CourseLesson): CourseLessonRepository => ({
+  ...lessonsRepo,
+  list: async () => [lesson],
+  findById: async (_tenantId, id) => (id === lesson.id ? lesson : null),
+  findByIds: async () => [lesson],
+});
+
 const grantsRepo: ProductGrantRepository = {
   findById: async () => null,
   findGrant: async () => null,
@@ -204,6 +216,9 @@ const deps = (over: Partial<PlayableLessonDeps> = {}): PlayableLessonDeps => ({
   progress: progressRepo,
   products: productsRepo,
   clock,
+  bunnyEmbedTokenSigner: {
+    sign: ({ securityKey, videoId, expires }) => `${securityKey}-${videoId}-${expires}`,
+  },
   secretResolver: secretsOf({
     's3.accessKeyId': 'AKIA-TEST',
     's3.secretAccessKey': 'secret-test',
@@ -213,6 +228,52 @@ const deps = (over: Partial<PlayableLessonDeps> = {}): PlayableLessonDeps => ({
 });
 
 describe('getPlayableLesson', () => {
+  it('adds an expiring Bunny token when the tenant security key is configured', async () => {
+    const videoLesson: CourseLesson = {
+      ...pdfLesson,
+      contents: [
+        { type: 'video', storageKey: 'videos/one', streamLibraryId: 'lib-1', streamVideoId: 'video-1' },
+        { type: 'video', storageKey: 'videos/two', streamLibraryId: 'lib-1', streamVideoId: 'video-2' },
+      ],
+    };
+    const result = await getPlayableLesson(
+      ctx(),
+      'l1',
+      deps({
+        lessons: lessonsRepoWith(videoLesson),
+        secretResolver: secretsOf({ 'bunny.securityKey': 'security-key' }),
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+
+    const expires = Math.floor(Date.parse(NOW) / 1000) + BUNNY_EMBED_URL_TTL_SECONDS;
+    const urls = result.value.contents.map((block) => {
+      if (block.type !== 'video' || block.embedUrl === undefined) throw new Error('missing embed url');
+      return new URL(block.embedUrl);
+    });
+    expect(urls[0]?.origin).toBe('https://iframe.mediadelivery.net');
+    expect(urls[0]?.searchParams.get('expires')).toBe(String(expires));
+    expect(urls[0]?.searchParams.get('token')).toBe(`security-key-video-1-${expires}`);
+    expect(urls[1]?.searchParams.get('token')).not.toBe(urls[0]?.searchParams.get('token'));
+  });
+
+  it('keeps Bunny video blocks unchanged when the security key is not configured', async () => {
+    const video = {
+      type: 'video' as const,
+      storageKey: 'videos/one',
+      streamLibraryId: 'lib-1',
+      streamVideoId: 'video-1',
+    };
+    const videoLesson: CourseLesson = { ...pdfLesson, contents: [video] };
+    const result = await getPlayableLesson(
+      ctx(),
+      'l1',
+      deps({ lessons: lessonsRepoWith(videoLesson), secretResolver: secretsOf({}) }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.contents).toEqual([video]);
+  });
+
   it('signs only S3-hosted pdf blocks and passes the TTL', async () => {
     const { signer, calls } = recordingSigner();
     const result = await getPlayableLesson(ctx(), 'l1', deps({ fileUrlSigner: signer }));

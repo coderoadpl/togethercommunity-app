@@ -266,6 +266,9 @@ export const pl: Messages = {
     bunnyDescription:
       'Podaj klucz API biblioteki Bunny Stream oraz jej identyfikator, aby wybierać wideo do lekcji bez ręcznego wklejania identyfikatorów.',
     bunnyApiKeyLabel: 'klucz API biblioteki (Stream API key)',
+    bunnySecurityKeyLabel: 'klucz bezpieczeństwa tokenów osadzania',
+    bunnySecurityHint:
+      'Bez klucza bezpieczeństwa osadzone wideo nie jest kontrolowane przez dostęp i każda osoba z linkiem może oglądać je także po odebraniu dostępu. Dodaj klucz i włącz uwierzytelnianie tokenem osadzania w Bunny, aby chronić odtwarzanie.',
     bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',

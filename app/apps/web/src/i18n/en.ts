@@ -260,6 +260,9 @@ export const en: Messages = {
     bunnyDescription:
       'Enter your Bunny Stream library API key and library id to pick lesson videos without pasting ids by hand.',
     bunnyApiKeyLabel: 'library API key (Stream API key)',
+    bunnySecurityKeyLabel: 'embed token security key',
+    bunnySecurityHint:
+      'Without a security key, video embeds are not access-controlled and anyone with the link can keep watching after access is revoked. Add the key and enable embed token authentication in Bunny to protect playback.',
     bunnyLibraryIdLabel: 'library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',

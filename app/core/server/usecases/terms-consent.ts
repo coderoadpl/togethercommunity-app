@@ -32,6 +32,18 @@ export interface TermsConsentDeps {
   clock: Clock;
 }
 
+export const validateTermsConsent = async (
+  tenantId: string,
+  accepted: boolean | undefined,
+  tenants: TenantRepository,
+): Promise<Result<{ required: boolean }, AppError>> => {
+  const legal = tenantLegalUrls(await tenants.findSettings(tenantId));
+  if (legal === null) return ok({ required: false });
+  return accepted === true
+    ? ok({ required: true })
+    : err(validation('Accepting the terms and privacy policy is required'));
+};
+
 /**
  * No-op for tenants without configured legal documents, so dev/demo tenants
  * keep working without any consent plumbing.

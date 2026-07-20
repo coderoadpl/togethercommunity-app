@@ -28,7 +28,10 @@ const renderPanel = (
       const body = await request.json();
       const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
       const secret: TenantSecretMasked = {
-        key: key === 'stripe.webhookSecret' ? 'stripe.webhookSecret' : key === 'bunny.apiKey' ? 'bunny.apiKey' : 'stripe.restrictedKey',
+        key:
+          key === 'stripe.webhookSecret' || key === 'bunny.apiKey' || key === 'bunny.securityKey'
+            ? key
+            : 'stripe.restrictedKey',
         maskedPreview: '••••2345',
         updatedAt: '2026-07-12T10:00:00.000Z',
       };
@@ -112,6 +115,8 @@ describe('IntegrationsPanel', () => {
     const hint = await screen.findByTestId('bunny-test-hint');
     expect(hint).toHaveTextContent(pl.integrations.bunnySaveFirst);
     expect(screen.getByTestId('bunny-test-connection')).toBeDisabled();
+    expect(await screen.findByText(pl.integrations.bunnySecurityHint)).toBeInTheDocument();
+    expect(await screen.findByTestId('secret-input-bunny.securityKey')).toBeInTheDocument();
   });
 
   it('saves the Bunny library id and reports the connection diagnostic', async () => {

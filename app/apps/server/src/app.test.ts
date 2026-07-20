@@ -145,6 +145,9 @@ const deps = (input: {
     videoLibrary: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
     },
+    bunnyEmbedTokenSigner: {
+      sign: ({ videoId, expires }) => `${videoId}-${expires}`,
+    },
     fileUrlSigner: {
       presignGet: (input) => ok(input.url),
     },

@@ -403,6 +403,10 @@ export interface VideoLibraryPort {
   }): Promise<Result<{ videos: StreamVideo[]; totalItems: number }, AppError>>;
 }
 
+export interface BunnyEmbedTokenSigner {
+  sign(input: { securityKey: string; videoId: string; expires: number }): string;
+}
+
 /**
  * Signs object-storage GET URLs (SigV4 presign in production) so imported
  * media on private buckets stays reachable. Credentials arrive per call so

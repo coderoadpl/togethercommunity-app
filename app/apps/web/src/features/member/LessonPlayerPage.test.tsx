@@ -11,11 +11,12 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type {
-  CourseLesson,
   CourseStructureWithAccess,
   LessonBlock,
   MemberCourseProgress,
   NextLesson,
+  PlayableCourseLesson,
+  PlayableLessonBlock,
 } from '@core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
@@ -64,7 +65,7 @@ const allBlocks: LessonBlock[] = [
   { type: 'link', url: 'https://docs.example.com/guide' },
 ];
 
-const lesson = (contents: LessonBlock[]): CourseLesson => ({
+const lesson = (contents: PlayableLessonBlock[]): PlayableCourseLesson => ({
   id: 'l1',
   tenantId: 't1',
   name: 'Intro to Variables',
@@ -82,7 +83,7 @@ const progress = (completedLessonIds: string[]): MemberCourseProgress => ({
   updatedAt: '2024-01-01T00:00:00.000Z',
 });
 
-const okLesson = (contents: LessonBlock[]) =>
+const okLesson = (contents: PlayableLessonBlock[]) =>
   http.get('/api/student/lessons/:lessonId', () =>
     HttpResponse.json({ ok: true, data: { lesson: lesson(contents) } }),
   );
@@ -179,6 +180,22 @@ describe('LessonPlayerPage', () => {
       'href',
       'https://github.com/acme/repo',
     );
+  });
+
+  it('uses a signed Bunny embed url returned by the lesson endpoint', async () => {
+    const embedUrl =
+      'https://iframe.mediadelivery.net/embed/424242/vid-1?token=signed-token&expires=1782900000';
+    const videoBlock = allBlocks[0];
+    if (videoBlock === undefined || videoBlock.type !== 'video') throw new Error('missing video block');
+    server.use(
+      okNext(null),
+      okStructure(),
+      okProgress(),
+      okLesson([{ ...videoBlock, embedUrl }]),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-video')).toHaveAttribute('src', embedUrl);
   });
 
   it('strips a script tag from html content', async () => {

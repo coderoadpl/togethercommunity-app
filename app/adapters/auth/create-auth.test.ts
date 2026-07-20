@@ -5,16 +5,16 @@ import { createDb } from '@adapters/db/client.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '@adapters/db/repositories.js';
 
-import { createAuth, createAuthPort, type AuthSettings } from './create-auth.js';
+import { createAuth, createAuthPort } from './create-auth.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 
-const buildAuth = (
-  enforceSignUpConsent: NonNullable<AuthSettings['enforceSignUpConsent']> = async () =>
-    ok({ recorded: false }),
-) => {
+let signUpIpSuffix = 1;
+
+const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string[] } = {}) => {
   const db = createDb('node-postgres', connectionString);
+  const consentRequired = options.consentRequired ?? false;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
@@ -25,7 +25,15 @@ const buildAuth = (
     email: createDevEmailPort(db),
     defaultTenantName: 'Together',
     google: null,
-    enforceSignUpConsent,
+    validateSignUpConsent: async ({ accepted }) =>
+      consentRequired && accepted !== true
+        ? err(validation('Accepting the terms and privacy policy is required'))
+        : ok({ required: consentRequired }),
+    recordSignUpConsent: async ({ email }) => {
+      if (!consentRequired) return ok({ recorded: false });
+      options.recordedEmails?.push(email);
+      return ok({ recorded: true });
+    },
   });
   return {
     auth,
@@ -35,7 +43,11 @@ const buildAuth = (
   };
 };
 
-const signUp = (auth: ReturnType<typeof buildAuth>['auth'], email: string, termsAccepted?: boolean) =>
+const signUp = (
+  auth: ReturnType<typeof buildAuth>['auth'],
+  email: string,
+  options: { termsAccepted?: unknown; password?: string } = {},
+) =>
   auth.handler(
     new Request('http://studio.localhost:48730/api/auth/sign-up/email', {
       method: 'POST',
@@ -43,23 +55,21 @@ const signUp = (auth: ReturnType<typeof buildAuth>['auth'], email: string, terms
         'content-type': 'application/json',
         host: 'studio.localhost:48730',
         origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
       },
       body: JSON.stringify({
         name: 'Ada',
         email,
-        password: 'secret12',
-        ...(termsAccepted === undefined ? {} : { termsAccepted }),
+        password: options.password ?? 'secret12',
+        ...(options.termsAccepted === undefined ? {} : { termsAccepted: options.termsAccepted }),
       }),
     }),
   );
 
 describe('email sign-up consent', () => {
   it('rejects signup before account creation when configured legal terms are not accepted', async () => {
-    const { auth } = buildAuth(async ({ accepted }) =>
-      accepted === true
-        ? ok({ recorded: true })
-        : err(validation('Accepting the terms and privacy policy is required')),
-    );
+    const recordedEmails: string[] = [];
+    const { auth } = buildAuth({ consentRequired: true, recordedEmails });
     const email = `signup-no-consent-${Date.now()}@together.dev`;
 
     const response = await signUp(auth, email);
@@ -67,27 +77,50 @@ describe('email sign-up consent', () => {
 
     expect(response.status).toBe(400);
     expect(await internalAdapter.findUserByEmail(email)).toBeNull();
+    expect(recordedEmails).toEqual([]);
   });
 
-  it('records accepted consent and creates the account on a configured tenant', async () => {
-    const acceptedEmails: string[] = [];
-    const { auth } = buildAuth(async ({ accepted, email }) => {
-      if (accepted !== true) return err(validation('Accepting the terms and privacy policy is required'));
-      acceptedEmails.push(email);
-      return ok({ recorded: true });
-    });
+  it.each([999, 'yes', null])('rejects malformed consent %j before account creation', async (termsAccepted) => {
+    const recordedEmails: string[] = [];
+    const { auth } = buildAuth({ consentRequired: true, recordedEmails });
+    const email = `signup-malformed-consent-${String(termsAccepted)}-${Date.now()}@together.dev`;
+
+    const response = await signUp(auth, email, { termsAccepted });
+    const { internalAdapter } = await auth.$context;
+
+    expect(response.status).toBe(400);
+    expect(await internalAdapter.findUserByEmail(email)).toBeNull();
+    expect(recordedEmails).toEqual([]);
+  });
+
+  it('does not record consent when account validation fails downstream', async () => {
+    const recordedEmails: string[] = [];
+    const { auth } = buildAuth({ consentRequired: true, recordedEmails });
+    const email = `signup-short-password-${Date.now()}@together.dev`;
+
+    const response = await signUp(auth, email, { termsAccepted: true, password: 'x' });
+    const { internalAdapter } = await auth.$context;
+
+    expect(response.status).toBe(400);
+    expect(await internalAdapter.findUserByEmail(email)).toBeNull();
+    expect(recordedEmails).toEqual([]);
+  });
+
+  it('records accepted consent once after creating the account on a configured tenant', async () => {
+    const recordedEmails: string[] = [];
+    const { auth } = buildAuth({ consentRequired: true, recordedEmails });
     const email = `signup-consent-${Date.now()}@together.dev`;
 
-    const response = await signUp(auth, email, true);
+    const response = await signUp(auth, email, { termsAccepted: true });
     const { internalAdapter } = await auth.$context;
 
     expect(response.status).toBe(200);
-    expect(acceptedEmails).toEqual([email]);
+    expect(recordedEmails).toEqual([email]);
     expect(await internalAdapter.findUserByEmail(email)).not.toBeNull();
   });
 
   it('keeps signup unchanged when the tenant has no configured legal URLs', async () => {
-    const { auth } = buildAuth(async () => ok({ recorded: false }));
+    const { auth } = buildAuth();
     const email = `signup-no-legal-${Date.now()}@together.dev`;
 
     const response = await signUp(auth, email);

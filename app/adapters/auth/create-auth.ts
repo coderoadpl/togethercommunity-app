@@ -33,10 +33,13 @@ export interface AuthSettings {
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
-  enforceSignUpConsent?(input: {
+  validateSignUpConsent?(input: {
+    request: Request;
+    accepted: boolean | undefined;
+  }): Promise<Result<{ required: boolean }, AppError>>;
+  recordSignUpConsent?(input: {
     request: Request;
     email: string;
-    accepted: boolean | undefined;
   }): Promise<Result<{ recorded: boolean }, AppError>>;
 }
 
@@ -50,6 +53,19 @@ const signUpConsentSchema = z.object({
   email: z.string().email(),
   termsAccepted: z.boolean().optional(),
 });
+
+const signUpEmailSchema = z.object({ email: z.string().email() });
+
+const successfulSignUpSchema = z.object({
+  user: z.object({ email: z.string().email() }),
+});
+
+const throwConsentError = (error: AppError): never => {
+  throw APIError.from('BAD_REQUEST', {
+    code: error.code,
+    message: error.message,
+  });
+};
 
 export interface MagicLinkDeliveryContext {
   tenantName?: string;
@@ -110,21 +126,26 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== '/sign-up/email') return;
-        if (settings.enforceSignUpConsent === undefined) return;
+        if (settings.validateSignUpConsent === undefined) return;
+        const email = signUpEmailSchema.safeParse(ctx.body);
+        if (!email.success) return;
         const parsed = signUpConsentSchema.safeParse(ctx.body);
-        if (!parsed.success) return;
         const request = ctx.request ?? new Request(settings.baseUrl);
-        const consent = await settings.enforceSignUpConsent({
+        const consent = await settings.validateSignUpConsent({
           request,
-          email: parsed.data.email,
-          accepted: parsed.data.termsAccepted,
+          accepted: parsed.success ? parsed.data.termsAccepted : undefined,
         });
-        if (!consent.ok) {
-          throw APIError.from('BAD_REQUEST', {
-            code: consent.error.code,
-            message: consent.error.message,
-          });
-        }
+        if (!consent.ok) throwConsentError(consent.error);
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/sign-up/email') return;
+        if (settings.recordSignUpConsent === undefined) return;
+        if (!successfulSignUpSchema.safeParse(ctx.context.returned).success) return;
+        const parsed = signUpConsentSchema.safeParse(ctx.body);
+        if (!parsed.success || parsed.data.termsAccepted !== true) return;
+        const request = ctx.request ?? new Request(settings.baseUrl);
+        const consent = await settings.recordSignUpConsent({ request, email: parsed.data.email });
+        if (!consent.ok) throwConsentError(consent.error);
       }),
     },
     emailAndPassword: {

@@ -246,6 +246,8 @@ export interface Messages {
     bunnyHeading: string;
     bunnyDescription: string;
     bunnyApiKeyLabel: string;
+    bunnySecurityKeyLabel: string;
+    bunnySecurityHint: string;
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
     bunnySaveFirst: string;

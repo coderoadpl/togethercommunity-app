@@ -44,6 +44,7 @@ import {
   priceKindSchema,
   productPriceSchema,
   orderExportFileSchema,
+  playableCourseLessonSchema,
   exportOrdersQuerySchema,
   salesSummarySchema,
   memberExportFileSchema,
@@ -483,7 +484,7 @@ export const courseStructureOutputSchema = z.object({
 });
 
 export const studentLessonOutputSchema = z.object({
-  lesson: courseLessonSchema,
+  lesson: playableCourseLessonSchema,
 });
 
 export const lessonCompleteInputSchema = z.object({

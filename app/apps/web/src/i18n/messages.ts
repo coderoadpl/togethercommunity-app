@@ -239,6 +239,10 @@ export interface Messages {
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
     bunnySaveFirst: string;
+    s3Heading: string;
+    s3Description: string;
+    s3AccessKeyIdLabel: string;
+    s3SecretAccessKeyLabel: string;
   };
   products: {
     newProduct: string;
@@ -528,6 +532,7 @@ export interface Messages {
     revokeAccess: string;
     revokeConfirm: (params: { product: string; email: string }) => string;
     learningHeading: string;
+    learningScopeHint: string;
     loadingLearning: string;
     lastActivity: string;
     noActivity: string;
@@ -561,6 +566,8 @@ export interface Messages {
     courseEyebrow: string;
     courseContentComingSoon: string;
     courseContentArrivesLater: string;
+    productCoursesHeading: string;
+    productCoursesHint: string;
     courseNotFound: string;
     productNotInLibrary: string;
     backToMyProducts: string;

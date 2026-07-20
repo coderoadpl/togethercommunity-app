@@ -247,6 +247,11 @@ export const en: Messages = {
     bunnyLibraryIdLabel: 'library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',
+    s3Heading: 'S3 documents',
+    s3Description:
+      'Enter an AWS key with read access to the bucket hosting your lesson PDF files. The app signs their links on the fly, so the bucket can stay private.',
+    s3AccessKeyIdLabel: 'access key ID',
+    s3SecretAccessKeyLabel: 'secret access key',
   },
   products: {
     newProduct: 'New product',
@@ -576,6 +581,8 @@ export const en: Messages = {
         { product, email },
       ),
     learningHeading: 'Learning activity',
+    learningScopeHint:
+      'Counts cover only lessons within this member’s currently active access; completions outside it stay stored but are not shown here.',
     loadingLearning: 'loading learning activity…',
     lastActivity: 'Last activity',
     noActivity: 'no activity yet',
@@ -618,6 +625,9 @@ export const en: Messages = {
     courseEyebrow: 'course',
     courseContentComingSoon: 'Course content coming soon',
     courseContentArrivesLater: 'Course content arrives later.',
+    productCoursesHeading: 'Available courses',
+    productCoursesHint:
+      'The content you can access lives under My courses. Pick a course to continue.',
     courseNotFound: 'Course not found',
     productNotInLibrary: 'This product is not in your library.',
     backToMyProducts: 'Back to my products',

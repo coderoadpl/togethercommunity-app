@@ -36,6 +36,7 @@ import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resol
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
+import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
@@ -56,6 +57,7 @@ import type {
   EntityVersionRepository,
   EmailPort,
   DevMagicLinkReader,
+  FileUrlSigner,
   HealthPort,
   IdGenerator,
   MemberCourseProgressRepository,
@@ -122,6 +124,7 @@ export interface AppDeps {
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
   videoLibrary: VideoLibraryPort;
+  fileUrlSigner: FileUrlSigner;
   email: EmailPort;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
@@ -232,6 +235,7 @@ export const createDeps = (env: Env): AppDeps => {
     secretResolver,
     payment,
     videoLibrary: createBunnyVideoLibrary(),
+    fileUrlSigner: createS3UrlSigner(),
     email,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),

@@ -136,6 +136,9 @@ const deps = (input: {
     videoLibrary: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
     },
+    fileUrlSigner: {
+      presignGet: (input) => ok(input.url),
+    },
     processedPaymentEvents: {
       claim: async () => true,
       release: async () => undefined,

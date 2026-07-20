@@ -18,6 +18,7 @@ const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
 const adapterVideoExternal = 'node_modules/zod(/|$)';
 const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
+const adapterStorageTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const appServerExternal =
   'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
@@ -222,6 +223,18 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters/notifications/.*\\.test\\.tsx?$' },
       to: { path: external, pathNot: adapterNotificationsTestExternal },
+    },
+    {
+      name: 'adapter-storage-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/storage', pathNot: '\\.test\\.tsx?$' },
+      to: { path: external },
+    },
+    {
+      name: 'adapter-storage-test-external-allowlist',
+      severity: 'error',
+      from: { path: '^adapters/storage/.*\\.test\\.tsx?$' },
+      to: { path: external, pathNot: adapterStorageTestExternal },
     },
     {
       name: 'app-server-external-allowlist',

@@ -303,6 +303,27 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
 
           <BunnyTestConnection ready={bunnyReady} />
         </SectionCard>
+
+        <SectionCard title={t.integrations.s3Heading} description={t.integrations.s3Description}>
+          {secrets.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+          ) : secrets.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+          ) : (
+            <Stack useFlexGap spacing="1.25rem">
+              <SecretField
+                secretKey="s3.accessKeyId"
+                label={t.integrations.s3AccessKeyIdLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 's3.accessKeyId')}
+              />
+              <SecretField
+                secretKey="s3.secretAccessKey"
+                label={t.integrations.s3SecretAccessKeyLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 's3.secretAccessKey')}
+              />
+            </Stack>
+          )}
+        </SectionCard>
     </PanelPage>
   );
 };

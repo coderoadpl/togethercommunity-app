@@ -111,7 +111,7 @@ const SCREENS: ScreenSpec[] = [
     name: 'product-stub',
     auth: 'member',
     path: '/my/course/product-js-full',
-    ready: (page) => page.getByText('Treść kursu już wkrótce').waitFor(visible),
+    ready: (page) => page.getByTestId('product-course-links').waitFor(visible),
   },
   {
     name: 'account',

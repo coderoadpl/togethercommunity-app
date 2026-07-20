@@ -33,5 +33,6 @@ export * from './usecases/orders.js';
 export * from './usecases/subscription-lifecycle.js';
 export * from './usecases/subscription-simulate.js';
 export * from './usecases/entitlements.js';
+export * from './usecases/lesson-media.js';
 export * from './usecases/progress.js';
 export * from './usecases/community.js';

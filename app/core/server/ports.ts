@@ -316,6 +316,21 @@ export interface VideoLibraryPort {
   }): Promise<Result<{ videos: StreamVideo[]; totalItems: number }, AppError>>;
 }
 
+/**
+ * Signs object-storage GET URLs (SigV4 presign in production) so imported
+ * media on private buckets stays reachable. Credentials arrive per call so
+ * the adapter stays stateless and the use-case controls which tenant secret
+ * is decrypted.
+ */
+export interface FileUrlSigner {
+  presignGet(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    expiresInSeconds: number;
+  }): Result<string, AppError>;
+}
+
 export interface ProductPriceRepository {
   listByProduct(tenantId: string, productId: string): Promise<ProductPrice[]>;
   listActiveByProducts(tenantId: string, productIds: string[]): Promise<ProductPrice[]>;

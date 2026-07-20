@@ -253,6 +253,11 @@ export const pl: Messages = {
     bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
+    s3Heading: 'Dokumenty S3',
+    s3Description:
+      'Podaj klucz AWS z uprawnieniem odczytu do bucketu z plikami PDF lekcji. Aplikacja podpisuje ich odnośniki na bieżąco, więc bucket może pozostać prywatny.',
+    s3AccessKeyIdLabel: 'identyfikator klucza (access key ID)',
+    s3SecretAccessKeyLabel: 'tajny klucz (secret access key)',
   },
   products: {
     newProduct: 'Nowy produkt',
@@ -595,6 +600,8 @@ export const pl: Messages = {
         { product, email },
       ),
     learningHeading: 'Aktywność edukacyjna',
+    learningScopeHint:
+      'Liczby obejmują wyłącznie lekcje w ramach aktualnie aktywnych dostępów uczestnika; ukończenia spoza nich pozostają zapisane, ale nie są tu pokazywane.',
     loadingLearning: 'ładowanie aktywności…',
     lastActivity: 'Ostatnia aktywność',
     noActivity: 'brak aktywności',
@@ -637,6 +644,9 @@ export const pl: Messages = {
     courseEyebrow: 'kurs',
     courseContentComingSoon: 'Treść kursu już wkrótce',
     courseContentArrivesLater: 'Treść kursu pojawi się później.',
+    productCoursesHeading: 'Dostępne kursy',
+    productCoursesHint:
+      'Treści, do których masz dostęp, znajdziesz w Moich kursach. Wybierz kurs, aby kontynuować.',
     courseNotFound: 'Nie znaleziono kursu',
     productNotInLibrary: 'Tego produktu nie ma w Twojej bibliotece.',
     backToMyProducts: 'Wróć do moich produktów',

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-export const tenantSecretKeySchema = z.enum(['stripe.restrictedKey', 'stripe.webhookSecret', 'bunny.apiKey']);
+export const tenantSecretKeySchema = z.enum([
+  'stripe.restrictedKey',
+  'stripe.webhookSecret',
+  'bunny.apiKey',
+  's3.accessKeyId',
+  's3.secretAccessKey',
+]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;
 

@@ -88,11 +88,11 @@ import {
   listTenantApiKeys,
   m2mEnroll,
   revokeTenantApiKey,
-  getAccessibleLesson,
   getCourseStructureWithAccess,
   getMemberLearningSummary,
   getNextLesson,
   getProgress,
+  getPlayableLesson,
   getPublicOffer,
   getPaymentConfig,
   getTenantSecretsMasked,
@@ -1010,7 +1010,7 @@ export const buildApp = (deps: AppDeps) => {
   });
 
   app.get(API_PATHS.studentLesson, async (c) => {
-    const result = await getAccessibleLesson({ identity: c.get('identity') }, c.req.param('lessonId'), deps);
+    const result = await getPlayableLesson({ identity: c.get('identity') }, c.req.param('lessonId'), deps);
     return respond(result.ok ? ok({ lesson: result.value }) : result);
   });
 

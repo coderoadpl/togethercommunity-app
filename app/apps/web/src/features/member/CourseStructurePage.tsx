@@ -45,12 +45,16 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
       value: `${totals.total}`,
       label: t.courseOverview.statLessons({ count: totals.total }),
     },
-    {
-      key: 'duration',
-      icon: <StatClockIcon />,
-      value: formatTotalDuration(t, totals.totalMinutes),
-      label: t.courseOverview.statDuration,
-    },
+    ...(totals.totalMinutes > 0
+      ? [
+          {
+            key: 'duration',
+            icon: <StatClockIcon />,
+            value: formatTotalDuration(t, totals.totalMinutes),
+            label: t.courseOverview.statDuration,
+          },
+        ]
+      : []),
     {
       key: 'completed',
       icon: <StatCheckIcon />,
@@ -63,7 +67,7 @@ const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }
       sx={{
         display: 'grid',
         gap: '0.75rem',
-        gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+        gridTemplateColumns: { xs: '1fr', sm: `repeat(${tiles.length}, 1fr)` },
       }}
     >
       {tiles.map((tile) => (

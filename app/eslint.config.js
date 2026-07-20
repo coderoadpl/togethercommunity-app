@@ -191,6 +191,7 @@ export default tseslint.config(
         { type: 'adapter-email', pattern: 'adapters/email/**', mode: 'full' },
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
+        { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
@@ -250,6 +251,7 @@ export default tseslint.config(
                 'adapter-email',
                 'adapter-payment',
                 'adapter-video',
+                'adapter-storage',
               ],
               allow: [
                 'core-domain',
@@ -262,6 +264,7 @@ export default tseslint.config(
                 'adapter-email',
                 'adapter-payment',
                 'adapter-video',
+                'adapter-storage',
               ],
             },
             {
@@ -277,6 +280,7 @@ export default tseslint.config(
                 'adapter-email',
                 'adapter-payment',
                 'adapter-video',
+                'adapter-storage',
                 'app-server',
               ],
             },
@@ -413,6 +417,10 @@ export default tseslint.config(
             {
               from: ['adapter-video'],
               allow: ['zod'],
+            },
+            {
+              from: ['adapter-storage'],
+              allow: ['node:crypto'],
             },
             {
               from: ['app-server'],
@@ -637,6 +645,19 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [{ from: ['adapter-video'], allow: ['vitest', 'zod'] }],
+        },
+      ],
+    },
+  },
+  {
+    files: ['adapters/storage/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['adapter-storage'], allow: ['node:crypto', 'vitest'] }],
         },
       ],
     },

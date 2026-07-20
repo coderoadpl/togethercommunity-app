@@ -475,4 +475,92 @@ describe('importer', () => {
       .where(and(eq(account.userId, userId), eq(account.providerId, 'credential')));
     expect(credentialRows[0]?.password).toBe('native-hash-set-by-the-user');
   }, 60000);
+
+  it('derives member createdAt from the legacy ObjectId timestamp', async () => {
+    const memberRows = await db
+      .select()
+      .from(members)
+      .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
+    expect(memberRows[0]?.createdAt).toBe('2023-07-19T12:56:37.000Z');
+  }, 30000);
+
+  const restoreImportedCredential = async (): Promise<void> => {
+    const authUsers = await db.select().from(user).where(eq(user.email, EMAIL_1));
+    await db
+      .update(account)
+      .set({ password: MARKER })
+      .where(and(eq(account.userId, authUsers[0]?.id ?? ''), eq(account.providerId, 'credential')));
+  };
+
+  it('drops module→course links the course does not list in its module order', async () => {
+    await restoreImportedCredential();
+    const bundle = buildBundle();
+    const detachedId = '65a524f8b5bd26b9d2ab0d99';
+    bundle.modules.push({
+      legacyId: detachedId,
+      courseLegacyIds: [ids.c1],
+      title: 'Module 1 (detached duplicate)',
+      prefix: null,
+      chapters: [],
+    });
+
+    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso });
+    const moduleReport = reportByKind(result.tenants[0]?.kinds ?? [], 'modules');
+    expect(
+      moduleReport.anomalies.some((anomaly) => anomaly.kind === 'module-detached-from-course'),
+    ).toBe(true);
+
+    const rows = await db
+      .select()
+      .from(courseModules)
+      .where(and(eq(courseModules.tenantId, TENANT_ID), eq(courseModules.legacyId, detachedId)));
+    expect(rows[0]?.courseIds).toEqual([]);
+    expect(result.verification?.pass).toBe(true);
+  }, 60000);
+
+  it('re-apply repairs rows imported before the detached-link and join-date fixes', async () => {
+    await restoreImportedCredential();
+    const staleModuleId = '65a524f8b5bd26b9d2ab0d98';
+    await db.insert(courseModules).values({
+      id: staleModuleId,
+      tenantId: TENANT_ID,
+      courseIds: [ids.c1],
+      title: 'Stale detached duplicate',
+      prefix: null,
+      chapters: [],
+      legacyId: staleModuleId,
+      createdAt: nowIso(),
+    });
+    await db
+      .update(members)
+      .set({ createdAt: '2026-07-19T22:03:15.098Z' })
+      .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
+
+    const bundle = buildBundle();
+    bundle.modules.push({
+      legacyId: staleModuleId,
+      courseLegacyIds: [ids.c1],
+      title: 'Stale detached duplicate',
+      prefix: null,
+      chapters: [],
+    });
+
+    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso });
+    const moduleReport = reportByKind(result.tenants[0]?.kinds ?? [], 'modules');
+    expect(moduleReport.update).toBe(1);
+    const memberReport = reportByKind(result.tenants[0]?.kinds ?? [], 'members');
+    expect(memberReport.update).toBe(1);
+
+    const moduleRows = await db
+      .select()
+      .from(courseModules)
+      .where(and(eq(courseModules.tenantId, TENANT_ID), eq(courseModules.legacyId, staleModuleId)));
+    expect(moduleRows[0]?.courseIds).toEqual([]);
+    const memberRows = await db
+      .select()
+      .from(members)
+      .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
+    expect(memberRows[0]?.createdAt).toBe('2023-07-19T12:56:37.000Z');
+    expect(result.verification?.pass).toBe(true);
+  }, 60000);
 });

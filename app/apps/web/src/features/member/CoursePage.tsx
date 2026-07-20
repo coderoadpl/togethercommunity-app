@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
-import { Link } from '@mui/material';
+import { Link, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/index.js';
+import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { MemberSurface } from './MemberSurface.js';
 
@@ -19,6 +19,7 @@ const isForbidden = (error: Error | null) =>
 export const CoursePage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
   const products = useQuery(actions.myProducts);
+  const courses = useQuery(actions.studentCourses);
   const navigate = useNavigate();
   const unauthorized = isUnauthorized(products.error);
 
@@ -68,15 +69,33 @@ export const CoursePage = ({ productId }: { productId: string }) => {
     );
   }
 
+  const accessibleCourses = courses.data?.courses ?? [];
+
   return (
     <MemberSurface title={product.title} eyebrow={t.student.courseEyebrow}>
-      <StatusView
-        state={{
-          kind: 'empty',
-          title: t.student.courseContentComingSoon,
-          body: t.student.courseContentArrivesLater,
-        }}
-      />
+      {accessibleCourses.length === 0 ? (
+        <StatusView
+          state={{
+            kind: 'empty',
+            title: t.student.courseContentComingSoon,
+            body: t.student.courseContentArrivesLater,
+          }}
+        />
+      ) : (
+        <SectionCard
+          title={t.student.productCoursesHeading}
+          description={t.student.productCoursesHint}
+          data-testid="product-course-links"
+        >
+          <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
+            {accessibleCourses.map((course) => (
+              <Link key={course.id} href={`/my/courses/${course.id}`}>
+                {course.name}
+              </Link>
+            ))}
+          </Stack>
+        </SectionCard>
+      )}
     </MemberSurface>
   );
 };

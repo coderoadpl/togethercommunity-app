@@ -130,8 +130,11 @@ const LearningSummary = ({ memberId }: { memberId: string }) => {
 
   return (
     <Box component="section">
-      <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
+      <Typography variant="h2" component="h2" sx={{ mb: '0.35rem' }}>
         {t.members.learningHeading}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: '1rem' }}>
+        {t.members.learningScopeHint}
       </Typography>
       {summary.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.members.loadingLearning }} />

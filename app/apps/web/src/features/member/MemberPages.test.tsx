@@ -125,14 +125,53 @@ describe('member pages', () => {
     expect(screen.getAllByRole('link', { name: pl.student.manageSubscription })).toHaveLength(3);
   });
 
-  it('renders the course stub for a purchased product', async () => {
+  it('renders the coming-soon stub when the member can access no course yet', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+      http.get('/api/student/courses', () =>
+        HttpResponse.json({ ok: true, data: { courses: [] } }),
+      ),
     );
 
     await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: pl.student.courseContentComingSoon })).toBeInTheDocument();
+  });
+
+  it('links a purchased product to the courses the member can browse', async () => {
+    server.use(
+      http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+      http.get('/api/student/courses', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            courses: [
+              {
+                id: 'c1',
+                tenantId: 't1',
+                name: 'Kurs front-end od A do Z',
+                description: '',
+                imageUrl: null,
+                moduleOrder: [],
+                legacyId: null,
+                createdAt: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
+
+    expect(await screen.findByTestId('product-course-links')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Kurs front-end od A do Z' })).toHaveAttribute(
+      'href',
+      '/my/courses/c1',
+    );
+    expect(
+      screen.queryByRole('heading', { name: pl.student.courseContentComingSoon }),
+    ).not.toBeInTheDocument();
   });
 });

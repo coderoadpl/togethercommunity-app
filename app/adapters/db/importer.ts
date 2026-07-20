@@ -207,6 +207,31 @@ export interface ImportRunResult {
   verification: VerificationReport | null;
 }
 
+const OBJECT_ID_PATTERN = /^[0-9a-f]{24}$/;
+
+/** Mongo ObjectIds carry their creation time in the first 4 bytes. */
+const legacyObjectIdCreatedAt = (legacyId: string): string | null =>
+  OBJECT_ID_PATTERN.test(legacyId)
+    ? new Date(Number.parseInt(legacyId.slice(0, 8), 16) * 1000).toISOString()
+    : null;
+
+/**
+ * Course links a module may keep: legacy rendered `course.modules` (the module
+ * order) as the sole source of truth, so a module pointing at a course that
+ * does not list it back was invisible there — usually a detached duplicate.
+ */
+const moduleOrderByCourse = (bundle: TenantBundle): Map<string, ReadonlySet<string>> =>
+  new Map(bundle.courses.map((course) => [course.legacyId, new Set(course.moduleOrder)]));
+
+const isModuleInCourseOrder = (
+  orderByCourse: ReadonlyMap<string, ReadonlySet<string>>,
+  moduleLegacyId: string,
+  courseLegacyId: string,
+): boolean => {
+  const order = orderByCourse.get(courseLegacyId);
+  return order === undefined || order.has(moduleLegacyId);
+};
+
 const emptyReport = (kind: string): KindReport => ({
   kind,
   create: 0,
@@ -791,6 +816,7 @@ const importTenant = async (
     }),
   });
 
+  const courseOrderIndex = moduleOrderByCourse(bundle);
   const modulePlan = planSimpleKind({
     kind: 'modules',
     entries: bundle.modules,
@@ -803,6 +829,15 @@ const importTenant = async (
     }),
     desired: (entry, report) => ({
       courseIds: entry.courseLegacyIds
+        .filter((courseLegacyId) => {
+          if (isModuleInCourseOrder(courseOrderIndex, entry.legacyId, courseLegacyId)) return true;
+          report.anomalies.push({
+            kind: 'module-detached-from-course',
+            subject: `modules/${entry.legacyId}`,
+            detail: `module "${entry.title}" points at course ${courseLegacyId} which does not list it in its module order; legacy never rendered it, so the link was dropped`,
+          });
+          return false;
+        })
         .map((legacyId) =>
           mapReference(maps.courseIds, legacyId, report, 'module-course-ref-unmapped', `modules/${entry.legacyId}`),
         )
@@ -913,6 +948,7 @@ const importTenant = async (
     email: string;
     displayName: string | null;
     legacyId: string;
+    createdAt: string;
   }
   const memberCreates: MemberInsert[] = [];
   const memberUpdates: { id: string; patch: MemberPatch }[] = [];
@@ -951,7 +987,7 @@ const importTenant = async (
         email,
         displayName: entry.displayName,
         legacyId: entry.legacyId,
-        createdAt: now,
+        createdAt: legacyObjectIdCreatedAt(entry.legacyId) ?? now,
       });
       continue;
     }
@@ -968,6 +1004,7 @@ const importTenant = async (
       email,
       displayName: entry.displayName,
       legacyId: entry.legacyId,
+      createdAt: legacyObjectIdCreatedAt(entry.legacyId) ?? existing.createdAt,
     };
     const changes = changedFields(
       {
@@ -975,6 +1012,7 @@ const importTenant = async (
         email: normalizeEmail(existing.email),
         displayName: existing.displayName,
         legacyId: existing.legacyId,
+        createdAt: existing.createdAt,
       },
       patch,
     );
@@ -1416,8 +1454,16 @@ const runSpotChecks = async (
   const bundle = target.bundle;
   const now = options.nowIso();
 
+  const courseOrderIndex = moduleOrderByCourse(bundle);
   const moduleCourseIds = new Map<string, ReadonlySet<string>>(
-    bundle.modules.map((module) => [module.legacyId, new Set(module.courseLegacyIds)]),
+    bundle.modules.map((module) => [
+      module.legacyId,
+      new Set(
+        module.courseLegacyIds.filter((courseLegacyId) =>
+          isModuleInCourseOrder(courseOrderIndex, module.legacyId, courseLegacyId),
+        ),
+      ),
+    ]),
   );
   const lessonModuleIds = new Map<string, Set<string>>();
   for (const module of bundle.modules) {

@@ -19,6 +19,7 @@ import { actions } from '../../api.js';
 import { BrandMark } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, FinePrint } from '../../theme.js';
@@ -49,6 +50,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const offer = useQuery({ ...actions.publicOffer, enabled: !statusPage });
   const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
@@ -68,14 +70,24 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     onSuccess: (data) => window.location.assign(data.url),
   });
 
+  const legal = offer.data?.tenant.legal ?? null;
+  const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
+  const consent = consentRequired ? { termsAccepted } : {};
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const priceId = selectedPrice?.id;
     if (paymentConfig.data?.stripeConfigured) {
-      checkoutSession.mutate({ productId, email, language, ...(priceId === undefined ? {} : { priceId }) });
+      checkoutSession.mutate({
+        productId,
+        email,
+        language,
+        ...consent,
+        ...(priceId === undefined ? {} : { priceId }),
+      });
       return;
     }
-    simulatePurchase.mutate({ email, productId, language, ...(priceId === undefined ? {} : { priceId }) });
+    simulatePurchase.mutate({ email, productId, language, ...consent, ...(priceId === undefined ? {} : { priceId }) });
   };
 
   const retry = () => {
@@ -224,6 +236,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               required
             />
           </FormControl>
+          {consentRequired ? (
+            <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
+          ) : null}
           <Button
             type="submit"
             variant="contained"
@@ -257,6 +272,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 email,
                 productId,
                 language,
+                ...consent,
                 ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
               })}
             >

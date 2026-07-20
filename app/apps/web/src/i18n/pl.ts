@@ -100,6 +100,12 @@ export const pl: Messages = {
     registeredBoughtHint: 'Masz tu kupiony kurs? Zaloguj się magicznym linkiem wysłanym na Twój e-mail.',
     registeredUseMagicLinkCta: 'Zaloguj się magicznym linkiem',
   },
+  consent: {
+    accept: 'Akceptuję',
+    terms: 'regulamin',
+    privacy: 'politykę prywatności',
+    and: 'i',
+  },
   tenant: {
     choose: 'Wybierz przestrzeń',
     eachOwnDomain: 'każda przestrzeń ma własną domenę',
@@ -904,6 +910,18 @@ export const pl: Messages = {
     clear: 'Usuń',
     configured: 'skonfigurowano',
     notConfigured: 'nie ustawiono',
+  },
+  legal: {
+    heading: 'Regulamin i polityka prywatności',
+    intro:
+      'Podaj adresy regulaminu i polityki prywatności. Gdy są ustawione, uczestnicy akceptują je przy rejestracji i płatności. Treść dokumentów przygotowujesz samodzielnie.',
+    termsLabel: 'adres regulaminu',
+    termsPlaceholder: 'https://example.com/regulamin',
+    privacyLabel: 'adres polityki prywatności',
+    privacyPlaceholder: 'https://example.com/polityka-prywatnosci',
+    save: 'Zapisz',
+    saving: 'Zapisywanie…',
+    saved: 'Zapisano.',
   },
   branding: {
     heading: 'Branding',

@@ -30,6 +30,7 @@ import {
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
+  createTermsConsentRepository,
   createThreadSubscriptionRepository,
   createUserDisplayReader,
 } from '@adapters/db/repositories.js';
@@ -86,6 +87,7 @@ import type {
   TenantApiKeyRepository,
   TenantDomainRepository,
   TenantRepository,
+  TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
@@ -142,6 +144,7 @@ export interface AppDeps {
   devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
+  consents: TermsConsentRepository;
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
   health: HealthPort;
@@ -260,6 +263,7 @@ export const createDeps = (env: Env): AppDeps => {
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
     tenants: createTenantRepository(db),
+    consents: createTermsConsentRepository(db),
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),

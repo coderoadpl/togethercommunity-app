@@ -7,6 +7,7 @@ export const checkoutSessionInputSchema = z.object({
   priceId: z.string().min(1).optional(),
   email: z.string().email().optional(),
   language: languageSchema.optional(),
+  termsAccepted: z.boolean().optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;

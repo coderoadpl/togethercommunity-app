@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { magicLink, resetPassword, welcomeSetPassword } from './transactional-email.js';
+import { magicLink, resetPassword, spacePost, threadReply, welcomeSetPassword } from './transactional-email.js';
 
 describe('welcomeSetPassword', () => {
   it('renders the Polish template', () => {
@@ -126,6 +126,51 @@ describe('magicLink', () => {
       If you did not request this email, you can ignore it.",
       }
     `);
+  });
+});
+
+describe('notification opt-out footer', () => {
+  const replyInput = {
+    tenantName: 'Acme Courses',
+    lessonName: 'Zmienne',
+    authorDisplay: 'Ola',
+    snippet: 'Dzięki!',
+    url: 'https://acme.localhost/my/courses/c1/lessons/l1',
+  };
+  const postInput = {
+    tenantName: 'Acme Courses',
+    spaceName: 'Społeczność',
+    authorDisplay: 'Ola',
+    snippet: 'Cześć wszystkim!',
+    url: 'https://acme.localhost/my/spaces/s1',
+  };
+
+  it('links thread-mute management from the thread-reply mail in both languages', () => {
+    const pl = threadReply('pl', replyInput);
+    expect(pl.html).toContain(
+      `<a href="${replyInput.url}">Zarządzaj powiadomieniami</a> (w dyskusji możesz wyciszyć ten wątek)`,
+    );
+    expect(pl.text).toContain(`Zarządzaj powiadomieniami (w dyskusji możesz wyciszyć ten wątek): ${replyInput.url}`);
+
+    const en = threadReply('en', replyInput);
+    expect(en.html).toContain(
+      `<a href="${replyInput.url}">Manage notifications</a> (you can mute this thread in the discussion)`,
+    );
+    expect(en.text).toContain(`Manage notifications (you can mute this thread in the discussion): ${replyInput.url}`);
+  });
+
+  it('links space-unfollow management from the space-post mail in both languages', () => {
+    const pl = spacePost('pl', postInput);
+    expect(pl.html).toContain(
+      `<a href="${postInput.url}">Zarządzaj powiadomieniami</a> (w strefie możesz przestać ją obserwować)`,
+    );
+    expect(pl.text).toContain(`Zarządzaj powiadomieniami (w strefie możesz przestać ją obserwować): ${postInput.url}`);
+
+    const en = spacePost('en', postInput);
+    expect(en.html).toContain(
+      `<a href="${postInput.url}">Manage notifications</a> (you can unfollow the space there)`,
+    );
+    expect(en.text).toContain(`Manage notifications (you can unfollow the space there): ${postInput.url}`);
   });
 });
 

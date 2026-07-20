@@ -37,6 +37,7 @@ import type {
   TenantSecret,
   TenantSecretKey,
   TenantSettings,
+  TermsConsent,
 } from '@core/domain/index.js';
 
 /**
@@ -520,6 +521,12 @@ export interface TenantRepository {
       staffRole: Extract<StaffRole, 'owner'>;
     };
   }): Promise<Tenant>;
+}
+
+/** Append-only: consent records are audit evidence and are never updated or deleted. */
+export interface TermsConsentRepository {
+  record(tenantId: string, consent: TermsConsent): Promise<void>;
+  listByEmail(tenantId: string, email: string): Promise<TermsConsent[]>;
 }
 
 export interface TenantAccessReader {

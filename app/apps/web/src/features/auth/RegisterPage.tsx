@@ -10,11 +10,12 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
@@ -24,20 +25,30 @@ const baseDomainUrl = (): string => {
   return `${protocol}//${appBaseDomain()}${port ? `:${port}` : ''}`;
 };
 
-export const RegisterPage = () => {
+export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [registeredOnTenant, setRegisteredOnTenant] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const onTenantHost = hostHasTenantSubdomain(hostname ?? window.location.hostname);
+  const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
+  const legal = onTenantHost ? offer.data?.tenant.legal ?? null : null;
+  const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
+  const recordConsent = useMutation(actions.recordTermsConsent);
+
   const signUp = useMutation({
     ...actions.signUp,
     onSuccess: async () => {
+      if (consentRequired) {
+        await recordConsent.mutateAsync().catch(() => undefined);
+      }
       await queryClient.invalidateQueries();
-      if (hostHasTenantSubdomain(window.location.hostname)) {
+      if (onTenantHost) {
         setRegisteredOnTenant(true);
         return;
       }
@@ -114,6 +125,9 @@ export const RegisterPage = () => {
               required
             />
           </FormControl>
+          {consentRequired ? (
+            <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
+          ) : null}
           <Button
             type="submit"
             variant="contained"

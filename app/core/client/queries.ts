@@ -268,6 +268,12 @@ export const createCheckoutSessionMutation = (api: ApiClient) =>
     call: (input: CheckoutSessionRequest) => api.createCheckoutSession(input),
   });
 
+export const recordTermsConsentMutation = (api: ApiClient): MutationDescriptor<{ recorded: boolean }, void> =>
+  defineMutation({
+    mutationKey: ['terms-consent'] as const,
+    call: () => api.recordTermsConsent(),
+  });
+
 export const authConfigQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: authConfigScopes.all(),

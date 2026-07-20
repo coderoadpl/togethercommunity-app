@@ -286,6 +286,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
+      termsUrl: null,
+      privacyUrl: null,
     });
     expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
     expect(await repo.findSettings(ACME)).toMatchObject({ bunnyStreamLibraryId: 'lib-1' });

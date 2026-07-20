@@ -106,6 +106,7 @@ import {
   getTenantSecretsMasked,
   getTenantSettings,
   updateTenantSettings,
+  enforceTermsConsent,
   getCreatorOnboarding,
   dismissCreatorOnboarding,
   grantProductToMember,
@@ -345,6 +346,17 @@ export const buildApp = (deps: AppDeps) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
+    const consent = await enforceTermsConsent(
+      tenant.value.tenant.id,
+      {
+        accepted: parsed.data.termsAccepted,
+        userId: null,
+        email: parsed.data.email ?? null,
+        source: 'checkout',
+      },
+      deps,
+    );
+    if (!consent.ok) return respondPublic(consent);
     const baseUrl = magicLinkBaseUrl(
       c.req.header('host') ?? '',
       c.req.header('x-forwarded-proto') ?? null,
@@ -352,6 +364,23 @@ export const buildApp = (deps: AppDeps) => {
       deps.appBaseUrl,
     );
     return respondPublic(await createCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, deps));
+  });
+
+  // Public path (not the authenticated /api/* block): a freshly registered
+  // user has no member/staff grant yet, which resolveIdentity rejects.
+  app.post(API_PATHS.termsConsent, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
+    if (!user) return respondPublic(err(unauthorized()));
+    return respondPublic(
+      await enforceTermsConsent(
+        tenant.value.tenant.id,
+        { accepted: true, userId: user.userId, email: user.email, source: 'register' },
+        deps,
+      ),
+    );
   });
 
   app.options(API_PATHS.authConfig, () =>
@@ -458,6 +487,18 @@ export const buildApp = (deps: AppDeps) => {
       const body: unknown = await c.req.json().catch(() => null);
       const parsed = simulatePurchaseInputSchema.safeParse(body);
       if (!parsed.success) return respond(err(validation('Invalid purchase payload', parsed.error.flatten())));
+
+      const consent = await enforceTermsConsent(
+        tenant.value.tenant.id,
+        {
+          accepted: parsed.data.termsAccepted,
+          userId: null,
+          email: parsed.data.email,
+          source: 'checkout',
+        },
+        deps,
+      );
+      if (!consent.ok) return respond(consent);
 
       const result = await simulatePurchase(
         tenant.value.tenant.id,

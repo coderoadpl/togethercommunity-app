@@ -24,6 +24,7 @@ import {
   staffRoleSchema,
   tenantApiKeySchema,
   tenantSecretSchema,
+  termsConsentSchema,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -76,6 +77,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TenantSecretRepository,
+  TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
 } from '@core/server/index.js';
@@ -83,6 +85,7 @@ import type {
 import type { Db } from './client.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
+  consents,
   courseLessons,
   courseModules,
   courses,
@@ -1807,6 +1810,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         logoUrl: tenants.logoUrl,
         accentColor: tenants.accentColor,
         faviconUrl: tenants.faviconUrl,
+        termsUrl: tenants.termsUrl,
+        privacyUrl: tenants.privacyUrl,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -1819,6 +1824,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
           logoUrl: row.logoUrl,
           accentColor: row.accentColor,
           faviconUrl: row.faviconUrl,
+          termsUrl: row.termsUrl,
+          privacyUrl: row.privacyUrl,
         }
       : null;
   },
@@ -1831,6 +1838,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         logoUrl: settings.logoUrl,
         accentColor: settings.accentColor,
         faviconUrl: settings.faviconUrl,
+        termsUrl: settings.termsUrl,
+        privacyUrl: settings.privacyUrl,
       })
       .where(eq(tenants.id, tenantId));
     return {
@@ -1839,6 +1848,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       logoUrl: settings.logoUrl,
       accentColor: settings.accentColor,
       faviconUrl: settings.faviconUrl,
+      termsUrl: settings.termsUrl,
+      privacyUrl: settings.privacyUrl,
     };
   },
   createTenantWithOwnerGrant: async (input) =>
@@ -1857,6 +1868,20 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         contentVersion: 1,
       };
     }),
+});
+
+export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({
+  record: async (tenantId, consent) => {
+    await db.insert(consents).values({ ...consent, tenantId });
+  },
+  listByEmail: async (tenantId, email) => {
+    const rows = await db
+      .select()
+      .from(consents)
+      .where(and(eq(consents.tenantId, tenantId), eq(consents.email, email)))
+      .orderBy(asc(consents.acceptedAt));
+    return rows.map((row) => termsConsentSchema.parse(row));
+  },
 });
 
 export const createOnboardingStateRepository = (db: Db): OnboardingStateRepository => ({

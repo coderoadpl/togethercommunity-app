@@ -15,6 +15,8 @@ interface StoredSettings {
   logoUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
+  termsUrl: string | null;
+  privacyUrl: string | null;
 }
 
 const EMPTY_SETTINGS: StoredSettings = {
@@ -23,6 +25,8 @@ const EMPTY_SETTINGS: StoredSettings = {
   logoUrl: null,
   accentColor: null,
   faviconUrl: null,
+  termsUrl: null,
+  privacyUrl: null,
 };
 
 const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
@@ -54,6 +58,39 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
 
   return { updates };
 };
+
+describe('SettingsPanel legal documents', () => {
+  it('saves terms and privacy urls through the settings endpoint', async () => {
+    const { updates } = renderPanel();
+
+    await userEvent.type(await screen.findByTestId('legal-terms-url'), 'https://akademia.test/regulamin');
+    await userEvent.type(screen.getByTestId('legal-privacy-url'), 'https://akademia.test/prywatnosc');
+    await userEvent.click(screen.getByTestId('legal-save'));
+
+    expect(await screen.findByTestId('legal-saved')).toHaveTextContent(pl.legal.saved);
+    expect(updates).toContainEqual({
+      termsUrl: 'https://akademia.test/regulamin',
+      privacyUrl: 'https://akademia.test/prywatnosc',
+    });
+  });
+
+  it('clears the documents by saving empty fields', async () => {
+    const { updates } = renderPanel({
+      ...EMPTY_SETTINGS,
+      termsUrl: 'https://akademia.test/regulamin',
+    });
+
+    const termsInput = await screen.findByTestId('legal-terms-url');
+    await waitFor(() => {
+      expect(termsInput).toHaveValue('https://akademia.test/regulamin');
+    });
+    await userEvent.clear(termsInput);
+    await userEvent.click(screen.getByTestId('legal-save'));
+
+    expect(await screen.findByTestId('legal-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual({ termsUrl: null, privacyUrl: null });
+  });
+});
 
 describe('SettingsPanel branding', () => {
   it('saves logo, accent color and favicon through the settings endpoint', async () => {

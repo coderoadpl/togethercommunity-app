@@ -1,7 +1,9 @@
 import {
+  EMPTY_LEGAL_URLS,
   EMPTY_TENANT_BRANDING,
   ok,
   type AppError,
+  type LegalUrls,
   type PriceInterval,
   type PriceKind,
   type Product,
@@ -18,6 +20,7 @@ export interface PublicOffer {
     slug: string;
     name: string;
     branding: TenantBranding;
+    legal: LegalUrls;
   };
   contentVersion: number;
   products: PublicOfferProduct[];
@@ -70,6 +73,10 @@ export const getPublicOffer = async (
         settings === null
           ? EMPTY_TENANT_BRANDING
           : { logoUrl: settings.logoUrl, accentColor: settings.accentColor, faviconUrl: settings.faviconUrl },
+      legal:
+        settings === null
+          ? EMPTY_LEGAL_URLS
+          : { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl },
     },
     contentVersion: tenant.contentVersion,
     products: products.map((product) => toPublicProduct(product, pricesByProduct.get(product.id) ?? [])),

@@ -137,11 +137,17 @@ export const publicOfferPriceSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
 });
 
+export const publicLegalUrlsSchema = z.object({
+  termsUrl: z.string().nullable().default(null),
+  privacyUrl: z.string().nullable().default(null),
+});
+
 export const publicOfferOutputSchema = z.object({
   tenant: z.object({
     slug: z.string(),
     name: z.string(),
     branding: tenantBrandingSchema.default({}),
+    legal: publicLegalUrlsSchema.default({}),
   }),
   contentVersion: z.number().int().positive(),
   products: z.array(
@@ -167,6 +173,10 @@ export type CheckoutSessionRequest = z.input<typeof checkoutSessionRequestSchema
 
 export const checkoutSessionOutputSchema = z.object({
   url: z.string().url(),
+});
+
+export const termsConsentOutputSchema = z.object({
+  recorded: z.boolean(),
 });
 
 export const stripeWebhookOutputSchema = z.object({
@@ -259,6 +269,7 @@ export const simulatePurchaseInputSchema = z.object({
   productId: z.string().min(1),
   priceId: z.string().min(1).optional(),
   language: languageSchema.default('pl'),
+  termsAccepted: z.boolean().optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -719,6 +730,7 @@ export const API_ROUTES = {
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
+  termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   tenants: { method: 'GET', path: '/api/tenants' },
@@ -821,6 +833,7 @@ export const API_PATHS = {
   publicOffer: API_ROUTES.publicOffer.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
+  termsConsent: API_ROUTES.termsConsent.path,
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   tenants: API_ROUTES.tenants.path,

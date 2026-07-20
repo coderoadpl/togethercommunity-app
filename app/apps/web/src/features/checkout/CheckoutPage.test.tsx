@@ -93,6 +93,83 @@ describe('CheckoutPage', () => {
     expect(screen.queryByRole('button', { name: pl.checkout.payIdle })).not.toBeInTheDocument();
   });
 
+  it('requires accepting configured documents and sends the consent with the purchase', async () => {
+    const requests: unknown[] = [];
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            ...offerBody,
+            tenant: {
+              ...offerBody.tenant,
+              legal: {
+                termsUrl: 'https://acme.test/regulamin',
+                privacyUrl: 'https://acme.test/prywatnosc',
+              },
+            },
+          },
+        }),
+      ),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+      http.post('/api/dev/simulate-purchase', async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            memberId: 'm1',
+            productId: 'course-1',
+            alreadyOwned: false,
+            subscriptionId: null,
+            orderId: 'order-1',
+            magicLink: null,
+          },
+        });
+      }),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    const checkbox = await screen.findByRole('checkbox');
+    expect(checkbox).toBeRequired();
+    expect(screen.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
+      'href',
+      'https://acme.test/regulamin',
+    );
+    expect(screen.getByRole('link', { name: pl.consent.privacy })).toHaveAttribute(
+      'href',
+      'https://acme.test/prywatnosc',
+    );
+
+    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(checkbox);
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
+
+    expect(await screen.findByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(requests).toEqual([{
+      email: 'buyer@together.dev',
+      productId: 'course-1',
+      language: 'pl',
+      termsAccepted: true,
+    }]);
+  });
+
+  it('shows no consent checkbox when the tenant has no configured documents', async () => {
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
   it('tells a repeat buyer they already own the product', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),

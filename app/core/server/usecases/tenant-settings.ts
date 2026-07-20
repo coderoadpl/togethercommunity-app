@@ -52,6 +52,8 @@ export const updateTenantSettings = async (
       logoUrl: parsed.data.logoUrl === undefined ? current.logoUrl : parsed.data.logoUrl,
       accentColor: parsed.data.accentColor === undefined ? current.accentColor : parsed.data.accentColor,
       faviconUrl: parsed.data.faviconUrl === undefined ? current.faviconUrl : parsed.data.faviconUrl,
+      termsUrl: parsed.data.termsUrl === undefined ? current.termsUrl : parsed.data.termsUrl,
+      privacyUrl: parsed.data.privacyUrl === undefined ? current.privacyUrl : parsed.data.privacyUrl,
     }),
   );
 };

@@ -92,6 +92,12 @@ export interface Messages {
     registeredBoughtHint: string;
     registeredUseMagicLinkCta: string;
   };
+  consent: {
+    accept: string;
+    terms: string;
+    privacy: string;
+    and: string;
+  };
   tenant: {
     choose: string;
     eachOwnDomain: string;
@@ -813,6 +819,17 @@ export interface Messages {
     clear: string;
     configured: string;
     notConfigured: string;
+  };
+  legal: {
+    heading: string;
+    intro: string;
+    termsLabel: string;
+    termsPlaceholder: string;
+    privacyLabel: string;
+    privacyPlaceholder: string;
+    save: string;
+    saving: string;
+    saved: string;
   };
   branding: {
     heading: string;

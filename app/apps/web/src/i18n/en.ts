@@ -94,6 +94,12 @@ export const en: Messages = {
     registeredBoughtHint: 'Bought a course here? Sign in with the magic link sent to your email.',
     registeredUseMagicLinkCta: 'Sign in with a magic link',
   },
+  consent: {
+    accept: 'I accept the',
+    terms: 'terms of service',
+    privacy: 'privacy policy',
+    and: 'and',
+  },
   tenant: {
     choose: 'Choose a space',
     eachOwnDomain: 'every space lives on its own domain',
@@ -884,6 +890,18 @@ export const en: Messages = {
     clear: 'Remove',
     configured: 'configured',
     notConfigured: 'not set',
+  },
+  legal: {
+    heading: 'Terms of service and privacy policy',
+    intro:
+      'Provide URLs of your terms of service and privacy policy. When set, members accept them at registration and checkout. You author the documents yourself.',
+    termsLabel: 'terms of service URL',
+    termsPlaceholder: 'https://example.com/terms',
+    privacyLabel: 'privacy policy URL',
+    privacyPlaceholder: 'https://example.com/privacy',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Saved.',
   },
   branding: {
     heading: 'Branding',

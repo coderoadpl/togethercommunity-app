@@ -280,8 +280,14 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     const repo = createTenantRepository(db);
     expect(await repo.findBySlug('acme')).toMatchObject({ id: ACME, slug: 'acme' });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
-    const updated = await repo.updateSettings(ACME, { billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
-    expect(updated).toEqual({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
+    const updated = await repo.updateSettings(ACME, {
+      billingPortalUrl: 'https://billing.acme.test',
+      bunnyStreamLibraryId: 'lib-1',
+      logoUrl: null,
+      accentColor: null,
+      faviconUrl: null,
+    });
+    expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
     expect(await repo.findSettings(ACME)).toMatchObject({ bunnyStreamLibraryId: 'lib-1' });
   });
 

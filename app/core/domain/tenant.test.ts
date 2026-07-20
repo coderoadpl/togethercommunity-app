@@ -37,6 +37,9 @@ describe('tenantSettingsSchema', () => {
     expect(tenantSettingsSchema.parse({ billingPortalUrl: null, bunnyStreamLibraryId: null })).toEqual({
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
+      logoUrl: null,
+      accentColor: null,
+      faviconUrl: null,
     });
   });
 });

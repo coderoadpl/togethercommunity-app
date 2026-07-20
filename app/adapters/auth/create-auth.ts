@@ -80,6 +80,18 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
+    rateLimit: {
+      enabled: true,
+      // The e-mail-sending endpoints carry the anti-bombing throttle (S3). The other
+      // entries relax the tighter limits Better-Auth applies by default once rate
+      // limiting is on, so token verification and password sign-in stay usable.
+      customRules: {
+        '/sign-in/magic-link': { window: 60, max: 20 },
+        '/request-password-reset': { window: 60, max: 20 },
+        '/magic-link/verify': { window: 60, max: 20 },
+        '/sign-in/email': { window: 60, max: 20 },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       password: { verify: verifyPasswordWithLegacyFallback },

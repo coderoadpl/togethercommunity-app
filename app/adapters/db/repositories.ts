@@ -11,6 +11,7 @@ import {
   memberGrantSchema,
   memberSubscriptionSchema,
   notificationSchema,
+  orderSchema,
   orderListItemSchema,
   productPriceSchema,
   postSchema,
@@ -31,6 +32,7 @@ import {
   type MemberSubscription,
   type Membership,
   type Notification,
+  type Order,
   type OrderListItem,
   type ProductPrice,
   type Post,
@@ -57,6 +59,7 @@ import type {
   MemberSubscriptionRepository,
   NotificationRepository,
   OrderRepository,
+  PaymentRefundRepository,
   ProductPriceRepository,
   PostRepository,
   PostSearchRow,
@@ -116,6 +119,8 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 const parseProduct = (product: Product): Product => productSchema.parse(product);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
+
+const parseOrder = (order: Order): Order => orderSchema.parse(order);
 
 const parseLesson = (
   lesson: Omit<CourseLesson, 'durationMinutes'> & { durationMinutes: number | null },
@@ -1451,6 +1456,53 @@ export const createOrderRepository = (db: Db): OrderRepository => {
     },
   };
 };
+
+export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
+  findOrderByProviderObjectIds: async (tenantId, providerObjectIds) => {
+    const matches = Object.entries(providerObjectIds).map(
+      ([key, value]) => sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
+    );
+    if (matches.length === 0) return null;
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.tenantId, tenantId), or(...matches)))
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  findLatestSubscriptionOrder: async (tenantId, providerSubscriptionId) => {
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          sql`${orders.providerObjectIds} ->> 'subscription' = ${providerSubscriptionId}`,
+        ),
+      )
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  markOrderRefunded: async (tenantId, orderId) => {
+    const rows = await db
+      .update(orders)
+      .set({ status: 'refunded' })
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.id, orderId),
+          sql`${orders.status} <> 'refunded'`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+});
 
 export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRepository => {
   const toRow = (tenantId: string, subscription: MemberSubscription) => ({

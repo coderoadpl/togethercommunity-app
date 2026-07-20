@@ -14,6 +14,7 @@ import {
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
+  createPaymentRefundRepository,
   createPostReactionRepository,
   createPostRepository,
   createSpaceRepository,
@@ -69,6 +70,7 @@ import type {
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
+  PaymentRefundRepository,
   PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
@@ -123,6 +125,7 @@ export interface AppDeps {
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
   orders: OrderRepository;
+  paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
@@ -240,6 +243,7 @@ export const createDeps = (env: Env): AppDeps => {
     grants: createProductGrantRepository(db),
     prices: createProductPriceRepository(db),
     orders: createOrderRepository(db),
+    paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),

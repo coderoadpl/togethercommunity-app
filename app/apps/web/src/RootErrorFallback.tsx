@@ -25,6 +25,7 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'integration_not_configured':
     case 'integration_auth':
     case 'integration_unavailable':
+    case 'rate_limited':
     case 'internal':
       return t.errors.headingGeneric;
   }

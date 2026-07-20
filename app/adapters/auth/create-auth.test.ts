@@ -135,3 +135,24 @@ describe('reset password email', () => {
     expect(message?.html).toContain('/reset-password?token=');
   });
 });
+
+describe('email-endpoint rate limiting', () => {
+  it('returns 429 once the magic-link window limit is exceeded and stays available below it', async () => {
+    const { auth } = buildAuth();
+    const email = `rate-limit-${Date.now()}@together.dev`;
+    const hammer = () =>
+      auth.handler(
+        new Request('http://localhost:48730/api/auth/sign-in/magic-link', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: 'http://localhost:48730' },
+          body: JSON.stringify({ email, callbackURL: '/my' }),
+        }),
+      );
+
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 25; attempt += 1) statuses.push((await hammer()).status);
+
+    expect(statuses[0]).not.toBe(429);
+    expect(statuses.filter((status) => status === 429).length).toBeGreaterThan(0);
+  });
+});

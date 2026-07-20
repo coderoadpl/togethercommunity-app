@@ -308,6 +308,7 @@ export interface PaymentWebhookEvent {
   checkoutSession: {
     email: string | null;
     subscriptionId: string | null;
+    paymentIntentId?: string | null;
     metadata: {
       tenantId: string | null;
       productId: string | null;
@@ -318,9 +319,16 @@ export interface PaymentWebhookEvent {
   } | null;
   invoice?: {
     subscriptionId: string | null;
+    chargeId?: string | null;
+    paymentIntentId?: string | null;
     amountCents: number | null;
     currency: string | null;
     periodEnd: string | null;
+  } | null;
+  adjustment?: {
+    chargeId: string | null;
+    paymentIntentId: string | null;
+    invoiceId: string | null;
   } | null;
   subscription?: {
     id: string;
@@ -407,6 +415,15 @@ export interface OrderRepository {
   list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;
   countSince(tenantId: string, sinceIso: string): Promise<number>;
+}
+
+export interface PaymentRefundRepository {
+  findOrderByProviderObjectIds(
+    tenantId: string,
+    providerObjectIds: Record<string, string>,
+  ): Promise<Order | null>;
+  findLatestSubscriptionOrder(tenantId: string, providerSubscriptionId: string): Promise<Order | null>;
+  markOrderRefunded(tenantId: string, orderId: string): Promise<Order | null>;
 }
 
 export interface MemberSubscriptionRepository {

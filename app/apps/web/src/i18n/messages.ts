@@ -55,6 +55,7 @@ export interface Messages {
     messageIntegrationNotConfigured: string;
     messageIntegrationAuth: string;
     messageIntegrationUnavailable: string;
+    messageRateLimited: string;
     messageInternal: string;
     messageUnknown: string;
   };

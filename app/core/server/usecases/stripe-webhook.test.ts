@@ -59,6 +59,7 @@ const completedEvent = (overrides?: {
   checkoutSession: {
     email: overrides?.email ?? 'buyer@example.com',
     subscriptionId: overrides?.subscriptionId ?? null,
+    paymentIntentId: 'pi-1',
     metadata: {
       tenantId: overrides?.tenantId ?? 'tenant-a',
       productId: overrides?.productId ?? 'product-1',
@@ -82,9 +83,23 @@ const invoiceEvent = (input: {
   checkoutSession: null,
   invoice: {
     subscriptionId: input.subscriptionId,
+    chargeId: `ch-${input.invoiceId}`,
+    paymentIntentId: `pi-${input.invoiceId}`,
     amountCents: null,
     currency: null,
     periodEnd: input.periodEnd ?? null,
+  },
+});
+
+const refundEvent = (id = 'evt-refund'): PaymentWebhookEvent => ({
+  id,
+  type: 'charge.refunded',
+  objectId: 'ch-refund',
+  checkoutSession: null,
+  adjustment: {
+    chargeId: 'ch-refund',
+    paymentIntentId: 'pi-1',
+    invoiceId: null,
   },
 });
 
@@ -117,6 +132,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
   const sent: string[] = [];
   let sequence = 0;
   let clockNow = now;
+  let refundTransitions = 0;
 
   const deps: StripeWebhookDeps = {
     authPort: {
@@ -174,6 +190,36 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
       revenueSince: async () => [],
       countSince: async () => 0,
     },
+    paymentRefunds: {
+      findOrderByProviderObjectIds: async (tenantId, providerObjectIds) =>
+        orders.find(
+          (order) =>
+            order.tenantId === tenantId &&
+            Object.entries(providerObjectIds).some(
+              ([key, value]) => order.providerObjectIds[key] === value,
+            ),
+        ) ?? null,
+      findLatestSubscriptionOrder: async (tenantId, providerSubscriptionId) =>
+        [...orders]
+          .reverse()
+          .find(
+            (order) =>
+              order.tenantId === tenantId &&
+              order.providerObjectIds['subscription'] === providerSubscriptionId,
+          ) ?? null,
+      markOrderRefunded: async (tenantId, orderId) => {
+        const index = orders.findIndex(
+          (order) => order.tenantId === tenantId && order.id === orderId && order.status !== 'refunded',
+        );
+        if (index < 0) return null;
+        const current = orders[index];
+        if (!current) return null;
+        const refunded: Order = { ...current, status: 'refunded' };
+        orders[index] = refunded;
+        refundTransitions += 1;
+        return refunded;
+      },
+    },
     subscriptions: {
       findById: async (tenantId, id) => {
         const subscription = subscriptions.get(id);
@@ -215,7 +261,13 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
         grants.set(`${tenantId}:${grantId}`, updated);
         return updated;
       },
-      revokeGrant: async () => null,
+      revokeGrant: async (tenantId, grantId, expiresAt) => {
+        const existing = grants.get(`${tenantId}:${grantId}`);
+        if (!existing) return null;
+        const revoked = { ...existing, expiresAt };
+        grants.set(`${tenantId}:${grantId}`, revoked);
+        return revoked;
+      },
       listForMemberWithProductNames: async () => [],
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
@@ -256,6 +308,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
     orders,
     subscriptions,
     sent,
+    refundTransitions: () => refundTransitions,
     setNow: (iso: string) => {
       clockNow = iso;
     },
@@ -446,6 +499,32 @@ describe('fulfillStripeWebhook', () => {
     expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(expiresBefore);
     expect(h.orders).toHaveLength(1);
+  });
+
+  it('marks a refunded order and revokes its grant', async () => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
+
+    const result = await fulfillStripeWebhook(tenantA, refundEvent(), h.deps, 'simulated');
+
+    expect(result).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders[0]?.status).toBe('refunded');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.refundTransitions()).toBe(1);
+  });
+
+  it('applies a duplicate refund delivery exactly once', async () => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
+    const event = refundEvent();
+
+    const first = await fulfillStripeWebhook(tenantA, event, h.deps);
+    const second = await fulfillStripeWebhook(tenantA, event, h.deps);
+
+    expect(first).toEqual({ ok: true, value: { processed: true } });
+    expect(second).toEqual({ ok: true, value: { processed: false } });
+    expect(h.orders[0]?.status).toBe('refunded');
+    expect(h.refundTransitions()).toBe(1);
   });
 });
 

@@ -97,6 +97,11 @@ const deps = (input: {
       revenueSince: async () => [],
       countSince: async () => 0,
     },
+    paymentRefunds: {
+      findOrderByProviderObjectIds: async () => null,
+      findLatestSubscriptionOrder: async () => null,
+      markOrderRefunded: async () => null,
+    },
     subscriptions: {
       findById: async () => null,
       findByProviderSubscriptionId: async () => null,

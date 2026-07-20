@@ -61,6 +61,7 @@ export const pl: Messages = {
       'Usługa zewnętrzna odrzuciła zapisany klucz. Sprawdź klucz w sekcji Integracje.',
     messageIntegrationUnavailable:
       'Usługa zewnętrzna jest chwilowo niedostępna. Spróbuj ponownie za chwilę.',
+    messageRateLimited: 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.',
     messageInternal: 'Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.',
     messageUnknown: 'Coś poszło nie tak. Spróbuj ponownie.',
   },

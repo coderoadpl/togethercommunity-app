@@ -21,6 +21,9 @@ export const stripeWebhookPayloadSchema = z.object({
       customer_details: z.object({ email: z.string().email().nullable() }).nullable().optional(),
       metadata: z.record(z.string()).nullable().optional(),
       subscription: z.string().nullable().optional(),
+      invoice: z.string().nullable().optional(),
+      payment_intent: z.string().nullable().optional(),
+      charge: z.string().nullable().optional(),
       amount_total: z.number().int().nullable().optional(),
       currency: z.string().nullable().optional(),
       period_end: z.number().nullable().optional(),
@@ -48,6 +51,8 @@ export const stripeInvoiceObjectSchema = z.object({
     .optional(),
   amount_paid: z.number().int().optional(),
   amount_due: z.number().int().optional(),
+  charge: z.unknown().optional(),
+  payment_intent: z.unknown().optional(),
   currency: z.string().optional(),
   period_end: z.number().nullable().optional(),
   lines: z
@@ -55,6 +60,18 @@ export const stripeInvoiceObjectSchema = z.object({
       data: z.array(z.object({ period: z.object({ end: z.number() }).optional() })),
     })
     .optional(),
+});
+
+export const stripeChargeObjectSchema = z.object({
+  id: z.string(),
+  invoice: z.unknown().optional(),
+  payment_intent: z.unknown().optional(),
+});
+
+export const stripeDisputeObjectSchema = z.object({
+  id: z.string(),
+  charge: z.unknown().optional(),
+  payment_intent: z.unknown().optional(),
 });
 
 export const stripeSubscriptionObjectSchema = z.object({

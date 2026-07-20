@@ -43,6 +43,7 @@ describe('fake Stripe webhook verification', () => {
         checkoutSession: {
           email: 'buyer@example.com',
           subscriptionId: null,
+          paymentIntentId: null,
           metadata: {
             tenantId: 'tenant-a',
             productId: 'product-1',
@@ -52,7 +53,48 @@ describe('fake Stripe webhook verification', () => {
           },
         },
         invoice: null,
+        adjustment: null,
         subscription: null,
+      },
+    });
+  });
+
+  it('maps refund and dispute provider identifiers', async () => {
+    const refundPayload = JSON.stringify({
+      id: 'evt_refund',
+      type: 'charge.refunded',
+      data: { object: { id: 'ch_123', payment_intent: 'pi_123', invoice: 'in_123' } },
+    });
+    const refund = await provider.verifyWebhookEvent({
+      payloadRaw: refundPayload,
+      signatureHeader: signature(refundPayload),
+      webhookSecret: secret,
+    });
+
+    expect(refund).toMatchObject({
+      ok: true,
+      value: {
+        type: 'charge.refunded',
+        adjustment: { chargeId: 'ch_123', paymentIntentId: 'pi_123', invoiceId: 'in_123' },
+      },
+    });
+
+    const disputePayload = JSON.stringify({
+      id: 'evt_dispute',
+      type: 'charge.dispute.created',
+      data: { object: { id: 'dp_123', charge: 'ch_123', payment_intent: 'pi_123' } },
+    });
+    const dispute = await provider.verifyWebhookEvent({
+      payloadRaw: disputePayload,
+      signatureHeader: signature(disputePayload),
+      webhookSecret: secret,
+    });
+
+    expect(dispute).toMatchObject({
+      ok: true,
+      value: {
+        type: 'charge.dispute.created',
+        adjustment: { chargeId: 'ch_123', paymentIntentId: 'pi_123', invoiceId: null },
       },
     });
   });

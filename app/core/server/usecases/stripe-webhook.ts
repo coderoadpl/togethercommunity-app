@@ -10,7 +10,11 @@ import {
   type Tenant,
 } from '@core/domain/index.js';
 
-import type { PaymentWebhookEvent, ProcessedPaymentEventRepository } from '../ports.js';
+import type {
+  PaymentRefundRepository,
+  PaymentWebhookEvent,
+  ProcessedPaymentEventRepository,
+} from '../ports.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import {
   appendOrder,
@@ -23,6 +27,7 @@ import {
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
+  paymentRefunds: PaymentRefundRepository;
 }
 
 const HANDLED_EVENT_TYPES = new Set([
@@ -31,6 +36,8 @@ const HANDLED_EVENT_TYPES = new Set([
   'invoice.payment_failed',
   'customer.subscription.updated',
   'customer.subscription.deleted',
+  'charge.refunded',
+  'charge.dispute.created',
 ]);
 
 const applyCheckoutCompleted = async (
@@ -83,6 +90,9 @@ const applyCheckoutCompleted = async (
         providerSubscriptionId: event.checkoutSession.subscriptionId,
         providerObjectIds: {
           checkoutSession: event.objectId,
+          ...(event.checkoutSession.paymentIntentId == null
+            ? {}
+            : { paymentIntent: event.checkoutSession.paymentIntentId }),
           ...(event.checkoutSession.subscriptionId === null
             ? {}
             : { subscription: event.checkoutSession.subscriptionId }),
@@ -106,7 +116,12 @@ const applyCheckoutCompleted = async (
       amountCents: price?.amountCents ?? product?.priceCents ?? 0,
       currency: price?.currency ?? product?.currency ?? 'PLN',
       provider,
-      providerObjectIds: { checkoutSession: event.objectId },
+      providerObjectIds: {
+        checkoutSession: event.objectId,
+        ...(event.checkoutSession.paymentIntentId == null
+          ? {}
+          : { paymentIntent: event.checkoutSession.paymentIntentId }),
+      },
     },
     deps,
   );
@@ -128,7 +143,14 @@ const applyInvoiceEvent = async (
 
   const cycle = {
     subscription,
-    providerObjectIds: { invoice: event.objectId, subscription: providerSubscriptionId },
+    providerObjectIds: {
+      invoice: event.objectId,
+      subscription: providerSubscriptionId,
+      ...(event.invoice?.chargeId == null ? {} : { charge: event.invoice.chargeId }),
+      ...(event.invoice?.paymentIntentId == null
+        ? {}
+        : { paymentIntent: event.invoice.paymentIntentId }),
+    },
     ...(event.invoice?.amountCents == null ? {} : { amountCents: event.invoice.amountCents }),
     ...(event.invoice?.currency == null ? {} : { currency: event.invoice.currency.toUpperCase() }),
   };
@@ -140,6 +162,52 @@ const applyInvoiceEvent = async (
     );
   } else {
     await failSubscriptionPayment(tenant.id, cycle, deps);
+  }
+  return ok({ processed: true });
+};
+
+const applyPaymentAdjustment = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Promise<Result<{ processed: boolean }, AppError>> => {
+  const adjustment = event.adjustment;
+  if (!adjustment) return ok({ processed: false });
+  const providerObjectIds = {
+    ...(adjustment.invoiceId === null ? {} : { invoice: adjustment.invoiceId }),
+    ...(adjustment.paymentIntentId === null ? {} : { paymentIntent: adjustment.paymentIntentId }),
+    ...(adjustment.chargeId === null ? {} : { charge: adjustment.chargeId }),
+  };
+  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, providerObjectIds);
+  if (!order) return ok({ processed: false });
+
+  if (order.status !== 'refunded') {
+    const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
+    if (!refunded) return ok({ processed: false });
+  }
+  const grant = await deps.grants.findGrant(tenant.id, order.memberId, order.productId);
+  if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
+
+  const providerSubscriptionId = order.providerObjectIds['subscription'];
+  const invoiceId = order.providerObjectIds['invoice'];
+  if (order.kind === 'recurring' && providerSubscriptionId && invoiceId) {
+    const latest = await deps.paymentRefunds.findLatestSubscriptionOrder(
+      tenant.id,
+      providerSubscriptionId,
+    );
+    if (latest?.id === order.id) {
+      const subscription = await deps.subscriptions.findByProviderSubscriptionId(
+        tenant.id,
+        providerSubscriptionId,
+      );
+      if (subscription) {
+        await updateSubscriptionFromProvider(
+          tenant.id,
+          { subscription, cancelAtPeriodEnd: false, canceled: true },
+          deps,
+        );
+      }
+    }
   }
   return ok({ processed: true });
 };
@@ -192,6 +260,8 @@ export const fulfillStripeWebhook = async (
       ? await applyCheckoutCompleted(tenant, event, provider, deps)
       : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
         ? await applyInvoiceEvent(tenant, event, deps)
+        : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
+          ? await applyPaymentAdjustment(tenant, event, deps)
         : await applySubscriptionEvent(tenant, event, deps);
 
   if (!applied.ok || !applied.value.processed) {

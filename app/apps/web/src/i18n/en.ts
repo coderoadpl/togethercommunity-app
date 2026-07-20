@@ -55,6 +55,7 @@ export const en: Messages = {
       'The external service rejected the stored key. Check the key in the Integrations section.',
     messageIntegrationUnavailable:
       'The external service is temporarily unavailable. Please try again in a moment.',
+    messageRateLimited: 'Too many attempts. Please wait a moment before trying again.',
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',
     messageUnknown: 'Something went wrong. Please try again.',
   },

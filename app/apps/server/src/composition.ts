@@ -10,6 +10,7 @@ import {
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
+  createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
   createNotificationRepository,
@@ -66,6 +67,7 @@ import type {
   HealthPort,
   IdGenerator,
   MemberCourseProgressRepository,
+  MemberErasurePort,
   MemberRepository,
   MemberSubscriptionRepository,
   NotificationChannelPort,
@@ -117,6 +119,7 @@ export interface AppDeps {
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
+  memberErasure: MemberErasurePort;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaces: SpaceRepository;
@@ -257,6 +260,7 @@ export const createDeps = (env: Env): AppDeps => {
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
+    memberErasure: createMemberErasureRepository(db),
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     spaces: createSpaceRepository(db),

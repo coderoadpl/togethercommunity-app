@@ -557,14 +557,21 @@ export const en: Messages = {
     removing: 'Removing…',
     removeConfirmTitle: 'Remove member?',
     removeConfirmIntro: ({ email }) =>
-      format('You are about to permanently remove {email}. This cannot be undone.', { email }),
+      format(
+        'You are about to erase the personal data of {email}. The order history will be kept for accounting. This cannot be undone.',
+        { email },
+      ),
     removeImpact: ({ grants, completedLessons }) =>
-      format('Impact: {grants} {grantNoun} and progress covering {completedLessons} completed {lessonNoun}.', {
-        grants,
-        completedLessons,
-        grantNoun: grants === 1 ? 'grant' : 'grants',
-        lessonNoun: completedLessons === 1 ? 'lesson' : 'lessons',
-      }),
+      format(
+        'Impact: personal data will be erased, the order history will be preserved. {grants} {grantNoun} will be revoked; anonymized progress covers {completedLessons} completed {lessonNoun}.',
+        {
+          grants,
+          completedLessons,
+          grantNoun: grants === 1 ? 'grant' : 'grants',
+          lessonNoun: completedLessons === 1 ? 'lesson' : 'lessons',
+        },
+      ),
+    deletedBadge: 'Account removed',
     exportFailed: 'Export failed',
     allMembersBack: '← All members',
     joined: 'Joined',

@@ -93,9 +93,23 @@ export const memberSchema = z.object({
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
+  deletedAt: z.string().nullable(),
 });
 
 export type Member = z.infer<typeof memberSchema>;
+
+export const DELETED_MEMBER_DISPLAY = 'Konto usunięte';
+
+/**
+ * Removal keeps the member row for order-history integrity (ustawa o
+ * rachunkowości) and erases only the personal data: the e-mail and userId are
+ * replaced with markers derived from the opaque member id, so the row can never
+ * be traced back to the person nor matched by a future sign-in or purchase.
+ */
+export const memberTombstone = (memberId: string): { email: string; userId: string } => ({
+  email: `deleted-${memberId}@anonymized.invalid`,
+  userId: `deleted:${memberId}`,
+});
 
 export const memberWithProductIdsSchema = z.object({
   id: z.string(),
@@ -105,6 +119,7 @@ export const memberWithProductIdsSchema = z.object({
   marketingConsents: z.record(z.boolean()),
   externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
+  deletedAt: z.string().nullable(),
   productIds: z.array(z.string()),
   activeProductIds: z.array(z.string()),
 });

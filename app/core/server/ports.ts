@@ -261,7 +261,31 @@ export interface MemberRepository {
   listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
-  delete(tenantId: string, memberId: string): Promise<boolean>;
+}
+
+export interface MemberPseudonymization {
+  memberId: string;
+  deletedAt: string;
+  tombstoneEmail: string;
+  severedUserId: string;
+  postAuthorDisplay: string;
+}
+
+export interface MemberPseudonymizationResult {
+  alreadyDeleted: boolean;
+  authUserErased: boolean;
+}
+
+/**
+ * Member removal is pseudonymization, never row deletion: order/subscription
+ * history must survive for accounting retention while every personal datum on
+ * the member (and the orphaned auth user) is erased in one atomic operation.
+ */
+export interface MemberErasurePort {
+  pseudonymize(
+    tenantId: string,
+    input: MemberPseudonymization,
+  ): Promise<MemberPseudonymizationResult | null>;
 }
 
 export interface ProductGrantRepository {

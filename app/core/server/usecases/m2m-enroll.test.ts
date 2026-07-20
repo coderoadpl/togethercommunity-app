@@ -97,7 +97,6 @@ const harness = (options: {
       members.push(m);
     },
     updateEmail: async () => null,
-    delete: async () => false,
   };
 
   const authPort: AuthPort = {
@@ -189,6 +188,7 @@ const seedMember = async (deps: M2mEnrollDeps): Promise<void> => {
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: PAST,
+    deletedAt: null,
   });
 };
 

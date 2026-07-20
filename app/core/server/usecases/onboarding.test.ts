@@ -83,6 +83,7 @@ const member = (id: string): MemberWithProductIds => ({
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt: NOW,
+  deletedAt: null,
   productIds: [],
   activeProductIds: [],
 });

@@ -1,8 +1,10 @@
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { DELETED_MEMBER_DISPLAY, memberTombstone } from '@core/domain/index.js';
 import type {
   CourseLesson,
   CourseModule,
@@ -24,6 +26,7 @@ import {
   createCourseModuleRepository,
   createCourseRepository,
   createHealthPort,
+  createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
   createOrderRepository,
@@ -36,7 +39,7 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
-import { user } from './schema.js';
+import { consents, memberCourseProgress, members, posts, user } from './schema.js';
 
 const TEST_DB = 'together_repositories_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -118,6 +121,7 @@ const member = (over: Partial<Member> & { id: string; tenantId: string; userId: 
   marketingConsents: {},
   externalCustomerIds: {},
   createdAt: NOW,
+  deletedAt: null,
   ...over,
 });
 
@@ -380,5 +384,212 @@ describe('course/module/lesson repositories', () => {
 describe('health port', () => {
   it('pings the database successfully', async () => {
     expect(await createHealthPort(db).pingDatabase()).toBe(true);
+  });
+});
+
+describe('member erasure repository', () => {
+  const RODO = 'tenant-rodo';
+  const OTHER = 'tenant-rodo-other';
+  const REMOVAL_AT = '2026-07-20T12:00:00.000Z';
+
+  const pseudonymizationInput = (memberId: string) => ({
+    memberId,
+    deletedAt: REMOVAL_AT,
+    tombstoneEmail: memberTombstone(memberId).email,
+    severedUserId: memberTombstone(memberId).userId,
+    postAuthorDisplay: DELETED_MEMBER_DISPLAY,
+  });
+
+  beforeAll(async () => {
+    await db.insert(user).values([
+      { id: 'user-rodo-owner', name: 'Rodo Owner', email: 'owner-rodo@together.dev' },
+      { id: 'user-rodo-buyer', name: 'Jan Kowalski', email: 'jan.kowalski@together.dev' },
+      { id: 'user-rodo-shared', name: 'Anna Shared', email: 'anna.shared@together.dev' },
+    ]);
+
+    const tenants = createTenantRepository(db);
+    await tenants.createTenantWithOwnerGrant({
+      tenant: { id: RODO, slug: 'rodo', name: 'Rodo', createdAt: NOW },
+      ownerGrant: { id: 'admin-rodo', userId: 'user-rodo-owner', staffRole: 'owner' },
+    });
+    await tenants.createTenantWithOwnerGrant({
+      tenant: { id: OTHER, slug: 'rodo-other', name: 'Rodo Other', createdAt: NOW },
+      ownerGrant: { id: 'admin-rodo-other', userId: 'user-rodo-owner', staffRole: 'owner' },
+    });
+
+    const membersRepo = createMemberRepository(db);
+    await membersRepo.create(RODO, member({
+      id: 'mem-rodo',
+      tenantId: RODO,
+      userId: 'user-rodo-buyer',
+      email: 'jan.kowalski@together.dev',
+      displayName: 'Jan Kowalski',
+      tags: ['vip'],
+      marketingConsents: { newsletter: true },
+      externalCustomerIds: { stripe: 'cus_jan' },
+    }));
+    await membersRepo.create(RODO, member({ id: 'mem-rodo-shared', tenantId: RODO, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
+    await membersRepo.create(OTHER, member({ id: 'mem-other-shared', tenantId: OTHER, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
+
+    const products = createProductRepository(db);
+    await products.create(RODO, product({ id: 'prod-rodo', tenantId: RODO, title: 'Kurs' }));
+    const prices = createProductPriceRepository(db);
+    await prices.create(RODO, price({ id: 'price-rodo', tenantId: RODO, productId: 'prod-rodo' }));
+
+    const orders = createOrderRepository(db);
+    await orders.create(RODO, order({ id: 'order-rodo-1', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
+    await orders.create(RODO, order({ id: 'order-rodo-2', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
+
+    const grants = createProductGrantRepository(db);
+    await grants.createGrant(RODO, grant({ id: 'grant-rodo', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', expiresAt: null }));
+
+    const subs = createMemberSubscriptionRepository(db);
+    await subs.create(RODO, subscription({ id: 'sub-rodo', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', priceId: 'price-rodo', providerSubscriptionId: 'psub-rodo' }));
+
+    await db.insert(posts).values({
+      id: 'post-rodo',
+      tenantId: RODO,
+      contextKind: 'space',
+      contextId: 'space-rodo',
+      parentPostId: null,
+      rootPostId: 'post-rodo',
+      authorUserId: 'user-rodo-buyer',
+      authorDisplay: 'Jan Kowalski',
+      authorIsStaff: false,
+      body: 'Świetny kurs!',
+      createdAt: NOW,
+    });
+    await createCourseRepository(db).create(RODO, {
+      id: 'course-rodo',
+      tenantId: RODO,
+      name: 'Kurs RODO',
+      description: '',
+      imageUrl: null,
+      moduleOrder: [],
+      legacyId: null,
+      createdAt: NOW,
+    });
+    await db.insert(memberCourseProgress).values({
+      id: 'progress-rodo',
+      tenantId: RODO,
+      memberId: 'mem-rodo',
+      courseId: 'course-rodo',
+      lastViewedLessonId: null,
+      completedLessonIds: ['l1', 'l2'],
+      updatedAt: NOW,
+    });
+    await db.insert(consents).values({
+      id: 'consent-rodo',
+      tenantId: RODO,
+      userId: 'user-rodo-buyer',
+      email: 'jan.kowalski@together.dev',
+      source: 'register',
+      termsUrl: 'https://rodo.example/terms',
+      privacyUrl: null,
+      acceptedAt: NOW,
+    });
+  });
+
+  it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
+    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
+    expect(result).toEqual({ alreadyDeleted: false, authUserErased: true });
+
+    const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      email: memberTombstone('mem-rodo').email,
+      userId: memberTombstone('mem-rodo').userId,
+      displayName: null,
+      tags: [],
+      marketingConsents: {},
+      externalCustomerIds: {},
+      deletedAt: REMOVAL_AT,
+    });
+
+    const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-buyer'));
+    expect(authRows).toEqual([]);
+
+    const grants = createProductGrantRepository(db);
+    expect(await grants.listActiveForMember(RODO, 'mem-rodo', '2026-07-21T00:00:00.000Z')).toEqual([]);
+    expect(await grants.findGrant(RODO, 'mem-rodo', 'prod-rodo')).toMatchObject({ expiresAt: REMOVAL_AT });
+
+    const subs = createMemberSubscriptionRepository(db);
+    expect(await subs.findById(RODO, 'sub-rodo')).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true });
+
+    const postRows = await db.select().from(posts).where(eq(posts.id, 'post-rodo'));
+    expect(postRows[0]).toMatchObject({ authorDisplay: DELETED_MEMBER_DISPLAY, body: 'Świetny kurs!', deletedAt: null });
+
+    const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
+    expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });
+
+    const progressRows = await db
+      .select()
+      .from(memberCourseProgress)
+      .where(eq(memberCourseProgress.memberId, 'mem-rodo'));
+    expect(progressRows).toHaveLength(1);
+    expect(progressRows[0]).toMatchObject({ completedLessonIds: ['l1', 'l2'] });
+  });
+
+  it('keeps order rows, the sales list, and revenue unchanged after removal', async () => {
+    const repo = createOrderRepository(db);
+    const all = await repo.list(RODO, { page: 1, pageSize: 20 });
+    expect(all.total).toBe(2);
+    expect(all.orders.map((o) => o.status)).toEqual(['paid', 'paid']);
+    expect(all.orders[0]).toMatchObject({ memberEmail: memberTombstone('mem-rodo').email, memberName: null });
+
+    const revenue = await repo.revenueSince(RODO, PAST);
+    expect(revenue).toEqual([{ currency: 'PLN', amountCents: 20000 }]);
+  });
+
+  it('keeps the pseudonymized row in the member list export source', async () => {
+    const listed = await createMemberRepository(db).listWithProductIds(RODO, '2026-07-21T00:00:00.000Z');
+    const removed = listed.find((row) => row.id === 'mem-rodo');
+    expect(removed).toMatchObject({
+      email: memberTombstone('mem-rodo').email,
+      displayName: null,
+      deletedAt: REMOVAL_AT,
+      productIds: ['prod-rodo'],
+      activeProductIds: [],
+    });
+  });
+
+  it('lets the same e-mail join again as a fresh member instead of resurrecting the row', async () => {
+    const membersRepo = createMemberRepository(db);
+    expect(await membersRepo.findByEmail(RODO, 'jan.kowalski@together.dev')).toBeNull();
+
+    await db.insert(user).values({ id: 'user-rodo-buyer-2', name: 'Jan Kowalski', email: 'jan.kowalski@together.dev' });
+    await membersRepo.create(RODO, member({ id: 'mem-rodo-fresh', tenantId: RODO, userId: 'user-rodo-buyer-2', email: 'jan.kowalski@together.dev' }));
+
+    const fresh = await membersRepo.findByEmail(RODO, 'jan.kowalski@together.dev');
+    expect(fresh).toMatchObject({ id: 'mem-rodo-fresh', deletedAt: null });
+    expect(await membersRepo.findById(RODO, 'mem-rodo')).toMatchObject({ deletedAt: REMOVAL_AT });
+  });
+
+  it('reports an already pseudonymized member without touching it again', async () => {
+    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
+    expect(result).toEqual({ alreadyDeleted: true, authUserErased: false });
+  });
+
+  it('returns null for a member of another tenant', async () => {
+    const result = await createMemberErasureRepository(db).pseudonymize(OTHER, pseudonymizationInput('mem-rodo'));
+    expect(result).toBeNull();
+  });
+
+  it('keeps the auth user when other tenant memberships still reference it', async () => {
+    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
+    expect(result).toEqual({ alreadyDeleted: false, authUserErased: false });
+
+    const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));
+    expect(authRows).toHaveLength(1);
+    expect(await createMemberRepository(db).findById(OTHER, 'mem-other-shared')).toMatchObject({
+      email: 'anna.shared@together.dev',
+      deletedAt: null,
+    });
+  });
+
+  it('blocks a hard member delete while order history exists', async () => {
+    await expect(
+      db.delete(members).where(and(eq(members.tenantId, RODO), eq(members.id, 'mem-rodo'))),
+    ).rejects.toThrow();
   });
 });

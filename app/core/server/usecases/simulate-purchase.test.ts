@@ -66,6 +66,7 @@ const fakePurchases = () => {
           marketingConsents: {},
           externalCustomerIds: {},
           createdAt: input.createdAt,
+          deletedAt: null,
         };
         store.push(member);
       }
@@ -122,7 +123,6 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
         members.push(member);
       },
       updateEmail: async () => null,
-      delete: async () => false,
     },
     prices: {
       listByProduct: async (tenantId, productId) =>

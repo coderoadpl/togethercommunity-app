@@ -29,6 +29,7 @@ export const ensureMember = async (
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: deps.clock.nowIso(),
+    deletedAt: null,
   };
   await deps.members.create(tenantId, member);
   const stored = await deps.members.findByEmail(tenantId, normalizedEmail);

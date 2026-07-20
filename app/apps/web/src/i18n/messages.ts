@@ -514,6 +514,7 @@ export interface Messages {
     removeConfirmTitle: string;
     removeConfirmIntro: (params: { email: string }) => string;
     removeImpact: (params: { grants: number; completedLessons: number }) => string;
+    deletedBadge: string;
     exportFailed: string;
     allMembersBack: string;
     joined: string;

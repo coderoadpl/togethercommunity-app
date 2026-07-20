@@ -1188,7 +1188,7 @@ export const createMemberErasureRepository = (db: Db): MemberErasurePort => ({
 
       await tx
         .update(productGrants)
-        .set({ expiresAt: input.deletedAt })
+        .set({ expiresAt: input.deletedAt, legacyId: null })
         .where(
           and(
             eq(productGrants.tenantId, tenantId),
@@ -1225,6 +1225,7 @@ export const createMemberErasureRepository = (db: Db): MemberErasurePort => ({
           tags: [],
           marketingConsents: {},
           externalCustomerIds: {},
+          legacyId: null,
           deletedAt: input.deletedAt,
         })
         .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)));

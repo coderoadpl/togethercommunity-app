@@ -724,6 +724,10 @@ const importTenant = async (
       db.select().from(productGrants).where(eq(productGrants.tenantId, tenantId)),
       db.select().from(memberCourseProgress).where(eq(memberCourseProgress.tenantId, tenantId)),
     ]);
+  const activeMemberRows = memberRows.filter((row) => row.deletedAt === null);
+  const deletedMemberIds = new Set(
+    memberRows.filter((row) => row.deletedAt !== null).map((row) => row.id),
+  );
 
   const takenIn =
     (table: typeof courses | typeof courseModules | typeof courseLessons | typeof products | typeof members | typeof productGrants | typeof memberCourseProgress) =>
@@ -767,7 +771,7 @@ const importTenant = async (
     }),
     memberIds: await planKindIds({
       bundleLegacyIds: bundle.members.map((row) => row.legacyId),
-      existingIdByLegacy: idsByLegacy(memberRows),
+      existingIdByLegacy: idsByLegacy(activeMemberRows),
       takenIds: takenIn(members),
       claimed: claimed.members,
       tenantSlug,
@@ -952,10 +956,10 @@ const importTenant = async (
   }
   const memberCreates: MemberInsert[] = [];
   const memberUpdates: { id: string; patch: MemberPatch }[] = [];
-  const membersByLegacy = legacyRowsById(memberRows);
-  const membersByUserId = new Map(memberRows.map((row) => [row.userId, row]));
+  const membersByLegacy = legacyRowsById(activeMemberRows);
+  const membersByUserId = new Map(activeMemberRows.map((row) => [row.userId, row]));
   const membersByEmail = new Map<string, (typeof memberRows)[number]>();
-  for (const row of memberRows) {
+  for (const row of activeMemberRows) {
     const email = normalizeEmail(row.email);
     if (!membersByEmail.has(email)) membersByEmail.set(email, row);
   }
@@ -1074,7 +1078,12 @@ const importTenant = async (
       expiresAt: entry.expiresAt,
       legacyId: entry.legacyId,
     };
-    const existing = grantsByLegacy.get(entry.legacyId) ?? grantsByPair.get(`${memberId}::${productId}`);
+    const legacyMatch = grantsByLegacy.get(entry.legacyId);
+    if (legacyMatch !== undefined && deletedMemberIds.has(legacyMatch.memberId)) {
+      grantReport.skip += 1;
+      continue;
+    }
+    const existing = legacyMatch ?? grantsByPair.get(`${memberId}::${productId}`);
     if (existing === undefined) {
       grantReport.create += 1;
       grantCreates.push({

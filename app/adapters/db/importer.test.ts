@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { ok } from '@core/domain/index.js';
+import { memberTombstone, ok } from '@core/domain/index.js';
 import { createAuth, type Auth } from '@adapters/auth/create-auth.js';
 import {
   createImportAuthGateway,
@@ -13,6 +13,7 @@ import {
 import { deriveLegacyPasswordHash } from '@adapters/auth/legacy-password.js';
 
 import { createDb, type Db } from './client.js';
+import { createMemberErasureRepository, createOrderRepository } from './repositories.js';
 import {
   resolveImportTenants,
   runImport,
@@ -26,6 +27,7 @@ import {
   courses,
   memberCourseProgress,
   members,
+  orders,
   productGrants,
   products,
   tenantAdmins,
@@ -561,6 +563,91 @@ describe('importer', () => {
       .from(members)
       .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
     expect(memberRows[0]?.createdAt).toBe('2023-07-19T12:56:37.000Z');
+    expect(result.verification?.pass).toBe(true);
+  }, 60000);
+
+  it('re-apply creates a fresh member without restoring a pseudonymized member or its history', async () => {
+    await restoreImportedCredential();
+    await db.insert(orders).values({
+      id: 'order-import-erasure',
+      tenantId: TENANT_ID,
+      memberId: ids.u1,
+      productId: ids.p1,
+      priceId: null,
+      kind: 'one_time',
+      status: 'paid',
+      amountCents: 12345,
+      currency: 'PLN',
+      provider: 'simulated',
+      providerObjectIds: { payment: 'retained-payment' },
+      createdAt: '2025-02-01T00:00:00.000Z',
+    });
+    const removedAt = '2026-07-20T12:00:00.000Z';
+    await createMemberErasureRepository(db).pseudonymize(TENANT_ID, {
+      memberId: ids.u1,
+      deletedAt: removedAt,
+      tombstoneEmail: memberTombstone(ids.u1).email,
+      severedUserId: memberTombstone(ids.u1).userId,
+      postAuthorDisplay: 'Konto usunięte',
+    });
+
+    const ordersBefore = await db.select().from(orders).where(eq(orders.id, 'order-import-erasure'));
+    const revenueBefore = await createOrderRepository(db).revenueSince(
+      TENANT_ID,
+      '2025-01-01T00:00:00.000Z',
+    );
+    const grantsBefore = await db
+      .select()
+      .from(productGrants)
+      .where(eq(productGrants.memberId, ids.u1));
+    const progressBefore = await db
+      .select()
+      .from(memberCourseProgress)
+      .where(eq(memberCourseProgress.memberId, ids.u1));
+
+    const result = await runImport(db, gateway, targets(buildBundle()), { apply: true, nowIso });
+
+    const tombstones = await db.select().from(members).where(eq(members.id, ids.u1));
+    expect(tombstones[0]).toMatchObject({
+      email: memberTombstone(ids.u1).email,
+      userId: memberTombstone(ids.u1).userId,
+      displayName: null,
+      legacyId: null,
+      tags: [],
+      marketingConsents: {},
+      externalCustomerIds: {},
+      deletedAt: removedAt,
+    });
+    const freshRows = await db
+      .select()
+      .from(members)
+      .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
+    expect(freshRows).toHaveLength(1);
+    expect(freshRows[0]).toMatchObject({
+      email: EMAIL_1,
+      displayName: 'Jan Import',
+      deletedAt: null,
+    });
+    expect(freshRows[0]?.id).not.toBe(ids.u1);
+
+    const grantsAfter = await db
+      .select()
+      .from(productGrants)
+      .where(eq(productGrants.memberId, ids.u1));
+    expect(grantsAfter).toEqual(grantsBefore);
+    expect(grantsAfter[0]?.expiresAt).toBe(removedAt);
+    expect(
+      await db
+        .select()
+        .from(memberCourseProgress)
+        .where(eq(memberCourseProgress.memberId, ids.u1)),
+    ).toEqual(progressBefore);
+    expect(await db.select().from(orders).where(eq(orders.id, 'order-import-erasure'))).toEqual(
+      ordersBefore,
+    );
+    expect(
+      await createOrderRepository(db).revenueSince(TENANT_ID, '2025-01-01T00:00:00.000Z'),
+    ).toEqual(revenueBefore);
     expect(result.verification?.pass).toBe(true);
   }, 60000);
 });

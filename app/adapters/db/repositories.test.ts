@@ -428,6 +428,10 @@ describe('member erasure repository', () => {
       marketingConsents: { newsletter: true },
       externalCustomerIds: { stripe: 'cus_jan' },
     }));
+    await db
+      .update(members)
+      .set({ legacyId: 'legacy-mem-rodo' })
+      .where(eq(members.id, 'mem-rodo'));
     await membersRepo.create(RODO, member({ id: 'mem-rodo-shared', tenantId: RODO, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
     await membersRepo.create(OTHER, member({ id: 'mem-other-shared', tenantId: OTHER, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
 
@@ -441,7 +445,7 @@ describe('member erasure repository', () => {
     await orders.create(RODO, order({ id: 'order-rodo-2', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
 
     const grants = createProductGrantRepository(db);
-    await grants.createGrant(RODO, grant({ id: 'grant-rodo', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', expiresAt: null }));
+    await grants.createGrant(RODO, grant({ id: 'grant-rodo', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', expiresAt: null, legacyId: 'legacy-grant-rodo' }));
 
     const subs = createMemberSubscriptionRepository(db);
     await subs.create(RODO, subscription({ id: 'sub-rodo', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', priceId: 'price-rodo', providerSubscriptionId: 'psub-rodo' }));
@@ -503,6 +507,7 @@ describe('member erasure repository', () => {
       tags: [],
       marketingConsents: {},
       externalCustomerIds: {},
+      legacyId: null,
       deletedAt: REMOVAL_AT,
     });
 
@@ -511,7 +516,7 @@ describe('member erasure repository', () => {
 
     const grants = createProductGrantRepository(db);
     expect(await grants.listActiveForMember(RODO, 'mem-rodo', '2026-07-21T00:00:00.000Z')).toEqual([]);
-    expect(await grants.findGrant(RODO, 'mem-rodo', 'prod-rodo')).toMatchObject({ expiresAt: REMOVAL_AT });
+    expect(await grants.findGrant(RODO, 'mem-rodo', 'prod-rodo')).toMatchObject({ expiresAt: REMOVAL_AT, legacyId: null });
 
     const subs = createMemberSubscriptionRepository(db);
     expect(await subs.findById(RODO, 'sub-rodo')).toMatchObject({ status: 'canceled', cancelAtPeriodEnd: true });

@@ -97,6 +97,11 @@ const deps = (input: {
       revenueSince: async () => [],
       countSince: async () => 0,
     },
+    paymentRefunds: {
+      findOrderByProviderObjectIds: async () => null,
+      findLatestSubscriptionOrder: async () => null,
+      markOrderRefunded: async () => null,
+    },
     subscriptions: {
       findById: async () => null,
       findByProviderSubscriptionId: async () => null,
@@ -296,7 +301,7 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null } : null,
+        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null, termsUrl: null, privacyUrl: null } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
@@ -304,6 +309,10 @@ const deps = (input: {
         name: tenant.tenant.name,
         contentVersion: 1,
       }),
+    },
+    consents: {
+      record: async () => undefined,
+      listByEmail: async () => [],
     },
     onboardingState: {
       findDismissedAt: async () => null,

@@ -58,6 +58,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
           ? {
               email: object.customer_details?.email ?? object.customer_email ?? null,
               subscriptionId: object.subscription ?? null,
+              paymentIntentId: object.payment_intent ?? null,
               metadata: {
                 tenantId: object.metadata?.tenantId ?? null,
                 productId: object.metadata?.productId ?? null,
@@ -71,9 +72,19 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
         type === 'invoice.paid' || type === 'invoice.payment_failed'
           ? {
               subscriptionId: object.subscription ?? null,
+              chargeId: object.charge ?? null,
+              paymentIntentId: object.payment_intent ?? null,
               amountCents: object.amount_total ?? null,
               currency: object.currency?.toUpperCase() ?? null,
               periodEnd: epochToIso(object.period_end),
+            }
+          : null,
+      adjustment:
+        type === 'charge.refunded' || type === 'charge.dispute.created'
+          ? {
+              chargeId: type === 'charge.refunded' ? object.id : (object.charge ?? null),
+              paymentIntentId: object.payment_intent ?? null,
+              invoiceId: object.invoice ?? null,
             }
           : null,
       subscription:

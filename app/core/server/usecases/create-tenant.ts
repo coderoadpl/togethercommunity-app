@@ -12,6 +12,31 @@ import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, TenantRepository } from '../ports.js';
 
 const slugPattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+const reservedSlugs = new Set([
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'auth',
+  'billing',
+  'blog',
+  'cdn',
+  'dashboard',
+  'dev',
+  'docs',
+  'ftp',
+  'help',
+  'login',
+  'mail',
+  'panel',
+  'prod',
+  'smtp',
+  'staging',
+  'static',
+  'status',
+  'support',
+  'www',
+]);
 
 export interface CreateTenantDeps {
   tenants: TenantRepository;
@@ -27,7 +52,9 @@ export const createTenant = async (
   const slug = input.slug.trim().toLowerCase();
   const name = input.name.trim();
 
-  if (!slugPattern.test(slug)) return errValidation('Tenant slug must be 3-63 lowercase letters, numbers or hyphens');
+  if (!slugPattern.test(slug) || reservedSlugs.has(slug)) {
+    return errValidation('Tenant slug must be 3-63 lowercase letters, numbers or hyphens and not reserved');
+  }
   if (name.length === 0) return errValidation('Tenant name is required');
 
   const existing = await deps.tenants.findBySlug(slug);

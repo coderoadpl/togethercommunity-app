@@ -40,6 +40,8 @@ describe('tenantSettingsSchema', () => {
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
+      termsUrl: null,
+      privacyUrl: null,
     });
   });
 });

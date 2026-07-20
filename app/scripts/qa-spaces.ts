@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type Page } from 'playwright-core';
+import pg from 'pg';
 
 import { API_PATHS } from '@core/contract/index.js';
 
@@ -140,41 +141,43 @@ const server = await bootServer(port);
 const apiUrl = `http://localhost:${port}`;
 const studioUrl = `http://studio.localhost:${port}`;
 let browser: Browser | null = null;
+const probeTenantSlug = `qa-spaces-${Date.now().toString(36)}`;
 
 try {
-  const akademiaStaff = cliSession();
-  cli(akademiaStaff, apiUrl, ['login', '--email', 'creator3@together.dev', '--password', 'demo1234']);
-  const slug = `qa-akademia-${Date.now().toString(36)}`;
+  const probeStaff = cliSession();
+  cli(probeStaff, apiUrl, ['login', '--email', 'creator3@together.dev', '--password', 'demo1234']);
+  cli(probeStaff, apiUrl, ['tenant', 'create', 'QA Spaces Probe', '--slug', probeTenantSlug]);
+  const slug = `probe-${Date.now().toString(36)}`;
   const created = envelopeData(
-    cli(akademiaStaff, apiUrl, [
-      '--tenant', 'akademia', 'space', 'create',
-      '--slug', slug, '--name', 'Strefa QA Akademii', '--visibility', 'members',
+    cli(probeStaff, apiUrl, [
+      '--tenant', probeTenantSlug, 'space', 'create',
+      '--slug', slug, '--name', 'Strefa QA', '--visibility', 'members',
     ]),
   );
-  const akademiaSpaceId =
+  const probeSpaceId =
     typeof created === 'object' && created !== null && 'space' in created &&
     typeof created.space === 'object' && created.space !== null && 'id' in created.space &&
     typeof created.space.id === 'string'
       ? created.space.id
       : null;
-  must('akademia staff creates a probe space via CLI', akademiaSpaceId !== null);
-  if (akademiaSpaceId === null) throw new Error('unreachable');
+  must('throwaway tenant owner creates a probe space via CLI', probeSpaceId !== null);
+  if (probeSpaceId === null) throw new Error('unreachable');
 
   const studioMember = cliSession();
   cli(studioMember, apiUrl, ['login-magic', '--email', 'kursant.aktywny@together.dev']);
   const memberToken = studioMember.token();
 
-  const feedPath = API_PATHS.spaceFeed.replace(':spaceId', akademiaSpaceId);
+  const feedPath = API_PATHS.spaceFeed.replace(':spaceId', probeSpaceId);
   const probeLog: string[] = [];
 
   const crossTenant = curl([
     '-H', `authorization: Bearer ${memberToken}`,
-    '-H', 'x-tenant: akademia',
+    '-H', `x-tenant: ${probeTenantSlug}`,
     `${apiUrl}${feedPath}`,
   ]);
-  probeLog.push(`studio member token + x-tenant: akademia -> HTTP ${crossTenant}`);
+  probeLog.push(`studio member token + x-tenant: ${probeTenantSlug} -> HTTP ${crossTenant}`);
   record(
-    'cross-tenant probe: studio member cannot read the akademia space feed',
+    'cross-tenant probe: studio member cannot read the throwaway tenant space feed',
     crossTenant === '401' || crossTenant === '403' || crossTenant === '404',
     `HTTP ${crossTenant}`,
   );
@@ -184,14 +187,14 @@ try {
     '-H', 'x-tenant: studio',
     `${apiUrl}${feedPath}`,
   ]);
-  probeLog.push(`studio member on studio tenant, akademia space id -> HTTP ${wrongTenantId}`);
+  probeLog.push(`studio member on studio tenant, throwaway space id -> HTTP ${wrongTenantId}`);
   record(
-    'cross-tenant probe: akademia space id yields 404 inside the studio tenant',
+    'cross-tenant probe: throwaway space id yields 404 inside the studio tenant',
     wrongTenantId === '404',
     `HTTP ${wrongTenantId}`,
   );
 
-  const anonymous = curl(['-H', 'x-tenant: akademia', `${apiUrl}${feedPath}`]);
+  const anonymous = curl(['-H', `x-tenant: ${probeTenantSlug}`, `${apiUrl}${feedPath}`]);
   probeLog.push(`anonymous -> HTTP ${anonymous}`);
   record('cross-tenant probe: anonymous request is rejected', anonymous === '401', `HTTP ${anonymous}`);
 
@@ -355,10 +358,15 @@ try {
   cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'delete', '--space', qaSpaceId]);
   const deleteProbe = cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'stats']);
   record('panel CRUD: delete removes the space (staff stats no longer list it)', !deleteProbe.includes(qaSpaceId));
-  cli(akademiaStaff, apiUrl, ['--tenant', 'akademia', 'space', 'delete', '--space', akademiaSpaceId]);
   await panel.close();
 } finally {
   if (browser !== null) await browser.close();
+  const cleanupPool = new pg.Pool({ connectionString: devDatabaseUrl });
+  try {
+    await cleanupPool.query('delete from tenants where slug = $1', [probeTenantSlug]);
+  } finally {
+    await cleanupPool.end();
+  }
   const { pid } = server;
   try {
     if (pid !== undefined) process.kill(-pid, 'SIGTERM');

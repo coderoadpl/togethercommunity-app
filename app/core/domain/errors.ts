@@ -9,6 +9,7 @@ export const ERROR_CODES = [
   'integration_not_configured',
   'integration_auth',
   'integration_unavailable',
+  'rate_limited',
   'internal',
 ] as const;
 
@@ -47,5 +48,8 @@ export const integrationAuth = (message = 'The integration rejected the stored c
 
 export const integrationUnavailable = (message = 'The integration is unreachable'): AppError =>
   appError('integration_unavailable', message);
+
+export const rateLimited = (message = 'Too many requests'): AppError =>
+  appError('rate_limited', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

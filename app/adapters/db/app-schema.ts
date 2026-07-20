@@ -17,8 +17,27 @@ export const tenants = pgTable(
     logoUrl: text('logo_url'),
     accentColor: text('accent_color'),
     faviconUrl: text('favicon_url'),
+    termsUrl: text('terms_url'),
+    privacyUrl: text('privacy_url'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
+);
+
+export const consents = pgTable(
+  'consents',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    userId: text('user_id'),
+    email: text('email'),
+    source: text('source', { enum: ['register', 'checkout'] }).notNull(),
+    termsUrl: text('terms_url'),
+    privacyUrl: text('privacy_url'),
+    acceptedAt: text('accepted_at').notNull(),
+  },
+  (table) => [index('consents_tenant_email_idx').on(table.tenantId, table.email)],
 );
 
 export const tenantAdmins = pgTable(

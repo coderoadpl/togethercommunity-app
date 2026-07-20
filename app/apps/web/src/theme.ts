@@ -23,12 +23,15 @@ declare module '@mui/material/styles' {
     numericFontFamily?: string;
     statusAccent?: string;
     moneyColor?: string;
+    /** Focus-ring base color; themes that set it let applyBranding tint focus with the tenant accent. */
+    focusRing?: string;
   }
   interface ThemeOptions {
     headerRule?: string;
     numericFontFamily?: string;
     statusAccent?: string;
     moneyColor?: string;
+    focusRing?: string;
   }
 }
 
@@ -142,10 +145,12 @@ const SHADCN_SHADOW_LG = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rg
 export const createShadcnTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${SHADCN_BORDER}`,
+    focusRing: SHADCN_RING,
     palette: {
       mode: 'light',
       primary: {
         main: SHADCN_PRIMARY,
+        light: SHADCN_PRIMARY_HOVER,
         dark: SHADCN_INK,
         contrastText: SHADCN_SURFACE,
       },
@@ -216,26 +221,26 @@ export const createShadcnTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             padding: '0.5rem 1rem',
             boxShadow: 'none',
             '&:focus-visible': {
               outline: 'none',
-              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+              boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,
             },
-          },
-          contained: {
-            backgroundColor: SHADCN_PRIMARY,
-            color: SHADCN_SURFACE,
+          }),
+          contained: ({ theme }) => ({
+            backgroundColor: theme.palette.primary.main,
+            color: theme.palette.primary.contrastText,
             boxShadow: SHADCN_SHADOW_XS,
-            '&:hover': { backgroundColor: SHADCN_PRIMARY_HOVER, boxShadow: SHADCN_SHADOW_XS },
+            '&:hover': { backgroundColor: theme.palette.primary.light, boxShadow: SHADCN_SHADOW_XS },
             '&.Mui-disabled': {
-              backgroundColor: SHADCN_PRIMARY,
-              color: SHADCN_SURFACE,
+              backgroundColor: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
               opacity: 0.5,
             },
-          },
+          }),
           outlined: {
             border: `1px solid ${SHADCN_BORDER}`,
             color: SHADCN_INK,
@@ -287,17 +292,17 @@ export const createShadcnTheme = (): Theme =>
       },
       MuiOutlinedInput: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             backgroundColor: SHADCN_SURFACE,
             '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER },
             '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
-            '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.35)}` },
+            '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.35)}` },
             '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-              borderColor: SHADCN_RING,
+              borderColor: theme.focusRing ?? SHADCN_RING,
               borderWidth: 1,
             },
-          },
+          }),
           input: {
             padding: '0.55rem 0.75rem',
             fontSize: '0.875rem',
@@ -326,17 +331,17 @@ export const createShadcnTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'hover' },
         styleOverrides: {
-          root: {
-            color: SHADCN_INK,
+          root: ({ theme }) => ({
+            color: theme.palette.primary.dark,
             fontWeight: 500,
             textDecorationColor: SHADCN_BORDER_STRONG,
             '&[aria-current="true"]': { fontWeight: 600 },
             '&:focus-visible': {
               outline: 'none',
               borderRadius: 4,
-              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+              boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,
             },
-          },
+          }),
         },
       },
       MuiChip: {
@@ -378,7 +383,7 @@ export const createShadcnTheme = (): Theme =>
       },
       MuiToggleButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             border: 0,
             borderRadius: 6,
             padding: '0.35rem 0.85rem',
@@ -397,15 +402,15 @@ export const createShadcnTheme = (): Theme =>
             },
             '&:focus-visible': {
               outline: 'none',
-              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+              boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,
             },
-          },
+          }),
         },
       },
       MuiTabs: {
         styleOverrides: {
           root: { minHeight: 40 },
-          indicator: { backgroundColor: SHADCN_INK, height: 2 },
+          indicator: ({ theme }) => ({ backgroundColor: theme.palette.primary.dark, height: 2 }),
         },
       },
       MuiTab: {
@@ -441,25 +446,25 @@ export const createShadcnTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             color: SHADCN_INK,
             '&:hover': { backgroundColor: SHADCN_MUTED },
             '&:focus-visible': {
-              boxShadow: `inset 0 0 0 2px ${alpha(SHADCN_RING, 0.6)}`,
+              boxShadow: `inset 0 0 0 2px ${alpha(theme.focusRing ?? SHADCN_RING, 0.6)}`,
             },
             '& .MuiListItemText-secondary': { color: SHADCN_INK_SOFT },
-          },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             '&:focus-visible': {
               outline: 'none',
-              boxShadow: `0 0 0 3px ${alpha(SHADCN_RING, 0.5)}`,
+              boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.5)}`,
             },
-          },
+          }),
         },
       },
       MuiListItemText: {

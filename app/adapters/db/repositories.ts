@@ -11,6 +11,7 @@ import {
   memberGrantSchema,
   memberSubscriptionSchema,
   notificationSchema,
+  orderSchema,
   orderListItemSchema,
   productPriceSchema,
   postSchema,
@@ -23,6 +24,7 @@ import {
   staffRoleSchema,
   tenantApiKeySchema,
   tenantSecretSchema,
+  termsConsentSchema,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -31,6 +33,7 @@ import {
   type MemberSubscription,
   type Membership,
   type Notification,
+  type Order,
   type OrderListItem,
   type ProductPrice,
   type Post,
@@ -57,6 +60,7 @@ import type {
   MemberSubscriptionRepository,
   NotificationRepository,
   OrderRepository,
+  PaymentRefundRepository,
   ProductPriceRepository,
   PostRepository,
   PostSearchRow,
@@ -73,6 +77,7 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TenantSecretRepository,
+  TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
 } from '@core/server/index.js';
@@ -80,6 +85,7 @@ import type {
 import type { Db } from './client.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
+  consents,
   courseLessons,
   courseModules,
   courses,
@@ -116,6 +122,8 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 const parseProduct = (product: Product): Product => productSchema.parse(product);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
+
+const parseOrder = (order: Order): Order => orderSchema.parse(order);
 
 const parseLesson = (
   lesson: Omit<CourseLesson, 'durationMinutes'> & { durationMinutes: number | null },
@@ -1452,6 +1460,53 @@ export const createOrderRepository = (db: Db): OrderRepository => {
   };
 };
 
+export const createPaymentRefundRepository = (db: Db): PaymentRefundRepository => ({
+  findOrderByProviderObjectIds: async (tenantId, providerObjectIds) => {
+    const matches = Object.entries(providerObjectIds).map(
+      ([key, value]) => sql`${orders.providerObjectIds} ->> ${key} = ${value}`,
+    );
+    if (matches.length === 0) return null;
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.tenantId, tenantId), or(...matches)))
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  findLatestSubscriptionOrder: async (tenantId, providerSubscriptionId) => {
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          sql`${orders.providerObjectIds} ->> 'subscription' = ${providerSubscriptionId}`,
+        ),
+      )
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+  markOrderRefunded: async (tenantId, orderId) => {
+    const rows = await db
+      .update(orders)
+      .set({ status: 'refunded' })
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orders.id, orderId),
+          sql`${orders.status} <> 'refunded'`,
+        ),
+      )
+      .returning();
+    const row = rows[0];
+    return row ? parseOrder(row) : null;
+  },
+});
+
 export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRepository => {
   const toRow = (tenantId: string, subscription: MemberSubscription) => ({
     id: subscription.id,
@@ -1755,6 +1810,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         logoUrl: tenants.logoUrl,
         accentColor: tenants.accentColor,
         faviconUrl: tenants.faviconUrl,
+        termsUrl: tenants.termsUrl,
+        privacyUrl: tenants.privacyUrl,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -1767,6 +1824,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
           logoUrl: row.logoUrl,
           accentColor: row.accentColor,
           faviconUrl: row.faviconUrl,
+          termsUrl: row.termsUrl,
+          privacyUrl: row.privacyUrl,
         }
       : null;
   },
@@ -1779,6 +1838,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         logoUrl: settings.logoUrl,
         accentColor: settings.accentColor,
         faviconUrl: settings.faviconUrl,
+        termsUrl: settings.termsUrl,
+        privacyUrl: settings.privacyUrl,
       })
       .where(eq(tenants.id, tenantId));
     return {
@@ -1787,6 +1848,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       logoUrl: settings.logoUrl,
       accentColor: settings.accentColor,
       faviconUrl: settings.faviconUrl,
+      termsUrl: settings.termsUrl,
+      privacyUrl: settings.privacyUrl,
     };
   },
   createTenantWithOwnerGrant: async (input) =>
@@ -1805,6 +1868,20 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         contentVersion: 1,
       };
     }),
+});
+
+export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({
+  record: async (tenantId, consent) => {
+    await db.insert(consents).values({ ...consent, tenantId });
+  },
+  listByEmail: async (tenantId, email) => {
+    const rows = await db
+      .select()
+      .from(consents)
+      .where(and(eq(consents.tenantId, tenantId), eq(consents.email, email)))
+      .orderBy(asc(consents.acceptedAt));
+    return rows.map((row) => termsConsentSchema.parse(row));
+  },
 });
 
 export const createOnboardingStateRepository = (db: Db): OnboardingStateRepository => ({

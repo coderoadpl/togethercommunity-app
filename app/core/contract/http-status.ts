@@ -11,6 +11,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   integration_not_configured: 412,
   integration_auth: 502,
   integration_unavailable: 503,
+  rate_limited: 429,
   internal: 500,
 };
 
@@ -25,5 +26,6 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   integration_not_configured: 8,
   integration_auth: 9,
   integration_unavailable: 11,
+  rate_limited: 12,
   internal: 10,
 };

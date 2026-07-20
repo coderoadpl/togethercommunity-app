@@ -86,6 +86,90 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
+const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [termsUrl, setTermsUrl] = useState<string | null>(null);
+  const [privacyUrl, setPrivacyUrl] = useState<string | null>(null);
+
+  const termsValue = termsUrl ?? settings.data?.settings.termsUrl ?? '';
+  const privacyValue = privacyUrl ?? settings.data?.settings.privacyUrl ?? '';
+
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    updateSettings.mutate({
+      termsUrl: termsValue.trim() === '' ? null : termsValue.trim(),
+      privacyUrl: privacyValue.trim() === '' ? null : privacyValue.trim(),
+    });
+  };
+
+  const disabled = !canEdit || !settings.isSuccess;
+
+  return (
+    <SectionCard title={t.legal.heading} description={t.legal.intro} onSubmit={submit}>
+      {settings.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.common.loading }} data-testid="legal-loading" />
+      ) : (
+        <>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="legal-terms-url">{t.legal.termsLabel}</FormLabel>
+            <OutlinedInput
+              id="legal-terms-url"
+              type="url"
+              value={termsValue}
+              disabled={disabled}
+              onChange={(event) => setTermsUrl(event.target.value)}
+              placeholder={t.legal.termsPlaceholder}
+              inputProps={{ 'data-testid': 'legal-terms-url' }}
+            />
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="legal-privacy-url">{t.legal.privacyLabel}</FormLabel>
+            <OutlinedInput
+              id="legal-privacy-url"
+              type="url"
+              value={privacyValue}
+              disabled={disabled}
+              onChange={(event) => setPrivacyUrl(event.target.value)}
+              placeholder={t.legal.privacyPlaceholder}
+              inputProps={{ 'data-testid': 'legal-privacy-url' }}
+            />
+          </FormControl>
+        </>
+      )}
+      {settings.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t) }} />
+      ) : null}
+      {canEdit ? (
+        <Box>
+          <Button
+            type="submit"
+            variant="outlined"
+            data-testid="legal-save"
+            disabled={updateSettings.isPending || !settings.isSuccess}
+          >
+            {updateSettings.isPending ? t.legal.saving : t.legal.save}
+          </Button>
+        </Box>
+      ) : null}
+      {updateSettings.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="legal-saved">
+          {t.legal.saved}
+        </Typography>
+      ) : null}
+      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -334,6 +418,7 @@ export const SettingsPanel = () => {
   return (
     <PanelPage title={t.sections.settings}>
       <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+      <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <SecurityPanel />
     </PanelPage>

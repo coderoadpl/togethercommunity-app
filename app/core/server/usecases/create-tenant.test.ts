@@ -30,7 +30,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
   const repo: TenantRepository = {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
-    findSettings: async () => ({ billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null }),
+    findSettings: async () => ({ billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null, termsUrl: null, privacyUrl: null }),
     updateSettings: async (_tenantId, settings) => settings,
     createTenantWithOwnerGrant: async (input) => {
       const tenant = {
@@ -119,9 +119,30 @@ describe('createTenant', () => {
 
     expect(result).toMatchObject({
       ok: false,
-      error: { code: 'validation', message: 'Tenant slug must be 3-63 lowercase letters, numbers or hyphens' },
+      error: { code: 'validation', message: 'Tenant slug must be 3-63 lowercase letters, numbers or hyphens and not reserved' },
     });
     expect(store.tenants).toEqual([]);
     expect(store.ownerGrants).toEqual([]);
+  });
+
+  it('rejects reserved slugs and accepts a normal product space slug', async () => {
+    const reserved = fakeTenants();
+    const rejected = await createTenant(
+      { identity },
+      { slug: 'api', name: 'API' },
+      deps(reserved.repo),
+    );
+
+    expect(rejected).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(reserved.tenants).toEqual([]);
+
+    const available = fakeTenants();
+    const accepted = await createTenant(
+      { identity },
+      { slug: 'pracownia-oli', name: 'Pracownia Oli' },
+      deps(available.repo),
+    );
+
+    expect(accepted).toMatchObject({ ok: true, value: { slug: 'pracownia-oli' } });
   });
 });

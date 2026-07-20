@@ -77,6 +77,7 @@ import {
   tenantSecretSetOutputSchema,
   tenantSecretDeleteOutputSchema,
   tenantSettingsOutputSchema,
+  termsConsentOutputSchema,
   onboardingOutputSchema,
   threadSubscriptionOutputSchema,
   type ApiKeyCreateInput,
@@ -247,6 +248,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.checkoutSession.path,
       checkoutSessionOutputSchema,
       input,
+      signal,
+    ),
+  recordTermsConsent: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.termsConsent.method,
+      API_ROUTES.termsConsent.path,
+      termsConsentOutputSchema,
+      {},
       signal,
     ),
   deliverStripeWebhook: (tenantId: string, payloadRaw: string, signatureHeader: string, signal?: AbortSignal) =>

@@ -3,6 +3,8 @@ import Stripe from 'stripe';
 import {
   err,
   ok,
+  stripeChargeObjectSchema,
+  stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
   stripeSubscriptionObjectSchema,
   validation,
@@ -86,9 +88,46 @@ const toInvoiceEvent = (eventId: string, type: string, object: unknown): Payment
     checkoutSession: null,
     invoice: {
       subscriptionId,
+      chargeId: idOrNull(invoice.data.charge),
+      paymentIntentId: idOrNull(invoice.data.payment_intent),
       amountCents: amount ?? null,
       currency: invoice.data.currency?.toUpperCase() ?? null,
       periodEnd: epochToIso(linePeriodEnd ?? invoice.data.period_end),
+    },
+  };
+};
+
+const toAdjustmentEvent = (
+  eventId: string,
+  type: 'charge.refunded' | 'charge.dispute.created',
+  object: unknown,
+): PaymentWebhookEvent | null => {
+  if (type === 'charge.refunded') {
+    const charge = stripeChargeObjectSchema.safeParse(object);
+    if (!charge.success) return null;
+    return {
+      id: eventId,
+      type,
+      objectId: charge.data.id,
+      checkoutSession: null,
+      adjustment: {
+        chargeId: charge.data.id,
+        paymentIntentId: idOrNull(charge.data.payment_intent),
+        invoiceId: idOrNull(charge.data.invoice),
+      },
+    };
+  }
+  const dispute = stripeDisputeObjectSchema.safeParse(object);
+  if (!dispute.success) return null;
+  return {
+    id: eventId,
+    type,
+    objectId: dispute.data.id,
+    checkoutSession: null,
+    adjustment: {
+      chargeId: idOrNull(dispute.data.charge),
+      paymentIntentId: idOrNull(dispute.data.payment_intent),
+      invoiceId: null,
     },
   };
 };
@@ -162,6 +201,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
             checkoutSession: {
               email: session.customer_details?.email ?? session.customer_email ?? null,
               subscriptionId: idOrNull(session.subscription),
+              paymentIntentId: idOrNull(session.payment_intent),
               metadata: {
                 tenantId: session.metadata?.tenantId ?? null,
                 productId: session.metadata?.productId ?? null,
@@ -178,6 +218,10 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         }
         if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
           const mapped = toSubscriptionEvent(event.id, event.type, event.data.object);
+          if (mapped) return ok(mapped);
+        }
+        if (event.type === 'charge.refunded' || event.type === 'charge.dispute.created') {
+          const mapped = toAdjustmentEvent(event.id, event.type, event.data.object);
           if (mapped) return ok(mapped);
         }
         const object = event.data.object;

@@ -323,15 +323,14 @@ all 7 theme modes.
 
 ### Remaining work (deferred)
 
-- **Storybook + Lost Pixel (OSS) spike** (decision point 2/3) — not started; the
-  in-repo `npm run visual` harness stands in for now. Confirm Lost Pixel in a
-  short spike before adopting; expand goldens toward atomic-design stories in
-  mobile+desktop from day one.
+- **Storybook + Lost Pixel (OSS)** (decision point 2/3) — shipped in
+  `app/.storybook/`, `app/lostpixel.config.ts`, and
+  `app/tasks/lost-pixel-baselines/`; the screenshot harness now covers 102
+  current goldens in `app/tasks/visual-goldens/`.
 - **Deferred redesigns:** dashboard first-run onboarding checklist (its own core
   domain + isolated UI per decision 6), panel course-detail outline redesign, and
   the inline module-create form on panel course detail (still top-of-list; not a
   D2 create-subpage yet).
-- **A11y runtime scanning** (axe-core in the screenshot pipeline) — lowest owner
-  priority, not started.
-- **PL/EN terminology glossary** — microcopy aligned to sentence case during the
-  refactor; the standalone glossary artifact is still pending.
+- **A11y runtime scanning** — shipped via `app/scripts/a11y-scan.ts`, with the
+  current findings recorded in `tasks/a11y-report.md`.
+- **PL/EN terminology glossary** — shipped as `tasks/terminology-glossary.md`.

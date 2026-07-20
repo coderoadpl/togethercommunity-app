@@ -14,6 +14,7 @@ import {
   createMemberSubscriptionRepository,
   createNotificationRepository,
   createOrderRepository,
+  createPaymentRefundRepository,
   createPostReactionRepository,
   createPostRepository,
   createSpaceRepository,
@@ -29,6 +30,7 @@ import {
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
+  createTermsConsentRepository,
   createThreadSubscriptionRepository,
   createUserDisplayReader,
 } from '@adapters/db/repositories.js';
@@ -69,6 +71,7 @@ import type {
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
+  PaymentRefundRepository,
   PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
@@ -84,6 +87,7 @@ import type {
   TenantApiKeyRepository,
   TenantDomainRepository,
   TenantRepository,
+  TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
@@ -123,6 +127,7 @@ export interface AppDeps {
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
   orders: OrderRepository;
+  paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
@@ -139,6 +144,7 @@ export interface AppDeps {
   devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
+  consents: TermsConsentRepository;
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
   health: HealthPort;
@@ -240,6 +246,7 @@ export const createDeps = (env: Env): AppDeps => {
     grants: createProductGrantRepository(db),
     prices: createProductPriceRepository(db),
     orders: createOrderRepository(db),
+    paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
@@ -256,6 +263,7 @@ export const createDeps = (env: Env): AppDeps => {
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,
     tenants: createTenantRepository(db),
+    consents: createTermsConsentRepository(db),
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),

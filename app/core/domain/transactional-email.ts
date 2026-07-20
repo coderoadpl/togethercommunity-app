@@ -39,6 +39,26 @@ const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, escapeHt
 const link = (href: string, label: string): string =>
   `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 
+/**
+ * Community notifications are recurring, so PL/EU e-privacy rules require an
+ * opt-out path. The link lands on the surface that owns the toggle (thread
+ * mute / space unfollow); tokenized one-click unsubscribe is future backlog.
+ */
+const manageNotificationsFooter = (
+  language: TransactionalLanguage,
+  url: string,
+  hint: { pl: string; en: string },
+): { html: string; text: string } =>
+  language === 'en'
+    ? {
+        html: `<p style="font-size:12px;color:#64646b">${link(url, 'Manage notifications')} (${escapeHtml(hint.en)})</p>`,
+        text: `\n\nManage notifications (${hint.en}): ${url}`,
+      }
+    : {
+        html: `<p style="font-size:12px;color:#64646b">${link(url, 'Zarządzaj powiadomieniami')} (${escapeHtml(hint.pl)})</p>`,
+        text: `\n\nZarządzaj powiadomieniami (${hint.pl}): ${url}`,
+      };
+
 export interface EmailBranding {
   logoUrl: string | null;
   accentColor: string | null;
@@ -107,21 +127,25 @@ export const threadReply = (
   const lessonName = escapeHtml(input.lessonName);
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
+  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
+    pl: 'w dyskusji możesz wyciszyć ten wątek',
+    en: 'you can mute this thread in the discussion',
+  });
 
   if (languageOrDefault(language) === 'en') {
     const actionLink = link(input.url, 'Open the discussion');
     return emailMessageSchema.parse({
       subject: `New reply in the "${input.lessonName}" discussion`,
-      html: `<p>Hello!</p><p>${author} replied in the "${lessonName}" discussion on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
-      text: `Hello!\n\n${input.authorDisplay} replied in the "${input.lessonName}" discussion on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the discussion: ${input.url}`,
+      html: `<p>Hello!</p><p>${author} replied in the "${lessonName}" discussion on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${input.authorDisplay} replied in the "${input.lessonName}" discussion on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the discussion: ${input.url}${footer.text}`,
     });
   }
 
   const actionLink = link(input.url, 'Otwórz dyskusję');
   return emailMessageSchema.parse({
     subject: `Nowa odpowiedź w dyskusji „${input.lessonName}”`,
-    html: `<p>Cześć!</p><p>${author} odpowiedział(a) w dyskusji „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
-    text: `Cześć!\n\n${input.authorDisplay} odpowiedział(a) w dyskusji „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz dyskusję: ${input.url}`,
+    html: `<p>Cześć!</p><p>${author} odpowiedział(a) w dyskusji „${lessonName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} odpowiedział(a) w dyskusji „${input.lessonName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz dyskusję: ${input.url}${footer.text}`,
   });
 };
 
@@ -133,21 +157,25 @@ export const spacePost = (
   const spaceName = escapeHtml(input.spaceName);
   const author = escapeHtml(input.authorDisplay);
   const snippet = escapeHtml(input.snippet);
+  const footer = manageNotificationsFooter(languageOrDefault(language), input.url, {
+    pl: 'w strefie możesz przestać ją obserwować',
+    en: 'you can unfollow the space there',
+  });
 
   if (languageOrDefault(language) === 'en') {
     const actionLink = link(input.url, 'Open the space');
     return emailMessageSchema.parse({
       subject: `New post in “${input.spaceName}”`,
-      html: `<p>Hello!</p><p>${author} posted in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
-      text: `Hello!\n\n${input.authorDisplay} posted in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the space: ${input.url}`,
+      html: `<p>Hello!</p><p>${author} posted in “${spaceName}” on ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+      text: `Hello!\n\n${input.authorDisplay} posted in “${input.spaceName}” on ${input.tenantName}:\n\n${input.snippet}\n\nOpen the space: ${input.url}${footer.text}`,
     });
   }
 
   const actionLink = link(input.url, 'Otwórz strefę');
   return emailMessageSchema.parse({
     subject: `Nowy wpis w strefie „${input.spaceName}”`,
-    html: `<p>Cześć!</p><p>${author} opublikował(a) wpis w strefie „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>`,
-    text: `Cześć!\n\n${input.authorDisplay} opublikował(a) wpis w strefie „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz strefę: ${input.url}`,
+    html: `<p>Cześć!</p><p>${author} opublikował(a) wpis w strefie „${spaceName}” na platformie ${tenantName}:</p><blockquote>${snippet}</blockquote><p>${actionLink}</p>${footer.html}`,
+    text: `Cześć!\n\n${input.authorDisplay} opublikował(a) wpis w strefie „${input.spaceName}” na platformie ${input.tenantName}:\n\n${input.snippet}\n\nOtwórz strefę: ${input.url}${footer.text}`,
   });
 };
 

@@ -87,6 +87,7 @@ export const applyBranding = (theme: Theme, branding: TenantBranding | null | un
   const primary = deriveBrandPalette(branding.accentColor);
   return {
     ...theme,
+    focusRing: primary.main,
     palette: {
       ...theme.palette,
       primary: { ...theme.palette.primary, ...primary },

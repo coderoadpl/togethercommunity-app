@@ -18,7 +18,7 @@ import { RegisterPage } from './RegisterPage.js';
 
 const HomeAfterRegistration = () => <div>Home after registration</div>;
 
-const renderRegisterPage = async () => {
+const renderRegisterPage = async (hostname?: string) => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -28,7 +28,7 @@ const renderRegisterPage = async () => {
   const registerRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/register',
-    component: RegisterPage,
+    component: () => (hostname === undefined ? <RegisterPage /> : <RegisterPage hostname={hostname} />),
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, registerRoute]),
@@ -37,6 +37,12 @@ const renderRegisterPage = async () => {
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
 };
+
+const tenantOffer = (legal: { termsUrl: string | null; privacyUrl: string | null }) => ({
+  tenant: { slug: 'akademia', name: 'Akademia', legal },
+  contentVersion: 1,
+  products: [],
+});
 
 describe('RegisterPage', () => {
   it('creates an account and lands on home', async () => {
@@ -49,5 +55,61 @@ describe('RegisterPage', () => {
     await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('requires accepting the configured documents on a tenant host and records the consent', async () => {
+    let consentRecorded = 0;
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: tenantOffer({
+            termsUrl: 'https://akademia.test/regulamin',
+            privacyUrl: 'https://akademia.test/prywatnosc',
+          }),
+        }),
+      ),
+      http.post('/api/public/terms-consent', () => {
+        consentRecorded += 1;
+        return HttpResponse.json({ ok: true, data: { recorded: true } });
+      }),
+      http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
+    );
+
+    await renderRegisterPage('akademia.localhost');
+
+    const checkbox = await screen.findByRole('checkbox');
+    expect(checkbox).toBeRequired();
+    expect(screen.getByRole('link', { name: pl.consent.terms })).toHaveAttribute(
+      'href',
+      'https://akademia.test/regulamin',
+    );
+    expect(screen.getByRole('link', { name: pl.consent.privacy })).toHaveAttribute(
+      'href',
+      'https://akademia.test/prywatnosc',
+    );
+
+    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Member');
+    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'member@together.dev');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo1234');
+    await userEvent.click(checkbox);
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+
+    expect(await screen.findByText(pl.auth.registeredTitle)).toBeInTheDocument();
+    expect(consentRecorded).toBe(1);
+  });
+
+  it('shows no consent checkbox on a tenant without configured documents', async () => {
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({ ok: true, data: tenantOffer({ termsUrl: null, privacyUrl: null }) }),
+      ),
+    );
+
+    await renderRegisterPage('akademia.localhost');
+
+    expect(await screen.findByLabelText(pl.auth.nameLabel)).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 });

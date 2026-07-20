@@ -55,6 +55,7 @@ export interface Messages {
     messageIntegrationNotConfigured: string;
     messageIntegrationAuth: string;
     messageIntegrationUnavailable: string;
+    messageRateLimited: string;
     messageInternal: string;
     messageUnknown: string;
   };
@@ -90,6 +91,12 @@ export interface Messages {
     registeredCreateOwnCta: string;
     registeredBoughtHint: string;
     registeredUseMagicLinkCta: string;
+  };
+  consent: {
+    accept: string;
+    terms: string;
+    privacy: string;
+    and: string;
   };
   tenant: {
     choose: string;
@@ -812,6 +819,17 @@ export interface Messages {
     clear: string;
     configured: string;
     notConfigured: string;
+  };
+  legal: {
+    heading: string;
+    intro: string;
+    termsLabel: string;
+    termsPlaceholder: string;
+    privacyLabel: string;
+    privacyPlaceholder: string;
+    save: string;
+    saving: string;
+    saved: string;
   };
   branding: {
     heading: string;

@@ -55,6 +55,7 @@ export const en: Messages = {
       'The external service rejected the stored key. Check the key in the Integrations section.',
     messageIntegrationUnavailable:
       'The external service is temporarily unavailable. Please try again in a moment.',
+    messageRateLimited: 'Too many attempts. Please wait a moment before trying again.',
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',
     messageUnknown: 'Something went wrong. Please try again.',
   },
@@ -92,6 +93,12 @@ export const en: Messages = {
     registeredCreateOwnCta: 'Go to the home page to create your own space',
     registeredBoughtHint: 'Bought a course here? Sign in with the magic link sent to your email.',
     registeredUseMagicLinkCta: 'Sign in with a magic link',
+  },
+  consent: {
+    accept: 'I accept the',
+    terms: 'terms of service',
+    privacy: 'privacy policy',
+    and: 'and',
   },
   tenant: {
     choose: 'Choose a space',
@@ -883,6 +890,18 @@ export const en: Messages = {
     clear: 'Remove',
     configured: 'configured',
     notConfigured: 'not set',
+  },
+  legal: {
+    heading: 'Terms of service and privacy policy',
+    intro:
+      'Provide URLs of your terms of service and privacy policy. When set, members accept them at registration and checkout. You author the documents yourself.',
+    termsLabel: 'terms of service URL',
+    termsPlaceholder: 'https://example.com/terms',
+    privacyLabel: 'privacy policy URL',
+    privacyPlaceholder: 'https://example.com/privacy',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Saved.',
   },
   branding: {
     heading: 'Branding',

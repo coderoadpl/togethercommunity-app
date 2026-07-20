@@ -50,6 +50,14 @@ describe('applyBranding', () => {
   it('keeps a directly usable accent as-is', () => {
     expect(deriveBrandPalette(ACCENT).main).toBe(ACCENT);
   });
+
+  it('tints the focus-ring token with the accent so default-theme focus states show it', () => {
+    const theme = createThemeForMode('shadcn');
+    const derived = deriveBrandPalette(ACCENT);
+    expect(theme.focusRing).toBeDefined();
+    expect(applyBranding(theme, branding(ACCENT)).focusRing).toBe(derived.main);
+    expect(theme.focusRing).not.toBe(derived.main);
+  });
 });
 
 describe('deriveBrandPalette', () => {

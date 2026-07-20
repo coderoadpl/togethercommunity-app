@@ -36,6 +36,8 @@ export const tenantSettingsSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
+  termsUrl: z.string().url().nullable().default(null),
+  privacyUrl: z.string().url().nullable().default(null),
 });
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
@@ -46,13 +48,15 @@ const clearableBrandingAssetUrl = z
   .transform((value) => (value === '' || value === null ? null : value))
   .optional();
 
+const clearableUrl = z
+  .union([z.string().url(), z.literal('')])
+  .nullable()
+  .transform((value) => (value === '' || value === null ? null : value))
+  .optional();
+
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
-  billingPortalUrl: z
-    .union([z.string().url(), z.literal('')])
-    .nullable()
-    .transform((value) => (value === '' || value === null ? null : value))
-    .optional(),
+  billingPortalUrl: clearableUrl,
   bunnyStreamLibraryId: z
     .string()
     .trim()
@@ -66,6 +70,8 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
+  termsUrl: clearableUrl,
+  privacyUrl: clearableUrl,
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

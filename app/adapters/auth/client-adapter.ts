@@ -47,7 +47,9 @@ const toResult = <T>(
         ? 'forbidden'
         : error.status === 400 || error.status === 422
           ? 'validation'
-          : 'internal';
+          : error.status === 429
+            ? 'rate_limited'
+            : 'internal';
   return err(appError(code, error.message ?? 'Authentication failed'));
 };
 

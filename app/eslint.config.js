@@ -594,7 +594,10 @@ export default tseslint.config(
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
           rules: [
-            { from: ['core-domain', 'core-contract'], allow: ['vitest', 'zod'] },
+            {
+              from: ['core-domain', 'core-contract'],
+              allow: ['node:fs', 'node:path', 'vitest', 'zod'],
+            },
             { from: ['core-client'], allow: ['@tanstack/query-core', 'vitest', 'zod'] },
             { from: ['core-server'], allow: ['vitest'] },
           ],

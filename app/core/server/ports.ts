@@ -39,6 +39,15 @@ import type {
   TenantSecretKey,
   TenantSettings,
   TermsConsent,
+  AutomationIdempotencyKey,
+  Campaign,
+  CampaignSend,
+  ConsentDefinition,
+  ConsentDefinitionVersion,
+  MarketingConsent,
+  Suppression,
+  TenantSesSettings,
+  UnsubscribeToken,
 } from '@core/domain/index.js';
 
 /**
@@ -576,6 +585,117 @@ export interface TenantRepository {
 export interface TermsConsentRepository {
   record(tenantId: string, consent: TermsConsent): Promise<void>;
   listByEmail(tenantId: string, email: string): Promise<TermsConsent[]>;
+}
+
+export interface MarketingConsentRepository {
+  record(tenantId: string, consent: MarketingConsent): Promise<void>;
+  listByEmail(tenantId: string, email: string, definitionId?: string): Promise<MarketingConsent[]>;
+  latestByEmail(tenantId: string, email: string, definitionId: string): Promise<MarketingConsent | null>;
+}
+
+export interface ConsentDefinitionRepository {
+  create(tenantId: string, definition: ConsentDefinition, version: ConsentDefinitionVersion): Promise<void>;
+  findById(tenantId: string, definitionId: string): Promise<ConsentDefinition | null>;
+  list(tenantId: string, status?: ConsentDefinition['status']): Promise<ConsentDefinition[]>;
+  appendVersion(tenantId: string, version: ConsentDefinitionVersion): Promise<void>;
+  listVersions(tenantId: string, definitionId: string): Promise<ConsentDefinitionVersion[]>;
+}
+
+export interface CampaignRepository {
+  create(tenantId: string, campaign: Campaign): Promise<void>;
+  findById(tenantId: string, campaignId: string): Promise<Campaign | null>;
+  update(tenantId: string, campaign: Campaign): Promise<Campaign | null>;
+  acquireLease(
+    tenantId: string,
+    campaignId: string,
+    input: { workerId: string; now: string; lockedUntil: string },
+  ): Promise<boolean>;
+  advanceCursor(
+    tenantId: string,
+    campaignId: string,
+    input: { cursorMemberId: string; sentDelta: number; failedDelta: number },
+  ): Promise<Campaign | null>;
+}
+
+export interface CampaignSendRepository {
+  claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean>;
+  findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
+  update(tenantId: string, send: CampaignSend): Promise<CampaignSend | null>;
+  correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<CampaignSend | null>;
+  listByCampaign(tenantId: string, campaignId: string): Promise<CampaignSend[]>;
+}
+
+export interface SuppressionRepository {
+  record(tenantId: string, suppression: Suppression): Promise<boolean>;
+  findActive(tenantId: string, emailHmac: string): Promise<Suppression | null>;
+  isSuppressed(tenantId: string, emailHmac: string): Promise<boolean>;
+  lift(tenantId: string, suppression: Suppression): Promise<Suppression | null>;
+}
+
+export interface UnsubscribeTokenRepository {
+  create(tenantId: string, token: UnsubscribeToken): Promise<void>;
+  findByToken(tenantId: string, token: string): Promise<UnsubscribeToken | null>;
+  consume(
+    tenantId: string,
+    token: string,
+    usedAt: string,
+  ): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null>;
+}
+
+export interface TenantSesSettingsRepository {
+  findByTenant(tenantId: string): Promise<TenantSesSettings | null>;
+  findByWebhookToken(webhookToken: string): Promise<TenantSesSettings | null>;
+  upsert(tenantId: string, settings: TenantSesSettings): Promise<TenantSesSettings>;
+}
+
+export interface SesMarketingCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+}
+
+export interface SesMarketingSender {
+  send(input: {
+    credentials: SesMarketingCredentials;
+    from: { address: string; name: string };
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    headers: Record<string, string>;
+    configurationSet: string | null;
+  }): Promise<Result<{ messageId: string }, AppError>>;
+}
+
+export interface VerifiedSnsEnvelope {
+  type: 'SubscriptionConfirmation' | 'Notification';
+  topicArn: string;
+  message: string;
+  subscribeUrl: string | null;
+}
+
+export interface SnsVerifier {
+  verify(input: {
+    rawBody: string;
+    headers: Record<string, string>;
+    region: string;
+  }): Promise<Result<VerifiedSnsEnvelope, AppError>>;
+  confirmSubscription(input: { subscribeUrl: string; region: string }): Promise<Result<void, AppError>>;
+}
+
+export interface SchedulerPort {
+  enqueueCampaignTick(tenantId: string, campaignId: string): Promise<Result<void, AppError>>;
+  scheduleCampaignTick(tenantId: string, campaignId: string, runAt: string): Promise<Result<void, AppError>>;
+}
+
+export interface EmailHmac {
+  compute(tenantId: string, normalizedEmail: string): string;
+}
+
+export interface AutomationIdempotencyRepository {
+  claim(tenantId: string, record: AutomationIdempotencyKey): Promise<AutomationIdempotencyKey | null>;
+  release(tenantId: string, key: string): Promise<void>;
+  sweepExpired(now: string): Promise<number>;
 }
 
 export interface TenantAccessReader {

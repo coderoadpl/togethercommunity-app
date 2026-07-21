@@ -100,6 +100,14 @@ export const healthOutputSchema = z.object({
   database: z.enum(['up', 'down']),
 });
 
+export const emailDispatchOutputSchema = z.object({
+  attemptsMade: z.number().int().nonnegative(),
+  sentCount: z.number().int().nonnegative(),
+  failedCount: z.number().int().nonnegative(),
+});
+
+export const EMAIL_DISPATCH_SECRET_HEADER = 'x-email-dispatch-secret';
+
 export const authConfigOutputSchema = z.object({
   googleEnabled: z.boolean(),
   passkeysEnabled: z.boolean(),
@@ -734,6 +742,7 @@ export const m2mEnrollOutputSchema = z.object({
  */
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
+  emailDispatch: { method: 'POST', path: '/api/internal/dispatch-email' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -837,6 +846,7 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
   health: API_ROUTES.health.path,
+  emailDispatch: API_ROUTES.emailDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,

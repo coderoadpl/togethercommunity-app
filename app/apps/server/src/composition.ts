@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
 import {
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -63,6 +64,8 @@ import type {
   DiscussionLinkPort,
   EntityVersionRepository,
   EmailPort,
+  EmailOutboxRepository,
+  EnrollmentTransactionPort,
   DevMagicLinkReader,
   FileUrlSigner,
   BunnyEmbedTokenSigner,
@@ -96,8 +99,8 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { enforceTermsConsent, resolveTenant, validateTermsConsent } from '@core/server/index.js';
-import { ok } from '@core/domain/index.js';
+import { dispatchEmailBatch, enforceTermsConsent, resolveTenant, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { ok, type AppError, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
 import type { Env } from './env.js';
@@ -149,6 +152,11 @@ export interface AppDeps {
   fileUrlSigner: FileUrlSigner;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
   email: EmailPort;
+  emailOutbox: EmailOutboxRepository;
+  enrollmentTransaction: EnrollmentTransactionPort;
+  dispatchEmails(): Promise<Result<DispatchEmailBatchResult, AppError>>;
+  dispatchEmail(): void;
+  emailDispatchSecret: string;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
   tenantDomains: TenantDomainRepository;
@@ -187,6 +195,23 @@ export const createDeps = (env: Env): AppDeps => {
     env.EMAIL_PROVIDER === 'ses'
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
+  const emailOutbox = createEmailOutboxRepository(db);
+  const dispatchDeps = {
+    emailOutbox,
+    email,
+    clock,
+    logger: { error: (message: string) => process.stderr.write(`${message}\n`) },
+    batchSize: Math.max(1, Math.floor(env.EMAIL_DISPATCH_RATE_PER_SECOND * env.EMAIL_DISPATCH_INTERVAL_MS / 1000)),
+    attemptsCap: env.EMAIL_DISPATCH_ATTEMPTS_CAP,
+    backoffBaseMs: env.EMAIL_DISPATCH_BACKOFF_BASE_MS,
+    backoffCapMs: env.EMAIL_DISPATCH_BACKOFF_CAP_MS,
+  };
+  const dispatchEmails = () => dispatchEmailBatch(dispatchDeps);
+  const dispatchEmail = (): void => {
+    void dispatchEmails().then((result) => {
+      if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
+    });
+  };
   const realtimeBus = createRealtimeBus();
   const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
     const url = new URL(env.APP_BASE_URL);
@@ -226,7 +251,10 @@ export const createDeps = (env: Env): AppDeps => {
     baseDomain: env.APP_BASE_DOMAIN,
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
-    email,
+    emailOutbox,
+    ids,
+    clock,
+    dispatchEmail,
     defaultTenantName: 'Together',
     google,
     validateSignUpConsent: async ({ request, accepted }) => {
@@ -282,7 +310,7 @@ export const createDeps = (env: Env): AppDeps => {
     notifications: createNotificationRepository(db),
     notificationChannels: [
       createInAppNotificationChannel(realtimeBus),
-      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(email)] : []),
+      ...(env.NOTIFY_EMAIL ? [createEmailNotificationChannel(emailOutbox, ids, clock, dispatchEmail)] : []),
     ],
     realtimeBus,
     links,
@@ -304,6 +332,11 @@ export const createDeps = (env: Env): AppDeps => {
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
     fileUrlSigner: createS3UrlSigner(),
     email,
+    emailOutbox,
+    enrollmentTransaction: createEnrollmentTransactionPort(db),
+    dispatchEmails,
+    dispatchEmail,
+    emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
     tenantDomains,

@@ -1,9 +1,7 @@
 import {
   err,
-  internal,
   notFound,
   ok,
-  welcomeSetPassword,
   type AppError,
   type GrantSource,
   type Result,
@@ -12,7 +10,7 @@ import {
 
 import type {
   DevMagicLinkReader,
-  EmailPort,
+  EnrollmentTransactionPort,
   ProductGrantRepository,
   ProductRepository,
   TenantRepository,
@@ -24,7 +22,8 @@ export interface FulfillEnrollmentDeps extends EnsureMemberDeps {
   products: ProductRepository;
   grants: ProductGrantRepository;
   tenants: TenantRepository;
-  email: EmailPort;
+  enrollmentTransaction: EnrollmentTransactionPort;
+  dispatchEmail(): void;
   devMagicLinks: DevMagicLinkReader;
   appBaseUrl: string;
   baseDomain: string;
@@ -53,38 +52,46 @@ export const fulfillEnrollment = async (
   const product = await deps.products.findById(tenant.id, input.productId);
   if (!product || !product.published) return err(notFound(`No published product "${input.productId}" in this tenant`));
 
-  const member = await ensureMember(tenant.id, input.email, deps);
-  if (!member.ok) return member;
-
-  const grant = await createOrRenewGrant(
-    tenant.id,
-    { memberId: member.value.id, productId: input.productId, expiresAt: input.expiresAt, source: input.source },
-    deps,
-  );
-
-  let magicLink: FulfillEnrollmentResult['magicLink'] = null;
-  if (input.sendEmail) {
-    const tenantBaseUrl = new URL(deps.appBaseUrl);
-    tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
-    const created = await deps.authPort.createEnrollmentMagicLink({
-      email: member.value.email,
-      callbackURL: tenantBaseUrl.toString(),
-      baseUrl: tenantBaseUrl.toString(),
-      tenantName: tenant.name,
-      language: input.language,
-    });
-    const settings = await deps.tenants.findSettings(tenant.id);
-    const message = welcomeSetPassword(input.language, {
-      tenantName: tenant.name,
-      actionUrl: created.url,
-      ...(settings === null
-        ? {}
-        : { branding: { logoUrl: settings.logoUrl, accentColor: settings.accentColor } }),
-    });
-    const sent = await deps.email.send({ to: member.value.email, ...message });
-    if (!sent.ok) return err(internal('Could not send the enrollment email'));
-    if (deps.exposeMagicLinks) magicLink = await deps.devMagicLinks.findByEmail(member.value.email);
-  }
-
-  return ok({ memberId: member.value.id, grantId: grant.grantId, renewed: grant.renewed, magicLink });
+  const completed = await deps.enrollmentTransaction.run(async (transaction) => {
+    const member = await ensureMember(tenant.id, input.email, { ...deps, members: transaction.members });
+    if (!member.ok) return member;
+    const grant = await createOrRenewGrant(
+      tenant.id,
+      { memberId: member.value.id, productId: input.productId, expiresAt: input.expiresAt, source: input.source },
+      { ...deps, grants: transaction.grants },
+    );
+    if (input.sendEmail) {
+      const tenantBaseUrl = new URL(deps.appBaseUrl);
+      tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
+      const created = await deps.authPort.createEnrollmentMagicLink({
+        email: member.value.email,
+        callbackURL: tenantBaseUrl.toString(),
+        baseUrl: tenantBaseUrl.toString(),
+        tenantName: tenant.name,
+        language: input.language,
+      });
+      const settings = await deps.tenants.findSettings(tenant.id);
+      const queued = await transaction.emailOutbox.enqueue({
+        id: deps.ids.nextId(),
+        tenantId: tenant.id,
+        to: member.value.email,
+        payload: {
+          kind: 'welcome-set-password',
+          language: input.language,
+          tenantName: tenant.name,
+          actionUrl: created.url,
+          ...(settings === null ? {} : { branding: { logoUrl: settings.logoUrl, accentColor: settings.accentColor } }),
+        },
+        now: deps.clock.nowIso(),
+      });
+      if (!queued.ok) return queued;
+    }
+    return ok({ member: member.value, grant });
+  });
+  if (!completed.ok) return completed;
+  if (input.sendEmail) deps.dispatchEmail();
+  const magicLink = input.sendEmail && deps.exposeMagicLinks
+    ? await deps.devMagicLinks.findByEmail(completed.value.member.email)
+    : null;
+  return ok({ memberId: completed.value.member.id, grantId: completed.value.grant.grantId, renewed: completed.value.grant.renewed, magicLink });
 };

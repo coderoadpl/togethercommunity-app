@@ -4,6 +4,8 @@ import { err, normalizeEmail, ok, validation } from '@core/domain/index.js';
 import { createDb } from '@adapters/db/client.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '@adapters/db/repositories.js';
+import { createEmailOutboxRepository } from '@adapters/db/email-outbox.js';
+import { dispatchEmailBatch } from '@core/server/index.js';
 
 import { createAuth, createAuthPort } from './create-auth.js';
 
@@ -14,6 +16,22 @@ let signUpIpSuffix = 1;
 
 const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string[] } = {}) => {
   const db = createDb('node-postgres', connectionString);
+  const emailOutbox = createEmailOutboxRepository(db);
+  const clock = { nowIso: () => new Date().toISOString() };
+  const flushEmails = () =>
+    dispatchEmailBatch({
+      emailOutbox,
+      email: createDevEmailPort(db),
+      clock,
+      logger: console,
+      batchSize: 5,
+      attemptsCap: 5,
+      backoffBaseMs: 1000,
+      backoffCapMs: 900000,
+    });
+  const dispatchEmail = (): void => {
+    void flushEmails();
+  };
   const consentRequired = options.consentRequired ?? false;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
@@ -22,7 +40,10 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
     trustedOrigins: ['http://localhost:48730', 'http://studio.localhost:48730'],
     secureCookies: false,
     exposeMagicLinks: true,
-    email: createDevEmailPort(db),
+    emailOutbox,
+    ids: { nextId: () => crypto.randomUUID() },
+    clock,
+    dispatchEmail,
     defaultTenantName: 'Together',
     google: null,
     validateSignUpConsent: async ({ accepted }) =>
@@ -40,6 +61,7 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
     authPort: createAuthPort(auth),
     magicLinks: createDevMagicLinkReader(db),
     emails: createDevEmailReader(db),
+    flushEmails,
   };
 };
 
@@ -148,7 +170,7 @@ describe('createAuthPort.ensureUser', () => {
 
 describe('createAuthPort.requestMagicLink', () => {
   it('rebases the verify link onto the requesting tenant host and sends an English email', async () => {
-    const { authPort, magicLinks, emails } = buildAuth();
+    const { authPort, magicLinks, emails, flushEmails } = buildAuth();
     const email = `magic-en-${Date.now()}@together.dev`;
 
     await authPort.requestMagicLink({
@@ -158,6 +180,7 @@ describe('createAuthPort.requestMagicLink', () => {
       language: 'en',
       baseUrl: 'http://studio.localhost:48730',
     });
+    await flushEmails();
 
     const link = await magicLinks.findByEmail(normalizeEmail(email));
     expect(link).not.toBeNull();
@@ -170,7 +193,7 @@ describe('createAuthPort.requestMagicLink', () => {
   });
 
   it('sends a Polish email when the requested language is pl', async () => {
-    const { authPort, emails } = buildAuth();
+    const { authPort, emails, flushEmails } = buildAuth();
     const email = `magic-pl-${Date.now()}@together.dev`;
 
     await authPort.requestMagicLink({
@@ -180,6 +203,7 @@ describe('createAuthPort.requestMagicLink', () => {
       language: 'pl',
       baseUrl: 'http://studio.localhost:48730',
     });
+    await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Zaloguj się do Studio');
@@ -216,7 +240,7 @@ describe('createAuthPort.createEnrollmentMagicLink', () => {
 
 describe('reset password email', () => {
   it('rebases the reset link onto the requesting host and sends an English email', async () => {
-    const { auth, authPort, emails } = buildAuth();
+    const { auth, authPort, emails, flushEmails } = buildAuth();
     const email = `reset-en-${Date.now()}@together.dev`;
     await authPort.ensureUser(email);
 
@@ -228,6 +252,7 @@ describe('reset password email', () => {
       body: { email, redirectTo: '/reset-password' },
       headers: new Headers(),
     });
+    await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Reset your password');
@@ -235,7 +260,7 @@ describe('reset password email', () => {
   });
 
   it('sends a Polish email when the requested language is pl', async () => {
-    const { auth, authPort, emails } = buildAuth();
+    const { auth, authPort, emails, flushEmails } = buildAuth();
     const email = `reset-pl-${Date.now()}@together.dev`;
     await authPort.ensureUser(email);
 
@@ -247,6 +272,7 @@ describe('reset password email', () => {
       body: { email, redirectTo: '/reset-password' },
       headers: new Headers(),
     });
+    await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Zresetuj hasło');

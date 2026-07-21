@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
-import { accessItemSchema, chapterSchema, lessonBlockSchema, ok } from '@core/domain/index.js';
+import { accessItemSchema, chapterSchema, lessonBlockSchema } from '@core/domain/index.js';
 import { createAuth } from '@adapters/auth/create-auth.js';
 import { createImportAuthGateway } from '@adapters/auth/import-credential.js';
 import { createDb } from '@adapters/db/client.js';
+import { createEmailOutboxRepository } from '@adapters/db/email-outbox.js';
 import {
   ImportFailure,
   resolveImportTenants,
@@ -332,7 +333,10 @@ const main = async (): Promise<number> => {
     trustedOrigins: () => ['http://localhost:48730'],
     secureCookies: false,
     exposeMagicLinks: false,
-    email: { send: () => Promise.resolve(ok({ messageId: null })) },
+    emailOutbox: createEmailOutboxRepository(db),
+    ids: { nextId: () => crypto.randomUUID() },
+    clock: { nowIso: () => new Date().toISOString() },
+    dispatchEmail: () => undefined,
     defaultTenantName: 'Together',
     google: null,
   });

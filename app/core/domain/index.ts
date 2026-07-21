@@ -4,6 +4,7 @@ export * from './identity.js';
 export * from './email.js';
 export * from './language.js';
 export * from './transactional-email.js';
+export * from './email-outbox.js';
 export * from './product.js';
 export * from './grant.js';
 export * from './api-key.js';

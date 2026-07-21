@@ -1,0 +1,34 @@
+import { z } from 'zod';
+
+import { emailMessageSchema, magicLink, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost } from './transactional-email.js';
+
+const brandingSchema = z.object({ logoUrl: z.string().url().nullable(), accentColor: z.string().nullable() });
+
+export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('welcome-set-password'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('reset-password'), language: z.string(), actionUrl: z.string().url() }),
+  z.object({ kind: z.literal('magic-link'), language: z.string(), tenantName: z.string(), url: z.string().url(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('thread-reply'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
+  z.object({ kind: z.literal('lesson-question'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
+  z.object({ kind: z.literal('space-post'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
+]);
+
+export type EmailOutboxPayload = z.output<typeof emailOutboxPayloadSchema>;
+
+export const renderEmailOutboxPayload = (raw: unknown) => {
+  const payload = emailOutboxPayloadSchema.safeParse(raw);
+  if (!payload.success) return payload;
+  const value = payload.data;
+  const message = value.kind === 'welcome-set-password'
+    ? welcomeSetPassword(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, ...(value.branding === undefined ? {} : { branding: value.branding }) })
+    : value.kind === 'reset-password'
+      ? resetPassword(value.language, { actionUrl: value.actionUrl })
+      : value.kind === 'magic-link'
+        ? magicLink(value.language, { tenantName: value.tenantName, url: value.url, ...(value.branding === undefined ? {} : { branding: value.branding }) })
+        : value.kind === 'thread-reply'
+          ? threadReply(value.language, value)
+          : value.kind === 'lesson-question'
+            ? lessonQuestion(value.language, value)
+            : spacePost(value.language, value);
+  return { success: true as const, data: emailMessageSchema.parse(message) };
+};

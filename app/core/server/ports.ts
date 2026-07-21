@@ -7,6 +7,7 @@ import type {
   EntityKind,
   EmailBranding,
   EmailMessage,
+  EmailOutboxPayload,
   Member,
   MemberGrant,
   MemberCourseProgress,
@@ -499,6 +500,25 @@ export interface PurchaseRepository {
 
 export interface EmailPort {
   send(message: { to: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
+}
+
+export interface EmailOutboxItem {
+  id: string;
+  tenantId: string | null;
+  to: string;
+  payload: unknown;
+  attempts: number;
+}
+
+export interface EmailOutboxRepository {
+  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>>;
+  claimBatch(input: { now: string; limit: number; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>>;
+  markSent(input: { id: string; sentAt: string }): Promise<Result<void, AppError>>;
+  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; error: string }): Promise<Result<void, AppError>>;
+}
+
+export interface EnrollmentTransactionPort {
+  run<T>(operation: (deps: { members: MemberRepository; grants: ProductGrantRepository; emailOutbox: EmailOutboxRepository }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
 }
 
 /** Dev-only sink so tests and the CLI can read magic links without a mailer. */

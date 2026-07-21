@@ -128,6 +128,7 @@ const memberExportOptionsSchema = z.object({
   out: z.string().min(1).optional(),
 });
 const noOptionsSchema = z.object({});
+const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 
 const jsonSourceOptionsSchema = z.object({
   data: z.string().optional(),
@@ -1732,6 +1733,20 @@ program
           const link = data.magicLink ? `\nmagic link: ${data.magicLink.url}` : '';
           return `${status}: product ${data.productId} for member ${data.memberId}${subscription}${link}`;
         },
+      );
+    }),
+  );
+
+const emailCommand = program.command('email').description('Transactional email operations');
+
+emailCommand
+  .command('dispatch')
+  .description('Dispatch one queued email batch')
+  .requiredOption('--secret <secret>', 'shared internal dispatch secret')
+  .action(
+    withInput(z.tuple([emailDispatchOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.dispatchEmail(options.secret), ctx.json, (data) =>
+        `attempted ${String(data.attemptsMade)}, sent ${String(data.sentCount)}, failed ${String(data.failedCount)}`,
       );
     }),
   );

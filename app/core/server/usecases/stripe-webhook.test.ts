@@ -299,12 +299,22 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
         events.delete(eventId);
       },
     },
-    email: {
-      send: async (message) => {
-        sent.push(message.to);
-        return ok({ messageId: `message-${sent.length}` });
-      },
+    enrollmentTransaction: {
+      run: async (operation) => operation({
+        members: deps.members,
+        grants: deps.grants,
+        emailOutbox: {
+          enqueue: async (message) => {
+            sent.push(message.to);
+            return ok({ id: message.id });
+          },
+          claimBatch: async () => ok([]),
+          markSent: async () => ok(undefined),
+          markFailed: async () => ok(undefined),
+        },
+      }),
     },
+    dispatchEmail: () => undefined,
     devMagicLinks: { findByEmail: async () => null },
     ids: { nextId: () => `id-${++sequence}` },
     clock: { nowIso: () => clockNow },

@@ -9,7 +9,16 @@ import { startServerObservability } from './observability.js';
 startServerObservability();
 
 const env = loadEnv();
-const app = buildApp(createDeps(env));
+const deps = createDeps(env);
+const app = buildApp(deps);
+
+if (env.NODE_ENV !== 'test') {
+  setInterval(() => {
+    void deps.dispatchEmails().then((result) => {
+      if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${result.error.message}\n`);
+    });
+  }, env.EMAIL_DISPATCH_INTERVAL_MS).unref();
+}
 
 // Same process serves the SPA build — one origin per tenant domain, no CORS.
 app.use('*', serveStatic({ root: env.WEB_DIST_DIR }));

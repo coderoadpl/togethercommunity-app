@@ -30,6 +30,12 @@ const envSchema = z
       .transform((value) => value === 'true'),
     EMAIL_PROVIDER: z.enum(['ses', 'dev']).default('dev'),
     EMAIL_FROM: z.string().min(1).optional(),
+    EMAIL_DISPATCH_SECRET: z.string().min(16).default('dev-email-dispatch-secret'),
+    EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
+    EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
+    EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
+    EMAIL_DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(1000),
+    EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),
     NOTIFY_EMAIL: z
       .enum(['true', 'false'])
       .default('true')
@@ -74,6 +80,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_FROM'],
         message: 'EMAIL_FROM must be set when EMAIL_PROVIDER=ses',
+      });
+    }
+    if (env.EMAIL_DISPATCH_SECRET === 'dev-email-dispatch-secret') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_DISPATCH_SECRET'],
+        message: 'EMAIL_DISPATCH_SECRET must be set to a production secret',
       });
     }
   });

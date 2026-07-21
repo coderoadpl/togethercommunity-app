@@ -6,6 +6,8 @@ import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
 import type { AppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
+  err,
+  internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
   type Member,
@@ -42,6 +44,8 @@ const deps = (input: {
   domains?: TenantDomain[];
   products?: Product[];
   authenticated?: boolean;
+  databaseUp?: boolean;
+  dispatchEmails?: AppDeps['dispatchEmails'];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
   const domains = input.domains ?? [];
@@ -175,6 +179,42 @@ const deps = (input: {
     email: {
       send: async () => ({ ok: true, value: { messageId: null } }),
     },
+    emailOutbox: {
+      enqueue: async (message) => ok({ id: message.id }),
+      claimBatch: async () => ok([]),
+      markSent: async () => ok(undefined),
+      markFailed: async () => ok(undefined),
+    },
+    enrollmentTransaction: {
+      run: async (operation) => operation({
+        members: {
+          findById: async (_tenantId, id) => members.find((member) => member.id === id) ?? null,
+          findByEmail: async (_tenantId, email) => members.find((member) => member.email === email) ?? null,
+          listWithProductIds: async () => [],
+          create: async (_tenantId, member) => { members.push(member); },
+          updateEmail: async () => null,
+        },
+        grants: {
+          findById: async () => null,
+          findGrant: async () => null,
+          createGrant: async () => true,
+          setGrantWindow: async () => null,
+          revokeGrant: async () => null,
+          listForMemberWithProductNames: async () => [],
+          listActiveForMember: async () => [],
+          listGrantedProducts: async () => [],
+        },
+        emailOutbox: {
+          enqueue: async (message) => ok({ id: message.id }),
+          claimBatch: async () => ok([]),
+          markSent: async () => ok(undefined),
+          markFailed: async () => ok(undefined),
+        },
+      }),
+    },
+    dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
+    dispatchEmail: () => undefined,
+    emailDispatchSecret: 'test-email-dispatch-secret',
     devEmails: {
       findByRecipient: async () => null,
     },
@@ -334,7 +374,7 @@ const deps = (input: {
       findMember: async (_userId, tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
-    health: { pingDatabase: async () => true },
+    health: { pingDatabase: async () => input.databaseUp ?? true },
     ids: { nextId: () => 'id' },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     baseDomain: 'localhost',
@@ -346,6 +386,59 @@ const deps = (input: {
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
+
+describe('email dispatch route', () => {
+  it('requires the shared secret and returns the dispatch envelope', async () => {
+    const app = buildApp(deps());
+    expect((await app.request(API_PATHS.emailDispatch, { method: 'POST' })).status).toBe(401);
+    const response = await app.request(API_PATHS.emailDispatch, {
+      method: 'POST',
+      headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { attemptsMade: 0, sentCount: 0, failedCount: 0 },
+    });
+  });
+
+  it('surfaces a dispatch failure as an error envelope', async () => {
+    const app = buildApp(deps({ dispatchEmails: async () => err(internal('outbox unavailable')) }));
+    const response = await app.request(API_PATHS.emailDispatch, {
+      method: 'POST',
+      headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' },
+    });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+});
+
+describe('health route', () => {
+  it('reports the database status from the health port', async () => {
+    const up = await buildApp(deps()).request(API_PATHS.health);
+    expect(await up.json()).toMatchObject({ ok: true, data: { status: 'ok', database: 'up' } });
+
+    const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.health);
+    expect(await down.json()).toMatchObject({ ok: true, data: { database: 'down' } });
+  });
+});
+
+describe('public payment-config route', () => {
+  it('exposes the simulated-payments flag for a resolved tenant', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
+      headers: { [TENANT_HEADER]: 'acme' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { simulatedPaymentsEnabled: false } });
+  });
+
+  it('returns a 404 envelope for an unknown tenant', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
+      headers: { [TENANT_HEADER]: 'nope' },
+    });
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
+  });
+});
 
 describe('public offer route', () => {
   it('returns only published products with public CORS and cache headers', async () => {

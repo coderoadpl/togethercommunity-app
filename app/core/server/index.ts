@@ -39,3 +39,4 @@ export * from './usecases/progress.js';
 export * from './usecases/community-access.js';
 export * from './usecases/community.js';
 export * from './usecases/spaces.js';
+export * from './usecases/dispatch-email-batch.js';

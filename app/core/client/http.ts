@@ -21,6 +21,8 @@ import {
   grantCreateOutputSchema,
   grantRevokeOutputSchema,
   healthOutputSchema,
+  emailDispatchOutputSchema,
+  EMAIL_DISPATCH_SECRET_HEADER,
   lessonOutputSchema,
   lessonsListOutputSchema,
   lessonReferencesOutputSchema,
@@ -224,6 +226,16 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  dispatchEmail: (secret: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.emailDispatch.method,
+      API_ROUTES.emailDispatch.path,
+      emailDispatchOutputSchema,
+      undefined,
+      signal,
+      { body: '', headers: { [EMAIL_DISPATCH_SECRET_HEADER]: secret } },
+    ),
   publicOffer: (signal?: AbortSignal) =>
     request(
       options,

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
 
@@ -565,6 +565,24 @@ export const devEmails = pgTable('dev_emails', {
   text: text('text').notNull(),
   createdAt: text('created_at').notNull(),
 });
+
+export const emailOutbox = pgTable(
+  'email_outbox',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    to: text('to').notNull(),
+    payload: jsonb('payload').notNull(),
+    status: text('status', { enum: ['queued', 'sending', 'sent', 'failed'] }).notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).notNull(),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt)],
+);
 
 export const tenantDomains = pgTable(
   'tenant_domains',

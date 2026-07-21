@@ -7,14 +7,12 @@ import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { z } from 'zod';
 
 import {
-  magicLink as magicLinkTemplate,
   normalizeEmail,
-  resetPassword as resetPasswordTemplate,
   type AppError,
   type EmailBranding,
   type Result,
 } from '@core/domain/index.js';
-import type { AuthPort, EmailPort } from '@core/server/index.js';
+import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '@core/server/index.js';
 import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
 import type { Db } from '@adapters/db/client.js';
 import { devMagicLinks } from '@adapters/db/schema.js';
@@ -29,7 +27,10 @@ export interface AuthSettings {
   secureCookies: boolean;
   /** Dev-only: persist issued magic links into dev_magic_links (no mailer in the PoC). */
   exposeMagicLinks: boolean;
-  email: EmailPort;
+  emailOutbox: EmailOutboxRepository;
+  ids: IdGenerator;
+  clock: Clock;
+  dispatchEmail(): void;
   defaultTenantName: string;
   /** Google OAuth credentials; the provider is wired only when both are present. */
   google: { clientId: string; clientSecret: string } | null;
@@ -156,9 +157,15 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
         const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'pl' };
         resetPasswordContexts.delete(normalizedEmail);
         const actionUrl = resetPasswordUrl(context.baseUrl ?? settings.baseUrl, token);
-        const message = resetPasswordTemplate(context.language, { actionUrl });
-        const sent = await settings.email.send({ to: normalizedEmail, ...message });
-        if (!sent.ok) throw new Error(sent.error.message);
+        const queued = await settings.emailOutbox.enqueue({
+          id: settings.ids.nextId(),
+          tenantId: null,
+          to: normalizedEmail,
+          payload: { kind: 'reset-password', language: context.language, actionUrl },
+          now: settings.clock.nowIso(),
+        });
+        if (!queued.ok) throw new Error(queued.error.message);
+        settings.dispatchEmail();
       },
     },
     ...(settings.google
@@ -180,13 +187,21 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           if (context.mode === 'capture') {
             capturedLinks.set(normalizedEmail, { url: deliveredUrl, token });
           } else {
-            const message = magicLinkTemplate(context.language, {
-              tenantName,
-              url: deliveredUrl,
-              ...(context.branding === undefined ? {} : { branding: context.branding }),
+            const queued = await settings.emailOutbox.enqueue({
+              id: settings.ids.nextId(),
+              tenantId: null,
+              to: normalizedEmail,
+              payload: {
+                kind: 'magic-link',
+                language: context.language,
+                tenantName,
+                url: deliveredUrl,
+                ...(context.branding === undefined ? {} : { branding: context.branding }),
+              },
+              now: settings.clock.nowIso(),
             });
-            const sent = await settings.email.send({ to: normalizedEmail, ...message });
-            if (!sent.ok) throw new Error(sent.error.message);
+            if (!queued.ok) throw new Error(queued.error.message);
+            settings.dispatchEmail();
           }
           if (settings.exposeMagicLinks) {
             await db

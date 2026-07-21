@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { memberTombstone, ok } from '@core/domain/index.js';
+import { memberTombstone } from '@core/domain/index.js';
 import { createAuth, type Auth } from '@adapters/auth/create-auth.js';
 import {
   createImportAuthGateway,
@@ -13,6 +13,7 @@ import {
 import { deriveLegacyPasswordHash } from '@adapters/auth/legacy-password.js';
 
 import { createDb, type Db } from './client.js';
+import { createEmailOutboxRepository } from './email-outbox.js';
 import { createMemberErasureRepository, createOrderRepository } from './repositories.js';
 import {
   resolveImportTenants,
@@ -225,7 +226,10 @@ beforeAll(async () => {
     trustedOrigins: ['http://localhost:48730'],
     secureCookies: false,
     exposeMagicLinks: false,
-    email: { send: () => Promise.resolve(ok({ messageId: null })) },
+    emailOutbox: createEmailOutboxRepository(db),
+    ids: { nextId: () => crypto.randomUUID() },
+    clock: { nowIso },
+    dispatchEmail: () => undefined,
     defaultTenantName: 'Together',
     google: null,
   });

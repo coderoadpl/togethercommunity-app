@@ -1,10 +1,10 @@
 import { eq, sql } from 'drizzle-orm';
 
 import { createAuth } from '@adapters/auth/create-auth.js';
-import { createDevEmailPort } from '@adapters/email/dev.js';
 import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
 
 import { createDb } from './client.js';
+import { createEmailOutboxRepository } from './email-outbox.js';
 import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
 import {
   courseLessons,
@@ -34,6 +34,8 @@ const connectionString =
   'postgres://together:together@localhost:48912/together';
 
 const db = createDb('node-postgres', connectionString);
+const seedIds = { nextId: () => crypto.randomUUID() };
+const seedClock = { nowIso: () => new Date().toISOString() };
 
 const auth = createAuth(db, {
   secret: process.env['BETTER_AUTH_SECRET'] ?? 'dev-only-secret-do-not-use-in-prod',
@@ -42,7 +44,10 @@ const auth = createAuth(db, {
   trustedOrigins: () => ['http://localhost:48730'],
   secureCookies: false,
   exposeMagicLinks: false,
-  email: createDevEmailPort(db),
+  emailOutbox: createEmailOutboxRepository(db),
+  ids: seedIds,
+  clock: seedClock,
+  dispatchEmail: () => undefined,
   defaultTenantName: 'Together',
   google: null,
 });

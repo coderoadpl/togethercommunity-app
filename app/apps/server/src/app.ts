@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   API_KEY_HEADER,
+  EMAIL_DISPATCH_SECRET_HEADER,
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
@@ -299,6 +300,13 @@ export const buildApp = (deps: AppDeps) => {
       }),
     ),
   );
+
+  app.post(API_PATHS.emailDispatch, async (c) => {
+    if (c.req.header(EMAIL_DISPATCH_SECRET_HEADER) !== deps.emailDispatchSecret) {
+      return respond(err(unauthorized('Invalid email dispatch secret')));
+    }
+    return respond(await deps.dispatchEmails());
+  });
 
   app.options(API_PATHS.publicOffer, () =>
     new Response(null, {

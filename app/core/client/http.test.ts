@@ -29,6 +29,23 @@ describe('createApiClient', () => {
     });
   });
 
+  it('sends the shared secret header and parses the dispatch envelope', async () => {
+    let seen: Headers | undefined;
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/internal/dispatch-email');
+      expect(init).toMatchObject({ method: 'POST' });
+      seen = new Headers(init?.headers);
+      return jsonResponse({ ok: true, data: { attemptsMade: 3, sentCount: 2, failedCount: 1 } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.dispatchEmail('shhh')).resolves.toEqual({
+      ok: true,
+      value: { attemptsMade: 3, sentCount: 2, failedCount: 1 },
+    });
+    expect(seen?.get('x-email-dispatch-secret')).toBe('shhh');
+  });
+
   it('returns the contract AppError from a non-2xx envelope', async () => {
     const fetchImpl: typeof fetch = async () =>
       jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);

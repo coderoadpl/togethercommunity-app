@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EmailMessage, Member, Order, Product, ProductGrant, TenantApiKey } from '@core/domain/index.js';
+import { ok, type EmailOutboxPayload, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '@core/domain/index.js';
 
 import type {
   ApiKeyCrypto,
   AuthPort,
   DevMagicLinkReader,
-  EmailPort,
+  EmailOutboxRepository,
   MemberRepository,
   ProductGrantRepository,
   ProductRepository,
@@ -35,7 +35,7 @@ const product = (id: string, published: boolean): Product => ({
 
 interface Sent {
   to: string;
-  message: EmailMessage;
+  payload: EmailOutboxPayload;
 }
 
 interface Harness {
@@ -109,11 +109,14 @@ const harness = (options: {
     },
   };
 
-  const email: EmailPort = {
-    send: async (message) => {
-      sent.push({ to: message.to, message: { subject: message.subject, html: message.html, text: message.text } });
-      return { ok: true, value: { messageId: null } };
+  const emailOutbox: EmailOutboxRepository = {
+    enqueue: async (message) => {
+      sent.push({ to: message.to, payload: message.payload });
+      return ok({ id: message.id });
     },
+    claimBatch: async () => ok([]),
+    markSent: async () => ok(undefined),
+    markFailed: async () => ok(undefined),
   };
 
   const devMagicLinks: DevMagicLinkReader = {
@@ -139,7 +142,8 @@ const harness = (options: {
         },
       },
       authPort,
-      email,
+      enrollmentTransaction: { run: async (operation) => operation({ members: membersRepo, grants: grantsRepo, emailOutbox }) },
+      dispatchEmail: () => undefined,
       devMagicLinks,
       prices: {
         listByProduct: async () => [],
@@ -238,7 +242,7 @@ describe('m2mEnroll', () => {
     await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]?.to).toBe('fresh@together.dev');
-    expect(h.sent[0]?.message.text).toContain('https://tenant.example/magic?token=abc');
+    expect(h.sent[0]?.payload).toMatchObject({ actionUrl: 'https://tenant.example/magic?token=abc' });
     expect(h.captured).toEqual([
       expect.objectContaining({ email: 'fresh@together.dev' }),
     ]);

@@ -18,6 +18,19 @@ architecture spec is normative).
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
 
+## Licensing & IP policy (owner decision 2026-07-21 — HARD RULES)
+
+- Together targets a Fair Source license (FSL/BSL family). 100% copyright
+  ownership of this codebase: NO third-party copyleft (GPL/AGPL) code may
+  enter the repo — including "translated" or ported code.
+- Dependencies: permissive licenses only (MIT / Apache-2.0 / BSD / ISC).
+  CHECK THE LICENSE of every new dependency before adding it; if it is not
+  clearly permissive, do not add it — flag to the owner instead.
+- Clean-room discipline for AGPL inspiration sources (inventory in the owner's private materials):
+  reading agents produce behavioral specs in their own words; implementing
+  agents work from specs only and never open those sources. No a-prior-art-tool-like
+  naming.
+
 ## Layer rules (enforced, but know them anyway)
 
 - `core/**` is pure TypeScript: no hono, react, drizzle, better-auth, pg, commander.

@@ -47,10 +47,12 @@ import {
   pauseCampaign,
   recordMarketingConsent,
   runMarketingRetentionJobs,
+  saveMarketingConsentPreferences,
   scheduleCampaign,
   scheduleMarketingRetentionJobs,
   sendMarketingMessages,
   testSendCampaignToSelf,
+  unsubscribeAllMarketing,
   unsubscribeOneClick,
   withdrawMarketingConsent,
 } from './marketing-email.js';
@@ -406,6 +408,7 @@ describe('marketing e-mail use-case integration', () => {
     expect(JSON.stringify(deps.outbox.items[0])).not.toContain('List-Unsubscribe');
     const confirmationToken = deps.confirmations.rows[0]?.token ?? '';
     expect((await confirmMarketingConsent(ctx, { token: confirmationToken, evidence: { collectedAt: NOW, ip: '127.0.0.1' } }, deps)).ok).toBe(true);
+    expect((await confirmMarketingConsent(ctx, { token: confirmationToken, evidence: { collectedAt: NOW } }, deps)).ok).toBe(true);
     expect(await getMarketingEligibility(ctx, { email: 'new@example.test', definitionId: definition.id }, deps)).toMatchObject({ ok: true, value: { eligible: true } });
     await recordMarketingConsent(ctx, { email: 'stale@example.test', memberId: null, definitionId: definition.id, evidence: { collectedAt: '2026-06-01T00:00:00.000Z', proofRef: 'form-stale' }, source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm' }, deps);
     const directDefinition = { ...definition, id: 'definition-direct', key: 'direct', doubleOptIn: false };
@@ -442,6 +445,28 @@ describe('marketing e-mail use-case integration', () => {
     expect((await unsubscribeOneClick(anonymousCtx, { token: '0123456789abcdef0123456789abcdef' }, deps)).ok).toBe(true);
     expect((await unsubscribeOneClick(anonymousCtx, { token: '0123456789abcdef0123456789abcdef' }, deps)).ok).toBe(true);
     expect((await deps.consents.listByEmail('tenant-1', 'member@example.test')).filter((row) => row.status === 'withdrawn')).toHaveLength(1);
+    expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
+  });
+
+  it('saves optional preferences, queues DOI when re-subscribing, and supports global withdrawal', async () => {
+    const deps = await setup();
+    const token = 'preferences_token_123456789012345';
+    await deps.unsubscribes.create('tenant-1', {
+      id: 'unsubscribe-preferences', tenantId: 'tenant-1', token,
+      email: 'member@example.test', memberId: 'member-1', campaignSendId: null,
+      scope: `consent:${definition.id}`, createdAt: NOW, usedAt: null,
+    });
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [], evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 0 } });
+    expect(await saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds: [definition.id], evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps)).toMatchObject({ ok: true, value: { pendingConfirmations: 1 } });
+    expect(deps.outbox.items).toHaveLength(1);
+    expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toMatchObject({ ok: true });
+    expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toMatchObject({ ok: true });
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
   });
 

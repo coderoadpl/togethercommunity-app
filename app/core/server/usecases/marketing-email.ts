@@ -183,6 +183,13 @@ export const confirmMarketingConsent = async (
   const now = deps.clock.nowIso();
   const granted = await deps.consents.findById(tenantId.value, token.marketingConsentRowId);
   if (granted === null) return err(notFound('Pending consent was not found'));
+  if (token.usedAt !== null) {
+    const confirmed = (await deps.consents.listByEmail(tenantId.value, granted.email, granted.definitionId))
+      .find((row) => row.status === 'confirmed' && row.previousId === granted.id);
+    return confirmed === undefined
+      ? err(validation('Consent confirmation token is expired or already used'))
+      : ok({ consent: confirmed });
+  }
   const consumed = await deps.confirmations.consume(tenantId.value, input.token, now);
   if (consumed === null) return err(validation('Consent confirmation token is expired or already used'));
   const confirmed: MarketingConsent = {
@@ -301,18 +308,104 @@ export const getUnsubscribePreferences = async (
   ctx: Ctx,
   input: { token: string },
   deps: UnsubscribeDeps,
-): Promise<Result<{ email: string; scope: string; definitions: Array<{ id: string; active: boolean }> }, AppError>> => {
+): Promise<Result<{
+  email: string;
+  scope: string;
+  scopeLabel: string | null;
+  globallySuppressed: boolean;
+  definitions: Array<{ id: string; label: string; active: boolean; pendingConfirmation: boolean }>;
+}, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
   if (token === null) return err(notFound('Unsubscribe token was not found'));
   const definitions = (await deps.definitions.list(tenantId.value, 'active'))
     .filter((definition) => definition.kind === 'optional_marketing');
-  const states = await Promise.all(definitions.map(async (definition) => ({
-    id: definition.id,
-    active: deriveConsentState(await deps.consents.listByEmail(tenantId.value, token.email, definition.id), definition).active,
-  })));
-  return ok({ email: token.email, scope: token.scope, definitions: states });
+  const states = await Promise.all(definitions.map(async (definition) => {
+    const state = deriveConsentState(
+      await deps.consents.listByEmail(tenantId.value, token.email, definition.id),
+      definition,
+    );
+    const version = (await deps.definitions.listVersions(tenantId.value, definition.id)).at(-1);
+    return {
+      id: definition.id,
+      label: version?.label ?? definition.key,
+      active: state.active,
+      pendingConfirmation: state.state === 'pending_confirmation',
+    };
+  }));
+  const scopeDefinitionId = token.scope === 'all_marketing'
+    ? null
+    : token.scope.slice('consent:'.length);
+  const scopeLabel = scopeDefinitionId === null
+    ? null
+    : states.find((definition) => definition.id === scopeDefinitionId)?.label ?? null;
+  const emailHmac = deps.hmac.compute(tenantId.value, token.email);
+  return ok({
+    email: token.email,
+    scope: token.scope,
+    scopeLabel,
+    globallySuppressed: await deps.suppressions.isSuppressed(tenantId.value, emailHmac),
+    definitions: states,
+  });
+};
+
+export const saveMarketingConsentPreferences = async (
+  ctx: Ctx,
+  input: {
+    token: string;
+    selectedDefinitionIds: string[];
+    evidence: ConsentEvidence;
+    confirmationBaseUrl: string;
+  },
+  deps: UnsubscribeDeps & Pick<ConsentDeps, 'confirmations' | 'outbox' | 'tokens'>,
+): Promise<Result<{ pendingConfirmations: number }, AppError>> => {
+  const tenantId = tenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
+  if (token === null) return err(notFound('Unsubscribe token was not found'));
+  const definitions = (await deps.definitions.list(tenantId.value, 'active'))
+    .filter((definition) => definition.kind === 'optional_marketing');
+  const allowedIds = new Set(definitions.map((definition) => definition.id));
+  if (input.selectedDefinitionIds.some((definitionId) => !allowedIds.has(definitionId))) {
+    return err(validation('Invalid marketing consent preference'));
+  }
+  const selectedIds = new Set(input.selectedDefinitionIds);
+  const emailHmac = deps.hmac.compute(tenantId.value, token.email);
+  if (selectedIds.size > 0 && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
+    return err(validation('Globally unsubscribed addresses cannot re-subscribe from this page'));
+  }
+  let pendingConfirmations = 0;
+  for (const definition of definitions) {
+    const state = deriveConsentState(
+      await deps.consents.listByEmail(tenantId.value, token.email, definition.id),
+      definition,
+    );
+    const selected = selectedIds.has(definition.id);
+    if (!selected && state.state !== 'none' && state.state !== 'withdrawn') {
+      const withdrawn = await withdrawMarketingConsent(ctx, {
+        email: token.email,
+        definitionId: definition.id,
+        evidence: input.evidence,
+      }, deps);
+      if (!withdrawn.ok) return withdrawn;
+    }
+    if (selected && state.state !== 'active' && state.state !== 'pending_confirmation') {
+      const recorded = await recordMarketingConsent(ctx, {
+        email: token.email,
+        memberId: token.memberId,
+        definitionId: definition.id,
+        evidence: input.evidence,
+        source: 'preference_page',
+        confirmationBaseUrl: input.confirmationBaseUrl,
+      }, deps);
+      if (!recorded.ok) return recorded;
+      if (recorded.value.state === 'pending_confirmation') pendingConfirmations += 1;
+    } else if (selected && state.state === 'pending_confirmation') {
+      pendingConfirmations += 1;
+    }
+  }
+  return ok({ pendingConfirmations });
 };
 
 export const unsubscribeOneClick = async (
@@ -324,7 +417,6 @@ export const unsubscribeOneClick = async (
   if (!tenantId.ok) return tenantId;
   const consumed = await deps.unsubscribes.consume(tenantId.value, input.token, deps.clock.nowIso());
   if (consumed === null) return err(notFound('Unsubscribe token was not found'));
-  if (!consumed.newlyUsed) return ok({ unsubscribed: true });
   const definitions = consumed.token.scope === 'all_marketing'
     ? (await deps.definitions.list(tenantId.value, 'active')).filter((definition) => definition.kind === 'optional_marketing')
     : [await deps.definitions.findById(tenantId.value, consumed.token.scope.slice('consent:'.length))].filter((value) => value !== null);
@@ -341,6 +433,36 @@ export const unsubscribeOneClick = async (
       liftedAt: null, liftedBy: null,
     });
   }
+  return ok({ unsubscribed: true });
+};
+
+export const unsubscribeAllMarketing = async (
+  ctx: Ctx,
+  input: { token: string },
+  deps: UnsubscribeDeps,
+): Promise<Result<{ unsubscribed: true }, AppError>> => {
+  const tenantId = tenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
+  if (token === null) return err(notFound('Unsubscribe token was not found'));
+  const definitions = (await deps.definitions.list(tenantId.value, 'active'))
+    .filter((definition) => definition.kind === 'optional_marketing');
+  for (const definition of definitions) {
+    const latest = await deps.consents.latestByEmail(tenantId.value, token.email, definition.id);
+    if (latest === null) continue;
+    const withdrawn = await withdrawMarketingConsent(ctx, {
+      email: token.email,
+      definitionId: definition.id,
+      evidence: { collectedAt: deps.clock.nowIso() },
+    }, deps);
+    if (!withdrawn.ok) return withdrawn;
+  }
+  const emailHmac = deps.hmac.compute(tenantId.value, token.email);
+  await deps.suppressions.record(tenantId.value, {
+    id: deps.ids.nextId(), tenantId: tenantId.value, email: token.email, emailHmac,
+    reason: 'unsubscribe_global', sourceRef: token.id, meta: null, createdAt: deps.clock.nowIso(),
+    liftedAt: null, liftedBy: null,
+  });
   return ok({ unsubscribed: true });
 };
 

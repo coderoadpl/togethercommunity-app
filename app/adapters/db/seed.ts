@@ -10,9 +10,13 @@ import {
   courseLessons,
   courseModules,
   courses,
+  consentConfirmationTokens,
+  consentDefinitions,
+  consentDefinitionVersions,
   memberCourseProgress,
   members,
   memberSubscriptions,
+  marketingConsents,
   notifications,
   orders,
   postReactions,
@@ -24,8 +28,11 @@ import {
   spaceSubscriptions,
   tenantAdmins,
   tenantDomains,
+  tenantDocuments,
+  tenantDocumentVersions,
   tenants,
   threadSubscriptions,
+  unsubscribeTokens,
   user,
 } from './schema.js';
 
@@ -826,6 +833,84 @@ await db
     faviconUrl: '/assets/akademia-logo.svg',
   })
   .where(eq(tenants.id, 'tenant-akademia'));
+
+await db
+  .insert(tenantDocuments)
+  .values({
+    id: 'document-akademia-privacy', tenantId: 'tenant-akademia', slug: 'polityka-prywatnosci',
+    title: 'Polityka prywatności', status: 'published', createdAt: relativeIso(-90), updatedAt: relativeIso(-30),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(tenantDocumentVersions)
+  .values({
+    id: 'document-akademia-privacy-v1', tenantId: 'tenant-akademia', documentId: 'document-akademia-privacy', version: 1,
+    content: '# Jak dbamy o Twoje dane\n\nSzanujemy Twoją prywatność i używamy danych wyłącznie do obsługi wybranych przez Ciebie usług.\n\n## Kontakt\n\nW sprawach dotyczących danych napisz na [privacy@akademia.test](mailto:privacy@akademia.test).\n\n- możesz wycofać zgodę w dowolnym momencie\n- każda zmiana jest zapisywana w historii zgód',
+    publishedAt: relativeIso(-30), createdAt: relativeIso(-30), createdBy: null,
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(consentDefinitions)
+  .values({
+    id: 'consent-definition-akademia-news', tenantId: 'tenant-akademia', key: 'aktualnosci',
+    kind: 'optional_marketing', channel: 'email', doubleOptIn: true,
+    documentRef: { mode: 'hosted', documentId: 'document-akademia-privacy' }, status: 'active',
+    createdAt: relativeIso(-25), updatedAt: relativeIso(-25),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(consentDefinitionVersions)
+  .values({
+    id: 'consent-definition-akademia-news-v1', tenantId: 'tenant-akademia', definitionId: 'consent-definition-akademia-news', version: 1,
+    label: 'Chcę otrzymywać aktualności i praktyczne materiały e-mailem',
+    documentVersionRef: { mode: 'hosted', documentVersionId: 'document-akademia-privacy-v1' },
+    createdAt: relativeIso(-25), createdBy: null,
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(marketingConsents)
+  .values([
+    {
+      id: 'marketing-consent-akademia-granted', tenantId: 'tenant-akademia', memberId: null,
+      email: 'kursant.akademia@together.dev', definitionId: 'consent-definition-akademia-news', definitionVersion: 1,
+      wordingSnapshot: 'Chcę otrzymywać aktualności i praktyczne materiały e-mailem',
+      documentRefSnapshot: { mode: 'hosted', documentVersionId: 'document-akademia-privacy-v1' },
+      status: 'granted', previousId: null, source: 'checkout',
+      evidence: { collectedAt: relativeIso(-20), proofRef: 'seeded-checkout' }, occurredAt: relativeIso(-20),
+    },
+    {
+      id: 'marketing-consent-akademia-confirmed', tenantId: 'tenant-akademia', memberId: null,
+      email: 'kursant.akademia@together.dev', definitionId: 'consent-definition-akademia-news', definitionVersion: 1,
+      wordingSnapshot: 'Chcę otrzymywać aktualności i praktyczne materiały e-mailem',
+      documentRefSnapshot: { mode: 'hosted', documentVersionId: 'document-akademia-privacy-v1' },
+      status: 'confirmed', previousId: 'marketing-consent-akademia-granted', source: 'checkout',
+      evidence: { collectedAt: relativeIso(-19) }, occurredAt: relativeIso(-19),
+    },
+  ])
+  .onConflictDoNothing();
+
+await db
+  .insert(unsubscribeTokens)
+  .values({
+    id: 'unsubscribe-akademia-visual', tenantId: 'tenant-akademia',
+    token: 'unsubscribe_akademia_visual_123456', email: 'kursant.akademia@together.dev',
+    memberId: null, campaignSendId: null, scope: 'consent:consent-definition-akademia-news',
+    createdAt: relativeIso(-10), usedAt: null,
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(consentConfirmationTokens)
+  .values({
+    id: 'confirmation-akademia-visual', tenantId: 'tenant-akademia',
+    token: 'confirmation_akademia_visual_123456', marketingConsentRowId: 'marketing-consent-akademia-granted',
+    createdAt: relativeIso(-20), expiresAt: relativeIso(1), usedAt: relativeIso(-19),
+  })
+  .onConflictDoNothing();
 
 await db
   .insert(tenantAdmins)

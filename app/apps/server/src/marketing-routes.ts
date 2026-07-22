@@ -34,15 +34,26 @@ import {
   authenticateApiKey,
   claimIdempotencyKey,
   completeIdempotentRequest,
+  confirmMarketingConsent,
   getMarketingEligibility,
   getUnsubscribePreferences,
   recordMarketingConsent,
   resolveTenant,
+  saveMarketingConsentPreferences,
   sendMarketingMessages,
+  unsubscribeAllMarketing,
   unsubscribeOneClick,
 } from '@core/server/index.js';
 
 import type { AppDeps, MarketingAppDeps } from './composition.js';
+import {
+  languageFromRequest,
+  renderConfirmationPage,
+  renderLegalDocumentPage,
+  renderPreferenceResultPage,
+  renderPreferencesPage,
+  type PublicBrand,
+} from './public-marketing-pages.js';
 
 type Vars = { Variables: { identity: Identity } };
 
@@ -119,9 +130,25 @@ const sesEventSchema = z.discriminatedUnion('notificationType', [
   }).passthrough(),
 ]);
 
-const htmlEscape = (value: string): string => value.replace(/[&<>"']/g, (character) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-})[character] ?? character);
+const publicBrand = async (deps: AppDeps, tenant: Tenant): Promise<PublicBrand> => ({
+  tenant,
+  settings: await deps.tenants.findSettings(tenant.id),
+});
+
+const html = (body: string): Response => new Response(body, {
+  status: 200,
+  headers: { 'content-type': 'text/html; charset=UTF-8', 'cache-control': 'no-store' },
+});
+
+const unsubscribeDeps = (deps: AppDeps, marketing: MarketingAppDeps) => ({
+  definitions: marketing.definitions,
+  consents: marketing.marketingConsents,
+  suppressions: marketing.suppressions,
+  hmac: marketing.hmac,
+  unsubscribes: marketing.unsubscribes,
+  ids: deps.ids,
+  clock: deps.clock,
+});
 
 export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post('/api/m2m/marketing/messages', async (c) => {
@@ -375,12 +402,89 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const identity = apiIdentity(resolved.value.tenant);
-    const result = await unsubscribeOneClick({ identity }, { token: c.req.param('token') }, {
-      definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
-      suppressions: marketing.value.suppressions, hmac: marketing.value.hmac,
-      unsubscribes: marketing.value.unsubscribes, ids: deps.ids, clock: deps.clock,
-    });
+    const result = await unsubscribeOneClick(
+      { identity },
+      { token: c.req.param('token') },
+      unsubscribeDeps(deps, marketing.value),
+    );
     return result.ok ? new Response(null, { status: 200 }) : response(result);
+  });
+
+  app.post('/u/:token/confirm', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
+    const token = c.req.param('token');
+    const identity = apiIdentity(resolved.value.tenant);
+    const result = await unsubscribeOneClick({ identity }, { token }, unsubscribeDeps(deps, marketing.value));
+    if (!result.ok) return response(result);
+    const preferences = await getUnsubscribePreferences(
+      { identity }, { token }, unsubscribeDeps(deps, marketing.value),
+    );
+    if (!preferences.ok) return response(preferences);
+    return html(renderPreferenceResultPage({
+      brand: await publicBrand(deps, resolved.value.tenant),
+      language: languageFromRequest(c.req.raw),
+      token,
+      result: preferences.value.scope === 'all_marketing' ? 'all_unsubscribed' : 'scope_unsubscribed',
+      scopeLabel: preferences.value.scopeLabel,
+    }));
+  });
+
+  app.post('/u/:token/all', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
+    const token = c.req.param('token');
+    const result = await unsubscribeAllMarketing(
+      { identity: apiIdentity(resolved.value.tenant) },
+      { token },
+      unsubscribeDeps(deps, marketing.value),
+    );
+    if (!result.ok) return response(result);
+    return html(renderPreferenceResultPage({
+      brand: await publicBrand(deps, resolved.value.tenant),
+      language: languageFromRequest(c.req.raw),
+      token,
+      result: 'all_unsubscribed',
+      scopeLabel: null,
+    }));
+  });
+
+  app.post('/u/:token/preferences', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
+    const token = c.req.param('token');
+    const form = await c.req.formData();
+    const selectedDefinitionIds = form.getAll('consent').filter((value): value is string => typeof value === 'string');
+    const result = await saveMarketingConsentPreferences({ identity: apiIdentity(resolved.value.tenant) }, {
+      token,
+      selectedDefinitionIds,
+      evidence: {
+        collectedAt: deps.clock.nowIso(),
+        proofRef: `preference:${token}`,
+        ...(c.req.header('user-agent') === undefined ? {} : { userAgent: c.req.header('user-agent') }),
+      },
+      confirmationBaseUrl: `${new URL(c.req.url).origin}/marketing/confirm`,
+    }, {
+      ...unsubscribeDeps(deps, marketing.value),
+      confirmations: marketing.value.confirmations,
+      outbox: deps.emailOutbox,
+      tokens: { nextToken: () => randomBytes(24).toString('base64url') },
+    });
+    if (!result.ok) return response(result);
+    return html(renderPreferenceResultPage({
+      brand: await publicBrand(deps, resolved.value.tenant),
+      language: languageFromRequest(c.req.raw),
+      token,
+      result: 'saved',
+      scopeLabel: null,
+      pendingConfirmations: result.value.pendingConfirmations,
+    }));
   });
 
   app.get('/u/:token', async (c) => {
@@ -388,13 +492,45 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     if (!marketing.ok) return response(marketing);
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
-    const preferences = await getUnsubscribePreferences({ identity: apiIdentity(resolved.value.tenant) }, { token: c.req.param('token') }, {
-      definitions: marketing.value.definitions, consents: marketing.value.marketingConsents,
-      suppressions: marketing.value.suppressions, hmac: marketing.value.hmac,
-      unsubscribes: marketing.value.unsubscribes, ids: deps.ids, clock: deps.clock,
-    });
+    const preferences = await getUnsubscribePreferences(
+      { identity: apiIdentity(resolved.value.tenant) },
+      { token: c.req.param('token') },
+      unsubscribeDeps(deps, marketing.value),
+    );
     if (!preferences.ok) return response(preferences);
-    return c.html(`<!doctype html><html><head><meta charset="utf-8"><title>Email preferences</title></head><body><main><h1>Email preferences</h1><p>${htmlEscape(preferences.value.email)}</p><form method="post"><button type="submit">Unsubscribe</button></form></main></body></html>`);
+    return html(renderPreferencesPage({
+      brand: await publicBrand(deps, resolved.value.tenant),
+      language: languageFromRequest(c.req.raw),
+      token: c.req.param('token'),
+      ...preferences.value,
+    }));
+  });
+
+  app.get('/marketing/confirm/:token', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
+    const token = c.req.param('token');
+    const result = await confirmMarketingConsent({ identity: apiIdentity(resolved.value.tenant) }, {
+      token,
+      evidence: {
+        collectedAt: deps.clock.nowIso(),
+        ...(c.req.header('user-agent') === undefined ? {} : { userAgent: c.req.header('user-agent') }),
+      },
+    }, {
+      confirmations: marketing.value.confirmations,
+      consents: marketing.value.marketingConsents,
+      ids: deps.ids,
+      clock: deps.clock,
+    });
+    const path = `/marketing/confirm/${encodeURIComponent(token)}`;
+    return html(renderConfirmationPage({
+      brand: await publicBrand(deps, resolved.value.tenant),
+      language: languageFromRequest(c.req.raw),
+      path,
+      state: result.ok ? 'success' : 'expired',
+    }));
   });
 
   const legal = async (tenantId: string, slug: string, version?: number) => version === undefined
@@ -407,7 +543,14 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const document = await legal(resolved.value.tenant.id, c.req.param('slug'));
     return document === null
       ? response(err(appError('not_found', 'Legal document was not found')))
-      : c.html(`<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape(document.document.title)}</title></head><body><main><h1>${htmlEscape(document.document.title)}</h1><pre>${htmlEscape(document.version.content)}</pre></main></body></html>`);
+      : html(renderLegalDocumentPage({
+          brand: await publicBrand(deps, resolved.value.tenant),
+          language: languageFromRequest(c.req.raw),
+          path: `/legal/${encodeURIComponent(c.req.param('slug'))}`,
+          title: document.document.title,
+          content: document.version.content,
+          immutableVersion: null,
+        }));
   });
 
   app.get('/legal/:slug/v/:version', async (c) => {
@@ -418,6 +561,16 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const document = await legal(resolved.value.tenant.id, c.req.param('slug'), parsed.data);
     return document === null
       ? response(err(appError('not_found', 'Legal document version was not found')))
-      : c.html(`<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape(document.document.title)}</title></head><body><main><h1>${htmlEscape(document.document.title)}</h1><pre>${htmlEscape(document.version.content)}</pre></main></body></html>`);
+      : html(renderLegalDocumentPage({
+          brand: await publicBrand(deps, resolved.value.tenant),
+          language: languageFromRequest(c.req.raw),
+          path: `/legal/${encodeURIComponent(c.req.param('slug'))}/v/${String(parsed.data)}`,
+          title: document.document.title,
+          content: document.version.content,
+          immutableVersion: {
+            version: document.version.version,
+            publishedAt: document.version.publishedAt ?? document.version.createdAt,
+          },
+        }));
   });
 };

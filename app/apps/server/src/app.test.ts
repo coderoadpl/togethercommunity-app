@@ -453,6 +453,44 @@ const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> 
   return buildApp(configured);
 };
 
+const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
+  const marketing = marketingDeps();
+  await marketing.definitions.create('t-acme', {
+    id: 'definition-news', tenantId: 't-acme', key: 'product-news', kind: 'optional_marketing',
+    channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+    status: 'active', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+  }, {
+    id: 'definition-news-v1', tenantId: 't-acme', definitionId: 'definition-news', version: 1,
+    label: 'Product news', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+    createdAt: '2026-07-01T00:00:00.000Z', createdBy: 'staff',
+  });
+  await marketing.marketingConsents.record('t-acme', {
+    id: 'consent-news', tenantId: 't-acme', memberId: null, email: 'member@example.test',
+    definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+    documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'confirmed',
+    previousId: null, source: 'api', evidence: { collectedAt: '2026-07-01T00:00:00.000Z', proofRef: 'form' },
+    occurredAt: '2026-07-01T00:00:00.000Z',
+  });
+  await marketing.unsubscribes.create('t-acme', {
+    id: 'unsubscribe-news', tenantId: 't-acme', token: 'unsubscribe_token_123456789012345',
+    email: 'member@example.test', memberId: null, campaignSendId: null,
+    scope: 'consent:definition-news', createdAt: '2026-07-01T00:00:00.000Z', usedAt: null,
+  });
+  await marketing.marketingConsents.record('t-acme', {
+    id: 'consent-pending', tenantId: 't-acme', memberId: null, email: 'pending@example.test',
+    definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+    documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'granted',
+    previousId: null, source: 'api', evidence: { collectedAt: '2026-07-01T00:00:00.000Z', proofRef: 'form' },
+    occurredAt: '2026-07-01T00:00:00.000Z',
+  });
+  await marketing.confirmations.create('t-acme', {
+    id: 'confirmation-news', tenantId: 't-acme', token: 'confirmation_token_123456789012345',
+    marketingConsentRowId: 'consent-pending', createdAt: '2026-07-01T00:00:00.000Z',
+    expiresAt: '2026-07-20T00:00:00.000Z', usedAt: null,
+  });
+  return marketing;
+};
+
 describe('marketing HTTP surfaces', () => {
   it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
     const marketing = marketingDeps();
@@ -501,6 +539,42 @@ describe('marketing HTTP surfaces', () => {
     const response = await marketingApp().request('/legal/terms', { headers: { host: 'acme.localhost:48730' } });
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('Immutable terms');
+  });
+
+  it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const get = await app.request('/u/unsubscribe_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(get.status).toBe(200);
+    expect(await get.text()).toContain('Product news');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const post = await app.request('/u/unsubscribe_token_123456789012345/confirm?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(post.status).toBe(200);
+    expect(await post.text()).toContain('Unsubscribe confirmed');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).at(-1)?.status).toBe('withdrawn');
+  });
+
+  it('keeps RFC one-click POST empty and renders DOI success and expired states', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const oneClick = await marketingApp(marketing).request('/u/unsubscribe_token_123456789012345', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(oneClick.status).toBe(200);
+    expect(await oneClick.text()).toBe('');
+    const app = marketingApp(await memberSurfaceMarketing());
+    const success = await app.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await success.text()).toContain('Email address confirmed');
+    const expired = await app.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await expired.text()).toContain('This link is no longer active');
   });
 
   it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {

@@ -2138,7 +2138,7 @@ consentDefinition.command('create')
   .option('--single-opt-in')
   .action(withInput(z.tuple([consentDefinitionCreateOptionsSchema]), async (ctx, [options]) => {
     emit(await ctx.api.createMarketingConsentDefinition({
-      key: options.key, label: options.label, documentUrl: options.documentUrl,
+      key: options.key, label: options.label, documentRef: { mode: 'url', url: options.documentUrl },
       doubleOptIn: options.singleOptIn !== true,
     }), ctx.json, (data) => `created consent definition ${data.definition?.key ?? options.key} (${data.definition?.id ?? 'unknown'})`);
   }));

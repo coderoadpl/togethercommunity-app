@@ -29,9 +29,17 @@ import {
   lessonDeleteOutputSchema,
   m2mEnrollOutputSchema,
   marketingConsentDefinitionOutputSchema,
+  marketingConsentDefinitionDetailOutputSchema,
   marketingConsentDefinitionsOutputSchema,
+  marketingAudiencePreviewOutputSchema,
   marketingCampaignOutputSchema,
   marketingCampaignsOutputSchema,
+  marketingCampaignTestOutputSchema,
+  marketingDocumentDetailOutputSchema,
+  marketingDocumentsOutputSchema,
+  marketingLayoutOutputSchema,
+  marketingLayoutsOutputSchema,
+  marketingSesSettingsOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
   meOutputSchema,
@@ -104,8 +112,17 @@ import {
   type LessonUpdateInput,
   type M2mEnrollRequest,
   type MarketingConsentDefinitionCreateInput,
+  type MarketingConsentDefinitionUpdateInput,
+  type MarketingAudiencePreviewInput,
   type MarketingCampaignCreateInput,
+  type MarketingCampaignActionInput,
   type MarketingCampaignScheduleInput,
+  type MarketingCampaignUpdateInput,
+  type MarketingDocumentCreateInput,
+  type MarketingDocumentPublishInput,
+  type MarketingDocumentUpdateInput,
+  type MarketingLayoutSaveInput,
+  type MarketingSesSettingsUpdateInput,
   type MarketingSuppressionCreateInput,
   type MemberRemoveInput,
   type ModuleAttachInput,
@@ -240,6 +257,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingConsentDefinitions.method, API_ROUTES.marketingConsentDefinitions.path, marketingConsentDefinitionsOutputSchema, undefined, signal),
   createMarketingConsentDefinition: (input: MarketingConsentDefinitionCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingConsentDefinitionsCreate.method, API_ROUTES.marketingConsentDefinitionsCreate.path, marketingConsentDefinitionOutputSchema, input, signal),
+  getMarketingConsentDefinition: (id: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingConsentDefinition.method, API_ROUTES.marketingConsentDefinition.path.replace(':id', encodeURIComponent(id)), marketingConsentDefinitionDetailOutputSchema, undefined, signal),
+  updateMarketingConsentDefinition: (input: MarketingConsentDefinitionUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingConsentDefinitionUpdate.method, API_ROUTES.marketingConsentDefinitionUpdate.path, marketingConsentDefinitionDetailOutputSchema, input, signal),
   listMarketingCampaigns: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaigns.method, API_ROUTES.marketingCampaigns.path, marketingCampaignsOutputSchema, undefined, signal),
   createMarketingCampaign: (input: MarketingCampaignCreateInput, signal?: AbortSignal) =>
@@ -248,6 +269,32 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingCampaignSchedule.method, API_ROUTES.marketingCampaignSchedule.path, marketingCampaignOutputSchema, input, signal),
   getMarketingCampaign: (id: string, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaign.method, API_ROUTES.marketingCampaign.path.replace(':id', encodeURIComponent(id)), marketingCampaignOutputSchema, undefined, signal),
+  updateMarketingCampaign: (input: MarketingCampaignUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingCampaignUpdate.method, API_ROUTES.marketingCampaignUpdate.path, marketingCampaignOutputSchema, input, signal),
+  actOnMarketingCampaign: (input: MarketingCampaignActionInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingCampaignAction.method, API_ROUTES.marketingCampaignAction.path, marketingCampaignOutputSchema, input, signal),
+  testMarketingCampaign: (input: { campaignId: string }, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingCampaignTest.method, API_ROUTES.marketingCampaignTest.path, marketingCampaignTestOutputSchema, input, signal),
+  previewMarketingAudience: (input: MarketingAudiencePreviewInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingAudiencePreview.method, API_ROUTES.marketingAudiencePreview.path, marketingAudiencePreviewOutputSchema, input, signal),
+  listMarketingDocuments: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingDocuments.method, API_ROUTES.marketingDocuments.path, marketingDocumentsOutputSchema, undefined, signal),
+  createMarketingDocument: (input: MarketingDocumentCreateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingDocumentsCreate.method, API_ROUTES.marketingDocumentsCreate.path, marketingDocumentDetailOutputSchema, input, signal),
+  getMarketingDocument: (id: string, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingDocument.method, API_ROUTES.marketingDocument.path.replace(':id', encodeURIComponent(id)), marketingDocumentDetailOutputSchema, undefined, signal),
+  updateMarketingDocument: (input: MarketingDocumentUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingDocumentUpdate.method, API_ROUTES.marketingDocumentUpdate.path, marketingDocumentDetailOutputSchema, input, signal),
+  publishMarketingDocument: (input: MarketingDocumentPublishInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingDocumentPublish.method, API_ROUTES.marketingDocumentPublish.path, marketingDocumentDetailOutputSchema, input, signal),
+  listMarketingLayouts: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingLayouts.method, API_ROUTES.marketingLayouts.path, marketingLayoutsOutputSchema, undefined, signal),
+  saveMarketingLayout: (input: MarketingLayoutSaveInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingLayoutsSave.method, API_ROUTES.marketingLayoutsSave.path, marketingLayoutOutputSchema, input, signal),
+  getMarketingSesSettings: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
+  updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesSettingsUpdate.method, API_ROUTES.marketingSesSettingsUpdate.path, marketingSesSettingsOutputSchema, input, signal),
   listMarketingSuppressions: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressions.method, API_ROUTES.marketingStaffSuppressions.path, marketingSuppressionsOutputSchema, undefined, signal),
   addMarketingSuppression: (input: MarketingSuppressionCreateInput, signal?: AbortSignal) =>

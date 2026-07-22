@@ -14,11 +14,14 @@ import {
   ok,
   renderMarketingTemplate,
   throttleBudget,
+  tenantSesBroadcastsReady,
   validateRenderedMarketingOutput,
   validation,
   type AppError,
   type Campaign,
   type CampaignSend,
+  type ConsentDocumentRef,
+  type ConsentDocumentVersionRef,
   type ConsentEvidence,
   type MarketingConsent,
   type MarketingIneligibilityReason,
@@ -45,6 +48,7 @@ import type {
   SesMarketingSender,
   SuppressionRepository,
   TenantSesSettingsRepository,
+  TenantDocumentRepository,
   TokenGenerator,
   UnsubscribeTokenRepository,
   SchedulerPort,
@@ -75,24 +79,37 @@ export const createMarketingConsentDefinition = async (
     key: string;
     label: string;
     doubleOptIn: boolean;
-    documentUrl: string;
+    documentUrl?: string;
+    documentRef?: ConsentDocumentRef;
   },
-  deps: Pick<ConsentDeps, 'definitions' | 'ids' | 'clock'>,
+  deps: Pick<ConsentDeps, 'definitions' | 'ids' | 'clock'> & { documents?: TenantDocumentRepository },
 ): Promise<Result<{ definition: Awaited<ReturnType<ConsentDefinitionRepository['findById']>> }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
-  const parsedUrl = URL.canParse(input.documentUrl);
-  if (!parsedUrl) return err(validation('Consent document URL is invalid'));
+  const documentRef: ConsentDocumentRef | null = input.documentRef
+    ?? (input.documentUrl === undefined ? null : { mode: 'url', url: input.documentUrl });
+  if (documentRef === null) return err(validation('Consent document reference is required'));
+  let documentVersionRef: ConsentDocumentVersionRef;
+  if (documentRef.mode === 'url') {
+    if (!URL.canParse(documentRef.url)) return err(validation('Consent document URL is invalid'));
+    documentVersionRef = documentRef;
+  } else {
+    if (deps.documents === undefined) return err(validation('Hosted documents are unavailable'));
+    const versions = await deps.documents.listVersions(tenantId.value, documentRef.documentId);
+    const published = versions.filter((version) => version.publishedAt !== null).at(-1);
+    if (published === undefined) return err(validation('Hosted consent document must be published'));
+    documentVersionRef = { mode: 'hosted', documentVersionId: published.id };
+  }
   const now = deps.clock.nowIso();
   const definition = {
     id: deps.ids.nextId(), tenantId: tenantId.value, key: input.key,
     kind: 'optional_marketing' as const, channel: 'email' as const,
-    doubleOptIn: input.doubleOptIn, documentRef: { mode: 'url' as const, url: input.documentUrl },
+    doubleOptIn: input.doubleOptIn, documentRef,
     status: 'active' as const, createdAt: now, updatedAt: now,
   };
   await deps.definitions.create(tenantId.value, definition, {
     id: deps.ids.nextId(), tenantId: tenantId.value, definitionId: definition.id,
-    version: 1, label: input.label, documentVersionRef: { mode: 'url', url: input.documentUrl },
+    version: 1, label: input.label, documentVersionRef,
     createdAt: now, createdBy: ctx.identity.userId,
   });
   return ok({ definition });
@@ -331,6 +348,7 @@ interface CampaignDeps {
   campaigns: CampaignRepository;
   audience: MarketingAudienceRepository;
   definitions: ConsentDefinitionRepository;
+  layouts?: EmailLayoutRepository;
   ids: IdGenerator;
   clock: Clock;
   scheduler: SchedulerPort;
@@ -338,16 +356,32 @@ interface CampaignDeps {
 
 export const createCampaign = async (
   ctx: Ctx,
-  input: { name: string; subject: string; bodyHtml: string; consentDefinitionId: string },
+  input: {
+    name: string;
+    subject: string;
+    bodyHtml: string;
+    consentDefinitionId: string;
+    productIds?: string[];
+    layoutId?: string | null;
+  },
   deps: CampaignDeps,
 ): Promise<Result<Campaign, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
+  const definition = await deps.definitions.findById(tenantId.value, input.consentDefinitionId);
+  if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
+    return err(validation('An active marketing consent definition is required'));
+  }
+  if (input.layoutId !== undefined && input.layoutId !== null) {
+    if (deps.layouts === undefined || await deps.layouts.findById(tenantId.value, input.layoutId) === null) {
+      return err(validation('E-mail layout was not found'));
+    }
+  }
   const now = deps.clock.nowIso();
   const campaign: Campaign = {
     id: deps.ids.nextId(), tenantId: tenantId.value, name: input.name, subject: input.subject,
-    bodyHtml: input.bodyHtml, bodySource: input.bodyHtml, layoutId: null, consentDefinitionId: input.consentDefinitionId,
-    audienceFilter: null, status: 'draft', sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null,
+    bodyHtml: input.bodyHtml, bodySource: input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
+    audienceFilter: input.productIds === undefined || input.productIds.length === 0 ? null : { productIds: input.productIds }, status: 'draft', sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null,
     toSend: 0, sent: 0, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
     audienceNameSnapshot: null, consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: now,
   };
@@ -418,7 +452,9 @@ export const scheduleCampaign = async (
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
   const definition = await deps.definitions.findById(tenantId.value, campaign.consentDefinitionId);
-  if (definition === null || definition.status !== 'active') return err(validation('Campaign requires an active consent definition'));
+  if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
+    return err(validation('Campaign requires an active marketing consent definition'));
+  }
   const versions = await deps.definitions.listVersions(tenantId.value, definition.id);
   const version = versions.at(-1);
   if (version === undefined) return err(validation('Consent definition has no wording version'));
@@ -557,9 +593,9 @@ export const sendMarketingMessages = async (
   if (!tenantId.ok) return tenantId;
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
-  if (!settings.broadcastsEnabled) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
+  if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const results: MarketingSendResult[] = [];
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
@@ -778,9 +814,9 @@ export const testSendCampaignToSelf = async (
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (campaign === null) return err(notFound('Campaign was not found'));
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
-  if (!settings.broadcastsEnabled) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
+  if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const versions = await deps.definitions.listVersions(tenantId.value, campaign.consentDefinitionId);
   const consentReference = campaign.consentLabelSnapshot ?? versions.at(-1)?.label;
   if (consentReference === undefined) return err(validation('Consent definition has no wording version'));

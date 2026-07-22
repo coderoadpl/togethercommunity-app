@@ -198,6 +198,36 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByTestId('product-row').first().waitFor(visible),
   },
   {
+    name: 'panel-marketing-campaigns',
+    auth: 'creator',
+    path: '/panel/marketing/campaigns',
+    ready: (page) => page.getByRole('heading', { name: 'Kampanie e-mail' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-consents',
+    auth: 'creator',
+    path: '/panel/marketing/consents',
+    ready: (page) => page.getByRole('heading', { name: 'Kreator zgód' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-documents',
+    auth: 'creator',
+    path: '/panel/marketing/documents',
+    ready: (page) => page.getByRole('heading', { name: 'Dokumenty prawne' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-layouts',
+    auth: 'creator',
+    path: '/panel/marketing/layouts',
+    ready: (page) => page.getByRole('heading', { name: 'Układy e-mail' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-settings',
+    auth: 'creator',
+    path: '/panel/marketing/settings',
+    ready: (page) => page.getByTestId('marketing-readiness').waitFor(visible),
+  },
+  {
     name: 'panel-course',
     auth: 'creator',
     path: '/panel/courses/course-js',

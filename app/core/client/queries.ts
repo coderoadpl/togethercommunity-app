@@ -24,6 +24,18 @@ import type {
   LessonUpdateInput,
   MemberProgressResetInput,
   MemberRemoveInput,
+  MarketingAudiencePreviewInput,
+  MarketingCampaignActionInput,
+  MarketingCampaignCreateInput,
+  MarketingCampaignScheduleInput,
+  MarketingCampaignUpdateInput,
+  MarketingConsentDefinitionCreateInput,
+  MarketingConsentDefinitionUpdateInput,
+  MarketingDocumentCreateInput,
+  MarketingDocumentPublishInput,
+  MarketingDocumentUpdateInput,
+  MarketingLayoutSaveInput,
+  MarketingSesSettingsUpdateInput,
   ModuleAttachInput,
   ModuleDetachInput,
   ModuleCreateInput,
@@ -237,6 +249,84 @@ export const notificationScopes = {
   list: () => ['notifications', 'list'] as const,
   unread: () => ['notifications', 'unread'] as const,
 };
+
+export const marketingScopes = {
+  all: () => ['marketing'] as const,
+  campaigns: () => ['marketing', 'campaigns'] as const,
+  campaign: (id: string) => ['marketing', 'campaigns', id] as const,
+  consents: () => ['marketing', 'consents'] as const,
+  consent: (id: string) => ['marketing', 'consents', id] as const,
+  documents: () => ['marketing', 'documents'] as const,
+  document: (id: string) => ['marketing', 'documents', id] as const,
+  layouts: () => ['marketing', 'layouts'] as const,
+  settings: () => ['marketing', 'settings'] as const,
+};
+
+export const marketingCampaignsQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.campaigns(), call: ({ signal }) => api.listMarketingCampaigns(signal),
+});
+export const marketingCampaignQuery = (api: ApiClient, id: string) => defineQuery({
+  queryKey: marketingScopes.campaign(id), call: ({ signal }) => api.getMarketingCampaign(id, signal),
+});
+export const createMarketingCampaignMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.campaigns(), 'create'], call: (input: MarketingCampaignCreateInput) => api.createMarketingCampaign(input),
+});
+export const updateMarketingCampaignMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.campaigns(), 'update'], call: (input: MarketingCampaignUpdateInput) => api.updateMarketingCampaign(input),
+});
+export const scheduleMarketingCampaignMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.campaigns(), 'schedule'], call: (input: MarketingCampaignScheduleInput) => api.scheduleMarketingCampaign(input),
+});
+export const marketingCampaignActionMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.campaigns(), 'action'], call: (input: MarketingCampaignActionInput) => api.actOnMarketingCampaign(input),
+});
+export const testMarketingCampaignMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.campaigns(), 'test'], call: (input: { campaignId: string }) => api.testMarketingCampaign(input),
+});
+export const previewMarketingAudienceMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.campaigns(), 'audience'], call: (input: MarketingAudiencePreviewInput) => api.previewMarketingAudience(input),
+});
+export const marketingConsentsQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.consents(), call: ({ signal }) => api.listMarketingConsentDefinitions(signal),
+});
+export const marketingConsentQuery = (api: ApiClient, id: string) => defineQuery({
+  queryKey: marketingScopes.consent(id), call: ({ signal }) => api.getMarketingConsentDefinition(id, signal),
+});
+export const createMarketingConsentMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.consents(), 'create'], call: (input: MarketingConsentDefinitionCreateInput) => api.createMarketingConsentDefinition(input),
+});
+export const updateMarketingConsentMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.consents(), 'update'], call: (input: MarketingConsentDefinitionUpdateInput) => api.updateMarketingConsentDefinition(input),
+});
+export const marketingDocumentsQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.documents(), call: ({ signal }) => api.listMarketingDocuments(signal),
+});
+export const marketingDocumentQuery = (api: ApiClient, id: string) => defineQuery({
+  queryKey: marketingScopes.document(id), call: ({ signal }) => api.getMarketingDocument(id, signal),
+});
+export const createMarketingDocumentMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.documents(), 'create'], call: (input: MarketingDocumentCreateInput) => api.createMarketingDocument(input),
+});
+export const updateMarketingDocumentMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.documents(), 'update'], call: (input: MarketingDocumentUpdateInput) => api.updateMarketingDocument(input),
+});
+export const publishMarketingDocumentMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.documents(), 'publish'], call: (input: MarketingDocumentPublishInput) => api.publishMarketingDocument(input),
+});
+export const marketingLayoutsQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.layouts(), call: ({ signal }) => api.listMarketingLayouts(signal),
+});
+export const saveMarketingLayoutMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.layouts(), 'save'], call: (input: MarketingLayoutSaveInput) => api.saveMarketingLayout(input),
+});
+export const marketingSesSettingsQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.settings(), call: ({ signal }) => api.getMarketingSesSettings(signal),
+});
+export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
+});
+
+export const marketingInvalidates = () => ({ queryKey: marketingScopes.all() });
 
 export const meQuery = (api: ApiClient) =>
   defineQuery({

@@ -121,6 +121,17 @@ const setup = async (emails = ['member@example.test']) => {
 };
 
 describe('marketing e-mail use-case integration', () => {
+  it('derives send readiness instead of trusting a stale persisted flag', async () => {
+    const deps = await setup();
+    deps.sesSettings = new InMemoryTenantSesSettingsRepository([{ ...settings, broadcastsEnabled: false }]);
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1', source: 'broadcast',
+      consentDefinitionId: definition.id, subject: 'Hello', bodyHtml: '<p>Content</p>', data: {},
+    }], deps);
+    expect(result.ok).toBe(true);
+    expect(deps.ses.sent).toHaveLength(1);
+  });
+
   it('I1 uses one parity path for broadcast and API sends, including identical refusals', async () => {
     const deps = await setup(['broadcast@example.test', 'api@example.test']);
     const broadcast = await sendMarketingMessages(ctx, [{

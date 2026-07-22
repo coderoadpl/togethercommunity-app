@@ -79,8 +79,14 @@ import {
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
   campaignSchema,
+  consentDefinitionVersionSchema,
+  consentDocumentRefSchema,
   consentDefinitionSchema,
+  emailLayoutSchema,
   suppressionSchema,
+  tenantDocumentSchema,
+  tenantDocumentVersionSchema,
+  tenantSesSettingsSchema,
   updateTenantSettingsInputSchema,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
@@ -742,24 +748,91 @@ export const marketingConsentDefinitionCreateInputSchema = z.object({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   label: z.string().trim().min(1),
   doubleOptIn: z.boolean().default(true),
-  documentUrl: z.string().url(),
+  documentRef: consentDocumentRefSchema,
 });
 
 export const marketingConsentDefinitionsOutputSchema = z.object({ definitions: z.array(consentDefinitionSchema) });
 export const marketingConsentDefinitionOutputSchema = z.object({ definition: consentDefinitionSchema.nullable() });
+export const marketingConsentDefinitionDetailOutputSchema = z.object({
+  definition: consentDefinitionSchema,
+  versions: z.array(consentDefinitionVersionSchema),
+});
+export const marketingConsentDefinitionUpdateInputSchema = z.object({
+  definitionId: z.string().min(1),
+  label: z.string().trim().min(1),
+  doubleOptIn: z.boolean(),
+  documentRef: consentDocumentRefSchema,
+  status: z.enum(['active', 'archived']),
+});
 export const marketingCampaignCreateInputSchema = z.object({
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
   bodyHtml: z.string().min(1), consentDefinitionId: z.string().min(1),
+  productIds: z.array(z.string().min(1)).default([]),
+  layoutId: z.string().min(1).nullable().default(null),
 });
 export const marketingCampaignScheduleInputSchema = z.object({ campaignId: z.string().min(1), sendAt: z.string().datetime() });
+export const marketingCampaignUpdateInputSchema = marketingCampaignCreateInputSchema.extend({ campaignId: z.string().min(1) });
+export const marketingCampaignActionInputSchema = z.object({
+  campaignId: z.string().min(1),
+  action: z.enum(['pause', 'resume', 'cancel']),
+});
+export const marketingAudiencePreviewInputSchema = z.object({
+  consentDefinitionId: z.string().min(1),
+  productIds: z.array(z.string().min(1)).default([]),
+});
+export const marketingAudiencePreviewOutputSchema = z.object({ count: z.number().int().nonnegative() });
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
 export const marketingCampaignsOutputSchema = z.object({ campaigns: z.array(campaignSchema) });
+export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
+export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
+export const marketingDocumentDetailOutputSchema = z.object({
+  document: tenantDocumentSchema,
+  versions: z.array(tenantDocumentVersionSchema),
+});
+export const marketingDocumentCreateInputSchema = z.object({
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  title: z.string().trim().min(1),
+  content: z.string().trim().min(1),
+});
+export const marketingDocumentUpdateInputSchema = z.object({
+  documentId: z.string().min(1), title: z.string().trim().min(1), content: z.string().trim().min(1),
+});
+export const marketingDocumentPublishInputSchema = z.object({ documentId: z.string().min(1) });
+export const marketingLayoutsOutputSchema = z.object({ layouts: z.array(emailLayoutSchema) });
+export const marketingLayoutOutputSchema = z.object({ layout: emailLayoutSchema });
+export const marketingLayoutSaveInputSchema = z.object({
+  layoutId: z.string().min(1).optional(), name: z.string().trim().min(1), bodyHtml: z.string().min(1),
+});
+export const marketingSesSettingsOutputSchema = z.object({
+  settings: tenantSesSettingsSchema.nullable(),
+  credentialsConfigured: z.boolean(),
+  webhookUrl: z.string().url().nullable(),
+});
+export const marketingSesSettingsUpdateInputSchema = z.object({
+  fromAddress: z.string().email(),
+  fromName: z.string().trim().min(1),
+  identity: z.string().trim().min(1),
+  identityVerified: z.boolean(),
+  configurationSet: z.string().trim().min(1).nullable(),
+  snsTopicArn: z.string().trim().min(1).nullable(),
+  footerLegalName: z.string(),
+  footerAddress: z.string(),
+});
 export const marketingSuppressionCreateInputSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).nullable().default(null) });
 export const marketingSuppressionsOutputSchema = z.object({ suppressions: z.array(suppressionSchema), nextCursor: z.string().nullable() });
 export const marketingSuppressionOutputSchema = z.object({ suppression: suppressionSchema });
 export type MarketingConsentDefinitionCreateInput = z.input<typeof marketingConsentDefinitionCreateInputSchema>;
 export type MarketingCampaignCreateInput = z.input<typeof marketingCampaignCreateInputSchema>;
 export type MarketingCampaignScheduleInput = z.input<typeof marketingCampaignScheduleInputSchema>;
+export type MarketingCampaignUpdateInput = z.input<typeof marketingCampaignUpdateInputSchema>;
+export type MarketingCampaignActionInput = z.input<typeof marketingCampaignActionInputSchema>;
+export type MarketingAudiencePreviewInput = z.input<typeof marketingAudiencePreviewInputSchema>;
+export type MarketingConsentDefinitionUpdateInput = z.input<typeof marketingConsentDefinitionUpdateInputSchema>;
+export type MarketingDocumentCreateInput = z.input<typeof marketingDocumentCreateInputSchema>;
+export type MarketingDocumentUpdateInput = z.input<typeof marketingDocumentUpdateInputSchema>;
+export type MarketingDocumentPublishInput = z.input<typeof marketingDocumentPublishInputSchema>;
+export type MarketingLayoutSaveInput = z.input<typeof marketingLayoutSaveInputSchema>;
+export type MarketingSesSettingsUpdateInput = z.input<typeof marketingSesSettingsUpdateInputSchema>;
 export type MarketingSuppressionCreateInput = z.input<typeof marketingSuppressionCreateInputSchema>;
 
 /**
@@ -872,10 +945,25 @@ export const API_ROUTES = {
   marketingTick: { method: 'POST', path: '/api/internal/marketing/tick' },
   marketingConsentDefinitions: { method: 'GET', path: '/api/marketing/consent-definitions' },
   marketingConsentDefinitionsCreate: { method: 'POST', path: '/api/marketing/consent-definitions' },
+  marketingConsentDefinition: { method: 'GET', path: '/api/marketing/consent-definitions/:id' },
+  marketingConsentDefinitionUpdate: { method: 'POST', path: '/api/marketing/consent-definitions/update' },
   marketingCampaigns: { method: 'GET', path: '/api/marketing/campaigns' },
   marketingCampaignsCreate: { method: 'POST', path: '/api/marketing/campaigns' },
   marketingCampaignSchedule: { method: 'POST', path: '/api/marketing/campaigns/schedule' },
+  marketingCampaignUpdate: { method: 'POST', path: '/api/marketing/campaigns/update' },
+  marketingCampaignAction: { method: 'POST', path: '/api/marketing/campaigns/action' },
+  marketingCampaignTest: { method: 'POST', path: '/api/marketing/campaigns/test' },
+  marketingAudiencePreview: { method: 'POST', path: '/api/marketing/audience-preview' },
   marketingCampaign: { method: 'GET', path: '/api/marketing/campaigns/:id' },
+  marketingDocuments: { method: 'GET', path: '/api/marketing/documents' },
+  marketingDocumentsCreate: { method: 'POST', path: '/api/marketing/documents' },
+  marketingDocument: { method: 'GET', path: '/api/marketing/documents/:id' },
+  marketingDocumentUpdate: { method: 'POST', path: '/api/marketing/documents/update' },
+  marketingDocumentPublish: { method: 'POST', path: '/api/marketing/documents/publish' },
+  marketingLayouts: { method: 'GET', path: '/api/marketing/layouts' },
+  marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
+  marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
+  marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
@@ -986,9 +1074,21 @@ export const API_PATHS = {
   marketingTemplates: API_ROUTES.marketingTemplates.path,
   marketingTick: API_ROUTES.marketingTick.path,
   marketingConsentDefinitions: API_ROUTES.marketingConsentDefinitions.path,
+  marketingConsentDefinition: API_ROUTES.marketingConsentDefinition.path,
+  marketingConsentDefinitionUpdate: API_ROUTES.marketingConsentDefinitionUpdate.path,
   marketingCampaigns: API_ROUTES.marketingCampaigns.path,
   marketingCampaignSchedule: API_ROUTES.marketingCampaignSchedule.path,
+  marketingCampaignUpdate: API_ROUTES.marketingCampaignUpdate.path,
+  marketingCampaignAction: API_ROUTES.marketingCampaignAction.path,
+  marketingCampaignTest: API_ROUTES.marketingCampaignTest.path,
+  marketingAudiencePreview: API_ROUTES.marketingAudiencePreview.path,
   marketingCampaign: API_ROUTES.marketingCampaign.path,
+  marketingDocuments: API_ROUTES.marketingDocuments.path,
+  marketingDocument: API_ROUTES.marketingDocument.path,
+  marketingDocumentUpdate: API_ROUTES.marketingDocumentUpdate.path,
+  marketingDocumentPublish: API_ROUTES.marketingDocumentPublish.path,
+  marketingLayouts: API_ROUTES.marketingLayouts.path,
+  marketingSesSettings: API_ROUTES.marketingSesSettings.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,

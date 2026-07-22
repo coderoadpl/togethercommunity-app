@@ -41,3 +41,4 @@ export * from './usecases/community.js';
 export * from './usecases/spaces.js';
 export * from './usecases/dispatch-email-batch.js';
 export * from './usecases/marketing-email.js';
+export * from './usecases/marketing-management.js';

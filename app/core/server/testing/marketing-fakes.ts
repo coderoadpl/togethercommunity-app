@@ -14,6 +14,8 @@ import {
   type Result,
   type Suppression,
   type TenantSesSettings,
+  type TenantDocument,
+  type TenantDocumentVersion,
   type UnsubscribeToken,
   type EmailOutboxPayload,
 } from '@core/domain/index.js';
@@ -36,6 +38,7 @@ import type {
   SnsVerifier,
   SuppressionRepository,
   TenantSesSettingsRepository,
+  TenantDocumentRepository,
   UnsubscribeTokenRepository,
   VerifiedSnsEnvelope,
 } from '../ports.js';
@@ -156,6 +159,13 @@ export class InMemoryConsentDefinitionRepository implements ConsentDefinitionRep
       .map((row) => structuredClone(row));
   }
 
+  async update(tenantId: string, definition: ConsentDefinition): Promise<ConsentDefinition | null> {
+    const index = this.definitions.findIndex((row) => sameTenant(tenantId, row) && row.id === definition.id);
+    if (index < 0 || !sameTenant(tenantId, definition)) return null;
+    this.definitions[index] = structuredClone(definition);
+    return structuredClone(definition);
+  }
+
   async appendVersion(tenantId: string, version: ConsentDefinitionVersion): Promise<void> {
     if (!sameTenant(tenantId, version)) throw new Error('Tenant mismatch');
     if (this.versions.some((row) => row.id === version.id || (
@@ -169,6 +179,87 @@ export class InMemoryConsentDefinitionRepository implements ConsentDefinitionRep
       .filter((row) => sameTenant(tenantId, row) && row.definitionId === definitionId)
       .sort((left, right) => left.version - right.version)
       .map((row) => structuredClone(row));
+  }
+}
+
+export class InMemoryTenantDocumentRepository implements TenantDocumentRepository {
+  private readonly documents: TenantDocument[] = [];
+  private readonly versions: TenantDocumentVersion[] = [];
+
+  async create(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<void> {
+    if (!sameTenant(tenantId, document) || !sameTenant(tenantId, draft) || draft.documentId !== document.id) {
+      throw new Error('Tenant document mismatch');
+    }
+    if (this.documents.some((row) => row.id === document.id || row.tenantId === tenantId && row.slug === document.slug)) {
+      throw new Error('Document already exists');
+    }
+    this.documents.push(structuredClone(document));
+    this.versions.push(structuredClone(draft));
+  }
+
+  async findById(tenantId: string, documentId: string): Promise<TenantDocument | null> {
+    const found = this.documents.find((row) => sameTenant(tenantId, row) && row.id === documentId);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async list(tenantId: string): Promise<TenantDocument[]> {
+    return this.documents.filter((row) => sameTenant(tenantId, row)).map((row) => structuredClone(row));
+  }
+
+  async listVersions(tenantId: string, documentId: string): Promise<TenantDocumentVersion[]> {
+    return this.versions
+      .filter((row) => sameTenant(tenantId, row) && row.documentId === documentId)
+      .sort((left, right) => left.version - right.version)
+      .map((row) => structuredClone(row));
+  }
+
+  async saveDraft(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<TenantDocumentVersion | null> {
+    const documentIndex = this.documents.findIndex((row) => sameTenant(tenantId, row) && row.id === document.id);
+    if (documentIndex < 0 || !sameTenant(tenantId, document) || !sameTenant(tenantId, draft)) return null;
+    this.documents[documentIndex] = structuredClone(document);
+    const draftIndex = this.versions.findIndex((row) =>
+      sameTenant(tenantId, row) && row.documentId === document.id && row.publishedAt === null
+    );
+    if (draftIndex >= 0) {
+      const current = this.versions[draftIndex];
+      if (current === undefined) return null;
+      const updated = { ...current, content: draft.content };
+      this.versions[draftIndex] = updated;
+      return structuredClone(updated);
+    }
+    this.versions.push(structuredClone(draft));
+    return structuredClone(draft);
+  }
+
+  async publishDraft(tenantId: string, documentId: string, publishedAt: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
+    const documentIndex = this.documents.findIndex((row) => sameTenant(tenantId, row) && row.id === documentId);
+    const versionIndex = this.versions.findIndex((row) =>
+      sameTenant(tenantId, row) && row.documentId === documentId && row.publishedAt === null
+    );
+    const document = this.documents[documentIndex];
+    const version = this.versions[versionIndex];
+    if (document === undefined || version === undefined) return null;
+    const publishedDocument = { ...document, status: 'published' as const, updatedAt: publishedAt };
+    const publishedVersion = { ...version, publishedAt };
+    this.documents[documentIndex] = publishedDocument;
+    this.versions[versionIndex] = publishedVersion;
+    return { document: structuredClone(publishedDocument), version: structuredClone(publishedVersion) };
+  }
+
+  async findLatestPublished(tenantId: string, slug: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
+    const document = this.documents.find((row) => sameTenant(tenantId, row) && row.slug === slug);
+    if (document === undefined) return null;
+    const published = (await this.listVersions(tenantId, document.id)).filter((version) => version.publishedAt !== null).at(-1);
+    return published === undefined ? null : { document: structuredClone(document), version: published };
+  }
+
+  async findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
+    const document = this.documents.find((row) => sameTenant(tenantId, row) && row.slug === slug);
+    if (document === undefined) return null;
+    const found = this.versions.find((row) =>
+      sameTenant(tenantId, row) && row.documentId === document.id && row.version === version && row.publishedAt !== null
+    );
+    return found === undefined ? null : { document: structuredClone(document), version: structuredClone(found) };
   }
 }
 
@@ -255,6 +346,13 @@ export class InMemoryEmailLayoutRepository implements EmailLayoutRepository {
 
   async list(tenantId: string): Promise<EmailLayout[]> {
     return this.rows.filter((row) => sameTenant(tenantId, row)).map((row) => structuredClone(row));
+  }
+
+  async update(tenantId: string, layout: EmailLayout): Promise<EmailLayout | null> {
+    const index = this.rows.findIndex((row) => sameTenant(tenantId, row) && row.id === layout.id);
+    if (index < 0 || !sameTenant(tenantId, layout)) return null;
+    this.rows[index] = structuredClone(layout);
+    return structuredClone(layout);
   }
 }
 

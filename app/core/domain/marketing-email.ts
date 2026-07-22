@@ -510,6 +510,13 @@ export const tenantSesSettingsSchema = z.object({
 
 export type TenantSesSettings = z.output<typeof tenantSesSettingsSchema>;
 
+export const tenantSesBroadcastsReady = (settings: TenantSesSettings): boolean =>
+  settings.identityVerifiedAt !== null
+  && settings.webhookVerifiedAt !== null
+  && settings.footerLegalName.trim() !== ''
+  && settings.footerAddress.trim() !== ''
+  && !settings.inSandbox;
+
 export const automationIdempotencyKeySchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),

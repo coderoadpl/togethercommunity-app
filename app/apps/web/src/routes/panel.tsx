@@ -22,6 +22,27 @@ export {
   PanelSpaceCreateRoute,
   PanelSpaceDetailRoute,
 } from '../features/home/panel-routes.js';
+export {
+  CampaignCreatePage,
+  CampaignDetailPage,
+  CampaignsPanel,
+} from '../features/home/marketing/CampaignsPanel.js';
+export {
+  ConsentCreatePage,
+  ConsentDetailPage,
+  ConsentsPanel,
+} from '../features/home/marketing/ConsentsPanel.js';
+export {
+  DocumentCreatePage,
+  DocumentDetailPage,
+  DocumentsPanel,
+} from '../features/home/marketing/DocumentsPanel.js';
+export {
+  LayoutCreatePage,
+  LayoutDetailPage,
+  LayoutsPanel,
+} from '../features/home/marketing/LayoutsPanel.js';
+export { MarketingSettingsPanel } from '../features/home/marketing/MarketingSettingsPanel.js';
 
 /**
  * The onboarding checklist is composed here, not inside the home feature:

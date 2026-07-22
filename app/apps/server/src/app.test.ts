@@ -416,6 +416,12 @@ const marketingDeps = (): MarketingAppDeps => ({
   unsubscribes: new InMemoryUnsubscribeTokenRepository(),
   sesSettings: new InMemoryTenantSesSettingsRepository(),
   documents: {
+    create: async () => undefined,
+    findById: async () => null,
+    list: async () => [],
+    listVersions: async () => [],
+    saveDraft: async () => null,
+    publishDraft: async () => null,
     findLatestPublished: async (tenantId, slug) => tenantId === 't-acme' && slug === 'terms' ? {
       document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z' },
       version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '2026-07-22T00:00:00.000Z', createdAt: '2026-07-22T00:00:00.000Z', createdBy: 'staff' },

@@ -601,6 +601,12 @@ export interface MarketingConsentRepository {
 }
 
 export interface TenantDocumentRepository {
+  create(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<void>;
+  findById(tenantId: string, documentId: string): Promise<TenantDocument | null>;
+  list(tenantId: string): Promise<TenantDocument[]>;
+  listVersions(tenantId: string, documentId: string): Promise<TenantDocumentVersion[]>;
+  saveDraft(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<TenantDocumentVersion | null>;
+  publishDraft(tenantId: string, documentId: string, publishedAt: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
   findLatestPublished(tenantId: string, slug: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
   findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
 }
@@ -636,6 +642,7 @@ export interface ConsentDefinitionRepository {
   create(tenantId: string, definition: ConsentDefinition, version: ConsentDefinitionVersion): Promise<void>;
   findById(tenantId: string, definitionId: string): Promise<ConsentDefinition | null>;
   list(tenantId: string, status?: ConsentDefinition['status']): Promise<ConsentDefinition[]>;
+  update(tenantId: string, definition: ConsentDefinition): Promise<ConsentDefinition | null>;
   appendVersion(tenantId: string, version: ConsentDefinitionVersion): Promise<void>;
   listVersions(tenantId: string, definitionId: string): Promise<ConsentDefinitionVersion[]>;
 }
@@ -662,6 +669,7 @@ export interface EmailLayoutRepository {
   create(tenantId: string, layout: EmailLayout): Promise<void>;
   findById(tenantId: string, layoutId: string): Promise<EmailLayout | null>;
   list(tenantId: string): Promise<EmailLayout[]>;
+  update(tenantId: string, layout: EmailLayout): Promise<EmailLayout | null>;
 }
 
 export interface CampaignSendRepository {

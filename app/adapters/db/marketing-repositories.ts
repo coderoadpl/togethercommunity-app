@@ -168,6 +168,13 @@ export const createConsentDefinitionRepository = (db: Db): ConsentDefinitionRepo
     return (await db.select().from(consentDefinitions).where(condition).orderBy(asc(consentDefinitions.key)))
       .map(parseDefinition);
   },
+  update: async (tenantId, definition) => {
+    const parsed = consentDefinitionSchema.parse({ ...definition, tenantId });
+    const [row] = await db.update(consentDefinitions).set(parsed).where(and(
+      eq(consentDefinitions.tenantId, tenantId), eq(consentDefinitions.id, parsed.id),
+    )).returning();
+    return row === undefined ? null : parseDefinition(row);
+  },
   appendVersion: async (tenantId, version) => {
     await db.insert(consentDefinitionVersions).values(consentDefinitionVersionSchema.parse({ ...version, tenantId }));
   },
@@ -193,6 +200,56 @@ export const createTenantDocumentRepository = (db: Db): TenantDocumentRepository
     };
   };
   return {
+    create: async (tenantId, document, draft) => {
+      await db.transaction(async (tx) => {
+        await tx.insert(tenantDocuments).values(tenantDocumentSchema.parse({ ...document, tenantId }));
+        await tx.insert(tenantDocumentVersions).values(tenantDocumentVersionSchema.parse({ ...draft, tenantId, documentId: document.id }));
+      });
+    },
+    findById: async (tenantId, documentId) => {
+      const [row] = await db.select().from(tenantDocuments).where(and(
+        eq(tenantDocuments.tenantId, tenantId), eq(tenantDocuments.id, documentId),
+      )).limit(1);
+      return row === undefined ? null : parseDocument(row);
+    },
+    list: async (tenantId) => (await db.select().from(tenantDocuments)
+      .where(eq(tenantDocuments.tenantId, tenantId)).orderBy(asc(tenantDocuments.title), asc(tenantDocuments.id)))
+      .map(parseDocument),
+    listVersions: async (tenantId, documentId) => (await db.select().from(tenantDocumentVersions).where(and(
+      eq(tenantDocumentVersions.tenantId, tenantId), eq(tenantDocumentVersions.documentId, documentId),
+    )).orderBy(asc(tenantDocumentVersions.version))).map(parseDocumentVersion),
+    saveDraft: async (tenantId, document, draft) => db.transaction(async (tx) => {
+      const parsedDocument = tenantDocumentSchema.parse({ ...document, tenantId });
+      const [storedDocument] = await tx.update(tenantDocuments).set(parsedDocument).where(and(
+        eq(tenantDocuments.tenantId, tenantId), eq(tenantDocuments.id, parsedDocument.id),
+      )).returning();
+      if (storedDocument === undefined) return null;
+      const [unpublished] = await tx.select().from(tenantDocumentVersions).where(and(
+        eq(tenantDocumentVersions.tenantId, tenantId),
+        eq(tenantDocumentVersions.documentId, parsedDocument.id),
+        isNull(tenantDocumentVersions.publishedAt),
+      )).orderBy(desc(tenantDocumentVersions.version)).limit(1);
+      if (unpublished !== undefined) {
+        const [updated] = await tx.update(tenantDocumentVersions).set({ content: draft.content }).where(and(
+          eq(tenantDocumentVersions.tenantId, tenantId), eq(tenantDocumentVersions.id, unpublished.id),
+        )).returning();
+        return updated === undefined ? null : parseDocumentVersion(updated);
+      }
+      const parsedDraft = tenantDocumentVersionSchema.parse({ ...draft, tenantId, documentId: parsedDocument.id });
+      const [inserted] = await tx.insert(tenantDocumentVersions).values(parsedDraft).returning();
+      return inserted === undefined ? null : parseDocumentVersion(inserted);
+    }),
+    publishDraft: async (tenantId, documentId, publishedAt) => db.transaction(async (tx) => {
+      const [version] = await tx.update(tenantDocumentVersions).set({ publishedAt }).where(and(
+        eq(tenantDocumentVersions.tenantId, tenantId), eq(tenantDocumentVersions.documentId, documentId),
+        isNull(tenantDocumentVersions.publishedAt),
+      )).returning();
+      if (version === undefined) return null;
+      const [document] = await tx.update(tenantDocuments).set({ status: 'published', updatedAt: publishedAt }).where(and(
+        eq(tenantDocuments.tenantId, tenantId), eq(tenantDocuments.id, documentId),
+      )).returning();
+      return document === undefined ? null : { document: parseDocument(document), version: parseDocumentVersion(version) };
+    }),
     findLatestPublished: (tenantId, slug) => find(tenantId, slug),
     findPublishedVersion: (tenantId, slug, version) => find(tenantId, slug, version),
   };
@@ -213,6 +270,13 @@ export const createEmailLayoutRepository = (db: Db): EmailLayoutRepository => ({
   list: async (tenantId) => (await db.select().from(emailLayouts)
     .where(eq(emailLayouts.tenantId, tenantId)).orderBy(asc(emailLayouts.name), asc(emailLayouts.id)))
     .map(parseLayout),
+  update: async (tenantId, layout) => {
+    const parsed = emailLayoutSchema.parse({ ...layout, tenantId });
+    const [row] = await db.update(emailLayouts).set(parsed).where(and(
+      eq(emailLayouts.tenantId, tenantId), eq(emailLayouts.id, parsed.id),
+    )).returning();
+    return row === undefined ? null : parseLayout(row);
+  },
 });
 
 export const createCampaignRepository = (db: Db): CampaignRepository => ({

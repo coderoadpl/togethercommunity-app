@@ -3,7 +3,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { Campaign, CampaignSend, ConsentDefinition, ConsentDefinitionVersion, EmailLayout, MarketingConsent } from '@core/domain/index.js';
+import type { Campaign, CampaignSend, ConsentDefinition, ConsentDefinitionVersion, EmailLayout, MarketingConsent, TenantDocument, TenantDocumentVersion } from '@core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
 import {
@@ -13,6 +13,7 @@ import {
   createConsentDefinitionRepository,
   createEmailLayoutRepository,
   createMarketingConsentRepository,
+  createTenantDocumentRepository,
 } from './marketing-repositories.js';
 import { tenants } from './schema.js';
 
@@ -128,7 +129,32 @@ describe('marketing database repositories', () => {
     expect(await repository.findById('tenant-a', layout.id)).toEqual(layout);
     expect(await repository.findById('tenant-b', layout.id)).toBeNull();
     expect(await repository.list('tenant-a')).toEqual([layout]);
+    expect(await repository.update('tenant-a', { ...layout, name: 'Newsletter' })).toEqual({ ...layout, name: 'Newsletter' });
     await expect(repository.create('tenant-a', { ...layout, id: 'invalid', bodyHtml: '<main>No slot</main>' }))
       .rejects.toThrow();
+  });
+
+  it('keeps published hosted document versions immutable and edits only the active draft', async () => {
+    const repository = createTenantDocumentRepository(db);
+    const document: TenantDocument = {
+      id: 'document-a', tenantId: 'tenant-a', slug: 'privacy', title: 'Privacy', status: 'draft',
+      createdAt: NOW, updatedAt: NOW,
+    };
+    const first: TenantDocumentVersion = {
+      id: 'document-version-a-1', tenantId: 'tenant-a', documentId: document.id, version: 1,
+      content: '# First', publishedAt: null, createdAt: NOW, createdBy: 'staff',
+    };
+    await repository.create('tenant-a', document, first);
+    expect(await repository.publishDraft('tenant-a', document.id, NOW)).not.toBeNull();
+    const second: TenantDocumentVersion = {
+      ...first, id: 'document-version-a-2', version: 2, content: '# Second', createdAt: '2026-07-22T01:00:00.000Z',
+    };
+    await repository.saveDraft('tenant-a', { ...document, status: 'published' }, second);
+    await repository.saveDraft('tenant-a', { ...document, status: 'published' }, { ...second, content: '# Revised second' });
+    expect((await repository.listVersions('tenant-a', document.id)).map(({ version, content, publishedAt }) => ({ version, content, publishedAt }))).toEqual([
+      { version: 1, content: '# First', publishedAt: NOW },
+      { version: 2, content: '# Revised second', publishedAt: null },
+    ]);
+    expect(await repository.findById('tenant-b', document.id)).toBeNull();
   });
 });

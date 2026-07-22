@@ -9,6 +9,7 @@ import {
   type ConsentConfirmationToken,
   type ConsentDefinition,
   type ConsentDefinitionVersion,
+  type EmailLayout,
   type MarketingConsent,
   type Result,
   type Suppression,
@@ -23,6 +24,7 @@ import type {
   CampaignSendRepository,
   ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
+  EmailLayoutRepository,
   EmailHmac,
   MarketingConsentRepository,
   MarketingAudienceMember,
@@ -232,6 +234,30 @@ export class InMemoryCampaignRepository implements CampaignRepository {
   }
 }
 
+export class InMemoryEmailLayoutRepository implements EmailLayoutRepository {
+  private readonly rows: EmailLayout[] = [];
+
+  constructor(rows: EmailLayout[] = []) {
+    this.rows = structuredClone(rows);
+  }
+
+  async create(tenantId: string, layout: EmailLayout): Promise<void> {
+    if (!sameTenant(tenantId, layout) || this.rows.some((row) => row.id === layout.id)) {
+      throw new Error('Layout already exists');
+    }
+    this.rows.push(structuredClone(layout));
+  }
+
+  async findById(tenantId: string, layoutId: string): Promise<EmailLayout | null> {
+    const found = this.rows.find((row) => sameTenant(tenantId, row) && row.id === layoutId);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async list(tenantId: string): Promise<EmailLayout[]> {
+    return this.rows.filter((row) => sameTenant(tenantId, row)).map((row) => structuredClone(row));
+  }
+}
+
 export class InMemoryCampaignSendRepository implements CampaignSendRepository {
   private readonly rows: CampaignSend[] = [];
   afterClaim: ((send: CampaignSend) => Promise<void>) | null = null;
@@ -239,7 +265,8 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
 
   async claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean> {
     if (!sameTenant(tenantId, send) || this.rows.some((row) => row.id === send.id)) return false;
-    if (send.campaignId !== null && this.rows.some((row) =>
+    if (send.source === 'broadcast' && send.campaignId !== null && this.rows.some((row) =>
+      row.source === 'broadcast' &&
       row.tenantId === tenantId && row.campaignId === send.campaignId && row.email === normalizeEmail(send.email)
     )) return false;
     this.rows.push(structuredClone(send));

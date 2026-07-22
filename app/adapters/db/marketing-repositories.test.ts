@@ -3,13 +3,16 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { Campaign, ConsentDefinition, ConsentDefinitionVersion } from '@core/domain/index.js';
+import type { Campaign, CampaignSend, ConsentDefinition, ConsentDefinitionVersion, EmailLayout, MarketingConsent } from '@core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
+  createCampaignSendRepository,
   createConsentDefinitionRepository,
+  createEmailLayoutRepository,
+  createMarketingConsentRepository,
 } from './marketing-repositories.js';
 import { tenants } from './schema.js';
 
@@ -85,5 +88,47 @@ describe('marketing database repositories', () => {
     expect(await repository.claim('tenant-a', record)).toBeNull();
     expect(await repository.claim('tenant-a', { ...record, id: 'idem-2' })).toEqual(record);
     expect(await repository.claim('tenant-b', { ...record, id: 'idem-3', tenantId: 'tenant-b' })).toBeNull();
+  });
+
+  it('allows distinct API drip steps in one campaign and still deduplicates broadcast recipients', async () => {
+    const tenantId = 'tenant-drip';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Drip', createdAt: NOW });
+    const definitions = createConsentDefinitionRepository(db);
+    await definitions.create(tenantId, definition(tenantId), version(tenantId));
+    const campaigns = createCampaignRepository(db);
+    await campaigns.create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-drip', tenantId, memberId: null, email: 'buyer@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' }, status: 'confirmed',
+      previousId: null, source: 'api', evidence: { collectedAt: NOW, proofRef: 'checkout' }, occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, source: CampaignSend['source'], idempotencySource: string | null): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source, memberId: null, email: consent.email,
+      consentRowId: consent.id, unsubscribeTokenId: null, status: 'pending', skipReason: null,
+      sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null, idempotencySource,
+      renderedBodyPurgedAt: null, createdAt: NOW, sentAt: null,
+    });
+    expect(await sends.claimRecipient(tenantId, send('api-1', 'api', 'drip0-order-1'))).toBe(true);
+    expect(await sends.claimRecipient(tenantId, send('api-2', 'api', 'drip3-order-1'))).toBe(true);
+    expect(await sends.claimRecipient(tenantId, send('api-3', 'api', 'drip7-order-1'))).toBe(true);
+    expect(await sends.claimRecipient(tenantId, send('broadcast-1', 'broadcast', null))).toBe(true);
+    expect(await sends.claimRecipient(tenantId, send('broadcast-2', 'broadcast', null))).toBe(false);
+  });
+
+  it('stores only tenant-scoped layouts with one content slot', async () => {
+    const repository = createEmailLayoutRepository(db);
+    const layout: EmailLayout = {
+      id: 'layout-a', tenantId: 'tenant-a', name: 'Default', bodyHtml: '<main>{{{content}}}</main>',
+      createdAt: NOW, updatedAt: NOW,
+    };
+    await repository.create('tenant-a', layout);
+    expect(await repository.findById('tenant-a', layout.id)).toEqual(layout);
+    expect(await repository.findById('tenant-b', layout.id)).toBeNull();
+    expect(await repository.list('tenant-a')).toEqual([layout]);
+    await expect(repository.create('tenant-a', { ...layout, id: 'invalid', bodyHtml: '<main>No slot</main>' }))
+      .rejects.toThrow();
   });
 });

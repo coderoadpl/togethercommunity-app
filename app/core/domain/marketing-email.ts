@@ -425,6 +425,27 @@ export const campaignCanTransition = (from: CampaignStatus, to: CampaignStatus):
 export const campaignCanEditContent = (status: CampaignStatus): boolean =>
   status === 'draft' || status === 'scheduled';
 
+const rawContentSlot = /\{\{\{\s*content\s*\}\}\}/g;
+
+export const emailLayoutSchema = z.object({
+  id: z.string().min(1),
+  tenantId: z.string().min(1),
+  name: z.string().trim().min(1),
+  bodyHtml: z.string().min(1),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+}).superRefine((layout, ctx) => {
+  if ((layout.bodyHtml.match(rawContentSlot) ?? []).length !== 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['bodyHtml'],
+      message: 'Marketing layouts require exactly one raw content slot',
+    });
+  }
+});
+
+export type EmailLayout = z.output<typeof emailLayoutSchema>;
+
 export const campaignSendSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),

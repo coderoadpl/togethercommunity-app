@@ -27,6 +27,7 @@ import {
   InMemoryCampaignSendRepository,
   InMemoryConsentConfirmationTokenRepository,
   InMemoryConsentDefinitionRepository,
+  InMemoryEmailLayoutRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
   InMemorySuppressionRepository,
@@ -408,6 +409,7 @@ const marketingDeps = (): MarketingAppDeps => ({
   marketingConsents: new InMemoryMarketingConsentRepository(),
   confirmations: new InMemoryConsentConfirmationTokenRepository(),
   campaigns: new InMemoryCampaignRepository(),
+  layouts: new InMemoryEmailLayoutRepository(),
   campaignSends: new InMemoryCampaignSendRepository(),
   audience: new InMemoryMarketingAudienceRepository(),
   suppressions: new InMemorySuppressionRepository(),
@@ -447,13 +449,46 @@ const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> 
 
 describe('marketing HTTP surfaces', () => {
   it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
-    const app = marketingApp();
+    const marketing = marketingDeps();
+    marketing.layouts = new InMemoryEmailLayoutRepository([{
+      id: 'layout-1', tenantId: 't-acme', name: 'Default', bodyHtml: '<main>{{{content}}}</main>',
+      createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z',
+    }]);
+    const app = marketingApp(marketing);
     const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
-    expect((await app.request('/api/m2m/marketing/templates', { headers })).status).toBe(200);
+    const templates = await app.request('/api/m2m/marketing/templates', { headers });
+    expect(templates.status).toBe(200);
+    expect(await templates.json()).toMatchObject({
+      ok: true,
+      data: { layouts: [{ id: 'layout-1', name: 'Default' }] },
+    });
     expect((await app.request('/api/m2m/marketing/templates', { headers: { host: headers.host } })).status).toBe(401);
     const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
+    const marketing = marketingDeps();
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      snsTopicArn: null, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
+      quotaDaily: 1000, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
+      webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
+      footerAddress: 'Warsaw', broadcastsEnabled: true,
+    }]);
+    const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: [
+        { to: 'one@example.test', consentDefinitionId: 'definition-1', subject: 'One', bodyHtml: '<p>One</p>' },
+        { to: 'two@example.test', consentDefinitionId: 'definition-1', subject: 'Two', bodyHtml: '<p>Two</p>' },
+      ] }),
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('1');
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
   });
 
   it('serves the latest published hosted document on the tenant domain', async () => {

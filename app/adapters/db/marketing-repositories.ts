@@ -7,6 +7,7 @@ import {
   consentConfirmationTokenSchema,
   consentDefinitionSchema,
   consentDefinitionVersionSchema,
+  emailLayoutSchema,
   marketingConsentSchema,
   normalizeEmail,
   suppressionSchema,
@@ -23,6 +24,7 @@ import type {
   CampaignSendRepository,
   ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
+  EmailLayoutRepository,
   EmailHmac,
   MarketingAudienceRepository,
   MarketingConsentRepository,
@@ -39,6 +41,7 @@ import {
   consentConfirmationTokens,
   consentDefinitions,
   consentDefinitionVersions,
+  emailLayouts,
   marketingConsents,
   marketingIdempotencyKeys,
   members,
@@ -66,6 +69,9 @@ const parseDefinition = (row: typeof consentDefinitions.$inferSelect) => consent
   ...row, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
 });
 const parseDefinitionVersion = (row: typeof consentDefinitionVersions.$inferSelect) => consentDefinitionVersionSchema.parse({ ...row, createdAt: iso(row.createdAt) });
+const parseLayout = (row: typeof emailLayouts.$inferSelect) => emailLayoutSchema.parse({
+  ...row, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
+});
 const parseDocument = (row: typeof tenantDocuments.$inferSelect) => tenantDocumentSchema.parse({ ...row, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) });
 const parseDocumentVersion = (row: typeof tenantDocumentVersions.$inferSelect) => tenantDocumentVersionSchema.parse({
   ...row, publishedAt: nullableIso(row.publishedAt), createdAt: iso(row.createdAt),
@@ -193,6 +199,21 @@ export const createTenantDocumentRepository = (db: Db): TenantDocumentRepository
 };
 
 const campaignValues = (tenantId: string, campaign: Campaign): Campaign => campaignSchema.parse({ ...campaign, tenantId });
+
+export const createEmailLayoutRepository = (db: Db): EmailLayoutRepository => ({
+  create: async (tenantId, layout) => {
+    await db.insert(emailLayouts).values(emailLayoutSchema.parse({ ...layout, tenantId }));
+  },
+  findById: async (tenantId, layoutId) => {
+    const [row] = await db.select().from(emailLayouts).where(and(
+      eq(emailLayouts.tenantId, tenantId), eq(emailLayouts.id, layoutId),
+    )).limit(1);
+    return row === undefined ? null : parseLayout(row);
+  },
+  list: async (tenantId) => (await db.select().from(emailLayouts)
+    .where(eq(emailLayouts.tenantId, tenantId)).orderBy(asc(emailLayouts.name), asc(emailLayouts.id)))
+    .map(parseLayout),
+});
 
 export const createCampaignRepository = (db: Db): CampaignRepository => ({
   create: async (tenantId, campaign) => { await db.insert(campaigns).values(campaignValues(tenantId, campaign)); },

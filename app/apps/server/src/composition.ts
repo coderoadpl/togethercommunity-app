@@ -8,6 +8,7 @@ import {
   createCampaignSendRepository,
   createConsentConfirmationTokenRepository,
   createConsentDefinitionRepository,
+  createEmailLayoutRepository,
   createMarketingAudienceRepository,
   createMarketingConsentRepository,
   createSuppressionRepository,
@@ -85,6 +86,7 @@ import type {
   EmailPort,
   EmailOutboxRepository,
   EmailHmac,
+  EmailLayoutRepository,
   AutomationIdempotencyRepository,
   CampaignRepository,
   CampaignSendRepository,
@@ -215,6 +217,7 @@ export interface MarketingAppDeps {
   marketingConsents: MarketingConsentRepository;
   confirmations: ConsentConfirmationTokenRepository;
   campaigns: CampaignRepository;
+  layouts: EmailLayoutRepository;
   campaignSends: CampaignSendRepository;
   audience: MarketingAudienceRepository;
   suppressions: SuppressionRepository;
@@ -265,6 +268,7 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
   const campaigns = createCampaignRepository(db);
+  const layouts = createEmailLayoutRepository(db);
   const campaignSends = createCampaignSendRepository(db);
   const audience = createMarketingAudienceRepository(db, emailHmac);
   const suppressions = createSuppressionRepository(db);
@@ -323,7 +327,7 @@ export const createDeps = (env: Env): AppDeps => {
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
       },
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
-      definitions, consents: marketingConsents, campaigns, sends: campaignSends, audience,
+      definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       hmac: emailHmac, ids, tokens, clock, unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox,
     });
@@ -480,6 +484,7 @@ export const createDeps = (env: Env): AppDeps => {
       marketingConsents,
       confirmations,
       campaigns,
+      layouts,
       campaignSends,
       audience,
       suppressions,

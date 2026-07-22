@@ -7,6 +7,7 @@ import type {
   EntityKind,
   EmailBranding,
   EmailMessage,
+  EmailLayout,
   EmailOutboxPayload,
   Member,
   MemberGrant,
@@ -655,6 +656,12 @@ export interface CampaignRepository {
     campaignId: string,
     input: { cursorMemberId: string; sentDelta: number; failedDelta: number },
   ): Promise<Campaign | null>;
+}
+
+export interface EmailLayoutRepository {
+  create(tenantId: string, layout: EmailLayout): Promise<void>;
+  findById(tenantId: string, layoutId: string): Promise<EmailLayout | null>;
+  list(tenantId: string): Promise<EmailLayout[]>;
 }
 
 export interface CampaignSendRepository {

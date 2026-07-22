@@ -18,6 +18,7 @@ import {
   InMemoryCampaignSendRepository,
   InMemoryConsentConfirmationTokenRepository,
   InMemoryConsentDefinitionRepository,
+  InMemoryEmailLayoutRepository,
   InMemoryEmailOutboxRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
@@ -107,6 +108,7 @@ const setup = async (emails = ['member@example.test']) => {
     definitions, consents, confirmations: new InMemoryConsentConfirmationTokenRepository(),
     suppressions: new InMemorySuppressionRepository(), unsubscribes: new InMemoryUnsubscribeTokenRepository(),
     sends: new InMemoryCampaignSendRepository(), campaigns: new InMemoryCampaignRepository([campaign()]),
+    layouts: new InMemoryEmailLayoutRepository(),
     audience: new InMemoryMarketingAudienceRepository(emails.map((email, index) => ({
       memberId: `member-${String(index + 1)}`, email, displayName: null, productIds: [],
     }))),
@@ -169,6 +171,42 @@ describe('marketing e-mail use-case integration', () => {
       expect(result).toMatchObject({ ok: true, value: [{ status: 'skipped', reason: item.reason }, { status: 'skipped', reason: item.reason }] });
       expect(deps.ses.sent).toHaveLength(0);
     }
+  });
+
+  it('M28 sends every API drip step sharing a campaign when idempotency keys differ', async () => {
+    const deps = await setup();
+    const results = [];
+    for (const idempotencySource of ['drip0-order-1', 'drip3-order-1', 'drip7-order-1']) {
+      results.push(await sendMarketingMessages(ctx, [{
+        to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1', source: 'api',
+        consentDefinitionId: definition.id, subject: idempotencySource, bodyHtml: '<p>Drip step</p>',
+        data: {}, idempotencySource,
+      }], deps));
+    }
+    expect(results).toMatchObject([
+      { ok: true, value: [{ status: 'sent' }] },
+      { ok: true, value: [{ status: 'sent' }] },
+      { ok: true, value: [{ status: 'sent' }] },
+    ]);
+    expect(deps.ses.sent).toHaveLength(3);
+    expect(await deps.sends.listByCampaign('tenant-1', 'campaign-1')).toHaveLength(3);
+  });
+
+  it('M32 composes campaign content through the tenant layout content slot', async () => {
+    const deps = await setup();
+    await deps.layouts.create('tenant-1', {
+      id: 'layout-1', tenantId: 'tenant-1', name: 'Branded',
+      bodyHtml: '<html><body><header>{{tenant.name}}</header><main>{{{content}}}</main></body></html>',
+      createdAt: NOW, updatedAt: NOW,
+    });
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1', source: 'broadcast',
+      consentDefinitionId: definition.id, subject: 'Hello', bodyHtml: '<p>Campaign content</p>',
+      layoutId: 'layout-1', data: {},
+    }], deps);
+    expect(result).toMatchObject({ ok: true, value: [{ status: 'sent' }] });
+    expect(deps.ses.sent[0]?.html).toContain('<header>Tenant</header><main><p>Campaign content</p>');
+    expect(deps.ses.sent[0]?.html).toContain('</main></body></html>');
   });
 
   it('I2 and I3 re-check eligibility after fetch and again after claim', async () => {

@@ -35,6 +35,7 @@ import type {
   Clock,
   ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
+  EmailLayoutRepository,
   EmailHmac,
   EmailOutboxRepository,
   IdGenerator,
@@ -469,6 +470,7 @@ export const updateCampaignContent = async (
 };
 
 interface SendDeps extends EligibilityDeps {
+  layouts: EmailLayoutRepository;
   sends: CampaignSendRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
@@ -488,6 +490,7 @@ export interface MarketingMessageInput {
   consentDefinitionId: string;
   subject: string;
   bodyHtml: string;
+  layoutId?: string | null;
   data: Record<string, unknown>;
   idempotencySource?: string;
 }
@@ -513,9 +516,14 @@ const renderMarketingPayload = (input: {
   legalName: string;
   address: string;
   consentReference: string;
+  layoutHtml: string | null;
 }): Result<{ subject: string; html: string; text: string; headers: Record<string, string> }, AppError> => {
   const footer = `<footer><p>${input.legalName}</p><p>${input.address}</p><p>${input.consentReference}</p><p><a href="${input.unsubscribeUrl}">Unsubscribe</a></p></footer>`;
-  const body = renderMarketingTemplate(`${input.bodyHtml}${footer}`, input.data);
+  const content = renderMarketingTemplate(`${input.bodyHtml}${footer}`, input.data);
+  if (!content.ok) return content;
+  const body = input.layoutHtml === null
+    ? content
+    : renderMarketingTemplate(input.layoutHtml, { ...input.data, content: content.value });
   if (!body.ok) return body;
   const subject = renderMarketingTemplate(input.subject, input.data);
   if (!subject.ok) return subject;
@@ -603,18 +611,43 @@ export const sendMarketingMessages = async (
       id: unsubscribeTokenId, tenantId: tenantId.value, token, email: send.email, memberId: input.memberId,
       campaignSendId: sendId, scope: `consent:${input.consentDefinitionId}`, createdAt: deps.clock.nowIso(), usedAt: null,
     });
+    const layout = input.layoutId === undefined || input.layoutId === null
+      ? null
+      : await deps.layouts.findById(tenantId.value, input.layoutId);
+    if (input.layoutId !== undefined && input.layoutId !== null && layout === null) {
+      await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, status: 'failed' });
+      results.push({
+        to: send.email,
+        sendId,
+        status: 'failed',
+        error: notFound('Marketing e-mail layout was not found'),
+      });
+      continue;
+    }
     const rendered = renderMarketingPayload({
       subject: input.subject,
       bodyHtml: input.bodyHtml,
       data: {
         ...input.data,
         member: { ...recordValue(input.data['member']), email: send.email },
+        tenant: {
+          ...recordValue(input.data['tenant']),
+          name: ctx.identity.tenantName ?? settings.fromName,
+          legalName: settings.footerLegalName,
+          address: settings.footerAddress,
+        },
+        brand: {
+          ...recordValue(input.data['brand']),
+          name: settings.fromName,
+          identity: settings.identity,
+        },
         unsubscribeUrl,
       },
       unsubscribeUrl,
       legalName: settings.footerLegalName,
       address: settings.footerAddress,
       consentReference: dequeue.eligibility.consentRow.wordingSnapshot,
+      layoutHtml: layout?.bodyHtml ?? null,
     });
     if (!rendered.ok) {
       await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, status: 'failed' });
@@ -700,7 +733,8 @@ export const campaignTick = async (
     const outcome = await sendMarketingMessages(ctx, [{
       to: member.email, memberId: member.memberId, campaignId: campaign.id, source: 'broadcast',
       consentDefinitionId: campaign.consentDefinitionId, subject: campaign.subject,
-      bodyHtml: campaign.bodyHtml, data: { member: { email: member.email, name: member.displayName } },
+      bodyHtml: campaign.bodyHtml, layoutId: campaign.layoutId,
+      data: { member: { email: member.email, name: member.displayName } },
     }], deps);
     if (!outcome.ok) return outcome;
     const item = outcome.value[0];
@@ -750,6 +784,8 @@ export const testSendCampaignToSelf = async (
   const versions = await deps.definitions.listVersions(tenantId.value, campaign.consentDefinitionId);
   const consentReference = campaign.consentLabelSnapshot ?? versions.at(-1)?.label;
   if (consentReference === undefined) return err(validation('Consent definition has no wording version'));
+  const layout = campaign.layoutId === null ? null : await deps.layouts.findById(tenantId.value, campaign.layoutId);
+  if (campaign.layoutId !== null && layout === null) return err(notFound('Marketing e-mail layout was not found'));
   const unsubscribeTokenId = deps.ids.nextId();
   const token = deps.tokens.nextToken();
   const unsubscribeUrl = `${deps.unsubscribeBaseUrl}/${token}`;
@@ -767,11 +803,21 @@ export const testSendCampaignToSelf = async (
   const rendered = renderMarketingPayload({
     subject: campaign.subject,
     bodyHtml: campaign.bodyHtml,
-    data: { member: { email: ctx.identity.email, name: ctx.identity.name }, unsubscribeUrl },
+    data: {
+      member: { email: ctx.identity.email, name: ctx.identity.name },
+      tenant: {
+        name: ctx.identity.tenantName ?? settings.fromName,
+        legalName: settings.footerLegalName,
+        address: settings.footerAddress,
+      },
+      brand: { name: settings.fromName, identity: settings.identity },
+      unsubscribeUrl,
+    },
     unsubscribeUrl,
     legalName: settings.footerLegalName,
     address: settings.footerAddress,
     consentReference,
+    layoutHtml: layout?.bodyHtml ?? null,
   });
   if (!rendered.ok) return rendered;
   return deps.ses.send({

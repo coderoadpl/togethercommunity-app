@@ -82,6 +82,7 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps, unsubscribeBaseUrl
   suppressions: marketing.suppressions,
   hmac: marketing.hmac,
   sends: marketing.campaignSends,
+  layouts: marketing.layouts,
   unsubscribes: marketing.unsubscribes,
   sesSettings: marketing.sesSettings,
   ses: marketing.marketingSes,
@@ -149,7 +150,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const settings = await marketingResult.value.sesSettings.findByTenant(authenticated.value.tenant.id);
     if (settings !== null && parsed.data.messages.length > Math.max(1, Math.floor(settings.quotaRatePerSec))) {
       if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status: 429 }, { repository: marketingResult.value.idempotency });
-      return response(err(appError('rate_limited', 'Tenant SES throttle budget is exhausted')), 200, { 'retry-after': '1' });
+      return response(err(appError('rate_limited', 'Tenant SES throttle budget is exhausted')), undefined, { 'retry-after': '1' });
     }
     const templates = new Map<string, Awaited<ReturnType<MarketingAppDeps['campaigns']['findById']>>>();
     for (const message of parsed.data.messages) {
@@ -192,6 +193,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
         consentDefinitionId: message.consentDefinitionId,
         subject: message.subject ?? template?.subject ?? '',
         bodyHtml: message.bodyHtml ?? template?.bodyHtml ?? '',
+        layoutId: template?.layoutId ?? null,
         data: message.data,
         ...(idempotencyKey === undefined ? {} : { idempotencySource: idempotencyKey }),
       };
@@ -310,7 +312,8 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       templates: campaigns
         .filter((campaign) => campaign.status === 'draft' || campaign.status === 'scheduled')
         .map((campaign) => ({ id: campaign.id, name: campaign.name, subject: campaign.subject })),
-      layouts: [],
+      layouts: (await marketing.value.layouts.list(authenticated.value.tenant.id))
+        .map((layout) => ({ id: layout.id, name: layout.name })),
     }));
   });
 

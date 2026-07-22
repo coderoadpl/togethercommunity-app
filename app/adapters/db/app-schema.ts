@@ -696,6 +696,19 @@ export const tenantDomains = pgTable(
   (table) => [uniqueIndex('tenant_domains_domain_uidx').on(table.domain)],
 );
 
+export const emailLayouts = pgTable(
+  'email_layouts',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    bodyHtml: text('body_html').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [uniqueIndex('email_layouts_tenant_name_uidx').on(table.tenantId, table.name)],
+);
+
 export const campaigns = pgTable(
   'campaigns',
   {
@@ -705,7 +718,7 @@ export const campaigns = pgTable(
     subject: text('subject').notNull(),
     bodyHtml: text('body_html').notNull(),
     bodySource: text('body_source').notNull(),
-    layoutId: text('layout_id'),
+    layoutId: text('layout_id').references(() => emailLayouts.id, { onDelete: 'set null' }),
     consentDefinitionId: text('consent_definition_id').notNull().references(() => consentDefinitions.id, { onDelete: 'restrict' }),
     audienceFilter: jsonb('audience_filter').$type<Campaign['audienceFilter']>(),
     status: text('status', { enum: ['draft', 'scheduled', 'running', 'paused', 'cancelled', 'finished'] }).notNull(),
@@ -759,7 +772,7 @@ export const campaignSends = pgTable(
       .where(sql`${table.sesMessageId} is not null`),
     uniqueIndex('campaign_sends_tenant_campaign_email_uidx')
       .on(table.tenantId, table.campaignId, table.email)
-      .where(sql`${table.campaignId} is not null`),
+      .where(sql`${table.campaignId} is not null and ${table.source} = 'broadcast'`),
   ],
 );
 

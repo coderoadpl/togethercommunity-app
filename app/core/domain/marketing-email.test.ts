@@ -10,6 +10,7 @@ import {
   consumeUnsubscribeToken,
   deriveConsentState,
   deriveMarketingEligibility,
+  emailLayoutSchema,
   liftSuppression,
   consentConfirmationTokenSchema,
   marketingConsentCreatorSchema,
@@ -166,6 +167,18 @@ describe('U5 sandboxed renderer', () => {
   it('rejects expressions outside property-path interpolation', () => {
     expect(renderMarketingTemplate('{{constructor.constructor("return 1")()}}', {}).ok).toBe(false);
     expect(renderMarketingTemplate('{{items[0]}}', { items: ['x'] }).ok).toBe(false);
+  });
+
+  it('requires tenant layouts to contain exactly one raw content slot', () => {
+    const layout = {
+      id: 'layout-1', tenantId: 'tenant-1', name: 'Default',
+      bodyHtml: '<html><body>{{{content}}}</body></html>',
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    };
+    expect(emailLayoutSchema.safeParse(layout).success).toBe(true);
+    expect(emailLayoutSchema.safeParse({ ...layout, bodyHtml: '<html><body>No slot</body></html>' }).success).toBe(false);
+    expect(emailLayoutSchema.safeParse({ ...layout, bodyHtml: '{{{content}}}{{{content}}}' }).success).toBe(false);
+    expect(emailLayoutSchema.safeParse({ ...layout, bodyHtml: '{{content}}' }).success).toBe(false);
   });
 });
 

@@ -1,7 +1,20 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
+import {
+  createAutomationIdempotencyRepository,
+  createCampaignRepository,
+  createCampaignSendRepository,
+  createConsentConfirmationTokenRepository,
+  createConsentDefinitionRepository,
+  createMarketingAudienceRepository,
+  createMarketingConsentRepository,
+  createSuppressionRepository,
+  createTenantDocumentRepository,
+  createTenantSesSettingsRepository,
+  createUnsubscribeTokenRepository,
+} from '@adapters/db/marketing-repositories.js';
 import {
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -50,6 +63,11 @@ import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
+import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketing-ses.js';
+import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
+import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
+import { createSnsVerifier } from '@adapters/crypto/sns.js';
+import { createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
 import type {
   ApiKeyCrypto,
   AuthPort,
@@ -67,6 +85,11 @@ import type {
   EmailPort,
   EmailOutboxRepository,
   EmailHmac,
+  AutomationIdempotencyRepository,
+  CampaignRepository,
+  CampaignSendRepository,
+  ConsentConfirmationTokenRepository,
+  ConsentDefinitionRepository,
   EnrollmentTransactionPort,
   DevMagicLinkReader,
   FileUrlSigner,
@@ -77,6 +100,9 @@ import type {
   MemberErasurePort,
   MemberRepository,
   MemberSubscriptionRepository,
+  MarketingAudienceRepository,
+  MarketingConsentRepository,
+  MarketingSesCredentialResolver,
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
@@ -97,11 +123,18 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TermsConsentRepository,
+  SchedulerPort,
+  SesMarketingSender,
+  SnsVerifier,
+  SuppressionRepository,
+  TenantDocumentRepository,
+  TenantSesSettingsRepository,
+  UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { dispatchEmailBatch, enforceTermsConsent, resolveTenant, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { campaignTick, dispatchEmailBatch, enforceTermsConsent, resolveTenant, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
@@ -174,6 +207,34 @@ export interface AppDeps {
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
   authConfig: AuthConfig;
+  marketing?: MarketingAppDeps;
+}
+
+export interface MarketingAppDeps {
+  definitions: ConsentDefinitionRepository;
+  marketingConsents: MarketingConsentRepository;
+  confirmations: ConsentConfirmationTokenRepository;
+  campaigns: CampaignRepository;
+  campaignSends: CampaignSendRepository;
+  audience: MarketingAudienceRepository;
+  suppressions: SuppressionRepository;
+  unsubscribes: UnsubscribeTokenRepository;
+  sesSettings: TenantSesSettingsRepository;
+  documents: TenantDocumentRepository;
+  idempotency: AutomationIdempotencyRepository;
+  marketingSes: SesMarketingSender;
+  marketingCredentials: MarketingSesCredentialResolver;
+  hmac: EmailHmac;
+  sns: SnsVerifier;
+  scheduler: SchedulerPort;
+  tickSecret: string;
+  dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<{
+    leased: boolean;
+    yieldedToTransactional: boolean;
+    sent: number;
+    failed: number;
+    skipped: number;
+  }, AppError>>;
 }
 
 /**
@@ -200,6 +261,28 @@ export const createDeps = (env: Env): AppDeps => {
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
   const emailOutbox = createEmailOutboxRepository(db);
+  const definitions = createConsentDefinitionRepository(db);
+  const marketingConsents = createMarketingConsentRepository(db);
+  const confirmations = createConsentConfirmationTokenRepository(db);
+  const campaigns = createCampaignRepository(db);
+  const campaignSends = createCampaignSendRepository(db);
+  const audience = createMarketingAudienceRepository(db, emailHmac);
+  const suppressions = createSuppressionRepository(db);
+  const unsubscribes = createUnsubscribeTokenRepository(db);
+  const sesSettings = createTenantSesSettingsRepository(db);
+  const documents = createTenantDocumentRepository(db);
+  const idempotency = createAutomationIdempotencyRepository(db);
+  const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
+  const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
+  const marketingCredentials: MarketingSesCredentialResolver = production
+    ? tenantMarketingCredentials
+    : { resolve: async () => ok({ accessKeyId: 'dev', secretAccessKey: 'dev', region: 'eu-central-1' }) };
+  const marketingSes = production
+    ? createSesMarketingSender()
+    : createDevMarketingSender(email);
+  const sns = createSnsVerifier();
+  const scheduler = createDevMarketingScheduler();
+  const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
   const dispatchDeps = {
     emailOutbox,
     email,
@@ -216,6 +299,39 @@ export const createDeps = (env: Env): AppDeps => {
       if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
     });
   };
+  const dispatchCampaign = async (tenantId: string, campaignId: string) => {
+    const settings = await sesSettings.findByTenant(tenantId);
+    if (production && settings !== null && (settings.quotaRefreshedAt === null
+      || Date.parse(clock.nowIso()) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
+      const credentials = await marketingCredentials.resolve(tenantId);
+      if (credentials.ok) {
+        const quota = await readSesQuota(credentials.value);
+        if (quota.ok) {
+          await sesSettings.upsert(tenantId, {
+            ...settings,
+            quotaRatePerSec: quota.value.ratePerSecond,
+            quotaDaily: quota.value.daily,
+            quotaRefreshedAt: clock.nowIso(),
+            inSandbox: quota.value.inSandbox,
+          });
+        }
+      }
+    }
+    return campaignTick({
+      identity: {
+        userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+      },
+    }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
+      definitions, consents: marketingConsents, campaigns, sends: campaignSends, audience,
+      suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
+      hmac: emailHmac, ids, tokens, clock, unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox,
+    });
+  };
+  scheduler.setCampaignHandler(async (tenantId, campaignId) => {
+    const result = await dispatchCampaign(tenantId, campaignId);
+    if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${result.error.message}\n`);
+  });
   const realtimeBus = createRealtimeBus();
   const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
     const url = new URL(env.APP_BASE_URL);
@@ -359,5 +475,25 @@ export const createDeps = (env: Env): AppDeps => {
       exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     },
     authConfig: { googleEnabled: google !== null },
+    marketing: {
+      definitions,
+      marketingConsents,
+      confirmations,
+      campaigns,
+      campaignSends,
+      audience,
+      suppressions,
+      unsubscribes,
+      sesSettings,
+      documents,
+      idempotency,
+      marketingSes,
+      marketingCredentials,
+      hmac: emailHmac,
+      sns,
+      scheduler,
+      tickSecret: env.MARKETING_TICK_SECRET,
+      dispatchCampaign,
+    },
   };
 };

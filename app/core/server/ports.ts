@@ -48,6 +48,8 @@ import type {
   MarketingConsent,
   Suppression,
   TenantSesSettings,
+  TenantDocument,
+  TenantDocumentVersion,
   UnsubscribeToken,
 } from '@core/domain/index.js';
 
@@ -597,6 +599,11 @@ export interface MarketingConsentRepository {
   purgeStalePending(tenantId: string, olderThan: string, doubleOptInDefinitionIds: string[]): Promise<number>;
 }
 
+export interface TenantDocumentRepository {
+  findLatestPublished(tenantId: string, slug: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+  findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+}
+
 export interface ConsentConfirmationTokenRepository {
   create(tenantId: string, token: ConsentConfirmationToken): Promise<void>;
   findByToken(tenantId: string, token: string): Promise<ConsentConfirmationToken | null>;
@@ -657,6 +664,13 @@ export interface CampaignSendRepository {
   correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<CampaignSend | null>;
   listByCampaign(tenantId: string, campaignId: string): Promise<CampaignSend[]>;
   listAll(tenantId: string): Promise<CampaignSend[]>;
+  listPage(tenantId: string, query: {
+    campaignId?: string;
+    email?: string;
+    status?: CampaignSend['status'];
+    cursor?: string;
+    limit: number;
+  }): Promise<{ sends: CampaignSend[]; nextCursor: string | null }>;
   hasPendingByCampaign(tenantId: string, campaignId: string): Promise<boolean>;
   pseudonymizeMember(tenantId: string, input: { memberId: string; email: string; tombstoneEmail: string }): Promise<number>;
   ageOutRenderedBodies(tenantId: string, olderThan: string, purgedAt: string): Promise<number>;
@@ -668,6 +682,7 @@ export interface SuppressionRepository {
   isSuppressed(tenantId: string, emailHmac: string): Promise<boolean>;
   lift(tenantId: string, suppression: Suppression): Promise<Suppression | null>;
   findById(tenantId: string, suppressionId: string): Promise<Suppression | null>;
+  list(tenantId: string, query: { emailHmac?: string; cursor?: string; limit: number }): Promise<{ suppressions: Suppression[]; nextCursor: string | null }>;
 }
 
 export interface UnsubscribeTokenRepository {

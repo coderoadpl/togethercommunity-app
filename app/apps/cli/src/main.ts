@@ -129,6 +129,14 @@ const memberExportOptionsSchema = z.object({
 });
 const noOptionsSchema = z.object({});
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
+const consentDefinitionCreateOptionsSchema = z.object({
+  key: z.string().min(1), label: z.string().min(1), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
+});
+const campaignCreateOptionsSchema = z.object({
+  name: z.string().min(1), subject: z.string().min(1), bodyHtml: z.string().min(1), consentDefinition: z.string().min(1),
+});
+const campaignScheduleOptionsSchema = z.object({ campaign: z.string().min(1), sendAt: z.string().datetime() });
+const suppressionAddOptionsSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).optional() });
 
 const jsonSourceOptionsSchema = z.object({
   data: z.string().optional(),
@@ -2114,6 +2122,69 @@ stripe
       );
     }),
   );
+
+const consentDefinition = program.command('consent-definition').description('Marketing consent definitions');
+
+consentDefinition.command('list').action(withCtx(async (ctx) => {
+  emit(await ctx.api.listMarketingConsentDefinitions(), ctx.json, (data) => data.definitions.length === 0
+    ? 'no consent definitions'
+    : data.definitions.map((item) => `${item.key}\t${item.status}\t${item.doubleOptIn ? 'double opt-in' : 'single opt-in'}\t(${item.id})`).join('\n'));
+}));
+
+consentDefinition.command('create')
+  .requiredOption('--key <key>')
+  .requiredOption('--label <label>')
+  .requiredOption('--document-url <url>')
+  .option('--single-opt-in')
+  .action(withInput(z.tuple([consentDefinitionCreateOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.createMarketingConsentDefinition({
+      key: options.key, label: options.label, documentUrl: options.documentUrl,
+      doubleOptIn: options.singleOptIn !== true,
+    }), ctx.json, (data) => `created consent definition ${data.definition?.key ?? options.key} (${data.definition?.id ?? 'unknown'})`);
+  }));
+
+const campaign = program.command('campaign').description('Marketing campaigns');
+
+campaign.command('create')
+  .requiredOption('--name <name>')
+  .requiredOption('--subject <subject>')
+  .requiredOption('--body-html <html>')
+  .requiredOption('--consent-definition <id>')
+  .action(withInput(z.tuple([campaignCreateOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.createMarketingCampaign({
+      name: options.name, subject: options.subject, bodyHtml: options.bodyHtml,
+      consentDefinitionId: options.consentDefinition,
+    }), ctx.json, (data) => `created campaign ${data.campaign.name} (${data.campaign.id})`);
+  }));
+
+campaign.command('schedule')
+  .requiredOption('--campaign <id>')
+  .requiredOption('--send-at <iso>')
+  .action(withInput(z.tuple([campaignScheduleOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.scheduleMarketingCampaign({ campaignId: options.campaign, sendAt: options.sendAt }), ctx.json,
+      (data) => `scheduled campaign ${data.campaign.id} for ${data.campaign.sendAt ?? options.sendAt}`);
+  }));
+
+campaign.command('status <id>').action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+  emit(await ctx.api.getMarketingCampaign(id), ctx.json,
+    (data) => `${data.campaign.status}\t${data.campaign.sent}/${data.campaign.toSend} sent\t${data.campaign.failed} failed`);
+}));
+
+const suppression = program.command('suppression').description('Marketing suppressions');
+
+suppression.command('list').action(withCtx(async (ctx) => {
+  emit(await ctx.api.listMarketingSuppressions(), ctx.json, (data) => data.suppressions.length === 0
+    ? 'no suppressions'
+    : data.suppressions.map((item) => `${item.email ?? item.emailHmac}\t${item.reason}\t${item.createdAt}`).join('\n'));
+}));
+
+suppression.command('add')
+  .requiredOption('--email <email>')
+  .option('--source-ref <reference>')
+  .action(withInput(z.tuple([suppressionAddOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.addMarketingSuppression({ email: options.email, sourceRef: options.sourceRef ?? null }), ctx.json,
+      (data) => `suppressed ${data.suppression.email ?? options.email} (${data.suppression.id})`);
+  }));
 
 const m2m = program.command('m2m').description('Machine-to-machine enrollment (API-key auth)');
 

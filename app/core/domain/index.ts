@@ -5,6 +5,7 @@ export * from './email.js';
 export * from './language.js';
 export * from './transactional-email.js';
 export * from './marketing-email.js';
+export * from './marketing-automation.js';
 export * from './email-outbox.js';
 export * from './product.js';
 export * from './grant.js';

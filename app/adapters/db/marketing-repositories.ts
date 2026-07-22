@@ -1,0 +1,377 @@
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+
+import {
+  automationIdempotencyKeySchema,
+  campaignSchema,
+  campaignSendSchema,
+  consentConfirmationTokenSchema,
+  consentDefinitionSchema,
+  consentDefinitionVersionSchema,
+  marketingConsentSchema,
+  normalizeEmail,
+  suppressionSchema,
+  tenantDocumentSchema,
+  tenantDocumentVersionSchema,
+  tenantSesSettingsSchema,
+  unsubscribeTokenSchema,
+  type Campaign,
+  type CampaignSend,
+} from '@core/domain/index.js';
+import type {
+  AutomationIdempotencyRepository,
+  CampaignRepository,
+  CampaignSendRepository,
+  ConsentConfirmationTokenRepository,
+  ConsentDefinitionRepository,
+  EmailHmac,
+  MarketingAudienceRepository,
+  MarketingConsentRepository,
+  SuppressionRepository,
+  TenantDocumentRepository,
+  TenantSesSettingsRepository,
+  UnsubscribeTokenRepository,
+} from '@core/server/index.js';
+
+import type { Db } from './client.js';
+import {
+  campaigns,
+  campaignSends,
+  consentConfirmationTokens,
+  consentDefinitions,
+  consentDefinitionVersions,
+  marketingConsents,
+  marketingIdempotencyKeys,
+  members,
+  productGrants,
+  suppressions,
+  tenantDocuments,
+  tenantDocumentVersions,
+  tenantSesSettings,
+  unsubscribeTokens,
+} from './schema.js';
+
+const record = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : null;
+
+const uniqueViolation = (cause: unknown): boolean => record(cause)?.['code'] === '23505'
+  || record(record(cause)?.['cause'])?.['code'] === '23505';
+
+const iso = (value: string): string => new Date(value).toISOString();
+const nullableIso = (value: string | null): string | null => value === null ? null : iso(value);
+const parseConsent = (row: typeof marketingConsents.$inferSelect) => marketingConsentSchema.parse({ ...row, occurredAt: iso(row.occurredAt) });
+const parseConfirmation = (row: typeof consentConfirmationTokens.$inferSelect) => consentConfirmationTokenSchema.parse({
+  ...row, createdAt: iso(row.createdAt), expiresAt: iso(row.expiresAt), usedAt: nullableIso(row.usedAt),
+});
+const parseDefinition = (row: typeof consentDefinitions.$inferSelect) => consentDefinitionSchema.parse({
+  ...row, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
+});
+const parseDefinitionVersion = (row: typeof consentDefinitionVersions.$inferSelect) => consentDefinitionVersionSchema.parse({ ...row, createdAt: iso(row.createdAt) });
+const parseDocument = (row: typeof tenantDocuments.$inferSelect) => tenantDocumentSchema.parse({ ...row, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) });
+const parseDocumentVersion = (row: typeof tenantDocumentVersions.$inferSelect) => tenantDocumentVersionSchema.parse({
+  ...row, publishedAt: nullableIso(row.publishedAt), createdAt: iso(row.createdAt),
+});
+const parseCampaign = (row: typeof campaigns.$inferSelect) => campaignSchema.parse({
+  ...row, sendAt: nullableIso(row.sendAt), lockedUntil: nullableIso(row.lockedUntil),
+  startedAt: nullableIso(row.startedAt), finishedAt: nullableIso(row.finishedAt), createdAt: iso(row.createdAt),
+});
+const parseSend = (row: typeof campaignSends.$inferSelect) => campaignSendSchema.parse({
+  ...row, deliveryOccurredAt: nullableIso(row.deliveryOccurredAt), renderedBodyPurgedAt: nullableIso(row.renderedBodyPurgedAt),
+  createdAt: iso(row.createdAt), sentAt: nullableIso(row.sentAt),
+});
+const parseSuppression = (row: typeof suppressions.$inferSelect) => suppressionSchema.parse({
+  ...row, createdAt: iso(row.createdAt), liftedAt: nullableIso(row.liftedAt),
+});
+const parseUnsubscribe = (row: typeof unsubscribeTokens.$inferSelect) => unsubscribeTokenSchema.parse({
+  ...row, createdAt: iso(row.createdAt), usedAt: nullableIso(row.usedAt),
+});
+const parseSesSettings = (row: typeof tenantSesSettings.$inferSelect) => tenantSesSettingsSchema.parse({
+  ...row, identityVerifiedAt: nullableIso(row.identityVerifiedAt), quotaRefreshedAt: nullableIso(row.quotaRefreshedAt),
+  webhookVerifiedAt: nullableIso(row.webhookVerifiedAt),
+});
+const parseIdempotency = (row: typeof marketingIdempotencyKeys.$inferSelect) => automationIdempotencyKeySchema.parse({
+  ...row, claimedAt: iso(row.claimedAt), expiresAt: iso(row.expiresAt),
+});
+
+export const createMarketingConsentRepository = (db: Db): MarketingConsentRepository => ({
+  record: async (tenantId, consent) => {
+    await db.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+  },
+  listByEmail: async (tenantId, email, definitionId) => {
+    const filters = [eq(marketingConsents.tenantId, tenantId), eq(marketingConsents.email, normalizeEmail(email))];
+    if (definitionId !== undefined) filters.push(eq(marketingConsents.definitionId, definitionId));
+    const rows = await db.select().from(marketingConsents).where(and(...filters)).orderBy(asc(marketingConsents.occurredAt), asc(marketingConsents.id));
+    return rows.map(parseConsent);
+  },
+  latestByEmail: async (tenantId, email, definitionId) => {
+    const [row] = await db.select().from(marketingConsents).where(and(
+      eq(marketingConsents.tenantId, tenantId),
+      eq(marketingConsents.email, normalizeEmail(email)),
+      eq(marketingConsents.definitionId, definitionId),
+    )).orderBy(desc(marketingConsents.occurredAt), desc(marketingConsents.id)).limit(1);
+    return row === undefined ? null : parseConsent(row);
+  },
+  findById: async (tenantId, consentId) => {
+    const [row] = await db.select().from(marketingConsents).where(and(eq(marketingConsents.tenantId, tenantId), eq(marketingConsents.id, consentId))).limit(1);
+    return row === undefined ? null : parseConsent(row);
+  },
+  purgeStalePending: async (tenantId, olderThan, definitionIds) => {
+    if (definitionIds.length === 0) return 0;
+    const deleted = await db.delete(marketingConsents).where(and(
+      eq(marketingConsents.tenantId, tenantId),
+      inArray(marketingConsents.definitionId, definitionIds),
+      eq(marketingConsents.status, 'granted'),
+      lt(marketingConsents.occurredAt, olderThan),
+      sql`not exists (select 1 from ${marketingConsents} newer where newer.tenant_id = ${marketingConsents.tenantId} and newer.previous_id = ${marketingConsents.id})`,
+    )).returning({ id: marketingConsents.id });
+    return deleted.length;
+  },
+});
+
+export const createConsentConfirmationTokenRepository = (db: Db): ConsentConfirmationTokenRepository => ({
+  create: async (tenantId, token) => {
+    await db.insert(consentConfirmationTokens).values(consentConfirmationTokenSchema.parse({ ...token, tenantId }));
+  },
+  findByToken: async (tenantId, token) => {
+    const [row] = await db.select().from(consentConfirmationTokens).where(and(eq(consentConfirmationTokens.tenantId, tenantId), eq(consentConfirmationTokens.token, token))).limit(1);
+    return row === undefined ? null : parseConfirmation(row);
+  },
+  consume: async (tenantId, token, usedAt) => {
+    const [row] = await db.update(consentConfirmationTokens).set({ usedAt }).where(and(
+      eq(consentConfirmationTokens.tenantId, tenantId), eq(consentConfirmationTokens.token, token),
+      isNull(consentConfirmationTokens.usedAt), gt(consentConfirmationTokens.expiresAt, usedAt),
+    )).returning();
+    return row === undefined ? null : parseConfirmation(row);
+  },
+});
+
+export const createConsentDefinitionRepository = (db: Db): ConsentDefinitionRepository => ({
+  create: async (tenantId, definition, version) => {
+    await db.transaction(async (tx) => {
+      await tx.insert(consentDefinitions).values(consentDefinitionSchema.parse({ ...definition, tenantId }));
+      await tx.insert(consentDefinitionVersions).values(consentDefinitionVersionSchema.parse({ ...version, tenantId, definitionId: definition.id }));
+    });
+  },
+  findById: async (tenantId, definitionId) => {
+    const [row] = await db.select().from(consentDefinitions).where(and(eq(consentDefinitions.tenantId, tenantId), eq(consentDefinitions.id, definitionId))).limit(1);
+    return row === undefined ? null : parseDefinition(row);
+  },
+  list: async (tenantId, status) => {
+    const condition = status === undefined
+      ? eq(consentDefinitions.tenantId, tenantId)
+      : and(eq(consentDefinitions.tenantId, tenantId), eq(consentDefinitions.status, status));
+    return (await db.select().from(consentDefinitions).where(condition).orderBy(asc(consentDefinitions.key)))
+      .map(parseDefinition);
+  },
+  appendVersion: async (tenantId, version) => {
+    await db.insert(consentDefinitionVersions).values(consentDefinitionVersionSchema.parse({ ...version, tenantId }));
+  },
+  listVersions: async (tenantId, definitionId) => (await db.select().from(consentDefinitionVersions).where(and(
+    eq(consentDefinitionVersions.tenantId, tenantId), eq(consentDefinitionVersions.definitionId, definitionId),
+  )).orderBy(asc(consentDefinitionVersions.version))).map(parseDefinitionVersion),
+});
+
+export const createTenantDocumentRepository = (db: Db): TenantDocumentRepository => {
+  const find = async (tenantId: string, slug: string, version?: number) => {
+    const filters = [
+      eq(tenantDocuments.tenantId, tenantId), eq(tenantDocuments.slug, slug),
+      eq(tenantDocuments.status, 'published'), eq(tenantDocumentVersions.tenantId, tenantId),
+      sql`${tenantDocumentVersions.publishedAt} is not null`,
+    ];
+    if (version !== undefined) filters.push(eq(tenantDocumentVersions.version, version));
+    const [row] = await db.select({ document: tenantDocuments, version: tenantDocumentVersions })
+      .from(tenantDocuments)
+      .innerJoin(tenantDocumentVersions, eq(tenantDocumentVersions.documentId, tenantDocuments.id))
+      .where(and(...filters)).orderBy(desc(tenantDocumentVersions.version)).limit(1);
+    return row === undefined ? null : {
+      document: parseDocument(row.document), version: parseDocumentVersion(row.version),
+    };
+  };
+  return {
+    findLatestPublished: (tenantId, slug) => find(tenantId, slug),
+    findPublishedVersion: (tenantId, slug, version) => find(tenantId, slug, version),
+  };
+};
+
+const campaignValues = (tenantId: string, campaign: Campaign): Campaign => campaignSchema.parse({ ...campaign, tenantId });
+
+export const createCampaignRepository = (db: Db): CampaignRepository => ({
+  create: async (tenantId, campaign) => { await db.insert(campaigns).values(campaignValues(tenantId, campaign)); },
+  findById: async (tenantId, campaignId) => {
+    const [row] = await db.select().from(campaigns).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId))).limit(1);
+    return row === undefined ? null : parseCampaign(row);
+  },
+  list: async (tenantId) => (await db.select().from(campaigns).where(eq(campaigns.tenantId, tenantId)).orderBy(desc(campaigns.createdAt), desc(campaigns.id))).map(parseCampaign),
+  delete: async (tenantId, campaignId) => (await db.delete(campaigns).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId))).returning({ id: campaigns.id })).length > 0,
+  update: async (tenantId, campaign) => {
+    const [row] = await db.update(campaigns).set(campaignValues(tenantId, campaign)).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaign.id))).returning();
+    return row === undefined ? null : parseCampaign(row);
+  },
+  acquireLease: async (tenantId, campaignId, input) => (await db.update(campaigns).set({ lockedBy: input.workerId, lockedUntil: input.lockedUntil }).where(and(
+    eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId),
+    or(isNull(campaigns.lockedUntil), lte(campaigns.lockedUntil, input.now)),
+  )).returning({ id: campaigns.id })).length > 0,
+  advanceCursor: async (tenantId, campaignId, input) => {
+    const [row] = await db.update(campaigns).set({
+      cursorMemberId: input.cursorMemberId,
+      sent: sql`${campaigns.sent} + ${input.sentDelta}`,
+      failed: sql`${campaigns.failed} + ${input.failedDelta}`,
+    }).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId))).returning();
+    return row === undefined ? null : parseCampaign(row);
+  },
+});
+
+const sendValues = (tenantId: string, send: CampaignSend): CampaignSend => campaignSendSchema.parse({ ...send, tenantId });
+
+export const createCampaignSendRepository = (db: Db): CampaignSendRepository => ({
+  claimRecipient: async (tenantId, send) => {
+    try {
+      await db.insert(campaignSends).values(sendValues(tenantId, send));
+      return true;
+    } catch (cause) {
+      if (uniqueViolation(cause)) return false;
+      throw cause;
+    }
+  },
+  findById: async (tenantId, sendId) => {
+    const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, sendId))).limit(1);
+    return row === undefined ? null : parseSend(row);
+  },
+  update: async (tenantId, send) => {
+    const [row] = await db.update(campaignSends).set(sendValues(tenantId, send)).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, send.id))).returning();
+    return row === undefined ? null : parseSend(row);
+  },
+  correlateBySesMessageId: async (tenantId, messageId) => {
+    const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.sesMessageId, messageId))).limit(1);
+    return row === undefined ? null : parseSend(row);
+  },
+  listByCampaign: async (tenantId, campaignId) => (await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.campaignId, campaignId))).orderBy(asc(campaignSends.id))).map(parseSend),
+  listAll: async (tenantId) => (await db.select().from(campaignSends).where(eq(campaignSends.tenantId, tenantId)).orderBy(asc(campaignSends.id))).map(parseSend),
+  listPage: async (tenantId, query) => {
+    const filters = [eq(campaignSends.tenantId, tenantId)];
+    if (query.campaignId !== undefined) filters.push(eq(campaignSends.campaignId, query.campaignId));
+    if (query.email !== undefined) filters.push(eq(campaignSends.email, normalizeEmail(query.email)));
+    if (query.status !== undefined) filters.push(eq(campaignSends.status, query.status));
+    if (query.cursor !== undefined) filters.push(gt(campaignSends.id, query.cursor));
+    const rows = await db.select().from(campaignSends).where(and(...filters)).orderBy(asc(campaignSends.id)).limit(query.limit + 1);
+    return { sends: rows.slice(0, query.limit).map(parseSend), nextCursor: rows.length > query.limit ? rows[query.limit - 1]?.id ?? null : null };
+  },
+  hasPendingByCampaign: async (tenantId, campaignId) => (await db.select({ id: campaignSends.id }).from(campaignSends).where(and(
+    eq(campaignSends.tenantId, tenantId), eq(campaignSends.campaignId, campaignId), inArray(campaignSends.status, ['pending', 'sending']),
+  )).limit(1)).length > 0,
+  pseudonymizeMember: async (tenantId, input) => (await db.update(campaignSends).set({ memberId: null, email: input.tombstoneEmail }).where(and(
+    eq(campaignSends.tenantId, tenantId), eq(campaignSends.memberId, input.memberId), eq(campaignSends.email, normalizeEmail(input.email)),
+  )).returning({ id: campaignSends.id })).length,
+  ageOutRenderedBodies: async (tenantId, olderThan, purgedAt) => (await db.update(campaignSends).set({ renderedBodyPurgedAt: purgedAt }).where(and(
+    eq(campaignSends.tenantId, tenantId), lt(campaignSends.createdAt, olderThan), isNull(campaignSends.renderedBodyPurgedAt),
+  )).returning({ id: campaignSends.id })).length,
+});
+
+export const createSuppressionRepository = (db: Db): SuppressionRepository => ({
+  record: async (tenantId, suppression) => {
+    try {
+      await db.insert(suppressions).values(suppressionSchema.parse({ ...suppression, tenantId }));
+      return true;
+    } catch (cause) {
+      if (uniqueViolation(cause)) return false;
+      throw cause;
+    }
+  },
+  findActive: async (tenantId, emailHmac) => {
+    const [row] = await db.select().from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.emailHmac, emailHmac), isNull(suppressions.liftedAt))).limit(1);
+    return row === undefined ? null : parseSuppression(row);
+  },
+  isSuppressed: async (tenantId, emailHmac) => (await db.select({ id: suppressions.id }).from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.emailHmac, emailHmac), isNull(suppressions.liftedAt))).limit(1)).length > 0,
+  lift: async (tenantId, suppression) => {
+    const parsed = suppressionSchema.parse({ ...suppression, tenantId });
+    const [row] = await db.update(suppressions).set({ liftedAt: parsed.liftedAt, liftedBy: parsed.liftedBy }).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.id, parsed.id), isNull(suppressions.liftedAt))).returning();
+    return row === undefined ? null : parseSuppression(row);
+  },
+  findById: async (tenantId, id) => {
+    const [row] = await db.select().from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.id, id))).limit(1);
+    return row === undefined ? null : parseSuppression(row);
+  },
+  list: async (tenantId, query) => {
+    const filters = [eq(suppressions.tenantId, tenantId)];
+    if (query.emailHmac !== undefined) filters.push(eq(suppressions.emailHmac, query.emailHmac));
+    if (query.cursor !== undefined) filters.push(gt(suppressions.id, query.cursor));
+    const rows = await db.select().from(suppressions).where(and(...filters)).orderBy(asc(suppressions.id)).limit(query.limit + 1);
+    return { suppressions: rows.slice(0, query.limit).map(parseSuppression), nextCursor: rows.length > query.limit ? rows[query.limit - 1]?.id ?? null : null };
+  },
+});
+
+export const createUnsubscribeTokenRepository = (db: Db): UnsubscribeTokenRepository => ({
+  create: async (tenantId, token) => { await db.insert(unsubscribeTokens).values(unsubscribeTokenSchema.parse({ ...token, tenantId })); },
+  findByToken: async (tenantId, token) => {
+    const [row] = await db.select().from(unsubscribeTokens).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token))).limit(1);
+    return row === undefined ? null : parseUnsubscribe(row);
+  },
+  consume: async (tenantId, token, usedAt) => {
+    const [changed] = await db.update(unsubscribeTokens).set({ usedAt }).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token), isNull(unsubscribeTokens.usedAt))).returning();
+    if (changed !== undefined) return { token: parseUnsubscribe(changed), newlyUsed: true };
+    const [existing] = await db.select().from(unsubscribeTokens).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token))).limit(1);
+    return existing === undefined ? null : { token: parseUnsubscribe(existing), newlyUsed: false };
+  },
+});
+
+export const createTenantSesSettingsRepository = (db: Db): TenantSesSettingsRepository => ({
+  findByTenant: async (tenantId) => {
+    const [row] = await db.select().from(tenantSesSettings).where(eq(tenantSesSettings.tenantId, tenantId)).limit(1);
+    return row === undefined ? null : parseSesSettings(row);
+  },
+  findByWebhookToken: async (token) => {
+    const [row] = await db.select().from(tenantSesSettings).where(eq(tenantSesSettings.webhookToken, token)).limit(1);
+    return row === undefined ? null : parseSesSettings(row);
+  },
+  upsert: async (tenantId, settings) => {
+    const parsed = tenantSesSettingsSchema.parse({ ...settings, tenantId });
+    const [row] = await db.insert(tenantSesSettings).values(parsed).onConflictDoUpdate({ target: tenantSesSettings.tenantId, set: parsed }).returning();
+    if (row === undefined) throw new Error('SES settings upsert returned no row');
+    return parseSesSettings(row);
+  },
+});
+
+export const createAutomationIdempotencyRepository = (db: Db): AutomationIdempotencyRepository => ({
+  claim: async (tenantId, recordValue) => {
+    const parsed = automationIdempotencyKeySchema.parse({ ...recordValue, tenantId });
+    const [inserted] = await db.insert(marketingIdempotencyKeys).values(parsed).onConflictDoNothing().returning();
+    if (inserted !== undefined) return null;
+    const [existing] = await db.select().from(marketingIdempotencyKeys).where(and(eq(marketingIdempotencyKeys.tenantId, tenantId), eq(marketingIdempotencyKeys.key, parsed.key))).limit(1);
+    return existing === undefined ? null : parseIdempotency(existing);
+  },
+  release: async (tenantId, key) => { await db.delete(marketingIdempotencyKeys).where(and(eq(marketingIdempotencyKeys.tenantId, tenantId), eq(marketingIdempotencyKeys.key, key))); },
+  sweepExpired: async (now) => (await db.delete(marketingIdempotencyKeys).where(lte(marketingIdempotencyKeys.expiresAt, now)).returning({ id: marketingIdempotencyKeys.id })).length,
+});
+
+export const createMarketingAudienceRepository = (db: Db, hmac: EmailHmac): MarketingAudienceRepository => {
+  const eligible = async (tenantId: string, input: { definitionId: string; productIds: string[]; afterMemberId: string | null; maxMemberId?: string; limit?: number }) => {
+    const [definition] = await db.select({ doubleOptIn: consentDefinitions.doubleOptIn }).from(consentDefinitions).where(and(eq(consentDefinitions.tenantId, tenantId), eq(consentDefinitions.id, input.definitionId))).limit(1);
+    if (definition === undefined) return [];
+    const filters = [eq(members.tenantId, tenantId), isNull(members.deletedAt)];
+    if (input.afterMemberId !== null) filters.push(gt(members.id, input.afterMemberId));
+    if (input.maxMemberId !== undefined) filters.push(lte(members.id, input.maxMemberId));
+    if (input.productIds.length > 0) filters.push(inArray(members.id, db.select({ memberId: productGrants.memberId }).from(productGrants).where(and(
+      eq(productGrants.tenantId, tenantId), inArray(productGrants.productId, input.productIds),
+      or(isNull(productGrants.expiresAt), gt(productGrants.expiresAt, new Date().toISOString())),
+    ))));
+    const activeStatus = definition.doubleOptIn
+      ? sql`mc.status = 'confirmed'`
+      : sql`mc.status in ('granted', 'confirmed')`;
+    filters.push(sql`exists (select 1 from ${marketingConsents} mc where mc.tenant_id = ${tenantId} and mc.email = lower(trim(${members.email})) and mc.definition_id = ${input.definitionId} and ${activeStatus} and not exists (select 1 from ${marketingConsents} newer where newer.tenant_id = mc.tenant_id and newer.email = mc.email and newer.definition_id = mc.definition_id and (newer.occurred_at, newer.id) > (mc.occurred_at, mc.id)))`);
+    const candidates = await db.select({ id: members.id, email: members.email, displayName: members.displayName }).from(members).where(and(...filters)).orderBy(asc(members.id)).limit(input.limit === undefined ? 100000 : Math.max(input.limit * 4, input.limit));
+    const output = [];
+    for (const member of candidates) {
+      if (await db.select({ id: suppressions.id }).from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.emailHmac, hmac.compute(tenantId, normalizeEmail(member.email))), isNull(suppressions.liftedAt))).limit(1).then((rows) => rows.length > 0)) continue;
+      const grants = await db.select({ productId: productGrants.productId }).from(productGrants).where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, member.id)));
+      output.push({ memberId: member.id, email: normalizeEmail(member.email), displayName: member.displayName, productIds: grants.map((grant) => grant.productId) });
+      if (input.limit !== undefined && output.length >= input.limit) break;
+    }
+    return output;
+  };
+  return {
+    snapshot: async (tenantId, input) => {
+      const rows = await eligible(tenantId, { ...input, afterMemberId: null });
+      return { maxMemberId: rows.at(-1)?.memberId ?? null, count: rows.length };
+    },
+    fetchEligibleBatch: (tenantId, input) => eligible(tenantId, input),
+  };
+};

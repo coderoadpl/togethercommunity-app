@@ -12,6 +12,9 @@ import {
   bunnyVideosInputSchema,
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
+  marketingCampaignCreateInputSchema,
+  marketingCampaignScheduleInputSchema,
+  marketingConsentDefinitionCreateInputSchema,
   courseUpdateInputSchema,
   grantCreateInputSchema,
   grantRevokeInputSchema,
@@ -23,6 +26,7 @@ import {
   memberProgressResetInputSchema,
   memberRemoveInputSchema,
   m2mEnrollRequestSchema,
+  marketingSuppressionCreateInputSchema,
   moduleAttachInputSchema,
   moduleDetachInputSchema,
   moduleCreateInputSchema,
@@ -61,6 +65,7 @@ import {
 import {
   devGrantInputSchema,
   err,
+  forbidden,
   internal,
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
@@ -77,10 +82,13 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import {
+  addManualSuppression,
   attachModuleToCourse,
   detachModuleFromCourse,
   authenticateApiKey,
   createCourse,
+  createCampaign,
+  createMarketingConsentDefinition,
   createLesson,
   createModule,
   createProduct,
@@ -89,12 +97,15 @@ import {
   deleteLesson,
   deleteTenantSecret,
   listLessonReferences,
+  getCampaign,
   getContentHistory,
   getContentVersion,
   devGrantProduct,
   exportMembers,
   exportOrders,
   listTenantApiKeys,
+  listCampaigns,
+  listMarketingConsentDefinitions,
   m2mEnroll,
   revokeTenantApiKey,
   getCourseStructureWithAccess,
@@ -159,6 +170,7 @@ import {
   revokeGrant,
   resolveTenant,
   setTenantSecret,
+  scheduleCampaign,
   simulatePurchase,
   validateCheckoutSelection,
   listBunnyVideos,
@@ -183,6 +195,7 @@ import {
 import type { AppDeps } from './composition.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
+import { registerMarketingRoutes } from './marketing-routes.js';
 
 type Vars = { Variables: { identity: Identity } };
 
@@ -625,6 +638,8 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result);
   });
 
+  registerMarketingRoutes(app, deps);
+
   app.post(STRIPE_WEBHOOK_PATH_PATTERN, async (c) => {
     const tenantId = c.req.param('tenantId');
     const tenant = await deps.tenants.findById(tenantId);
@@ -659,6 +674,76 @@ export const buildApp = (deps: AppDeps) => {
     if (!identity.ok) return respond(identity);
     c.set('identity', identity.value);
     await next();
+  });
+
+  app.get(API_PATHS.marketingConsentDefinitions, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await listMarketingConsentDefinitions({ identity: c.get('identity') }, { definitions: deps.marketing.definitions }));
+  });
+
+  app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = marketingConsentDefinitionCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid consent definition payload', parsed.error.flatten())));
+    return respond(await createMarketingConsentDefinition({ identity: c.get('identity') }, parsed.data, {
+      definitions: deps.marketing.definitions, ids: deps.ids, clock: deps.clock,
+    }));
+  });
+
+  app.get(API_PATHS.marketingCampaigns, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const result = await listCampaigns({ identity: c.get('identity') }, { campaigns: deps.marketing.campaigns });
+    return respond(result.ok ? ok({ campaigns: result.value }) : result);
+  });
+
+  app.post(API_PATHS.marketingCampaigns, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = marketingCampaignCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid campaign payload', parsed.error.flatten())));
+    const result = await createCampaign({ identity: c.get('identity') }, parsed.data, {
+      campaigns: deps.marketing.campaigns, audience: deps.marketing.audience,
+      definitions: deps.marketing.definitions, ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
+    });
+    return respond(result.ok ? ok({ campaign: result.value }) : result);
+  });
+
+  app.post(API_PATHS.marketingCampaignSchedule, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = marketingCampaignScheduleInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid campaign schedule payload', parsed.error.flatten())));
+    const result = await scheduleCampaign({ identity: c.get('identity') }, parsed.data, {
+      campaigns: deps.marketing.campaigns, audience: deps.marketing.audience,
+      definitions: deps.marketing.definitions, ids: deps.ids, clock: deps.clock, scheduler: deps.marketing.scheduler,
+    });
+    return respond(result.ok ? ok({ campaign: result.value }) : result);
+  });
+
+  app.get(API_PATHS.marketingCampaign, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const result = await getCampaign({ identity: c.get('identity') }, { campaignId: c.req.param('id') }, { campaigns: deps.marketing.campaigns });
+    return respond(result.ok ? ok({ campaign: result.value }) : result);
+  });
+
+  app.get(API_PATHS.marketingStaffSuppressions, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const identity = c.get('identity');
+    const tenantId = identity.tenantId;
+    if (tenantId === null || identity.staffRole === null) return respond(err(forbidden('Tenant staff access is required')));
+    return respond(ok(await deps.marketing.suppressions.list(tenantId, { limit: 100 })));
+  });
+
+  app.post(API_PATHS.marketingStaffSuppressions, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = marketingSuppressionCreateInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid suppression payload', parsed.error.flatten())));
+    const result = await addManualSuppression({ identity: c.get('identity') }, parsed.data, {
+      suppressions: deps.marketing.suppressions, hmac: deps.marketing.hmac, ids: deps.ids, clock: deps.clock,
+    });
+    return respond(result.ok ? ok({ suppression: result.value }) : result);
   });
 
   app.get(API_PATHS.me, (c) => {

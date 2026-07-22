@@ -8,7 +8,6 @@ import {
   deriveMarketingEligibility,
   err,
   forbidden,
-  integrationNotConfigured,
   liftSuppression,
   normalizeEmail,
   notFound,
@@ -68,6 +67,43 @@ interface ConsentDeps {
   tokens: TokenGenerator;
   clock: Clock;
 }
+
+export const createMarketingConsentDefinition = async (
+  ctx: Ctx,
+  input: {
+    key: string;
+    label: string;
+    doubleOptIn: boolean;
+    documentUrl: string;
+  },
+  deps: Pick<ConsentDeps, 'definitions' | 'ids' | 'clock'>,
+): Promise<Result<{ definition: Awaited<ReturnType<ConsentDefinitionRepository['findById']>> }, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const parsedUrl = URL.canParse(input.documentUrl);
+  if (!parsedUrl) return err(validation('Consent document URL is invalid'));
+  const now = deps.clock.nowIso();
+  const definition = {
+    id: deps.ids.nextId(), tenantId: tenantId.value, key: input.key,
+    kind: 'optional_marketing' as const, channel: 'email' as const,
+    doubleOptIn: input.doubleOptIn, documentRef: { mode: 'url' as const, url: input.documentUrl },
+    status: 'active' as const, createdAt: now, updatedAt: now,
+  };
+  await deps.definitions.create(tenantId.value, definition, {
+    id: deps.ids.nextId(), tenantId: tenantId.value, definitionId: definition.id,
+    version: 1, label: input.label, documentVersionRef: { mode: 'url', url: input.documentUrl },
+    createdAt: now, createdBy: ctx.identity.userId,
+  });
+  return ok({ definition });
+};
+
+export const listMarketingConsentDefinitions = async (
+  ctx: Ctx,
+  deps: Pick<ConsentDeps, 'definitions'>,
+): Promise<Result<{ definitions: Awaited<ReturnType<ConsentDefinitionRepository['list']>> }, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx);
+  return tenantId.ok ? ok({ definitions: await deps.definitions.list(tenantId.value) }) : tenantId;
+};
 
 export const recordMarketingConsent = async (
   ctx: Ctx,
@@ -512,8 +548,8 @@ export const sendMarketingMessages = async (
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
-  if (settings === null) return err(integrationNotConfigured('Tenant SES is not configured'));
-  if (!settings.broadcastsEnabled) return err(integrationNotConfigured('Marketing broadcasts are disabled'));
+  if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  if (!settings.broadcastsEnabled) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   const results: MarketingSendResult[] = [];
@@ -634,7 +670,7 @@ export const campaignTick = async (
     return ok({ leased: true, yieldedToTransactional: true, sent: 0, failed: 0, skipped: 0 });
   }
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
-  if (settings === null) return err(integrationNotConfigured('Tenant SES is not configured'));
+  if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
   const sentSince = new Date(Date.parse(now) - 24 * 60 * 60 * 1000).toISOString();
   const sentLast24Hours = (await deps.sends.listAll(tenantId.value))
     .filter((send) => send.status === 'sent' && send.sentAt !== null && send.sentAt >= sentSince)
@@ -707,8 +743,8 @@ export const testSendCampaignToSelf = async (
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (campaign === null) return err(notFound('Campaign was not found'));
-  if (settings === null) return err(integrationNotConfigured('Tenant SES is not configured'));
-  if (!settings.broadcastsEnabled) return err(integrationNotConfigured('Marketing broadcasts are disabled'));
+  if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  if (!settings.broadcastsEnabled) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   const versions = await deps.definitions.listVersions(tenantId.value, campaign.consentDefinitionId);

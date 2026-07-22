@@ -78,6 +78,9 @@ import {
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
+  campaignSchema,
+  consentDefinitionSchema,
+  suppressionSchema,
   updateTenantSettingsInputSchema,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
@@ -735,6 +738,30 @@ export const m2mEnrollOutputSchema = z.object({
   magicLink: magicLinkSchema.nullable(),
 });
 
+export const marketingConsentDefinitionCreateInputSchema = z.object({
+  key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  label: z.string().trim().min(1),
+  doubleOptIn: z.boolean().default(true),
+  documentUrl: z.string().url(),
+});
+
+export const marketingConsentDefinitionsOutputSchema = z.object({ definitions: z.array(consentDefinitionSchema) });
+export const marketingConsentDefinitionOutputSchema = z.object({ definition: consentDefinitionSchema.nullable() });
+export const marketingCampaignCreateInputSchema = z.object({
+  name: z.string().trim().min(1), subject: z.string().trim().min(1),
+  bodyHtml: z.string().min(1), consentDefinitionId: z.string().min(1),
+});
+export const marketingCampaignScheduleInputSchema = z.object({ campaignId: z.string().min(1), sendAt: z.string().datetime() });
+export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
+export const marketingCampaignsOutputSchema = z.object({ campaigns: z.array(campaignSchema) });
+export const marketingSuppressionCreateInputSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).nullable().default(null) });
+export const marketingSuppressionsOutputSchema = z.object({ suppressions: z.array(suppressionSchema), nextCursor: z.string().nullable() });
+export const marketingSuppressionOutputSchema = z.object({ suppression: suppressionSchema });
+export type MarketingConsentDefinitionCreateInput = z.input<typeof marketingConsentDefinitionCreateInputSchema>;
+export type MarketingCampaignCreateInput = z.input<typeof marketingCampaignCreateInputSchema>;
+export type MarketingCampaignScheduleInput = z.input<typeof marketingCampaignScheduleInputSchema>;
+export type MarketingSuppressionCreateInput = z.input<typeof marketingSuppressionCreateInputSchema>;
+
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
  * writes at the type level (CQRS partition). Safe GETs are queries; unsafe
@@ -834,6 +861,23 @@ export const API_ROUTES = {
   bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
+  marketingMessagesCreate: { method: 'POST', path: '/api/m2m/marketing/messages' },
+  marketingMessages: { method: 'GET', path: '/api/m2m/marketing/messages' },
+  marketingMessage: { method: 'GET', path: '/api/m2m/marketing/messages/:id' },
+  marketingEligibility: { method: 'GET', path: '/api/m2m/marketing/eligibility' },
+  marketingConsents: { method: 'POST', path: '/api/m2m/marketing/consents' },
+  marketingSuppressions: { method: 'GET', path: '/api/m2m/marketing/suppressions' },
+  marketingSuppressionsCreate: { method: 'POST', path: '/api/m2m/marketing/suppressions' },
+  marketingTemplates: { method: 'GET', path: '/api/m2m/marketing/templates' },
+  marketingTick: { method: 'POST', path: '/api/internal/marketing/tick' },
+  marketingConsentDefinitions: { method: 'GET', path: '/api/marketing/consent-definitions' },
+  marketingConsentDefinitionsCreate: { method: 'POST', path: '/api/marketing/consent-definitions' },
+  marketingCampaigns: { method: 'GET', path: '/api/marketing/campaigns' },
+  marketingCampaignsCreate: { method: 'POST', path: '/api/marketing/campaigns' },
+  marketingCampaignSchedule: { method: 'POST', path: '/api/marketing/campaigns/schedule' },
+  marketingCampaign: { method: 'GET', path: '/api/marketing/campaigns/:id' },
+  marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
+  marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
@@ -932,6 +976,20 @@ export const API_PATHS = {
   bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
+  marketingMessagesCreate: API_ROUTES.marketingMessagesCreate.path,
+  marketingMessages: API_ROUTES.marketingMessages.path,
+  marketingMessage: API_ROUTES.marketingMessage.path,
+  marketingEligibility: API_ROUTES.marketingEligibility.path,
+  marketingConsents: API_ROUTES.marketingConsents.path,
+  marketingSuppressions: API_ROUTES.marketingSuppressions.path,
+  marketingSuppressionsCreate: API_ROUTES.marketingSuppressionsCreate.path,
+  marketingTemplates: API_ROUTES.marketingTemplates.path,
+  marketingTick: API_ROUTES.marketingTick.path,
+  marketingConsentDefinitions: API_ROUTES.marketingConsentDefinitions.path,
+  marketingCampaigns: API_ROUTES.marketingCampaigns.path,
+  marketingCampaignSchedule: API_ROUTES.marketingCampaignSchedule.path,
+  marketingCampaign: API_ROUTES.marketingCampaign.path,
+  marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   onboarding: API_ROUTES.onboarding.path,

@@ -277,6 +277,25 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
     return this.rows.filter((row) => row.tenantId === tenantId).map((row) => structuredClone(row));
   }
 
+  async listPage(tenantId: string, query: {
+    campaignId?: string;
+    email?: string;
+    status?: CampaignSend['status'];
+    cursor?: string;
+    limit: number;
+  }): Promise<{ sends: CampaignSend[]; nextCursor: string | null }> {
+    const rows = this.rows.filter((row) => row.tenantId === tenantId
+      && (query.campaignId === undefined || row.campaignId === query.campaignId)
+      && (query.email === undefined || row.email === normalizeEmail(query.email))
+      && (query.status === undefined || row.status === query.status)
+      && (query.cursor === undefined || row.id > query.cursor))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    return {
+      sends: rows.slice(0, query.limit).map((row) => structuredClone(row)),
+      nextCursor: rows.length > query.limit ? rows[query.limit - 1]?.id ?? null : null,
+    };
+  }
+
   async hasPendingByCampaign(tenantId: string, campaignId: string): Promise<boolean> {
     return this.rows.some((row) => row.tenantId === tenantId && row.campaignId === campaignId && (row.status === 'pending' || row.status === 'sending'));
   }
@@ -327,6 +346,17 @@ export class InMemorySuppressionRepository implements SuppressionRepository {
   async findById(tenantId: string, suppressionId: string): Promise<Suppression | null> {
     const found = this.rows.find((row) => row.tenantId === tenantId && row.id === suppressionId);
     return found === undefined ? null : structuredClone(found);
+  }
+
+  async list(tenantId: string, query: { emailHmac?: string; cursor?: string; limit: number }): Promise<{ suppressions: Suppression[]; nextCursor: string | null }> {
+    const rows = this.rows.filter((row) => row.tenantId === tenantId
+      && (query.emailHmac === undefined || row.emailHmac === query.emailHmac)
+      && (query.cursor === undefined || row.id > query.cursor))
+      .sort((left, right) => left.id.localeCompare(right.id));
+    return {
+      suppressions: rows.slice(0, query.limit).map((row) => structuredClone(row)),
+      nextCursor: rows.length > query.limit ? rows[query.limit - 1]?.id ?? null : null,
+    };
   }
 }
 

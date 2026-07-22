@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { API_PATHS, TENANT_HEADER } from '@core/contract/index.js';
 import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
-import type { AppDeps } from './composition.js';
+import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
   err,
@@ -17,6 +17,22 @@ import {
   type TenantDomain,
   type TermsConsent,
 } from '@core/domain/index.js';
+import {
+  FakeEmailHmac,
+  FakeScheduler,
+  FakeSesMarketingSender,
+  FakeSnsVerifier,
+  InMemoryAutomationIdempotencyRepository,
+  InMemoryCampaignRepository,
+  InMemoryCampaignSendRepository,
+  InMemoryConsentConfirmationTokenRepository,
+  InMemoryConsentDefinitionRepository,
+  InMemoryMarketingAudienceRepository,
+  InMemoryMarketingConsentRepository,
+  InMemorySuppressionRepository,
+  InMemoryTenantSesSettingsRepository,
+  InMemoryUnsubscribeTokenRepository,
+} from '@core/server/testing/marketing-fakes.js';
 
 const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
 const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };
@@ -386,6 +402,85 @@ const deps = (input: {
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
+
+const marketingDeps = (): MarketingAppDeps => ({
+  definitions: new InMemoryConsentDefinitionRepository(),
+  marketingConsents: new InMemoryMarketingConsentRepository(),
+  confirmations: new InMemoryConsentConfirmationTokenRepository(),
+  campaigns: new InMemoryCampaignRepository(),
+  campaignSends: new InMemoryCampaignSendRepository(),
+  audience: new InMemoryMarketingAudienceRepository(),
+  suppressions: new InMemorySuppressionRepository(),
+  unsubscribes: new InMemoryUnsubscribeTokenRepository(),
+  sesSettings: new InMemoryTenantSesSettingsRepository(),
+  documents: {
+    findLatestPublished: async (tenantId, slug) => tenantId === 't-acme' && slug === 'terms' ? {
+      document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z' },
+      version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '2026-07-22T00:00:00.000Z', createdAt: '2026-07-22T00:00:00.000Z', createdBy: 'staff' },
+    } : null,
+    findPublishedVersion: async () => null,
+  },
+  idempotency: new InMemoryAutomationIdempotencyRepository(),
+  marketingSes: new FakeSesMarketingSender(),
+  marketingCredentials: { resolve: async () => ok({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'eu-central-1' }) },
+  hmac: new FakeEmailHmac(),
+  sns: new FakeSnsVerifier(ok({ type: 'Notification', topicArn: 'topic', message: '{}', subscribeUrl: null })),
+  scheduler: new FakeScheduler(),
+  tickSecret: 'test-marketing-tick-secret',
+  dispatchCampaign: async () => ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 }),
+});
+
+const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
+  const configured = deps();
+  configured.marketing = marketing;
+  configured.tenantApiKeys = {
+    listByTenant: async () => [],
+    create: async () => undefined,
+    findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
+      id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+      createdAt: '2026-07-22T00:00:00.000Z', revokedAt: null,
+    } : null,
+    revoke: async () => null,
+  };
+  return buildApp(configured);
+};
+
+describe('marketing HTTP surfaces', () => {
+  it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
+    const app = marketingApp();
+    const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
+    expect((await app.request('/api/m2m/marketing/templates', { headers })).status).toBe(200);
+    expect((await app.request('/api/m2m/marketing/templates', { headers: { host: headers.host } })).status).toBe(401);
+    const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
+    expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+    expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it('serves the latest published hosted document on the tenant domain', async () => {
+    const response = await marketingApp().request('/legal/terms', { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('Immutable terms');
+  });
+
+  it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {
+    const marketing = marketingDeps();
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', webhookToken: 'webhook-token',
+      quotaRatePerSec: 10, quotaDaily: 1000, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
+      inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true,
+    }]);
+    marketing.sns = new FakeSnsVerifier(ok({
+      type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:other', message: '{}', subscribeUrl: null,
+    }));
+    const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+      method: 'POST', body: '{}',
+    });
+    expect(response.status).toBe(200);
+  });
+});
 
 describe('email dispatch route', () => {
   it('requires the shared secret and returns the dispatch envelope', async () => {

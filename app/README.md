@@ -101,6 +101,15 @@ taxonomy (`validation`=2, `unauthorized`=3, `forbidden`=4, `not_found`=5,
 `conflict`=6, `tenant_not_found`=7, `internal`=10). That makes the CLI a
 deterministic verification loop for AI agents — and the reference client.
 
+## Marketing e-mail
+
+Marketing delivery uses a BYO-SES model: every tenant connects its own Amazon
+SES account, while Together enforces consent, suppression, unsubscribe, sender
+identity, throttling, and send logging. Multi-step automations are intentionally
+orchestrated in n8n or Make through the M2M API; there is no native drip builder
+by design. See the [marketing automation API guide](../docs/marketing-automation-api.md)
+and its ready-made n8n and Make scenarios.
+
 ## Architecture in one screen
 
 ```

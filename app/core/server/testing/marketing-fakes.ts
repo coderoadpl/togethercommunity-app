@@ -6,6 +6,7 @@ import {
   type AutomationIdempotencyKey,
   type Campaign,
   type CampaignSend,
+  type ConsentConfirmationToken,
   type ConsentDefinition,
   type ConsentDefinitionVersion,
   type MarketingConsent,
@@ -13,15 +14,21 @@ import {
   type Suppression,
   type TenantSesSettings,
   type UnsubscribeToken,
+  type EmailOutboxPayload,
 } from '@core/domain/index.js';
 
 import type {
   AutomationIdempotencyRepository,
   CampaignRepository,
   CampaignSendRepository,
+  ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
   EmailHmac,
   MarketingConsentRepository,
+  MarketingAudienceMember,
+  MarketingAudienceRepository,
+  EmailOutboxItem,
+  EmailOutboxRepository,
   SchedulerPort,
   SesMarketingSender,
   SnsVerifier,
@@ -53,9 +60,75 @@ export class InMemoryMarketingConsentRepository implements MarketingConsentRepos
   async latestByEmail(tenantId: string, email: string, definitionId: string): Promise<MarketingConsent | null> {
     const rows = await this.listByEmail(tenantId, email, definitionId);
     return rows.reduce<MarketingConsent | null>(
-      (latest, row) => latest === null || row.occurredAt > latest.occurredAt ? row : latest,
+      (latest, row) => latest === null || row.occurredAt >= latest.occurredAt ? row : latest,
       null,
     );
+  }
+
+  async findById(tenantId: string, consentId: string): Promise<MarketingConsent | null> {
+    const found = this.rows.find((row) => row.tenantId === tenantId && row.id === consentId);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async purgeStalePending(tenantId: string, olderThan: string, doubleOptInDefinitionIds: string[]): Promise<number> {
+    const pendingIds = new Set(this.rows
+      .filter((row) => row.tenantId === tenantId && row.status === 'granted' && row.occurredAt < olderThan && doubleOptInDefinitionIds.includes(row.definitionId))
+      .filter((row) => !this.rows.some((later) => later.tenantId === tenantId && later.previousId === row.id))
+      .map((row) => row.id));
+    const retained = this.rows.filter((row) => !pendingIds.has(row.id));
+    const removed = this.rows.length - retained.length;
+    this.rows.splice(0, this.rows.length, ...retained);
+    return removed;
+  }
+}
+
+export class InMemoryConsentConfirmationTokenRepository implements ConsentConfirmationTokenRepository {
+  readonly rows: ConsentConfirmationToken[] = [];
+
+  async create(tenantId: string, token: ConsentConfirmationToken): Promise<void> {
+    if (!sameTenant(tenantId, token) || this.rows.some((row) => row.token === token.token)) throw new Error('Token already exists');
+    this.rows.push(structuredClone(token));
+  }
+
+  async findByToken(tenantId: string, token: string): Promise<ConsentConfirmationToken | null> {
+    const found = this.rows.find((row) => row.tenantId === tenantId && row.token === token);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async consume(tenantId: string, token: string, usedAt: string): Promise<ConsentConfirmationToken | null> {
+    const found = this.rows.find((row) => row.tenantId === tenantId && row.token === token);
+    if (found === undefined || found.usedAt !== null || found.expiresAt <= usedAt) return null;
+    found.usedAt = usedAt;
+    return structuredClone(found);
+  }
+}
+
+export class InMemoryMarketingAudienceRepository implements MarketingAudienceRepository {
+  afterFetch: ((rows: MarketingAudienceMember[]) => Promise<void>) | null = null;
+
+  constructor(private readonly rows: MarketingAudienceMember[] = []) {}
+
+  async snapshot(_tenantId: string, input: { productIds: string[] }): Promise<{ maxMemberId: string | null; count: number }> {
+    const rows = this.rows
+      .filter((row) => input.productIds.length === 0 || input.productIds.some((id) => row.productIds.includes(id)))
+      .sort((left, right) => left.memberId.localeCompare(right.memberId));
+    return { maxMemberId: rows.at(-1)?.memberId ?? null, count: rows.length };
+  }
+
+  async fetchEligibleBatch(_tenantId: string, input: {
+    productIds: string[];
+    afterMemberId: string | null;
+    maxMemberId: string;
+    limit: number;
+  }): Promise<MarketingAudienceMember[]> {
+    const fetched = this.rows
+      .filter((row) => (input.afterMemberId === null || row.memberId > input.afterMemberId) && row.memberId <= input.maxMemberId)
+      .filter((row) => input.productIds.length === 0 || input.productIds.some((id) => row.productIds.includes(id)))
+      .sort((left, right) => left.memberId.localeCompare(right.memberId))
+      .slice(0, input.limit)
+      .map((row) => structuredClone(row));
+    if (this.afterFetch !== null) await this.afterFetch(fetched);
+    return fetched;
   }
 }
 
@@ -115,6 +188,17 @@ export class InMemoryCampaignRepository implements CampaignRepository {
     return found === undefined ? null : structuredClone(found);
   }
 
+  async list(tenantId: string): Promise<Campaign[]> {
+    return this.rows.filter((row) => row.tenantId === tenantId).map((row) => structuredClone(row));
+  }
+
+  async delete(tenantId: string, campaignId: string): Promise<boolean> {
+    const index = this.rows.findIndex((row) => row.tenantId === tenantId && row.id === campaignId);
+    if (index < 0) return false;
+    this.rows.splice(index, 1);
+    return true;
+  }
+
   async update(tenantId: string, campaign: Campaign): Promise<Campaign | null> {
     const index = this.rows.findIndex((row) => sameTenant(tenantId, row) && row.id === campaign.id);
     if (index < 0 || !sameTenant(tenantId, campaign)) return null;
@@ -150,6 +234,8 @@ export class InMemoryCampaignRepository implements CampaignRepository {
 
 export class InMemoryCampaignSendRepository implements CampaignSendRepository {
   private readonly rows: CampaignSend[] = [];
+  afterClaim: ((send: CampaignSend) => Promise<void>) | null = null;
+  renderedBodiesAgedOut = 0;
 
   async claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean> {
     if (!sameTenant(tenantId, send) || this.rows.some((row) => row.id === send.id)) return false;
@@ -157,6 +243,7 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
       row.tenantId === tenantId && row.campaignId === send.campaignId && row.email === normalizeEmail(send.email)
     )) return false;
     this.rows.push(structuredClone(send));
+    if (this.afterClaim !== null) await this.afterClaim(structuredClone(send));
     return true;
   }
 
@@ -185,6 +272,30 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
       .filter((row) => sameTenant(tenantId, row) && row.campaignId === campaignId)
       .map((row) => structuredClone(row));
   }
+
+  async listAll(tenantId: string): Promise<CampaignSend[]> {
+    return this.rows.filter((row) => row.tenantId === tenantId).map((row) => structuredClone(row));
+  }
+
+  async hasPendingByCampaign(tenantId: string, campaignId: string): Promise<boolean> {
+    return this.rows.some((row) => row.tenantId === tenantId && row.campaignId === campaignId && (row.status === 'pending' || row.status === 'sending'));
+  }
+
+  async pseudonymizeMember(tenantId: string, input: { memberId: string; email: string; tombstoneEmail: string }): Promise<number> {
+    let changed = 0;
+    for (const row of this.rows) {
+      if (row.tenantId === tenantId && row.memberId === input.memberId && row.email === normalizeEmail(input.email)) {
+        row.memberId = null;
+        row.email = normalizeEmail(input.tombstoneEmail);
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
+  async ageOutRenderedBodies(): Promise<number> {
+    return this.renderedBodiesAgedOut;
+  }
 }
 
 export class InMemorySuppressionRepository implements SuppressionRepository {
@@ -211,6 +322,49 @@ export class InMemorySuppressionRepository implements SuppressionRepository {
     if (index < 0 || suppression.reason === 'complaint' || suppression.liftedAt === null || suppression.liftedBy === null) return null;
     this.rows[index] = structuredClone(suppression);
     return structuredClone(suppression);
+  }
+
+  async findById(tenantId: string, suppressionId: string): Promise<Suppression | null> {
+    const found = this.rows.find((row) => row.tenantId === tenantId && row.id === suppressionId);
+    return found === undefined ? null : structuredClone(found);
+  }
+}
+
+export interface InMemoryEmailOutboxItem extends EmailOutboxItem {
+  status: 'queued' | 'sending' | 'sent' | 'failed';
+}
+
+export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
+  readonly items: InMemoryEmailOutboxItem[] = [];
+
+  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload }): Promise<Result<{ id: string }, AppError>> {
+    this.items.push({ ...structuredClone(input), attempts: 0, status: 'queued' });
+    return ok({ id: input.id });
+  }
+
+  async claimBatch(input: { limit: number }): Promise<Result<EmailOutboxItem[], AppError>> {
+    const claimed = this.items.filter((row) => row.status === 'queued' || row.status === 'failed').slice(0, input.limit);
+    claimed.forEach((row) => { row.status = 'sending'; });
+    return ok(claimed.map((row) => structuredClone(row)));
+  }
+
+  async markSent(input: { id: string }): Promise<Result<void, AppError>> {
+    const found = this.items.find((row) => row.id === input.id);
+    if (found !== undefined) found.status = 'sent';
+    return ok(undefined);
+  }
+
+  async markFailed(input: { id: string; attempts: number }): Promise<Result<void, AppError>> {
+    const found = this.items.find((row) => row.id === input.id);
+    if (found !== undefined) {
+      found.status = 'failed';
+      found.attempts = input.attempts;
+    }
+    return ok(undefined);
+  }
+
+  async hasPendingForTenant(tenantId: string): Promise<boolean> {
+    return this.items.some((row) => row.tenantId === tenantId && (row.status === 'queued' || row.status === 'sending' || row.status === 'failed'));
   }
 }
 
@@ -283,7 +437,8 @@ export class FakeSesMarketingSender implements SesMarketingSender {
 
   async send(input: CapturedMarketingMessage): Promise<Result<{ messageId: string }, AppError>> {
     this.sent.push(structuredClone(input));
-    return this.result;
+    if (!this.result.ok || this.sent.length === 1) return this.result;
+    return ok({ messageId: `${this.result.value.messageId}-${String(this.sent.length)}` });
   }
 }
 
@@ -305,6 +460,7 @@ export class FakeSnsVerifier implements SnsVerifier {
 export class FakeScheduler implements SchedulerPort {
   readonly enqueued: Array<{ tenantId: string; campaignId: string }> = [];
   readonly scheduled: Array<{ tenantId: string; campaignId: string; runAt: string }> = [];
+  readonly retentionTenants: string[] = [];
 
   async enqueueCampaignTick(tenantId: string, campaignId: string): Promise<Result<void, AppError>> {
     this.enqueued.push({ tenantId, campaignId });
@@ -313,6 +469,11 @@ export class FakeScheduler implements SchedulerPort {
 
   async scheduleCampaignTick(tenantId: string, campaignId: string, runAt: string): Promise<Result<void, AppError>> {
     this.scheduled.push({ tenantId, campaignId, runAt });
+    return ok(undefined);
+  }
+
+  async enqueueRetentionJobs(tenantId: string): Promise<Result<void, AppError>> {
+    this.retentionTenants.push(tenantId);
     return ok(undefined);
   }
 }

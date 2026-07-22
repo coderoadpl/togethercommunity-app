@@ -131,7 +131,7 @@ export const deriveConsentState = (
   const row = rows
     .filter((candidate) => candidate.definitionId === definition.id)
     .reduce<MarketingConsent | null>(
-      (latest, candidate) => latest === null || candidate.occurredAt > latest.occurredAt ? candidate : latest,
+      (latest, candidate) => latest === null || candidate.occurredAt >= latest.occurredAt ? candidate : latest,
       null,
     );
   if (row === null) return { state: 'none', active: false, row: null };
@@ -161,6 +161,7 @@ export const suppressionSchema = z.object({
   emailHmac: z.string().min(1),
   reason: suppressionReasonSchema,
   sourceRef: z.string().nullable(),
+  meta: z.unknown().nullable().default(null),
   createdAt: isoDateTimeSchema,
   liftedAt: isoDateTimeSchema.nullable(),
   liftedBy: z.string().nullable(),
@@ -500,6 +501,15 @@ export const automationIdempotencyKeySchema = z.object({
 });
 
 export type AutomationIdempotencyKey = z.infer<typeof automationIdempotencyKeySchema>;
+
+export const marketingConsentConfirmation = (input: {
+  confirmationUrl: string;
+  wording: string;
+}): { subject: string; html: string; text: string } => ({
+  subject: 'Confirm your e-mail consent',
+  html: `<p>Confirm that you requested this consent:</p><p>${escapeHtml(input.wording)}</p><p><a href="${escapeHtml(input.confirmationUrl)}">Confirm consent</a></p>`,
+  text: `Confirm that you requested this consent:\n\n${input.wording}\n\n${input.confirmationUrl}`,
+});
 
 export const throttleBudget = (input: {
   ratePerSecond: number;

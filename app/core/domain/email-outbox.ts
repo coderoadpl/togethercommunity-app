@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { marketingConsentConfirmation } from './marketing-email.js';
 import { emailMessageSchema, magicLink, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost } from './transactional-email.js';
 
 const brandingSchema = z.object({ logoUrl: z.string().url().nullable(), accentColor: z.string().nullable() });
@@ -11,6 +12,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('thread-reply'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('lesson-question'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('space-post'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
+  z.object({ kind: z.literal('marketing-consent-confirmation'), wording: z.string().min(1), confirmationUrl: z.string().url() }),
 ]);
 
 export type EmailOutboxPayload = z.output<typeof emailOutboxPayloadSchema>;
@@ -29,6 +31,8 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
           ? threadReply(value.language, value)
           : value.kind === 'lesson-question'
             ? lessonQuestion(value.language, value)
-            : spacePost(value.language, value);
+            : value.kind === 'space-post'
+              ? spacePost(value.language, value)
+              : marketingConsentConfirmation(value);
   return { success: true as const, data: emailMessageSchema.parse(message) };
 };

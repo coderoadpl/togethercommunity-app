@@ -39,6 +39,7 @@ import {
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
+import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
 import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
@@ -65,6 +66,7 @@ import type {
   EntityVersionRepository,
   EmailPort,
   EmailOutboxRepository,
+  EmailHmac,
   EnrollmentTransactionPort,
   DevMagicLinkReader,
   FileUrlSigner,
@@ -125,6 +127,7 @@ export interface AppDeps {
   userDisplays: UserDisplayReader;
   members: MemberRepository;
   memberErasure: MemberErasurePort;
+  emailHmac?: EmailHmac;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaces: SpaceRepository;
@@ -186,6 +189,7 @@ export const createDeps = (env: Env): AppDeps => {
   const ids = { nextId: () => randomUUID() };
   const clock = { nowIso: () => new Date().toISOString() };
   const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
+  const emailHmac = createEmailHmac(env.SECRETS_MASTER_KEY);
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
   const payment =
     env.PAYMENT_PROVIDER === 'stripe'
@@ -301,7 +305,8 @@ export const createDeps = (env: Env): AppDeps => {
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
-    memberErasure: createMemberErasureRepository(db),
+    memberErasure: createMemberErasureRepository(db, emailHmac),
+    emailHmac,
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     spaces: createSpaceRepository(db),

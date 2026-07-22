@@ -55,6 +55,7 @@ import type {
   EntityVersionRecord,
   EntityVersionRepository,
   HealthPort,
+  EmailHmac,
   MemberErasurePort,
   MemberRepository,
   MemberCourseProgressRepository,
@@ -87,6 +88,7 @@ import type { Db } from './client.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
   consents,
+  campaignSends,
   courseLessons,
   courseModules,
   courses,
@@ -105,6 +107,7 @@ import {
   processedPaymentEvents,
   products,
   spaces,
+  suppressions,
   spaceSubscriptions,
   tenantAdmins,
   tenantApiKeys,
@@ -1174,7 +1177,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
   },
 });
 
-export const createMemberErasureRepository = (db: Db): MemberErasurePort => ({
+export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) =>
     db.transaction(async (tx) => {
       const rows = await tx
@@ -1229,6 +1232,20 @@ export const createMemberErasureRepository = (db: Db): MemberErasurePort => ({
           deletedAt: input.deletedAt,
         })
         .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)));
+
+      await tx.insert(suppressions).values({
+        id: sql`gen_random_uuid()::text`, tenantId, email: null,
+        emailHmac: emailHmac.compute(tenantId, member.email), reason: 'erasure',
+        sourceRef: input.memberId, createdAt: input.deletedAt,
+      }).onConflictDoNothing();
+      await tx
+        .update(campaignSends)
+        .set({ memberId: null, email: input.tombstoneEmail })
+        .where(and(
+          eq(campaignSends.tenantId, tenantId),
+          eq(campaignSends.memberId, input.memberId),
+          eq(campaignSends.email, member.email),
+        ));
 
       const memberLinks = await tx
         .select({ value: sql<number>`count(*)::int` })

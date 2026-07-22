@@ -27,6 +27,8 @@ import type {
   EmailLayoutRepository,
   MarketingAudienceRepository,
   MarketingConsentRepository,
+  MarketingJobRepository,
+  MarketingThrottleRepository,
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
@@ -43,6 +45,7 @@ import {
   emailLayouts,
   marketingConsents,
   marketingIdempotencyKeys,
+  marketingThrottleBuckets,
   members,
   productGrants,
   suppressions,
@@ -301,6 +304,50 @@ export const createCampaignRepository = (db: Db): CampaignRepository => ({
       failed: sql`${campaigns.failed} + ${input.failedDelta}`,
     }).where(and(eq(campaigns.tenantId, tenantId), eq(campaigns.id, campaignId))).returning();
     return row === undefined ? null : parseCampaign(row);
+  },
+});
+
+export const createMarketingJobRepository = (db: Db): MarketingJobRepository => ({
+  listRunnableCampaigns: async (now) => (await db.select({
+    tenantId: campaigns.tenantId,
+    campaignId: campaigns.id,
+  }).from(campaigns).where(or(
+    eq(campaigns.status, 'running'),
+    and(eq(campaigns.status, 'scheduled'), lte(campaigns.sendAt, now)),
+  )).orderBy(asc(campaigns.sendAt), asc(campaigns.createdAt), asc(campaigns.id))),
+  listRetentionTenantIds: async () => {
+    const [consentTenants, sendTenants, idempotencyTenants] = await Promise.all([
+      db.selectDistinct({ tenantId: marketingConsents.tenantId }).from(marketingConsents),
+      db.selectDistinct({ tenantId: campaignSends.tenantId }).from(campaignSends),
+      db.selectDistinct({ tenantId: marketingIdempotencyKeys.tenantId }).from(marketingIdempotencyKeys),
+    ]);
+    return [...new Set([...consentTenants, ...sendTenants, ...idempotencyTenants].map((row) => row.tenantId))].sort();
+  },
+});
+
+export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepository => ({
+  claim: async (tenantId, input) => {
+    const capacity = Math.max(1, input.ratePerSecond);
+    await db.insert(marketingThrottleBuckets).values({
+      tenantId,
+      tokens: capacity,
+      lastRefillAt: input.now,
+      quotaSnapshotAt: input.quotaSnapshotAt,
+      reservedSinceSnapshot: 0,
+    }).onConflictDoNothing();
+    const available = sql<number>`least(${capacity}, ${marketingThrottleBuckets.tokens} + greatest(0, extract(epoch from (${input.now}::timestamptz - ${marketingThrottleBuckets.lastRefillAt}))) * ${input.ratePerSecond})`;
+    const reserved = sql<number>`case when ${marketingThrottleBuckets.quotaSnapshotAt} = ${input.quotaSnapshotAt}::timestamptz then ${marketingThrottleBuckets.reservedSinceSnapshot} else 0 end`;
+    const [claimed] = await db.update(marketingThrottleBuckets).set({
+      tokens: sql`${available} - ${input.requested}`,
+      lastRefillAt: input.now,
+      quotaSnapshotAt: input.quotaSnapshotAt,
+      reservedSinceSnapshot: sql`${reserved} + ${input.requested}`,
+    }).where(and(
+      eq(marketingThrottleBuckets.tenantId, tenantId),
+      sql`${available} >= ${input.requested}`,
+      sql`${input.sentLast24Hours} + ${reserved} + ${input.requested} <= ${input.dailyQuota}`,
+    )).returning({ tenantId: marketingThrottleBuckets.tenantId });
+    return claimed !== undefined;
   },
 });
 

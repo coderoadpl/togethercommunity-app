@@ -44,7 +44,10 @@ import type {
   IdGenerator,
   MarketingAudienceRepository,
   MarketingConsentRepository,
+  MarketingJobRepository,
   MarketingSesCredentialResolver,
+  MarketingThrottleRepository,
+  SesMarketingQuotaReader,
   SesMarketingSender,
   SuppressionRepository,
   TenantSesSettingsRepository,
@@ -139,6 +142,9 @@ export const recordMarketingConsent = async (
   if (!tenantId.ok) return tenantId;
   if (input.evidence.collectedAt.trim() === '' || (input.evidence.proofRef?.trim() ?? '') === '') {
     return err(validation('Explicit consent evidence is required'));
+  }
+  if (Date.parse(input.evidence.collectedAt) > Date.parse(deps.clock.nowIso())) {
+    return err(validation('Consent evidence cannot be dated in the future'));
   }
   const definition = await deps.definitions.findById(tenantId.value, input.definitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
@@ -634,6 +640,8 @@ interface SendDeps extends EligibilityDeps {
   sesSettings: TenantSesSettingsRepository;
   ses: SesMarketingSender;
   credentials: MarketingSesCredentialResolver;
+  quotaReader: SesMarketingQuotaReader | undefined;
+  throttle: MarketingThrottleRepository;
   ids: IdGenerator;
   tokens: TokenGenerator;
   clock: Clock;
@@ -713,11 +721,33 @@ export const sendMarketingMessages = async (
 ): Promise<Result<MarketingSendResult[], AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
-  const settings = await deps.sesSettings.findByTenant(tenantId.value);
+  let settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
+  const now = deps.clock.nowIso();
+  if (deps.quotaReader !== undefined && (settings.quotaRefreshedAt === null
+    || Date.parse(now) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
+    const quota = await deps.quotaReader.read(credentials.value);
+    if (!quota.ok) return quota;
+    settings = await deps.sesSettings.upsert(tenantId.value, {
+      ...settings,
+      quotaRatePerSec: quota.value.ratePerSecond,
+      quotaDaily: quota.value.daily,
+      quotaSentLast24Hours: quota.value.sentLast24Hours,
+      quotaRefreshedAt: now,
+      inSandbox: quota.value.inSandbox,
+    });
+  }
   if (!tenantSesBroadcastsReady(settings)) return err(appError('broadcasts_disabled', 'Marketing broadcasts are disabled'));
+  if (settings.quotaRefreshedAt === null || !await deps.throttle.claim(tenantId.value, {
+    requested: inputs.length,
+    now,
+    ratePerSecond: settings.quotaRatePerSec,
+    dailyQuota: settings.quotaDaily,
+    sentLast24Hours: settings.quotaSentLast24Hours,
+    quotaSnapshotAt: settings.quotaRefreshedAt,
+  })) return err(appError('rate_limited', 'Tenant SES throttle budget is exhausted'));
   const results: MarketingSendResult[] = [];
   for (const input of inputs) {
     const initial = await eligibilityFor(tenantId.value, input, deps);
@@ -836,6 +866,7 @@ interface TickDeps extends SendDeps {
   campaigns: CampaignRepository;
   audience: MarketingAudienceRepository;
   outbox: EmailOutboxRepository;
+  scheduler: SchedulerPort;
 }
 
 export const campaignTick = async (
@@ -857,7 +888,14 @@ export const campaignTick = async (
     workerId: input.workerId, now, lockedUntil: new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
   });
   if (!leased) return ok({ leased: false, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
+  const scheduleNextTick = () => deps.scheduler.scheduleCampaignTick(
+    tenantId.value,
+    campaign.id,
+    new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
+  );
   if (deps.outbox.hasPendingForTenant !== undefined && await deps.outbox.hasPendingForTenant(tenantId.value)) {
+    const scheduled = await scheduleNextTick();
+    if (!scheduled.ok) return scheduled;
     return ok({ leased: true, yieldedToTransactional: true, sent: 0, failed: 0, skipped: 0 });
   }
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
@@ -866,16 +904,22 @@ export const campaignTick = async (
   const sentLast24Hours = (await deps.sends.listAll(tenantId.value))
     .filter((send) => send.status === 'sent' && send.sentAt !== null && send.sentAt >= sentSince)
     .length;
-  const budget = throttleBudget({
+  const tickBudget = throttleBudget({
     ratePerSecond: settings.quotaRatePerSec, tickSeconds: input.tickSeconds,
     dailyQuota: settings.quotaDaily, sentLast24Hours, inSandbox: settings.inSandbox,
   });
+  const budget = Math.min(tickBudget, Math.max(1, Math.floor(settings.quotaRatePerSec)));
   const maxMemberId = campaign.snapshotMaxMemberId;
   if (maxMemberId === null && campaign.toSend === 0) {
     await deps.campaigns.update(tenantId.value, { ...campaign, status: 'finished', finishedAt: now });
     return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
   }
-  if (budget === 0 || maxMemberId === null) return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
+  if (budget === 0 || maxMemberId === null) {
+    const scheduled = await scheduleNextTick();
+    return scheduled.ok
+      ? ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 })
+      : scheduled;
+  }
   const members = await deps.audience.fetchEligibleBatch(tenantId.value, {
     definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
     afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
@@ -921,6 +965,9 @@ export const campaignTick = async (
   const reachedEnd = members.length < budget || lastCursor === maxMemberId;
   if (reachedEnd && current.status === 'running' && !await deps.sends.hasPendingByCampaign(tenantId.value, campaign.id)) {
     await deps.campaigns.update(tenantId.value, { ...current, status: 'finished', finishedAt: now });
+  } else if (current.status === 'running') {
+    const scheduled = await scheduleNextTick();
+    if (!scheduled.ok) return scheduled;
   }
   return ok({ leased: true, yieldedToTransactional: false, sent: sentCount, failed: failedCount, skipped: skippedCount });
 };
@@ -1085,4 +1132,31 @@ export const scheduleMarketingRetentionJobs = async (
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   return deps.scheduler.enqueueRetentionJobs(tenantId.value);
+};
+
+export const runScheduledMarketingJobs = async (
+  input: { now: string; pendingOlderThan: string; renderedBodiesOlderThan: string },
+  deps: {
+    jobs: MarketingJobRepository;
+    dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<unknown, AppError>>;
+    runRetention(tenantId: string, input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string }): Promise<Result<unknown, AppError>>;
+  },
+): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>> => {
+  let firstError: AppError | null = null;
+  const runnable = await deps.jobs.listRunnableCampaigns(input.now);
+  for (const job of runnable) {
+    const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
+    if (!dispatched.ok && firstError === null) firstError = dispatched.error;
+  }
+  const retentionTenantIds = await deps.jobs.listRetentionTenantIds();
+  for (const tenantId of retentionTenantIds) {
+    const retained = await deps.runRetention(tenantId, {
+      pendingOlderThan: input.pendingOlderThan,
+      renderedBodiesOlderThan: input.renderedBodiesOlderThan,
+      idempotencyNow: input.now,
+    });
+    if (!retained.ok && firstError === null) firstError = retained.error;
+  }
+  if (firstError !== null) return err(firstError);
+  return ok({ campaignsDispatched: runnable.length, retentionTenantsProcessed: retentionTenantIds.length });
 };

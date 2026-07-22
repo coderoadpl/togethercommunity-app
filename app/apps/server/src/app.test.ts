@@ -30,6 +30,7 @@ import {
   InMemoryEmailLayoutRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
+  InMemoryMarketingThrottleRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
@@ -431,11 +432,15 @@ const marketingDeps = (): MarketingAppDeps => ({
   idempotency: new InMemoryAutomationIdempotencyRepository(),
   marketingSes: new FakeSesMarketingSender(),
   marketingCredentials: { resolve: async () => ok({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'eu-central-1' }) },
+  quotaReader: undefined,
+  throttle: new InMemoryMarketingThrottleRepository(),
   hmac: new FakeEmailHmac(),
   sns: new FakeSnsVerifier(ok({ type: 'Notification', topicArn: 'topic', message: '{}', subscribeUrl: null })),
   scheduler: new FakeScheduler(),
   tickSecret: 'test-marketing-tick-secret',
+  cronSecret: 'test-marketing-cron-secret',
   dispatchCampaign: async () => ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 }),
+  dispatchScheduledMarketing: async () => ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }),
 });
 
 const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
@@ -492,6 +497,26 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 };
 
 describe('marketing HTTP surfaces', () => {
+  it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {
+    const marketing = marketingDeps();
+    let dispatches = 0;
+    marketing.dispatchScheduledMarketing = async () => {
+      dispatches += 1;
+      return ok({ campaignsDispatched: 2, retentionTenantsProcessed: 3 });
+    };
+    const app = marketingApp(marketing);
+    expect((await app.request('/api/internal/marketing/tick')).status).toBe(401);
+    const response = await app.request('/api/internal/marketing/tick', {
+      headers: { authorization: 'Bearer test-marketing-cron-secret' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { campaignsDispatched: 2, retentionTenantsProcessed: 3 },
+    });
+    expect(dispatches).toBe(1);
+  });
+
   it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
     const marketing = marketingDeps();
     marketing.layouts = new InMemoryEmailLayoutRepository([{
@@ -518,7 +543,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
       snsTopicArn: null, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
-      quotaDaily: 1000, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
     }]);
@@ -605,7 +630,7 @@ describe('marketing HTTP surfaces', () => {
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
       snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', webhookToken: 'webhook-token',
-      quotaRatePerSec: 10, quotaDaily: 1000, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
+      quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
       broadcastsEnabled: true,
     }]);

@@ -13,6 +13,7 @@ import {
   createConsentDefinitionRepository,
   createEmailLayoutRepository,
   createMarketingConsentRepository,
+  createMarketingThrottleRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
 import { tenants } from './schema.js';
@@ -89,6 +90,25 @@ describe('marketing database repositories', () => {
     expect(await repository.claim('tenant-a', record)).toBeNull();
     expect(await repository.claim('tenant-a', { ...record, id: 'idem-2' })).toEqual(record);
     expect(await repository.claim('tenant-b', { ...record, id: 'idem-3', tenantId: 'tenant-b' })).toBeNull();
+  });
+
+  it('atomically shares SES rate and daily quota claims across workers', async () => {
+    const repository = createMarketingThrottleRepository(db);
+    const input = {
+      requested: 1, now: NOW, ratePerSecond: 1, dailyQuota: 2,
+      sentLast24Hours: 0, quotaSnapshotAt: NOW,
+    };
+    const concurrent = await Promise.all([
+      repository.claim('tenant-a', input),
+      repository.claim('tenant-a', input),
+    ]);
+    expect(concurrent.filter(Boolean)).toHaveLength(1);
+    expect(await repository.claim('tenant-a', {
+      ...input, now: '2026-07-22T00:00:01.000Z',
+    })).toBe(true);
+    expect(await repository.claim('tenant-a', {
+      ...input, now: '2026-07-22T00:00:02.000Z',
+    })).toBe(false);
   });
 
   it('allows distinct API drip steps in one campaign and still deduplicates broadcast recipients', async () => {

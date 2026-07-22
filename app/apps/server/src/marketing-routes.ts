@@ -98,6 +98,8 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps, unsubscribeBaseUrl
   sesSettings: marketing.sesSettings,
   ses: marketing.marketingSes,
   credentials: marketing.marketingCredentials,
+  quotaReader: marketing.quotaReader,
+  throttle: marketing.throttle,
   ids: deps.ids,
   tokens: { nextToken: () => randomBytes(24).toString('base64url') },
   clock: deps.clock,
@@ -174,11 +176,6 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status: 400 }, { repository: marketingResult.value.idempotency });
       return response(err(validation('Invalid marketing messages payload', parsed.error.flatten())));
     }
-    const settings = await marketingResult.value.sesSettings.findByTenant(authenticated.value.tenant.id);
-    if (settings !== null && parsed.data.messages.length > Math.max(1, Math.floor(settings.quotaRatePerSec))) {
-      if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status: 429 }, { repository: marketingResult.value.idempotency });
-      return response(err(appError('rate_limited', 'Tenant SES throttle budget is exhausted')), undefined, { 'retry-after': '1' });
-    }
     const templates = new Map<string, Awaited<ReturnType<MarketingAppDeps['campaigns']['findById']>>>();
     for (const message of parsed.data.messages) {
       if (message.templateId === undefined || templates.has(message.templateId)) continue;
@@ -227,7 +224,9 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     }), sendDeps(deps, marketingResult.value, `${new URL(c.req.url).origin}/u`));
     const status = sent.ok ? 202 : HTTP_STATUS_BY_ERROR_CODE[sent.error.code];
     if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status }, { repository: marketingResult.value.idempotency });
-    if (!sent.ok) return response(sent);
+    if (!sent.ok) return sent.error.code === 'rate_limited'
+      ? response(sent, undefined, { 'retry-after': '1' })
+      : response(sent);
     return response(ok({ results: sent.value.map((item) => item.status === 'sent'
       ? { to: item.to, sendId: item.sendId, status: 'queued' as const }
       : item) }), 202);
@@ -352,6 +351,17 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     return parsed.success
       ? response(await marketing.value.dispatchCampaign(parsed.data.tenantId, parsed.data.campaignId))
       : response(err(validation('Invalid marketing tick payload', parsed.error.flatten())));
+  });
+
+  app.get('/api/internal/marketing/tick', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const bearer = c.req.header('authorization');
+    const authenticated = c.req.header('x-marketing-tick-secret') === marketing.value.tickSecret
+      || bearer === `Bearer ${marketing.value.cronSecret}`;
+    return authenticated
+      ? response(await marketing.value.dispatchScheduledMarketing())
+      : response(err(unauthorized('Invalid marketing tick secret')));
   });
 
   app.post('/api/webhooks/ses/:webhookToken', async (c) => {

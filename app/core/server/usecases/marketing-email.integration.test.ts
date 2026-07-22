@@ -22,12 +22,14 @@ import {
   InMemoryEmailOutboxRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
+  InMemoryMarketingThrottleRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
   FakeScheduler,
 } from '../testing/marketing-fakes.js';
 import type { Ctx } from '../context.js';
+import type { SesMarketingQuotaReader } from '../ports.js';
 import { removeMember } from './members.js';
 import {
   addManualSuppression,
@@ -47,6 +49,7 @@ import {
   pauseCampaign,
   recordMarketingConsent,
   runMarketingRetentionJobs,
+  runScheduledMarketingJobs,
   saveMarketingConsentPreferences,
   scheduleCampaign,
   scheduleMarketingRetentionJobs,
@@ -90,6 +93,7 @@ const settings: TenantSesSettings = {
   identityVerifiedAt: NOW, configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
   quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Legal Ltd',
+  quotaSentLast24Hours: 0,
   footerAddress: 'Street 1, Warsaw; contact@tenant.test', broadcastsEnabled: true,
 };
 const campaign = (overrides: Partial<Campaign> = {}): Campaign => ({
@@ -105,6 +109,7 @@ const setup = async (emails = ['member@example.test']) => {
   const definitions = new InMemoryConsentDefinitionRepository();
   await definitions.create('tenant-1', definition, version);
   const consents = new InMemoryMarketingConsentRepository();
+  let quotaReader: SesMarketingQuotaReader | undefined;
   for (const email of emails) await consents.record('tenant-1', consent(email));
   return {
     definitions, consents, confirmations: new InMemoryConsentConfirmationTokenRepository(),
@@ -116,8 +121,10 @@ const setup = async (emails = ['member@example.test']) => {
     }))),
     sesSettings: new InMemoryTenantSesSettingsRepository([settings]), ses: new FakeSesMarketingSender(),
     hmac: new FakeEmailHmac(), outbox: new InMemoryEmailOutboxRepository(), clock, ids, tokens,
+    throttle: new InMemoryMarketingThrottleRepository(),
     scheduler: new FakeScheduler(),
     credentials: { resolve: async () => ok({ accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' }) },
+    quotaReader,
     unsubscribeBaseUrl: 'https://tenant.test/u',
   };
 };
@@ -132,6 +139,49 @@ describe('marketing e-mail use-case integration', () => {
     }], deps);
     expect(result.ok).toBe(true);
     expect(deps.ses.sent).toHaveLength(1);
+  });
+
+  it('M28 enforces one shared rate bucket and the cached SES daily remainder across API requests', async () => {
+    const deps = await setup(['one@example.test', 'two@example.test']);
+    await deps.sesSettings.upsert('tenant-1', { ...settings, quotaRatePerSec: 1 });
+    const first = await sendMarketingMessages(ctx, [{
+      to: 'one@example.test', memberId: null, campaignId: null, source: 'api',
+      consentDefinitionId: definition.id, subject: 'One', bodyHtml: '<p>One</p>', data: {},
+    }], deps);
+    const second = await sendMarketingMessages(ctx, [{
+      to: 'two@example.test', memberId: null, campaignId: null, source: 'api',
+      consentDefinitionId: definition.id, subject: 'Two', bodyHtml: '<p>Two</p>', data: {},
+    }], deps);
+    expect(first).toMatchObject({ ok: true, value: [{ status: 'sent' }] });
+    expect(second).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(deps.ses.sent).toHaveLength(1);
+
+    const dailyDeps = await setup();
+    await dailyDeps.sesSettings.upsert('tenant-1', { ...settings, quotaSentLast24Hours: settings.quotaDaily });
+    expect(await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: null, campaignId: null, source: 'api',
+      consentDefinitionId: definition.id, subject: 'Daily', bodyHtml: '<p>Daily</p>', data: {},
+    }], dailyDeps)).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+  });
+
+  it('refreshes SES quota before the first API send and refuses a sandbox account', async () => {
+    const deps = await setup();
+    await deps.sesSettings.upsert('tenant-1', {
+      ...settings, quotaRefreshedAt: null, inSandbox: true,
+    });
+    deps.quotaReader = {
+      read: async () => ok({ ratePerSecond: 20, daily: 2000, sentLast24Hours: 25, inSandbox: true }),
+    };
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: null, campaignId: null, source: 'api',
+      consentDefinitionId: definition.id, subject: 'Sandbox', bodyHtml: '<p>Sandbox</p>', data: {},
+    }], deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'broadcasts_disabled' } });
+    expect(await deps.sesSettings.findByTenant('tenant-1')).toMatchObject({
+      quotaRatePerSec: 20, quotaDaily: 2000, quotaSentLast24Hours: 25,
+      quotaRefreshedAt: NOW, inSandbox: true,
+    });
+    expect(deps.ses.sent).toHaveLength(0);
   });
 
   it('I1 uses one parity path for broadcast and API sends, including identical refusals', async () => {
@@ -248,6 +298,7 @@ describe('marketing e-mail use-case integration', () => {
     const current = await deps.campaigns.findById('tenant-1', 'campaign-1');
     if (current === null) throw new Error('Campaign fixture is missing');
     await deps.campaigns.update('tenant-1', { ...current, lockedUntil: null });
+    deps.throttle = new InMemoryMarketingThrottleRepository();
     const second = await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'second', tickSeconds: 1 }, deps);
     expect(second).toMatchObject({ ok: true, value: { skipped: 1 } });
     expect(await deps.sends.listByCampaign('tenant-1', 'campaign-1')).toMatchObject([
@@ -298,6 +349,7 @@ describe('marketing e-mail use-case integration', () => {
     await deps.campaigns.update('tenant-1', { ...campaign(), toSend: 3 });
     deps.ses.result = err(integrationAuth('bad SES key'));
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      deps.throttle = new InMemoryMarketingThrottleRepository();
       const current = await deps.campaigns.findById('tenant-1', 'campaign-1');
       if (current === null) throw new Error('Campaign fixture is missing');
       await deps.campaigns.update('tenant-1', { ...current, lockedUntil: null });
@@ -317,12 +369,14 @@ describe('marketing e-mail use-case integration', () => {
     if (current === null) throw new Error('Campaign fixture is missing');
     deps.ses.result = ok({ messageId: 'recovered' });
     await deps.campaigns.update('tenant-1', { ...current, lockedUntil: null });
+    deps.throttle = new InMemoryMarketingThrottleRepository();
     await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'two', tickSeconds: 1, errorThreshold: 2 }, deps);
     current = await deps.campaigns.findById('tenant-1', 'campaign-1');
     expect(current).toMatchObject({ status: 'running', errorCount: 0, pausedReason: null });
     if (current === null) throw new Error('Campaign fixture is missing');
     deps.ses.result = err(integrationAuth('bad SES key'));
     await deps.campaigns.update('tenant-1', { ...current, lockedUntil: null });
+    deps.throttle = new InMemoryMarketingThrottleRepository();
     await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'three', tickSeconds: 1, errorThreshold: 2 }, deps);
     expect(await deps.campaigns.findById('tenant-1', 'campaign-1')).toMatchObject({ status: 'running', errorCount: 1 });
   });
@@ -418,6 +472,84 @@ describe('marketing e-mail use-case integration', () => {
     expect(await confirmMarketingConsent(ctx, { token: 'expired_token_1234567890123456', evidence: { collectedAt: NOW } }, deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await runMarketingRetentionJobs(ctx, { pendingOlderThan: '2026-07-01T00:00:00.000Z', renderedBodiesOlderThan: NOW, idempotencyNow: NOW }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({ ok: true, value: { pendingConsentsPurged: 1 } });
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
+  });
+
+  it('rejects future-dated consent evidence so a later withdrawal cannot be resurrected', async () => {
+    const deps = await setup([]);
+    const future = await recordMarketingConsent(ctx, {
+      email: 'future@example.test', memberId: null, definitionId: definition.id,
+      evidence: { collectedAt: '2027-01-01T00:00:00.000Z', proofRef: 'bad-clock' },
+      source: 'api', confirmationBaseUrl: 'https://tenant.test/confirm',
+    }, deps);
+    expect(future).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await deps.consents.listByEmail('tenant-1', 'future@example.test')).toEqual([]);
+  });
+
+  it('scans all due campaign work and runs retention for every marketing tenant', async () => {
+    const dispatched: string[] = [];
+    const retained: string[] = [];
+    const result = await runScheduledMarketingJobs({
+      now: NOW,
+      pendingOlderThan: '2026-06-22T10:00:00.000Z',
+      renderedBodiesOlderThan: '2026-06-22T10:00:00.000Z',
+    }, {
+      jobs: {
+        listRunnableCampaigns: async () => [
+          { tenantId: 'tenant-1', campaignId: 'campaign-1' },
+          { tenantId: 'tenant-2', campaignId: 'campaign-2' },
+        ],
+        listRetentionTenantIds: async () => ['tenant-1', 'tenant-3'],
+      },
+      dispatchCampaign: async (tenantId, campaignId) => {
+        dispatched.push(`${tenantId}:${campaignId}`);
+        return ok(undefined);
+      },
+      runRetention: async (tenantId) => {
+        retained.push(tenantId);
+        return ok(undefined);
+      },
+    });
+    expect(result).toEqual(ok({ campaignsDispatched: 2, retentionTenantsProcessed: 2 }));
+    expect(dispatched).toEqual(['tenant-1:campaign-1', 'tenant-2:campaign-2']);
+    expect(retained).toEqual(['tenant-1', 'tenant-3']);
+  });
+
+  it('continues scheduled campaigns and retention after one tenant job fails', async () => {
+    const processed: string[] = [];
+    const result = await runScheduledMarketingJobs({
+      now: NOW,
+      pendingOlderThan: '2026-06-22T10:00:00.000Z',
+      renderedBodiesOlderThan: '2026-06-22T10:00:00.000Z',
+    }, {
+      jobs: {
+        listRunnableCampaigns: async () => [
+          { tenantId: 'tenant-1', campaignId: 'campaign-1' },
+          { tenantId: 'tenant-2', campaignId: 'campaign-2' },
+        ],
+        listRetentionTenantIds: async () => ['tenant-1'],
+      },
+      dispatchCampaign: async (tenantId) => {
+        processed.push(`campaign:${tenantId}`);
+        return tenantId === 'tenant-1' ? err(integrationAuth('bad SES key')) : ok(undefined);
+      },
+      runRetention: async (tenantId) => {
+        processed.push(`retention:${tenantId}`);
+        return ok(undefined);
+      },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'integration_auth' } });
+    expect(processed).toEqual(['campaign:tenant-1', 'campaign:tenant-2', 'retention:tenant-1']);
+  });
+
+  it('schedules another tick when a campaign still has recipients after its budgeted batch', async () => {
+    const deps = await setup(['first@example.test', 'second@example.test']);
+    await deps.sesSettings.upsert('tenant-1', { ...settings, quotaRatePerSec: 1 });
+    await deps.campaigns.update('tenant-1', { ...campaign(), toSend: 2 });
+    const result = await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'worker', tickSeconds: 50 }, deps);
+    expect(result).toMatchObject({ ok: true, value: { sent: 1 } });
+    expect(deps.scheduler.scheduled).toEqual([{
+      tenantId: 'tenant-1', campaignId: 'campaign-1', runAt: '2026-07-22T10:00:50.000Z',
+    }]);
   });
 
   it('I11 does not consume a confirmation token when its pending consent row is temporarily unavailable', async () => {

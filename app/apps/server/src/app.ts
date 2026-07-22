@@ -810,8 +810,10 @@ export const buildApp = (deps: AppDeps) => {
       audience: deps.marketing.audience, suppressions: deps.marketing.suppressions,
       unsubscribes: deps.marketing.unsubscribes, sesSettings: deps.marketing.sesSettings,
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
+      quotaReader: deps.marketing.quotaReader, throttle: deps.marketing.throttle,
       hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
       clock: deps.clock, unsubscribeBaseUrl: `${deps.appBaseUrl}/u`,
+      scheduler: deps.marketing.scheduler,
       outbox: { enqueue: async () => ok({ id: '' }), claimBatch: async () => ok([]), markSent: async () => ok(undefined), markFailed: async () => ok(undefined) },
     });
     return respond(result.ok ? ok({ sent: true as const }) : result);

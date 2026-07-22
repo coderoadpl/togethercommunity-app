@@ -29,6 +29,7 @@ import type {
   EmailLayoutRepository,
   EmailHmac,
   MarketingConsentRepository,
+  MarketingThrottleRepository,
   MarketingAudienceMember,
   MarketingAudienceRepository,
   EmailOutboxItem,
@@ -630,6 +631,43 @@ export class FakeScheduler implements SchedulerPort {
   async enqueueRetentionJobs(tenantId: string): Promise<Result<void, AppError>> {
     this.retentionTenants.push(tenantId);
     return ok(undefined);
+  }
+}
+
+export class InMemoryMarketingThrottleRepository implements MarketingThrottleRepository {
+  private readonly buckets = new Map<string, {
+    tokens: number;
+    lastRefillAt: string;
+    quotaSnapshotAt: string;
+    reservedSinceSnapshot: number;
+  }>();
+
+  async claim(tenantId: string, input: {
+    requested: number;
+    now: string;
+    ratePerSecond: number;
+    dailyQuota: number;
+    sentLast24Hours: number;
+    quotaSnapshotAt: string;
+  }): Promise<boolean> {
+    const capacity = Math.max(1, input.ratePerSecond);
+    const current = this.buckets.get(tenantId) ?? {
+      tokens: capacity,
+      lastRefillAt: input.now,
+      quotaSnapshotAt: input.quotaSnapshotAt,
+      reservedSinceSnapshot: 0,
+    };
+    const elapsedSeconds = Math.max(0, (Date.parse(input.now) - Date.parse(current.lastRefillAt)) / 1000);
+    const available = Math.min(capacity, current.tokens + elapsedSeconds * input.ratePerSecond);
+    const reserved = current.quotaSnapshotAt === input.quotaSnapshotAt ? current.reservedSinceSnapshot : 0;
+    if (available < input.requested || input.sentLast24Hours + reserved + input.requested > input.dailyQuota) return false;
+    this.buckets.set(tenantId, {
+      tokens: available - input.requested,
+      lastRefillAt: input.now,
+      quotaSnapshotAt: input.quotaSnapshotAt,
+      reservedSinceSnapshot: reserved + input.requested,
+    });
+    return true;
   }
 }
 

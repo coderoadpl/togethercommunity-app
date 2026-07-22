@@ -11,6 +11,8 @@ import {
   createEmailLayoutRepository,
   createMarketingAudienceRepository,
   createMarketingConsentRepository,
+  createMarketingJobRepository,
+  createMarketingThrottleRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
   createTenantSesSettingsRepository,
@@ -68,7 +70,7 @@ import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketin
 import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
 import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
 import { createSnsVerifier } from '@adapters/crypto/sns.js';
-import { createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
+import { createCronMarketingScheduler, createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
 import type {
   ApiKeyCrypto,
   AuthPort,
@@ -104,6 +106,7 @@ import type {
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
   MarketingConsentRepository,
+  MarketingThrottleRepository,
   MarketingSesCredentialResolver,
   NotificationChannelPort,
   NotificationRepository,
@@ -127,6 +130,7 @@ import type {
   TermsConsentRepository,
   SchedulerPort,
   SesMarketingSender,
+  SesMarketingQuotaReader,
   SnsVerifier,
   SuppressionRepository,
   TenantDocumentRepository,
@@ -136,7 +140,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { campaignTick, dispatchEmailBatch, enforceTermsConsent, resolveTenant, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { campaignTick, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
@@ -227,10 +231,13 @@ export interface MarketingAppDeps {
   idempotency: AutomationIdempotencyRepository;
   marketingSes: SesMarketingSender;
   marketingCredentials: MarketingSesCredentialResolver;
+  quotaReader: SesMarketingQuotaReader | undefined;
+  throttle: MarketingThrottleRepository;
   hmac: EmailHmac;
   sns: SnsVerifier;
   scheduler: SchedulerPort;
   tickSecret: string;
+  cronSecret: string;
   dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<{
     leased: boolean;
     yieldedToTransactional: boolean;
@@ -238,6 +245,7 @@ export interface MarketingAppDeps {
     failed: number;
     skipped: number;
   }, AppError>>;
+  dispatchScheduledMarketing(): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
 }
 
 /**
@@ -276,6 +284,8 @@ export const createDeps = (env: Env): AppDeps => {
   const sesSettings = createTenantSesSettingsRepository(db);
   const documents = createTenantDocumentRepository(db);
   const idempotency = createAutomationIdempotencyRepository(db);
+  const marketingJobs = createMarketingJobRepository(db);
+  const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
   const marketingCredentials: MarketingSesCredentialResolver = production
@@ -288,7 +298,11 @@ export const createDeps = (env: Env): AppDeps => {
     ? null
     : Buffer.from(env.SNS_TEST_CERT_PEM_BASE64, 'base64').toString('utf8');
   const sns = createSnsVerifier(snsTestCert === null ? {} : { fetchText: async () => snsTestCert });
-  const scheduler = createDevMarketingScheduler();
+  const devScheduler = production ? null : createDevMarketingScheduler();
+  const scheduler = devScheduler ?? createCronMarketingScheduler();
+  const quotaReader: SesMarketingQuotaReader | undefined = production
+    ? { read: (credentials) => readSesQuota(credentials) }
+    : undefined;
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
   const dispatchDeps = {
     emailOutbox,
@@ -318,6 +332,7 @@ export const createDeps = (env: Env): AppDeps => {
             ...settings,
             quotaRatePerSec: quota.value.ratePerSecond,
             quotaDaily: quota.value.daily,
+            quotaSentLast24Hours: quota.value.sentLast24Hours,
             quotaRefreshedAt: clock.nowIso(),
             inSandbox: quota.value.inSandbox,
           });
@@ -332,13 +347,32 @@ export const createDeps = (env: Env): AppDeps => {
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
-      hmac: emailHmac, ids, tokens, clock, unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox,
+      quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
+      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler,
     });
   };
-  scheduler.setCampaignHandler(async (tenantId, campaignId) => {
+  devScheduler?.setCampaignHandler(async (tenantId, campaignId) => {
     const result = await dispatchCampaign(tenantId, campaignId);
     if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${result.error.message}\n`);
   });
+  const workerIdentity = (tenantId: string) => ({
+    userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+  });
+  const dispatchScheduledMarketing = () => {
+    const now = clock.nowIso();
+    return runScheduledMarketingJobs({
+      now,
+      pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    }, {
+      jobs: marketingJobs,
+      dispatchCampaign,
+      runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
+        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock,
+      }),
+    });
+  };
   const realtimeBus = createRealtimeBus();
   const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
     const url = new URL(env.APP_BASE_URL);
@@ -497,11 +531,15 @@ export const createDeps = (env: Env): AppDeps => {
       idempotency,
       marketingSes,
       marketingCredentials,
+      quotaReader,
+      throttle: marketingThrottle,
       hmac: emailHmac,
       sns,
       scheduler,
       tickSecret: env.MARKETING_TICK_SECRET,
+      cronSecret: env.CRON_SECRET ?? env.MARKETING_TICK_SECRET,
       dispatchCampaign,
+      dispatchScheduledMarketing,
     },
   };
 };

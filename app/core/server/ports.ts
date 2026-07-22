@@ -667,6 +667,11 @@ export interface CampaignRepository {
   ): Promise<Campaign | null>;
 }
 
+export interface MarketingJobRepository {
+  listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
+  listRetentionTenantIds(): Promise<string[]>;
+}
+
 export interface EmailLayoutRepository {
   create(tenantId: string, layout: EmailLayout): Promise<void>;
   findById(tenantId: string, layoutId: string): Promise<EmailLayout | null>;
@@ -735,6 +740,26 @@ export interface SesMarketingSender {
     headers: Record<string, string>;
     configurationSet: string | null;
   }): Promise<Result<{ messageId: string }, AppError>>;
+}
+
+export interface SesMarketingQuotaReader {
+  read(credentials: SesMarketingCredentials): Promise<Result<{
+    ratePerSecond: number;
+    daily: number;
+    sentLast24Hours: number;
+    inSandbox: boolean;
+  }, AppError>>;
+}
+
+export interface MarketingThrottleRepository {
+  claim(tenantId: string, input: {
+    requested: number;
+    now: string;
+    ratePerSecond: number;
+    dailyQuota: number;
+    sentLast24Hours: number;
+    quotaSnapshotAt: string;
+  }): Promise<boolean>;
 }
 
 export interface VerifiedSnsEnvelope {

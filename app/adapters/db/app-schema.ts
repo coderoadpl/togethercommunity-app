@@ -845,6 +845,7 @@ export const tenantSesSettings = pgTable(
     webhookToken: text('webhook_token').notNull(),
     quotaRatePerSec: doublePrecision('quota_rate_per_sec').notNull().default(0),
     quotaDaily: integer('quota_daily').notNull().default(0),
+    quotaSentLast24Hours: integer('quota_sent_last_24_hours').notNull().default(0),
     quotaRefreshedAt: timestamp('quota_refreshed_at', { withTimezone: true, mode: 'string' }),
     inSandbox: boolean('in_sandbox').notNull().default(true),
     webhookVerifiedAt: timestamp('webhook_verified_at', { withTimezone: true, mode: 'string' }),
@@ -853,6 +854,17 @@ export const tenantSesSettings = pgTable(
     broadcastsEnabled: boolean('broadcasts_enabled').notNull().default(false),
   },
   (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
+);
+
+export const marketingThrottleBuckets = pgTable(
+  'marketing_throttle_buckets',
+  {
+    tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+    tokens: doublePrecision('tokens').notNull(),
+    lastRefillAt: timestamp('last_refill_at', { withTimezone: true, mode: 'string' }).notNull(),
+    quotaSnapshotAt: timestamp('quota_snapshot_at', { withTimezone: true, mode: 'string' }).notNull(),
+    reservedSinceSnapshot: integer('reserved_since_snapshot').notNull(),
+  },
 );
 
 export const marketingIdempotencyKeys = pgTable(

@@ -159,6 +159,7 @@ describe('marketing management use-cases', () => {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
       identityVerifiedAt: NOW, configurationSet: null, snsTopicArn: 'arn:topic',
       webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
+      quotaSentLast24Hours: 0,
       quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Ltd',
       footerAddress: 'Street 1, Warsaw', broadcastsEnabled: false,
     };
@@ -179,5 +180,19 @@ describe('marketing management use-cases', () => {
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
     });
     expect(sandboxed.ok && sandboxed.value.settings.broadcastsEnabled).toBe(false);
+
+    const unrefreshed = await updateTenantSesMarketingSettings(ctx, {
+      fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
+      identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
+      footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
+    }, {
+      settings: new InMemoryTenantSesSettingsRepository(), secrets,
+      tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
+      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+    });
+    expect(unrefreshed).toMatchObject({
+      ok: true,
+      value: { settings: { inSandbox: true, quotaRefreshedAt: null, broadcastsEnabled: false } },
+    });
   });
 });

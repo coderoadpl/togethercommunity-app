@@ -500,6 +500,7 @@ export const tenantSesSettingsSchema = z.object({
   webhookToken: z.string().min(22),
   quotaRatePerSec: z.number().nonnegative(),
   quotaDaily: z.number().int().nonnegative(),
+  quotaSentLast24Hours: z.number().int().nonnegative(),
   quotaRefreshedAt: isoDateTimeSchema.nullable(),
   inSandbox: z.boolean(),
   webhookVerifiedAt: isoDateTimeSchema.nullable(),
@@ -513,6 +514,7 @@ export type TenantSesSettings = z.output<typeof tenantSesSettingsSchema>;
 export const tenantSesBroadcastsReady = (settings: TenantSesSettings): boolean =>
   settings.identityVerifiedAt !== null
   && settings.webhookVerifiedAt !== null
+  && settings.quotaRefreshedAt !== null
   && settings.footerLegalName.trim() !== ''
   && settings.footerAddress.trim() !== ''
   && !settings.inSandbox;

@@ -5,6 +5,12 @@ export interface DevMarketingScheduler extends SchedulerPort {
   setCampaignHandler(handler: (tenantId: string, campaignId: string) => Promise<void>): void;
 }
 
+export const createCronMarketingScheduler = (): SchedulerPort => ({
+  enqueueCampaignTick: async () => ok(undefined),
+  scheduleCampaignTick: async () => ok(undefined),
+  enqueueRetentionJobs: async () => ok(undefined),
+});
+
 export const createDevMarketingScheduler = (): DevMarketingScheduler => {
   let handler: ((tenantId: string, campaignId: string) => Promise<void>) | null = null;
   const run = (tenantId: string, campaignId: string): void => {

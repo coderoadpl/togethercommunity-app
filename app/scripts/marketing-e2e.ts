@@ -389,7 +389,7 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     }), 200);
     const settings = z.object({ settings: z.object({ webhookToken: z.string() }) }).parse(settingsResponse.data).settings;
     await db.query(
-      'update tenant_ses_settings set webhook_verified_at = now(), quota_rate_per_sec = 50, quota_daily = 1000, in_sandbox = false where tenant_id = $1',
+      'update tenant_ses_settings set webhook_verified_at = now(), quota_rate_per_sec = 50, quota_daily = 1000, quota_sent_last_24_hours = 0, quota_refreshed_at = now(), in_sandbox = false where tenant_id = $1',
       [tenant.id],
     );
     const memberEntries = Object.entries(emails);

@@ -512,7 +512,7 @@ export interface PurchaseRepository {
 }
 
 export interface EmailPort {
-  send(message: { to: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
+  send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
 }
 
 export interface EmailOutboxItem {
@@ -551,6 +551,8 @@ export interface DevEmail {
   subject: string;
   html: string;
   text: string;
+  headers: Record<string, string>;
+  messageId: string | null;
   createdAt: string;
 }
 

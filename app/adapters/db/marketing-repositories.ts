@@ -25,7 +25,6 @@ import type {
   ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
   EmailLayoutRepository,
-  EmailHmac,
   MarketingAudienceRepository,
   MarketingConsentRepository,
   SuppressionRepository,
@@ -427,9 +426,9 @@ export const createAutomationIdempotencyRepository = (db: Db): AutomationIdempot
   sweepExpired: async (now) => (await db.delete(marketingIdempotencyKeys).where(lte(marketingIdempotencyKeys.expiresAt, now)).returning({ id: marketingIdempotencyKeys.id })).length,
 });
 
-export const createMarketingAudienceRepository = (db: Db, hmac: EmailHmac): MarketingAudienceRepository => {
-  const eligible = async (tenantId: string, input: { definitionId: string; productIds: string[]; afterMemberId: string | null; maxMemberId?: string; limit?: number }) => {
-    const [definition] = await db.select({ doubleOptIn: consentDefinitions.doubleOptIn }).from(consentDefinitions).where(and(eq(consentDefinitions.tenantId, tenantId), eq(consentDefinitions.id, input.definitionId))).limit(1);
+export const createMarketingAudienceRepository = (db: Db): MarketingAudienceRepository => {
+  const candidates = async (tenantId: string, input: { definitionId: string; productIds: string[]; afterMemberId: string | null; maxMemberId?: string; limit?: number }) => {
+    const [definition] = await db.select({ id: consentDefinitions.id }).from(consentDefinitions).where(and(eq(consentDefinitions.tenantId, tenantId), eq(consentDefinitions.id, input.definitionId))).limit(1);
     if (definition === undefined) return [];
     const filters = [eq(members.tenantId, tenantId), isNull(members.deletedAt)];
     if (input.afterMemberId !== null) filters.push(gt(members.id, input.afterMemberId));
@@ -438,14 +437,10 @@ export const createMarketingAudienceRepository = (db: Db, hmac: EmailHmac): Mark
       eq(productGrants.tenantId, tenantId), inArray(productGrants.productId, input.productIds),
       or(isNull(productGrants.expiresAt), gt(productGrants.expiresAt, new Date().toISOString())),
     ))));
-    const activeStatus = definition.doubleOptIn
-      ? sql`mc.status = 'confirmed'`
-      : sql`mc.status in ('granted', 'confirmed')`;
-    filters.push(sql`exists (select 1 from ${marketingConsents} mc where mc.tenant_id = ${tenantId} and mc.email = lower(trim(${members.email})) and mc.definition_id = ${input.definitionId} and ${activeStatus} and not exists (select 1 from ${marketingConsents} newer where newer.tenant_id = mc.tenant_id and newer.email = mc.email and newer.definition_id = mc.definition_id and (newer.occurred_at, newer.id) > (mc.occurred_at, mc.id)))`);
+    filters.push(sql`exists (select 1 from ${marketingConsents} mc where mc.tenant_id = ${tenantId} and mc.email = lower(trim(${members.email})) and mc.definition_id = ${input.definitionId})`);
     const candidates = await db.select({ id: members.id, email: members.email, displayName: members.displayName }).from(members).where(and(...filters)).orderBy(asc(members.id)).limit(input.limit === undefined ? 100000 : Math.max(input.limit * 4, input.limit));
     const output = [];
     for (const member of candidates) {
-      if (await db.select({ id: suppressions.id }).from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.emailHmac, hmac.compute(tenantId, normalizeEmail(member.email))), isNull(suppressions.liftedAt))).limit(1).then((rows) => rows.length > 0)) continue;
       const grants = await db.select({ productId: productGrants.productId }).from(productGrants).where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.memberId, member.id)));
       output.push({ memberId: member.id, email: normalizeEmail(member.email), displayName: member.displayName, productIds: grants.map((grant) => grant.productId) });
       if (input.limit !== undefined && output.length >= input.limit) break;
@@ -454,9 +449,9 @@ export const createMarketingAudienceRepository = (db: Db, hmac: EmailHmac): Mark
   };
   return {
     snapshot: async (tenantId, input) => {
-      const rows = await eligible(tenantId, { ...input, afterMemberId: null });
+      const rows = await candidates(tenantId, { ...input, afterMemberId: null });
       return { maxMemberId: rows.at(-1)?.memberId ?? null, count: rows.length };
     },
-    fetchEligibleBatch: (tenantId, input) => eligible(tenantId, input),
+    fetchEligibleBatch: (tenantId, input) => candidates(tenantId, input),
   };
 };

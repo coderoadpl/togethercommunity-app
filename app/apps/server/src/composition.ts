@@ -270,7 +270,7 @@ export const createDeps = (env: Env): AppDeps => {
   const campaigns = createCampaignRepository(db);
   const layouts = createEmailLayoutRepository(db);
   const campaignSends = createCampaignSendRepository(db);
-  const audience = createMarketingAudienceRepository(db, emailHmac);
+  const audience = createMarketingAudienceRepository(db);
   const suppressions = createSuppressionRepository(db);
   const unsubscribes = createUnsubscribeTokenRepository(db);
   const sesSettings = createTenantSesSettingsRepository(db);
@@ -284,7 +284,10 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingSes = production
     ? createSesMarketingSender()
     : createDevMarketingSender(email);
-  const sns = createSnsVerifier();
+  const snsTestCert = env.SNS_TEST_CERT_PEM_BASE64 === undefined
+    ? null
+    : Buffer.from(env.SNS_TEST_CERT_PEM_BASE64, 'base64').toString('utf8');
+  const sns = createSnsVerifier(snsTestCert === null ? {} : { fetchText: async () => snsTestCert });
   const scheduler = createDevMarketingScheduler();
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
   const dispatchDeps = {

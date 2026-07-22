@@ -370,6 +370,8 @@ export const devEmailSchema = z.object({
   subject: z.string(),
   html: z.string(),
   text: z.string(),
+  headers: z.record(z.string()),
+  messageId: z.string().nullable(),
   createdAt: z.string(),
 });
 

@@ -661,6 +661,8 @@ export const devEmails = pgTable('dev_emails', {
   subject: text('subject').notNull(),
   html: text('html').notNull(),
   text: text('text').notNull(),
+  headers: jsonb('headers').$type<Record<string, string>>().notNull().default({}),
+  messageId: text('message_id'),
   createdAt: text('created_at').notNull(),
 });
 

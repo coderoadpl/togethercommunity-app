@@ -512,6 +512,27 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const token = c.req.param('token');
+    const confirmation = await marketing.value.confirmations.findByToken(resolved.value.tenant.id, token);
+    const state = confirmation === null || (
+      confirmation.usedAt === null && Date.parse(confirmation.expiresAt) <= Date.parse(deps.clock.nowIso())
+    )
+      ? 'expired'
+      : confirmation.usedAt === null ? 'prompt' : 'success';
+    const path = `/marketing/confirm/${encodeURIComponent(token)}`;
+    return html(renderConfirmationPage({
+      brand: await publicBrand(deps, resolved.value.tenant),
+      language: languageFromRequest(c.req.raw),
+      path,
+      state,
+    }));
+  });
+
+  app.post('/marketing/confirm/:token', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
+    const token = c.req.param('token');
     const result = await confirmMarketingConsent({ identity: apiIdentity(resolved.value.tenant) }, {
       token,
       evidence: {

@@ -301,7 +301,7 @@ Response (`201`), with record fields abbreviated:
 }
 ```
 
-For double opt-in, Together queues the transactional confirmation e-mail and returns `pending_confirmation`; no marketing send is eligible until the recipient confirms. Without double opt-in, the response state is `active`. Recording consent has no `Idempotency-Key` support, so deduplicate source events in your automation.
+For double opt-in, Together queues the transactional confirmation e-mail and returns `pending_confirmation`; no marketing send is eligible until the recipient confirms. The e-mail link opens a tenant-branded confirmation page without changing consent. The recipient must submit the confirmation button, which sends `POST /marketing/confirm/:token`; repeated submissions are safe, while invalid or expired tokens show the expired state. Without double opt-in, the response state is `active`. Recording consent has no `Idempotency-Key` support, so deduplicate source events in your automation.
 
 ## Suppressions
 

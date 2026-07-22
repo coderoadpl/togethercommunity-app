@@ -30,6 +30,9 @@ interface PublicMarketingMessages {
   legalEyebrow: string;
   immutableVersion: (input: { version: number; date: string }) => string;
   confirmationEyebrow: string;
+  confirmationPromptTitle: string;
+  confirmationPromptBody: (input: { tenant: string }) => string;
+  confirmationSubmit: string;
   confirmationSuccessTitle: string;
   confirmationSuccessBody: (input: { tenant: string }) => string;
   confirmationExpiredTitle: string;
@@ -67,6 +70,9 @@ const messages: Record<Language, PublicMarketingMessages> = {
     legalEyebrow: 'Dokument prawny',
     immutableVersion: ({ version, date }) => `To niezmienna wersja ${version}, opublikowana ${date}.`,
     confirmationEyebrow: 'Potwierdzenie zgody',
+    confirmationPromptTitle: 'Potwierdź zapis',
+    confirmationPromptBody: ({ tenant }) => `Potwierdź, że chcesz otrzymywać wiadomości od ${tenant}.`,
+    confirmationSubmit: 'Potwierdzam zapis',
     confirmationSuccessTitle: 'Adres e-mail potwierdzony',
     confirmationSuccessBody: ({ tenant }) => `Zgoda na wiadomości od ${tenant} jest teraz aktywna.`,
     confirmationExpiredTitle: 'Link nie jest już aktywny',
@@ -102,6 +108,9 @@ const messages: Record<Language, PublicMarketingMessages> = {
     legalEyebrow: 'Legal document',
     immutableVersion: ({ version, date }) => `This is immutable version ${version}, published on ${date}.`,
     confirmationEyebrow: 'Consent confirmation',
+    confirmationPromptTitle: 'Confirm your subscription',
+    confirmationPromptBody: ({ tenant }) => `Confirm that you want to receive messages from ${tenant}.`,
+    confirmationSubmit: 'Confirm subscription',
     confirmationSuccessTitle: 'Email address confirmed',
     confirmationSuccessBody: ({ tenant }) => `Your consent to messages from ${tenant} is now active.`,
     confirmationExpiredTitle: 'This link is no longer active',
@@ -132,6 +141,22 @@ const safeHref = (value: string): string | null => {
   return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:' ? value : null;
 };
 
+const renderMarkdownText = (source: string): string => {
+  let output = '';
+  let cursor = 0;
+  for (const match of source.matchAll(/`([^`\n]+)`|\*\*([^*\n]+)\*\*|(?<![\p{L}\p{N}_])_([^_\n]+)_(?![\p{L}\p{N}_])/gu)) {
+    const index = match.index;
+    if (index === undefined) continue;
+    output += escapeHtml(source.slice(cursor, index));
+    const [token, code, strong, emphasis] = match;
+    if (code !== undefined) output += `<code>${escapeHtml(code)}</code>`;
+    else if (strong !== undefined) output += `<strong>${escapeHtml(strong)}</strong>`;
+    else output += `<em>${escapeHtml(emphasis ?? '')}</em>`;
+    cursor = index + token.length;
+  }
+  return output + escapeHtml(source.slice(cursor));
+};
+
 const renderInlineMarkdown = (source: string): string => {
   let output = '';
   let cursor = 0;
@@ -140,18 +165,14 @@ const renderInlineMarkdown = (source: string): string => {
     const label = match[1];
     const href = match[2];
     if (index === undefined || label === undefined || href === undefined) continue;
-    output += escapeHtml(source.slice(cursor, index));
+    output += renderMarkdownText(source.slice(cursor, index));
     const safe = safeHref(href);
     output += safe === null
-      ? escapeHtml(match[0])
-      : `<a href="${escapeHtml(safe)}">${escapeHtml(label)}</a>`;
+      ? renderMarkdownText(match[0])
+      : `<a href="${escapeHtml(safe)}">${renderMarkdownText(label)}</a>`;
     cursor = index + match[0].length;
   }
-  output += escapeHtml(source.slice(cursor));
-  return output
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/_([^_]+)_/g, '<em>$1</em>');
+  return output + renderMarkdownText(source.slice(cursor));
 };
 
 export const renderHostedMarkdown = (source: string): string => {
@@ -332,21 +353,27 @@ export const renderConfirmationPage = (input: {
   brand: PublicBrand;
   language: Language;
   path: string;
-  state: 'success' | 'expired';
+  state: 'prompt' | 'success' | 'expired';
 }): string => {
   const t = messages[input.language];
   const success = input.state === 'success';
-  const title = success ? t.confirmationSuccessTitle : t.confirmationExpiredTitle;
+  const prompt = input.state === 'prompt';
+  const title = prompt ? t.confirmationPromptTitle : success ? t.confirmationSuccessTitle : t.confirmationExpiredTitle;
   const summary = success
     ? t.confirmationSuccessBody({ tenant: input.brand.tenant.name })
-    : t.confirmationExpiredBody;
+    : prompt
+      ? t.confirmationPromptBody({ tenant: input.brand.tenant.name })
+      : t.confirmationExpiredBody;
+  const action = prompt
+    ? `<form class="actions" method="post" action="${input.path}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`
+    : '';
   return renderPage({
     brand: input.brand,
     language: input.language,
     path: input.path,
     title,
     eyebrow: t.confirmationEyebrow,
-    body: `<div class="status"><p class="lede">${escapeHtml(summary)}</p></div>`,
+    body: `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${action}</div>`,
     testId: `marketing-confirmation-${input.state}`,
   });
 };

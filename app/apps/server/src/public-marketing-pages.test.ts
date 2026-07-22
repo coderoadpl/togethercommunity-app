@@ -39,6 +39,22 @@ describe('public marketing pages', () => {
     expect(rendered).not.toContain('href="javascript:');
   });
 
+  it('applies inline markdown only to text without changing URL attributes or intra-word underscores', () => {
+    const rendered = renderHostedMarkdown([
+      '[our policy](https://acme.example/privacy_policy_v2)',
+      '',
+      'Keep snake_case_name intact and render _emphasis_, `code`, and **strong**.',
+      '',
+      '[literal URL](https://acme.example/`code`/**strong**/privacy_policy_v2)',
+    ].join('\n'));
+    expect(rendered).toContain('href="https://acme.example/privacy_policy_v2"');
+    expect(rendered).toContain('>our policy</a>');
+    expect(rendered).toContain('Keep snake_case_name intact');
+    expect(rendered).toContain('<em>emphasis</em>, <code>code</code>, and <strong>strong</strong>');
+    expect(rendered).toContain('href="https://acme.example/`code`/**strong**/privacy_policy_v2"');
+    expect(rendered).not.toContain('href="https://acme.example/privacy<em>policy</em>v2"');
+  });
+
   it('adds a locale-aware immutable version notice only to versioned legal pages', () => {
     const html = renderLegalDocumentPage({
       brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Prywatność', content: 'Treść',

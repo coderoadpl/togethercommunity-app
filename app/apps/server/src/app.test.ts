@@ -559,22 +559,44 @@ describe('marketing HTTP surfaces', () => {
     expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).at(-1)?.status).toBe('withdrawn');
   });
 
-  it('keeps RFC one-click POST empty and renders DOI success and expired states', async () => {
+  it('keeps RFC one-click POST empty and requires an idempotent DOI confirmation POST', async () => {
     const marketing = await memberSurfaceMarketing();
     const oneClick = await marketingApp(marketing).request('/u/unsubscribe_token_123456789012345', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
     expect(oneClick.status).toBe(200);
     expect(await oneClick.text()).toBe('');
-    const app = marketingApp(await memberSurfaceMarketing());
-    const success = await app.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+    const confirmationMarketing = await memberSurfaceMarketing();
+    const confirmationApp = marketingApp(confirmationMarketing);
+    const before = await confirmationMarketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const interstitial = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
+    const interstitialHtml = await interstitial.text();
+    expect(interstitialHtml).toContain('Confirm your subscription');
+    expect(interstitialHtml).toContain('<button type="submit">Confirm subscription</button>');
+    expect(interstitialHtml).toContain('method="post"');
+    expect(await confirmationMarketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const success = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
     expect(await success.text()).toContain('Email address confirmed');
-    const expired = await app.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
+    const repeated = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await repeated.text()).toContain('Email address confirmed');
+    const confirmedGet = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await confirmedGet.text()).toContain('Email address confirmed');
+    const expired = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
     expect(await expired.text()).toContain('This link is no longer active');
+    const expiredPost = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await expiredPost.text()).toContain('This link is no longer active');
   });
 
   it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {

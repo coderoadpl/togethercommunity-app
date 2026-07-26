@@ -44,6 +44,53 @@ const transactionalStatus = (status: EmailSendListQuery['status']): status is 'q
 const marketingStatus = (status: EmailSendListQuery['status']): status is 'pending' | 'sending' | 'sent' | 'failed' | 'skipped' =>
   status === 'pending' || status === 'sending' || status === 'sent' || status === 'failed' || status === 'skipped';
 
+const transactionalProjection = (
+  tenantId: string,
+  row: typeof emailOutbox.$inferSelect,
+): EmailSendProjection | null => {
+  const rendered = renderEmailOutboxPayload(row.payload);
+  if (!rendered.success) return null;
+  return emailSendProjectionSchema.parse({
+    id: row.id,
+    tenantId,
+    kind: 'transactional',
+    recipient: row.to,
+    subject: rendered.data.subject,
+    source: row.kind,
+    status: row.status,
+    skipReason: null,
+    deliveryStatus: row.deliveryStatus,
+    deliveryOccurredAt: row.deliveryOccurredAt === null ? null : new Date(row.deliveryOccurredAt).toISOString(),
+    campaignId: null,
+    campaignName: null,
+    sesMessageId: row.sesMessageId,
+    createdAt: new Date(row.createdAt).toISOString(),
+    sentAt: row.sentAt === null ? null : new Date(row.sentAt).toISOString(),
+  });
+};
+
+const marketingProjection = (
+  tenantId: string,
+  send: typeof campaignSends.$inferSelect,
+  campaignName: string | null,
+): EmailSendProjection => emailSendProjectionSchema.parse({
+  id: send.id,
+  tenantId,
+  kind: 'marketing',
+  recipient: send.email,
+  subject: send.subject,
+  source: send.source,
+  status: send.status,
+  skipReason: send.skipReason,
+  deliveryStatus: send.deliveryStatus,
+  deliveryOccurredAt: send.deliveryOccurredAt === null ? null : new Date(send.deliveryOccurredAt).toISOString(),
+  campaignId: send.campaignId,
+  campaignName,
+  sesMessageId: send.sesMessageId,
+  createdAt: new Date(send.createdAt).toISOString(),
+  sentAt: send.sentAt === null ? null : new Date(send.sentAt).toISOString(),
+});
+
 const transactionalRows = async (
   db: Db,
   tenantId: string,
@@ -63,25 +110,8 @@ const transactionalRows = async (
     .orderBy(desc(emailOutbox.createdAt), desc(emailOutbox.id))
     .limit(query.limit + 1);
   return rows.flatMap((row) => {
-    const rendered = renderEmailOutboxPayload(row.payload);
-    if (!rendered.success) return [];
-    return [emailSendProjectionSchema.parse({
-      id: row.id,
-      tenantId,
-      kind: 'transactional',
-      recipient: row.to,
-      subject: rendered.data.subject,
-      source: row.kind,
-      status: row.status,
-      skipReason: null,
-      deliveryStatus: row.deliveryStatus,
-      deliveryOccurredAt: row.deliveryOccurredAt === null ? null : new Date(row.deliveryOccurredAt).toISOString(),
-      campaignId: null,
-      campaignName: null,
-      sesMessageId: row.sesMessageId,
-      createdAt: new Date(row.createdAt).toISOString(),
-      sentAt: row.sentAt === null ? null : new Date(row.sentAt).toISOString(),
-    })];
+    const projection = transactionalProjection(tenantId, row);
+    return projection === null ? [] : [projection];
   });
 };
 
@@ -109,23 +139,44 @@ const marketingRows = async (
     .where(and(...filters))
     .orderBy(desc(campaignSends.createdAt), desc(campaignSends.id))
     .limit(query.limit + 1);
-  return rows.map(({ send, campaignName }) => emailSendProjectionSchema.parse({
-    id: send.id,
-    tenantId,
-    kind: 'marketing',
-    recipient: send.email,
-    subject: send.subject,
-    source: send.source,
-    status: send.status,
-    skipReason: send.skipReason,
-    deliveryStatus: send.deliveryStatus,
-    deliveryOccurredAt: send.deliveryOccurredAt === null ? null : new Date(send.deliveryOccurredAt).toISOString(),
-    campaignId: send.campaignId,
-    campaignName,
-    sesMessageId: send.sesMessageId,
-    createdAt: new Date(send.createdAt).toISOString(),
-    sentAt: send.sentAt === null ? null : new Date(send.sentAt).toISOString(),
-  }));
+  return rows.map(({ send, campaignName }) => marketingProjection(tenantId, send, campaignName));
+};
+
+const transactionalRowsByEmail = async (
+  db: Db,
+  tenantId: string,
+  email: string,
+): Promise<EmailSendProjection[]> => {
+  const normalized = normalizeEmail(email);
+  const rows = await db.select().from(emailOutbox)
+    .where(and(
+      eq(emailOutbox.tenantId, tenantId),
+      sql`lower(btrim(${emailOutbox.to})) = ${normalized}`,
+    ))
+    .orderBy(desc(emailOutbox.createdAt), desc(emailOutbox.id));
+  return rows.flatMap((row) => {
+    const projection = transactionalProjection(tenantId, row);
+    return projection === null ? [] : [projection];
+  });
+};
+
+const marketingRowsByEmail = async (
+  db: Db,
+  tenantId: string,
+  email: string,
+): Promise<EmailSendProjection[]> => {
+  const rows = await db.select({ send: campaignSends, campaignName: campaigns.name })
+    .from(campaignSends)
+    .leftJoin(campaigns, and(
+      eq(campaigns.tenantId, tenantId),
+      eq(campaigns.id, campaignSends.campaignId),
+    ))
+    .where(and(
+      eq(campaignSends.tenantId, tenantId),
+      eq(campaignSends.email, normalizeEmail(email)),
+    ))
+    .orderBy(desc(campaignSends.createdAt), desc(campaignSends.id));
+  return rows.map(({ send, campaignName }) => marketingProjection(tenantId, send, campaignName));
 };
 
 const newestFirst = (left: EmailSendProjection, right: EmailSendProjection): number =>
@@ -156,19 +207,10 @@ export const createEmailSendRepository = (db: Db): EmailSendRepository => {
         : await marketingRows(db, tenantId, { kind, limit: 1 }, undefined, id);
       return rows[0] ?? null;
     },
-    listByEmailAcrossKinds: async (tenantId, email) => {
-      const output: EmailSendProjection[] = [];
-      let cursor: string | undefined;
-      do {
-        const page = await listPage(tenantId, {
-          search: normalizeEmail(email),
-          ...(cursor === undefined ? {} : { cursor }),
-          limit: 100,
-        });
-        output.push(...page.sends.filter((send) => send.recipient === normalizeEmail(email)));
-        cursor = page.nextCursor ?? undefined;
-      } while (cursor !== undefined);
-      return output;
-    },
+    listByEmailAcrossKinds: async (tenantId, email) =>
+      (await Promise.all([
+        transactionalRowsByEmail(db, tenantId, email),
+        marketingRowsByEmail(db, tenantId, email),
+      ])).flat().sort(newestFirst),
   };
 };

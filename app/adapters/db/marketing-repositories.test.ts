@@ -147,6 +147,29 @@ describe('marketing database repositories', () => {
     )).map((item) => item.type)).toEqual(['suppressed_written']);
   });
 
+  it('orders same-timestamp email events by append order', async () => {
+    const repository = createEmailEventRepository(db);
+    const event = (id: string, type: 'queued' | 'claimed') => emailEventSchema.parse({
+      id,
+      tenantId: 'tenant-a',
+      mailKind: 'marketing',
+      refId: 'same-timestamp-send',
+      type,
+      occurredAt: NOW,
+      meta: null,
+      createdAt: NOW,
+    });
+
+    await repository.append('tenant-a', event('z-queued-event', 'queued'));
+    await repository.append('tenant-a', event('a-claimed-event', 'claimed'));
+
+    expect((await repository.listByRef(
+      'tenant-a',
+      'marketing',
+      'same-timestamp-send',
+    )).map((item) => item.type)).toEqual(['queued', 'claimed']);
+  });
+
   it('allows distinct API drip steps in one campaign and still deduplicates broadcast recipients', async () => {
     const tenantId = 'tenant-drip';
     await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Drip', createdAt: NOW });
@@ -197,7 +220,7 @@ describe('marketing database repositories', () => {
       sentAt: '2026-07-22T02:00:30.000Z',
     });
     await db.insert(emailOutbox).values({
-      id: 'transactional-send-view', tenantId, kind: 'welcome-set-password', to: consent.email,
+      id: 'transactional-send-view', tenantId, kind: 'welcome-set-password', to: ' Member@Example.Test ',
       payload: {
         kind: 'welcome-set-password', language: 'en', tenantName: 'Send view',
         actionUrl: 'https://example.test/set-password',
@@ -218,8 +241,29 @@ describe('marketing database repositories', () => {
     expect(second.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
       { kind: 'marketing', id: 'marketing-send-view' },
     ]);
-    expect(await repository.listByEmailAcrossKinds(tenantId, consent.email)).toHaveLength(2);
+    expect(await repository.listByEmailAcrossKinds(tenantId, ' MEMBER@example.test ')).toHaveLength(2);
     expect(await repository.findById('tenant-b', 'marketing', 'marketing-send-view')).toBeNull();
+  });
+
+  it('indexes normalized exact recipient lookups for both send projections', async () => {
+    const client = new pg.Client({ connectionString: testUrl });
+    await client.connect();
+    const result = await client.query<{ indexname: string }>(`
+      select indexname
+      from pg_indexes
+      where schemaname = 'public'
+        and indexname in (
+          'campaign_sends_tenant_email_created_id_idx',
+          'email_outbox_tenant_normalized_to_created_id_idx'
+        )
+      order by indexname
+    `);
+    await client.end();
+
+    expect(result.rows.map((row) => row.indexname)).toEqual([
+      'campaign_sends_tenant_email_created_id_idx',
+      'email_outbox_tenant_normalized_to_created_id_idx',
+    ]);
   });
 
   it('stores only tenant-scoped layouts with one content slot', async () => {

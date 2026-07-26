@@ -27,6 +27,8 @@ describe('createDevEmailPort', () => {
     expect(stored?.subject).toBe(rendered.subject);
     expect(stored?.html).toBe(rendered.html);
     expect(stored?.text).toBe(rendered.text);
+    expect(stored?.headers).toEqual({});
+    expect(stored?.messageId).toBeNull();
     expect(stored?.to).toBe(normalizeEmail(recipient));
   });
 

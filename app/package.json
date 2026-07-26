@@ -38,6 +38,7 @@
     "e2e:auth": "tsx scripts/auth-e2e.ts",
     "e2e:poc": "tsx scripts/poc-e2e.ts",
     "e2e:subs": "tsx scripts/subs-e2e.ts",
+    "e2e:marketing": "tsx scripts/marketing-e2e.ts",
     "storybook": "storybook dev -p 9009 --no-open",
     "storybook:build": "storybook build -o storybook-static",
     "visual:stories": "npm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel",

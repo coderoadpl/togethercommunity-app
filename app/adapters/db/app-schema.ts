@@ -1,7 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
+import type {
+  AccessItem,
+  Campaign,
+  Chapter,
+  ConsentDocumentRef,
+  ConsentDocumentVersionRef,
+  ConsentEvidence,
+  LessonBlock,
+} from '@core/domain/index.js';
 
 export const tenants = pgTable(
   'tenants',
@@ -38,6 +46,96 @@ export const consents = pgTable(
     acceptedAt: text('accepted_at').notNull(),
   },
   (table) => [index('consents_tenant_email_idx').on(table.tenantId, table.email)],
+);
+
+export const tenantDocuments = pgTable(
+  'tenant_documents',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    status: text('status', { enum: ['draft', 'published', 'archived'] }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [uniqueIndex('tenant_documents_tenant_slug_uidx').on(table.tenantId, table.slug)],
+);
+
+export const tenantDocumentVersions = pgTable(
+  'tenant_document_versions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').notNull().references(() => tenantDocuments.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    content: text('content').notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    createdBy: text('created_by'),
+  },
+  (table) => [
+    uniqueIndex('tenant_document_versions_tenant_document_version_uidx')
+      .on(table.tenantId, table.documentId, table.version),
+  ],
+);
+
+export const consentDefinitions = pgTable(
+  'consent_definitions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    kind: text('kind', { enum: ['required_terms', 'optional_marketing'] }).notNull(),
+    channel: text('channel', { enum: ['email'] }).notNull(),
+    doubleOptIn: boolean('double_opt_in').notNull().default(true),
+    documentRef: jsonb('document_ref').$type<ConsentDocumentRef>().notNull(),
+    status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [uniqueIndex('consent_definitions_tenant_key_uidx').on(table.tenantId, table.key)],
+);
+
+export const consentDefinitionVersions = pgTable(
+  'consent_definition_versions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    definitionId: text('definition_id').notNull().references(() => consentDefinitions.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    label: text('label').notNull(),
+    documentVersionRef: jsonb('document_version_ref').$type<ConsentDocumentVersionRef>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    createdBy: text('created_by'),
+  },
+  (table) => [
+    uniqueIndex('consent_definition_versions_tenant_definition_version_uidx')
+      .on(table.tenantId, table.definitionId, table.version),
+  ],
+);
+
+export const marketingConsents = pgTable(
+  'marketing_consents',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id'),
+    email: text('email').notNull(),
+    definitionId: text('definition_id').notNull().references(() => consentDefinitions.id, { onDelete: 'restrict' }),
+    definitionVersion: integer('definition_version').notNull(),
+    wordingSnapshot: text('wording_snapshot').notNull(),
+    documentRefSnapshot: jsonb('document_ref_snapshot').$type<ConsentDocumentVersionRef>().notNull(),
+    status: text('status', { enum: ['granted', 'confirmed', 'withdrawn'] }).notNull(),
+    previousId: text('previous_id'),
+    source: text('source', { enum: ['checkout', 'panel', 'import', 'api', 'preference_page'] }).notNull(),
+    evidence: jsonb('evidence').$type<ConsentEvidence>().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('marketing_consents_tenant_email_definition_occurred_idx')
+      .on(table.tenantId, table.email, table.definitionId, table.occurredAt.desc()),
+  ],
 );
 
 export const tenantAdmins = pgTable(
@@ -563,6 +661,8 @@ export const devEmails = pgTable('dev_emails', {
   subject: text('subject').notNull(),
   html: text('html').notNull(),
   text: text('text').notNull(),
+  headers: jsonb('headers').$type<Record<string, string>>().notNull().default({}),
+  messageId: text('message_id'),
   createdAt: text('created_at').notNull(),
 });
 
@@ -596,4 +696,191 @@ export const tenantDomains = pgTable(
     verified: boolean('verified').notNull().default(false),
   },
   (table) => [uniqueIndex('tenant_domains_domain_uidx').on(table.domain)],
+);
+
+export const emailLayouts = pgTable(
+  'email_layouts',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    bodyHtml: text('body_html').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [uniqueIndex('email_layouts_tenant_name_uidx').on(table.tenantId, table.name)],
+);
+
+export const campaigns = pgTable(
+  'campaigns',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    subject: text('subject').notNull(),
+    bodyHtml: text('body_html').notNull(),
+    bodySource: text('body_source').notNull(),
+    layoutId: text('layout_id').references(() => emailLayouts.id, { onDelete: 'set null' }),
+    consentDefinitionId: text('consent_definition_id').notNull().references(() => consentDefinitions.id, { onDelete: 'restrict' }),
+    audienceFilter: jsonb('audience_filter').$type<Campaign['audienceFilter']>(),
+    status: text('status', { enum: ['draft', 'scheduled', 'running', 'paused', 'cancelled', 'finished'] }).notNull(),
+    sendAt: timestamp('send_at', { withTimezone: true, mode: 'string' }),
+    snapshotMaxMemberId: text('snapshot_max_member_id'),
+    cursorMemberId: text('cursor_member_id'),
+    toSend: integer('to_send').notNull().default(0),
+    sent: integer('sent').notNull().default(0),
+    failed: integer('failed').notNull().default(0),
+    lockedUntil: timestamp('locked_until', { withTimezone: true, mode: 'string' }),
+    lockedBy: text('locked_by'),
+    errorCount: integer('error_count').notNull().default(0),
+    pausedReason: text('paused_reason'),
+    audienceNameSnapshot: text('audience_name_snapshot'),
+    consentLabelSnapshot: text('consent_label_snapshot'),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'string' }),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('campaigns_tenant_status_send_at_idx').on(table.tenantId, table.status, table.sendAt),
+    index('campaigns_lease_idx').on(table.status, table.lockedUntil),
+  ],
+);
+
+export const campaignSends = pgTable(
+  'campaign_sends',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+    source: text('source', { enum: ['broadcast', 'api'] }).notNull(),
+    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    email: text('email').notNull(),
+    consentRowId: text('consent_row_id').notNull().references(() => marketingConsents.id, { onDelete: 'restrict' }),
+    unsubscribeTokenId: text('unsubscribe_token_id'),
+    status: text('status', { enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] }).notNull(),
+    skipReason: text('skip_reason', { enum: ['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation'] }),
+    sesMessageId: text('ses_message_id'),
+    deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
+    deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
+    idempotencySource: text('idempotency_source'),
+    renderedBodyPurgedAt: timestamp('rendered_body_purged_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
+    uniqueIndex('campaign_sends_ses_message_id_uidx')
+      .on(table.sesMessageId)
+      .where(sql`${table.sesMessageId} is not null`),
+    uniqueIndex('campaign_sends_tenant_campaign_email_uidx')
+      .on(table.tenantId, table.campaignId, table.email)
+      .where(sql`${table.campaignId} is not null and ${table.source} = 'broadcast'`),
+  ],
+);
+
+export const suppressions = pgTable(
+  'suppressions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    email: text('email'),
+    emailHmac: text('email_hmac').notNull(),
+    reason: text('reason', { enum: ['hard_bounce', 'complaint', 'manual', 'unsubscribe_global', 'erasure'] }).notNull(),
+    sourceRef: text('source_ref'),
+    meta: jsonb('meta'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    liftedAt: timestamp('lifted_at', { withTimezone: true, mode: 'string' }),
+    liftedBy: text('lifted_by'),
+  },
+  (table) => [
+    uniqueIndex('suppressions_tenant_email_hmac_active_uidx')
+      .on(table.tenantId, table.emailHmac)
+      .where(sql`${table.liftedAt} is null`),
+  ],
+);
+
+export const unsubscribeTokens = pgTable(
+  'unsubscribe_tokens',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    email: text('email').notNull(),
+    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    campaignSendId: text('campaign_send_id').references(() => campaignSends.id, { onDelete: 'set null' }),
+    scope: text('scope').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [uniqueIndex('unsubscribe_tokens_token_uidx').on(table.token)],
+);
+
+export const consentConfirmationTokens = pgTable(
+  'consent_confirmation_tokens',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    marketingConsentRowId: text('marketing_consent_row_id').notNull().references(() => marketingConsents.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    uniqueIndex('consent_confirmation_tokens_token_uidx').on(table.token),
+    index('consent_confirmation_tokens_expiry_idx').on(table.expiresAt),
+  ],
+);
+
+export const tenantSesSettings = pgTable(
+  'tenant_ses_settings',
+  {
+    tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+    fromAddress: text('from_address').notNull(),
+    fromName: text('from_name').notNull(),
+    identity: text('identity').notNull(),
+    identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true, mode: 'string' }),
+    configurationSet: text('configuration_set'),
+    snsTopicArn: text('sns_topic_arn'),
+    webhookToken: text('webhook_token').notNull(),
+    quotaRatePerSec: doublePrecision('quota_rate_per_sec').notNull().default(0),
+    quotaDaily: integer('quota_daily').notNull().default(0),
+    quotaSentLast24Hours: integer('quota_sent_last_24_hours').notNull().default(0),
+    quotaRefreshedAt: timestamp('quota_refreshed_at', { withTimezone: true, mode: 'string' }),
+    inSandbox: boolean('in_sandbox').notNull().default(true),
+    webhookVerifiedAt: timestamp('webhook_verified_at', { withTimezone: true, mode: 'string' }),
+    footerLegalName: text('footer_legal_name').notNull().default(''),
+    footerAddress: text('footer_address').notNull().default(''),
+    broadcastsEnabled: boolean('broadcasts_enabled').notNull().default(false),
+  },
+  (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
+);
+
+export const marketingThrottleBuckets = pgTable(
+  'marketing_throttle_buckets',
+  {
+    tenantId: text('tenant_id').primaryKey().references(() => tenants.id, { onDelete: 'cascade' }),
+    tokens: doublePrecision('tokens').notNull(),
+    lastRefillAt: timestamp('last_refill_at', { withTimezone: true, mode: 'string' }).notNull(),
+    quotaSnapshotAt: timestamp('quota_snapshot_at', { withTimezone: true, mode: 'string' }).notNull(),
+    reservedSinceSnapshot: integer('reserved_since_snapshot').notNull(),
+  },
+);
+
+export const marketingIdempotencyKeys = pgTable(
+  'marketing_idempotency_keys',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    requestMethod: text('request_method').notNull(),
+    requestPath: text('request_path').notNull(),
+    requestHash: text('request_hash').notNull(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'string' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('marketing_idempotency_keys_tenant_key_uidx').on(table.tenantId, table.key),
+    index('marketing_idempotency_keys_expiry_idx').on(table.expiresAt),
+  ],
 );

@@ -16,6 +16,8 @@ export const createDevEmailPort = (db: Db): EmailPort => ({
           subject: message.subject,
           html: message.html,
           text: message.text,
+          headers: message.headers ?? {},
+          messageId: message.messageId ?? null,
           createdAt,
         })
         .onConflictDoUpdate({
@@ -24,10 +26,12 @@ export const createDevEmailPort = (db: Db): EmailPort => ({
             subject: message.subject,
             html: message.html,
             text: message.text,
+            headers: message.headers ?? {},
+            messageId: message.messageId ?? null,
             createdAt,
           },
         });
-      return ok({ messageId: null });
+      return ok({ messageId: message.messageId ?? null });
     } catch (cause) {
       return { ok: false, error: internal(`Could not store dev email: ${String(cause)}`) };
     }

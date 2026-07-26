@@ -1,0 +1,218 @@
+{
+  "bundleVersion": 1,
+  "name": "Together welcome series",
+  "scenarios": [
+    {
+      "name": "Welcome: enroll & send #1",
+      "blueprint": {
+        "name": "Together - Welcome: enroll & send #1",
+        "flow": [
+          {
+            "id": 1,
+            "module": "gateway:CustomWebHook",
+            "version": 1,
+            "parameters": { "hook": 0 },
+            "mapper": {},
+            "metadata": { "designer": { "x": 0, "y": 0 }, "restore": { "parameters": { "hook": { "label": "Reconnect: Together welcome enrollment" } } } }
+          },
+          {
+            "id": 2,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
+            "mapper": {
+              "url": "https://acme.together.app/api/m2m/marketing/consents",
+              "method": "post",
+              "headers": [
+                { "name": "content-type", "value": "application/json" },
+                { "name": "x-api-key", "value": "replace-with-api-key" }
+              ],
+              "bodyType": "raw",
+              "contentType": "application/json",
+              "data": "{\"email\":\"{{1.email}}\",\"memberId\":{{ifempty(1.memberId; null)}},\"definitionId\":\"cd_newsletter\",\"collectedAt\":\"{{1.collectedAt}}\",\"source\":\"api\",\"proofRef\":\"{{1.proofRef}}\"}",
+              "parseResponse": true
+            },
+            "metadata": { "designer": { "x": 300, "y": 0 } }
+          },
+          {
+            "id": 3,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
+            "mapper": {
+              "url": "https://acme.together.app/api/m2m/marketing/eligibility?email={{encodeURL(1.email)}}&definitionId=cd_newsletter",
+              "method": "get",
+              "headers": [{ "name": "x-api-key", "value": "replace-with-api-key" }],
+              "parseResponse": true
+            },
+            "metadata": { "designer": { "x": 600, "y": 0 } }
+          },
+          {
+            "id": 4,
+            "module": "builtin:BasicRouter",
+            "version": 1,
+            "mapper": null,
+            "metadata": { "designer": { "x": 900, "y": 0 } },
+            "routes": [
+              {
+                "flow": [
+                  {
+                    "id": 5,
+                    "module": "http:ActionSendData",
+                    "version": 3,
+                    "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
+                    "filter": {
+                      "name": "Eligible",
+                      "conditions": [[{ "a": "{{3.data.eligible}}", "b": "true", "o": "text:equal" }]]
+                    },
+                    "mapper": {
+                      "url": "https://acme.together.app/api/m2m/marketing/messages",
+                      "method": "post",
+                      "headers": [
+                        { "name": "content-type", "value": "application/json" },
+                        { "name": "x-api-key", "value": "replace-with-api-key" },
+                        { "name": "Idempotency-Key", "value": "w1-{{lower(1.email)}}" }
+                      ],
+                      "bodyType": "raw",
+                      "contentType": "application/json",
+                      "data": "{\"to\":\"{{1.email}}\",\"consentDefinitionId\":\"cd_newsletter\",\"templateId\":\"tpl_welcome_1\",\"data\":{\"firstName\":\"{{1.firstName}}\"},\"campaignKey\":\"welcome-series\"}",
+                      "parseResponse": true
+                    },
+                    "metadata": { "designer": { "x": 1200, "y": -100 } }
+                  },
+                  {
+                    "id": 6,
+                    "module": "datastore:AddReplaceRecord",
+                    "version": 1,
+                    "parameters": { "datastore": 0 },
+                    "mapper": {
+                      "key": "{{lower(1.email)}}",
+                      "overwrite": true,
+                      "record": {
+                        "email": "{{lower(1.email)}}",
+                        "firstName": "{{1.firstName}}",
+                        "stage": "1",
+                        "dueAt": "{{addDays(now; 2)}}"
+                      }
+                    },
+                    "metadata": { "designer": { "x": 1500, "y": -100 }, "restore": { "parameters": { "datastore": { "label": "Reconnect: together_welcome_series" } } } }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "instant": true,
+          "version": 1,
+          "scenario": { "roundtrips": 1, "maxErrors": 3, "autoCommit": true, "autoCommitTriggerLast": true, "sequential": true, "confidential": true, "dataloss": false, "dlq": false, "freshVariables": false },
+          "designer": { "orphans": [] },
+          "zone": "eu1.make.com"
+        }
+      }
+    },
+    {
+      "name": "Welcome: send #2",
+      "blueprint": {
+        "name": "Together - Welcome: send #2",
+        "flow": [
+          {
+            "id": 1,
+            "module": "datastore:SearchRecords",
+            "version": 1,
+            "parameters": { "datastore": 0 },
+            "mapper": {
+              "filter": { "conditions": [[{ "a": "stage", "b": "1", "o": "text:equal" }, { "a": "dueAt", "b": "{{now}}", "o": "date:lessorequal" }]] },
+              "sort": [],
+              "limit": 100
+            },
+            "metadata": { "designer": { "x": 0, "y": 0 }, "restore": { "parameters": { "datastore": { "label": "Reconnect: together_welcome_series" } } } }
+          },
+          {
+            "id": 2,
+            "module": "builtin:BasicFeeder",
+            "version": 1,
+            "mapper": { "array": "{{1.array}}" },
+            "metadata": { "designer": { "x": 300, "y": 0 } }
+          },
+          {
+            "id": 3,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
+            "mapper": {
+              "url": "https://acme.together.app/api/m2m/marketing/eligibility?email={{encodeURL(2.email)}}&definitionId=cd_newsletter",
+              "method": "get",
+              "headers": [{ "name": "x-api-key", "value": "replace-with-api-key" }],
+              "parseResponse": true
+            },
+            "metadata": { "designer": { "x": 600, "y": 0 } }
+          },
+          {
+            "id": 4,
+            "module": "builtin:BasicRouter",
+            "version": 1,
+            "mapper": null,
+            "metadata": { "designer": { "x": 900, "y": 0 } },
+            "routes": [
+              {
+                "flow": [
+                  {
+                    "id": 5,
+                    "module": "datastore:UpdateRecord",
+                    "version": 1,
+                    "parameters": { "datastore": 0 },
+                    "filter": { "name": "Not eligible", "conditions": [[{ "a": "{{3.data.eligible}}", "b": "false", "o": "text:equal" }]] },
+                    "mapper": { "key": "{{2.key}}", "record": { "stage": "done-skipped" } },
+                    "metadata": { "designer": { "x": 1200, "y": 140 }, "restore": { "parameters": { "datastore": { "label": "Reconnect: together_welcome_series" } } } }
+                  }
+                ]
+              },
+              {
+                "flow": [
+                  {
+                    "id": 6,
+                    "module": "http:ActionSendData",
+                    "version": 3,
+                    "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
+                    "filter": { "name": "Eligible", "conditions": [[{ "a": "{{3.data.eligible}}", "b": "true", "o": "text:equal" }]] },
+                    "mapper": {
+                      "url": "https://acme.together.app/api/m2m/marketing/messages",
+                      "method": "post",
+                      "headers": [
+                        { "name": "content-type", "value": "application/json" },
+                        { "name": "x-api-key", "value": "replace-with-api-key" },
+                        { "name": "Idempotency-Key", "value": "w2-{{lower(2.email)}}" }
+                      ],
+                      "bodyType": "raw",
+                      "contentType": "application/json",
+                      "data": "{\"to\":\"{{2.email}}\",\"consentDefinitionId\":\"cd_newsletter\",\"templateId\":\"tpl_welcome_2\",\"data\":{\"firstName\":\"{{2.firstName}}\"},\"campaignKey\":\"welcome-series\"}",
+                      "parseResponse": true
+                    },
+                    "metadata": { "designer": { "x": 1200, "y": -100 } }
+                  },
+                  {
+                    "id": 7,
+                    "module": "datastore:UpdateRecord",
+                    "version": 1,
+                    "parameters": { "datastore": 0 },
+                    "mapper": { "key": "{{2.key}}", "record": { "stage": "done" } },
+                    "metadata": { "designer": { "x": 1500, "y": -100 }, "restore": { "parameters": { "datastore": { "label": "Reconnect: together_welcome_series" } } } }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "instant": false,
+          "version": 1,
+          "scenario": { "roundtrips": 1, "maxErrors": 3, "autoCommit": true, "autoCommitTriggerLast": true, "sequential": true, "confidential": true, "dataloss": false, "dlq": false, "freshVariables": false },
+          "designer": { "orphans": [] },
+          "zone": "eu1.make.com"
+        },
+        "scheduling": { "type": "indefinitely", "interval": 3600 }
+      }
+    }
+  ]
+}

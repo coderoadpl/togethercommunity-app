@@ -68,6 +68,11 @@ type PanelSection =
   | 'spaces'
   | 'sales'
   | 'integrations'
+  | 'marketingCampaigns'
+  | 'marketingConsents'
+  | 'marketingDocuments'
+  | 'marketingLayouts'
+  | 'marketingSettings'
   | 'settings';
 
 interface SectionDescriptor {
@@ -85,6 +90,11 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'spaces', to: '/panel/spaces' },
   { id: 'sales', to: '/panel/sales' },
   { id: 'integrations', to: '/panel/integrations' },
+  { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
+  { id: 'marketingConsents', to: '/panel/marketing/consents' },
+  { id: 'marketingDocuments', to: '/panel/marketing/documents' },
+  { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
+  { id: 'marketingSettings', to: '/panel/marketing/settings' },
   { id: 'settings', to: '/panel/settings' },
 ];
 
@@ -113,6 +123,12 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
     case 'sales':
       return <SalesIcon />;
     case 'integrations':
+      return <IntegrationsIcon />;
+    case 'marketingCampaigns':
+    case 'marketingConsents':
+    case 'marketingDocuments':
+    case 'marketingLayouts':
+    case 'marketingSettings':
       return <IntegrationsIcon />;
     case 'settings':
       return <SettingsIcon />;

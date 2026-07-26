@@ -39,7 +39,7 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
-import { consents, memberCourseProgress, members, posts, user } from './schema.js';
+import { consents, memberCourseProgress, members, posts, suppressions, user } from './schema.js';
 
 const TEST_DB = 'together_repositories_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -57,6 +57,7 @@ const ACME = 'tenant-acme';
 const GLOBEX = 'tenant-globex';
 
 let db: Db;
+const emailHmac = { compute: (tenantId: string, email: string) => `${tenantId}:${email.trim().toLowerCase()}` };
 
 const product = (over: Partial<Product> & { id: string; tenantId: string }): Product => ({
   title: 'Course',
@@ -495,7 +496,7 @@ describe('member erasure repository', () => {
   });
 
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
     expect(result).toEqual({ alreadyDeleted: false, authUserErased: true });
 
     const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
@@ -526,6 +527,14 @@ describe('member erasure repository', () => {
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
     expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });
+
+    const suppressionRows = await db.select().from(suppressions).where(eq(suppressions.sourceRef, 'mem-rodo'));
+    expect(suppressionRows).toMatchObject([{
+      tenantId: RODO,
+      email: null,
+      emailHmac: emailHmac.compute(RODO, 'jan.kowalski@together.dev'),
+      reason: 'erasure',
+    }]);
 
     const progressRows = await db
       .select()
@@ -571,17 +580,17 @@ describe('member erasure repository', () => {
   });
 
   it('reports an already pseudonymized member without touching it again', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
     expect(result).toEqual({ alreadyDeleted: true, authUserErased: false });
   });
 
   it('returns null for a member of another tenant', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(OTHER, pseudonymizationInput('mem-rodo'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(OTHER, pseudonymizationInput('mem-rodo'));
     expect(result).toBeNull();
   });
 
   it('keeps the auth user when other tenant memberships still reference it', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
     expect(result).toEqual({ alreadyDeleted: false, authUserErased: false });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));

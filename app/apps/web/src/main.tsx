@@ -55,6 +55,19 @@ import { CheckoutRoute } from './routes/checkout.js';
 import { HomeRoute } from './routes/home.js';
 import { LoginRoute } from './routes/login.js';
 import {
+  CampaignCreatePage,
+  CampaignDetailPage,
+  CampaignsPanel,
+  ConsentCreatePage,
+  ConsentDetailPage,
+  ConsentsPanel,
+  DocumentCreatePage,
+  DocumentDetailPage,
+  DocumentsPanel,
+  LayoutCreatePage,
+  LayoutDetailPage,
+  LayoutsPanel,
+  MarketingSettingsPanel,
   PanelCourseDetailRoute,
   PanelCourseCreateRoute,
   PanelModuleCreateRoute,
@@ -279,6 +292,71 @@ const panelSettingsRoute = createRoute({
   path: 'settings',
   component: PanelSettingsRoute,
 });
+const panelMarketingCampaignsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/campaigns',
+  component: CampaignsPanel,
+});
+const panelMarketingCampaignCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/campaigns/new',
+  component: CampaignCreatePage,
+});
+const panelMarketingCampaignDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/campaigns/$campaignId',
+  component: CampaignDetailPage,
+});
+const panelMarketingConsentsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/consents',
+  component: ConsentsPanel,
+});
+const panelMarketingConsentCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/consents/new',
+  component: ConsentCreatePage,
+});
+const panelMarketingConsentDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/consents/$consentId',
+  component: ConsentDetailPage,
+});
+const panelMarketingDocumentsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/documents',
+  component: DocumentsPanel,
+});
+const panelMarketingDocumentCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/documents/new',
+  component: DocumentCreatePage,
+});
+const panelMarketingDocumentDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/documents/$documentId',
+  component: DocumentDetailPage,
+});
+const panelMarketingLayoutsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/layouts',
+  component: LayoutsPanel,
+});
+const panelMarketingLayoutCreateRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/layouts/new',
+  component: LayoutCreatePage,
+});
+const panelMarketingLayoutDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/layouts/$layoutId',
+  component: LayoutDetailPage,
+});
+const panelMarketingSettingsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/settings',
+  component: MarketingSettingsPanel,
+});
 
 const router = createRouter({
   routeTree: rootRoute.addChildren([
@@ -316,6 +394,19 @@ const router = createRouter({
       panelSalesRoute,
       panelIntegrationsRoute,
       panelSettingsRoute,
+      panelMarketingCampaignsRoute,
+      panelMarketingCampaignCreateRoute,
+      panelMarketingCampaignDetailRoute,
+      panelMarketingConsentsRoute,
+      panelMarketingConsentCreateRoute,
+      panelMarketingConsentDetailRoute,
+      panelMarketingDocumentsRoute,
+      panelMarketingDocumentCreateRoute,
+      panelMarketingDocumentDetailRoute,
+      panelMarketingLayoutsRoute,
+      panelMarketingLayoutCreateRoute,
+      panelMarketingLayoutDetailRoute,
+      panelMarketingSettingsRoute,
     ]),
   ]),
 });

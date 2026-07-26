@@ -75,6 +75,17 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
       return { ok: false, error: internal(`Could not mark email failed: ${String(cause)}`) };
     }
   },
+  hasPendingForTenant: async (tenantId) => {
+    const rows = await db
+      .select({ id: emailOutbox.id })
+      .from(emailOutbox)
+      .where(and(
+        eq(emailOutbox.tenantId, tenantId),
+        or(eq(emailOutbox.status, 'queued'), eq(emailOutbox.status, 'sending'), eq(emailOutbox.status, 'failed')),
+      ))
+      .limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createEnrollmentTransactionPort = (db: Db): EnrollmentTransactionPort => ({

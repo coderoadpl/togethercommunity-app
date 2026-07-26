@@ -7,6 +7,7 @@ import type {
   EntityKind,
   EmailBranding,
   EmailMessage,
+  EmailLayout,
   EmailOutboxPayload,
   Member,
   MemberGrant,
@@ -39,6 +40,18 @@ import type {
   TenantSecretKey,
   TenantSettings,
   TermsConsent,
+  AutomationIdempotencyKey,
+  Campaign,
+  CampaignSend,
+  ConsentDefinition,
+  ConsentDefinitionVersion,
+  ConsentConfirmationToken,
+  MarketingConsent,
+  Suppression,
+  TenantSesSettings,
+  TenantDocument,
+  TenantDocumentVersion,
+  UnsubscribeToken,
 } from '@core/domain/index.js';
 
 /**
@@ -499,7 +512,7 @@ export interface PurchaseRepository {
 }
 
 export interface EmailPort {
-  send(message: { to: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
+  send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
 }
 
 export interface EmailOutboxItem {
@@ -515,6 +528,7 @@ export interface EmailOutboxRepository {
   claimBatch(input: { now: string; limit: number; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>>;
   markSent(input: { id: string; sentAt: string }): Promise<Result<void, AppError>>;
   markFailed(input: { id: string; attempts: number; nextAttemptAt: string; error: string }): Promise<Result<void, AppError>>;
+  hasPendingForTenant?(tenantId: string): Promise<boolean>;
 }
 
 export interface EnrollmentTransactionPort {
@@ -537,6 +551,8 @@ export interface DevEmail {
   subject: string;
   html: string;
   text: string;
+  headers: Record<string, string>;
+  messageId: string | null;
   createdAt: string;
 }
 
@@ -576,6 +592,214 @@ export interface TenantRepository {
 export interface TermsConsentRepository {
   record(tenantId: string, consent: TermsConsent): Promise<void>;
   listByEmail(tenantId: string, email: string): Promise<TermsConsent[]>;
+}
+
+export interface MarketingConsentRepository {
+  record(tenantId: string, consent: MarketingConsent): Promise<void>;
+  listByEmail(tenantId: string, email: string, definitionId?: string): Promise<MarketingConsent[]>;
+  latestByEmail(tenantId: string, email: string, definitionId: string): Promise<MarketingConsent | null>;
+  findById(tenantId: string, consentId: string): Promise<MarketingConsent | null>;
+  purgeStalePending(tenantId: string, olderThan: string, doubleOptInDefinitionIds: string[]): Promise<number>;
+}
+
+export interface TenantDocumentRepository {
+  create(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<void>;
+  findById(tenantId: string, documentId: string): Promise<TenantDocument | null>;
+  list(tenantId: string): Promise<TenantDocument[]>;
+  listVersions(tenantId: string, documentId: string): Promise<TenantDocumentVersion[]>;
+  saveDraft(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<TenantDocumentVersion | null>;
+  publishDraft(tenantId: string, documentId: string, publishedAt: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+  findLatestPublished(tenantId: string, slug: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+  findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+}
+
+export interface ConsentConfirmationTokenRepository {
+  create(tenantId: string, token: ConsentConfirmationToken): Promise<void>;
+  findByToken(tenantId: string, token: string): Promise<ConsentConfirmationToken | null>;
+  consume(tenantId: string, token: string, usedAt: string): Promise<ConsentConfirmationToken | null>;
+}
+
+export interface MarketingAudienceMember {
+  memberId: string;
+  email: string;
+  displayName: string | null;
+  productIds: string[];
+}
+
+export interface MarketingAudienceRepository {
+  snapshot(tenantId: string, input: {
+    definitionId: string;
+    productIds: string[];
+  }): Promise<{ maxMemberId: string | null; count: number }>;
+  fetchEligibleBatch(tenantId: string, input: {
+    definitionId: string;
+    productIds: string[];
+    afterMemberId: string | null;
+    maxMemberId: string;
+    limit: number;
+  }): Promise<MarketingAudienceMember[]>;
+}
+
+export interface ConsentDefinitionRepository {
+  create(tenantId: string, definition: ConsentDefinition, version: ConsentDefinitionVersion): Promise<void>;
+  findById(tenantId: string, definitionId: string): Promise<ConsentDefinition | null>;
+  list(tenantId: string, status?: ConsentDefinition['status']): Promise<ConsentDefinition[]>;
+  update(tenantId: string, definition: ConsentDefinition): Promise<ConsentDefinition | null>;
+  appendVersion(tenantId: string, version: ConsentDefinitionVersion): Promise<void>;
+  listVersions(tenantId: string, definitionId: string): Promise<ConsentDefinitionVersion[]>;
+}
+
+export interface CampaignRepository {
+  create(tenantId: string, campaign: Campaign): Promise<void>;
+  findById(tenantId: string, campaignId: string): Promise<Campaign | null>;
+  list(tenantId: string): Promise<Campaign[]>;
+  delete(tenantId: string, campaignId: string): Promise<boolean>;
+  update(tenantId: string, campaign: Campaign): Promise<Campaign | null>;
+  acquireLease(
+    tenantId: string,
+    campaignId: string,
+    input: { workerId: string; now: string; lockedUntil: string },
+  ): Promise<boolean>;
+  advanceCursor(
+    tenantId: string,
+    campaignId: string,
+    input: { cursorMemberId: string; sentDelta: number; failedDelta: number },
+  ): Promise<Campaign | null>;
+}
+
+export interface MarketingJobRepository {
+  listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
+  listRetentionTenantIds(): Promise<string[]>;
+}
+
+export interface EmailLayoutRepository {
+  create(tenantId: string, layout: EmailLayout): Promise<void>;
+  findById(tenantId: string, layoutId: string): Promise<EmailLayout | null>;
+  list(tenantId: string): Promise<EmailLayout[]>;
+  update(tenantId: string, layout: EmailLayout): Promise<EmailLayout | null>;
+}
+
+export interface CampaignSendRepository {
+  claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean>;
+  findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
+  update(tenantId: string, send: CampaignSend): Promise<CampaignSend | null>;
+  correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<CampaignSend | null>;
+  listByCampaign(tenantId: string, campaignId: string): Promise<CampaignSend[]>;
+  listAll(tenantId: string): Promise<CampaignSend[]>;
+  listPage(tenantId: string, query: {
+    campaignId?: string;
+    email?: string;
+    status?: CampaignSend['status'];
+    cursor?: string;
+    limit: number;
+  }): Promise<{ sends: CampaignSend[]; nextCursor: string | null }>;
+  hasPendingByCampaign(tenantId: string, campaignId: string): Promise<boolean>;
+  pseudonymizeMember(tenantId: string, input: { memberId: string; email: string; tombstoneEmail: string }): Promise<number>;
+  ageOutRenderedBodies(tenantId: string, olderThan: string, purgedAt: string): Promise<number>;
+}
+
+export interface SuppressionRepository {
+  record(tenantId: string, suppression: Suppression): Promise<boolean>;
+  findActive(tenantId: string, emailHmac: string): Promise<Suppression | null>;
+  isSuppressed(tenantId: string, emailHmac: string): Promise<boolean>;
+  lift(tenantId: string, suppression: Suppression): Promise<Suppression | null>;
+  findById(tenantId: string, suppressionId: string): Promise<Suppression | null>;
+  list(tenantId: string, query: { emailHmac?: string; cursor?: string; limit: number }): Promise<{ suppressions: Suppression[]; nextCursor: string | null }>;
+}
+
+export interface UnsubscribeTokenRepository {
+  create(tenantId: string, token: UnsubscribeToken): Promise<void>;
+  findByToken(tenantId: string, token: string): Promise<UnsubscribeToken | null>;
+  consume(
+    tenantId: string,
+    token: string,
+    usedAt: string,
+  ): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null>;
+}
+
+export interface TenantSesSettingsRepository {
+  findByTenant(tenantId: string): Promise<TenantSesSettings | null>;
+  findByWebhookToken(webhookToken: string): Promise<TenantSesSettings | null>;
+  upsert(tenantId: string, settings: TenantSesSettings): Promise<TenantSesSettings>;
+}
+
+export interface SesMarketingCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+}
+
+export interface SesMarketingSender {
+  send(input: {
+    credentials: SesMarketingCredentials;
+    from: { address: string; name: string };
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    headers: Record<string, string>;
+    configurationSet: string | null;
+  }): Promise<Result<{ messageId: string }, AppError>>;
+}
+
+export interface SesMarketingQuotaReader {
+  read(credentials: SesMarketingCredentials): Promise<Result<{
+    ratePerSecond: number;
+    daily: number;
+    sentLast24Hours: number;
+    inSandbox: boolean;
+  }, AppError>>;
+}
+
+export interface MarketingThrottleRepository {
+  claim(tenantId: string, input: {
+    requested: number;
+    now: string;
+    ratePerSecond: number;
+    dailyQuota: number;
+    sentLast24Hours: number;
+    quotaSnapshotAt: string;
+  }): Promise<boolean>;
+}
+
+export interface VerifiedSnsEnvelope {
+  type: 'SubscriptionConfirmation' | 'Notification';
+  topicArn: string;
+  message: string;
+  subscribeUrl: string | null;
+}
+
+export interface SnsVerifier {
+  verify(input: {
+    rawBody: string;
+    headers: Record<string, string>;
+    region: string;
+  }): Promise<Result<VerifiedSnsEnvelope, AppError>>;
+  confirmSubscription(input: { subscribeUrl: string; region: string }): Promise<Result<void, AppError>>;
+}
+
+export interface SchedulerPort {
+  enqueueCampaignTick(tenantId: string, campaignId: string): Promise<Result<void, AppError>>;
+  scheduleCampaignTick(tenantId: string, campaignId: string, runAt: string): Promise<Result<void, AppError>>;
+  enqueueRetentionJobs(tenantId: string): Promise<Result<void, AppError>>;
+}
+
+export interface EmailHmac {
+  compute(tenantId: string, normalizedEmail: string): string;
+}
+
+export interface MarketingSesCredentialResolver {
+  resolve(tenantId: string): Promise<Result<SesMarketingCredentials, AppError>>;
+}
+
+export interface TokenGenerator {
+  nextToken(): string;
+}
+
+export interface AutomationIdempotencyRepository {
+  claim(tenantId: string, record: AutomationIdempotencyKey): Promise<AutomationIdempotencyKey | null>;
+  release(tenantId: string, key: string): Promise<void>;
+  sweepExpired(now: string): Promise<number>;
 }
 
 export interface TenantAccessReader {

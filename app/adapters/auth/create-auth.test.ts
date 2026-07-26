@@ -7,6 +7,7 @@ import { createDevEmailReader, createDevMagicLinkReader } from '@adapters/db/rep
 import { createEmailOutboxRepository } from '@adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import { dispatchEmailBatch } from '@core/server/index.js';
+import { InMemorySchedulerRunRepository } from '@core/server/testing/marketing-fakes.js';
 
 import { createAuth, createAuthPort } from './create-auth.js';
 
@@ -30,10 +31,11 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
       attemptsCap: 5,
       backoffBaseMs: 1000,
       backoffCapMs: 900000,
+      ids: { nextId: () => crypto.randomUUID() },
+      runs: new InMemorySchedulerRunRepository(),
+      trigger: 'manual',
     });
-  const dispatchEmail = (): void => {
-    void flushEmails();
-  };
+  const dispatchEmail = (): void => undefined;
   const consentRequired = options.consentRequired ?? false;
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',

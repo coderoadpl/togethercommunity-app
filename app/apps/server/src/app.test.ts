@@ -32,6 +32,7 @@ import {
   InMemoryEmailEventRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
+  InMemorySchedulerRunRepository,
   InMemoryMarketingThrottleRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
@@ -410,6 +411,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
   app.request(API_PATHS.publicOffer, { headers });
 
 const marketingDeps = (): MarketingAppDeps => ({
+  runs: new InMemorySchedulerRunRepository(),
   events: new InMemoryEmailEventRepository(),
   emailSends: {
     listPage: async () => ({ sends: [], nextCursor: null }),
@@ -509,9 +511,9 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 describe('marketing HTTP surfaces', () => {
   it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {
     const marketing = marketingDeps();
-    let dispatches = 0;
-    marketing.dispatchScheduledMarketing = async () => {
-      dispatches += 1;
+    const triggers: string[] = [];
+    marketing.dispatchScheduledMarketing = async (trigger) => {
+      triggers.push(trigger);
       return ok({ campaignsDispatched: 2, retentionTenantsProcessed: 3 });
     };
     const app = marketingApp(marketing);
@@ -524,7 +526,7 @@ describe('marketing HTTP surfaces', () => {
       ok: true,
       data: { campaignsDispatched: 2, retentionTenantsProcessed: 3 },
     });
-    expect(dispatches).toBe(1);
+    expect(triggers).toEqual(['cron']);
   });
 
   it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {

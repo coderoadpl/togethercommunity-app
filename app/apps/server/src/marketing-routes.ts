@@ -381,7 +381,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     if (c.req.header('x-marketing-tick-secret') !== marketing.value.tickSecret) return response(err(unauthorized('Invalid marketing tick secret')));
     const parsed = z.object({ tenantId: z.string().min(1), campaignId: z.string().min(1) }).safeParse(await readJson(c.req.raw));
     return parsed.success
-      ? response(await marketing.value.dispatchCampaign(parsed.data.tenantId, parsed.data.campaignId))
+      ? response(await marketing.value.dispatchCampaign(parsed.data.tenantId, parsed.data.campaignId, 'manual'))
       : response(err(validation('Invalid marketing tick payload', parsed.error.flatten())));
   });
 
@@ -391,8 +391,9 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const bearer = c.req.header('authorization');
     const authenticated = c.req.header('x-marketing-tick-secret') === marketing.value.tickSecret
       || bearer === `Bearer ${marketing.value.cronSecret}`;
+    const trigger = bearer === `Bearer ${marketing.value.cronSecret}` ? 'cron' : 'manual';
     return authenticated
-      ? response(await marketing.value.dispatchScheduledMarketing())
+      ? response(await marketing.value.dispatchScheduledMarketing(trigger))
       : response(err(unauthorized('Invalid marketing tick secret')));
   });
 

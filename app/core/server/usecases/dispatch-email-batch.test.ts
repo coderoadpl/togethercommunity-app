@@ -4,6 +4,7 @@ import { err, internal, ok } from '@core/domain/index.js';
 import {
   InMemoryEmailEventRepository,
   InMemoryEmailOutboxRepository,
+  InMemorySchedulerRunRepository,
 } from '../testing/marketing-fakes.js';
 import { dispatchEmailBatch } from './dispatch-email-batch.js';
 
@@ -32,6 +33,9 @@ const setup = async () => {
     attemptsCap: 3,
     backoffBaseMs: 0,
     backoffCapMs: 0,
+    ids: { nextId: (() => { let next = 0; return () => `run-id-${String(++next)}`; })() },
+    runs: new InMemorySchedulerRunRepository(),
+    trigger: 'manual' as const,
   };
 };
 
@@ -48,6 +52,29 @@ describe('transactional email event lifecycle', () => {
       'outbox-1',
     )).map((event) => event.type))
       .toEqual(['queued', 'claimed', 'rendered', 'accepted']);
+    const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
+    const runId = page.runs[0]?.id ?? '';
+    expect(await deps.runs.getWithTenants(runId)).toMatchObject({
+      run: {
+        kind: 'outbox_dispatch',
+        trigger: 'manual',
+        status: 'completed',
+        totals: { sendsAttempted: 1, sent: 1, failed: 0 },
+      },
+      tenants: [{
+        tenantId: 'tenant-1',
+        batchSize: 1,
+        sent: 1,
+        failed: 0,
+        budgetComputed: 1,
+        budgetUsed: 1,
+      }],
+    });
+    expect(await deps.events.listByRef('tenant-1', 'transactional', 'outbox-1')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'accepted', meta: expect.objectContaining({ runId }) }),
+      ]),
+    );
   });
 
   it('records failure, retry, and acceptance in exact order', async () => {

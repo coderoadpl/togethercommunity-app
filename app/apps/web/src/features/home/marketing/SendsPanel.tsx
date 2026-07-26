@@ -13,6 +13,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -66,6 +67,7 @@ export const SendsPanel = () => {
   const [status, setStatus] = useState<'all' | EmailSendStatus>('all');
   const [deliveryStatus, setDeliveryStatus] = useState<'all' | EmailDeliveryStatus>('all');
   const [campaignId, setCampaignId] = useState('all');
+  const [runId, setRunId] = useState(() => new URLSearchParams(window.location.search).get('runId') ?? '');
   const [pageSize, setPageSize] = useState(25);
   const [cursor, setCursor] = useState<string | undefined>();
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
@@ -78,6 +80,7 @@ export const SendsPanel = () => {
     ...(status === 'all' ? {} : { status }),
     ...(deliveryStatus === 'all' ? {} : { deliveryStatus }),
     ...(campaignId === 'all' ? {} : { campaignId }),
+    ...(runId.length === 0 ? {} : { runId }),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
   const sends = useQuery(actions.emailSends({
@@ -203,6 +206,34 @@ export const SendsPanel = () => {
                   ))}
                 </Select>
               </FormControl>
+              <TextField
+                size="small"
+                label={t.marketing.runIdFilter}
+                value={runId}
+                onChange={(event) => {
+                  setRunId(event.target.value.trim());
+                  resetPagination();
+                }}
+                slotProps={{
+                  input: runId.length === 0
+                    ? {}
+                    : {
+                        endAdornment: (
+                          <Button
+                            size="small"
+                            aria-label={t.marketing.clearRunFilter}
+                            onClick={() => {
+                              setRunId('');
+                              resetPagination();
+                            }}
+                          >
+                            ×
+                          </Button>
+                        ),
+                      },
+                }}
+                sx={{ minWidth: '14rem' }}
+              />
             </Stack>
           ),
           actions: (

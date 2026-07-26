@@ -55,9 +55,48 @@ export const schedulerRunTenantSchema = z.object({
   createdAt: isoDateTime,
 });
 
+export const schedulerRunCursorSchema = z.string().min(1).superRefine((value, ctx) => {
+  const parts = value.split('~');
+  try {
+    if (
+      parts.length !== 2
+      || !isoDateTime.safeParse(decodeURIComponent(parts[0] ?? '')).success
+      || decodeURIComponent(parts[1] ?? '').length === 0
+    ) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid scheduler run cursor' });
+    }
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid scheduler run cursor' });
+  }
+});
+
+export const schedulerRunListQuerySchema = z.object({
+  kind: schedulerRunKindSchema.optional(),
+  status: schedulerRunStatusSchema.optional(),
+  since: isoDateTime.optional(),
+  cursor: schedulerRunCursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+export const schedulerRunTenantItemSchema = z.object({
+  run: schedulerRunSchema,
+  tenant: schedulerRunTenantSchema,
+});
+
+export const schedulerRunTenantSummarySchema = z.object({
+  runsLast24Hours: nonNegativeInteger,
+  sentLast24Hours: nonNegativeInteger,
+  failedLast24Hours: nonNegativeInteger,
+  lastRun: schedulerRunSchema.nullable(),
+});
+
 export type SchedulerRunKind = z.output<typeof schedulerRunKindSchema>;
 export type SchedulerRunTrigger = z.output<typeof schedulerRunTriggerSchema>;
 export type SchedulerRunStatus = z.output<typeof schedulerRunStatusSchema>;
 export type SchedulerRunTotals = z.output<typeof schedulerRunTotalsSchema>;
 export type SchedulerRun = z.output<typeof schedulerRunSchema>;
 export type SchedulerRunTenant = z.output<typeof schedulerRunTenantSchema>;
+export type SchedulerRunListQuery = z.output<typeof schedulerRunListQuerySchema>;
+export type SchedulerRunListQueryInput = z.input<typeof schedulerRunListQuerySchema>;
+export type SchedulerRunTenantItem = z.output<typeof schedulerRunTenantItemSchema>;
+export type SchedulerRunTenantSummary = z.output<typeof schedulerRunTenantSummarySchema>;

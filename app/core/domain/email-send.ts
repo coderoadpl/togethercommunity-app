@@ -53,6 +53,7 @@ export const emailSendListQuerySchema = z.object({
   status: emailSendStatusSchema.optional(),
   deliveryStatus: emailDeliveryStatusSchema.optional(),
   campaignId: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
   search: z.string().trim().min(1).max(200).optional(),
   cursor: emailSendCursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),

@@ -145,8 +145,9 @@ describe('marketing e-mail use-case integration', () => {
     }, deps);
     expect(result).toMatchObject({ ok: true, value: { sent: 1, failed: 0, skipped: 0 } });
     const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
-    expect(page.runs).toHaveLength(1);
-    const runId = page.runs[0]?.id ?? '';
+    const runs = page.items.map((item) => item.run);
+    expect(runs).toHaveLength(1);
+    const runId = runs[0]?.id ?? '';
     expect(await deps.runs.getWithTenants(runId)).toMatchObject({
       run: {
         kind: 'marketing_tick',
@@ -193,8 +194,9 @@ describe('marketing e-mail use-case integration', () => {
       trigger: 'dev',
     }, deps)).rejects.toThrow('Audience unavailable');
     const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
-    expect(page.runs).toHaveLength(1);
-    expect(await deps.runs.getWithTenants(page.runs[0]?.id ?? '')).toMatchObject({
+    const runs = page.items.map((item) => item.run);
+    expect(runs).toHaveLength(1);
+    expect(await deps.runs.getWithTenants(runs[0]?.id ?? '')).toMatchObject({
       run: {
         trigger: 'dev',
         status: 'failed',

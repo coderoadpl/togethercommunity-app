@@ -88,6 +88,11 @@ import {
   emailSendExportQuerySchema,
   emailSendListQuerySchema,
   emailSendProjectionSchema,
+  schedulerRunListQuerySchema,
+  schedulerRunSchema,
+  schedulerRunTenantItemSchema,
+  schedulerRunTenantSchema,
+  schedulerRunTenantSummarySchema,
   suppressionSchema,
   tenantDocumentSchema,
   tenantDocumentVersionSchema,
@@ -840,6 +845,21 @@ export const memberEmailSendsOutputSchema = z.object({ sends: z.array(emailSendP
 export const emailSendsExportOutputSchema = emailSendExportFileSchema;
 export const emailSendsQuerySchema = emailSendListQuerySchema;
 export const emailSendsExportQuerySchema = emailSendExportQuerySchema;
+export const schedulerRunsQuerySchema = schedulerRunListQuerySchema;
+export const tenantSchedulerRunsOutputSchema = z.object({
+  items: z.array(schedulerRunTenantItemSchema),
+  summary: schedulerRunTenantSummarySchema,
+  nextCursor: z.string().nullable(),
+});
+export const tenantSchedulerRunOutputSchema = schedulerRunTenantItemSchema;
+export const globalSchedulerRunsOutputSchema = z.object({
+  runs: z.array(schedulerRunSchema),
+  nextCursor: z.string().nullable(),
+});
+export const globalSchedulerRunOutputSchema = z.object({
+  run: schedulerRunSchema,
+  tenants: z.array(schedulerRunTenantSchema),
+});
 export type MarketingConsentDefinitionCreateInput = z.input<typeof marketingConsentDefinitionCreateInputSchema>;
 export type MarketingCampaignCreateInput = z.input<typeof marketingCampaignCreateInputSchema>;
 export type MarketingCampaignScheduleInput = z.input<typeof marketingCampaignScheduleInputSchema>;
@@ -855,6 +875,7 @@ export type MarketingSesSettingsUpdateInput = z.input<typeof marketingSesSetting
 export type MarketingSuppressionCreateInput = z.input<typeof marketingSuppressionCreateInputSchema>;
 export type EmailSendsQueryInput = z.input<typeof emailSendsQuerySchema>;
 export type EmailSendsExportQueryInput = z.input<typeof emailSendsExportQuerySchema>;
+export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
 
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
@@ -990,6 +1011,10 @@ export const API_ROUTES = {
   emailSends: { method: 'GET', path: '/api/marketing/sends' },
   emailSendsExport: { method: 'GET', path: '/api/marketing/sends/export' },
   emailSend: { method: 'GET', path: '/api/marketing/sends/:kind/:id' },
+  tenantSchedulerRuns: { method: 'GET', path: '/api/marketing/scheduler-runs' },
+  tenantSchedulerRun: { method: 'GET', path: '/api/marketing/scheduler-runs/:id' },
+  globalSchedulerRuns: { method: 'GET', path: '/api/internal/scheduler-runs' },
+  globalSchedulerRun: { method: 'GET', path: '/api/internal/scheduler-runs/:id' },
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
@@ -1119,6 +1144,10 @@ export const API_PATHS = {
   emailSends: API_ROUTES.emailSends.path,
   emailSendsExport: API_ROUTES.emailSendsExport.path,
   emailSend: API_ROUTES.emailSend.path,
+  tenantSchedulerRuns: API_ROUTES.tenantSchedulerRuns.path,
+  tenantSchedulerRun: API_ROUTES.tenantSchedulerRun.path,
+  globalSchedulerRuns: API_ROUTES.globalSchedulerRuns.path,
+  globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   onboarding: API_ROUTES.onboarding.path,
@@ -1137,3 +1166,4 @@ export const TENANT_HEADER = 'x-tenant';
 
 /** Header carrying a tenant API-key secret for the M2M enroll endpoint. */
 export const API_KEY_HEADER = 'x-api-key';
+export const SCHEDULER_OPERATOR_SECRET_HEADER = 'x-scheduler-operator-secret';

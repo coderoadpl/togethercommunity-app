@@ -127,12 +127,17 @@ describe('email send observability use-cases', () => {
   });
 
   it('exports every matching row as formula-safe csv', async () => {
-    const result = await exportEmailSends(identity(), { format: 'csv' }, { sends: repository });
+    const result = await exportEmailSends(
+      identity(),
+      { format: 'csv', runId: 'scheduler-run-1' },
+      { sends: repository },
+    );
     expect(result).toMatchObject({
       ok: true,
       value: { filename: 'email-sends-alpha.csv', mimeType: 'text/csv; charset=utf-8' },
     });
     if (!result.ok) return;
+    expect(queries.at(-1)).toMatchObject({ runId: 'scheduler-run-1' });
     expect(result.value.content.split('\n')[0]).toBe(
       'kind,recipient,subject,status,delivery_status,campaign,source,sent_at,created_at',
     );

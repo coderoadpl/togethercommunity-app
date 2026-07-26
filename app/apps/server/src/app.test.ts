@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { API_PATHS, TENANT_HEADER } from '@core/contract/index.js';
+import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '@core/contract/index.js';
 import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
@@ -1115,5 +1115,74 @@ describe('tenant-host magic links on login', () => {
       baseUrl: 'http://localhost:48730',
     });
     expect(captured.context?.context.tenantName).toBeUndefined();
+  });
+});
+
+describe('scheduler operator routes', () => {
+  it('requires the operator secret and returns global totals with the per-tenant detail', async () => {
+    const marketing = marketingDeps();
+    await marketing.runs.start({
+      id: 'run-global',
+      kind: 'outbox_dispatch',
+      trigger: 'cron',
+      startedAt: '2026-07-26T10:00:00.000Z',
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
+      },
+      createdAt: '2026-07-26T10:00:00.000Z',
+    });
+    await marketing.runs.finalize('run-global', {
+      finishedAt: '2026-07-26T10:00:01.000Z',
+      durationMs: 1000,
+      status: 'completed',
+      error: null,
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 4, sent: 3, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      tenants: [{
+        id: 'run-global-tenant-acme',
+        runId: 'run-global',
+        tenantId: 't-acme',
+        campaignsTouched: 0,
+        batchSize: 4,
+        sent: 3,
+        failed: 1,
+        skipped: 0,
+        budgetComputed: 25,
+        budgetUsed: 4,
+        errors: ['SES rejected'],
+        createdAt: '2026-07-26T10:00:01.000Z',
+      }],
+    });
+    const app = marketingApp(marketing);
+
+    expect((await app.request(API_PATHS.globalSchedulerRuns)).status).toBe(401);
+    const response = await app.request(`${API_PATHS.globalSchedulerRuns}?kind=outbox_dispatch`, {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-marketing-cron-secret' },
+    });
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      data: { runs: [{ id: 'run-global', totals: { sent: 3, failed: 1 } }] },
+    });
+
+    const detailResponse = await app.request(
+      API_PATHS.globalSchedulerRun.replace(':id', 'run-global'),
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-marketing-cron-secret' } },
+    );
+    const detailBody: unknown = await detailResponse.json();
+
+    expect(detailResponse.status).toBe(200);
+    expect(detailBody).toMatchObject({
+      data: {
+        run: { id: 'run-global', totals: { sent: 3, failed: 1 } },
+        tenants: [{ tenantId: 't-acme', budgetUsed: 4, errors: ['SES rejected'] }],
+      },
+    });
   });
 });

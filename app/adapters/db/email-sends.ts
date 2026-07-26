@@ -10,7 +10,7 @@ import {
 import type { EmailSendRepository } from '@core/server/index.js';
 
 import type { Db } from './client.js';
-import { campaigns, campaignSends, emailOutbox } from './schema.js';
+import { campaigns, campaignSends, emailEvents, emailOutbox } from './schema.js';
 
 interface Cursor {
   createdAt: string;
@@ -103,6 +103,13 @@ const transactionalRows = async (
   if (sendId !== undefined) filters.push(eq(emailOutbox.id, sendId));
   if (query.status !== undefined) filters.push(eq(emailOutbox.status, query.status));
   if (query.deliveryStatus !== undefined) filters.push(eq(emailOutbox.deliveryStatus, query.deliveryStatus));
+  if (query.runId !== undefined) filters.push(sql`exists (
+    select 1 from ${emailEvents}
+    where ${emailEvents.tenantId} = ${tenantId}
+      and ${emailEvents.mailKind} = 'transactional'
+      and ${emailEvents.refId} = ${emailOutbox.id}
+      and ${emailEvents.meta}->>'runId' = ${query.runId}
+  )`);
   if (query.search !== undefined) filters.push(ilike(emailOutbox.to, `%${query.search}%`));
   if (cursor !== undefined) filters.push(beforeCursor(emailOutbox.createdAt, emailOutbox.id, 'transactional', cursor));
   const rows = await db.select().from(emailOutbox)
@@ -128,6 +135,7 @@ const marketingRows = async (
   if (query.status !== undefined) filters.push(eq(campaignSends.status, query.status));
   if (query.deliveryStatus !== undefined) filters.push(eq(campaignSends.deliveryStatus, query.deliveryStatus));
   if (query.campaignId !== undefined) filters.push(eq(campaignSends.campaignId, query.campaignId));
+  if (query.runId !== undefined) filters.push(eq(campaignSends.runId, query.runId));
   if (query.search !== undefined) filters.push(ilike(campaignSends.email, `%${normalizeEmail(query.search)}%`));
   if (cursor !== undefined) filters.push(beforeCursor(campaignSends.createdAt, campaignSends.id, 'marketing', cursor));
   const rows = await db.select({ send: campaignSends, campaignName: campaigns.name })

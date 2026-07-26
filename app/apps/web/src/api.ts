@@ -36,6 +36,8 @@ import {
   grantProductToMemberMutation,
   memberGrantsQuery,
   memberEmailSendsQuery,
+  schedulerRunQuery,
+  schedulerRunsQuery,
   memberGrantsInvalidates,
   memberLearningSummaryQuery,
   memberLearningSummaryInvalidates,
@@ -146,6 +148,7 @@ import type {
   OrdersListQueryInput,
   EmailSendsExportQueryInput,
   EmailSendsQueryInput,
+  SchedulerRunsQueryInput,
   PostsSearchInput,
   SpaceFeedGetInput,
 } from '@core/contract/index.js';
@@ -308,6 +311,8 @@ export const actions = {
   emailSend: (kind: 'transactional' | 'marketing', id: string) => emailSendQuery(apiClient, kind, id),
   emailSendsExport: (input: EmailSendsExportQueryInput) => emailSendsExportQuery(apiClient, input),
   memberEmailSends: (memberId: string) => memberEmailSendsQuery(apiClient, memberId),
+  schedulerRuns: (input: SchedulerRunsQueryInput) => schedulerRunsQuery(apiClient, input),
+  schedulerRun: (id: string) => schedulerRunQuery(apiClient, id),
   updateMarketingSesSettings: updateMarketingSesSettingsMutation(apiClient),
   marketingInvalidates,
 };

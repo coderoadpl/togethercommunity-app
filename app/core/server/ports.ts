@@ -53,7 +53,10 @@ import type {
   MarketingConsent,
   Suppression,
   SchedulerRun,
+  SchedulerRunListQuery,
   SchedulerRunTenant,
+  SchedulerRunTenantItem,
+  SchedulerRunTenantSummary,
   SchedulerRunTotals,
   TenantSesSettings,
   TenantDocument,
@@ -832,15 +835,17 @@ export interface SchedulerRunRepository {
     totals: SchedulerRunTotals;
     tenants: SchedulerRunTenant[];
   }): Promise<SchedulerRun | null>;
-  listPage(input: { limit: number; cursor?: string }): Promise<{
+  listPage(input: SchedulerRunListQuery): Promise<{
     runs: SchedulerRun[];
     nextCursor: string | null;
   }>;
   getWithTenants(runId: string): Promise<{ run: SchedulerRun; tenants: SchedulerRunTenant[] } | null>;
-  listForTenant(tenantId: string, input: { limit: number; cursor?: string }): Promise<{
-    runs: SchedulerRun[];
+  getForTenant(tenantId: string, runId: string): Promise<SchedulerRunTenantItem | null>;
+  listForTenant(tenantId: string, input: SchedulerRunListQuery): Promise<{
+    items: SchedulerRunTenantItem[];
     nextCursor: string | null;
   }>;
+  summarizeForTenant(tenantId: string, since: string): Promise<SchedulerRunTenantSummary>;
   failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number>;
 }
 

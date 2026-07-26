@@ -1,7 +1,23 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
+import {
+  createAutomationIdempotencyRepository,
+  createCampaignRepository,
+  createCampaignSendRepository,
+  createConsentConfirmationTokenRepository,
+  createConsentDefinitionRepository,
+  createEmailLayoutRepository,
+  createMarketingAudienceRepository,
+  createMarketingConsentRepository,
+  createMarketingJobRepository,
+  createMarketingThrottleRepository,
+  createSuppressionRepository,
+  createTenantDocumentRepository,
+  createTenantSesSettingsRepository,
+  createUnsubscribeTokenRepository,
+} from '@adapters/db/marketing-repositories.js';
 import {
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -39,6 +55,7 @@ import {
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
+import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
 import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
@@ -49,6 +66,11 @@ import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
+import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketing-ses.js';
+import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
+import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
+import { createSnsVerifier } from '@adapters/crypto/sns.js';
+import { createCronMarketingScheduler, createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
 import type {
   ApiKeyCrypto,
   AuthPort,
@@ -65,6 +87,13 @@ import type {
   EntityVersionRepository,
   EmailPort,
   EmailOutboxRepository,
+  EmailHmac,
+  EmailLayoutRepository,
+  AutomationIdempotencyRepository,
+  CampaignRepository,
+  CampaignSendRepository,
+  ConsentConfirmationTokenRepository,
+  ConsentDefinitionRepository,
   EnrollmentTransactionPort,
   DevMagicLinkReader,
   FileUrlSigner,
@@ -75,6 +104,10 @@ import type {
   MemberErasurePort,
   MemberRepository,
   MemberSubscriptionRepository,
+  MarketingAudienceRepository,
+  MarketingConsentRepository,
+  MarketingThrottleRepository,
+  MarketingSesCredentialResolver,
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
@@ -95,11 +128,19 @@ import type {
   TenantDomainRepository,
   TenantRepository,
   TermsConsentRepository,
+  SchedulerPort,
+  SesMarketingSender,
+  SesMarketingQuotaReader,
+  SnsVerifier,
+  SuppressionRepository,
+  TenantDocumentRepository,
+  TenantSesSettingsRepository,
+  UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { dispatchEmailBatch, enforceTermsConsent, resolveTenant, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { campaignTick, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
@@ -125,6 +166,7 @@ export interface AppDeps {
   userDisplays: UserDisplayReader;
   members: MemberRepository;
   memberErasure: MemberErasurePort;
+  emailHmac?: EmailHmac;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaces: SpaceRepository;
@@ -171,6 +213,39 @@ export interface AppDeps {
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
   authConfig: AuthConfig;
+  marketing?: MarketingAppDeps;
+}
+
+export interface MarketingAppDeps {
+  definitions: ConsentDefinitionRepository;
+  marketingConsents: MarketingConsentRepository;
+  confirmations: ConsentConfirmationTokenRepository;
+  campaigns: CampaignRepository;
+  layouts: EmailLayoutRepository;
+  campaignSends: CampaignSendRepository;
+  audience: MarketingAudienceRepository;
+  suppressions: SuppressionRepository;
+  unsubscribes: UnsubscribeTokenRepository;
+  sesSettings: TenantSesSettingsRepository;
+  documents: TenantDocumentRepository;
+  idempotency: AutomationIdempotencyRepository;
+  marketingSes: SesMarketingSender;
+  marketingCredentials: MarketingSesCredentialResolver;
+  quotaReader: SesMarketingQuotaReader | undefined;
+  throttle: MarketingThrottleRepository;
+  hmac: EmailHmac;
+  sns: SnsVerifier;
+  scheduler: SchedulerPort;
+  tickSecret: string;
+  cronSecret: string;
+  dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<{
+    leased: boolean;
+    yieldedToTransactional: boolean;
+    sent: number;
+    failed: number;
+    skipped: number;
+  }, AppError>>;
+  dispatchScheduledMarketing(): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
 }
 
 /**
@@ -186,6 +261,7 @@ export const createDeps = (env: Env): AppDeps => {
   const ids = { nextId: () => randomUUID() };
   const clock = { nowIso: () => new Date().toISOString() };
   const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
+  const emailHmac = createEmailHmac(env.SECRETS_MASTER_KEY);
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
   const payment =
     env.PAYMENT_PROVIDER === 'stripe'
@@ -196,6 +272,38 @@ export const createDeps = (env: Env): AppDeps => {
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
   const emailOutbox = createEmailOutboxRepository(db);
+  const definitions = createConsentDefinitionRepository(db);
+  const marketingConsents = createMarketingConsentRepository(db);
+  const confirmations = createConsentConfirmationTokenRepository(db);
+  const campaigns = createCampaignRepository(db);
+  const layouts = createEmailLayoutRepository(db);
+  const campaignSends = createCampaignSendRepository(db);
+  const audience = createMarketingAudienceRepository(db);
+  const suppressions = createSuppressionRepository(db);
+  const unsubscribes = createUnsubscribeTokenRepository(db);
+  const sesSettings = createTenantSesSettingsRepository(db);
+  const documents = createTenantDocumentRepository(db);
+  const idempotency = createAutomationIdempotencyRepository(db);
+  const marketingJobs = createMarketingJobRepository(db);
+  const marketingThrottle = createMarketingThrottleRepository(db);
+  const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
+  const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
+  const marketingCredentials: MarketingSesCredentialResolver = production
+    ? tenantMarketingCredentials
+    : { resolve: async () => ok({ accessKeyId: 'dev', secretAccessKey: 'dev', region: 'eu-central-1' }) };
+  const marketingSes = production
+    ? createSesMarketingSender()
+    : createDevMarketingSender(email);
+  const snsTestCert = env.SNS_TEST_CERT_PEM_BASE64 === undefined
+    ? null
+    : Buffer.from(env.SNS_TEST_CERT_PEM_BASE64, 'base64').toString('utf8');
+  const sns = createSnsVerifier(snsTestCert === null ? {} : { fetchText: async () => snsTestCert });
+  const devScheduler = production ? null : createDevMarketingScheduler();
+  const scheduler = devScheduler ?? createCronMarketingScheduler();
+  const quotaReader: SesMarketingQuotaReader | undefined = production
+    ? { read: (credentials) => readSesQuota(credentials) }
+    : undefined;
+  const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
   const dispatchDeps = {
     emailOutbox,
     email,
@@ -210,6 +318,59 @@ export const createDeps = (env: Env): AppDeps => {
   const dispatchEmail = (): void => {
     void dispatchEmails().then((result) => {
       if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
+    });
+  };
+  const dispatchCampaign = async (tenantId: string, campaignId: string) => {
+    const settings = await sesSettings.findByTenant(tenantId);
+    if (production && settings !== null && (settings.quotaRefreshedAt === null
+      || Date.parse(clock.nowIso()) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
+      const credentials = await marketingCredentials.resolve(tenantId);
+      if (credentials.ok) {
+        const quota = await readSesQuota(credentials.value);
+        if (quota.ok) {
+          await sesSettings.upsert(tenantId, {
+            ...settings,
+            quotaRatePerSec: quota.value.ratePerSecond,
+            quotaDaily: quota.value.daily,
+            quotaSentLast24Hours: quota.value.sentLast24Hours,
+            quotaRefreshedAt: clock.nowIso(),
+            inSandbox: quota.value.inSandbox,
+          });
+        }
+      }
+    }
+    return campaignTick({
+      identity: {
+        userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+      },
+    }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
+      definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, audience,
+      suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
+      quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
+      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler,
+    });
+  };
+  devScheduler?.setCampaignHandler(async (tenantId, campaignId) => {
+    const result = await dispatchCampaign(tenantId, campaignId);
+    if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${result.error.message}\n`);
+  });
+  const workerIdentity = (tenantId: string) => ({
+    userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+  });
+  const dispatchScheduledMarketing = () => {
+    const now = clock.nowIso();
+    return runScheduledMarketingJobs({
+      now,
+      pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    }, {
+      jobs: marketingJobs,
+      dispatchCampaign,
+      runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
+        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock,
+      }),
     });
   };
   const realtimeBus = createRealtimeBus();
@@ -301,7 +462,8 @@ export const createDeps = (env: Env): AppDeps => {
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
-    memberErasure: createMemberErasureRepository(db),
+    memberErasure: createMemberErasureRepository(db, emailHmac),
+    emailHmac,
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     spaces: createSpaceRepository(db),
@@ -354,5 +516,30 @@ export const createDeps = (env: Env): AppDeps => {
       exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     },
     authConfig: { googleEnabled: google !== null },
+    marketing: {
+      definitions,
+      marketingConsents,
+      confirmations,
+      campaigns,
+      layouts,
+      campaignSends,
+      audience,
+      suppressions,
+      unsubscribes,
+      sesSettings,
+      documents,
+      idempotency,
+      marketingSes,
+      marketingCredentials,
+      quotaReader,
+      throttle: marketingThrottle,
+      hmac: emailHmac,
+      sns,
+      scheduler,
+      tickSecret: env.MARKETING_TICK_SECRET,
+      cronSecret: env.CRON_SECRET ?? env.MARKETING_TICK_SECRET,
+      dispatchCampaign,
+      dispatchScheduledMarketing,
+    },
   };
 };

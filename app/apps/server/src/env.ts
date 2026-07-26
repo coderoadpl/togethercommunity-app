@@ -31,6 +31,9 @@ const envSchema = z
     EMAIL_PROVIDER: z.enum(['ses', 'dev']).default('dev'),
     EMAIL_FROM: z.string().min(1).optional(),
     EMAIL_DISPATCH_SECRET: z.string().min(16).default('dev-email-dispatch-secret'),
+    MARKETING_TICK_SECRET: z.string().min(16).default('dev-marketing-tick-secret'),
+    CRON_SECRET: z.string().min(16).optional(),
+    SNS_TEST_CERT_PEM_BASE64: z.string().min(1).optional(),
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
     EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
@@ -87,6 +90,27 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_DISPATCH_SECRET'],
         message: 'EMAIL_DISPATCH_SECRET must be set to a production secret',
+      });
+    }
+    if (env.MARKETING_TICK_SECRET === 'dev-marketing-tick-secret') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MARKETING_TICK_SECRET'],
+        message: 'MARKETING_TICK_SECRET must be set to a production secret',
+      });
+    }
+    if (env.CRON_SECRET === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CRON_SECRET'],
+        message: 'CRON_SECRET must be set for production scheduled jobs',
+      });
+    }
+    if (env.SNS_TEST_CERT_PEM_BASE64 !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SNS_TEST_CERT_PEM_BASE64'],
+        message: 'SNS_TEST_CERT_PEM_BASE64 cannot be set in production',
       });
     }
   });

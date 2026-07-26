@@ -190,6 +190,34 @@
       "when": 1784920000001,
       "tag": "0026_email_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784980000000,
+      "tag": "0027_marketing_email_domain",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784980000001,
+      "tag": "0028_furry_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784980000002,
+      "tag": "0029_simple_lady_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784980000003,
+      "tag": "0030_great_stone_men",
+      "breakpoints": true
     }
   ]
 }

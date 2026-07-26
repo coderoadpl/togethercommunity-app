@@ -10,6 +10,12 @@ export const ERROR_CODES = [
   'integration_auth',
   'integration_unavailable',
   'rate_limited',
+  'not_consented',
+  'suppressed',
+  'unsubscribed',
+  'pending_confirmation',
+  'ses_not_configured',
+  'broadcasts_disabled',
   'internal',
 ] as const;
 

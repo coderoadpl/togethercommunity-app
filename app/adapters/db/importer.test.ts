@@ -48,6 +48,7 @@ const testUrl = (() => {
 
 const TENANT_ID = 'tenant-import-spec';
 const TENANT_SLUG = 'import-spec';
+const emailHmac = { compute: (tenantId: string, email: string) => `${tenantId}:${email.trim().toLowerCase()}` };
 
 const PASSWORD = 'legacy-pass-1234';
 const SALT = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
@@ -587,7 +588,7 @@ describe('importer', () => {
       createdAt: '2025-02-01T00:00:00.000Z',
     });
     const removedAt = '2026-07-20T12:00:00.000Z';
-    await createMemberErasureRepository(db).pseudonymize(TENANT_ID, {
+    await createMemberErasureRepository(db, emailHmac).pseudonymize(TENANT_ID, {
       memberId: ids.u1,
       deletedAt: removedAt,
       tombstoneEmail: memberTombstone(ids.u1).email,

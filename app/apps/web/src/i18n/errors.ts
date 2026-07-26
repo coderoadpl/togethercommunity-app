@@ -37,6 +37,14 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageIntegrationUnavailable;
     case 'rate_limited':
       return t.errors.messageRateLimited;
+    case 'not_consented':
+    case 'suppressed':
+    case 'unsubscribed':
+    case 'pending_confirmation':
+      return t.errors.messageValidation;
+    case 'ses_not_configured':
+    case 'broadcasts_disabled':
+      return t.errors.messageIntegrationNotConfigured;
     case 'internal':
       return t.errors.messageInternal;
   }

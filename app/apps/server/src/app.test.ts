@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { API_PATHS, TENANT_HEADER } from '@core/contract/index.js';
 import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
-import type { AppDeps } from './composition.js';
+import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
   err,
@@ -17,6 +17,24 @@ import {
   type TenantDomain,
   type TermsConsent,
 } from '@core/domain/index.js';
+import {
+  FakeEmailHmac,
+  FakeScheduler,
+  FakeSesMarketingSender,
+  FakeSnsVerifier,
+  InMemoryAutomationIdempotencyRepository,
+  InMemoryCampaignRepository,
+  InMemoryCampaignSendRepository,
+  InMemoryConsentConfirmationTokenRepository,
+  InMemoryConsentDefinitionRepository,
+  InMemoryEmailLayoutRepository,
+  InMemoryMarketingAudienceRepository,
+  InMemoryMarketingConsentRepository,
+  InMemoryMarketingThrottleRepository,
+  InMemorySuppressionRepository,
+  InMemoryTenantSesSettingsRepository,
+  InMemoryUnsubscribeTokenRepository,
+} from '@core/server/testing/marketing-fakes.js';
 
 const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
 const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };
@@ -386,6 +404,245 @@ const deps = (input: {
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
+
+const marketingDeps = (): MarketingAppDeps => ({
+  definitions: new InMemoryConsentDefinitionRepository(),
+  marketingConsents: new InMemoryMarketingConsentRepository(),
+  confirmations: new InMemoryConsentConfirmationTokenRepository(),
+  campaigns: new InMemoryCampaignRepository(),
+  layouts: new InMemoryEmailLayoutRepository(),
+  campaignSends: new InMemoryCampaignSendRepository(),
+  audience: new InMemoryMarketingAudienceRepository(),
+  suppressions: new InMemorySuppressionRepository(),
+  unsubscribes: new InMemoryUnsubscribeTokenRepository(),
+  sesSettings: new InMemoryTenantSesSettingsRepository(),
+  documents: {
+    create: async () => undefined,
+    findById: async () => null,
+    list: async () => [],
+    listVersions: async () => [],
+    saveDraft: async () => null,
+    publishDraft: async () => null,
+    findLatestPublished: async (tenantId, slug) => tenantId === 't-acme' && slug === 'terms' ? {
+      document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z' },
+      version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '2026-07-22T00:00:00.000Z', createdAt: '2026-07-22T00:00:00.000Z', createdBy: 'staff' },
+    } : null,
+    findPublishedVersion: async () => null,
+  },
+  idempotency: new InMemoryAutomationIdempotencyRepository(),
+  marketingSes: new FakeSesMarketingSender(),
+  marketingCredentials: { resolve: async () => ok({ accessKeyId: 'key', secretAccessKey: 'secret', region: 'eu-central-1' }) },
+  quotaReader: undefined,
+  throttle: new InMemoryMarketingThrottleRepository(),
+  hmac: new FakeEmailHmac(),
+  sns: new FakeSnsVerifier(ok({ type: 'Notification', topicArn: 'topic', message: '{}', subscribeUrl: null })),
+  scheduler: new FakeScheduler(),
+  tickSecret: 'test-marketing-tick-secret',
+  cronSecret: 'test-marketing-cron-secret',
+  dispatchCampaign: async () => ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 }),
+  dispatchScheduledMarketing: async () => ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }),
+});
+
+const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
+  const configured = deps();
+  configured.marketing = marketing;
+  configured.tenantApiKeys = {
+    listByTenant: async () => [],
+    create: async () => undefined,
+    findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
+      id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+      createdAt: '2026-07-22T00:00:00.000Z', revokedAt: null,
+    } : null,
+    revoke: async () => null,
+  };
+  return buildApp(configured);
+};
+
+const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
+  const marketing = marketingDeps();
+  await marketing.definitions.create('t-acme', {
+    id: 'definition-news', tenantId: 't-acme', key: 'product-news', kind: 'optional_marketing',
+    channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+    status: 'active', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+  }, {
+    id: 'definition-news-v1', tenantId: 't-acme', definitionId: 'definition-news', version: 1,
+    label: 'Product news', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+    createdAt: '2026-07-01T00:00:00.000Z', createdBy: 'staff',
+  });
+  await marketing.marketingConsents.record('t-acme', {
+    id: 'consent-news', tenantId: 't-acme', memberId: null, email: 'member@example.test',
+    definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+    documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'confirmed',
+    previousId: null, source: 'api', evidence: { collectedAt: '2026-07-01T00:00:00.000Z', proofRef: 'form' },
+    occurredAt: '2026-07-01T00:00:00.000Z',
+  });
+  await marketing.unsubscribes.create('t-acme', {
+    id: 'unsubscribe-news', tenantId: 't-acme', token: 'unsubscribe_token_123456789012345',
+    email: 'member@example.test', memberId: null, campaignSendId: null,
+    scope: 'consent:definition-news', createdAt: '2026-07-01T00:00:00.000Z', usedAt: null,
+  });
+  await marketing.marketingConsents.record('t-acme', {
+    id: 'consent-pending', tenantId: 't-acme', memberId: null, email: 'pending@example.test',
+    definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+    documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'granted',
+    previousId: null, source: 'api', evidence: { collectedAt: '2026-07-01T00:00:00.000Z', proofRef: 'form' },
+    occurredAt: '2026-07-01T00:00:00.000Z',
+  });
+  await marketing.confirmations.create('t-acme', {
+    id: 'confirmation-news', tenantId: 't-acme', token: 'confirmation_token_123456789012345',
+    marketingConsentRowId: 'consent-pending', createdAt: '2026-07-01T00:00:00.000Z',
+    expiresAt: '2026-07-20T00:00:00.000Z', usedAt: null,
+  });
+  return marketing;
+};
+
+describe('marketing HTTP surfaces', () => {
+  it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {
+    const marketing = marketingDeps();
+    let dispatches = 0;
+    marketing.dispatchScheduledMarketing = async () => {
+      dispatches += 1;
+      return ok({ campaignsDispatched: 2, retentionTenantsProcessed: 3 });
+    };
+    const app = marketingApp(marketing);
+    expect((await app.request('/api/internal/marketing/tick')).status).toBe(401);
+    const response = await app.request('/api/internal/marketing/tick', {
+      headers: { authorization: 'Bearer test-marketing-cron-secret' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { campaignsDispatched: 2, retentionTenantsProcessed: 3 },
+    });
+    expect(dispatches).toBe(1);
+  });
+
+  it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
+    const marketing = marketingDeps();
+    marketing.layouts = new InMemoryEmailLayoutRepository([{
+      id: 'layout-1', tenantId: 't-acme', name: 'Default', bodyHtml: '<main>{{{content}}}</main>',
+      createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z',
+    }]);
+    const app = marketingApp(marketing);
+    const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
+    const templates = await app.request('/api/m2m/marketing/templates', { headers });
+    expect(templates.status).toBe(200);
+    expect(await templates.json()).toMatchObject({
+      ok: true,
+      data: { layouts: [{ id: 'layout-1', name: 'Default' }] },
+    });
+    expect((await app.request('/api/m2m/marketing/templates', { headers: { host: headers.host } })).status).toBe(401);
+    const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
+    expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+    expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
+    const marketing = marketingDeps();
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      snsTopicArn: null, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
+      webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
+      footerAddress: 'Warsaw', broadcastsEnabled: true,
+    }]);
+    const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key', 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: [
+        { to: 'one@example.test', consentDefinitionId: 'definition-1', subject: 'One', bodyHtml: '<p>One</p>' },
+        { to: 'two@example.test', consentDefinitionId: 'definition-1', subject: 'Two', bodyHtml: '<p>Two</p>' },
+      ] }),
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('1');
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+  });
+
+  it('serves the latest published hosted document on the tenant domain', async () => {
+    const response = await marketingApp().request('/legal/terms', { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('Immutable terms');
+  });
+
+  it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const get = await app.request('/u/unsubscribe_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(get.status).toBe(200);
+    expect(await get.text()).toContain('Product news');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const post = await app.request('/u/unsubscribe_token_123456789012345/confirm?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(post.status).toBe(200);
+    expect(await post.text()).toContain('Unsubscribe confirmed');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).at(-1)?.status).toBe('withdrawn');
+  });
+
+  it('keeps RFC one-click POST empty and requires an idempotent DOI confirmation POST', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const oneClick = await marketingApp(marketing).request('/u/unsubscribe_token_123456789012345', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(oneClick.status).toBe(200);
+    expect(await oneClick.text()).toBe('');
+    const confirmationMarketing = await memberSurfaceMarketing();
+    const confirmationApp = marketingApp(confirmationMarketing);
+    const before = await confirmationMarketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const interstitial = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    const interstitialHtml = await interstitial.text();
+    expect(interstitialHtml).toContain('Confirm your subscription');
+    expect(interstitialHtml).toContain('<button type="submit">Confirm subscription</button>');
+    expect(interstitialHtml).toContain('method="post"');
+    expect(await confirmationMarketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const success = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await success.text()).toContain('Email address confirmed');
+    const repeated = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await repeated.text()).toContain('Email address confirmed');
+    const confirmedGet = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await confirmedGet.text()).toContain('Email address confirmed');
+    const expired = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
+      headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await expired.text()).toContain('This link is no longer active');
+    const expiredPost = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(await expiredPost.text()).toContain('This link is no longer active');
+  });
+
+  it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {
+    const marketing = marketingDeps();
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', webhookToken: 'webhook-token',
+      quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
+      inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true,
+    }]);
+    marketing.sns = new FakeSnsVerifier(ok({
+      type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:other', message: '{}', subscribeUrl: null,
+    }));
+    const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+      method: 'POST', body: '{}',
+    });
+    expect(response.status).toBe(200);
+  });
+});
 
 describe('email dispatch route', () => {
   it('requires the shared secret and returns the dispatch envelope', async () => {

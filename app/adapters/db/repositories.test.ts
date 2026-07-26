@@ -39,7 +39,7 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
-import { consents, memberCourseProgress, members, posts, user } from './schema.js';
+import { consents, memberCourseProgress, members, posts, suppressions, user } from './schema.js';
 
 const TEST_DB = 'together_repositories_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -49,14 +49,15 @@ const testUrl = (() => {
   return url.toString();
 })();
 
-const NOW = '2026-07-14T10:00:00.000Z';
-const PAST = '2026-01-01T00:00:00.000Z';
-const FUTURE = '2026-12-01T00:00:00.000Z';
+const NOW = '1998-07-14T10:00:00.000Z';
+const PAST = '1998-01-01T00:00:00.000Z';
+const FUTURE = '1998-12-01T00:00:00.000Z';
 
 const ACME = 'tenant-acme';
 const GLOBEX = 'tenant-globex';
 
 let db: Db;
+const emailHmac = { compute: (tenantId: string, email: string) => `${tenantId}:${email.trim().toLowerCase()}` };
 
 const product = (over: Partial<Product> & { id: string; tenantId: string }): Product => ({
   title: 'Course',
@@ -221,7 +222,7 @@ describe('product grant repository', () => {
 
     const active = await repo.listActiveForMember(ACME, 'mem-acme', NOW);
     expect(active.map((g) => g.id)).toEqual(['grant-acme']);
-    const afterExpiry = await repo.listActiveForMember(ACME, 'mem-acme', '2027-01-01T00:00:00.000Z');
+    const afterExpiry = await repo.listActiveForMember(ACME, 'mem-acme', '1999-01-01T00:00:00.000Z');
     expect(afterExpiry).toEqual([]);
 
     const named = await repo.listForMemberWithProductNames(ACME, 'mem-acme', NOW);
@@ -390,7 +391,7 @@ describe('health port', () => {
 describe('member erasure repository', () => {
   const RODO = 'tenant-rodo';
   const OTHER = 'tenant-rodo-other';
-  const REMOVAL_AT = '2026-07-20T12:00:00.000Z';
+  const REMOVAL_AT = '1998-07-20T12:00:00.000Z';
 
   const pseudonymizationInput = (memberId: string) => ({
     memberId,
@@ -495,7 +496,7 @@ describe('member erasure repository', () => {
   });
 
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
     expect(result).toEqual({ alreadyDeleted: false, authUserErased: true });
 
     const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
@@ -515,7 +516,7 @@ describe('member erasure repository', () => {
     expect(authRows).toEqual([]);
 
     const grants = createProductGrantRepository(db);
-    expect(await grants.listActiveForMember(RODO, 'mem-rodo', '2026-07-21T00:00:00.000Z')).toEqual([]);
+    expect(await grants.listActiveForMember(RODO, 'mem-rodo', '1998-07-21T00:00:00.000Z')).toEqual([]);
     expect(await grants.findGrant(RODO, 'mem-rodo', 'prod-rodo')).toMatchObject({ expiresAt: REMOVAL_AT, legacyId: null });
 
     const subs = createMemberSubscriptionRepository(db);
@@ -526,6 +527,14 @@ describe('member erasure repository', () => {
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
     expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });
+
+    const suppressionRows = await db.select().from(suppressions).where(eq(suppressions.sourceRef, 'mem-rodo'));
+    expect(suppressionRows).toMatchObject([{
+      tenantId: RODO,
+      email: null,
+      emailHmac: emailHmac.compute(RODO, 'jan.kowalski@together.dev'),
+      reason: 'erasure',
+    }]);
 
     const progressRows = await db
       .select()
@@ -547,7 +556,7 @@ describe('member erasure repository', () => {
   });
 
   it('keeps the pseudonymized row in the member list export source', async () => {
-    const listed = await createMemberRepository(db).listWithProductIds(RODO, '2026-07-21T00:00:00.000Z');
+    const listed = await createMemberRepository(db).listWithProductIds(RODO, '1998-07-21T00:00:00.000Z');
     const removed = listed.find((row) => row.id === 'mem-rodo');
     expect(removed).toMatchObject({
       email: memberTombstone('mem-rodo').email,
@@ -571,17 +580,17 @@ describe('member erasure repository', () => {
   });
 
   it('reports an already pseudonymized member without touching it again', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
     expect(result).toEqual({ alreadyDeleted: true, authUserErased: false });
   });
 
   it('returns null for a member of another tenant', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(OTHER, pseudonymizationInput('mem-rodo'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(OTHER, pseudonymizationInput('mem-rodo'));
     expect(result).toBeNull();
   });
 
   it('keeps the auth user when other tenant memberships still reference it', async () => {
-    const result = await createMemberErasureRepository(db).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
+    const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
     expect(result).toEqual({ alreadyDeleted: false, authUserErased: false });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));

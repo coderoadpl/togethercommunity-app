@@ -55,6 +55,7 @@ interface ScreenSpec {
   name: string;
   auth: AuthKind;
   path: string;
+  tenantSlug?: string;
   ready: (page: Page) => Promise<void>;
 }
 
@@ -83,6 +84,34 @@ const SCREENS: ScreenSpec[] = [
     auth: 'public',
     path: '/checkout/product-studio-kurs-101',
     ready: (page) => page.getByText('Kurs Together 101').first().waitFor(visible),
+  },
+  {
+    name: 'marketing-preferences',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    path: '/u/unsubscribe_akademia_visual_123456?lang=pl',
+    ready: (page) => page.getByTestId('marketing-preferences').waitFor(visible),
+  },
+  {
+    name: 'hosted-legal-document',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    path: '/legal/polityka-prywatnosci/v/1?lang=pl',
+    ready: (page) => page.getByTestId('hosted-legal-document').waitFor(visible),
+  },
+  {
+    name: 'marketing-confirmation-success',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    path: '/marketing/confirm/confirmation_akademia_visual_123456?lang=pl',
+    ready: (page) => page.getByTestId('marketing-confirmation-success').waitFor(visible),
+  },
+  {
+    name: 'marketing-confirmation-expired',
+    auth: 'public',
+    tenantSlug: 'akademia',
+    path: '/marketing/confirm/expired_confirmation_visual_123456?lang=pl',
+    ready: (page) => page.getByTestId('marketing-confirmation-expired').waitFor(visible),
   },
   {
     // Waits target the LAST async element of each screen (waterfall queries),
@@ -196,6 +225,36 @@ const SCREENS: ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/products',
     ready: (page) => page.getByTestId('product-row').first().waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-campaigns',
+    auth: 'creator',
+    path: '/panel/marketing/campaigns',
+    ready: (page) => page.getByRole('heading', { name: 'Kampanie e-mail' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-consents',
+    auth: 'creator',
+    path: '/panel/marketing/consents',
+    ready: (page) => page.getByRole('heading', { name: 'Kreator zgód' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-documents',
+    auth: 'creator',
+    path: '/panel/marketing/documents',
+    ready: (page) => page.getByRole('heading', { name: 'Dokumenty prawne' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-layouts',
+    auth: 'creator',
+    path: '/panel/marketing/layouts',
+    ready: (page) => page.getByRole('heading', { name: 'Układy e-mail' }).waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-settings',
+    auth: 'creator',
+    path: '/panel/marketing/settings',
+    ready: (page) => page.getByTestId('marketing-readiness').waitFor(visible),
   },
   {
     name: 'panel-course',
@@ -438,6 +497,13 @@ const bootstrapAuthState = async (
   return state;
 };
 
+const screenUrl = (studioBaseUrl: string, screen: ScreenSpec): string => {
+  if (screen.tenantSlug === undefined) return `${studioBaseUrl}${screen.path}`;
+  const url = new URL(studioBaseUrl);
+  url.hostname = `${screen.tenantSlug}.localhost`;
+  return `${url.origin}${screen.path}`;
+};
+
 interface ShotFailure {
   file: string;
   reason: string;
@@ -523,7 +589,7 @@ try {
 
         for (const screen of screens) {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;
-          await page.goto(`${studioBaseUrl}${screen.path}`, { waitUntil: 'load' });
+          await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
           await screen.ready(page);
           await delay(600);
           const shotPath = updateMode ? join(goldenDir, file) : join(currentDir, file);

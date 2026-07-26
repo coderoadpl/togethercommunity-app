@@ -7,6 +7,9 @@ export const tenantSecretKeySchema = z.enum([
   'bunny.securityKey',
   's3.accessKeyId',
   's3.secretAccessKey',
+  'ses.accessKeyId',
+  'ses.secretAccessKey',
+  'ses.region',
 ]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;

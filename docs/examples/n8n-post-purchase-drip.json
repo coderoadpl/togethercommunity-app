@@ -1,0 +1,402 @@
+{
+  "name": "Together - post-purchase drip",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "3ecf84f3-c5e6-4aa2-91df-a0f76764360d",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1280, 160]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5fa6842c-d6ba-46ac-a5fc-28db91f02fd4",
+              "name": "togetherBaseUrl",
+              "value": "https://acme.together.app",
+              "type": "string"
+            },
+            {
+              "id": "36cf1de5-0c04-4827-acba-d7f05453a664",
+              "name": "togetherApiKey",
+              "value": "replace-with-api-key",
+              "type": "string"
+            },
+            {
+              "id": "cf8619a2-9ca8-4c4c-9d32-4bd7b9dd617d",
+              "name": "orderFeedUrl",
+              "value": "https://store.example.com/api/orders",
+              "type": "string"
+            },
+            {
+              "id": "a299e0a4-94ca-403f-a262-469a8979e74f",
+              "name": "consentDefinitionId",
+              "value": "cd_newsletter",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "34d9f58a-9b01-4fb9-9fa7-e46458669332",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-1060, 160]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Configuration').first().json.orderFeedUrl }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "since",
+              "value": "={{ $now.minus({ hours: 1 }).toISO() }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "6121107f-e0a4-47ce-bc00-c108fa1cfd09",
+      "name": "Fetch new orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-840, 160]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "5334e50c-b3ba-4838-beb8-a1565227b8b4",
+      "name": "Loop over orders",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-620, 160]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Configuration').first().json.togetherBaseUrl + '/api/m2m/marketing/eligibility' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "email", "value": "={{ $('Loop over orders').item.json.email }}" },
+            { "name": "definitionId", "value": "={{ $('Configuration').first().json.consentDefinitionId }}" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $('Configuration').first().json.togetherApiKey }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "317a2614-cdaf-4d62-82f3-bc972c06ea9c",
+      "name": "Eligibility day 0",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-400, 40]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "1cb597fa-54e6-4527-bba8-ad912065f2b0",
+              "leftValue": "={{ $json.data.eligible }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9485a3a4-e08c-46a7-8f36-a951fa8a6f43",
+      "name": "Eligible day 0?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-180, 40]
+    },
+    {
+      "parameters": {},
+      "id": "a621cc58-3a56-472b-896e-da6c52ac97fb",
+      "name": "Skip ineligible day 0",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [40, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.togetherBaseUrl + '/api/m2m/marketing/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $('Configuration').first().json.togetherApiKey }}" },
+            { "name": "Idempotency-Key", "value": "={{ 'drip0-' + $('Loop over orders').item.json.orderId }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ to: $('Loop over orders').item.json.email, consentDefinitionId: $('Configuration').first().json.consentDefinitionId, templateId: 'tpl_drip_welcome', data: { firstName: $('Loop over orders').item.json.firstName, productId: $('Loop over orders').item.json.productId }, campaignKey: 'drip-' + $('Loop over orders').item.json.productId }) }}",
+        "options": {}
+      },
+      "id": "75220357-e6b8-44bd-b034-d90652047c71",
+      "name": "Send day 0 welcome",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [40, -40]
+    },
+    {
+      "parameters": { "amount": 3, "unit": "days" },
+      "id": "6003e9db-f8f7-4748-9ab4-4ffb2842e754",
+      "name": "Wait 3 days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [260, -40],
+      "webhookId": "1a9605d6-57ba-41c4-9bfe-38fbb012a50b"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Configuration').first().json.togetherBaseUrl + '/api/m2m/marketing/eligibility' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "email", "value": "={{ $('Loop over orders').item.json.email }}" },
+            { "name": "definitionId", "value": "={{ $('Configuration').first().json.consentDefinitionId }}" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $('Configuration').first().json.togetherApiKey }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "49afd08f-4fe8-4b38-92c7-077e140bec65",
+      "name": "Eligibility day 3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, -40]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "39be5a57-7a26-460e-b3ac-1f1023944068",
+              "leftValue": "={{ $json.data.eligible }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bff16755-4366-4d70-bfef-7278ed7906f4",
+      "name": "Eligible day 3?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [700, -40]
+    },
+    {
+      "parameters": {},
+      "id": "31e3c0ca-2ddd-4d6c-8c58-7836e739e246",
+      "name": "Skip ineligible day 3",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [920, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.togetherBaseUrl + '/api/m2m/marketing/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $('Configuration').first().json.togetherApiKey }}" },
+            { "name": "Idempotency-Key", "value": "={{ 'drip3-' + $('Loop over orders').item.json.orderId }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ to: $('Loop over orders').item.json.email, consentDefinitionId: $('Configuration').first().json.consentDefinitionId, templateId: 'tpl_drip_tips', data: { firstName: $('Loop over orders').item.json.firstName, productId: $('Loop over orders').item.json.productId }, campaignKey: 'drip-' + $('Loop over orders').item.json.productId }) }}",
+        "options": {}
+      },
+      "id": "b72d76e1-08cf-454e-869f-1aa48c084dd6",
+      "name": "Send day 3 tips",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, -100]
+    },
+    {
+      "parameters": { "amount": 4, "unit": "days" },
+      "id": "53ef05dc-9005-4b4a-8495-01614509323f",
+      "name": "Wait 4 days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1140, -100],
+      "webhookId": "e547cb2f-6014-4242-b6a5-c20f36078543"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.togetherBaseUrl + '/api/m2m/marketing/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $('Configuration').first().json.togetherApiKey }}" },
+            { "name": "Idempotency-Key", "value": "={{ 'drip7-' + $('Loop over orders').item.json.orderId }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ to: $('Loop over orders').item.json.email, consentDefinitionId: $('Configuration').first().json.consentDefinitionId, templateId: 'tpl_drip_offer', data: { firstName: $('Loop over orders').item.json.firstName, productId: $('Loop over orders').item.json.productId }, campaignKey: 'drip-' + $('Loop over orders').item.json.productId }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "28495136-3bd3-4ed3-9f79-6c44949aecc3",
+      "name": "Send day 7 offer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "0b068f5b-270f-460f-b60f-a814140bc76a",
+              "leftValue": "={{ $json.statusCode >= 400 && $json.statusCode < 500 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cd9ae914-c6a5-42f3-ab57-da6c85ac1d31",
+      "name": "4xx response?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1580, -100]
+    },
+    {
+      "parameters": {},
+      "id": "2c13082a-2f9a-4634-bd26-566332371699",
+      "name": "4xx skip is success",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1800, 20]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "id": "cf67fe0a-f5f9-4acf-8118-f8d93192a236",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "174ea344-ef9a-47ea-8615-e3c7b984f019",
+      "name": "2xx response?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1800, -180]
+    },
+    {
+      "parameters": {},
+      "id": "fbb17e61-3adf-4ca3-995e-7104229cc7be",
+      "name": "Buyer complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2020, -240]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Together day-7 send returned a non-2xx, non-4xx response"
+      },
+      "id": "d37b625a-5800-4531-a52b-0e701cde570a",
+      "name": "Stop on server error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2020, -100]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every hour": { "main": [[{ "node": "Configuration", "type": "main", "index": 0 }]] },
+    "Configuration": { "main": [[{ "node": "Fetch new orders", "type": "main", "index": 0 }]] },
+    "Fetch new orders": { "main": [[{ "node": "Loop over orders", "type": "main", "index": 0 }]] },
+    "Loop over orders": { "main": [[{ "node": "Eligibility day 0", "type": "main", "index": 0 }], []] },
+    "Eligibility day 0": { "main": [[{ "node": "Eligible day 0?", "type": "main", "index": 0 }]] },
+    "Eligible day 0?": { "main": [[{ "node": "Send day 0 welcome", "type": "main", "index": 0 }], [{ "node": "Skip ineligible day 0", "type": "main", "index": 0 }]] },
+    "Skip ineligible day 0": { "main": [[{ "node": "Loop over orders", "type": "main", "index": 0 }]] },
+    "Send day 0 welcome": { "main": [[{ "node": "Wait 3 days", "type": "main", "index": 0 }]] },
+    "Wait 3 days": { "main": [[{ "node": "Eligibility day 3", "type": "main", "index": 0 }]] },
+    "Eligibility day 3": { "main": [[{ "node": "Eligible day 3?", "type": "main", "index": 0 }]] },
+    "Eligible day 3?": { "main": [[{ "node": "Send day 3 tips", "type": "main", "index": 0 }], [{ "node": "Skip ineligible day 3", "type": "main", "index": 0 }]] },
+    "Skip ineligible day 3": { "main": [[{ "node": "Loop over orders", "type": "main", "index": 0 }]] },
+    "Send day 3 tips": { "main": [[{ "node": "Wait 4 days", "type": "main", "index": 0 }]] },
+    "Wait 4 days": { "main": [[{ "node": "Send day 7 offer", "type": "main", "index": 0 }]] },
+    "Send day 7 offer": { "main": [[{ "node": "4xx response?", "type": "main", "index": 0 }]] },
+    "4xx response?": { "main": [[{ "node": "4xx skip is success", "type": "main", "index": 0 }], [{ "node": "2xx response?", "type": "main", "index": 0 }]] },
+    "4xx skip is success": { "main": [[{ "node": "Loop over orders", "type": "main", "index": 0 }]] },
+    "2xx response?": { "main": [[{ "node": "Buyer complete", "type": "main", "index": 0 }], [{ "node": "Stop on server error", "type": "main", "index": 0 }]] },
+    "Buyer complete": { "main": [[{ "node": "Loop over orders", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b1c54015-15e4-4f56-a99c-633ae6b86295",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -21,6 +21,8 @@ describe('email event domain', () => {
       'rendered',
       'accepted',
       'delivered',
+      'opened',
+      'clicked',
       'bounced',
       'complained',
       'skipped',
@@ -29,7 +31,7 @@ describe('email event domain', () => {
       'suppressed_written',
       'unsubscribed',
     ]);
-    expect(emailEventTypeSchema.safeParse('opened').success).toBe(false);
+    expect(emailEventTypeSchema.safeParse('opened').success).toBe(true);
   });
 
   it('validates the immutable event envelope and structured metadata', () => {
@@ -49,5 +51,20 @@ describe('email event domain', () => {
       type: 'bounced',
       meta: { classification: 'hard', rawProviderPayload: { bounceType: 'Permanent' } },
     }).success).toBe(true);
+    expect(emailEventSchema.safeParse({
+      ...event,
+      type: 'opened',
+      meta: { rawProviderPayload: { open: { ipAddress: '192.0.2.1' } } },
+    }).success).toBe(true);
+    expect(emailEventSchema.safeParse({
+      ...event,
+      type: 'clicked',
+      meta: { linkUrl: 'https://tenant.test/offer', rawProviderPayload: { click: true } },
+    }).success).toBe(true);
+    expect(emailEventSchema.safeParse({
+      ...event,
+      type: 'clicked',
+      meta: { linkUrl: '' },
+    }).success).toBe(false);
   });
 });

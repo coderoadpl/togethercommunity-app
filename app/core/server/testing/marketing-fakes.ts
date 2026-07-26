@@ -6,6 +6,7 @@ import {
   type AppError,
   type AutomationIdempotencyKey,
   type Campaign,
+  type CampaignEngagementStats,
   type CampaignSend,
   type ConsentConfirmationToken,
   type ConsentDefinition,
@@ -575,6 +576,29 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
 
   async listAll(tenantId: string): Promise<CampaignSend[]> {
     return this.rows.filter((row) => row.tenantId === tenantId).map((row) => structuredClone(row));
+  }
+
+  async engagementStats(
+    tenantId: string,
+    campaignIds: string[],
+  ): Promise<Map<string, CampaignEngagementStats>> {
+    const stats = new Map<string, CampaignEngagementStats>();
+    if (this.events === undefined) return stats;
+    for (const campaignId of campaignIds) {
+      const campaignRows = this.rows.filter((row) => row.tenantId === tenantId && row.campaignId === campaignId);
+      const events = (await Promise.all(campaignRows.map((row) =>
+        this.events?.listByRef(tenantId, 'marketing', row.id) ?? []
+      ))).flat();
+      const opened = events.filter((event) => event.type === 'opened');
+      const clicked = events.filter((event) => event.type === 'clicked');
+      stats.set(campaignId, {
+        uniqueOpens: new Set(opened.map((event) => event.refId)).size,
+        totalOpens: opened.length,
+        uniqueClicks: new Set(clicked.map((event) => event.refId)).size,
+        totalClicks: clicked.length,
+      });
+    }
+    return stats;
   }
 
   async listPage(tenantId: string, query: {

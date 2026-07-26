@@ -158,6 +158,7 @@ describe('marketing management use-cases', () => {
     const settings: TenantSesSettings = {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
       identityVerifiedAt: NOW, configurationSet: null, snsTopicArn: 'arn:topic',
+      trackingEnabled: false,
       webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
       quotaSentLast24Hours: 0,
       quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Ltd',
@@ -172,7 +173,8 @@ describe('marketing management use-cases', () => {
 
     const sandboxed = await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
-      identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
+      identityVerified: true, configurationSet: 'marketing', snsTopicArn: settings.snsTopicArn,
+      trackingEnabled: true,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
     }, {
       settings: new InMemoryTenantSesSettingsRepository([{ ...settings, inSandbox: true }]), secrets,
@@ -180,10 +182,23 @@ describe('marketing management use-cases', () => {
       webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
     });
     expect(sandboxed.ok && sandboxed.value.settings.broadcastsEnabled).toBe(false);
+    expect(sandboxed.ok && sandboxed.value.settings.trackingEnabled).toBe(true);
+
+    expect(await updateTenantSesMarketingSettings(ctx, {
+      fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
+      identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
+      trackingEnabled: true,
+      footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
+    }, {
+      settings: repository, secrets,
+      tokens: { nextToken: () => 'webhook_token_123456789012345' }, clock,
+      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+    })).toMatchObject({ ok: false, error: { code: 'validation' } });
 
     const unrefreshed = await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
       identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
+      trackingEnabled: false,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
     }, {
       settings: new InMemoryTenantSesSettingsRepository(), secrets,

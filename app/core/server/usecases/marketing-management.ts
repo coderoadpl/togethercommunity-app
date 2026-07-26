@@ -300,6 +300,7 @@ export const updateTenantSesMarketingSettings = async (
     identityVerified: boolean;
     configurationSet: string | null;
     snsTopicArn: string | null;
+    trackingEnabled: boolean;
     footerLegalName: string;
     footerAddress: string;
   },
@@ -313,6 +314,9 @@ export const updateTenantSesMarketingSettings = async (
 ): Promise<Result<{ settings: TenantSesSettings; credentialsConfigured: boolean; webhookUrl: string }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
+  if (input.trackingEnabled && input.configurationSet === null) {
+    return err(validation('Open and click tracking requires an SES configuration set'));
+  }
   const current = await deps.settings.findByTenant(tenantId.value);
   const now = deps.clock.nowIso();
   const hasCredentials = await credentialsConfigured(tenantId.value, deps.secrets);
@@ -324,6 +328,7 @@ export const updateTenantSesMarketingSettings = async (
     identityVerifiedAt: input.identityVerified ? current?.identityVerifiedAt ?? now : null,
     configurationSet: input.configurationSet,
     snsTopicArn: input.snsTopicArn,
+    trackingEnabled: input.trackingEnabled,
     webhookToken: current?.webhookToken ?? deps.tokens.nextToken(),
     quotaRatePerSec: current?.quotaRatePerSec ?? 0,
     quotaDaily: current?.quotaDaily ?? 0,

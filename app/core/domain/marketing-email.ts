@@ -470,6 +470,15 @@ export const campaignSendSchema = z.object({
 
 export type CampaignSend = z.output<typeof campaignSendSchema>;
 
+export const campaignEngagementStatsSchema = z.object({
+  uniqueOpens: z.number().int().nonnegative(),
+  totalOpens: z.number().int().nonnegative(),
+  uniqueClicks: z.number().int().nonnegative(),
+  totalClicks: z.number().int().nonnegative(),
+});
+
+export type CampaignEngagementStats = z.output<typeof campaignEngagementStatsSchema>;
+
 export type BounceClassification = 'soft' | 'hard' | 'complaint';
 
 export const classifySesEvent = (event:
@@ -499,6 +508,7 @@ export const tenantSesSettingsSchema = z.object({
   identityVerifiedAt: isoDateTimeSchema.nullable(),
   configurationSet: z.string().nullable(),
   snsTopicArn: z.string().nullable(),
+  trackingEnabled: z.boolean(),
   webhookToken: z.string().min(22),
   quotaRatePerSec: z.number().nonnegative(),
   quotaDaily: z.number().int().nonnegative(),

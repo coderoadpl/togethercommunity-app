@@ -263,6 +263,53 @@ describe('marketing database repositories', () => {
     expect(await sends.claimRecipient(tenantId, send('broadcast-2', 'broadcast', null))).toBe(false);
   });
 
+  it('derives unique and total engagement independently of send keyset pages', async () => {
+    const tenantId = 'tenant-engagement';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Engagement', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    await createMarketingConsentRepository(db).record(tenantId, {
+      id: 'consent-engagement', tenantId, memberId: null, email: 'a@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
+      status: 'confirmed', previousId: null, source: 'api',
+      evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
+    });
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, email: string): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast',
+      memberId: null, email, subject: 'Campaign subject',
+      consentRowId: 'consent-engagement', unsubscribeTokenId: null, status: 'sent',
+      skipReason: null, sesMessageId: `ses-${id}`, deliveryStatus: null,
+      deliveryOccurredAt: null, idempotencySource: null, renderedBodyPurgedAt: null,
+      createdAt: NOW, sentAt: NOW,
+    });
+    await sends.claimRecipient(tenantId, send('engagement-a', 'a@example.test'));
+    await sends.claimRecipient(tenantId, send('engagement-b', 'b@example.test'));
+    const events = createEmailEventRepository(db);
+    for (const [id, refId, type] of [
+      ['open-a-1', 'engagement-a', 'opened'],
+      ['open-a-2', 'engagement-a', 'opened'],
+      ['open-b-1', 'engagement-b', 'opened'],
+      ['click-a-1', 'engagement-a', 'clicked'],
+      ['click-a-2', 'engagement-a', 'clicked'],
+    ] as const) {
+      await events.append(tenantId, emailEventSchema.parse({
+        id, tenantId, mailKind: 'marketing', refId, type, occurredAt: NOW,
+        meta: type === 'clicked'
+          ? { linkUrl: 'https://example.test/offer', rawProviderPayload: {} }
+          : { rawProviderPayload: {} },
+        createdAt: NOW,
+      }));
+    }
+    const firstPage = await sends.listPage(tenantId, { campaignId: `campaign-${tenantId}`, limit: 1 });
+    expect(firstPage.nextCursor).not.toBeNull();
+    expect(await sends.engagementStats(tenantId, [`campaign-${tenantId}`])).toEqual(new Map([[
+      `campaign-${tenantId}`,
+      { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
+    ]]));
+  });
+
   it('lists tenant-scoped transactional and marketing sends with one stable keyset', async () => {
     const tenantId = 'tenant-send-view';
     await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Send view', createdAt: NOW });

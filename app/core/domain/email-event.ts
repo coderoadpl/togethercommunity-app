@@ -6,6 +6,8 @@ export const emailEventTypeSchema = z.enum([
   'rendered',
   'accepted',
   'delivered',
+  'opened',
+  'clicked',
   'bounced',
   'complained',
   'skipped',
@@ -35,6 +37,14 @@ export const emailEventSchema = z.discriminatedUnion('type', [
     meta: z.object({ sesMessageId: z.string().min(1) }).passthrough(),
   }),
   baseEmailEventSchema.extend({ type: z.literal('delivered'), meta: z.record(z.unknown()).nullable() }),
+  baseEmailEventSchema.extend({ type: z.literal('opened'), meta: z.record(z.unknown()).nullable() }),
+  baseEmailEventSchema.extend({
+    type: z.literal('clicked'),
+    meta: z.object({
+      linkUrl: z.string().min(1),
+      rawProviderPayload: z.unknown(),
+    }).passthrough(),
+  }),
   baseEmailEventSchema.extend({
     type: z.literal('bounced'),
     meta: z.object({

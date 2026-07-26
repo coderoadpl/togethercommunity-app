@@ -46,6 +46,7 @@ import type {
   TermsConsent,
   AutomationIdempotencyKey,
   Campaign,
+  CampaignEngagementStats,
   CampaignSend,
   ConsentDefinition,
   ConsentDefinitionVersion,
@@ -726,6 +727,10 @@ export interface CampaignSendRepository {
   correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<CampaignSend | null>;
   listByCampaign(tenantId: string, campaignId: string): Promise<CampaignSend[]>;
   listAll(tenantId: string): Promise<CampaignSend[]>;
+  engagementStats(
+    tenantId: string,
+    campaignIds: string[],
+  ): Promise<Map<string, CampaignEngagementStats>>;
   listPage(tenantId: string, query: {
     campaignId?: string;
     email?: string;

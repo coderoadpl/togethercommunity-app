@@ -27,6 +27,7 @@ const salientMeta = (event: EmailEvent, t: Messages): Array<{ label: string; val
     { label: t.marketing.sesMessageId, value: stringMeta(event, 'sesMessageId') },
     { label: t.marketing.skipReason, value: stringMeta(event, 'reason') },
     { label: t.marketing.bounceClassification, value: stringMeta(event, 'classification') },
+    { label: t.marketing.clickedLink, value: stringMeta(event, 'linkUrl') },
     { label: t.marketing.eventError, value: stringMeta(event, 'error') },
   ];
   return values.flatMap((value) => value.value === null ? [] : [{ label: value.label, value: value.value }]);

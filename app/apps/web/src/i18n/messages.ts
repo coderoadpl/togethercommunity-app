@@ -943,9 +943,10 @@ export interface Messages {
     sesMessageId: string;
     skipReason: string;
     bounceClassification: string;
+    clickedLink: string;
     eventError: string;
     eventTypes: Record<
-      'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'bounced' | 'complained'
+      'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained'
       | 'skipped' | 'failed' | 'retried' | 'suppressed_written' | 'unsubscribed',
       string
     >;
@@ -988,6 +989,12 @@ export interface Messages {
     campaignsDescription: string;
     campaignsEmpty: string;
     campaignsLoading: string;
+    uniqueOpens: string;
+    totalOpens: string;
+    uniqueClicks: string;
+    totalClicks: string;
+    compactOpens: (params: { unique: number; total: number }) => string;
+    compactClicks: (params: { unique: number; total: number }) => string;
     newCampaign: string;
     campaignDetails: string;
     allCampaigns: string;
@@ -1087,6 +1094,9 @@ export interface Messages {
     identityAuthenticationHint: string;
     configurationSetLabel: string;
     snsTopicLabel: string;
+    trackingEnabledLabel: string;
+    trackingPrivacyNote: string;
+    trackingDocsLink: string;
     footer: string;
     footerLegalNameLabel: string;
     footerAddressLabel: string;

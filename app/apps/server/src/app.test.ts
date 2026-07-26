@@ -77,6 +77,7 @@ const deps = (input: {
   ];
   const memberships: Membership[] = [];
   const members: Member[] = [];
+  let nextId = 0;
   return {
     auth: {
       handler: async () => new Response(null, { status: 404 }),
@@ -398,7 +399,7 @@ const deps = (input: {
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
     health: { pingDatabase: async () => input.databaseUp ?? true },
-    ids: { nextId: () => 'id' },
+    ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     baseDomain: 'localhost',
     appBaseUrl: 'http://localhost:48730',
@@ -619,7 +620,7 @@ describe('marketing HTTP surfaces', () => {
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
-      snsTopicArn: null, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
+      snsTopicArn: null, trackingEnabled: false, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
@@ -706,7 +707,7 @@ describe('marketing HTTP surfaces', () => {
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
-      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', webhookToken: 'webhook-token',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
       broadcastsEnabled: true,
@@ -718,6 +719,57 @@ describe('marketing HTTP surfaces', () => {
       method: 'POST', body: '{}',
     });
     expect(response.status).toBe(200);
+  });
+
+  it('ingests SES configuration-set Open and Click records and tolerates unknown messages', async () => {
+    const marketing = marketingDeps();
+    const now = '2026-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
+    await sends.claimRecipient('t-acme', {
+      id: 'send-tracked', runId: null, tenantId: 't-acme', campaignId: 'campaign-1',
+      source: 'broadcast', memberId: 'member-1', email: 'member@example.test',
+      subject: 'Tracked', consentRowId: 'consent-1', unsubscribeTokenId: null,
+      status: 'sent', skipReason: null, sesMessageId: 'ses-tracked',
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: now, sentAt: now,
+    });
+    marketing.events = events;
+    marketing.campaignSends = sends;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      trackingEnabled: true, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true,
+    }]);
+    const app = marketingApp(marketing);
+    for (const message of [
+      {
+        eventType: 'Open', mail: { messageId: 'ses-tracked', timestamp: now },
+        open: { timestamp: now, ipAddress: '192.0.2.1' },
+      },
+      {
+        eventType: 'Click', mail: { messageId: 'ses-tracked', timestamp: now },
+        click: { timestamp: now, link: 'https://acme.test/offer' },
+      },
+      {
+        eventType: 'Open', mail: { messageId: 'ses-unknown', timestamp: now },
+        open: { timestamp: now },
+      },
+    ]) {
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
+      }));
+      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      expect(response.status).toBe(200);
+    }
+    expect((await events.listByRef('t-acme', 'marketing', 'send-tracked'))).toMatchObject([
+      { type: 'opened' },
+      { type: 'clicked', meta: { linkUrl: 'https://acme.test/offer' } },
+    ]);
   });
 });
 

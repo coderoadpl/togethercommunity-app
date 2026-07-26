@@ -48,6 +48,13 @@ must actually run. Do not weaken lint rules to make either green.
 - Every tenant-scoped use-case takes `ctx: { identity }` first; every
   tenant-scoped repository method requires `tenantId`.
 
+### Lifecycle data
+
+Lifecycle-bearing records use a current-state projection row plus append-only
+events by default. Projections serve lists, filters, and deduplication; events
+are the immutable ordered history. Event rows are never updated or deleted
+except by an explicit retention purge.
+
 ## Verify features through the CLI first
 
 ```bash

@@ -3,9 +3,10 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { Campaign, CampaignSend, ConsentDefinition, ConsentDefinitionVersion, EmailLayout, MarketingConsent, TenantDocument, TenantDocumentVersion } from '@core/domain/index.js';
+import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinition, type ConsentDefinitionVersion, type EmailLayout, type MarketingConsent, type Suppression, type TenantDocument, type TenantDocumentVersion } from '@core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
+import { createEmailEventRepository } from './email-events.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -14,6 +15,7 @@ import {
   createEmailLayoutRepository,
   createMarketingConsentRepository,
   createMarketingThrottleRepository,
+  createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
 import { tenants } from './schema.js';
@@ -109,6 +111,39 @@ describe('marketing database repositories', () => {
     expect(await repository.claim('tenant-a', {
       ...input, now: '2026-07-22T00:00:02.000Z',
     })).toBe(false);
+  });
+
+  it('appends suppression lifecycle history in the same repository operation', async () => {
+    const repository = createSuppressionRepository(db);
+    const suppression: Suppression = {
+      id: 'suppression-event-a',
+      tenantId: 'tenant-a',
+      email: 'member@example.test',
+      emailHmac: 'email-hmac-a',
+      reason: 'hard_bounce',
+      sourceRef: 'send-event-a',
+      meta: { bounceType: 'Permanent' },
+      createdAt: NOW,
+      liftedAt: null,
+      liftedBy: null,
+    };
+    const event = emailEventSchema.parse({
+      id: 'suppression-written-event-a',
+      tenantId: 'tenant-a',
+      mailKind: 'marketing',
+      refId: 'send-event-a',
+      type: 'suppressed_written',
+      occurredAt: NOW,
+      meta: { reason: 'hard_bounce' },
+      createdAt: NOW,
+    });
+
+    expect(await repository.record('tenant-a', suppression, event)).toBe(true);
+    expect((await createEmailEventRepository(db).listByRef(
+      'tenant-a',
+      'marketing',
+      'send-event-a',
+    )).map((item) => item.type)).toEqual(['suppressed_written']);
   });
 
   it('allows distinct API drip steps in one campaign and still deduplicates broadcast recipients', async () => {

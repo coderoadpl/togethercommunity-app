@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
+import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -88,6 +89,7 @@ import type {
   EmailPort,
   EmailOutboxRepository,
   EmailHmac,
+  EmailEventRepository,
   EmailLayoutRepository,
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -217,6 +219,7 @@ export interface AppDeps {
 }
 
 export interface MarketingAppDeps {
+  events: EmailEventRepository;
   definitions: ConsentDefinitionRepository;
   marketingConsents: MarketingConsentRepository;
   confirmations: ConsentConfirmationTokenRepository;
@@ -272,6 +275,7 @@ export const createDeps = (env: Env): AppDeps => {
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
   const emailOutbox = createEmailOutboxRepository(db);
+  const emailEvents = createEmailEventRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
@@ -306,6 +310,7 @@ export const createDeps = (env: Env): AppDeps => {
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
   const dispatchDeps = {
     emailOutbox,
+    events: emailEvents,
     email,
     clock,
     logger: { error: (message: string) => process.stderr.write(`${message}\n`) },
@@ -345,7 +350,7 @@ export const createDeps = (env: Env): AppDeps => {
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
       },
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
-      definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, audience,
+      definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
       unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler,
@@ -518,6 +523,7 @@ export const createDeps = (env: Env): AppDeps => {
     authConfig: { googleEnabled: google !== null },
     marketing: {
       definitions,
+      events: emailEvents,
       marketingConsents,
       confirmations,
       campaigns,

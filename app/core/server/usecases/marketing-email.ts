@@ -6,6 +6,7 @@ import {
   classifySesEvent,
   deriveConsentState,
   deriveMarketingEligibility,
+  emailEventSchema,
   err,
   forbidden,
   liftSuppression,
@@ -23,6 +24,7 @@ import {
   type ConsentDocumentRef,
   type ConsentDocumentVersionRef,
   type ConsentEvidence,
+  type EmailEvent,
   type MarketingConsent,
   type MarketingIneligibilityReason,
   type Result,
@@ -40,6 +42,7 @@ import type {
   ConsentDefinitionRepository,
   EmailLayoutRepository,
   EmailHmac,
+  EmailEventRepository,
   EmailOutboxRepository,
   IdGenerator,
   MarketingAudienceRepository,
@@ -306,6 +309,7 @@ export const liftMarketingSuppression = async (
 
 interface UnsubscribeDeps extends EligibilityDeps {
   unsubscribes: UnsubscribeTokenRepository;
+  events: EmailEventRepository;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -421,7 +425,24 @@ export const unsubscribeOneClick = async (
 ): Promise<Result<{ unsubscribed: true }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
-  const consumed = await deps.unsubscribes.consume(tenantId.value, input.token, deps.clock.nowIso());
+  const existing = await deps.unsubscribes.findByToken(tenantId.value, input.token);
+  if (existing === null) return err(notFound('Unsubscribe token was not found'));
+  const event = existing.campaignSendId === null
+    ? undefined
+    : lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        existing.campaignSendId,
+        'unsubscribed',
+        { scope: existing.scope },
+      );
+  const consumed = await deps.unsubscribes.consume(
+    tenantId.value,
+    input.token,
+    deps.clock.nowIso(),
+    event,
+  );
   if (consumed === null) return err(notFound('Unsubscribe token was not found'));
   const definitions = consumed.token.scope === 'all_marketing'
     ? (await deps.definitions.list(tenantId.value, 'active')).filter((definition) => definition.kind === 'optional_marketing')
@@ -433,11 +454,24 @@ export const unsubscribeOneClick = async (
   }
   if (consumed.token.scope === 'all_marketing') {
     const emailHmac = deps.hmac.compute(tenantId.value, consumed.token.email);
-    await deps.suppressions.record(tenantId.value, {
-      id: deps.ids.nextId(), tenantId: tenantId.value, email: consumed.token.email, emailHmac,
-      reason: 'unsubscribe_global', sourceRef: consumed.token.id, meta: null, createdAt: deps.clock.nowIso(),
-      liftedAt: null, liftedBy: null,
-    });
+    await deps.suppressions.record(
+      tenantId.value,
+      {
+        id: deps.ids.nextId(), tenantId: tenantId.value, email: consumed.token.email, emailHmac,
+        reason: 'unsubscribe_global', sourceRef: consumed.token.id, meta: null, createdAt: deps.clock.nowIso(),
+        liftedAt: null, liftedBy: null,
+      },
+      consumed.token.campaignSendId === null
+        ? undefined
+        : lifecycleEvent(
+            deps,
+            tenantId.value,
+            'marketing',
+            consumed.token.campaignSendId,
+            'suppressed_written',
+            { reason: 'unsubscribe_global' },
+          ),
+    );
   }
   return ok({ unsubscribed: true });
 };
@@ -449,8 +483,26 @@ export const unsubscribeAllMarketing = async (
 ): Promise<Result<{ unsubscribed: true }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
-  const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
-  if (token === null) return err(notFound('Unsubscribe token was not found'));
+  const existing = await deps.unsubscribes.findByToken(tenantId.value, input.token);
+  if (existing === null) return err(notFound('Unsubscribe token was not found'));
+  const event = existing.campaignSendId === null
+    ? undefined
+    : lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        existing.campaignSendId,
+        'unsubscribed',
+        { scope: 'all_marketing' },
+      );
+  const consumed = await deps.unsubscribes.consume(
+    tenantId.value,
+    input.token,
+    deps.clock.nowIso(),
+    event,
+  );
+  if (consumed === null) return err(notFound('Unsubscribe token was not found'));
+  const token = consumed.token;
   const definitions = (await deps.definitions.list(tenantId.value, 'active'))
     .filter((definition) => definition.kind === 'optional_marketing');
   for (const definition of definitions) {
@@ -464,11 +516,24 @@ export const unsubscribeAllMarketing = async (
     if (!withdrawn.ok) return withdrawn;
   }
   const emailHmac = deps.hmac.compute(tenantId.value, token.email);
-  await deps.suppressions.record(tenantId.value, {
-    id: deps.ids.nextId(), tenantId: tenantId.value, email: token.email, emailHmac,
-    reason: 'unsubscribe_global', sourceRef: token.id, meta: null, createdAt: deps.clock.nowIso(),
-    liftedAt: null, liftedBy: null,
-  });
+  await deps.suppressions.record(
+    tenantId.value,
+    {
+      id: deps.ids.nextId(), tenantId: tenantId.value, email: token.email, emailHmac,
+      reason: 'unsubscribe_global', sourceRef: token.id, meta: null, createdAt: deps.clock.nowIso(),
+      liftedAt: null, liftedBy: null,
+    },
+    token.campaignSendId === null
+      ? undefined
+      : lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          token.campaignSendId,
+          'suppressed_written',
+          { reason: 'unsubscribe_global' },
+        ),
+  );
   return ok({ unsubscribed: true });
 };
 
@@ -636,6 +701,7 @@ export const updateCampaignContent = async (
 interface SendDeps extends EligibilityDeps {
   layouts: EmailLayoutRepository;
   sends: CampaignSendRepository;
+  events: EmailEventRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
   ses: SesMarketingSender;
@@ -647,6 +713,25 @@ interface SendDeps extends EligibilityDeps {
   clock: Clock;
   unsubscribeBaseUrl: string;
 }
+
+const lifecycleEvent = (
+  deps: { ids: IdGenerator; clock: Clock },
+  tenantId: string,
+  mailKind: 'transactional' | 'marketing',
+  refId: string,
+  type: EmailEvent['type'],
+  meta: Record<string, unknown> | null,
+  occurredAt = deps.clock.nowIso(),
+): EmailEvent => emailEventSchema.parse({
+  id: deps.ids.nextId(),
+  tenantId,
+  mailKind,
+  refId,
+  type,
+  occurredAt,
+  meta,
+  createdAt: deps.clock.nowIso(),
+});
 
 export interface MarketingMessageInput {
   to: string;
@@ -763,7 +848,16 @@ export const sendMarketingMessages = async (
           idempotencySource: input.idempotencySource ?? null, renderedBodyPurgedAt: null,
           createdAt: deps.clock.nowIso(), sentAt: null,
         };
-        await deps.sends.claimRecipient(tenantId.value, skipped);
+        await deps.sends.claimRecipient(tenantId.value, skipped, [
+          lifecycleEvent(
+            deps,
+            tenantId.value,
+            'marketing',
+            skipped.id,
+            'skipped',
+            { reason: initial.eligibility.reason },
+          ),
+        ]);
       }
       results.push({ to: normalizeEmail(input.to), sendId: skippedId, status: 'skipped', reason: initial.eligibility.reason });
       continue;
@@ -776,19 +870,30 @@ export const sendMarketingMessages = async (
       deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: input.idempotencySource ?? null,
       renderedBodyPurgedAt: null, createdAt: deps.clock.nowIso(), sentAt: null,
     };
-    if (!await deps.sends.claimRecipient(tenantId.value, send)) {
+    if (!await deps.sends.claimRecipient(tenantId.value, send, [
+      lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'queued', null),
+      lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'claimed', null),
+    ])) {
       results.push({ to: send.email, sendId: null, status: 'deduplicated' });
       continue;
     }
     const dequeue = await eligibilityFor(tenantId.value, input, deps);
     if (dequeue === null) {
-      await deps.sends.update(tenantId.value, { ...send, status: 'skipped', skipReason: 'not_consented' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, status: 'skipped', skipReason: 'not_consented' },
+        [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'skipped', { reason: 'not_consented' })],
+      );
       results.push({ to: send.email, sendId, status: 'skipped', reason: 'not_consented' });
       continue;
     }
     if (!dequeue.eligibility.eligible) {
       const reason = dequeue.eligibility.reason;
-      await deps.sends.update(tenantId.value, { ...send, status: 'skipped', skipReason: reason });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, status: 'skipped', skipReason: reason },
+        [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'skipped', { reason })],
+      );
       results.push({ to: send.email, sendId, status: 'skipped', reason });
       continue;
     }
@@ -803,7 +908,18 @@ export const sendMarketingMessages = async (
       ? null
       : await deps.layouts.findById(tenantId.value, input.layoutId);
     if (input.layoutId !== undefined && input.layoutId !== null && layout === null) {
-      await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, status: 'failed' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, unsubscribeTokenId, status: 'failed' },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'failed',
+          { error: 'Marketing e-mail layout was not found' },
+        )],
+      );
       results.push({
         to: send.email,
         sendId,
@@ -838,25 +954,60 @@ export const sendMarketingMessages = async (
       layoutHtml: layout?.bodyHtml ?? null,
     });
     if (!rendered.ok) {
-      await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, status: 'failed' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, unsubscribeTokenId, status: 'failed' },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'failed',
+          { error: rendered.error.message },
+        )],
+      );
       results.push({ to: send.email, sendId, status: 'failed', error: rendered.error });
       continue;
     }
     const sending = { ...send, unsubscribeTokenId, status: 'sending' as const };
-    await deps.sends.update(tenantId.value, sending);
+    await deps.sends.update(
+      tenantId.value,
+      sending,
+      [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'rendered', null)],
+    );
     const sent = await deps.ses.send({
       credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName },
       to: send.email, subject: rendered.value.subject, html: rendered.value.html, text: rendered.value.text,
       headers: rendered.value.headers, configurationSet: settings.configurationSet,
     });
     if (!sent.ok) {
-      await deps.sends.update(tenantId.value, { ...sending, status: 'failed' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...sending, status: 'failed' },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'failed',
+          { error: sent.error.message },
+        )],
+      );
       results.push({ to: send.email, sendId, status: 'failed', error: sent.error });
       continue;
     }
-    await deps.sends.update(tenantId.value, {
-      ...sending, status: 'sent', sesMessageId: sent.value.messageId, sentAt: deps.clock.nowIso(),
-    });
+    await deps.sends.update(
+      tenantId.value,
+      { ...sending, status: 'sent', sesMessageId: sent.value.messageId, sentAt: deps.clock.nowIso() },
+      [lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        send.id,
+        'accepted',
+        { sesMessageId: sent.value.messageId },
+      )],
+    );
     results.push({ to: send.email, sendId, status: 'sent' });
   }
   return ok(results);
@@ -1075,7 +1226,8 @@ type VerifiedSesEvent = {
 export const applyVerifiedSesEvent = async (
   ctx: Ctx,
   event: VerifiedSesEvent,
-  deps: Pick<SendDeps, 'sesSettings' | 'sends' | 'suppressions' | 'hmac' | 'ids' | 'clock'>,
+  deps: Pick<SendDeps, 'sesSettings' | 'sends' | 'events' | 'suppressions' | 'hmac' | 'ids' | 'clock'>
+    & { outbox: EmailOutboxRepository },
 ): Promise<Result<{ processed: boolean }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
@@ -1088,21 +1240,96 @@ export const applyVerifiedSesEvent = async (
   if (settings === null || settings.snsTopicArn !== event.topicArn) return err(forbidden('SNS topic does not match this tenant'));
   try {
     const send = await deps.sends.correlateBySesMessageId(tenantId.value, event.messageId);
-    if (send === null) return ok({ processed: false });
+    if (send === null) {
+      if (deps.outbox.correlateBySesMessageId === undefined || deps.outbox.markDelivery === undefined) {
+        return ok({ processed: false });
+      }
+      const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
+      if (outbox === null) return ok({ processed: false });
+      const classification = event.kind === 'bounce' ? classifySesEvent(event) : null;
+      const status = event.kind === 'delivery'
+        ? 'delivered'
+        : event.kind === 'complaint'
+          ? 'complained'
+          : 'bounced';
+      const meta = status === 'bounced'
+        ? { classification: classification ?? 'hard', rawProviderPayload: event.raw }
+        : { rawProviderPayload: event.raw };
+      const marked = await deps.outbox.markDelivery({
+        tenantId: tenantId.value,
+        id: outbox.id,
+        status,
+        occurredAt: event.occurredAt,
+        event: lifecycleEvent(
+          deps,
+          tenantId.value,
+          'transactional',
+          outbox.id,
+          status,
+          meta,
+          event.occurredAt,
+        ),
+      });
+      return marked.ok ? ok({ processed: true }) : ok({ processed: false });
+    }
     if (event.kind === 'delivery') {
-      await deps.sends.update(tenantId.value, { ...send, deliveryStatus: 'delivered', deliveryOccurredAt: event.occurredAt });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, deliveryStatus: 'delivered', deliveryOccurredAt: event.occurredAt },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'delivered',
+          { rawProviderPayload: event.raw },
+          event.occurredAt,
+        )],
+      );
       return ok({ processed: true });
     }
     const classification = classifySesEvent(event);
     const deliveryStatus = classification === 'complaint' ? 'complained' : 'bounced';
-    await deps.sends.update(tenantId.value, { ...send, deliveryStatus, deliveryOccurredAt: event.occurredAt });
+    await deps.sends.update(
+      tenantId.value,
+      { ...send, deliveryStatus, deliveryOccurredAt: event.occurredAt },
+      [lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        send.id,
+        deliveryStatus,
+        deliveryStatus === 'bounced'
+          ? { classification, rawProviderPayload: event.raw }
+          : { rawProviderPayload: event.raw },
+        event.occurredAt,
+      )],
+    );
     if (classification !== 'soft') {
-      await deps.suppressions.record(tenantId.value, {
-        id: deps.ids.nextId(), tenantId: tenantId.value, email: send.email,
-        emailHmac: deps.hmac.compute(tenantId.value, send.email),
-        reason: classification === 'complaint' ? 'complaint' : 'hard_bounce', sourceRef: send.id,
-        meta: event.raw, createdAt: deps.clock.nowIso(), liftedAt: null, liftedBy: null,
-      });
+      await deps.suppressions.record(
+        tenantId.value,
+        {
+          id: deps.ids.nextId(),
+          tenantId: tenantId.value,
+          email: send.email,
+          emailHmac: deps.hmac.compute(tenantId.value, send.email),
+          reason: classification === 'complaint' ? 'complaint' : 'hard_bounce',
+          sourceRef: send.id,
+          meta: event.raw,
+          createdAt: deps.clock.nowIso(),
+          liftedAt: null,
+          liftedBy: null,
+        },
+        lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'suppressed_written',
+          { reason: classification === 'complaint' ? 'complaint' : 'hard_bounce' },
+          event.occurredAt,
+        ),
+      );
     }
     return ok({ processed: true });
   } catch {

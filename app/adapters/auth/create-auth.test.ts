@@ -5,6 +5,7 @@ import { createDb } from '@adapters/db/client.js';
 import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '@adapters/db/repositories.js';
 import { createEmailOutboxRepository } from '@adapters/db/email-outbox.js';
+import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import { dispatchEmailBatch } from '@core/server/index.js';
 
 import { createAuth, createAuthPort } from './create-auth.js';
@@ -21,6 +22,7 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
   const flushEmails = () =>
     dispatchEmailBatch({
       emailOutbox,
+      events: createEmailEventRepository(db),
       email: createDevEmailPort(db),
       clock,
       logger: console,

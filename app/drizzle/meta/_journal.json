@@ -218,6 +218,13 @@
       "when": 1784980000003,
       "tag": "0030_great_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785077706714,
+      "tag": "0031_chief_vulture",
+      "breakpoints": true
     }
   ]
 }

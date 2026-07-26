@@ -8,6 +8,8 @@ import type {
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
   ConsentEvidence,
+  EmailEventType,
+  EmailEventMailKind,
   LessonBlock,
 } from '@core/domain/index.js';
 
@@ -680,8 +682,34 @@ export const emailOutbox = pgTable(
     lastError: text('last_error'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+    sesMessageId: text('ses_message_id'),
+    deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
+    deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
   },
-  (table) => [index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt)],
+  (table) => [
+    index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt),
+    uniqueIndex('email_outbox_ses_message_id_uidx')
+      .on(table.sesMessageId)
+      .where(sql`${table.sesMessageId} is not null`),
+  ],
+);
+
+export const emailEvents = pgTable(
+  'email_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    mailKind: text('mail_kind').$type<EmailEventMailKind>().notNull(),
+    refId: text('ref_id').notNull(),
+    type: text('type').$type<EmailEventType>().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    meta: jsonb('meta').$type<Record<string, unknown> | null>(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('email_events_tenant_ref_occurred_idx').on(table.tenantId, table.refId, table.occurredAt),
+    index('email_events_tenant_occurred_idx').on(table.tenantId, table.occurredAt),
+  ],
 );
 
 export const tenantDomains = pgTable(

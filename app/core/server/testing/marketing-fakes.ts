@@ -1,5 +1,6 @@
 import {
   consumeUnsubscribeToken,
+  emailEventSchema,
   normalizeEmail,
   ok,
   type AppError,
@@ -10,6 +11,8 @@ import {
   type ConsentDefinition,
   type ConsentDefinitionVersion,
   type EmailLayout,
+  type EmailEvent,
+  type EmailEventMailKind,
   type MarketingConsent,
   type Result,
   type Suppression,
@@ -28,6 +31,7 @@ import type {
   ConsentDefinitionRepository,
   EmailLayoutRepository,
   EmailHmac,
+  EmailEventRepository,
   MarketingConsentRepository,
   MarketingThrottleRepository,
   MarketingAudienceMember,
@@ -46,6 +50,42 @@ import type {
 
 const sameTenant = <T extends { tenantId: string }>(tenantId: string, value: T): boolean =>
   value.tenantId === tenantId;
+
+export class InMemoryEmailEventRepository implements EmailEventRepository {
+  private readonly rows: EmailEvent[] = [];
+  private readonly addresses = new Map<string, string>();
+
+  associateEmail(tenantId: string, mailKind: EmailEventMailKind, refId: string, email: string): void {
+    this.addresses.set(`${tenantId}:${mailKind}:${refId}`, normalizeEmail(email));
+  }
+
+  async append(tenantId: string, event: EmailEvent): Promise<void> {
+    if (!sameTenant(tenantId, event)) throw new Error('Tenant mismatch');
+    if (this.rows.some((row) => row.id === event.id)) throw new Error('Email event repository is append-only');
+    this.rows.push(structuredClone(event));
+  }
+
+  async listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]> {
+    return this.ordered(this.rows.filter((row) =>
+      row.tenantId === tenantId && row.mailKind === mailKind && row.refId === refId
+    ));
+  }
+
+  async listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]> {
+    const normalized = normalizeEmail(email);
+    return this.ordered(this.rows.filter((row) =>
+      row.tenantId === tenantId
+      && this.addresses.get(`${tenantId}:${row.mailKind}:${row.refId}`) === normalized
+    ));
+  }
+
+  private ordered(rows: EmailEvent[]): EmailEvent[] {
+    return [...rows].sort((left, right) =>
+      left.occurredAt.localeCompare(right.occurredAt)
+      || left.createdAt.localeCompare(right.createdAt)
+    ).map((row) => structuredClone(row));
+  }
+}
 
 export class InMemoryMarketingConsentRepository implements MarketingConsentRepository {
   private readonly rows: MarketingConsent[] = [];
@@ -362,13 +402,19 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
   afterClaim: ((send: CampaignSend) => Promise<void>) | null = null;
   renderedBodiesAgedOut = 0;
 
-  async claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean> {
+  constructor(private readonly events?: InMemoryEmailEventRepository) {}
+
+  async claimRecipient(tenantId: string, send: CampaignSend, events: EmailEvent[] = []): Promise<boolean> {
     if (!sameTenant(tenantId, send) || this.rows.some((row) => row.id === send.id)) return false;
     if (send.source === 'broadcast' && send.campaignId !== null && this.rows.some((row) =>
       row.source === 'broadcast' &&
       row.tenantId === tenantId && row.campaignId === send.campaignId && row.email === normalizeEmail(send.email)
     )) return false;
     this.rows.push(structuredClone(send));
+    if (this.events !== undefined) {
+      this.events.associateEmail(tenantId, 'marketing', send.id, send.email);
+      for (const event of events) await this.events.append(tenantId, event);
+    }
     if (this.afterClaim !== null) await this.afterClaim(structuredClone(send));
     return true;
   }
@@ -378,13 +424,16 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
     return found === undefined ? null : structuredClone(found);
   }
 
-  async update(tenantId: string, send: CampaignSend): Promise<CampaignSend | null> {
+  async update(tenantId: string, send: CampaignSend, events: EmailEvent[] = []): Promise<CampaignSend | null> {
     const index = this.rows.findIndex((row) => sameTenant(tenantId, row) && row.id === send.id);
     if (index < 0 || !sameTenant(tenantId, send)) return null;
     if (send.sesMessageId !== null && this.rows.some((row, rowIndex) =>
       rowIndex !== index && row.sesMessageId === send.sesMessageId
     )) throw new Error('SES message id must be unique');
     this.rows[index] = structuredClone(send);
+    if (this.events !== undefined) {
+      for (const event of events) await this.events.append(tenantId, event);
+    }
     return structuredClone(send);
   }
 
@@ -446,10 +495,13 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
 export class InMemorySuppressionRepository implements SuppressionRepository {
   private readonly rows: Suppression[] = [];
 
-  async record(tenantId: string, suppression: Suppression): Promise<boolean> {
+  constructor(private readonly events?: InMemoryEmailEventRepository) {}
+
+  async record(tenantId: string, suppression: Suppression, event?: EmailEvent): Promise<boolean> {
     if (!sameTenant(tenantId, suppression)) return false;
     if (this.rows.some((row) => row.tenantId === tenantId && row.emailHmac === suppression.emailHmac && row.liftedAt === null)) return false;
     this.rows.push(structuredClone(suppression));
+    if (event !== undefined && this.events !== undefined) await this.events.append(tenantId, event);
     return true;
   }
 
@@ -493,28 +545,125 @@ export interface InMemoryEmailOutboxItem extends EmailOutboxItem {
 export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
   readonly items: InMemoryEmailOutboxItem[] = [];
 
-  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload }): Promise<Result<{ id: string }, AppError>> {
-    this.items.push({ ...structuredClone(input), attempts: 0, status: 'queued' });
+  constructor(readonly events = new InMemoryEmailEventRepository()) {}
+
+  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>> {
+    this.items.push({
+      ...structuredClone(input),
+      attempts: 0,
+      status: 'queued',
+      sesMessageId: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+    });
+    if (input.tenantId !== null) {
+      this.events.associateEmail(input.tenantId, 'transactional', input.id, input.to);
+      await this.events.append(input.tenantId, emailEventSchema.parse({
+        id: `${input.id}:queued`,
+        tenantId: input.tenantId,
+        mailKind: 'transactional',
+        refId: input.id,
+        type: 'queued',
+        occurredAt: input.now,
+        meta: null,
+        createdAt: input.now,
+      }));
+    }
     return ok({ id: input.id });
   }
 
-  async claimBatch(input: { limit: number }): Promise<Result<EmailOutboxItem[], AppError>> {
+  async claimBatch(input: { limit: number; now: string; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>> {
     const claimed = this.items.filter((row) => row.status === 'queued' || row.status === 'failed').slice(0, input.limit);
-    claimed.forEach((row) => { row.status = 'sending'; });
+    for (const row of claimed) {
+      const retry = row.status === 'failed';
+      row.status = 'sending';
+      if (row.tenantId !== null) {
+        if (retry) {
+          await this.events.append(row.tenantId, emailEventSchema.parse({
+            id: `${row.id}:retried:${String(row.attempts)}`,
+            tenantId: row.tenantId,
+            mailKind: 'transactional',
+            refId: row.id,
+            type: 'retried',
+            occurredAt: input.now,
+            meta: { attempt: row.attempts + 1 },
+            createdAt: input.now,
+          }));
+        }
+        await this.events.append(row.tenantId, emailEventSchema.parse({
+          id: `${row.id}:claimed:${String(row.attempts)}`,
+          tenantId: row.tenantId,
+          mailKind: 'transactional',
+          refId: row.id,
+          type: 'claimed',
+          occurredAt: input.now,
+          meta: { attempt: row.attempts + 1 },
+          createdAt: input.now,
+        }));
+      }
+    }
     return ok(claimed.map((row) => structuredClone(row)));
   }
 
-  async markSent(input: { id: string }): Promise<Result<void, AppError>> {
+  async markSent(input: { id: string; sentAt: string; sesMessageId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
-    if (found !== undefined) found.status = 'sent';
+    if (found !== undefined) {
+      found.status = 'sent';
+      found.sesMessageId = input.sesMessageId;
+      if (found.tenantId !== null) {
+        await this.events.append(found.tenantId, emailEventSchema.parse({
+          id: `${found.id}:accepted`,
+          tenantId: found.tenantId,
+          mailKind: 'transactional',
+          refId: found.id,
+          type: 'accepted',
+          occurredAt: input.sentAt,
+          meta: { sesMessageId: input.sesMessageId },
+          createdAt: input.sentAt,
+        }));
+      }
+    }
     return ok(undefined);
   }
 
-  async markFailed(input: { id: string; attempts: number }): Promise<Result<void, AppError>> {
+  async markFailed(input: { id: string; attempts: number; failedAt: string; error: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
     if (found !== undefined) {
       found.status = 'failed';
       found.attempts = input.attempts;
+      if (found.tenantId !== null) {
+        await this.events.append(found.tenantId, emailEventSchema.parse({
+          id: `${found.id}:failed:${String(input.attempts)}`,
+          tenantId: found.tenantId,
+          mailKind: 'transactional',
+          refId: found.id,
+          type: 'failed',
+          occurredAt: input.failedAt,
+          meta: { error: input.error, attempt: input.attempts },
+          createdAt: input.failedAt,
+        }));
+      }
+    }
+    return ok(undefined);
+  }
+
+  async correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<EmailOutboxItem | null> {
+    const found = this.items.find((row) => row.tenantId === tenantId && row.sesMessageId === sesMessageId);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async markDelivery(input: {
+    tenantId: string;
+    id: string;
+    status: 'delivered' | 'bounced' | 'complained';
+    occurredAt: string;
+    event: EmailEvent;
+  }): Promise<Result<void, AppError>> {
+    const found = this.items.find((row) => row.tenantId === input.tenantId && row.id === input.id);
+    if (found !== undefined) {
+      found.deliveryStatus = input.status;
+      found.deliveryOccurredAt = input.occurredAt;
+      await this.events.append(input.tenantId, input.event);
     }
     return ok(undefined);
   }
@@ -527,6 +676,8 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
 export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepository {
   private readonly rows: UnsubscribeToken[] = [];
 
+  constructor(private readonly events?: InMemoryEmailEventRepository) {}
+
   async create(tenantId: string, token: UnsubscribeToken): Promise<void> {
     if (!sameTenant(tenantId, token)) throw new Error('Tenant mismatch');
     if (this.rows.some((row) => row.id === token.id || row.token === token.token)) throw new Error('Token already exists');
@@ -538,7 +689,7 @@ export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepos
     return found === undefined ? null : structuredClone(found);
   }
 
-  async consume(tenantId: string, token: string, usedAt: string): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null> {
+  async consume(tenantId: string, token: string, usedAt: string, event?: EmailEvent): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null> {
     const index = this.rows.findIndex((row) => sameTenant(tenantId, row) && row.token === token);
     if (index < 0) return null;
     const current = this.rows[index];
@@ -546,6 +697,9 @@ export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepos
     const consumed = consumeUnsubscribeToken(current, usedAt);
     if (!consumed.ok) return null;
     this.rows[index] = consumed.value.token;
+    if (consumed.value.newlyUsed && event !== undefined && this.events !== undefined) {
+      await this.events.append(tenantId, event);
+    }
     return { token: structuredClone(consumed.value.token), newlyUsed: consumed.value.newlyUsed };
   }
 }

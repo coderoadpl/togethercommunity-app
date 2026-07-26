@@ -93,6 +93,7 @@ const sendDeps = (deps: AppDeps, marketing: MarketingAppDeps, unsubscribeBaseUrl
   suppressions: marketing.suppressions,
   hmac: marketing.hmac,
   sends: marketing.campaignSends,
+  events: marketing.events,
   layouts: marketing.layouts,
   unsubscribes: marketing.unsubscribes,
   sesSettings: marketing.sesSettings,
@@ -148,6 +149,7 @@ const unsubscribeDeps = (deps: AppDeps, marketing: MarketingAppDeps) => ({
   suppressions: marketing.suppressions,
   hmac: marketing.hmac,
   unsubscribes: marketing.unsubscribes,
+  events: marketing.events,
   ids: deps.ids,
   clock: deps.clock,
 });
@@ -325,7 +327,37 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     const authenticated = await authenticate(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const send = await marketing.value.campaignSends.findById(authenticated.value.tenant.id, c.req.param('id'));
-    return send === null ? response(err(appError('not_found', 'Marketing message was not found'))) : response(ok(send));
+    if (send === null) return response(err(appError('not_found', 'Marketing message was not found')));
+    const events = await marketing.value.events.listByRef(
+      authenticated.value.tenant.id,
+      'marketing',
+      send.id,
+    );
+    return response(ok({ ...send, events }));
+  });
+
+  app.get('/api/m2m/marketing/consent-definitions', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const authenticated = await authenticate(c.req.raw.headers, deps);
+    if (!authenticated.ok) return response(authenticated);
+    const definitions = await marketing.value.definitions.list(authenticated.value.tenant.id, 'active');
+    const discovered = await Promise.all(definitions.map(async (definition) => {
+      const versions = await marketing.value.definitions.listVersions(
+        authenticated.value.tenant.id,
+        definition.id,
+      );
+      const current = versions.at(-1);
+      return {
+        id: definition.id,
+        key: definition.key,
+        kind: definition.kind,
+        label: current?.label ?? definition.key,
+        doubleOptIn: definition.doubleOptIn,
+        documentRef: definition.documentRef,
+      };
+    }));
+    return response(ok({ definitions: discovered }));
   });
 
   app.get('/api/m2m/marketing/templates', async (c) => {
@@ -398,7 +430,9 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
         : { kind: 'delivery' as const, topicArn: verified.value.topicArn, messageId: parsed.data.mail.messageId, occurredAt: parsed.data.delivery.timestamp, raw: message };
     const applied = await applyVerifiedSesEvent({ identity: { ...apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }), staffRole: null } }, event, {
       sesSettings: marketing.value.sesSettings, sends: marketing.value.campaignSends,
-      suppressions: marketing.value.suppressions, hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
+      events: marketing.value.events, outbox: deps.emailOutbox,
+      suppressions: marketing.value.suppressions,
+      hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
     });
     if (applied.ok && applied.value.processed && settings.webhookVerifiedAt === null) {
       await marketing.value.sesSettings.upsert(settings.tenantId, { ...settings, webhookVerifiedAt: deps.clock.nowIso() });

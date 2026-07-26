@@ -40,6 +40,55 @@ const setup = async () => {
 };
 
 describe('transactional email event lifecycle', () => {
+  it('attributes the claimed budget to each tenant in a shared batch', async () => {
+    const deps = await setup();
+    await deps.emailOutbox.enqueue({
+      id: 'outbox-2',
+      tenantId: 'tenant-1',
+      to: 'second@example.test',
+      payload: {
+        kind: 'reset-password',
+        language: 'en',
+        actionUrl: 'https://tenant.test/reset',
+      },
+      now: NOW,
+    });
+    await deps.emailOutbox.enqueue({
+      id: 'outbox-3',
+      tenantId: 'tenant-2',
+      to: 'other@example.test',
+      payload: {
+        kind: 'reset-password',
+        language: 'en',
+        actionUrl: 'https://other.test/reset',
+      },
+      now: NOW,
+    });
+
+    await dispatchEmailBatch({
+      ...deps,
+      batchSize: 3,
+      email: { send: async () => ok({ messageId: 'ses-1' }) },
+    });
+
+    const [run] = (await deps.runs.listPage({ limit: 10 })).runs;
+    const detail = await deps.runs.getWithTenants(run?.id ?? '');
+    expect(detail?.tenants).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        batchSize: 2,
+        budgetComputed: 2,
+        budgetUsed: 2,
+      }),
+      expect.objectContaining({
+        tenantId: 'tenant-2',
+        batchSize: 1,
+        budgetComputed: 1,
+        budgetUsed: 1,
+      }),
+    ]));
+  });
+
   it('records the exact happy outbox lifecycle', async () => {
     const deps = await setup();
     await dispatchEmailBatch({

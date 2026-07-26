@@ -382,9 +382,10 @@ export const createDeps = (env: Env): AppDeps => {
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
     }, {
       jobs: marketingJobs,
+      runs: schedulerRuns,
       dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger),
       runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
-        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock, runs: schedulerRuns,
+        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock,
       }),
     });
   };

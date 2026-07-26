@@ -665,6 +665,7 @@ describe('marketing e-mail use-case integration', () => {
   it('scans all due campaign work and runs retention for every marketing tenant', async () => {
     const dispatched: string[] = [];
     const retained: string[] = [];
+    const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
       pendingOlderThan: '2026-06-22T10:00:00.000Z',
@@ -677,6 +678,7 @@ describe('marketing e-mail use-case integration', () => {
         ],
         listRetentionTenantIds: async () => ['tenant-1', 'tenant-3'],
       },
+      runs,
       dispatchCampaign: async (tenantId, campaignId) => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
@@ -691,8 +693,55 @@ describe('marketing e-mail use-case integration', () => {
     expect(retained).toEqual(['tenant-1', 'tenant-3']);
   });
 
+  it('fails stale scheduler runs when there are no marketing retention tenants', async () => {
+    const runs = new InMemorySchedulerRunRepository();
+    await runs.start({
+      id: 'stuck-outbox-run',
+      kind: 'outbox_dispatch',
+      trigger: 'cron',
+      startedAt: '2026-07-22T08:00:00.000Z',
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: {
+        campaignsTouched: 0,
+        sendsAttempted: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        reEnqueued: false,
+      },
+      createdAt: '2026-07-22T08:00:00.000Z',
+    });
+
+    const result = await runScheduledMarketingJobs({
+      now: NOW,
+      pendingOlderThan: '2026-06-22T10:00:00.000Z',
+      renderedBodiesOlderThan: '2026-06-22T10:00:00.000Z',
+    }, {
+      jobs: {
+        listRunnableCampaigns: async () => [],
+        listRetentionTenantIds: async () => [],
+      },
+      runs,
+      dispatchCampaign: async () => ok(undefined),
+      runRetention: async () => ok(undefined),
+    });
+
+    expect(result).toEqual(ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }));
+    expect(await runs.getWithTenants('stuck-outbox-run')).toMatchObject({
+      run: {
+        status: 'failed',
+        finishedAt: NOW,
+        error: 'Scheduler run exceeded its timeout',
+      },
+    });
+  });
+
   it('continues scheduled campaigns and retention after one tenant job fails', async () => {
     const processed: string[] = [];
+    const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
       pendingOlderThan: '2026-06-22T10:00:00.000Z',
@@ -705,6 +754,7 @@ describe('marketing e-mail use-case integration', () => {
         ],
         listRetentionTenantIds: async () => ['tenant-1'],
       },
+      runs,
       dispatchCampaign: async (tenantId) => {
         processed.push(`campaign:${tenantId}`);
         return tenantId === 'tenant-1' ? err(integrationAuth('bad SES key')) : ok(undefined);

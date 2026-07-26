@@ -232,6 +232,13 @@
       "when": 1785080281521,
       "tag": "0032_true_vulture",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785085231437,
+      "tag": "0033_oval_cargill",
+      "breakpoints": true
     }
   ]
 }

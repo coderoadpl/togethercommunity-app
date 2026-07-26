@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
   AccessItem,
@@ -689,6 +689,8 @@ export const emailOutbox = pgTable(
   (table) => [
     index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt),
     index('email_outbox_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
+    index('email_outbox_tenant_normalized_to_created_id_idx')
+      .on(table.tenantId, sql`lower(btrim(${table.to}))`, table.createdAt, table.id),
     uniqueIndex('email_outbox_ses_message_id_uidx')
       .on(table.sesMessageId)
       .where(sql`${table.sesMessageId} is not null`),
@@ -699,6 +701,7 @@ export const emailEvents = pgTable(
   'email_events',
   {
     id: text('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull(),
     mailKind: text('mail_kind').$type<EmailEventMailKind>().notNull(),
     refId: text('ref_id').notNull(),
@@ -708,8 +711,8 @@ export const emailEvents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [
-    index('email_events_tenant_ref_occurred_idx').on(table.tenantId, table.refId, table.occurredAt),
-    index('email_events_tenant_occurred_idx').on(table.tenantId, table.occurredAt),
+    index('email_events_tenant_ref_occurred_idx').on(table.tenantId, table.refId, table.occurredAt, table.sequence),
+    index('email_events_tenant_occurred_idx').on(table.tenantId, table.occurredAt, table.sequence),
   ],
 );
 
@@ -800,6 +803,7 @@ export const campaignSends = pgTable(
   (table) => [
     index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
+    index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),
     uniqueIndex('campaign_sends_ses_message_id_uidx')
       .on(table.sesMessageId)
       .where(sql`${table.sesMessageId} is not null`),

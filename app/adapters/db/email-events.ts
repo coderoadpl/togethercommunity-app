@@ -13,7 +13,7 @@ const parseEvent = (row: typeof emailEvents.$inferSelect): EmailEvent => emailEv
 });
 
 const orderedEvents = (db: Db) => db.select().from(emailEvents)
-  .orderBy(asc(emailEvents.occurredAt), asc(emailEvents.createdAt), asc(emailEvents.id));
+  .orderBy(asc(emailEvents.occurredAt), asc(emailEvents.sequence));
 
 export const createEmailEventRepository = (db: Db): EmailEventRepository => ({
   append: async (tenantId, event) => {

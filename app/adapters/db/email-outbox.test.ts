@@ -10,7 +10,8 @@ import { dispatchEmailBatch } from '@core/server/index.js';
 import { createDb, type Db } from './client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from './email-outbox.js';
 import { createEmailEventRepository } from './email-events.js';
-import { emailOutbox, members, productGrants, products, tenants } from './schema.js';
+import { createSchedulerRunRepository } from './scheduler-runs.js';
+import { emailOutbox, members, productGrants, products, schedulerRuns, tenants } from './schema.js';
 
 const TEST_DB = 'together_email_outbox_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -39,8 +40,16 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(emailOutbox);
+  await db.delete(schedulerRuns);
   await db.delete(productGrants);
   await db.delete(members);
+});
+
+let schedulerRunId = 0;
+const instrumentation = () => ({
+  ids: { nextId: () => `scheduler-run-${String(++schedulerRunId)}` },
+  runs: createSchedulerRunRepository(db),
+  trigger: 'manual' as const,
 });
 
 const payload = (url = 'https://example.test/sign-in') => ({
@@ -84,6 +93,7 @@ describe('email outbox database adapter', () => {
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ...instrumentation(),
     };
     await Promise.all([dispatchEmailBatch(deps), dispatchEmailBatch(deps)]);
     expect(sent.filter((to) => to === 'race-one@example.test')).toHaveLength(1);
@@ -101,6 +111,7 @@ describe('email outbox database adapter', () => {
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ...instrumentation(),
     });
     expect(result).toEqual(ok({ attemptsMade: 2, sentCount: 2, failedCount: 0 }));
   });
@@ -120,6 +131,7 @@ describe('email outbox database adapter', () => {
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ...instrumentation(),
     };
     const nextTimes: string[] = [];
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -127,7 +139,7 @@ describe('email outbox database adapter', () => {
       const row = (await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)))[0];
       expect(row).toBeDefined();
       nextTimes.push(row?.nextAttemptAt ?? '');
-      now = row?.nextAttemptAt ?? now;
+      now = row === undefined ? now : new Date(row.nextAttemptAt).toISOString();
     }
     expect(Date.parse(nextTimes[1] ?? '') - Date.parse(nextTimes[0] ?? '')).toBe(2000);
     const row = (await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)))[0];

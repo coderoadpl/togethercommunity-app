@@ -24,6 +24,7 @@ import {
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
   InMemoryMarketingThrottleRepository,
+  InMemorySchedulerRunRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
@@ -126,6 +127,7 @@ const setup = async (emails = ['member@example.test']) => {
     hmac: new FakeEmailHmac(), events, outbox: new InMemoryEmailOutboxRepository(events), clock, ids, tokens,
     throttle: new InMemoryMarketingThrottleRepository(),
     scheduler: new FakeScheduler(),
+    runs: new InMemorySchedulerRunRepository(),
     credentials: { resolve: async () => ok({ accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' }) },
     quotaReader,
     unsubscribeBaseUrl: 'https://tenant.test/u',
@@ -133,6 +135,76 @@ const setup = async (emails = ['member@example.test']) => {
 };
 
 describe('marketing e-mail use-case integration', () => {
+  it('records a completed tick with tenant budgets and links sends and events to the run', async () => {
+    const deps = await setup();
+    const result = await campaignTick(ctx, {
+      campaignId: 'campaign-1',
+      workerId: 'worker-1',
+      tickSeconds: 1,
+      trigger: 'cron',
+    }, deps);
+    expect(result).toMatchObject({ ok: true, value: { sent: 1, failed: 0, skipped: 0 } });
+    const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
+    expect(page.runs).toHaveLength(1);
+    const runId = page.runs[0]?.id ?? '';
+    expect(await deps.runs.getWithTenants(runId)).toMatchObject({
+      run: {
+        kind: 'marketing_tick',
+        trigger: 'cron',
+        status: 'completed',
+        totals: {
+          campaignsTouched: 1,
+          sendsAttempted: 1,
+          sent: 1,
+          failed: 0,
+          skipped: 0,
+          reEnqueued: false,
+        },
+      },
+      tenants: [{
+        tenantId: 'tenant-1',
+        campaignsTouched: 1,
+        batchSize: 1,
+        sent: 1,
+        failed: 0,
+        skipped: 0,
+        budgetComputed: 10,
+        budgetUsed: 1,
+      }],
+    });
+    const [send] = await deps.sends.listByCampaign('tenant-1', 'campaign-1');
+    expect(send?.runId).toBe(runId);
+    expect(await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'accepted', meta: expect.objectContaining({ runId }) }),
+      ]),
+    );
+  });
+
+  it('finalizes a tick as failed when execution throws', async () => {
+    const deps = await setup();
+    deps.audience.afterFetch = () => {
+      throw new Error('Audience unavailable');
+    };
+    await expect(campaignTick(ctx, {
+      campaignId: 'campaign-1',
+      workerId: 'worker-1',
+      tickSeconds: 1,
+      trigger: 'dev',
+    }, deps)).rejects.toThrow('Audience unavailable');
+    const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
+    expect(page.runs).toHaveLength(1);
+    expect(await deps.runs.getWithTenants(page.runs[0]?.id ?? '')).toMatchObject({
+      run: {
+        trigger: 'dev',
+        status: 'failed',
+        error: 'Audience unavailable',
+        totals: { campaignsTouched: 1, sendsAttempted: 0 },
+      },
+      tenants: [{ tenantId: 'tenant-1', budgetComputed: 10, budgetUsed: 0 }],
+    });
+  });
+
   it('records the exact happy broadcast lifecycle sequence', async () => {
     const deps = await setup();
     const result = await sendMarketingMessages(ctx, [{
@@ -500,6 +572,9 @@ describe('marketing e-mail use-case integration', () => {
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ids: deps.ids,
+      runs: deps.runs,
+      trigger: 'manual',
     });
 
     expect(await applyVerifiedSesEvent(ctx, {

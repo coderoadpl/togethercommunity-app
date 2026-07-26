@@ -78,7 +78,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
                   refId: row.id,
                   type: 'retried',
                   occurredAt: input.now,
-                  meta: { attempt: row.attempts + 1 },
+                  meta: { attempt: row.attempts + 1, runId: input.runId },
                   createdAt: input.now,
                 })] : []),
                 emailEventSchema.parse({
@@ -88,7 +88,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
                   refId: row.id,
                   type: 'claimed',
                   occurredAt: input.now,
-                  meta: { attempt: row.attempts + 1 },
+                  meta: { attempt: row.attempts + 1, runId: input.runId },
                   createdAt: input.now,
                 }),
               ]);
@@ -124,7 +124,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
             refId: input.id,
             type: 'accepted',
             occurredAt: input.sentAt,
-            meta: { sesMessageId: input.sesMessageId },
+            meta: { sesMessageId: input.sesMessageId, runId: input.runId },
             createdAt: input.sentAt,
           }));
         }
@@ -151,7 +151,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
             refId: input.id,
             type: 'failed',
             occurredAt: input.failedAt,
-            meta: { error: input.error, attempt: input.attempts },
+            meta: { error: input.error, attempt: input.attempts, runId: input.runId },
             createdAt: input.failedAt,
           }));
         }

@@ -52,6 +52,9 @@ import type {
   ConsentConfirmationToken,
   MarketingConsent,
   Suppression,
+  SchedulerRun,
+  SchedulerRunTenant,
+  SchedulerRunTotals,
   TenantSesSettings,
   TenantDocument,
   TenantDocumentVersion,
@@ -551,9 +554,9 @@ export interface EmailOutboxItem {
 
 export interface EmailOutboxRepository {
   enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>>;
-  claimBatch(input: { now: string; limit: number; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>>;
-  markSent(input: { id: string; sentAt: string; sesMessageId: string }): Promise<Result<void, AppError>>;
-  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string }): Promise<Result<void, AppError>>;
+  claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
+  markSent(input: { id: string; sentAt: string; sesMessageId: string; runId: string }): Promise<Result<void, AppError>>;
+  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; runId: string }): Promise<Result<void, AppError>>;
   correlateBySesMessageId?(tenantId: string, sesMessageId: string): Promise<EmailOutboxItem | null>;
   markDelivery?(input: {
     tenantId: string;
@@ -817,6 +820,28 @@ export interface SchedulerPort {
   enqueueCampaignTick(tenantId: string, campaignId: string): Promise<Result<void, AppError>>;
   scheduleCampaignTick(tenantId: string, campaignId: string, runAt: string): Promise<Result<void, AppError>>;
   enqueueRetentionJobs(tenantId: string): Promise<Result<void, AppError>>;
+}
+
+export interface SchedulerRunRepository {
+  start(run: SchedulerRun): Promise<void>;
+  finalize(runId: string, input: {
+    finishedAt: string;
+    durationMs: number;
+    status: 'completed' | 'failed';
+    error: string | null;
+    totals: SchedulerRunTotals;
+    tenants: SchedulerRunTenant[];
+  }): Promise<SchedulerRun | null>;
+  listPage(input: { limit: number; cursor?: string }): Promise<{
+    runs: SchedulerRun[];
+    nextCursor: string | null;
+  }>;
+  getWithTenants(runId: string): Promise<{ run: SchedulerRun; tenants: SchedulerRunTenant[] } | null>;
+  listForTenant(tenantId: string, input: { limit: number; cursor?: string }): Promise<{
+    runs: SchedulerRun[];
+    nextCursor: string | null;
+  }>;
+  failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number>;
 }
 
 export interface EmailHmac {

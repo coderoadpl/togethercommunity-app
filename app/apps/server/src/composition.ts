@@ -4,6 +4,7 @@ import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import { createEmailSendRepository } from '@adapters/db/email-sends.js';
+import { createSchedulerRunRepository } from '@adapters/db/scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -133,6 +134,7 @@ import type {
   TenantRepository,
   TermsConsentRepository,
   SchedulerPort,
+  SchedulerRunRepository,
   SesMarketingSender,
   SesMarketingQuotaReader,
   SnsVerifier,
@@ -200,7 +202,7 @@ export interface AppDeps {
   email: EmailPort;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
-  dispatchEmails(): Promise<Result<DispatchEmailBatchResult, AppError>>;
+  dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
   devEmails: DevEmailReader;
@@ -221,6 +223,7 @@ export interface AppDeps {
 }
 
 export interface MarketingAppDeps {
+  runs: SchedulerRunRepository;
   events: EmailEventRepository;
   emailSends: EmailSendRepository;
   definitions: ConsentDefinitionRepository;
@@ -244,14 +247,14 @@ export interface MarketingAppDeps {
   scheduler: SchedulerPort;
   tickSecret: string;
   cronSecret: string;
-  dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<{
+  dispatchCampaign(tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{
     leased: boolean;
     yieldedToTransactional: boolean;
     sent: number;
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
 }
 
 /**
@@ -280,6 +283,7 @@ export const createDeps = (env: Env): AppDeps => {
   const emailOutbox = createEmailOutboxRepository(db);
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
+  const schedulerRuns = createSchedulerRunRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
@@ -322,14 +326,16 @@ export const createDeps = (env: Env): AppDeps => {
     attemptsCap: env.EMAIL_DISPATCH_ATTEMPTS_CAP,
     backoffBaseMs: env.EMAIL_DISPATCH_BACKOFF_BASE_MS,
     backoffCapMs: env.EMAIL_DISPATCH_BACKOFF_CAP_MS,
+    ids,
+    runs: schedulerRuns,
   };
-  const dispatchEmails = () => dispatchEmailBatch(dispatchDeps);
+  const dispatchEmails = (trigger: 'cron' | 'dev' | 'manual') => dispatchEmailBatch({ ...dispatchDeps, trigger });
   const dispatchEmail = (): void => {
-    void dispatchEmails().then((result) => {
+    void dispatchEmails('dev').then((result) => {
       if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
     });
   };
-  const dispatchCampaign = async (tenantId: string, campaignId: string) => {
+  const dispatchCampaign = async (tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual') => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
       || Date.parse(clock.nowIso()) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
@@ -353,22 +359,22 @@ export const createDeps = (env: Env): AppDeps => {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
       },
-    }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
+    }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
-      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler,
+      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler, runs: schedulerRuns,
     });
   };
   devScheduler?.setCampaignHandler(async (tenantId, campaignId) => {
-    const result = await dispatchCampaign(tenantId, campaignId);
+    const result = await dispatchCampaign(tenantId, campaignId, 'dev');
     if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${result.error.message}\n`);
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
   });
-  const dispatchScheduledMarketing = () => {
+  const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
     return runScheduledMarketingJobs({
       now,
@@ -376,9 +382,9 @@ export const createDeps = (env: Env): AppDeps => {
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
     }, {
       jobs: marketingJobs,
-      dispatchCampaign,
+      dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger),
       runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
-        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock,
+        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock, runs: schedulerRuns,
       }),
     });
   };
@@ -526,6 +532,7 @@ export const createDeps = (env: Env): AppDeps => {
     },
     authConfig: { googleEnabled: google !== null },
     marketing: {
+      runs: schedulerRuns,
       definitions,
       events: emailEvents,
       emailSends,

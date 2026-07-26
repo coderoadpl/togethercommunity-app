@@ -7,6 +7,7 @@ export * from './transactional-email.js';
 export * from './marketing-email.js';
 export * from './marketing-automation.js';
 export * from './email-outbox.js';
+export * from './scheduler-run.js';
 export * from './email-event.js';
 export * from './email-send.js';
 export * from './product.js';

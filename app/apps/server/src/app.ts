@@ -349,7 +349,7 @@ export const buildApp = (deps: AppDeps) => {
     if (c.req.header(EMAIL_DISPATCH_SECRET_HEADER) !== deps.emailDispatchSecret) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
-    return respond(await deps.dispatchEmails());
+    return respond(await deps.dispatchEmails('manual'));
   });
 
   app.options(API_PATHS.publicOffer, () =>
@@ -821,6 +821,7 @@ export const buildApp = (deps: AppDeps) => {
       hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
       clock: deps.clock, unsubscribeBaseUrl: `${deps.appBaseUrl}/u`,
       scheduler: deps.marketing.scheduler,
+      runs: deps.marketing.runs,
       outbox: { enqueue: async () => ok({ id: '' }), claimBatch: async () => ok([]), markSent: async () => ok(undefined), markFailed: async () => ok(undefined) },
     });
     return respond(result.ok ? ok({ sent: true as const }) : result);

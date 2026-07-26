@@ -448,6 +448,7 @@ export type EmailLayout = z.output<typeof emailLayoutSchema>;
 
 export const campaignSendSchema = z.object({
   id: z.string().min(1),
+  runId: z.string().min(1).nullable().optional(),
   tenantId: z.string().min(1),
   campaignId: z.string().nullable(),
   source: z.enum(['broadcast', 'api']),

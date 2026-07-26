@@ -15,6 +15,10 @@ import {
   type EmailEventMailKind,
   type MarketingConsent,
   type Result,
+  schedulerRunSchema,
+  schedulerRunTenantSchema,
+  type SchedulerRun,
+  type SchedulerRunTenant,
   type Suppression,
   type TenantSesSettings,
   type TenantDocument,
@@ -39,6 +43,7 @@ import type {
   EmailOutboxItem,
   EmailOutboxRepository,
   SchedulerPort,
+  SchedulerRunRepository,
   SesMarketingSender,
   SnsVerifier,
   SuppressionRepository,
@@ -50,6 +55,83 @@ import type {
 
 const sameTenant = <T extends { tenantId: string }>(tenantId: string, value: T): boolean =>
   value.tenantId === tenantId;
+
+const schedulerRunCursor = (run: SchedulerRun): string =>
+  `${encodeURIComponent(run.startedAt)}~${encodeURIComponent(run.id)}`;
+
+export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
+  private readonly runs: SchedulerRun[] = [];
+  private readonly tenants: SchedulerRunTenant[] = [];
+
+  async start(run: SchedulerRun): Promise<void> {
+    if (this.runs.some((item) => item.id === run.id)) throw new Error('Scheduler run already exists');
+    this.runs.push(structuredClone(schedulerRunSchema.parse(run)));
+  }
+
+  async finalize(runId: string, input: Parameters<SchedulerRunRepository['finalize']>[1]): Promise<SchedulerRun | null> {
+    const index = this.runs.findIndex((run) => run.id === runId && run.status === 'running');
+    if (index < 0) return null;
+    const current = this.runs[index];
+    if (current === undefined) return null;
+    const finalized = schedulerRunSchema.parse({ ...current, ...input, tenants: undefined });
+    this.runs[index] = finalized;
+    this.tenants.push(...input.tenants.map((tenant) => structuredClone(schedulerRunTenantSchema.parse({ ...tenant, runId }))));
+    return structuredClone(finalized);
+  }
+
+  async listPage(input: { limit: number; cursor?: string }): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> {
+    return this.page(this.runs, input);
+  }
+
+  async getWithTenants(runId: string): Promise<{ run: SchedulerRun; tenants: SchedulerRunTenant[] } | null> {
+    const run = this.runs.find((item) => item.id === runId);
+    return run === undefined ? null : {
+      run: structuredClone(run),
+      tenants: structuredClone(this.tenants.filter((tenant) => tenant.runId === runId)),
+    };
+  }
+
+  async listForTenant(tenantId: string, input: { limit: number; cursor?: string }): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> {
+    const runIds = new Set(this.tenants.filter((tenant) => tenant.tenantId === tenantId).map((tenant) => tenant.runId));
+    return this.page(this.runs.filter((run) => runIds.has(run.id)), input);
+  }
+
+  async failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number> {
+    let failed = 0;
+    for (const [index, run] of this.runs.entries()) {
+      if (run.status !== 'running' || run.startedAt >= input.startedBefore) continue;
+      this.runs[index] = schedulerRunSchema.parse({
+        ...run,
+        status: 'failed',
+        error: input.error,
+        finishedAt: input.finishedAt,
+        durationMs: Math.max(0, Date.parse(input.finishedAt) - Date.parse(run.startedAt)),
+      });
+      failed += 1;
+    }
+    return failed;
+  }
+
+  private page(rows: SchedulerRun[], input: { limit: number; cursor?: string }): { runs: SchedulerRun[]; nextCursor: string | null } {
+    const sorted = [...rows].sort((left, right) =>
+      right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id)
+    );
+    const [cursorStartedAt = '', cursorId = ''] = input.cursor === undefined
+      ? []
+      : input.cursor.split('~').map(decodeURIComponent);
+    const filtered = input.cursor === undefined
+      ? sorted
+      : sorted.filter((run) =>
+        run.startedAt < cursorStartedAt || (run.startedAt === cursorStartedAt && run.id < cursorId)
+      );
+    const page = filtered.slice(0, input.limit);
+    const last = page.at(-1);
+    return {
+      runs: structuredClone(page),
+      nextCursor: filtered.length > input.limit && last !== undefined ? schedulerRunCursor(last) : null,
+    };
+  }
+}
 
 export class InMemoryEmailEventRepository implements EmailEventRepository {
   private readonly rows: EmailEvent[] = [];
@@ -572,7 +654,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     return ok({ id: input.id });
   }
 
-  async claimBatch(input: { limit: number; now: string; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>> {
+  async claimBatch(input: { limit: number; now: string; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>> {
     const claimed = this.items.filter((row) => row.status === 'queued' || row.status === 'failed').slice(0, input.limit);
     for (const row of claimed) {
       const retry = row.status === 'failed';
@@ -586,7 +668,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
             refId: row.id,
             type: 'retried',
             occurredAt: input.now,
-            meta: { attempt: row.attempts + 1 },
+            meta: { attempt: row.attempts + 1, runId: input.runId },
             createdAt: input.now,
           }));
         }
@@ -597,7 +679,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
           refId: row.id,
           type: 'claimed',
           occurredAt: input.now,
-          meta: { attempt: row.attempts + 1 },
+          meta: { attempt: row.attempts + 1, runId: input.runId },
           createdAt: input.now,
         }));
       }
@@ -605,7 +687,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     return ok(claimed.map((row) => structuredClone(row)));
   }
 
-  async markSent(input: { id: string; sentAt: string; sesMessageId: string }): Promise<Result<void, AppError>> {
+  async markSent(input: { id: string; sentAt: string; sesMessageId: string; runId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
     if (found !== undefined) {
       found.status = 'sent';
@@ -618,7 +700,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
           refId: found.id,
           type: 'accepted',
           occurredAt: input.sentAt,
-          meta: { sesMessageId: input.sesMessageId },
+          meta: { sesMessageId: input.sesMessageId, runId: input.runId },
           createdAt: input.sentAt,
         }));
       }
@@ -626,7 +708,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     return ok(undefined);
   }
 
-  async markFailed(input: { id: string; attempts: number; failedAt: string; error: string }): Promise<Result<void, AppError>> {
+  async markFailed(input: { id: string; attempts: number; failedAt: string; error: string; runId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
     if (found !== undefined) {
       found.status = 'failed';
@@ -639,7 +721,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
           refId: found.id,
           type: 'failed',
           occurredAt: input.failedAt,
-          meta: { error: input.error, attempt: input.attempts },
+          meta: { error: input.error, attempt: input.attempts, runId: input.runId },
           createdAt: input.failedAt,
         }));
       }

@@ -58,6 +58,7 @@ import type {
   TokenGenerator,
   UnsubscribeTokenRepository,
   SchedulerPort,
+  SchedulerRunRepository,
 } from '../ports.js';
 
 const tenantIdFrom = (ctx: Ctx): Result<string, AppError> =>
@@ -712,10 +713,11 @@ interface SendDeps extends EligibilityDeps {
   tokens: TokenGenerator;
   clock: Clock;
   unsubscribeBaseUrl: string;
+  runId?: string;
 }
 
 const lifecycleEvent = (
-  deps: { ids: IdGenerator; clock: Clock },
+  deps: { ids: IdGenerator; clock: Clock; runId?: string },
   tenantId: string,
   mailKind: 'transactional' | 'marketing',
   refId: string,
@@ -729,7 +731,7 @@ const lifecycleEvent = (
   refId,
   type,
   occurredAt,
-  meta,
+  meta: deps.runId === undefined ? meta : { ...(meta ?? {}), runId: deps.runId },
   createdAt: deps.clock.nowIso(),
 });
 
@@ -841,7 +843,7 @@ export const sendMarketingMessages = async (
       const skippedId = input.campaignId === null || initial.latest === null ? null : deps.ids.nextId();
       if (skippedId !== null && initial.latest !== null) {
         const skipped: CampaignSend = {
-          id: skippedId, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+          id: skippedId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
           memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
           consentRowId: initial.latest.id,
           unsubscribeTokenId: null, status: 'skipped', skipReason: initial.eligibility.reason,
@@ -865,7 +867,7 @@ export const sendMarketingMessages = async (
     }
     const sendId = deps.ids.nextId();
     const send: CampaignSend = {
-      id: sendId, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+      id: sendId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
       memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
       consentRowId: initial.eligibility.consentRow.id,
       unsubscribeTokenId: null, status: 'pending', skipReason: null, sesMessageId: null,
@@ -1020,17 +1022,32 @@ interface TickDeps extends SendDeps {
   audience: MarketingAudienceRepository;
   outbox: EmailOutboxRepository;
   scheduler: SchedulerPort;
+  runs: SchedulerRunRepository;
 }
 
-export const campaignTick = async (
+interface CampaignTickMetrics {
+  campaignsTouched: number;
+  batchSize: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  budgetComputed: number;
+  budgetUsed: number;
+  reEnqueued: boolean;
+  errors: string[];
+}
+
+const campaignTickExecution = async (
   ctx: Ctx,
-  input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number },
+  input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number; trigger?: 'cron' | 'dev' | 'manual' },
   deps: TickDeps,
+  metrics: CampaignTickMetrics,
 ): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   let campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
+  metrics.campaignsTouched = 1;
   const now = deps.clock.nowIso();
   if (campaign.status === 'scheduled' && campaign.sendAt !== null && campaign.sendAt <= now) {
     campaign = await deps.campaigns.update(tenantId.value, { ...campaign, status: 'running', startedAt: now });
@@ -1041,11 +1058,15 @@ export const campaignTick = async (
     workerId: input.workerId, now, lockedUntil: new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
   });
   if (!leased) return ok({ leased: false, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
-  const scheduleNextTick = () => deps.scheduler.scheduleCampaignTick(
-    tenantId.value,
-    campaign.id,
-    new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
-  );
+  const scheduleNextTick = async () => {
+    const scheduled = await deps.scheduler.scheduleCampaignTick(
+      tenantId.value,
+      campaign.id,
+      new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
+    );
+    if (scheduled.ok) metrics.reEnqueued = true;
+    return scheduled;
+  };
   if (deps.outbox.hasPendingForTenant !== undefined && await deps.outbox.hasPendingForTenant(tenantId.value)) {
     const scheduled = await scheduleNextTick();
     if (!scheduled.ok) return scheduled;
@@ -1062,6 +1083,7 @@ export const campaignTick = async (
     dailyQuota: settings.quotaDaily, sentLast24Hours, inSandbox: settings.inSandbox,
   });
   const budget = Math.min(tickBudget, Math.max(1, Math.floor(settings.quotaRatePerSec)));
+  metrics.budgetComputed = budget;
   const maxMemberId = campaign.snapshotMaxMemberId;
   if (maxMemberId === null && campaign.toSend === 0) {
     await deps.campaigns.update(tenantId.value, { ...campaign, status: 'finished', finishedAt: now });
@@ -1077,6 +1099,8 @@ export const campaignTick = async (
     definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
     afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
   });
+  metrics.batchSize = members.length;
+  metrics.budgetUsed = members.length;
   let sentCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
@@ -1095,15 +1119,21 @@ export const campaignTick = async (
     const item = outcome.value[0];
     if (item?.status === 'sent') {
       sentCount += 1;
+      metrics.sent += 1;
       consecutiveErrors = 0;
       lastError = null;
     }
     else if (item?.status === 'failed') {
       failedCount += 1;
+      metrics.failed += 1;
       consecutiveErrors += 1;
       lastError = item.error.message;
+      metrics.errors.push(item.error.message);
     }
-    else if (item?.status === 'skipped') skippedCount += 1;
+    else if (item?.status === 'skipped') {
+      skippedCount += 1;
+      metrics.skipped += 1;
+    }
     lastCursor = member.memberId;
     const advanced = await deps.campaigns.advanceCursor(tenantId.value, campaign.id, {
       cursorMemberId: member.memberId, sentDelta: item?.status === 'sent' ? 1 : 0, failedDelta: item?.status === 'failed' ? 1 : 0,
@@ -1123,6 +1153,92 @@ export const campaignTick = async (
     if (!scheduled.ok) return scheduled;
   }
   return ok({ leased: true, yieldedToTransactional: false, sent: sentCount, failed: failedCount, skipped: skippedCount });
+};
+
+export const campaignTick = async (
+  ctx: Ctx,
+  input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number; trigger?: 'cron' | 'dev' | 'manual' },
+  deps: TickDeps,
+): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
+  const tenantId = tenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const startedAt = deps.clock.nowIso();
+  const runId = deps.ids.nextId();
+  const emptyTotals = {
+    campaignsTouched: 0,
+    sendsAttempted: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    reEnqueued: false,
+  };
+  await deps.runs.start({
+    id: runId,
+    kind: 'marketing_tick',
+    trigger: input.trigger ?? 'manual',
+    startedAt,
+    finishedAt: null,
+    durationMs: null,
+    status: 'running',
+    error: null,
+    totals: emptyTotals,
+    createdAt: startedAt,
+  });
+  const metrics: CampaignTickMetrics = {
+    campaignsTouched: 0,
+    batchSize: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    budgetComputed: 0,
+    budgetUsed: 0,
+    reEnqueued: false,
+    errors: [],
+  };
+  let result: Awaited<ReturnType<typeof campaignTickExecution>> | undefined;
+  let thrown: unknown;
+  try {
+    result = await campaignTickExecution(ctx, input, { ...deps, runId }, metrics);
+  } catch (cause) {
+    thrown = cause;
+  } finally {
+    const finishedAt = deps.clock.nowIso();
+    const resultError = result !== undefined && !result.ok ? result.error.message : null;
+    const thrownError = thrown instanceof Error ? thrown.message : thrown === undefined ? null : String(thrown);
+    const error = thrownError ?? resultError;
+    const totals = {
+      campaignsTouched: metrics.campaignsTouched,
+      sendsAttempted: metrics.sent + metrics.failed + metrics.skipped,
+      sent: metrics.sent,
+      failed: metrics.failed,
+      skipped: metrics.skipped,
+      reEnqueued: metrics.reEnqueued,
+    };
+    await deps.runs.finalize(runId, {
+      finishedAt,
+      durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+      status: error === null ? 'completed' : 'failed',
+      error,
+      totals,
+      tenants: [{
+        id: deps.ids.nextId(),
+        runId,
+        tenantId: tenantId.value,
+        campaignsTouched: metrics.campaignsTouched,
+        batchSize: metrics.batchSize,
+        sent: metrics.sent,
+        failed: metrics.failed,
+        skipped: metrics.skipped,
+        budgetComputed: metrics.budgetComputed,
+        budgetUsed: metrics.budgetUsed,
+        errors: error === null ? metrics.errors : [...metrics.errors, error],
+        createdAt: finishedAt,
+      }],
+    });
+  }
+  if (thrown !== undefined) throw thrown;
+  if (result === undefined) throw new Error('Campaign tick did not produce a result');
+  return result;
 };
 
 export const testSendCampaignToSelf = async (
@@ -1341,9 +1457,13 @@ export const applyVerifiedSesEvent = async (
 
 export const runMarketingRetentionJobs = async (
   ctx: Ctx,
-  input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string },
-  deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & { sends: CampaignSendRepository; idempotency: AutomationIdempotencyRepository },
-): Promise<Result<{ pendingConsentsPurged: number; renderedBodiesPurged: number; idempotencyKeysPurged: number }, AppError>> => {
+  input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string; schedulerRunsStartedBefore?: string },
+  deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
+    sends: CampaignSendRepository;
+    idempotency: AutomationIdempotencyRepository;
+    runs: SchedulerRunRepository;
+  },
+): Promise<Result<{ pendingConsentsPurged: number; renderedBodiesPurged: number; idempotencyKeysPurged: number; staleSchedulerRunsFailed: number }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const definitions = await deps.definitions.list(tenantId.value);
@@ -1351,7 +1471,13 @@ export const runMarketingRetentionJobs = async (
   const pendingConsentsPurged = await deps.consents.purgeStalePending(tenantId.value, input.pendingOlderThan, doubleOptInDefinitionIds);
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged });
+  const staleSchedulerRunsFailed = await deps.runs.failStale({
+    startedBefore: input.schedulerRunsStartedBefore
+      ?? new Date(Date.parse(input.idempotencyNow) - 60 * 60 * 1000).toISOString(),
+    finishedAt: deps.clock.nowIso(),
+    error: 'Scheduler run exceeded its timeout',
+  });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged, staleSchedulerRunsFailed });
 };
 
 export const scheduleMarketingRetentionJobs = async (
@@ -1368,7 +1494,12 @@ export const runScheduledMarketingJobs = async (
   deps: {
     jobs: MarketingJobRepository;
     dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<unknown, AppError>>;
-    runRetention(tenantId: string, input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string }): Promise<Result<unknown, AppError>>;
+    runRetention(tenantId: string, input: {
+      pendingOlderThan: string;
+      renderedBodiesOlderThan: string;
+      idempotencyNow: string;
+      schedulerRunsStartedBefore: string;
+    }): Promise<Result<unknown, AppError>>;
   },
 ): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>> => {
   let firstError: AppError | null = null;
@@ -1383,6 +1514,7 @@ export const runScheduledMarketingJobs = async (
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
       idempotencyNow: input.now,
+      schedulerRunsStartedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
     });
     if (!retained.ok && firstError === null) firstError = retained.error;
   }

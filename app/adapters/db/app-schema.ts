@@ -11,6 +11,10 @@ import type {
   EmailEventType,
   EmailEventMailKind,
   LessonBlock,
+  SchedulerRunKind,
+  SchedulerRunStatus,
+  SchedulerRunTotals,
+  SchedulerRunTrigger,
 } from '@core/domain/index.js';
 
 export const tenants = pgTable(
@@ -743,6 +747,48 @@ export const emailLayouts = pgTable(
   (table) => [uniqueIndex('email_layouts_tenant_name_uidx').on(table.tenantId, table.name)],
 );
 
+export const schedulerRuns = pgTable(
+  'scheduler_runs',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').$type<SchedulerRunKind>().notNull(),
+    trigger: text('trigger').$type<SchedulerRunTrigger>().notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
+    durationMs: integer('duration_ms'),
+    status: text('status').$type<SchedulerRunStatus>().notNull(),
+    error: text('error'),
+    totals: jsonb('totals').$type<SchedulerRunTotals>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('scheduler_runs_started_id_idx').on(table.startedAt, table.id),
+    index('scheduler_runs_status_started_idx').on(table.status, table.startedAt),
+  ],
+);
+
+export const schedulerRunTenants = pgTable(
+  'scheduler_run_tenants',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull().references(() => schedulerRuns.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    campaignsTouched: integer('campaigns_touched').notNull(),
+    batchSize: integer('batch_size').notNull(),
+    sent: integer('sent').notNull(),
+    failed: integer('failed').notNull(),
+    skipped: integer('skipped').notNull(),
+    budgetComputed: integer('budget_computed').notNull(),
+    budgetUsed: integer('budget_used').notNull(),
+    errors: jsonb('errors').$type<string[]>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('scheduler_run_tenants_run_tenant_uidx').on(table.runId, table.tenantId),
+    index('scheduler_run_tenants_tenant_run_idx').on(table.tenantId, table.runId),
+  ],
+);
+
 export const campaigns = pgTable(
   'campaigns',
   {
@@ -782,6 +828,7 @@ export const campaignSends = pgTable(
   'campaign_sends',
   {
     id: text('id').primaryKey(),
+    runId: text('run_id').references(() => schedulerRuns.id, { onDelete: 'set null' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
     source: text('source', { enum: ['broadcast', 'api'] }).notNull(),

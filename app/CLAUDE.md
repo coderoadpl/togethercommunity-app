@@ -55,6 +55,10 @@ events by default. Projections serve lists, filters, and deduplication; events
 are the immutable ordered history. Event rows are never updated or deleted
 except by an explicit retention purge.
 
+Scheduler run records are operational telemetry, not lifecycle projections.
+A run row is finalized once from `running` to `completed` or `failed`; its
+per-tenant rows are written at finalization and are not mutated afterward.
+
 ## Verify features through the CLI first
 
 ```bash

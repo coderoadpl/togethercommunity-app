@@ -246,6 +246,13 @@
       "when": 1785088117650,
       "tag": "0034_lush_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1785101977328,
+      "tag": "0035_third_bushwacker",
+      "breakpoints": true
     }
   ]
 }

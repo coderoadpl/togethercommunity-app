@@ -12,6 +12,8 @@ import {
   bunnyVideosInputSchema,
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
+  emailSendsExportQuerySchema,
+  emailSendsQuerySchema,
   marketingCampaignCreateInputSchema,
   marketingCampaignActionInputSchema,
   marketingCampaignScheduleInputSchema,
@@ -115,12 +117,16 @@ import {
   getContentVersion,
   devGrantProduct,
   exportMembers,
+  exportEmailSends,
   exportOrders,
+  getEmailSend,
   listTenantApiKeys,
   listCampaigns,
   listMarketingConsentDefinitions,
   listTenantDocuments,
   listEmailLayouts,
+  listEmailSends,
+  listMemberEmailSends,
   m2mEnroll,
   revokeTenantApiKey,
   getCourseStructureWithAccess,
@@ -912,6 +918,63 @@ export const buildApp = (deps: AppDeps) => {
     const tenantId = identity.tenantId;
     if (tenantId === null || identity.staffRole === null) return respond(err(forbidden('Tenant staff access is required')));
     return respond(ok(await deps.marketing.suppressions.list(tenantId, { limit: 100 })));
+  });
+
+  app.get(API_PATHS.emailSendsExport, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = emailSendsExportQuerySchema.safeParse({
+      format: c.req.query('format'),
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid e-mail sends export query', parsed.error.flatten())));
+    return respond(await exportEmailSends(
+      { identity: c.get('identity') },
+      parsed.data,
+      { sends: deps.marketing.emailSends },
+    ));
+  });
+
+  app.get(API_PATHS.emailSends, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = emailSendsQuerySchema.safeParse({
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+      ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid e-mail sends query', parsed.error.flatten())));
+    return respond(await listEmailSends(
+      { identity: c.get('identity') },
+      parsed.data,
+      { sends: deps.marketing.emailSends },
+    ));
+  });
+
+  app.get(API_PATHS.emailSend, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const kind = z.enum(['transactional', 'marketing']).safeParse(c.req.param('kind'));
+    if (!kind.success) return respond(err(validation('Invalid e-mail kind', kind.error.flatten())));
+    return respond(await getEmailSend(
+      { identity: c.get('identity') },
+      { kind: kind.data, id: c.req.param('id') },
+      { sends: deps.marketing.emailSends, events: deps.marketing.events },
+    ));
+  });
+
+  app.get(API_PATHS.memberEmailSends, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await listMemberEmailSends(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('id') },
+      { sends: deps.marketing.emailSends, members: deps.members },
+    ));
   });
 
   app.post(API_PATHS.marketingStaffSuppressions, async (c) => {

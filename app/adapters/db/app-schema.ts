@@ -688,6 +688,7 @@ export const emailOutbox = pgTable(
   },
   (table) => [
     index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt),
+    index('email_outbox_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     uniqueIndex('email_outbox_ses_message_id_uidx')
       .on(table.sesMessageId)
       .where(sql`${table.sesMessageId} is not null`),
@@ -783,6 +784,7 @@ export const campaignSends = pgTable(
     source: text('source', { enum: ['broadcast', 'api'] }).notNull(),
     memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
     email: text('email').notNull(),
+    subject: text('subject').notNull(),
     consentRowId: text('consent_row_id').notNull().references(() => marketingConsents.id, { onDelete: 'restrict' }),
     unsubscribeTokenId: text('unsubscribe_token_id'),
     status: text('status', { enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] }).notNull(),
@@ -797,6 +799,7 @@ export const campaignSends = pgTable(
   },
   (table) => [
     index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
+    index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     uniqueIndex('campaign_sends_ses_message_id_uidx')
       .on(table.sesMessageId)
       .where(sql`${table.sesMessageId} is not null`),

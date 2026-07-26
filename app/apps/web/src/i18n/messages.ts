@@ -129,6 +129,7 @@ export interface Messages {
     members: string;
     integrations: string;
     settings: string;
+    marketingSends: string;
     marketingCampaigns: string;
     marketingConsents: string;
     marketingDocuments: string;
@@ -567,6 +568,10 @@ export interface Messages {
     resettingProgress: string;
     resetProgressTitle: string;
     resetProgressConfirm: (params: { count: number; course: string }) => string;
+    overviewTab: string;
+    emailsTab: string;
+    emailsLoading: string;
+    emailsEmpty: string;
   };
   student: {
     myCourses: string;
@@ -894,6 +899,53 @@ export interface Messages {
     paymentUnavailable: string;
   };
   marketing: {
+    sendsTitle: string;
+    sendsDescription: string;
+    sendsLoading: string;
+    sendsEmpty: string;
+    sendsNoMatches: string;
+    sendsSearch: string;
+    sendDetails: string;
+    allSends: string;
+    exportCsv: string;
+    exporting: string;
+    all: string;
+    kind: string;
+    kindTransactional: string;
+    kindMarketing: string;
+    statusLabel: string;
+    deliveryStatusLabel: string;
+    campaignLabel: string;
+    recipient: string;
+    subject: string;
+    source: string;
+    sentTime: string;
+    createdTime: string;
+    notSent: string;
+    noDeliveryStatus: string;
+    deliveryDelivered: string;
+    deliveryBounced: string;
+    deliveryComplained: string;
+    statusQueued: string;
+    statusPending: string;
+    statusSending: string;
+    statusSent: string;
+    statusFailed: string;
+    statusSkipped: string;
+    projection: string;
+    events: string;
+    eventsTimeline: string;
+    eventsEmpty: string;
+    rawMeta: string;
+    sesMessageId: string;
+    skipReason: string;
+    bounceClassification: string;
+    eventError: string;
+    eventTypes: Record<
+      'queued' | 'claimed' | 'rendered' | 'accepted' | 'delivered' | 'bounced' | 'complained'
+      | 'skipped' | 'failed' | 'retried' | 'suppressed_written' | 'unsubscribed',
+      string
+    >;
     campaignsTitle: string;
     campaignsDescription: string;
     campaignsEmpty: string;

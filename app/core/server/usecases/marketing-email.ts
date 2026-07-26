@@ -842,7 +842,8 @@ export const sendMarketingMessages = async (
       if (skippedId !== null && initial.latest !== null) {
         const skipped: CampaignSend = {
           id: skippedId, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
-          memberId: input.memberId, email: normalizeEmail(input.to), consentRowId: initial.latest.id,
+          memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
+          consentRowId: initial.latest.id,
           unsubscribeTokenId: null, status: 'skipped', skipReason: initial.eligibility.reason,
           sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null,
           idempotencySource: input.idempotencySource ?? null, renderedBodyPurgedAt: null,
@@ -865,7 +866,8 @@ export const sendMarketingMessages = async (
     const sendId = deps.ids.nextId();
     const send: CampaignSend = {
       id: sendId, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
-      memberId: input.memberId, email: normalizeEmail(input.to), consentRowId: initial.eligibility.consentRow.id,
+      memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
+      consentRowId: initial.eligibility.consentRow.id,
       unsubscribeTokenId: null, status: 'pending', skipReason: null, sesMessageId: null,
       deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: input.idempotencySource ?? null,
       renderedBodyPurgedAt: null, createdAt: deps.clock.nowIso(), sentAt: null,

@@ -49,11 +49,11 @@ describe('createSesEmailPort', () => {
     });
   });
 
-  it('maps a missing SES message id to null', async () => {
+  it('fails when SES omits the correlation MessageId', async () => {
     const { sender } = recordingSender(output(undefined));
     const port = createSesEmailPort({ from: 'Together <kontakt@together.dev>' }, sender);
 
-    expect(await port.send(message)).toEqual({ ok: true, value: { messageId: null } });
+    expect(await port.send(message)).toMatchObject({ ok: false, error: { code: 'internal' } });
   });
 
   it('returns an internal AppError when the SES client throws', async () => {

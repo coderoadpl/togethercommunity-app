@@ -7,6 +7,7 @@ import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
   err,
+  emailEventSchema,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
@@ -28,6 +29,7 @@ import {
   InMemoryConsentConfirmationTokenRepository,
   InMemoryConsentDefinitionRepository,
   InMemoryEmailLayoutRepository,
+  InMemoryEmailEventRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
   InMemoryMarketingThrottleRepository,
@@ -195,13 +197,15 @@ const deps = (input: {
       }),
     },
     email: {
-      send: async () => ({ ok: true, value: { messageId: null } }),
+      send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
     },
     emailOutbox: {
       enqueue: async (message) => ok({ id: message.id }),
       claimBatch: async () => ok([]),
       markSent: async () => ok(undefined),
       markFailed: async () => ok(undefined),
+      correlateBySesMessageId: async () => null,
+      markDelivery: async () => ok(undefined),
     },
     enrollmentTransaction: {
       run: async (operation) => operation({
@@ -406,6 +410,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
   app.request(API_PATHS.publicOffer, { headers });
 
 const marketingDeps = (): MarketingAppDeps => ({
+  events: new InMemoryEmailEventRepository(),
   definitions: new InMemoryConsentDefinitionRepository(),
   marketingConsents: new InMemoryMarketingConsentRepository(),
   confirmations: new InMemoryConsentConfirmationTokenRepository(),
@@ -535,6 +540,70 @@ describe('marketing HTTP surfaces', () => {
     const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it('exposes active consent definitions and ordered message events to API clients', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const now = '2026-07-22T00:00:00.000Z';
+    await marketing.campaignSends.claimRecipient('t-acme', {
+      id: 'send-1',
+      tenantId: 't-acme',
+      campaignId: null,
+      source: 'api',
+      memberId: null,
+      email: 'member@example.test',
+      consentRowId: 'consent-news',
+      unsubscribeTokenId: null,
+      status: 'sent',
+      skipReason: null,
+      sesMessageId: 'ses-1',
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+      idempotencySource: null,
+      renderedBodyPurgedAt: null,
+      createdAt: now,
+      sentAt: now,
+    });
+    for (const [id, type, meta] of [
+      ['event-1', 'queued', null],
+      ['event-2', 'accepted', { sesMessageId: 'ses-1' }],
+    ] as const) {
+      await marketing.events.append('t-acme', emailEventSchema.parse({
+        id,
+        tenantId: 't-acme',
+        mailKind: 'marketing',
+        refId: 'send-1',
+        type,
+        occurredAt: now,
+        meta,
+        createdAt: now,
+      }));
+    }
+    const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
+    const definitions = await marketingApp(marketing).request(
+      '/api/m2m/marketing/consent-definitions',
+      { headers },
+    );
+    expect(await definitions.json()).toMatchObject({
+      ok: true,
+      data: {
+        definitions: [{
+          id: 'definition-news',
+          key: 'product-news',
+          kind: 'optional_marketing',
+          label: 'Product news',
+          doubleOptIn: true,
+        }],
+      },
+    });
+    const message = await marketingApp(marketing).request(
+      '/api/m2m/marketing/messages/send-1',
+      { headers },
+    );
+    expect(await message.json()).toMatchObject({
+      ok: true,
+      data: { id: 'send-1', events: [{ type: 'queued' }, { type: 'accepted' }] },
+    });
   });
 
   it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {

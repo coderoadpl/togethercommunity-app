@@ -19,6 +19,7 @@ import {
   InMemoryConsentConfirmationTokenRepository,
   InMemoryConsentDefinitionRepository,
   InMemoryEmailLayoutRepository,
+  InMemoryEmailEventRepository,
   InMemoryEmailOutboxRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
@@ -31,6 +32,7 @@ import {
 import type { Ctx } from '../context.js';
 import type { SesMarketingQuotaReader } from '../ports.js';
 import { removeMember } from './members.js';
+import { dispatchEmailBatch } from './dispatch-email-batch.js';
 import {
   addManualSuppression,
   applyVerifiedSesEvent,
@@ -111,16 +113,17 @@ const setup = async (emails = ['member@example.test']) => {
   const consents = new InMemoryMarketingConsentRepository();
   let quotaReader: SesMarketingQuotaReader | undefined;
   for (const email of emails) await consents.record('tenant-1', consent(email));
+  const events = new InMemoryEmailEventRepository();
   return {
     definitions, consents, confirmations: new InMemoryConsentConfirmationTokenRepository(),
-    suppressions: new InMemorySuppressionRepository(), unsubscribes: new InMemoryUnsubscribeTokenRepository(),
-    sends: new InMemoryCampaignSendRepository(), campaigns: new InMemoryCampaignRepository([campaign()]),
+    suppressions: new InMemorySuppressionRepository(events), unsubscribes: new InMemoryUnsubscribeTokenRepository(events),
+    sends: new InMemoryCampaignSendRepository(events), campaigns: new InMemoryCampaignRepository([campaign()]),
     layouts: new InMemoryEmailLayoutRepository(),
     audience: new InMemoryMarketingAudienceRepository(emails.map((email, index) => ({
       memberId: `member-${String(index + 1)}`, email, displayName: null, productIds: [],
     }))),
     sesSettings: new InMemoryTenantSesSettingsRepository([settings]), ses: new FakeSesMarketingSender(),
-    hmac: new FakeEmailHmac(), outbox: new InMemoryEmailOutboxRepository(), clock, ids, tokens,
+    hmac: new FakeEmailHmac(), events, outbox: new InMemoryEmailOutboxRepository(events), clock, ids, tokens,
     throttle: new InMemoryMarketingThrottleRepository(),
     scheduler: new FakeScheduler(),
     credentials: { resolve: async () => ok({ accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' }) },
@@ -130,6 +133,43 @@ const setup = async (emails = ['member@example.test']) => {
 };
 
 describe('marketing e-mail use-case integration', () => {
+  it('records the exact happy broadcast lifecycle sequence', async () => {
+    const deps = await setup();
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test',
+      memberId: 'member-1',
+      campaignId: 'campaign-1',
+      source: 'broadcast',
+      consentDefinitionId: definition.id,
+      subject: 'Hello',
+      bodyHtml: '<p>Content</p>',
+      data: {},
+    }], deps);
+    if (!result.ok || result.value[0]?.status !== 'sent') throw new Error('Expected a sent marketing message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', result.value[0].sendId)).map((event) => event.type))
+      .toEqual(['queued', 'claimed', 'rendered', 'accepted']);
+  });
+
+  it('records an exact skip event for a suppressed broadcast recipient', async () => {
+    const deps = await setup();
+    await addManualSuppression(ctx, { email: 'member@example.test', sourceRef: 'staff-1' }, deps);
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test',
+      memberId: 'member-1',
+      campaignId: 'campaign-1',
+      source: 'broadcast',
+      consentDefinitionId: definition.id,
+      subject: 'Hello',
+      bodyHtml: '<p>Content</p>',
+      data: {},
+    }], deps);
+    if (!result.ok || result.value[0]?.status !== 'skipped' || result.value[0].sendId === null) {
+      throw new Error('Expected a skipped marketing message');
+    }
+    expect((await deps.events.listByRef('tenant-1', 'marketing', result.value[0].sendId)).map((event) => event.type))
+      .toEqual(['skipped']);
+  });
+
   it('derives send readiness instead of trusting a stale persisted flag', async () => {
     const deps = await setup();
     deps.sesSettings = new InMemoryTenantSesSettingsRepository([{ ...settings, broadcastsEnabled: false }]);
@@ -287,6 +327,11 @@ describe('marketing e-mail use-case integration', () => {
     expect(result).toMatchObject({ ok: true, value: { sent: 0, skipped: 2 } });
     expect((await deps.sends.listByCampaign('tenant-1', 'campaign-1')).map((row) => row.skipReason).sort())
       .toEqual(['suppressed', 'unsubscribed']);
+    const withdrawn = (await deps.sends.listByCampaign('tenant-1', 'campaign-1'))
+      .find((send) => send.email === 'first@example.test');
+    expect(withdrawn).toBeDefined();
+    expect((await deps.events.listByRef('tenant-1', 'marketing', withdrawn?.id ?? '')).map((event) => event.type))
+      .toEqual(['queued', 'claimed', 'skipped']);
   });
 
   it('I2 skips a recipient changed between keyset batches and records the reason', async () => {
@@ -401,6 +446,9 @@ describe('marketing e-mail use-case integration', () => {
     const topicArn = 'arn:topic:tenant-1';
     const hard = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Permanent', status: null, occurredAt: NOW, raw: { event: 1 } }, deps);
     expect(hard).toEqual(ok({ processed: true }));
+    const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).map((item) => item.type))
+      .toEqual(['queued', 'claimed', 'rendered', 'accepted', 'bounced', 'suppressed_written']);
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
     const missing = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'unknown', kind: 'complaint', occurredAt: NOW, raw: {} }, deps);
     expect(missing).toEqual(ok({ processed: false }));
@@ -426,6 +474,58 @@ describe('marketing e-mail use-case integration', () => {
     expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message', kind: 'delivery', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ processed: true }));
     expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message')).toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(false);
+  });
+
+  it('correlates transactional SNS complaints without writing marketing suppression', async () => {
+    const deps = await setup();
+    await deps.outbox.enqueue({
+      id: 'outbox-transactional',
+      tenantId: 'tenant-1',
+      to: 'transactional@example.test',
+      payload: {
+        kind: 'magic-link',
+        language: 'en',
+        tenantName: 'Tenant',
+        url: 'https://tenant.test/sign-in',
+      },
+      now: NOW,
+    });
+    await dispatchEmailBatch({
+      emailOutbox: deps.outbox,
+      events: deps.events,
+      email: { send: async () => ok({ messageId: 'transactional-ses-id' }) },
+      clock,
+      logger: { error: () => undefined },
+      batchSize: 1,
+      attemptsCap: 3,
+      backoffBaseMs: 1000,
+      backoffCapMs: 10000,
+    });
+
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'transactional-ses-id',
+      kind: 'complaint',
+      occurredAt: NOW,
+      raw: { complaint: true },
+    }, deps)).toEqual(ok({ processed: true }));
+    expect(await deps.suppressions.isSuppressed(
+      'tenant-1',
+      deps.hmac.compute('tenant-1', 'transactional@example.test'),
+    )).toBe(false);
+    expect((await deps.events.listByRef(
+      'tenant-1',
+      'transactional',
+      'outbox-transactional',
+    )).map((event) => event.type)).toEqual([
+      'queued',
+      'claimed',
+      'rendered',
+      'accepted',
+      'complained',
+    ]);
+    expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
+      .toMatchObject({ deliveryStatus: 'complained', deliveryOccurredAt: NOW });
   });
 
   it('I10 erasure atomically keeps an HMAC tombstone, pseudonymizes sends, and preserves counters', async () => {
@@ -563,7 +663,17 @@ describe('marketing e-mail use-case integration', () => {
 
   it('I12 yields marketing while transactional outbox work is pending', async () => {
     const deps = await setup();
-    deps.outbox.items.push({ id: 'transactional-1', tenantId: 'tenant-1', to: 'x@example.test', payload: { kind: 'reset-password', language: 'en', actionUrl: 'https://tenant.test/reset' }, attempts: 0, status: 'queued' });
+    deps.outbox.items.push({
+      id: 'transactional-1',
+      tenantId: 'tenant-1',
+      to: 'x@example.test',
+      payload: { kind: 'reset-password', language: 'en', actionUrl: 'https://tenant.test/reset' },
+      attempts: 0,
+      status: 'queued',
+      sesMessageId: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+    });
     expect(await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'worker', tickSeconds: 1 }, deps)).toMatchObject({ ok: true, value: { yieldedToTransactional: true } });
     expect(deps.ses.sent).toHaveLength(0);
   });
@@ -578,6 +688,47 @@ describe('marketing e-mail use-case integration', () => {
     expect((await unsubscribeOneClick(anonymousCtx, { token: '0123456789abcdef0123456789abcdef' }, deps)).ok).toBe(true);
     expect((await deps.consents.listByEmail('tenant-1', 'member@example.test')).filter((row) => row.status === 'withdrawn')).toHaveLength(1);
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
+  });
+
+  it('records unsubscribe and suppression writes against the originating message', async () => {
+    const deps = await setup();
+    const sent = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test',
+      memberId: 'member-1',
+      campaignId: 'campaign-1',
+      source: 'broadcast',
+      consentDefinitionId: definition.id,
+      subject: 'Hello',
+      bodyHtml: '<p>Content</p>',
+      data: {},
+    }], deps);
+    if (!sent.ok || sent.value[0]?.status !== 'sent') throw new Error('Expected a sent marketing message');
+    const token = 'global_unsubscribe_token_123456789';
+    await deps.unsubscribes.create('tenant-1', {
+      id: 'global-unsubscribe',
+      tenantId: 'tenant-1',
+      token,
+      email: 'member@example.test',
+      memberId: 'member-1',
+      campaignSendId: sent.value[0].sendId,
+      scope: 'all_marketing',
+      createdAt: NOW,
+      usedAt: null,
+    });
+
+    expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toEqual(ok({ unsubscribed: true }));
+    expect((await deps.events.listByRef(
+      'tenant-1',
+      'marketing',
+      sent.value[0].sendId,
+    )).map((event) => event.type)).toEqual([
+      'queued',
+      'claimed',
+      'rendered',
+      'accepted',
+      'unsubscribed',
+      'suppressed_written',
+    ]);
   });
 
   it('saves optional preferences, queues DOI when re-subscribing, and supports global withdrawal', async () => {

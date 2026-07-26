@@ -807,6 +807,7 @@ export const buildApp = (deps: AppDeps) => {
     const result = await testSendCampaignToSelf({ identity: c.get('identity') }, parsed.data, {
       definitions: deps.marketing.definitions, consents: deps.marketing.marketingConsents,
       campaigns: deps.marketing.campaigns, layouts: deps.marketing.layouts, sends: deps.marketing.campaignSends,
+      events: deps.marketing.events,
       audience: deps.marketing.audience, suppressions: deps.marketing.suppressions,
       unsubscribes: deps.marketing.unsubscribes, sesSettings: deps.marketing.sesSettings,
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,

@@ -1,6 +1,6 @@
-import { err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '@core/domain/index.js';
+import { emailEventSchema, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '@core/domain/index.js';
 
-import type { Clock, EmailOutboxRepository, EmailPort } from '../ports.js';
+import type { Clock, EmailEventRepository, EmailOutboxRepository, EmailPort } from '../ports.js';
 
 export interface DispatchEmailBatchResult {
   attemptsMade: number;
@@ -10,6 +10,7 @@ export interface DispatchEmailBatchResult {
 
 export interface DispatchEmailBatchDeps {
   emailOutbox: EmailOutboxRepository;
+  events: EmailEventRepository;
   email: EmailPort;
   clock: Clock;
   logger: { error(message: string): void };
@@ -38,11 +39,28 @@ export const dispatchEmailBatch = async (
   let failedCount = 0;
   for (const item of claimed.value) {
     const rendered = renderEmailOutboxPayload(item.payload);
+    if (rendered.success && item.tenantId !== null) {
+      const now = deps.clock.nowIso();
+      await deps.events.append(item.tenantId, emailEventSchema.parse({
+        id: `${item.id}:rendered:${String(item.attempts)}`,
+        tenantId: item.tenantId,
+        mailKind: 'transactional',
+        refId: item.id,
+        type: 'rendered',
+        occurredAt: now,
+        meta: { attempt: item.attempts + 1 },
+        createdAt: now,
+      }));
+    }
     const sent = rendered.success
       ? await deps.email.send({ to: item.to, ...rendered.data })
       : err(internal(`Invalid email outbox payload: ${rendered.error.message}`));
     if (sent.ok) {
-      const marked = await deps.emailOutbox.markSent({ id: item.id, sentAt: deps.clock.nowIso() });
+      const marked = await deps.emailOutbox.markSent({
+        id: item.id,
+        sentAt: deps.clock.nowIso(),
+        sesMessageId: sent.value.messageId,
+      });
       if (!marked.ok) return marked;
       sentCount += 1;
       continue;
@@ -52,6 +70,7 @@ export const dispatchEmailBatch = async (
       id: item.id,
       attempts,
       nextAttemptAt: nextAttemptAt(deps.clock.nowIso(), attempts, deps),
+      failedAt: deps.clock.nowIso(),
       error: sent.error.message,
     });
     if (!marked.ok) return marked;

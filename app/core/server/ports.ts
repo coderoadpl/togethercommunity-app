@@ -8,6 +8,8 @@ import type {
   EmailBranding,
   EmailMessage,
   EmailLayout,
+  EmailEvent,
+  EmailEventMailKind,
   EmailOutboxPayload,
   Member,
   MemberGrant,
@@ -512,7 +514,13 @@ export interface PurchaseRepository {
 }
 
 export interface EmailPort {
-  send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
+  send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string }, AppError>>;
+}
+
+export interface EmailEventRepository {
+  append(tenantId: string, event: EmailEvent): Promise<void>;
+  listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
+  listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]>;
 }
 
 export interface EmailOutboxItem {
@@ -521,13 +529,24 @@ export interface EmailOutboxItem {
   to: string;
   payload: unknown;
   attempts: number;
+  sesMessageId: string | null;
+  deliveryStatus: 'delivered' | 'bounced' | 'complained' | null;
+  deliveryOccurredAt: string | null;
 }
 
 export interface EmailOutboxRepository {
   enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>>;
   claimBatch(input: { now: string; limit: number; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>>;
-  markSent(input: { id: string; sentAt: string }): Promise<Result<void, AppError>>;
-  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; error: string }): Promise<Result<void, AppError>>;
+  markSent(input: { id: string; sentAt: string; sesMessageId: string }): Promise<Result<void, AppError>>;
+  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string }): Promise<Result<void, AppError>>;
+  correlateBySesMessageId?(tenantId: string, sesMessageId: string): Promise<EmailOutboxItem | null>;
+  markDelivery?(input: {
+    tenantId: string;
+    id: string;
+    status: 'delivered' | 'bounced' | 'complained';
+    occurredAt: string;
+    event: EmailEvent;
+  }): Promise<Result<void, AppError>>;
   hasPendingForTenant?(tenantId: string): Promise<boolean>;
 }
 
@@ -680,9 +699,9 @@ export interface EmailLayoutRepository {
 }
 
 export interface CampaignSendRepository {
-  claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean>;
+  claimRecipient(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<boolean>;
   findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
-  update(tenantId: string, send: CampaignSend): Promise<CampaignSend | null>;
+  update(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<CampaignSend | null>;
   correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<CampaignSend | null>;
   listByCampaign(tenantId: string, campaignId: string): Promise<CampaignSend[]>;
   listAll(tenantId: string): Promise<CampaignSend[]>;
@@ -699,7 +718,7 @@ export interface CampaignSendRepository {
 }
 
 export interface SuppressionRepository {
-  record(tenantId: string, suppression: Suppression): Promise<boolean>;
+  record(tenantId: string, suppression: Suppression, event?: EmailEvent): Promise<boolean>;
   findActive(tenantId: string, emailHmac: string): Promise<Suppression | null>;
   isSuppressed(tenantId: string, emailHmac: string): Promise<boolean>;
   lift(tenantId: string, suppression: Suppression): Promise<Suppression | null>;
@@ -714,6 +733,7 @@ export interface UnsubscribeTokenRepository {
     tenantId: string,
     token: string,
     usedAt: string,
+    event?: EmailEvent,
   ): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null>;
 }
 

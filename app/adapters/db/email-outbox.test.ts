@@ -9,6 +9,7 @@ import { dispatchEmailBatch } from '@core/server/index.js';
 
 import { createDb, type Db } from './client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from './email-outbox.js';
+import { createEmailEventRepository } from './email-events.js';
 import { emailOutbox, members, productGrants, products, tenants } from './schema.js';
 
 const TEST_DB = 'together_email_outbox_test';
@@ -75,6 +76,7 @@ describe('email outbox database adapter', () => {
     const sent: string[] = [];
     const deps = {
       emailOutbox: createEmailOutboxRepository(db),
+      events: createEmailEventRepository(db),
       email: { send: async (message: { to: string }) => { sent.push(message.to); return ok({ messageId: message.to }); } },
       clock: { nowIso: () => NOW },
       logger: console,
@@ -91,7 +93,8 @@ describe('email outbox database adapter', () => {
     await Promise.all(Array.from({ length: 5 }, (_, index) => enqueue(`rate-${String(index)}`)));
     const result = await dispatchEmailBatch({
       emailOutbox: createEmailOutboxRepository(db),
-      email: { send: async () => ok({ messageId: null }) },
+      events: createEmailEventRepository(db),
+      email: { send: async (message: { to: string }) => ok({ messageId: message.to }) },
       clock: { nowIso: () => NOW },
       logger: console,
       batchSize: 2,
@@ -109,6 +112,7 @@ describe('email outbox database adapter', () => {
     const logger = { error: vi.fn() };
     const deps = {
       emailOutbox: createEmailOutboxRepository(db),
+      events: createEmailEventRepository(db),
       email: { send: async () => err(internal('sender unavailable')) },
       clock: { nowIso: () => now },
       logger,

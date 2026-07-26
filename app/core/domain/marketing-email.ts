@@ -453,6 +453,7 @@ export const campaignSendSchema = z.object({
   source: z.enum(['broadcast', 'api']),
   memberId: z.string().nullable(),
   email: z.string().email().transform(normalizeEmail),
+  subject: z.string().min(1),
   consentRowId: z.string().min(1),
   unsubscribeTokenId: z.string().nullable(),
   status: z.enum(['pending', 'sending', 'sent', 'failed', 'skipped']),

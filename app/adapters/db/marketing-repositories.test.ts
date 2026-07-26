@@ -7,6 +7,7 @@ import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinit
 
 import { createDb, type Db } from './client.js';
 import { createEmailEventRepository } from './email-events.js';
+import { createEmailSendRepository } from './email-sends.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -18,7 +19,7 @@ import {
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { tenants } from './schema.js';
+import { emailOutbox, tenants } from './schema.js';
 
 const TEST_DB = 'together_marketing_repositories_test';
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -163,6 +164,7 @@ describe('marketing database repositories', () => {
     const sends = createCampaignSendRepository(db);
     const send = (id: string, source: CampaignSend['source'], idempotencySource: string | null): CampaignSend => ({
       id, tenantId, campaignId: `campaign-${tenantId}`, source, memberId: null, email: consent.email,
+      subject: 'Campaign subject',
       consentRowId: consent.id, unsubscribeTokenId: null, status: 'pending', skipReason: null,
       sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null, idempotencySource,
       renderedBodyPurgedAt: null, createdAt: NOW, sentAt: null,
@@ -172,6 +174,52 @@ describe('marketing database repositories', () => {
     expect(await sends.claimRecipient(tenantId, send('api-3', 'api', 'drip7-order-1'))).toBe(true);
     expect(await sends.claimRecipient(tenantId, send('broadcast-1', 'broadcast', null))).toBe(true);
     expect(await sends.claimRecipient(tenantId, send('broadcast-2', 'broadcast', null))).toBe(false);
+  });
+
+  it('lists tenant-scoped transactional and marketing sends with one stable keyset', async () => {
+    const tenantId = 'tenant-send-view';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Send view', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-send-view', tenantId, memberId: null, email: 'member@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' }, status: 'confirmed',
+      previousId: null, source: 'api', evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    await createCampaignSendRepository(db).claimRecipient(tenantId, {
+      id: 'marketing-send-view', tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast',
+      memberId: null, email: consent.email, subject: 'Campaign subject', consentRowId: consent.id,
+      unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-marketing-view',
+      deliveryStatus: 'delivered', deliveryOccurredAt: '2026-07-22T02:01:00.000Z',
+      idempotencySource: null, renderedBodyPurgedAt: null, createdAt: '2026-07-22T02:00:00.000Z',
+      sentAt: '2026-07-22T02:00:30.000Z',
+    });
+    await db.insert(emailOutbox).values({
+      id: 'transactional-send-view', tenantId, kind: 'welcome-set-password', to: consent.email,
+      payload: {
+        kind: 'welcome-set-password', language: 'en', tenantName: 'Send view',
+        actionUrl: 'https://example.test/set-password',
+      },
+      status: 'sent', attempts: 1, nextAttemptAt: '2026-07-22T03:00:00.000Z', lastError: null,
+      createdAt: '2026-07-22T03:00:00.000Z', sentAt: '2026-07-22T03:00:30.000Z',
+      sesMessageId: 'ses-transactional-view', deliveryStatus: null, deliveryOccurredAt: null,
+    });
+
+    const repository = createEmailSendRepository(db);
+    const first = await repository.listPage(tenantId, { limit: 1 });
+    expect(first.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
+      { kind: 'transactional', id: 'transactional-send-view' },
+    ]);
+    expect(first.nextCursor).not.toBeNull();
+    if (first.nextCursor === null) throw new Error('Expected another unified send page');
+    const second = await repository.listPage(tenantId, { cursor: first.nextCursor, limit: 1 });
+    expect(second.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
+      { kind: 'marketing', id: 'marketing-send-view' },
+    ]);
+    expect(await repository.listByEmailAcrossKinds(tenantId, consent.email)).toHaveLength(2);
+    expect(await repository.findById('tenant-b', 'marketing', 'marketing-send-view')).toBeNull();
   });
 
   it('stores only tenant-scoped layouts with one content slot', async () => {

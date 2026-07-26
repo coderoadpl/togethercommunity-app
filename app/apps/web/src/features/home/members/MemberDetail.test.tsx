@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { MemberGrant, MemberWithProductIds, Product } from '@core/domain/index.js';
+import type {
+  EmailSendProjection,
+  MemberGrant,
+  MemberWithProductIds,
+  Product,
+} from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -17,7 +22,7 @@ const member: MemberWithProductIds = {
   tags: [],
   marketingConsents: {},
   externalCustomerIds: {},
-  createdAt: '2026-07-01T10:00:00.000Z',
+  createdAt: '1998-07-01T10:00:00.000Z',
   deletedAt: null,
   productIds: ['p1'],
   activeProductIds: ['p1'],
@@ -28,8 +33,8 @@ const grants: MemberGrant[] = [
     id: 'grant-active',
     productId: 'p1',
     productName: 'Full Course',
-    startsAt: '2026-01-01T00:00:00.000Z',
-    expiresAt: '2027-01-01T00:00:00.000Z',
+    startsAt: '1998-01-01T00:00:00.000Z',
+    expiresAt: '1999-01-01T00:00:00.000Z',
     source: 'manual',
     active: true,
   },
@@ -37,8 +42,8 @@ const grants: MemberGrant[] = [
     id: 'grant-expired',
     productId: 'p2',
     productName: 'Old Bundle',
-    startsAt: '2025-01-01T00:00:00.000Z',
-    expiresAt: '2025-06-01T00:00:00.000Z',
+    startsAt: '1997-01-01T00:00:00.000Z',
+    expiresAt: '1997-06-01T00:00:00.000Z',
     source: 'simulated',
     active: false,
   },
@@ -55,7 +60,44 @@ const products: Product[] = [
     published: true,
     accessItems: [],
     legacyId: null,
-    createdAt: '2026-07-01T10:00:00.000Z',
+    createdAt: '1998-07-01T10:00:00.000Z',
+  },
+];
+
+const emailSends: EmailSendProjection[] = [
+  {
+    id: 'marketing-send',
+    tenantId: 't1',
+    kind: 'marketing',
+    recipient: member.email,
+    subject: 'July news',
+    source: 'broadcast',
+    status: 'sent',
+    skipReason: null,
+    deliveryStatus: 'delivered',
+    deliveryOccurredAt: '1998-07-10T10:01:00.000Z',
+    campaignId: 'campaign-1',
+    campaignName: 'July',
+    sesMessageId: 'ses-marketing',
+    createdAt: '1998-07-10T10:00:00.000Z',
+    sentAt: '1998-07-10T10:00:30.000Z',
+  },
+  {
+    id: 'transactional-send',
+    tenantId: 't1',
+    kind: 'transactional',
+    recipient: member.email,
+    subject: 'Welcome',
+    source: 'welcome-set-password',
+    status: 'sent',
+    skipReason: null,
+    deliveryStatus: null,
+    deliveryOccurredAt: null,
+    campaignId: null,
+    campaignName: null,
+    sesMessageId: 'ses-transactional',
+    createdAt: '1998-07-09T10:00:00.000Z',
+    sentAt: '1998-07-09T10:00:30.000Z',
   },
 ];
 
@@ -64,6 +106,10 @@ const setup = (): { grantBodies: unknown[]; revoked: string[] } => {
   const revoked: string[] = [];
   server.use(
     http.get('/api/members/:memberId/grants', () => HttpResponse.json({ ok: true, data: { grants } })),
+    http.get('/api/members/:memberId/emails', () => HttpResponse.json({
+      ok: true,
+      data: { sends: emailSends },
+    })),
     http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products } })),
     http.post('/api/grants', async ({ request }) => {
       grantBodies.push(await request.json());
@@ -71,7 +117,7 @@ const setup = (): { grantBodies: unknown[]; revoked: string[] } => {
     }),
     http.delete('/api/grants/:grantId', ({ params }) => {
       revoked.push(String(params.grantId));
-      return HttpResponse.json({ ok: true, data: { grantId: String(params.grantId), expiresAt: '2026-07-13T00:00:00.000Z' } });
+      return HttpResponse.json({ ok: true, data: { grantId: String(params.grantId), expiresAt: '1998-07-13T00:00:00.000Z' } });
     }),
   );
   return { grantBodies, revoked };
@@ -86,7 +132,7 @@ describe('MemberDetail', () => {
     expect(screen.getAllByTestId('grant-row')).toHaveLength(2);
     expect(screen.getByText(pl.members.active)).toBeInTheDocument();
     expect(screen.getByText(pl.members.expired)).toBeInTheDocument();
-    expect(screen.getByText(/2027/)).toBeInTheDocument();
+    expect(screen.getByText(/1999/)).toBeInTheDocument();
   });
 
   it('grants a product with the right mutation payload', async () => {
@@ -112,5 +158,22 @@ describe('MemberDetail', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: pl.members.revoke }));
 
     await waitFor(() => expect(revoked).toEqual(['grant-active']));
+  });
+
+  it('shows all email kinds newest-first in the email tab and links to send history', async () => {
+    setup();
+    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+
+    await userEvent.click(screen.getByRole('tab', { name: pl.members.emailsTab }));
+
+    const rows = await screen.findAllByTestId('member-email-send');
+    expect(rows).toHaveLength(2);
+    const marketingRow = rows[0];
+    const transactionalRow = rows[1];
+    if (marketingRow === undefined || transactionalRow === undefined) return;
+    expect(within(marketingRow).getByText('July news')).toBeInTheDocument();
+    expect(within(transactionalRow).getByText('Welcome')).toBeInTheDocument();
+    expect(within(marketingRow).getByRole('link', { name: pl.marketing.sendDetails }))
+      .toHaveAttribute('href', '/panel/marketing/sends/marketing/marketing-send');
   });
 });

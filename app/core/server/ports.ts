@@ -10,6 +10,8 @@ import type {
   EmailLayout,
   EmailEvent,
   EmailEventMailKind,
+  EmailSendListQuery,
+  EmailSendProjection,
   EmailOutboxPayload,
   Member,
   MemberGrant,
@@ -521,6 +523,19 @@ export interface EmailEventRepository {
   append(tenantId: string, event: EmailEvent): Promise<void>;
   listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
   listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]>;
+}
+
+export interface EmailSendRepository {
+  listPage(
+    tenantId: string,
+    query: EmailSendListQuery,
+  ): Promise<{ sends: EmailSendProjection[]; nextCursor: string | null }>;
+  findById(
+    tenantId: string,
+    kind: EmailEventMailKind,
+    id: string,
+  ): Promise<EmailSendProjection | null>;
+  listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailSendProjection[]>;
 }
 
 export interface EmailOutboxItem {

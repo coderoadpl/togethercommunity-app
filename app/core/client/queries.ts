@@ -17,6 +17,8 @@ import type {
   CourseUpdateInput,
   GrantCreateInput,
   GrantRevokeInput,
+  EmailSendsExportQueryInput,
+  EmailSendsQueryInput,
   LastViewedInput,
   LessonCompleteInput,
   LessonUncompleteInput,
@@ -260,6 +262,10 @@ export const marketingScopes = {
   document: (id: string) => ['marketing', 'documents', id] as const,
   layouts: () => ['marketing', 'layouts'] as const,
   settings: () => ['marketing', 'settings'] as const,
+  sends: (input: EmailSendsQueryInput) => ['marketing', 'sends', input] as const,
+  send: (kind: 'transactional' | 'marketing', id: string) => ['marketing', 'sends', kind, id] as const,
+  memberSends: (memberId: string) => ['marketing', 'member-sends', memberId] as const,
+  sendsExport: (input: EmailSendsExportQueryInput) => ['marketing', 'sends-export', input] as const,
 };
 
 export const marketingCampaignsQuery = (api: ApiClient) => defineQuery({
@@ -324,6 +330,22 @@ export const marketingSesSettingsQuery = (api: ApiClient) => defineQuery({
 });
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
+});
+
+export const emailSendsQuery = (api: ApiClient, input: EmailSendsQueryInput) => defineQuery({
+  queryKey: marketingScopes.sends(input), call: ({ signal }) => api.listEmailSends(input, signal),
+});
+export const emailSendQuery = (api: ApiClient, kind: 'transactional' | 'marketing', id: string) => defineQuery({
+  queryKey: marketingScopes.send(kind, id), call: ({ signal }) => api.getEmailSend(kind, id, signal),
+});
+export const memberEmailSendsQuery = (api: ApiClient, memberId: string) => defineQuery({
+  queryKey: marketingScopes.memberSends(memberId), call: ({ signal }) => api.listMemberEmailSends(memberId, signal),
+});
+export const emailSendsExportQuery = (api: ApiClient, input: EmailSendsExportQueryInput) => defineQuery({
+  queryKey: marketingScopes.sendsExport(input),
+  staleTime: 0,
+  gcTime: 0,
+  call: ({ signal }) => api.exportEmailSends(input, signal),
 });
 
 export const marketingInvalidates = () => ({ queryKey: marketingScopes.all() });

@@ -82,7 +82,12 @@ import {
   consentDefinitionVersionSchema,
   consentDocumentRefSchema,
   consentDefinitionSchema,
+  emailEventSchema,
   emailLayoutSchema,
+  emailSendExportFileSchema,
+  emailSendExportQuerySchema,
+  emailSendListQuerySchema,
+  emailSendProjectionSchema,
   suppressionSchema,
   tenantDocumentSchema,
   tenantDocumentVersionSchema,
@@ -823,6 +828,18 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
 export const marketingSuppressionCreateInputSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).nullable().default(null) });
 export const marketingSuppressionsOutputSchema = z.object({ suppressions: z.array(suppressionSchema), nextCursor: z.string().nullable() });
 export const marketingSuppressionOutputSchema = z.object({ suppression: suppressionSchema });
+export const emailSendsOutputSchema = z.object({
+  sends: z.array(emailSendProjectionSchema),
+  nextCursor: z.string().nullable(),
+});
+export const emailSendDetailOutputSchema = z.object({
+  send: emailSendProjectionSchema,
+  events: z.array(emailEventSchema),
+});
+export const memberEmailSendsOutputSchema = z.object({ sends: z.array(emailSendProjectionSchema) });
+export const emailSendsExportOutputSchema = emailSendExportFileSchema;
+export const emailSendsQuerySchema = emailSendListQuerySchema;
+export const emailSendsExportQuerySchema = emailSendExportQuerySchema;
 export type MarketingConsentDefinitionCreateInput = z.input<typeof marketingConsentDefinitionCreateInputSchema>;
 export type MarketingCampaignCreateInput = z.input<typeof marketingCampaignCreateInputSchema>;
 export type MarketingCampaignScheduleInput = z.input<typeof marketingCampaignScheduleInputSchema>;
@@ -836,6 +853,8 @@ export type MarketingDocumentPublishInput = z.input<typeof marketingDocumentPubl
 export type MarketingLayoutSaveInput = z.input<typeof marketingLayoutSaveInputSchema>;
 export type MarketingSesSettingsUpdateInput = z.input<typeof marketingSesSettingsUpdateInputSchema>;
 export type MarketingSuppressionCreateInput = z.input<typeof marketingSuppressionCreateInputSchema>;
+export type EmailSendsQueryInput = z.input<typeof emailSendsQuerySchema>;
+export type EmailSendsExportQueryInput = z.input<typeof emailSendsExportQuerySchema>;
 
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
@@ -968,6 +987,10 @@ export const API_ROUTES = {
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
+  emailSends: { method: 'GET', path: '/api/marketing/sends' },
+  emailSendsExport: { method: 'GET', path: '/api/marketing/sends/export' },
+  emailSend: { method: 'GET', path: '/api/marketing/sends/:kind/:id' },
+  memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
@@ -1050,6 +1073,7 @@ export const API_PATHS = {
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
+  memberEmailSends: API_ROUTES.memberEmailSends.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
@@ -1092,6 +1116,9 @@ export const API_PATHS = {
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
+  emailSends: API_ROUTES.emailSends.path,
+  emailSendsExport: API_ROUTES.emailSendsExport.path,
+  emailSend: API_ROUTES.emailSend.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   onboarding: API_ROUTES.onboarding.path,

@@ -411,6 +411,11 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
 
 const marketingDeps = (): MarketingAppDeps => ({
   events: new InMemoryEmailEventRepository(),
+  emailSends: {
+    listPage: async () => ({ sends: [], nextCursor: null }),
+    findById: async () => null,
+    listByEmailAcrossKinds: async () => [],
+  },
   definitions: new InMemoryConsentDefinitionRepository(),
   marketingConsents: new InMemoryMarketingConsentRepository(),
   confirmations: new InMemoryConsentConfirmationTokenRepository(),
@@ -552,6 +557,7 @@ describe('marketing HTTP surfaces', () => {
       source: 'api',
       memberId: null,
       email: 'member@example.test',
+      subject: 'News',
       consentRowId: 'consent-news',
       unsubscribeTokenId: null,
       status: 'sent',

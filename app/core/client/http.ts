@@ -42,6 +42,10 @@ import {
   marketingSesSettingsOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
+  emailSendDetailOutputSchema,
+  emailSendsExportOutputSchema,
+  emailSendsOutputSchema,
+  memberEmailSendsOutputSchema,
   meOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
@@ -124,6 +128,8 @@ import {
   type MarketingLayoutSaveInput,
   type MarketingSesSettingsUpdateInput,
   type MarketingSuppressionCreateInput,
+  type EmailSendsExportQueryInput,
+  type EmailSendsQueryInput,
   type MemberRemoveInput,
   type ModuleAttachInput,
   type ModuleDetachInput,
@@ -299,6 +305,61 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingStaffSuppressions.method, API_ROUTES.marketingStaffSuppressions.path, marketingSuppressionsOutputSchema, undefined, signal),
   addMarketingSuppression: (input: MarketingSuppressionCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressionsCreate.method, API_ROUTES.marketingStaffSuppressionsCreate.path, marketingSuppressionOutputSchema, input, signal),
+  listEmailSends: (input: EmailSendsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.search !== undefined) params.set('search', input.search);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.emailSends.method,
+      suffix.length > 0 ? `${API_ROUTES.emailSends.path}?${suffix}` : API_ROUTES.emailSends.path,
+      emailSendsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getEmailSend: (kind: 'transactional' | 'marketing', id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.emailSend.method,
+      API_ROUTES.emailSend.path
+        .replace(':kind', encodeURIComponent(kind))
+        .replace(':id', encodeURIComponent(id)),
+      emailSendDetailOutputSchema,
+      undefined,
+      signal,
+    ),
+  exportEmailSends: (input: EmailSendsExportQueryInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ format: input.format });
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.search !== undefined) params.set('search', input.search);
+    return request(
+      options,
+      API_ROUTES.emailSendsExport.method,
+      `${API_ROUTES.emailSendsExport.path}?${params.toString()}`,
+      emailSendsExportOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  listMemberEmailSends: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberEmailSends.method,
+      API_ROUTES.memberEmailSends.path.replace(':id', encodeURIComponent(memberId)),
+      memberEmailSendsOutputSchema,
+      undefined,
+      signal,
+    ),
   dispatchEmail: (secret: string, signal?: AbortSignal) =>
     request(
       options,

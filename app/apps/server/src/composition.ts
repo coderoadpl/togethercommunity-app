@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '@adapters/db/email-events.js';
+import { createEmailSendRepository } from '@adapters/db/email-sends.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -90,6 +91,7 @@ import type {
   EmailOutboxRepository,
   EmailHmac,
   EmailEventRepository,
+  EmailSendRepository,
   EmailLayoutRepository,
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -220,6 +222,7 @@ export interface AppDeps {
 
 export interface MarketingAppDeps {
   events: EmailEventRepository;
+  emailSends: EmailSendRepository;
   definitions: ConsentDefinitionRepository;
   marketingConsents: MarketingConsentRepository;
   confirmations: ConsentConfirmationTokenRepository;
@@ -276,6 +279,7 @@ export const createDeps = (env: Env): AppDeps => {
       : createDevEmailPort(db);
   const emailOutbox = createEmailOutboxRepository(db);
   const emailEvents = createEmailEventRepository(db);
+  const emailSends = createEmailSendRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
@@ -524,6 +528,7 @@ export const createDeps = (env: Env): AppDeps => {
     marketing: {
       definitions,
       events: emailEvents,
+      emailSends,
       marketingConsents,
       confirmations,
       campaigns,

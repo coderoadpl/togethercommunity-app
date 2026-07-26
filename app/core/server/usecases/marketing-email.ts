@@ -1457,13 +1457,12 @@ export const applyVerifiedSesEvent = async (
 
 export const runMarketingRetentionJobs = async (
   ctx: Ctx,
-  input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string; schedulerRunsStartedBefore?: string },
+  input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string },
   deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
     sends: CampaignSendRepository;
     idempotency: AutomationIdempotencyRepository;
-    runs: SchedulerRunRepository;
   },
-): Promise<Result<{ pendingConsentsPurged: number; renderedBodiesPurged: number; idempotencyKeysPurged: number; staleSchedulerRunsFailed: number }, AppError>> => {
+): Promise<Result<{ pendingConsentsPurged: number; renderedBodiesPurged: number; idempotencyKeysPurged: number }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const definitions = await deps.definitions.list(tenantId.value);
@@ -1471,13 +1470,7 @@ export const runMarketingRetentionJobs = async (
   const pendingConsentsPurged = await deps.consents.purgeStalePending(tenantId.value, input.pendingOlderThan, doubleOptInDefinitionIds);
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  const staleSchedulerRunsFailed = await deps.runs.failStale({
-    startedBefore: input.schedulerRunsStartedBefore
-      ?? new Date(Date.parse(input.idempotencyNow) - 60 * 60 * 1000).toISOString(),
-    finishedAt: deps.clock.nowIso(),
-    error: 'Scheduler run exceeded its timeout',
-  });
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged, staleSchedulerRunsFailed });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged });
 };
 
 export const scheduleMarketingRetentionJobs = async (
@@ -1493,16 +1486,21 @@ export const runScheduledMarketingJobs = async (
   input: { now: string; pendingOlderThan: string; renderedBodiesOlderThan: string },
   deps: {
     jobs: MarketingJobRepository;
+    runs: SchedulerRunRepository;
     dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<unknown, AppError>>;
     runRetention(tenantId: string, input: {
       pendingOlderThan: string;
       renderedBodiesOlderThan: string;
       idempotencyNow: string;
-      schedulerRunsStartedBefore: string;
     }): Promise<Result<unknown, AppError>>;
   },
 ): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>> => {
   let firstError: AppError | null = null;
+  await deps.runs.failStale({
+    startedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
+    finishedAt: input.now,
+    error: 'Scheduler run exceeded its timeout',
+  });
   const runnable = await deps.jobs.listRunnableCampaigns(input.now);
   for (const job of runnable) {
     const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
@@ -1514,7 +1512,6 @@ export const runScheduledMarketingJobs = async (
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
       idempotencyNow: input.now,
-      schedulerRunsStartedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
     });
     if (!retained.ok && firstError === null) firstError = retained.error;
   }

@@ -180,7 +180,7 @@ export const dispatchEmailBatch = async (
         sent: metrics.sent,
         failed: metrics.failed,
         skipped: 0,
-        budgetComputed: deps.batchSize,
+        budgetComputed: metrics.batchSize,
         budgetUsed: metrics.batchSize,
         errors: metrics.errors,
         createdAt: finishedAt,

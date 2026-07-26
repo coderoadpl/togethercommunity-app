@@ -15,6 +15,18 @@ You need:
 
 Together is BYO SES: marketing messages are sent through each tenant's Amazon SES account. Platform transactional mail does not share that account. Together injects the legal footer, unsubscribe link, RFC 8058 headers, and bulk-mail headers. An API caller cannot remove them.
 
+### SES onboarding and optional tracking
+
+Complete the M19 checklist in the sending-settings panel before enabling broadcasts:
+
+1. Verify the sending identity and DKIM in the same AWS Region as the tenant SES credentials.
+2. Create an SNS topic in that Region and subscribe the Together webhook URL shown in the panel. Copy the topic ARN into the tenant settings and allow SES to publish to the topic.
+3. In the Amazon SES console, open **Configuration → Configuration sets**, select the tenant configuration set, open **Event destinations**, and choose **Add destination**. Enable event publishing, select **Delivery**, **Bounce**, and **Complaint**, choose **Amazon SNS** as the destination, and select the tenant SNS topic. AWS documents the current console flow in [Creating Amazon SES event destinations](https://docs.aws.amazon.com/ses/latest/dg/event-destinations-manage.html) and the required SNS topic policy in [Set up an Amazon SNS event destination](https://docs.aws.amazon.com/ses/latest/dg/event-publishing-add-event-destination-sns.html).
+4. Save the configuration-set name in Together, then use the SES mailbox simulator bounce and complaint addresses to verify that the SNS webhook completes a round trip.
+5. Fill in the tenant legal sender name and postal or electronic address.
+
+Open/click tracking is off by default. To enable it, edit the same SES event destination and additionally publish **Open** and **Click**, then turn on **Track marketing opens and clicks** in Together. The tenant is the data controller and must update its privacy notice before enabling tracking. Together attaches the configuration set only to marketing sends while the toggle is on. Transactional and test messages never receive the configuration set and are never open/click tracked.
+
 ## Authentication and response envelope
 
 Send the tenant API key in every request:
@@ -402,7 +414,7 @@ All filters are optional. `status` is one of `pending`, `sending`, `sent`, `fail
 }
 ```
 
-`deliveryStatus` is `delivered`, `bounced`, `complained`, or `null` while no SES event has been correlated.
+`deliveryStatus` is `delivered`, `bounced`, `complained`, or `null` while no SES delivery event has been correlated.
 
 ### Get one message
 
@@ -411,7 +423,45 @@ curl 'https://acme.together.app/api/m2m/marketing/messages/send_01J3W2' \
   --header 'x-api-key: replace-with-api-key'
 ```
 
-The `200` response is the send object from the list response directly under `data`. An unknown ID returns `404 not_found`.
+The `200` response contains the send projection and its immutable event history:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "id": "send_01J3W2",
+    "status": "sent",
+    "deliveryStatus": "delivered",
+    "events": [
+      {
+        "id": "event_01J3W4",
+        "type": "opened",
+        "occurredAt": "2026-07-22T09:03:00.000Z",
+        "meta": {
+          "rawProviderPayload": {}
+        }
+      },
+      {
+        "id": "event_01J3W5",
+        "type": "clicked",
+        "occurredAt": "2026-07-22T09:04:00.000Z",
+        "meta": {
+          "linkUrl": "https://acme.example/offers/summer",
+          "rawProviderPayload": {}
+        }
+      }
+    ]
+  }
+}
+```
+
+The `events[]` array is ordered by occurrence time and includes lifecycle events such as `queued`, `accepted`, `delivered`, `bounced`, and `complained`. When tenant tracking is enabled, it also includes `opened` and `clicked`; click metadata contains the link URL reported by SES. Repeated opens and clicks remain separate events so callers can calculate total activity, while the campaign panel also shows unique-per-send counts. An unknown message ID returns `404 not_found`.
+
+## Open and click events
+
+Together does not host a tracking pixel or redirector. Amazon SES performs engagement tracking through the tenant configuration set and publishes `Open` and `Click` records to the existing tenant SNS topic. Together correlates them using the SES MessageId already stored on the send log.
+
+Stray valid records from the tenant-authorized SNS topic are acknowledged even when no local MessageId matches, preventing retry storms. Enabling or disabling tracking changes future marketing sends only; events already authorized and published by the tenant are retained in the append-only event history.
 
 ## List templates and layouts
 

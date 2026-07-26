@@ -47,6 +47,7 @@ describe('createSesEmailPort', () => {
         },
       },
     });
+    expect(commands[0]?.input).not.toHaveProperty('ConfigurationSetName');
   });
 
   it('fails when SES omits the correlation MessageId', async () => {

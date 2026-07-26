@@ -925,6 +925,7 @@ export const tenantSesSettings = pgTable(
     identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true, mode: 'string' }),
     configurationSet: text('configuration_set'),
     snsTopicArn: text('sns_topic_arn'),
+    trackingEnabled: boolean('tracking_enabled').notNull().default(false),
     webhookToken: text('webhook_token').notNull(),
     quotaRatePerSec: doublePrecision('quota_rate_per_sec').notNull().default(0),
     quotaDaily: integer('quota_daily').notNull().default(0),

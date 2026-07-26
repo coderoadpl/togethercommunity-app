@@ -6,6 +6,7 @@ import {
   FormControl,
   FormControlLabel,
   FormLabel,
+  Link,
   OutlinedInput,
   Switch,
   Typography,
@@ -77,6 +78,7 @@ export const MarketingSettingsPanel = () => {
   const [identityVerified, setIdentityVerified] = useState<boolean | null>(null);
   const [configurationSet, setConfigurationSet] = useState<string | null>(null);
   const [snsTopicArn, setSnsTopicArn] = useState<string | null>(null);
+  const [trackingEnabled, setTrackingEnabled] = useState<boolean | null>(null);
   const [footerLegalName, setFooterLegalName] = useState<string | null>(null);
   const [footerAddress, setFooterAddress] = useState<string | null>(null);
 
@@ -87,6 +89,7 @@ export const MarketingSettingsPanel = () => {
     identityVerified: identityVerified ?? (settings?.identityVerifiedAt !== null && settings?.identityVerifiedAt !== undefined),
     configurationSet: configurationSet ?? settings?.configurationSet ?? '',
     snsTopicArn: snsTopicArn ?? settings?.snsTopicArn ?? '',
+    trackingEnabled: trackingEnabled ?? settings?.trackingEnabled ?? false,
     footerLegalName: footerLegalName ?? settings?.footerLegalName ?? '',
     footerAddress: footerAddress ?? settings?.footerAddress ?? '',
   };
@@ -154,6 +157,14 @@ export const MarketingSettingsPanel = () => {
           <FormLabel htmlFor="marketing-sns-topic">{t.marketing.snsTopicLabel}</FormLabel>
           <OutlinedInput id="marketing-sns-topic" value={values.snsTopicArn} onChange={(event) => setSnsTopicArn(event.target.value)} />
         </FormControl>
+        <FormControlLabel
+          control={<Switch checked={values.trackingEnabled} onChange={(event) => setTrackingEnabled(event.target.checked)} />}
+          label={t.marketing.trackingEnabledLabel}
+        />
+        <Alert severity="info">
+          {t.marketing.trackingPrivacyNote}{' '}
+          <Link href="/docs/marketing-automation-api.md#open-and-click-events">{t.marketing.trackingDocsLink}</Link>
+        </Alert>
         {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
       </SectionCard>
       <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}>

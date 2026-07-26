@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Chip,
   FormControl,
@@ -14,13 +15,47 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
-import type { Campaign } from '@core/domain/index.js';
+import type { Campaign, CampaignEngagementStats } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
+
+const CampaignEngagementTiles = ({
+  engagement,
+}: {
+  engagement: CampaignEngagementStats;
+}) => {
+  const t = useTranslations();
+  const items = [
+    { label: t.marketing.uniqueOpens, value: engagement.uniqueOpens },
+    { label: t.marketing.totalOpens, value: engagement.totalOpens },
+    { label: t.marketing.uniqueClicks, value: engagement.uniqueClicks },
+    { label: t.marketing.totalClicks, value: engagement.totalClicks },
+  ];
+  return (
+    <Box
+      data-testid="campaign-engagement-stats"
+      sx={{
+        display: 'grid',
+        gap: '0.9rem',
+        gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' },
+      }}
+    >
+      {items.map((item) => (
+        <StatTile key={item.label}>
+          <Box sx={{ minWidth: 0 }}>
+            <StatTileValue component="p">{item.value}</StatTileValue>
+            <StatTileLabel component="p">{item.label}</StatTileLabel>
+          </Box>
+        </StatTile>
+      ))}
+    </Box>
+  );
+};
 
 const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const t = useTranslations();
@@ -230,7 +265,19 @@ export const CampaignsPanel = () => {
                 key={campaign.id}
                 title={campaign.name}
                 chips={<><CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} /><Chip size="small" variant="outlined" label={consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId} /></>}
-                summary={t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed })}
+                summary={(
+                  <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing={{ xs: '0.25rem', sm: '1rem' }}>
+                    <span>{t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed })}</span>
+                    <span>{t.marketing.compactOpens({
+                      unique: campaign.engagement.uniqueOpens,
+                      total: campaign.engagement.totalOpens,
+                    })}</span>
+                    <span>{t.marketing.compactClicks({
+                      unique: campaign.engagement.uniqueClicks,
+                      total: campaign.engagement.totalClicks,
+                    })}</span>
+                  </Stack>
+                )}
                 date={formatDateTime(campaign.sendAt ?? campaign.createdAt, language)}
                 actions={<Button onClick={() => void navigate({ to: '/panel/marketing/campaigns/$campaignId', params: { campaignId: campaign.id } })}>{t.common.open}</Button>}
                 testId="marketing-campaign-row"
@@ -257,6 +304,7 @@ export const CampaignDetailPage = () => {
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
   return (
     <PanelPage title={campaign.data.campaign.name} backTo={{ label: t.marketing.allCampaigns, href: '/panel/marketing/campaigns' }}>
+      <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} />
       <CampaignForm campaign={campaign.data.campaign} />
       <CampaignActions campaign={campaign.data.campaign} />
     </PanelPage>

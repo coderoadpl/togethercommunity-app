@@ -253,6 +253,13 @@
       "when": 1785101977328,
       "tag": "0035_third_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785104616174,
+      "tag": "0036_yellow_swordsman",
+      "breakpoints": true
     }
   ]
 }

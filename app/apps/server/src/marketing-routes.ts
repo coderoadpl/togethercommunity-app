@@ -111,7 +111,7 @@ const readJson = async (request: Request): Promise<unknown> => request.json().ca
 
 const queryObject = (url: string): Record<string, string> => Object.fromEntries(new URL(url).searchParams.entries());
 
-const sesEventSchema = z.discriminatedUnion('notificationType', [
+const sesDeliveryEventSchema = z.discriminatedUnion('notificationType', [
   z.object({
     notificationType: z.literal('Bounce'),
     mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
@@ -130,6 +130,22 @@ const sesEventSchema = z.discriminatedUnion('notificationType', [
     notificationType: z.literal('Delivery'),
     mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
     delivery: z.object({ timestamp: z.string().datetime() }).passthrough(),
+  }).passthrough(),
+]);
+
+const sesEngagementEventSchema = z.discriminatedUnion('eventType', [
+  z.object({
+    eventType: z.literal('Open'),
+    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
+    open: z.object({ timestamp: z.string().datetime() }).passthrough(),
+  }).passthrough(),
+  z.object({
+    eventType: z.literal('Click'),
+    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
+    click: z.object({
+      timestamp: z.string().datetime(),
+      link: z.string().min(1),
+    }).passthrough(),
   }).passthrough(),
 ]);
 
@@ -418,27 +434,47 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       return confirmed.ok ? response(ok({ received: true })) : response(ok({ received: true }));
     }
     const message: unknown = (() => { try { return JSON.parse(verified.value.message); } catch { return null; } })();
-    const parsed = sesEventSchema.safeParse(message);
-    if (!parsed.success) return response(err(validation('Malformed SES notification', parsed.error.flatten())));
-    const event = parsed.data.notificationType === 'Bounce'
-      ? {
-          kind: 'bounce' as const, topicArn: verified.value.topicArn, messageId: parsed.data.mail.messageId,
-          occurredAt: parsed.data.bounce.timestamp, bounceType: parsed.data.bounce.bounceType,
-          status: parsed.data.bounce.bouncedRecipients[0]?.status ?? null, raw: message,
-        }
-      : parsed.data.notificationType === 'Complaint'
-        ? { kind: 'complaint' as const, topicArn: verified.value.topicArn, messageId: parsed.data.mail.messageId, occurredAt: parsed.data.complaint.timestamp, raw: message }
-        : { kind: 'delivery' as const, topicArn: verified.value.topicArn, messageId: parsed.data.mail.messageId, occurredAt: parsed.data.delivery.timestamp, raw: message };
-    const applied = await applyVerifiedSesEvent({ identity: { ...apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }), staffRole: null } }, event, {
-      sesSettings: marketing.value.sesSettings, sends: marketing.value.campaignSends,
-      events: marketing.value.events, outbox: deps.emailOutbox,
-      suppressions: marketing.value.suppressions,
-      hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
-    });
-    if (applied.ok && applied.value.processed && settings.webhookVerifiedAt === null) {
-      await marketing.value.sesSettings.upsert(settings.tenantId, { ...settings, webhookVerifiedAt: deps.clock.nowIso() });
+    const applyEvent = async (event: Parameters<typeof applyVerifiedSesEvent>[1]) => {
+      const applied = await applyVerifiedSesEvent({ identity: { ...apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }), staffRole: null } }, event, {
+        sesSettings: marketing.value.sesSettings, sends: marketing.value.campaignSends,
+        events: marketing.value.events, outbox: deps.emailOutbox,
+        suppressions: marketing.value.suppressions,
+        hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
+      });
+      if (applied.ok && applied.value.processed && settings.webhookVerifiedAt === null) {
+        await marketing.value.sesSettings.upsert(settings.tenantId, { ...settings, webhookVerifiedAt: deps.clock.nowIso() });
+      }
+      return response(ok({ received: true }));
+    };
+    const engagement = sesEngagementEventSchema.safeParse(message);
+    const delivery = sesDeliveryEventSchema.safeParse(message);
+    if (engagement.success) {
+      const event = engagement.data.eventType === 'Open'
+        ? {
+            kind: 'open' as const, topicArn: verified.value.topicArn,
+            messageId: engagement.data.mail.messageId, occurredAt: engagement.data.open.timestamp,
+            raw: message,
+          }
+        : {
+            kind: 'click' as const, topicArn: verified.value.topicArn,
+            messageId: engagement.data.mail.messageId, occurredAt: engagement.data.click.timestamp,
+            linkUrl: engagement.data.click.link, raw: message,
+          };
+      return applyEvent(event);
     }
-    return response(ok({ received: true }));
+    if (!delivery.success) {
+      return response(err(validation('Malformed SES notification', delivery.error.flatten())));
+    }
+    const event = delivery.data.notificationType === 'Bounce'
+      ? {
+          kind: 'bounce' as const, topicArn: verified.value.topicArn, messageId: delivery.data.mail.messageId,
+          occurredAt: delivery.data.bounce.timestamp, bounceType: delivery.data.bounce.bounceType,
+          status: delivery.data.bounce.bouncedRecipients[0]?.status ?? null, raw: message,
+        }
+      : delivery.data.notificationType === 'Complaint'
+        ? { kind: 'complaint' as const, topicArn: verified.value.topicArn, messageId: delivery.data.mail.messageId, occurredAt: delivery.data.complaint.timestamp, raw: message }
+        : { kind: 'delivery' as const, topicArn: verified.value.topicArn, messageId: delivery.data.mail.messageId, occurredAt: delivery.data.delivery.timestamp, raw: message };
+    return applyEvent(event);
   });
 
   app.post('/u/:token', async (c) => {

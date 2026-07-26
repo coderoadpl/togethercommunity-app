@@ -111,7 +111,7 @@ import {
   deleteLesson,
   deleteTenantSecret,
   listLessonReferences,
-  getCampaign,
+  getCampaignWithEngagement,
   getMarketingConsentDefinition,
   getTenantDocument,
   getTenantSesMarketingSettings,
@@ -123,7 +123,7 @@ import {
   exportOrders,
   getEmailSend,
   listTenantApiKeys,
-  listCampaigns,
+  listCampaignsWithEngagement,
   listMarketingConsentDefinitions,
   listTenantDocuments,
   listEmailLayouts,
@@ -801,7 +801,10 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.marketingCampaigns, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const result = await listCampaigns({ identity: c.get('identity') }, { campaigns: deps.marketing.campaigns });
+    const result = await listCampaignsWithEngagement({ identity: c.get('identity') }, {
+      campaigns: deps.marketing.campaigns,
+      sends: deps.marketing.campaignSends,
+    });
     return respond(result.ok ? ok({ campaigns: result.value }) : result);
   });
 
@@ -832,7 +835,11 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.marketingCampaign, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const result = await getCampaign({ identity: c.get('identity') }, { campaignId: c.req.param('id') }, { campaigns: deps.marketing.campaigns });
+    const result = await getCampaignWithEngagement(
+      { identity: c.get('identity') },
+      { campaignId: c.req.param('id') },
+      { campaigns: deps.marketing.campaigns, sends: deps.marketing.campaignSends },
+    );
     return respond(result.ok ? ok({ campaign: result.value }) : result);
   });
 

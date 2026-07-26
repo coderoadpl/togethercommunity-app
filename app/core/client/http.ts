@@ -33,6 +33,7 @@ import {
   marketingConsentDefinitionsOutputSchema,
   marketingAudiencePreviewOutputSchema,
   marketingCampaignOutputSchema,
+  marketingCampaignDetailOutputSchema,
   marketingCampaignsOutputSchema,
   marketingCampaignTestOutputSchema,
   marketingDocumentDetailOutputSchema,
@@ -280,7 +281,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   scheduleMarketingCampaign: (input: MarketingCampaignScheduleInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaignSchedule.method, API_ROUTES.marketingCampaignSchedule.path, marketingCampaignOutputSchema, input, signal),
   getMarketingCampaign: (id: string, signal?: AbortSignal) =>
-    request(options, API_ROUTES.marketingCampaign.method, API_ROUTES.marketingCampaign.path.replace(':id', encodeURIComponent(id)), marketingCampaignOutputSchema, undefined, signal),
+    request(options, API_ROUTES.marketingCampaign.method, API_ROUTES.marketingCampaign.path.replace(':id', encodeURIComponent(id)), marketingCampaignDetailOutputSchema, undefined, signal),
   updateMarketingCampaign: (input: MarketingCampaignUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaignUpdate.method, API_ROUTES.marketingCampaignUpdate.path, marketingCampaignOutputSchema, input, signal),
   actOnMarketingCampaign: (input: MarketingCampaignActionInput, signal?: AbortSignal) =>

@@ -17,6 +17,7 @@ import {
   tenantSesSettingsSchema,
   unsubscribeTokenSchema,
   type Campaign,
+  type CampaignEngagementStats,
   type CampaignSend,
 } from '@core/domain/index.js';
 import type {
@@ -393,6 +394,31 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
   },
   listByCampaign: async (tenantId, campaignId) => (await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.campaignId, campaignId))).orderBy(asc(campaignSends.id))).map(parseSend),
   listAll: async (tenantId) => (await db.select().from(campaignSends).where(eq(campaignSends.tenantId, tenantId)).orderBy(asc(campaignSends.id))).map(parseSend),
+  engagementStats: async (tenantId, campaignIds) => {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db.select({
+      campaignId: campaignSends.campaignId,
+      uniqueOpens: sql<number>`count(distinct ${emailEvents.refId}) filter (where ${emailEvents.type} = 'opened')::int`,
+      totalOpens: sql<number>`count(*) filter (where ${emailEvents.type} = 'opened')::int`,
+      uniqueClicks: sql<number>`count(distinct ${emailEvents.refId}) filter (where ${emailEvents.type} = 'clicked')::int`,
+      totalClicks: sql<number>`count(*) filter (where ${emailEvents.type} = 'clicked')::int`,
+    }).from(campaignSends).innerJoin(emailEvents, and(
+      eq(emailEvents.tenantId, campaignSends.tenantId),
+      eq(emailEvents.mailKind, 'marketing'),
+      eq(emailEvents.refId, campaignSends.id),
+    )).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      inArray(campaignSends.campaignId, campaignIds),
+    )).groupBy(campaignSends.campaignId);
+    return new Map(rows.flatMap((row): Array<[string, CampaignEngagementStats]> =>
+      row.campaignId === null ? [] : [[row.campaignId, {
+        uniqueOpens: row.uniqueOpens,
+        totalOpens: row.totalOpens,
+        uniqueClicks: row.uniqueClicks,
+        totalClicks: row.totalClicks,
+      }]]
+    ));
+  },
   listPage: async (tenantId, query) => {
     const filters = [eq(campaignSends.tenantId, tenantId)];
     if (query.campaignId !== undefined) filters.push(eq(campaignSends.campaignId, query.campaignId));

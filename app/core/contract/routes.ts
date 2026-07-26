@@ -79,6 +79,7 @@ import {
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
   campaignSchema,
+  campaignEngagementStatsSchema,
   consentDefinitionVersionSchema,
   consentDocumentRefSchema,
   consentDefinitionSchema,
@@ -794,7 +795,12 @@ export const marketingAudiencePreviewInputSchema = z.object({
 });
 export const marketingAudiencePreviewOutputSchema = z.object({ count: z.number().int().nonnegative() });
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
-export const marketingCampaignsOutputSchema = z.object({ campaigns: z.array(campaignSchema) });
+export const marketingCampaignDetailOutputSchema = z.object({
+  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema }),
+});
+export const marketingCampaignsOutputSchema = z.object({
+  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema })),
+});
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
 export const marketingDocumentDetailOutputSchema = z.object({
@@ -827,6 +833,7 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   identityVerified: z.boolean(),
   configurationSet: z.string().trim().min(1).nullable(),
   snsTopicArn: z.string().trim().min(1).nullable(),
+  trackingEnabled: z.boolean(),
   footerLegalName: z.string(),
   footerAddress: z.string(),
 });

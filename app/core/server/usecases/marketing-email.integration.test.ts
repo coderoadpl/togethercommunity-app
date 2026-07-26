@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  emailEventSchema,
   err,
   integrationAuth,
   ok,
@@ -46,8 +47,10 @@ import {
   deleteCampaign,
   getMarketingEligibility,
   getCampaign,
+  getCampaignWithEngagement,
   getUnsubscribePreferences,
   listCampaigns,
+  listCampaignsWithEngagement,
   liftMarketingSuppression,
   pauseCampaign,
   recordMarketingConsent,
@@ -94,6 +97,7 @@ const consent = (email: string, status: MarketingConsent['status'] = 'confirmed'
 const settings: TenantSesSettings = {
   tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
   identityVerifiedAt: NOW, configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
+  trackingEnabled: true,
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
   quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Legal Ltd',
   quotaSentLast24Hours: 0,
@@ -330,6 +334,25 @@ describe('marketing e-mail use-case integration', () => {
     expect(refused).toMatchObject({ ok: true, value: [{ status: 'skipped', reason: 'unsubscribed' }] });
   });
 
+  it('attaches the tenant configuration set only when tracking is enabled', async () => {
+    const enabled = await setup();
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Tracked',
+      bodyHtml: '<p>Tracked</p>', data: {},
+    }], enabled);
+    expect(enabled.ses.sent[0]?.configurationSet).toBe('marketing');
+
+    const disabled = await setup();
+    await disabled.sesSettings.upsert('tenant-1', { ...settings, trackingEnabled: false });
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Private',
+      bodyHtml: '<p>Private</p>', data: {},
+    }], disabled);
+    expect(disabled.ses.sent[0]?.configurationSet).toBeNull();
+  });
+
   it('I1 refuses broadcast and API messages with the same machine-readable reason matrix', async () => {
     const cases: Array<{ reason: 'suppressed' | 'unsubscribed' | 'pending_confirmation' | 'not_consented'; prepare(deps: Awaited<ReturnType<typeof setup>>, emails: string[]): Promise<void> }> = [
       { reason: 'suppressed', prepare: async (deps, emails) => { for (const email of emails) await addManualSuppression(ctx, { email, sourceRef: 'staff-1' }, deps); } },
@@ -548,6 +571,40 @@ describe('marketing e-mail use-case integration', () => {
     expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message', kind: 'delivery', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ processed: true }));
     expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message')).toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(false);
+  });
+
+  it('records SES opens and clicks on the correlated marketing send', async () => {
+    const deps = await setup();
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Hi',
+      bodyHtml: '<p>Hi</p>', data: {},
+    }], deps);
+    const topicArn = settings.snsTopicArn ?? '';
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'open',
+      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1' } },
+    }, deps)).toEqual(ok({ processed: true }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'click',
+      linkUrl: 'https://tenant.test/offer', occurredAt: NOW,
+      raw: { click: { link: 'https://tenant.test/offer' } },
+    }, deps)).toEqual(ok({ processed: true }));
+    const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).slice(-2))
+      .toMatchObject([
+        { type: 'opened', meta: { rawProviderPayload: { open: { ipAddress: '192.0.2.1' } } } },
+        {
+          type: 'clicked',
+          meta: {
+            linkUrl: 'https://tenant.test/offer',
+            rawProviderPayload: { click: { link: 'https://tenant.test/offer' } },
+          },
+        },
+      ]);
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'unknown', kind: 'open', occurredAt: NOW, raw: {},
+    }, deps)).toEqual(ok({ processed: false }));
   });
 
   it('correlates transactional SNS complaints without writing marketing suppression', async () => {
@@ -902,10 +959,60 @@ describe('marketing e-mail use-case integration', () => {
     expect(retention).toMatchObject({ ok: true, value: { renderedBodiesPurged: 0 } });
   });
 
+  it('derives unique and total campaign engagement from events', async () => {
+    const deps = await setup(['one@example.test', 'two@example.test']);
+    await sendMarketingMessages(ctx, [
+      {
+        to: 'one@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+        source: 'broadcast', consentDefinitionId: definition.id, subject: 'One',
+        bodyHtml: '<p>One</p>', data: {},
+      },
+      {
+        to: 'two@example.test', memberId: 'member-2', campaignId: 'campaign-1',
+        source: 'broadcast', consentDefinitionId: definition.id, subject: 'Two',
+        bodyHtml: '<p>Two</p>', data: {},
+      },
+    ], deps);
+    const sends = await deps.sends.listByCampaign('tenant-1', 'campaign-1');
+    const first = sends[0];
+    const second = sends[1];
+    if (first === undefined || second === undefined) throw new Error('Expected two campaign sends');
+    for (const [refId, type] of [
+      [first.id, 'opened'],
+      [first.id, 'opened'],
+      [second.id, 'opened'],
+      [first.id, 'clicked'],
+      [first.id, 'clicked'],
+    ] as const) {
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id: deps.ids.nextId(), tenantId: 'tenant-1', mailKind: 'marketing',
+        refId, type, occurredAt: NOW,
+        meta: type === 'clicked'
+          ? { linkUrl: 'https://tenant.test/offer', rawProviderPayload: {} }
+          : { rawProviderPayload: {} },
+        createdAt: NOW,
+      }));
+    }
+    expect(await listCampaignsWithEngagement(ctx, deps)).toMatchObject({
+      ok: true,
+      value: [{
+        id: 'campaign-1',
+        engagement: { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
+      }],
+    });
+    expect(await getCampaignWithEngagement(ctx, { campaignId: 'campaign-1' }, deps)).toMatchObject({
+      ok: true,
+      value: {
+        engagement: { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
+      },
+    });
+  });
+
   it('M27 sends a tagged, untracked self-test through the rendered-output and header gates', async () => {
     const deps = await setup();
     const before = await deps.sends.listAll('tenant-1');
     expect((await testSendCampaignToSelf(ctx, { campaignId: 'campaign-1' }, deps)).ok).toBe(true);
+    expect(deps.ses.sent.at(-1)?.configurationSet).toBeNull();
     expect(await deps.sends.listAll('tenant-1')).toEqual(before);
     expect(deps.ses.sent).toMatchObject([{
       to: ctx.identity.email,

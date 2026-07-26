@@ -20,6 +20,7 @@ import {
   validation,
   type AppError,
   type Campaign,
+  type CampaignEngagementStats,
   type CampaignSend,
   type ConsentDocumentRef,
   type ConsentDocumentVersionRef,
@@ -603,6 +604,38 @@ export const listCampaigns = async (
   return ok(await deps.campaigns.list(tenantId.value));
 };
 
+const emptyEngagementStats = (): CampaignEngagementStats => ({
+  uniqueOpens: 0,
+  totalOpens: 0,
+  uniqueClicks: 0,
+  totalClicks: 0,
+});
+
+export const getCampaignWithEngagement = async (
+  ctx: Ctx,
+  input: { campaignId: string },
+  deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
+): Promise<Result<Campaign & { engagement: CampaignEngagementStats }, AppError>> => {
+  const campaign = await getCampaign(ctx, input, deps);
+  if (!campaign.ok) return campaign;
+  const stats = await deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]);
+  return ok({ ...campaign.value, engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
+};
+
+export const listCampaignsWithEngagement = async (
+  ctx: Ctx,
+  deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
+): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats }>, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const campaigns = await deps.campaigns.list(tenantId.value);
+  const stats = await deps.sends.engagementStats(tenantId.value, campaigns.map((campaign) => campaign.id));
+  return ok(campaigns.map((campaign) => ({
+    ...campaign,
+    engagement: stats.get(campaign.id) ?? emptyEngagementStats(),
+  })));
+};
+
 export const deleteCampaign = async (
   ctx: Ctx,
   input: { campaignId: string },
@@ -810,6 +843,9 @@ export const sendMarketingMessages = async (
   if (!tenantId.ok) return tenantId;
   let settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  if (settings.trackingEnabled && settings.configurationSet === null) {
+    return err(validation('Open and click tracking requires an SES configuration set'));
+  }
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   const now = deps.clock.nowIso();
@@ -982,7 +1018,8 @@ export const sendMarketingMessages = async (
     const sent = await deps.ses.send({
       credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName },
       to: send.email, subject: rendered.value.subject, html: rendered.value.html, text: rendered.value.text,
-      headers: rendered.value.headers, configurationSet: settings.configurationSet,
+      headers: rendered.value.headers,
+      configurationSet: settings.trackingEnabled ? settings.configurationSet : null,
     });
     if (!sent.ok) {
       await deps.sends.update(
@@ -1298,7 +1335,7 @@ export const testSendCampaignToSelf = async (
     credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName }, to: ctx.identity.email,
     subject: `[TEST] ${rendered.value.subject}`, html: rendered.value.html, text: rendered.value.text,
     headers: rendered.value.headers,
-    configurationSet: settings.configurationSet,
+    configurationSet: null,
   });
 };
 
@@ -1339,7 +1376,13 @@ type VerifiedSesEvent = {
   messageId: string;
   occurredAt: string;
   raw: unknown;
-} & ({ kind: 'delivery' } | { kind: 'complaint' } | { kind: 'bounce'; bounceType: string; status: string | null });
+} & (
+  | { kind: 'delivery' }
+  | { kind: 'open' }
+  | { kind: 'click'; linkUrl: string }
+  | { kind: 'complaint' }
+  | { kind: 'bounce'; bounceType: string; status: string | null }
+);
 
 export const applyVerifiedSesEvent = async (
   ctx: Ctx,
@@ -1359,6 +1402,7 @@ export const applyVerifiedSesEvent = async (
   try {
     const send = await deps.sends.correlateBySesMessageId(tenantId.value, event.messageId);
     if (send === null) {
+      if (event.kind === 'open' || event.kind === 'click') return ok({ processed: false });
       if (deps.outbox.correlateBySesMessageId === undefined || deps.outbox.markDelivery === undefined) {
         return ok({ processed: false });
       }
@@ -1389,6 +1433,23 @@ export const applyVerifiedSesEvent = async (
         ),
       });
       return marked.ok ? ok({ processed: true }) : ok({ processed: false });
+    }
+    if (event.kind === 'open' || event.kind === 'click') {
+      await deps.events.append(
+        tenantId.value,
+        lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          event.kind === 'open' ? 'opened' : 'clicked',
+          event.kind === 'open'
+            ? { rawProviderPayload: event.raw }
+            : { linkUrl: event.linkUrl, rawProviderPayload: event.raw },
+          event.occurredAt,
+        ),
+      );
+      return ok({ processed: true });
     }
     if (event.kind === 'delivery') {
       await deps.sends.update(

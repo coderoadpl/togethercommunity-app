@@ -17,7 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, Navigate, useParams } from '@tanstack/react-router';
+import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
 import type {
   EmailDeliveryStatus,
@@ -34,6 +34,11 @@ import { EmailEventTimeline } from '../email/index.js';
 import { deliveryStatusLabel, sendKindLabel, sendStatusLabel } from './EmailSendSummary.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
+
+export const validateSendsSearch = (search: Record<string, unknown>): { runId?: string } => {
+  const runId = search['runId'];
+  return typeof runId === 'string' && runId.trim().length > 0 ? { runId: runId.trim() } : {};
+};
 
 const statusColor = (status: EmailSendStatus): 'success' | 'warning' | 'error' | 'default' =>
   status === 'sent' ? 'success' : status === 'failed' ? 'error' : status === 'sending' ? 'warning' : 'default';
@@ -61,13 +66,14 @@ export const SendsPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const navigate = useNavigate({ from: '/panel/marketing/sends' });
+  const { runId = '' } = useSearch({ from: '/panel/marketing/sends' });
   const campaigns = useQuery(actions.marketingCampaigns);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'all' | EmailSendProjection['kind']>('all');
   const [status, setStatus] = useState<'all' | EmailSendStatus>('all');
   const [deliveryStatus, setDeliveryStatus] = useState<'all' | EmailDeliveryStatus>('all');
   const [campaignId, setCampaignId] = useState('all');
-  const [runId, setRunId] = useState(() => new URLSearchParams(window.location.search).get('runId') ?? '');
   const [pageSize, setPageSize] = useState(25);
   const [cursor, setCursor] = useState<string | undefined>();
   const [previousCursors, setPreviousCursors] = useState<Array<string | undefined>>([]);
@@ -211,7 +217,11 @@ export const SendsPanel = () => {
                 label={t.marketing.runIdFilter}
                 value={runId}
                 onChange={(event) => {
-                  setRunId(event.target.value.trim());
+                  const value = event.target.value.trim();
+                  void navigate({
+                    search: value.length === 0 ? {} : { runId: value },
+                    replace: true,
+                  });
                   resetPagination();
                 }}
                 slotProps={{
@@ -223,7 +233,7 @@ export const SendsPanel = () => {
                             size="small"
                             aria-label={t.marketing.clearRunFilter}
                             onClick={() => {
-                              setRunId('');
+                              void navigate({ search: {}, replace: true });
                               resetPagination();
                             }}
                           >

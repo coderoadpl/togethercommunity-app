@@ -72,6 +72,7 @@ import {
   SchedulerActivityPanel,
   SendDetailPage,
   SendsPanel,
+  validateSendsSearch,
   PanelCourseDetailRoute,
   PanelCourseCreateRoute,
   PanelModuleCreateRoute,
@@ -304,6 +305,7 @@ const panelMarketingCampaignsRoute = createRoute({
 const panelMarketingSendsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'marketing/sends',
+  validateSearch: validateSendsSearch,
   component: SendsPanel,
 });
 const panelMarketingActivityRoute = createRoute({

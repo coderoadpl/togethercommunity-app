@@ -47,7 +47,7 @@ export {
   SchedulerActivityDetailPage,
   SchedulerActivityPanel,
 } from '../features/home/marketing/SchedulerActivityPanel.js';
-export { SendDetailPage, SendsPanel } from '../features/home/marketing/SendsPanel.js';
+export { SendDetailPage, SendsPanel, validateSendsSearch } from '../features/home/marketing/SendsPanel.js';
 
 /**
  * The onboarding checklist is composed here, not inside the home feature:

@@ -18,6 +18,7 @@ import {
   schedulerRunSchema,
   schedulerRunTenantSchema,
   type SchedulerRun,
+  type SchedulerRunListQuery,
   type SchedulerRunTenant,
   type Suppression,
   type TenantSesSettings,
@@ -79,7 +80,7 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
     return structuredClone(finalized);
   }
 
-  async listPage(input: { limit: number; cursor?: string }): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> {
+  async listPage(input: SchedulerRunListQuery): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> {
     return this.page(this.runs, input);
   }
 
@@ -91,9 +92,47 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
     };
   }
 
-  async listForTenant(tenantId: string, input: { limit: number; cursor?: string }): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> {
-    const runIds = new Set(this.tenants.filter((tenant) => tenant.tenantId === tenantId).map((tenant) => tenant.runId));
-    return this.page(this.runs.filter((run) => runIds.has(run.id)), input);
+  async getForTenant(tenantId: string, runId: string) {
+    const run = this.runs.find((item) => item.id === runId);
+    const tenant = this.tenants.find((item) => item.runId === runId && item.tenantId === tenantId);
+    return run === undefined || tenant === undefined
+      ? null
+      : { run: structuredClone(run), tenant: structuredClone(tenant) };
+  }
+
+  async listForTenant(tenantId: string, input: SchedulerRunListQuery) {
+    const tenantByRun = new Map(this.tenants
+      .filter((tenant) => tenant.tenantId === tenantId)
+      .map((tenant) => [tenant.runId, tenant]));
+    const page = this.page(this.runs.filter((run) => tenantByRun.has(run.id)), input);
+    const items: Array<{ run: SchedulerRun; tenant: SchedulerRunTenant }> = [];
+    for (const run of page.runs) {
+      const tenant = tenantByRun.get(run.id);
+      if (tenant !== undefined) items.push({ run, tenant: structuredClone(tenant) });
+    }
+    return {
+      items,
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async summarizeForTenant(tenantId: string, since: string) {
+    const items = this.tenants
+      .filter((tenant) => tenant.tenantId === tenantId)
+      .flatMap((tenant) => {
+        const run = this.runs.find((item) => item.id === tenant.runId);
+        return run === undefined ? [] : [{ run, tenant }];
+      })
+      .sort((left, right) =>
+        right.run.startedAt.localeCompare(left.run.startedAt) || right.run.id.localeCompare(left.run.id)
+      );
+    const recent = items.filter((item) => item.run.startedAt >= since);
+    return {
+      runsLast24Hours: recent.length,
+      sentLast24Hours: recent.reduce((total, item) => total + item.tenant.sent, 0),
+      failedLast24Hours: recent.reduce((total, item) => total + item.tenant.failed, 0),
+      lastRun: items[0] === undefined ? null : structuredClone(items[0].run),
+    };
   }
 
   async failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number> {
@@ -112,8 +151,12 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
     return failed;
   }
 
-  private page(rows: SchedulerRun[], input: { limit: number; cursor?: string }): { runs: SchedulerRun[]; nextCursor: string | null } {
-    const sorted = [...rows].sort((left, right) =>
+  private page(rows: SchedulerRun[], input: SchedulerRunListQuery): { runs: SchedulerRun[]; nextCursor: string | null } {
+    const sorted = rows.filter((run) =>
+      (input.kind === undefined || run.kind === input.kind)
+      && (input.status === undefined || run.status === input.status)
+      && (input.since === undefined || run.startedAt >= input.since)
+    ).sort((left, right) =>
       right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id)
     );
     const [cursorStartedAt = '', cursorId = ''] = input.cursor === undefined

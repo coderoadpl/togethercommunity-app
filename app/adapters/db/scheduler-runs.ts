@@ -1,9 +1,12 @@
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, or, sql, sum } from 'drizzle-orm';
 
 import {
   schedulerRunSchema,
+  schedulerRunTenantItemSchema,
+  schedulerRunTenantSummarySchema,
   schedulerRunTenantSchema,
   type SchedulerRun,
+  type SchedulerRunListQuery,
 } from '@core/domain/index.js';
 import type { SchedulerRunRepository } from '@core/server/index.js';
 
@@ -31,30 +34,49 @@ const decodeCursor = (cursor: string): { startedAt: string; id: string } => {
 };
 
 export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => {
-  const list = async (
-    input: { limit: number; cursor?: string },
-    tenantId?: string,
-  ): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> => {
+  const filtersFor = (input: SchedulerRunListQuery) => {
     const cursor = input.cursor === undefined ? undefined : decodeCursor(input.cursor);
     const cursorFilter = cursor === undefined ? undefined : or(
       lt(schedulerRuns.startedAt, cursor.startedAt),
       and(eq(schedulerRuns.startedAt, cursor.startedAt), lt(schedulerRuns.id, cursor.id)),
     );
-    const filters = tenantId === undefined
-      ? [cursorFilter]
-      : [eq(schedulerRunTenants.tenantId, tenantId), cursorFilter];
-    const query = db.selectDistinct({ run: schedulerRuns })
-      .from(schedulerRuns)
-      .leftJoin(schedulerRunTenants, eq(schedulerRunTenants.runId, schedulerRuns.id))
-      .where(and(...filters))
-      .orderBy(desc(schedulerRuns.startedAt), desc(schedulerRuns.id))
-      .limit(input.limit + 1);
-    const rows = (await query).map(({ run }) => parseRun(run));
-    const runs = rows.slice(0, input.limit);
+    return [
+      input.kind === undefined ? undefined : eq(schedulerRuns.kind, input.kind),
+      input.status === undefined ? undefined : eq(schedulerRuns.status, input.status),
+      input.since === undefined ? undefined : gte(schedulerRuns.startedAt, input.since),
+      cursorFilter,
+    ];
+  };
+  const pageFrom = (rows: SchedulerRun[], limit: number) => {
+    const runs = rows.slice(0, limit);
     const last = runs.at(-1);
     return {
       runs,
-      nextCursor: rows.length > input.limit && last !== undefined ? encodeCursor(last) : null,
+      nextCursor: rows.length > limit && last !== undefined ? encodeCursor(last) : null,
+    };
+  };
+  const listGlobal = async (input: SchedulerRunListQuery) => {
+    const rows = (await db.select().from(schedulerRuns)
+      .where(and(...filtersFor(input)))
+      .orderBy(desc(schedulerRuns.startedAt), desc(schedulerRuns.id))
+      .limit(input.limit + 1)).map(parseRun);
+    return pageFrom(rows, input.limit);
+  };
+  const listTenant = async (tenantId: string, input: SchedulerRunListQuery) => {
+    const selected = await db.select({ run: schedulerRuns, tenant: schedulerRunTenants })
+      .from(schedulerRunTenants)
+      .innerJoin(schedulerRuns, eq(schedulerRuns.id, schedulerRunTenants.runId))
+      .where(and(eq(schedulerRunTenants.tenantId, tenantId), ...filtersFor(input)))
+      .orderBy(desc(schedulerRuns.startedAt), desc(schedulerRuns.id))
+      .limit(input.limit + 1);
+    const items = selected.slice(0, input.limit).map(({ run, tenant }) => ({
+      run: parseRun(run),
+      tenant: parseTenant(tenant),
+    }));
+    const last = items.at(-1)?.run;
+    return {
+      items,
+      nextCursor: selected.length > input.limit && last !== undefined ? encodeCursor(last) : null,
     };
   };
   return {
@@ -77,7 +99,7 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
       }
       return parseRun(row);
     }),
-    listPage: (input) => list(input),
+    listPage: listGlobal,
     getWithTenants: async (runId) => {
       const [row] = await db.select().from(schedulerRuns).where(eq(schedulerRuns.id, runId)).limit(1);
       if (row === undefined) return null;
@@ -86,7 +108,40 @@ export const createSchedulerRunRepository = (db: Db): SchedulerRunRepository => 
         .orderBy(desc(schedulerRunTenants.createdAt), desc(schedulerRunTenants.id));
       return { run: parseRun(row), tenants: tenants.map(parseTenant) };
     },
-    listForTenant: (tenantId, input) => list(input, tenantId),
+    getForTenant: async (tenantId, runId) => {
+      const [row] = await db.select({ run: schedulerRuns, tenant: schedulerRunTenants })
+        .from(schedulerRuns)
+        .innerJoin(schedulerRunTenants, and(
+          eq(schedulerRunTenants.runId, schedulerRuns.id),
+          eq(schedulerRunTenants.tenantId, tenantId),
+        ))
+        .where(eq(schedulerRuns.id, runId))
+        .limit(1);
+      return row === undefined ? null : schedulerRunTenantItemSchema.parse({
+        run: parseRun(row.run),
+        tenant: parseTenant(row.tenant),
+      });
+    },
+    listForTenant: listTenant,
+    summarizeForTenant: async (tenantId, since) => {
+      const [totals] = await db.select({
+        runs: sql<number>`count(*)::int`,
+        sent: sql<number>`coalesce(${sum(schedulerRunTenants.sent)}, 0)::int`,
+        failed: sql<number>`coalesce(${sum(schedulerRunTenants.failed)}, 0)::int`,
+      }).from(schedulerRunTenants)
+        .innerJoin(schedulerRuns, eq(schedulerRuns.id, schedulerRunTenants.runId))
+        .where(and(
+          eq(schedulerRunTenants.tenantId, tenantId),
+          gte(schedulerRuns.startedAt, since),
+        ));
+      const latest = await listTenant(tenantId, { limit: 1 });
+      return schedulerRunTenantSummarySchema.parse({
+        runsLast24Hours: totals?.runs ?? 0,
+        sentLast24Hours: totals?.sent ?? 0,
+        failedLast24Hours: totals?.failed ?? 0,
+        lastRun: latest.items[0]?.run ?? null,
+      });
+    },
     failStale: async (input) => {
       const rows = await db.update(schedulerRuns).set({
         finishedAt: input.finishedAt,

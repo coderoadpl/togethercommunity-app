@@ -90,6 +90,7 @@ export const exportEmailSends = async (
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
     ...(parsed.data.deliveryStatus === undefined ? {} : { deliveryStatus: parsed.data.deliveryStatus }),
     ...(parsed.data.campaignId === undefined ? {} : { campaignId: parsed.data.campaignId }),
+    ...(parsed.data.runId === undefined ? {} : { runId: parsed.data.runId }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
   };
   const rows = [];

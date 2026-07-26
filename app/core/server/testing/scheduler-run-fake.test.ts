@@ -70,7 +70,7 @@ describe('in-memory scheduler run repository', () => {
       tenants: [{ tenantId: 'tenant-1', budgetUsed: 2 }],
     });
     await expect(repository.listForTenant('tenant-1', { limit: 10 })).resolves.toMatchObject({
-      runs: [{ id: 'run-1' }],
+      items: [{ run: { id: 'run-1' }, tenant: { tenantId: 'tenant-1' } }],
       nextCursor: null,
     });
   });

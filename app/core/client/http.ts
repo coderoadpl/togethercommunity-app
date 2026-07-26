@@ -46,6 +46,11 @@ import {
   emailSendsExportOutputSchema,
   emailSendsOutputSchema,
   memberEmailSendsOutputSchema,
+  globalSchedulerRunOutputSchema,
+  globalSchedulerRunsOutputSchema,
+  SCHEDULER_OPERATOR_SECRET_HEADER,
+  tenantSchedulerRunOutputSchema,
+  tenantSchedulerRunsOutputSchema,
   meOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
@@ -130,6 +135,7 @@ import {
   type MarketingSuppressionCreateInput,
   type EmailSendsExportQueryInput,
   type EmailSendsQueryInput,
+  type SchedulerRunsQueryInput,
   type MemberRemoveInput,
   type ModuleAttachInput,
   type ModuleDetachInput,
@@ -213,7 +219,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
-  raw?: { body: string; headers: Record<string, string> },
+  raw?: { body?: string; headers: Record<string, string> },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -222,7 +228,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
       headers: {
-        ...(body === undefined && raw === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(body === undefined && raw?.body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
         ...raw?.headers,
@@ -311,6 +317,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.status !== undefined) params.set('status', input.status);
     if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -324,6 +331,60 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  listTenantSchedulerRuns: (input: SchedulerRunsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.since !== undefined) params.set('since', input.since);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.tenantSchedulerRuns.method,
+      suffix.length > 0 ? `${API_ROUTES.tenantSchedulerRuns.path}?${suffix}` : API_ROUTES.tenantSchedulerRuns.path,
+      tenantSchedulerRunsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getTenantSchedulerRun: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSchedulerRun.method,
+      API_ROUTES.tenantSchedulerRun.path.replace(':id', encodeURIComponent(id)),
+      tenantSchedulerRunOutputSchema,
+      undefined,
+      signal,
+    ),
+  listGlobalSchedulerRuns: (input: SchedulerRunsQueryInput, secret: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.since !== undefined) params.set('since', input.since);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.globalSchedulerRuns.method,
+      suffix.length > 0 ? `${API_ROUTES.globalSchedulerRuns.path}?${suffix}` : API_ROUTES.globalSchedulerRuns.path,
+      globalSchedulerRunsOutputSchema,
+      undefined,
+      signal,
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret } },
+    );
+  },
+  getGlobalSchedulerRun: (id: string, secret: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.globalSchedulerRun.method,
+      API_ROUTES.globalSchedulerRun.path.replace(':id', encodeURIComponent(id)),
+      globalSchedulerRunOutputSchema,
+      undefined,
+      signal,
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret } },
+    ),
   getEmailSend: (kind: 'transactional' | 'marketing', id: string, signal?: AbortSignal) =>
     request(
       options,
@@ -341,6 +402,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.status !== undefined) params.set('status', input.status);
     if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.search !== undefined) params.set('search', input.search);
     return request(
       options,

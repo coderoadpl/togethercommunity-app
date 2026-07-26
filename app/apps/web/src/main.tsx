@@ -68,6 +68,8 @@ import {
   LayoutDetailPage,
   LayoutsPanel,
   MarketingSettingsPanel,
+  SchedulerActivityDetailPage,
+  SchedulerActivityPanel,
   SendDetailPage,
   SendsPanel,
   PanelCourseDetailRoute,
@@ -304,6 +306,16 @@ const panelMarketingSendsRoute = createRoute({
   path: 'marketing/sends',
   component: SendsPanel,
 });
+const panelMarketingActivityRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/activity',
+  component: SchedulerActivityPanel,
+});
+const panelMarketingActivityDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'marketing/activity/$runId',
+  component: SchedulerActivityDetailPage,
+});
 const panelMarketingSendDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'marketing/sends/$kind/$sendId',
@@ -406,6 +418,8 @@ const router = createRouter({
       panelSalesRoute,
       panelIntegrationsRoute,
       panelSettingsRoute,
+      panelMarketingActivityRoute,
+      panelMarketingActivityDetailRoute,
       panelMarketingSendsRoute,
       panelMarketingSendDetailRoute,
       panelMarketingCampaignsRoute,

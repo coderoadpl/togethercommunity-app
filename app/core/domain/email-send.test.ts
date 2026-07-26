@@ -44,10 +44,11 @@ describe('unified email send projection', () => {
       status: 'sent',
       deliveryStatus: 'delivered',
       campaignId: 'campaign-1',
+      runId: 'run-1',
       search: 'member@example.test',
       cursor: '2026-07-25T10%3A00%3A00.000Z~marketing~send-1',
       limit: '25',
-    })).toMatchObject({ kind: 'marketing', limit: 25 });
+    })).toMatchObject({ kind: 'marketing', runId: 'run-1', limit: 25 });
     expect(emailSendListQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
     expect(emailSendExportQuerySchema.safeParse({ format: 'json' }).success).toBe(false);
     expect(emailSendExportQuerySchema.parse({ format: 'csv' })).toEqual({ format: 'csv' });

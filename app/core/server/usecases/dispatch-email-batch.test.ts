@@ -53,7 +53,8 @@ describe('transactional email event lifecycle', () => {
     )).map((event) => event.type))
       .toEqual(['queued', 'claimed', 'rendered', 'accepted']);
     const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
-    const runId = page.runs[0]?.id ?? '';
+    const runs = page.items.map((item) => item.run);
+    const runId = runs[0]?.id ?? '';
     expect(await deps.runs.getWithTenants(runId)).toMatchObject({
       run: {
         kind: 'outbox_dispatch',

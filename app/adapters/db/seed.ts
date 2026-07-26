@@ -28,6 +28,8 @@ import {
   productGrants,
   productPrices,
   products,
+  schedulerRuns,
+  schedulerRunTenants,
   spaces,
   spaceSubscriptions,
   tenantAdmins,
@@ -1194,9 +1196,50 @@ await db
   .onConflictDoNothing();
 
 await db
+  .insert(schedulerRuns)
+  .values([
+    {
+      id: 'scheduler-run-studio-marketing', kind: 'marketing_tick', trigger: 'cron',
+      startedAt: relativeIso(-0.1), finishedAt: relativeIso(-0.1), durationMs: 684,
+      status: 'completed', error: null,
+      totals: {
+        campaignsTouched: 1, sendsAttempted: 1, sent: 1, failed: 0, skipped: 0, reEnqueued: false,
+      },
+      createdAt: relativeIso(-0.1),
+    },
+    {
+      id: 'scheduler-run-studio-outbox', kind: 'outbox_dispatch', trigger: 'cron',
+      startedAt: relativeIso(-0.2), finishedAt: relativeIso(-0.2), durationMs: 312,
+      status: 'failed', error: 'SES rejected one message',
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 2, sent: 1, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      createdAt: relativeIso(-0.2),
+    },
+  ])
+  .onConflictDoNothing();
+
+await db
+  .insert(schedulerRunTenants)
+  .values([
+    {
+      id: 'scheduler-run-tenant-studio-marketing', runId: 'scheduler-run-studio-marketing',
+      tenantId: 'tenant-studio', campaignsTouched: 1, batchSize: 1, sent: 1, failed: 0, skipped: 0,
+      budgetComputed: 25, budgetUsed: 1, errors: [], createdAt: relativeIso(-0.1),
+    },
+    {
+      id: 'scheduler-run-tenant-studio-outbox', runId: 'scheduler-run-studio-outbox',
+      tenantId: 'tenant-studio', campaignsTouched: 0, batchSize: 2, sent: 1, failed: 1, skipped: 0,
+      budgetComputed: 25, budgetUsed: 2, errors: ['SES rejected one message'], createdAt: relativeIso(-0.2),
+    },
+  ])
+  .onConflictDoNothing();
+
+await db
   .insert(campaignSends)
   .values({
     id: 'send-studio-marketing', tenantId: 'tenant-studio', campaignId: 'campaign-studio-observability',
+    runId: 'scheduler-run-studio-marketing',
     source: 'broadcast', memberId: 'member-studio-aktywny', email: 'kursant.aktywny@together.dev',
     subject: 'Twój plan nauki na lipiec', consentRowId: 'marketing-consent-studio-confirmed',
     unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-studio-marketing',
@@ -1226,7 +1269,7 @@ await db
     {
       id: 'event-studio-marketing-queued', tenantId: 'tenant-studio', mailKind: 'marketing',
       refId: 'send-studio-marketing', type: 'queued', occurredAt: relativeIso(-4),
-      meta: { source: 'broadcast' }, createdAt: relativeIso(-4),
+      meta: { source: 'broadcast', runId: 'scheduler-run-studio-marketing' }, createdAt: relativeIso(-4),
     },
     {
       id: 'event-studio-marketing-accepted', tenantId: 'tenant-studio', mailKind: 'marketing',
@@ -1246,7 +1289,8 @@ await db
     {
       id: 'event-studio-transactional-accepted', tenantId: 'tenant-studio', mailKind: 'transactional',
       refId: 'send-studio-transactional', type: 'accepted', occurredAt: relativeIso(-3),
-      meta: { sesMessageId: 'ses-studio-transactional' }, createdAt: relativeIso(-3),
+      meta: { sesMessageId: 'ses-studio-transactional', runId: 'scheduler-run-studio-outbox' },
+      createdAt: relativeIso(-3),
     },
   ])
   .onConflictDoNothing();

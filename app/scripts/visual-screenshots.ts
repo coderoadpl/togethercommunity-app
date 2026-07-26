@@ -233,6 +233,18 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByRole('heading', { name: 'Kampanie e-mail' }).waitFor(visible),
   },
   {
+    name: 'panel-marketing-activity',
+    auth: 'creator',
+    path: '/panel/marketing/activity',
+    ready: (page) => page.getByTestId('scheduler-activity-row').first().waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-activity-detail',
+    auth: 'creator',
+    path: '/panel/marketing/activity/scheduler-run-studio-outbox',
+    ready: (page) => page.getByText('SES rejected one message').last().waitFor(visible),
+  },
+  {
     name: 'panel-marketing-sends',
     auth: 'creator',
     path: '/panel/marketing/sends',

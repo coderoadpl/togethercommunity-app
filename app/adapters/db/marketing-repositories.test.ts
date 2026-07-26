@@ -8,6 +8,7 @@ import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinit
 import { createDb, type Db } from './client.js';
 import { createEmailEventRepository } from './email-events.js';
 import { createEmailSendRepository } from './email-sends.js';
+import { createSchedulerRunRepository } from './scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -19,7 +20,7 @@ import {
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { emailOutbox, tenants } from './schema.js';
+import { emailOutbox, schedulerRuns, tenants } from './schema.js';
 
 const TEST_DB = 'together_marketing_repositories_test';
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -65,6 +66,69 @@ const campaign = (tenantId: string): Campaign => ({
 });
 
 describe('marketing database repositories', () => {
+  it('lists and summarizes scheduler runs with global and tenant scopes', async () => {
+    const repository = createSchedulerRunRepository(db);
+    const start = async (id: string, kind: 'marketing_tick' | 'outbox_dispatch', startedAt: string) => {
+      await repository.start({
+        id,
+        kind,
+        trigger: 'cron',
+        startedAt,
+        finishedAt: null,
+        durationMs: null,
+        status: 'running',
+        error: null,
+        totals: {
+          campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
+        },
+        createdAt: startedAt,
+      });
+    };
+    await start('run-db-new', 'marketing_tick', '2026-07-22T02:00:00.000Z');
+    await start('run-db-old', 'outbox_dispatch', '2026-07-21T02:00:00.000Z');
+    await repository.finalize('run-db-new', {
+      finishedAt: '2026-07-22T02:00:01.000Z',
+      durationMs: 1000,
+      status: 'completed',
+      error: null,
+      totals: {
+        campaignsTouched: 1, sendsAttempted: 4, sent: 3, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      tenants: [{
+        id: 'run-db-new-tenant-a', runId: 'run-db-new', tenantId: 'tenant-a',
+        campaignsTouched: 1, batchSize: 4, sent: 3, failed: 1, skipped: 0,
+        budgetComputed: 10, budgetUsed: 4, errors: ['rejected'], createdAt: '2026-07-22T02:00:01.000Z',
+      }],
+    });
+    await repository.finalize('run-db-old', {
+      finishedAt: '2026-07-21T02:00:01.000Z',
+      durationMs: 1000,
+      status: 'failed',
+      error: 'dispatch failed',
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 1, sent: 0, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      tenants: [{
+        id: 'run-db-old-tenant-b', runId: 'run-db-old', tenantId: 'tenant-b',
+        campaignsTouched: 0, batchSize: 1, sent: 0, failed: 1, skipped: 0,
+        budgetComputed: 10, budgetUsed: 1, errors: ['dispatch failed'], createdAt: '2026-07-21T02:00:01.000Z',
+      }],
+    });
+
+    expect(await repository.listPage({ kind: 'marketing_tick', status: 'completed', limit: 1 }))
+      .toMatchObject({ runs: [{ id: 'run-db-new', totals: { sent: 3, failed: 1 } }] });
+    expect(await repository.listForTenant('tenant-a', { limit: 25 }))
+      .toMatchObject({ items: [{ run: { id: 'run-db-new' }, tenant: { sent: 3, failed: 1 } }] });
+    expect(await repository.getForTenant('tenant-b', 'run-db-new')).toBeNull();
+    expect(await repository.summarizeForTenant('tenant-a', '2026-07-22T00:00:00.000Z'))
+      .toMatchObject({
+        runsLast24Hours: 1,
+        sentLast24Hours: 3,
+        failedLast24Hours: 1,
+        lastRun: { id: 'run-db-new' },
+      });
+  });
+
   it('tenant-scopes definitions and claims a campaign lease with compare-and-set', async () => {
     const definitions = createConsentDefinitionRepository(db);
     await definitions.create('tenant-a', definition('tenant-a'), version('tenant-a'));
@@ -211,8 +275,23 @@ describe('marketing database repositories', () => {
       previousId: null, source: 'api', evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
     };
     await createMarketingConsentRepository(db).record(tenantId, consent);
+    await db.insert(schedulerRuns).values({
+      id: 'run-send-view',
+      kind: 'marketing_tick',
+      trigger: 'cron',
+      startedAt: NOW,
+      finishedAt: '2026-07-22T00:00:01.000Z',
+      durationMs: 1000,
+      status: 'completed',
+      error: null,
+      totals: {
+        campaignsTouched: 1, sendsAttempted: 2, sent: 2, failed: 0, skipped: 0, reEnqueued: false,
+      },
+      createdAt: NOW,
+    });
     await createCampaignSendRepository(db).claimRecipient(tenantId, {
-      id: 'marketing-send-view', tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast',
+      id: 'marketing-send-view', runId: 'run-send-view', tenantId,
+      campaignId: `campaign-${tenantId}`, source: 'broadcast',
       memberId: null, email: consent.email, subject: 'Campaign subject', consentRowId: consent.id,
       unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-marketing-view',
       deliveryStatus: 'delivered', deliveryOccurredAt: '2026-07-22T02:01:00.000Z',
@@ -229,6 +308,16 @@ describe('marketing database repositories', () => {
       createdAt: '2026-07-22T03:00:00.000Z', sentAt: '2026-07-22T03:00:30.000Z',
       sesMessageId: 'ses-transactional-view', deliveryStatus: null, deliveryOccurredAt: null,
     });
+    await createEmailEventRepository(db).append(tenantId, emailEventSchema.parse({
+      id: 'transactional-send-view-accepted',
+      tenantId,
+      mailKind: 'transactional',
+      refId: 'transactional-send-view',
+      type: 'accepted',
+      occurredAt: '2026-07-22T03:00:30.000Z',
+      meta: { sesMessageId: 'ses-transactional-view', runId: 'run-send-view' },
+      createdAt: '2026-07-22T03:00:30.000Z',
+    }));
 
     const repository = createEmailSendRepository(db);
     const first = await repository.listPage(tenantId, { limit: 1 });
@@ -242,6 +331,10 @@ describe('marketing database repositories', () => {
       { kind: 'marketing', id: 'marketing-send-view' },
     ]);
     expect(await repository.listByEmailAcrossKinds(tenantId, ' MEMBER@example.test ')).toHaveLength(2);
+    expect((await repository.listPage(tenantId, { runId: 'run-send-view', limit: 25 })).sends)
+      .toHaveLength(2);
+    expect((await repository.listPage(tenantId, { runId: 'other-run', limit: 25 })).sends)
+      .toHaveLength(0);
     expect(await repository.findById('tenant-b', 'marketing', 'marketing-send-view')).toBeNull();
   });
 

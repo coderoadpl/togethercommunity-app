@@ -19,6 +19,7 @@ import type {
   GrantRevokeInput,
   EmailSendsExportQueryInput,
   EmailSendsQueryInput,
+  SchedulerRunsQueryInput,
   LastViewedInput,
   LessonCompleteInput,
   LessonUncompleteInput,
@@ -266,6 +267,8 @@ export const marketingScopes = {
   send: (kind: 'transactional' | 'marketing', id: string) => ['marketing', 'sends', kind, id] as const,
   memberSends: (memberId: string) => ['marketing', 'member-sends', memberId] as const,
   sendsExport: (input: EmailSendsExportQueryInput) => ['marketing', 'sends-export', input] as const,
+  schedulerRuns: (input: SchedulerRunsQueryInput) => ['marketing', 'scheduler-runs', input] as const,
+  schedulerRun: (id: string) => ['marketing', 'scheduler-runs', id] as const,
 };
 
 export const marketingCampaignsQuery = (api: ApiClient) => defineQuery({
@@ -346,6 +349,16 @@ export const emailSendsExportQuery = (api: ApiClient, input: EmailSendsExportQue
   staleTime: 0,
   gcTime: 0,
   call: ({ signal }) => api.exportEmailSends(input, signal),
+});
+
+export const schedulerRunsQuery = (api: ApiClient, input: SchedulerRunsQueryInput) => defineQuery({
+  queryKey: marketingScopes.schedulerRuns(input),
+  call: ({ signal }) => api.listTenantSchedulerRuns(input, signal),
+});
+
+export const schedulerRunQuery = (api: ApiClient, id: string) => defineQuery({
+  queryKey: marketingScopes.schedulerRun(id),
+  call: ({ signal }) => api.getTenantSchedulerRun(id, signal),
 });
 
 export const marketingInvalidates = () => ({ queryKey: marketingScopes.all() });

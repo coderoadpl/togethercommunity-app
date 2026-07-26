@@ -43,6 +43,10 @@ export {
   LayoutsPanel,
 } from '../features/home/marketing/LayoutsPanel.js';
 export { MarketingSettingsPanel } from '../features/home/marketing/MarketingSettingsPanel.js';
+export {
+  SchedulerActivityDetailPage,
+  SchedulerActivityPanel,
+} from '../features/home/marketing/SchedulerActivityPanel.js';
 export { SendDetailPage, SendsPanel } from '../features/home/marketing/SendsPanel.js';
 
 /**

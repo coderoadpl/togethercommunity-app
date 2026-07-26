@@ -129,6 +129,7 @@ export interface Messages {
     members: string;
     integrations: string;
     settings: string;
+    marketingActivity: string;
     marketingSends: string;
     marketingCampaigns: string;
     marketingConsents: string;
@@ -909,6 +910,8 @@ export interface Messages {
     allSends: string;
     exportCsv: string;
     exporting: string;
+    runIdFilter: string;
+    clearRunFilter: string;
     all: string;
     kind: string;
     kindTransactional: string;
@@ -946,6 +949,41 @@ export interface Messages {
       | 'skipped' | 'failed' | 'retried' | 'suppressed_written' | 'unsubscribed',
       string
     >;
+    activity: {
+      title: string;
+      description: string;
+      loading: string;
+      empty: string;
+      noMatches: string;
+      runsLast24Hours: string;
+      sentLast24Hours: string;
+      failedLast24Hours: string;
+      lastRun: string;
+      noLastRun: string;
+      runId: string;
+      runError: string;
+      runKind: string;
+      trigger: string;
+      started: string;
+      finished: string;
+      duration: string;
+      tenantCounts: string;
+      details: string;
+      allRuns: string;
+      breakdown: string;
+      campaignsTouched: string;
+      batchSize: string;
+      budget: string;
+      errors: string;
+      noErrors: string;
+      viewSends: string;
+      counts: (params: { sent: number; failed: number; skipped: number }) => string;
+      budgetUsage: (params: { computed: number; used: number }) => string;
+      milliseconds: (params: { value: number }) => string;
+      kinds: Record<'marketing_tick' | 'outbox_dispatch', string>;
+      triggers: Record<'cron' | 'dev' | 'manual', string>;
+      statuses: Record<'running' | 'completed' | 'failed', string>;
+    };
     campaignsTitle: string;
     campaignsDescription: string;
     campaignsEmpty: string;

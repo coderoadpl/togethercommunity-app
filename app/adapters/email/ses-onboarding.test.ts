@@ -1,5 +1,5 @@
 import { SESClient } from '@aws-sdk/client-ses';
-import { SNSClient, type SubscribeCommandInput } from '@aws-sdk/client-sns';
+import { SNSClient } from '@aws-sdk/client-sns';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createSesOnboardingControlPlane } from './ses-onboarding.js';
@@ -19,7 +19,7 @@ const factory = () => ({
 
 describe('SES onboarding AWS adapter', () => {
   it('keeps a newly created HTTPS subscription pending until SNS confirms it', async () => {
-    const subscribe = vi.fn(async (_sns: SNSClient, _input: SubscribeCommandInput) => ({
+    const subscribe = vi.fn(async () => ({
       SubscriptionArn: 'pending confirmation',
       $metadata: {},
     }));

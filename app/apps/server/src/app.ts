@@ -13,6 +13,11 @@ import {
   bunnyVideosInputSchema,
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
+  couponCheckoutValidationRequestSchema,
+  couponArchiveRequestSchema,
+  couponCreateRequestSchema,
+  couponStatsExportQuerySchema,
+  couponStatsQuerySchema,
   emailSendsExportQuerySchema,
   emailSendsQuerySchema,
   schedulerRunsQuerySchema,
@@ -127,6 +132,12 @@ import {
   exportMembers,
   exportEmailSends,
   exportOrders,
+  exportCouponStats,
+  createCoupon,
+  archiveCoupon,
+  getCouponStats,
+  listCouponOptions,
+  getOrder,
   getEmailSend,
   listTenantApiKeys,
   listCampaignsWithEngagement,
@@ -191,6 +202,7 @@ import {
   listMyCourses,
   listMyProducts,
   listOrders,
+  listCouponStats,
   listProductPrices,
   simulateSubscriptionCycle,
   simulateSubscriptionFailure,
@@ -219,6 +231,7 @@ import {
   testSendCampaignToSelf,
   simulatePurchase,
   validateCheckoutSelection,
+  validateCouponForCheckout,
   listBunnyVideos,
   testBunnyConnection,
   testStripeConnection,
@@ -231,6 +244,7 @@ import {
   updateProductAccessItems,
   type AuthenticatedUser,
   type PaymentWebhookEvent,
+  type SimulatePurchaseResult,
   type TenantSource,
 } from '@core/server/index.js';
 import {
@@ -562,6 +576,53 @@ export const buildApp = (deps: AppDeps) => {
     );
   });
 
+  app.post(API_PATHS.couponCheckoutValidation, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = couponCheckoutValidationRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return respondPublic(err(validation('Invalid coupon payload', parsed.error.flatten())));
+    }
+    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
+    if (!selection.ok) return respondPublic(selection);
+    if (
+      deps.coupons === undefined ||
+      deps.couponRedemptions === undefined ||
+      deps.priceHistory === undefined
+    ) {
+      return respondPublic(err(internal('Coupon checkout is not configured')));
+    }
+    const price = selection.value.price;
+    const result = await validateCouponForCheckout(
+      tenant.value.tenant.id,
+      {
+        code: parsed.data.couponCode,
+        ...(parsed.data.email === undefined ? {} : { email: parsed.data.email }),
+        productId: selection.value.product.id,
+        priceId: price?.id ?? null,
+        priceKind: price?.kind ?? 'one_time',
+        amountCents: price?.amountCents ?? selection.value.product.priceCents,
+        currency: price?.currency ?? selection.value.product.currency,
+      },
+      {
+        coupons: deps.coupons,
+        redemptions: deps.couponRedemptions,
+        priceHistory: deps.priceHistory,
+        clock: deps.clock,
+      },
+    );
+    return respondPublic(
+      result.ok
+        ? ok({
+            breakdown: result.value.breakdown,
+            recurringDuration: result.value.coupon.recurringDuration,
+          })
+        : result,
+    );
+  });
+
   app.post(API_PATHS.checkoutSession, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
@@ -569,10 +630,12 @@ export const buildApp = (deps: AppDeps) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
-    const configured = await getPaymentConfig(tenant.value.tenant.id, deps);
-    if (!configured.ok) return respondPublic(configured);
-    if (!configured.value.stripeConfigured) {
-      return respondPublic(err(validation('Stripe is not configured for this tenant')));
+    if (parsed.data.couponCode === undefined) {
+      const configured = await getPaymentConfig(tenant.value.tenant.id, deps);
+      if (!configured.ok) return respondPublic(configured);
+      if (!configured.value.stripeConfigured) {
+        return respondPublic(err(validation('Stripe is not configured for this tenant')));
+      }
     }
     const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
     if (!selection.ok) return respondPublic(selection);
@@ -610,6 +673,44 @@ export const buildApp = (deps: AppDeps) => {
       deps,
       checkoutConsentCaptureId,
     );
+    if (
+      session.ok &&
+      session.value.free &&
+      session.value.couponCheckoutSessionId !== undefined
+    ) {
+      const objectId = `free_${session.value.couponCheckoutSessionId}`;
+      const event: PaymentWebhookEvent = {
+        id: `event_${objectId}`,
+        type: 'checkout.session.completed',
+        objectId,
+        checkoutSession: {
+          email: parsed.data.email ?? null,
+          subscriptionId:
+            selection.value.price?.kind === 'recurring' ? `subscription_${objectId}` : null,
+          paymentIntentId: null,
+          invoiceId: null,
+          amountTotalCents: session.value.coupon?.finalCents ?? 0,
+          discountTotalCents: session.value.coupon?.discountCents ?? 0,
+          metadata: {
+            tenantId: tenant.value.tenant.id,
+            productId: selection.value.product.id,
+            priceId: selection.value.price?.id ?? null,
+            memberEmail: parsed.data.email ?? null,
+            language: parsed.data.language ?? null,
+            checkoutConsentCaptureId,
+            couponCheckoutSessionId: session.value.couponCheckoutSessionId,
+          },
+        },
+      };
+      const fulfilled = await fulfillStripeWebhook(
+        tenant.value.tenant,
+        event,
+        { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+        'simulated',
+      );
+      if (!fulfilled.ok) return respondPublic(fulfilled);
+      await recordFulfilledCheckoutConsents(deps, tenant.value.tenant, event);
+    }
     return respondPublic(session);
   });
 
@@ -750,15 +851,115 @@ export const buildApp = (deps: AppDeps) => {
       );
       if (!consent.ok) return respond(consent);
 
-      const result = await simulatePurchase(
-        tenant.value.tenant.id,
-        {
-          email: parsed.data.email,
-          productId: parsed.data.productId,
-          ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
-        },
-        deps,
-      );
+      let result: Result<SimulatePurchaseResult, AppError>;
+      if (parsed.data.couponCode === undefined) {
+        result = await simulatePurchase(
+          tenant.value.tenant.id,
+          {
+            email: parsed.data.email,
+            productId: parsed.data.productId,
+            ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
+          },
+          deps,
+        );
+      } else if (
+        deps.coupons === undefined ||
+        deps.couponRedemptions === undefined ||
+        deps.couponCheckoutSessions === undefined ||
+        deps.priceHistory === undefined
+      ) {
+        result = err(internal('Coupon checkout is not configured'));
+      } else {
+        const price = selection.value.price;
+        const validated = await validateCouponForCheckout(
+          tenant.value.tenant.id,
+          {
+            code: parsed.data.couponCode,
+            email: parsed.data.email,
+            productId: selection.value.product.id,
+            priceId: price?.id ?? null,
+            priceKind: price?.kind ?? 'one_time',
+            amountCents: price?.amountCents ?? selection.value.product.priceCents,
+            currency: price?.currency ?? selection.value.product.currency,
+          },
+          {
+            coupons: deps.coupons,
+            redemptions: deps.couponRedemptions,
+            priceHistory: deps.priceHistory,
+            clock: deps.clock,
+          },
+        );
+        if (!validated.ok) {
+          result = validated;
+        } else {
+          const couponSessionId = deps.ids.nextId();
+          const objectId = `simulated_${couponSessionId}`;
+          await deps.couponCheckoutSessions.create(tenant.value.tenant.id, {
+            id: couponSessionId,
+            tenantId: tenant.value.tenant.id,
+            couponId: validated.value.coupon.id,
+            providerSessionId: objectId,
+            memberEmail: parsed.data.email,
+            productId: selection.value.product.id,
+            priceId: price?.id ?? null,
+            originalCents: validated.value.breakdown.originalCents,
+            discountCents: validated.value.breakdown.discountCents,
+            finalCents: validated.value.breakdown.finalCents,
+            currency: validated.value.breakdown.currency,
+            startedAt: deps.clock.nowIso(),
+          });
+          const event: PaymentWebhookEvent = {
+            id: `event_${objectId}`,
+            type: 'checkout.session.completed',
+            objectId,
+            checkoutSession: {
+              email: parsed.data.email,
+              subscriptionId: price?.kind === 'recurring' ? `subscription_${couponSessionId}` : null,
+              paymentIntentId: null,
+              invoiceId: null,
+              amountTotalCents: validated.value.breakdown.finalCents,
+              discountTotalCents: validated.value.breakdown.discountCents,
+              metadata: {
+                tenantId: tenant.value.tenant.id,
+                productId: selection.value.product.id,
+                priceId: price?.id ?? null,
+                memberEmail: parsed.data.email,
+                language: parsed.data.language,
+                couponCheckoutSessionId: couponSessionId,
+              },
+            },
+          };
+          const fulfilled = await fulfillStripeWebhook(
+            tenant.value.tenant,
+            event,
+            { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+            'simulated',
+          );
+          if (!fulfilled.ok) {
+            result = fulfilled;
+          } else {
+            const order = await deps.paymentRefunds.findOrderByProviderObjectIds(
+              tenant.value.tenant.id,
+              { checkoutSession: objectId },
+            );
+            const subscription = order === null
+              ? undefined
+              : (await deps.subscriptions.listForMember(
+                  tenant.value.tenant.id,
+                  order.memberId,
+                )).find((candidate) => candidate.productId === selection.value.product.id);
+            result = order === null
+              ? err(internal('Coupon fulfillment did not create an order'))
+              : ok({
+                  memberId: order.memberId,
+                  productId: selection.value.product.id,
+                  alreadyOwned: false,
+                  subscriptionId: subscription?.id ?? null,
+                  orderId: order.id,
+                });
+          }
+        }
+      }
       if (!result.ok) return respond(result);
 
       const terms = await enforceTermsConsent(
@@ -929,6 +1130,7 @@ export const buildApp = (deps: AppDeps) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const parsed = schedulerRunsQuerySchema.safeParse({
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
@@ -1574,6 +1776,7 @@ export const buildApp = (deps: AppDeps) => {
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
       ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
       ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
@@ -1588,6 +1791,7 @@ export const buildApp = (deps: AppDeps) => {
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
     };
     const parsed = ordersExportQuerySchema.safeParse(query);
@@ -1595,9 +1799,128 @@ export const buildApp = (deps: AppDeps) => {
     return respond(await exportOrders({ identity: c.get('identity') }, parsed.data, deps));
   });
 
+  app.get(API_PATHS.order, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    return respond(
+      await getOrder(
+        { identity: c.get('identity') },
+        c.req.param('orderId'),
+        { orders: deps.orderDetails },
+      ),
+    );
+  });
+
   app.get(API_PATHS.salesSummary, async (c) => {
     const result = await getSalesSummary({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ summary: result.value }) : result);
+  });
+
+  app.get(API_PATHS.couponStatsExport, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon statistics are unavailable')));
+    const parsed = couponStatsExportQuerySchema.safeParse({
+      format: c.req.query('format'),
+      ...(c.req.query('partnerLabel') === undefined
+        ? {}
+        : { partnerLabel: c.req.query('partnerLabel') }),
+      ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
+      ...(c.req.query('through') === undefined ? {} : { through: c.req.query('through') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid coupon export query', parsed.error.flatten())));
+    return respond(
+      await exportCouponStats(
+        { identity: c.get('identity') },
+        {
+          format: parsed.data.format,
+          ...(parsed.data.partnerLabel === undefined
+            ? {}
+            : { partnerLabel: parsed.data.partnerLabel }),
+          ...(parsed.data.since === undefined ? {} : { since: parsed.data.since }),
+          ...(parsed.data.through === undefined ? {} : { through: parsed.data.through }),
+        },
+        { stats: deps.couponStats, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.post(API_PATHS.couponArchive, async (c) => {
+    if (deps.coupons === undefined) return respond(err(internal('Coupon management is unavailable')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = couponArchiveRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid coupon archive payload', parsed.error.flatten())));
+    return respond(
+      await archiveCoupon(
+        { identity: c.get('identity') },
+        parsed.data,
+        { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.couponOptions, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon options are unavailable')));
+    return respond(
+      await listCouponOptions(
+        { identity: c.get('identity') },
+        { stats: deps.couponStats },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.couponStats, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon statistics are unavailable')));
+    const parsed = couponStatsQuerySchema.safeParse({
+      ...(c.req.query('partnerLabel') === undefined
+        ? {}
+        : { partnerLabel: c.req.query('partnerLabel') }),
+      ...(c.req.query('cursorCreatedAt') === undefined
+        ? {}
+        : { cursorCreatedAt: c.req.query('cursorCreatedAt') }),
+      ...(c.req.query('cursorId') === undefined ? {} : { cursorId: c.req.query('cursorId') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+      ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
+      ...(c.req.query('through') === undefined ? {} : { through: c.req.query('through') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid coupon statistics query', parsed.error.flatten())));
+    return respond(
+      await listCouponStats(
+        { identity: c.get('identity') },
+        {
+          ...(parsed.data.partnerLabel === undefined ? {} : { partnerLabel: parsed.data.partnerLabel }),
+          ...(parsed.data.cursorCreatedAt === undefined || parsed.data.cursorId === undefined
+            ? {}
+            : { cursor: { createdAt: parsed.data.cursorCreatedAt, id: parsed.data.cursorId } }),
+          ...(parsed.data.limit === undefined ? {} : { limit: parsed.data.limit }),
+          ...(parsed.data.since === undefined ? {} : { since: parsed.data.since }),
+          ...(parsed.data.through === undefined ? {} : { through: parsed.data.through }),
+        },
+        { stats: deps.couponStats, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.post(API_PATHS.couponsCreate, async (c) => {
+    if (deps.coupons === undefined) return respond(err(internal('Coupon management is unavailable')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = couponCreateRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid coupon payload', parsed.error.flatten())));
+    return respond(
+      await createCoupon(
+        { identity: c.get('identity') },
+        parsed.data,
+        { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.couponStatsDetail, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon statistics are unavailable')));
+    return respond(
+      await getCouponStats(
+        { identity: c.get('identity') },
+        c.req.param('couponId'),
+        { stats: deps.couponStats, clock: deps.clock },
+      ),
+    );
   });
 
   app.get(API_PATHS.courses, async (c) => {

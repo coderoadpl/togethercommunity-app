@@ -46,11 +46,14 @@ export const fulfillEnrollment = async (
     language: string;
     source: GrantSource;
     sendEmail: boolean;
+    allowUnpublished?: boolean;
   },
   deps: FulfillEnrollmentDeps,
 ): Promise<Result<FulfillEnrollmentResult, AppError>> => {
   const product = await deps.products.findById(tenant.id, input.productId);
-  if (!product || !product.published) return err(notFound(`No published product "${input.productId}" in this tenant`));
+  if (!product || (!product.published && input.allowUnpublished !== true)) {
+    return err(notFound(`No published product "${input.productId}" in this tenant`));
+  }
 
   const completed = await deps.enrollmentTransaction.run(async (transaction) => {
     const member = await ensureMember(tenant.id, input.email, { ...deps, members: transaction.members });

@@ -99,6 +99,7 @@ const ordersListOptionsSchema = z.object({
   status: z.enum(['paid', 'pending', 'failed', 'refunded']).optional(),
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
+  coupon: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
   page: z
     .string()
@@ -116,7 +117,26 @@ const ordersExportOptionsSchema = z.object({
   status: z.enum(['paid', 'pending', 'failed', 'refunded']).optional(),
   product: z.string().min(1).optional(),
   kind: z.enum(['one_time', 'recurring']).optional(),
+  coupon: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
+  out: z.string().min(1).optional(),
+});
+const couponCreateOptionsSchema = z.object({
+  code: z.string().trim().min(1),
+  kind: z.enum(['percent', 'amount']),
+  value: z.string().regex(/^\d+$/).transform((entry) => Number.parseInt(entry, 10)),
+  products: z.array(z.string().min(1)).optional(),
+  appliesTo: z.enum(['one_time', 'recurring', 'both']).optional(),
+  recurringDuration: z.enum(['first_invoice', 'forever']).optional(),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+  maxRedemptions: z.string().regex(/^[1-9]\d*$/).transform((entry) => Number.parseInt(entry, 10)).optional(),
+  maxPerMember: z.string().regex(/^[1-9]\d*$/).transform((entry) => Number.parseInt(entry, 10)).optional(),
+  partner: z.string().trim().min(1).optional(),
+});
+const couponExportOptionsSchema = z.object({
+  format: z.enum(['csv', 'json']),
+  partner: z.string().trim().min(1).optional(),
   out: z.string().min(1).optional(),
 });
 const checkoutSessionOptionsSchema = z.object({
@@ -844,6 +864,7 @@ ordersCommand
   .option('--status <status>', 'paid, pending, failed or refunded')
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
+  .option('--coupon <id>')
   .option('--search <text>', 'search by member e-mail or name')
   .option('--page <n>')
   .option('--page-size <n>')
@@ -854,6 +875,7 @@ ordersCommand
           ...(options.status === undefined ? {} : { status: options.status }),
           ...(options.product === undefined ? {} : { productId: options.product }),
           ...(options.kind === undefined ? {} : { kind: options.kind }),
+          ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
           ...(options.search === undefined ? {} : { search: options.search }),
           ...(options.page === undefined ? {} : { page: options.page }),
           ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
@@ -880,6 +902,7 @@ ordersCommand
   .option('--status <status>', 'paid, pending, failed or refunded')
   .option('--product <id>')
   .option('--kind <kind>', 'one_time or recurring')
+  .option('--coupon <id>')
   .option('--search <text>', 'search by member e-mail or name')
   .option('--out <file>', 'write the export to a file instead of stdout')
   .action(
@@ -889,6 +912,7 @@ ordersCommand
         ...(options.status === undefined ? {} : { status: options.status }),
         ...(options.product === undefined ? {} : { productId: options.product }),
         ...(options.kind === undefined ? {} : { kind: options.kind }),
+        ...(options.coupon === undefined ? {} : { couponId: options.coupon }),
         ...(options.search === undefined ? {} : { search: options.search }),
       });
       if (result.ok && options.out !== undefined) {
@@ -913,6 +937,97 @@ ordersCommand.command('summary').description('Dashboard sales summary (last 30 d
     });
   }),
 );
+
+const couponsCommand = program.command('coupons').description('Coupons and attributed sales');
+
+couponsCommand
+  .command('list')
+  .option('--partner <label>')
+  .action(
+    withInput(z.tuple([z.object({ partner: z.string().trim().min(1).optional() })]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listCouponStats(
+          options.partner === undefined ? {} : { partnerLabel: options.partner },
+        ),
+        ctx.json,
+        (data) =>
+          data.items.length === 0
+            ? 'no coupons'
+            : data.items.map((item) =>
+                `${item.coupon.code}\t${item.coupon.status}\t${item.redemptions} redemption(s)\t${item.coupon.partnerLabel ?? 'no partner'}\t(${item.coupon.id})`,
+              ).join('\n'),
+      );
+    }),
+  );
+
+couponsCommand
+  .command('create')
+  .requiredOption('--code <code>')
+  .requiredOption('--kind <kind>', 'percent or amount')
+  .requiredOption('--value <integer>')
+  .option('--products <ids...>')
+  .option('--applies-to <kind>', 'one_time, recurring or both')
+  .option('--recurring-duration <duration>', 'first_invoice or forever')
+  .option('--starts-at <iso>')
+  .option('--ends-at <iso>')
+  .option('--max-redemptions <n>')
+  .option('--max-per-member <n>')
+  .option('--partner <label>')
+  .action(
+    withInput(z.tuple([couponCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.createCoupon({
+          code: options.code,
+          kind: options.kind,
+          value: options.value,
+          scope: options.products === undefined
+            ? { kind: 'all' }
+            : { kind: 'products', productIds: options.products },
+          appliesTo: options.appliesTo ?? 'both',
+          recurringDuration: options.recurringDuration ?? 'first_invoice',
+          startsAt: options.startsAt ?? null,
+          endsAt: options.endsAt ?? null,
+          maxRedemptions: options.maxRedemptions ?? null,
+          maxRedemptionsPerMember: options.maxPerMember ?? null,
+          partnerLabel: options.partner ?? null,
+        }),
+        ctx.json,
+        (data) => `created coupon ${data.coupon.code} (${data.coupon.id})`,
+      );
+    }),
+  );
+
+couponsCommand
+  .command('archive <id>')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(
+        await ctx.api.archiveCoupon({ id }),
+        ctx.json,
+        (data) => `archived coupon ${data.coupon.code} (${data.coupon.id})`,
+      );
+    }),
+  );
+
+couponsCommand
+  .command('export')
+  .requiredOption('--format <format>', 'csv or json')
+  .option('--partner <label>')
+  .option('--out <file>')
+  .action(
+    withInput(z.tuple([couponExportOptionsSchema]), async (ctx, [options]) => {
+      const result = await ctx.api.exportCouponStats({
+        format: options.format,
+        ...(options.partner === undefined ? {} : { partnerLabel: options.partner }),
+      });
+      if (result.ok && options.out !== undefined) await writeFile(options.out, result.value.content);
+      emit(
+        result,
+        ctx.json,
+        (file) => options.out === undefined ? file.content : `wrote ${file.filename} to ${options.out}`,
+      );
+    }),
+  );
 
 const subscriptionCommand = program
   .command('subscription')

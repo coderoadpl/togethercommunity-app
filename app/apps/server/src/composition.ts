@@ -22,6 +22,13 @@ import {
   createUnsubscribeTokenRepository,
 } from '@adapters/db/marketing-repositories.js';
 import {
+  createCouponCheckoutSessionRepository,
+  createCouponRedemptionRepository,
+  createCouponRepository,
+  createCouponStatsRepository,
+  createProductPriceHistoryRepository,
+} from '@adapters/db/coupon-repositories.js';
+import {
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
@@ -83,6 +90,10 @@ import type {
   AuthPort,
   Clock,
   CheckoutConsentCaptureRepository,
+  CouponCheckoutSessionRepository,
+  CouponRedemptionRepository,
+  CouponManagementRepository,
+  CouponStatsRepository,
   PaymentProvider,
   PlatformTransactionalPool,
   SecretCrypto,
@@ -122,11 +133,13 @@ import type {
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
+  OrderDetailRepository,
   PaymentRefundRepository,
   PostRepository,
   PurchaseRepository,
   ProductGrantRepository,
   ProductPriceRepository,
+  ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
   OnboardingStateRepository,
@@ -194,6 +207,7 @@ export interface AppDeps {
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
   orders: OrderRepository;
+  orderDetails?: OrderDetailRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -205,6 +219,11 @@ export interface AppDeps {
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
+  coupons?: CouponManagementRepository;
+  couponRedemptions?: CouponRedemptionRepository;
+  couponCheckoutSessions?: CouponCheckoutSessionRepository;
+  priceHistory?: ProductPriceHistoryRepository;
+  couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
   fileUrlSigner: FileUrlSigner;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
@@ -533,6 +552,7 @@ export const createDeps = (env: Env): AppDeps => {
     grants: createProductGrantRepository(db),
     prices: createProductPriceRepository(db),
     orders: createOrderRepository(db),
+    orderDetails: createOrderRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
@@ -544,6 +564,11 @@ export const createDeps = (env: Env): AppDeps => {
     secretResolver,
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
+    coupons: createCouponRepository(db),
+    couponRedemptions: createCouponRedemptionRepository(db),
+    couponCheckoutSessions: createCouponCheckoutSessionRepository(db),
+    priceHistory: createProductPriceHistoryRepository(db),
+    couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
     fileUrlSigner: createS3UrlSigner(),

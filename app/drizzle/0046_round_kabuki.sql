@@ -1,0 +1,1 @@
+CREATE INDEX "coupons_tenant_created_idx" ON "coupons" USING btree ("tenant_id","created_at" DESC NULLS LAST,"id");

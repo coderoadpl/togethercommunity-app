@@ -15,6 +15,9 @@ const payload = JSON.stringify({
     object: {
       id: 'cs_123',
       customer_details: { email: 'buyer@example.com' },
+      invoice: 'in_123',
+      amount_total: 2449,
+      total_details: { amount_discount: 2451 },
       metadata: {
         tenantId: 'tenant-a',
         productId: 'product-1',
@@ -50,6 +53,9 @@ describe('fake Stripe webhook verification', () => {
           email: 'buyer@example.com',
           subscriptionId: null,
           paymentIntentId: null,
+          invoiceId: 'in_123',
+          amountTotalCents: 2449,
+          discountTotalCents: 2451,
           metadata: {
             tenantId: 'tenant-a',
             productId: 'product-1',
@@ -57,6 +63,7 @@ describe('fake Stripe webhook verification', () => {
             memberEmail: null,
             language: 'pl',
             checkoutConsentCaptureId: 'capture-opaque-1',
+            couponCheckoutSessionId: null,
           },
         },
         invoice: null,

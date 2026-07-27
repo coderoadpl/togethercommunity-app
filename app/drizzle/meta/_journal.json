@@ -309,6 +309,55 @@
       "when": 1785164422590,
       "tag": "0043_erasure_import_link_and_consent_captures",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785167579703,
+      "tag": "0044_great_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1785168346181,
+      "tag": "0045_perpetual_glorian",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1785168791876,
+      "tag": "0046_round_kabuki",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1785170076288,
+      "tag": "0047_melodic_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1785173512191,
+      "tag": "0048_coupon_data_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1785173938286,
+      "tag": "0049_coupon_payment_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1785174150924,
+      "tag": "0050_coupon_amount_currency",
+      "breakpoints": true
     }
   ]
 }

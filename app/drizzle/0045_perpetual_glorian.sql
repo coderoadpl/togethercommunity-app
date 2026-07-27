@@ -1,0 +1,1 @@
+ALTER TABLE "coupon_checkout_sessions" ADD COLUMN "currency" text NOT NULL;

@@ -14,6 +14,11 @@ import type {
   ApiKeyRevokeInput,
   CourseCreateInput,
   CheckoutSessionRequest,
+  CouponCheckoutValidationRequest,
+  CouponArchiveRequest,
+  CouponCreateRequest,
+  CouponStatsExportQueryInput,
+  CouponStatsQueryInput,
   CourseUpdateInput,
   GrantCreateInput,
   GrantRevokeInput,
@@ -162,8 +167,17 @@ export const productPricesScopes = {
 export const salesScopes = {
   all: () => ['sales'] as const,
   orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
+  order: (id: string) => ['sales', 'order', id] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
   summary: () => ['sales', 'summary'] as const,
+};
+
+export const couponScopes = {
+  all: () => ['coupons'] as const,
+  options: () => ['coupons', 'options'] as const,
+  list: (input: CouponStatsQueryInput) => ['coupons', 'list', input] as const,
+  detail: (id: string) => ['coupons', 'detail', id] as const,
+  export: (input: CouponStatsExportQueryInput) => ['coupons', 'export', input] as const,
 };
 
 export const myProductsScopes = {
@@ -418,6 +432,12 @@ export const createCheckoutSessionMutation = (api: ApiClient) =>
     call: (input: CheckoutSessionRequest) => api.createCheckoutSession(input),
   });
 
+export const validateCouponForCheckoutMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['coupon-checkout-validation'] as const,
+    call: (input: CouponCheckoutValidationRequest) => api.validateCouponForCheckout(input),
+  });
+
 export const recordTermsConsentMutation = (
   api: ApiClient,
 ): MutationDescriptor<{ recorded: boolean }, { accepted: boolean }> =>
@@ -496,6 +516,12 @@ export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
     call: ({ signal }) => api.listOrders(input, signal),
   });
 
+export const orderQuery = (api: ApiClient, id: string) =>
+  defineQuery({
+    queryKey: salesScopes.order(id),
+    call: ({ signal }) => api.getOrder(id, signal),
+  });
+
 export const ordersExportQuery = (api: ApiClient, input: OrdersExportQueryInput) =>
   defineQuery({
     queryKey: salesScopes.export(input.format, input),
@@ -509,6 +535,46 @@ export const salesSummaryQuery = (api: ApiClient) =>
     queryKey: salesScopes.summary(),
     call: ({ signal }) => api.salesSummary(signal),
   });
+
+export const couponStatsQuery = (api: ApiClient, input: CouponStatsQueryInput) =>
+  defineQuery({
+    queryKey: couponScopes.list(input),
+    call: ({ signal }) => api.listCouponStats(input, signal),
+  });
+
+export const couponOptionsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: couponScopes.options(),
+    call: ({ signal }) => api.listCouponOptions(signal),
+  });
+
+export const couponStatsDetailQuery = (api: ApiClient, id: string) =>
+  defineQuery({
+    queryKey: couponScopes.detail(id),
+    call: ({ signal }) => api.getCouponStats(id, signal),
+  });
+
+export const couponStatsExportQuery = (api: ApiClient, input: CouponStatsExportQueryInput) =>
+  defineQuery({
+    queryKey: couponScopes.export(input),
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportCouponStats(input, signal),
+  });
+
+export const createCouponMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...couponScopes.all(), 'create'],
+    call: (input: CouponCreateRequest) => api.createCoupon(input),
+  });
+
+export const archiveCouponMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...couponScopes.all(), 'archive'],
+    call: (input: CouponArchiveRequest) => api.archiveCoupon(input),
+  });
+
+export const couponsInvalidates = () => ({ queryKey: couponScopes.all() });
 
 export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =>
   defineQuery({

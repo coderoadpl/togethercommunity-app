@@ -7,6 +7,7 @@ import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { SalesPanel } from './SalesPanel.js';
+import { OrderDetailPage } from './OrderDetailPage.js';
 
 describe('SalesPanel', () => {
   it('renders orders, applies a server filter, and exports all filtered rows without page parameters', async () => {
@@ -49,6 +50,9 @@ describe('SalesPanel', () => {
               currency: 'PLN',
               provider: 'simulated',
               providerObjectIds: {},
+              couponId: null,
+              discountCents: 0,
+              couponCode: null,
               createdAt: '2026-07-18T10:00:00.000Z',
               memberEmail: 'member@example.com',
               memberName: 'Ada',
@@ -60,6 +64,14 @@ describe('SalesPanel', () => {
           },
         });
       }),
+      http.get('/api/coupons/options', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            coupons: [{ id: 'coupon-1', code: 'PARTNER20' }],
+          },
+        }),
+      ),
       http.get('/api/orders/export', ({ request }) => {
         exportQueries.push(new URL(request.url).search);
         return HttpResponse.json({
@@ -78,11 +90,57 @@ describe('SalesPanel', () => {
     await userEvent.click(await screen.findByRole('option', { name: pl.sales.paid }));
     await waitFor(() => expect(listQueries.some((query) => query.includes('status=paid'))).toBe(true));
 
+    await userEvent.click(screen.getByLabelText(pl.sales.coupon));
+    await userEvent.click(await screen.findByRole('option', { name: 'PARTNER20' }));
+    await waitFor(() =>
+      expect(listQueries.some((query) => query.includes('couponId=coupon-1'))).toBe(true),
+    );
+
     await userEvent.click(screen.getByTestId('sales-export-csv'));
     await waitFor(() => expect(exportQueries).toHaveLength(1));
     expect(exportQueries[0]).toContain('format=csv');
     expect(exportQueries[0]).toContain('status=paid');
+    expect(exportQueries[0]).toContain('couponId=coupon-1');
     expect(exportQueries[0]).not.toContain('page=');
     expect(exportQueries[0]).not.toContain('pageSize=');
+  });
+});
+
+describe('OrderDetailPage', () => {
+  it('shows coupon and discount attribution', async () => {
+    server.use(
+      http.get('/api/orders/o1', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            order: {
+              id: 'o1',
+              tenantId: 't1',
+              memberId: 'm1',
+              productId: 'p1',
+              priceId: 'price-1',
+              kind: 'one_time',
+              status: 'paid',
+              amountCents: 3920,
+              currency: 'PLN',
+              provider: 'simulated',
+              providerObjectIds: {},
+              couponId: 'coupon-1',
+              discountCents: 980,
+              couponCode: 'PARTNER20',
+              createdAt: '2026-07-18T10:00:00.000Z',
+              memberEmail: 'member@example.com',
+              memberName: 'Ada',
+              productTitle: 'Workshop',
+            },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<OrderDetailPage orderId="o1" />);
+
+    expect(await screen.findByText('PARTNER20')).toBeInTheDocument();
+    expect(screen.getByText('9,80 zł')).toBeInTheDocument();
   });
 });

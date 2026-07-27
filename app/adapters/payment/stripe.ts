@@ -28,6 +28,18 @@ export interface StripePaymentProviderConfig {
 }
 
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
+type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
+
+export const stripeCouponParams = (
+  input: EnsureCouponRequest,
+): Stripe.CouponCreateParams => ({
+  duration: input.recurringDuration === 'forever' ? 'forever' : 'once',
+  name: input.code,
+  metadata: { tenantId: input.tenantId, couponId: input.couponId },
+  ...(input.kind === 'percent'
+    ? { percent_off: input.value }
+    : { amount_off: input.value, currency: input.currency.toLowerCase() }),
+});
 
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
@@ -61,7 +73,13 @@ export const stripeCheckoutSessionParams = (
       ...(input.checkoutConsentCaptureId === undefined
         ? {}
         : { checkoutConsentCaptureId: input.checkoutConsentCaptureId }),
+      ...(input.couponCheckoutSessionId === undefined
+        ? {}
+        : { couponCheckoutSessionId: input.couponCheckoutSessionId }),
     },
+    ...(input.promotionCodeId === undefined
+      ? {}
+      : { discounts: [{ promotion_code: input.promotionCodeId }] }),
   };
 };
 
@@ -162,6 +180,29 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
   };
 
   return {
+    ensureCouponPromotion: async (input) => {
+      const client = await clientFor(input.tenantId);
+      if (!client.ok) return client;
+      try {
+        let stripeCouponId = input.stripeCouponId;
+        if (stripeCouponId === null) {
+          const created = await client.value.coupons.create(stripeCouponParams(input));
+          stripeCouponId = created.id;
+        }
+        let stripePromotionCodeId = input.stripePromotionCodeId;
+        if (stripePromotionCodeId === null) {
+          const created = await client.value.promotionCodes.create({
+            coupon: stripeCouponId,
+            code: input.code,
+            metadata: { tenantId: input.tenantId, couponId: input.couponId },
+          });
+          stripePromotionCodeId = created.id;
+        }
+        return ok({ stripeCouponId, stripePromotionCodeId });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected the coupon request', cause));
+      }
+    },
     createCheckoutSession: async (input) => {
       const client = await clientFor(input.tenantId);
       if (!client.ok) return client;
@@ -205,6 +246,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
               email: session.customer_details?.email ?? session.customer_email ?? null,
               subscriptionId: idOrNull(session.subscription),
               paymentIntentId: idOrNull(session.payment_intent),
+              invoiceId: idOrNull(session.invoice),
+              amountTotalCents: session.amount_total,
+              discountTotalCents: session.total_details?.amount_discount ?? null,
               metadata: {
                 tenantId: session.metadata?.tenantId ?? null,
                 productId: session.metadata?.productId ?? null,
@@ -213,6 +257,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
                 language: session.metadata?.language || null,
                 checkoutConsentCaptureId:
                   session.metadata?.checkoutConsentCaptureId || null,
+                couponCheckoutSessionId:
+                  session.metadata?.couponCheckoutSessionId || null,
               },
             },
           });

@@ -7,7 +7,11 @@ import {
   FormControlLabel,
   FormLabel,
   Link,
+  List,
+  ListItem,
+  ListItemText,
   OutlinedInput,
+  Stack,
   Switch,
   Typography,
 } from '@mui/material';
@@ -19,6 +23,136 @@ import { localizeError, useLanguage, useTranslations } from '../../../i18n/index
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
 import { ReputationSummary } from './ReputationSummary.js';
+
+interface LiveSesChecklist {
+  credentials: boolean;
+  identity: boolean;
+  configurationSet: boolean;
+  snsSubscription: boolean;
+  webhook: boolean;
+  footer: boolean;
+  productionAccess: boolean;
+}
+
+const SesOnboardingWizard = ({
+  enabled,
+  onChecklist,
+}: {
+  enabled: boolean;
+  onChecklist(checklist: LiveSesChecklist): void;
+}) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const identity = useMutation(actions.startMarketingSesIdentity);
+  const provision = useMutation(actions.provisionMarketingSes);
+  const poll = useMutation(actions.pollMarketingSesOnboarding);
+  const simulator = useMutation(actions.testMarketingSesSimulator);
+  const refresh = async () => {
+    await queryClient.invalidateQueries(actions.marketingInvalidates());
+  };
+  const records = identity.data?.records ?? poll.data?.records ?? [];
+  const pending = identity.isPending || provision.isPending || poll.isPending || simulator.isPending;
+  const error = identity.error ?? provision.error ?? poll.error ?? simulator.error;
+
+  return (
+    <SectionCard title={t.marketing.wizardTitle} description={t.marketing.wizardDescription}>
+      <Typography variant="body2">{t.marketing.wizardIdentityHint}</Typography>
+      <Stack direction="row" useFlexGap sx={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+        <Button
+          type="button"
+          variant="contained"
+          disabled={!enabled || pending}
+          onClick={() => identity.mutate({ kind: 'domain' })}
+        >
+          {t.marketing.wizardDomainIdentity}
+        </Button>
+        <Button
+          type="button"
+          variant="outlined"
+          disabled={!enabled || pending}
+          onClick={() => identity.mutate({ kind: 'email' })}
+        >
+          {t.marketing.wizardEmailIdentity}
+        </Button>
+      </Stack>
+      {records.length === 0 ? null : (
+        <>
+          <Typography variant="h3">{t.marketing.wizardDkimRecords}</Typography>
+          <List disablePadding>
+            {records.map((record) => (
+              <ListItem
+                key={record.name}
+                disableGutters
+                secondaryAction={(
+                  <Button
+                    type="button"
+                    size="small"
+                    onClick={() => void navigator.clipboard.writeText(`${record.name}\t${record.value}`)}
+                  >
+                    {t.marketing.wizardCopy}
+                  </Button>
+                )}
+              >
+                <ListItemText
+                  primary={`${t.marketing.wizardDkimName}: ${record.name}`}
+                  secondary={`${t.marketing.wizardDkimValue}: ${record.value}`}
+                  slotProps={{
+                    primary: { sx: { overflowWrap: 'anywhere' } },
+                    secondary: { sx: { overflowWrap: 'anywhere' } },
+                  }}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </>
+      )}
+      <Typography variant="body2">{t.marketing.wizardProvisionHint}</Typography>
+      <Stack direction="row" useFlexGap sx={{ gap: '0.75rem', flexWrap: 'wrap' }}>
+        <Button
+          type="button"
+          variant="contained"
+          disabled={!enabled || pending}
+          onClick={() => provision.mutate(undefined, { onSuccess: () => void refresh() })}
+        >
+          {t.marketing.wizardProvision}
+        </Button>
+        <Button
+          type="button"
+          variant="outlined"
+          disabled={!enabled || pending}
+          onClick={() => poll.mutate(undefined, {
+            onSuccess: (status) => {
+              onChecklist(status.checklist);
+              void refresh();
+            },
+          })}
+        >
+          {t.marketing.wizardPoll}
+        </Button>
+      </Stack>
+      {poll.data?.identityRegressed === true ? <Alert severity="error">{t.marketing.wizardRegression}</Alert> : null}
+      {poll.data?.feedbackForwardingDisabled === true ? <Alert severity="success">{t.marketing.wizardFeedbackDisabled}</Alert> : null}
+      <Typography variant="body2">{t.marketing.wizardSimulatorHint}</Typography>
+      <Button
+        type="button"
+        variant="outlined"
+        disabled={!enabled || pending}
+        onClick={() => simulator.mutate(undefined, { onSuccess: () => void refresh() })}
+      >
+        {t.marketing.wizardSimulator}
+      </Button>
+      {simulator.data?.waitingForWebhook === true ? <Alert severity="info">{t.marketing.wizardWaitingWebhook}</Alert> : null}
+      {error === null || error === undefined ? null : <Alert severity="error">{localizeError(error, t)}</Alert>}
+      <Link
+        href="https://github.com/coderoadpl/together/blob/main/docs/ses-onboarding.md"
+        target="_blank"
+        rel="noreferrer"
+      >
+        {t.marketing.wizardDocs}
+      </Link>
+    </SectionCard>
+  );
+};
 
 const CredentialsForm = ({ configured }: { configured: boolean }) => {
   const t = useTranslations();
@@ -144,21 +278,19 @@ export const MarketingSettingsPanel = () => {
   const [fromAddress, setFromAddress] = useState<string | null>(null);
   const [fromName, setFromName] = useState<string | null>(null);
   const [identity, setIdentity] = useState<string | null>(null);
-  const [identityVerified, setIdentityVerified] = useState<boolean | null>(null);
-  const [configurationSet, setConfigurationSet] = useState<string | null>(null);
-  const [snsTopicArn, setSnsTopicArn] = useState<string | null>(null);
   const [trackingEnabled, setTrackingEnabled] = useState<boolean | null>(null);
   const [autoPauseOnCritical, setAutoPauseOnCritical] = useState<boolean | null>(null);
   const [footerLegalName, setFooterLegalName] = useState<string | null>(null);
   const [footerAddress, setFooterAddress] = useState<string | null>(null);
+  const [liveChecklist, setLiveChecklist] = useState<LiveSesChecklist | null>(null);
 
   const values = {
     fromAddress: fromAddress ?? settings?.fromAddress ?? '',
     fromName: fromName ?? settings?.fromName ?? '',
     identity: identity ?? settings?.identity ?? '',
-    identityVerified: identityVerified ?? (settings?.identityVerifiedAt !== null && settings?.identityVerifiedAt !== undefined),
-    configurationSet: configurationSet ?? settings?.configurationSet ?? '',
-    snsTopicArn: snsTopicArn ?? settings?.snsTopicArn ?? '',
+    identityVerified: settings?.identityVerifiedAt !== null && settings?.identityVerifiedAt !== undefined,
+    configurationSet: settings?.configurationSet ?? '',
+    snsTopicArn: settings?.snsTopicArn ?? '',
     trackingEnabled: trackingEnabled ?? settings?.trackingEnabled ?? false,
     autoPauseOnCritical: autoPauseOnCritical ?? settings?.autoPauseOnCritical ?? false,
     footerLegalName: footerLegalName ?? settings?.footerLegalName ?? '',
@@ -200,10 +332,12 @@ export const MarketingSettingsPanel = () => {
         disabledMessage={t.marketing.broadcastsDisabled}
         items={[
           { label: t.marketing.credentialsConfigured, ready: credentialsConfigured },
-          { label: t.marketing.identityVerified, ready: verified },
-          { label: t.marketing.configurationSetConfigured, ready: settings?.configurationSet !== null && settings?.configurationSet !== undefined },
-          { label: t.marketing.webhookVerified, ready: webhookVerified },
-          { label: t.marketing.footerConfigured, ready: footerConfigured },
+          { label: t.marketing.identityVerified, ready: liveChecklist?.identity ?? verified },
+          { label: t.marketing.configurationSetConfigured, ready: liveChecklist?.configurationSet ?? false },
+          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? false },
+          { label: t.marketing.webhookVerified, ready: liveChecklist?.webhook ?? webhookVerified },
+          { label: t.marketing.footerConfigured, ready: liveChecklist?.footer ?? footerConfigured },
+          { label: t.marketing.wizardProductionAccess, ready: liveChecklist?.productionAccess ?? (settings?.quotaRefreshedAt !== null && settings?.quotaRefreshedAt !== undefined && settings?.inSandbox === false) },
           {
             label: `${t.marketing.platformPoolChecklist}: ${pool.used}/${pool.limit}`,
             ready: pool.used < pool.limit || credentialsConfigured || result.data.smtpConfigured,
@@ -214,7 +348,6 @@ export const MarketingSettingsPanel = () => {
         {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
       </SectionCard>
       <CredentialsForm configured={credentialsConfigured} />
-      <SmtpForm configured={result.data.smtpConfigured} />
       <SectionCard title={t.marketing.sender} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}>
         <Alert severity="info">{t.marketing.identityAuthenticationHint}</Alert>
         <FormControl fullWidth>
@@ -228,15 +361,6 @@ export const MarketingSettingsPanel = () => {
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-identity">{t.marketing.identityLabel}</FormLabel>
           <OutlinedInput id="marketing-identity" value={values.identity} onChange={(event) => setIdentity(event.target.value)} required />
-        </FormControl>
-        <FormControlLabel control={<Switch checked={values.identityVerified} onChange={(event) => setIdentityVerified(event.target.checked)} />} label={t.marketing.identityVerifiedLabel} />
-        <FormControl fullWidth>
-          <FormLabel htmlFor="marketing-configuration-set">{t.marketing.configurationSetLabel}</FormLabel>
-          <OutlinedInput id="marketing-configuration-set" value={values.configurationSet} onChange={(event) => setConfigurationSet(event.target.value)} />
-        </FormControl>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="marketing-sns-topic">{t.marketing.snsTopicLabel}</FormLabel>
-          <OutlinedInput id="marketing-sns-topic" value={values.snsTopicArn} onChange={(event) => setSnsTopicArn(event.target.value)} />
         </FormControl>
         <FormControlLabel
           control={<Switch checked={values.trackingEnabled} onChange={(event) => setTrackingEnabled(event.target.checked)} />}
@@ -254,6 +378,8 @@ export const MarketingSettingsPanel = () => {
         </Alert>
         {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
       </SectionCard>
+      <SesOnboardingWizard enabled={credentialsConfigured && settings !== null} onChecklist={setLiveChecklist} />
+      <SmtpForm configured={result.data.smtpConfigured} />
       <SectionCard
         title={t.marketing.reputationTitle}
         description={t.marketing.reputationDescription}

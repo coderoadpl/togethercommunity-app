@@ -7,14 +7,13 @@ import type { Db } from './client.js';
 import { createMemberRepository, createProductGrantRepository } from './repositories.js';
 import { emailEvents, emailOutbox, tenantTransactionalEmailPools } from './schema.js';
 
+const reservationAbandoned = sql`${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes'`;
+
 export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPool => ({
   usage: async (tenantId) => {
     await db.update(tenantTransactionalEmailPools)
       .set({ reserved: 0, reservedAt: null })
-      .where(and(
-        eq(tenantTransactionalEmailPools.tenantId, tenantId),
-        sql`${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes'`,
-      ));
+      .where(and(eq(tenantTransactionalEmailPools.tenantId, tenantId), reservationAbandoned));
     const [row] = await db.select({
       sent: tenantTransactionalEmailPools.sent,
       reserved: tenantTransactionalEmailPools.reserved,
@@ -29,10 +28,10 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
       .onConflictDoUpdate({
         target: tenantTransactionalEmailPools.tenantId,
         set: {
-          reserved: sql`case when ${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes' then 1 else ${tenantTransactionalEmailPools.reserved} + 1 end`,
-          reservedAt: sql`now()`,
+          reserved: sql`case when ${reservationAbandoned} then 1 else ${tenantTransactionalEmailPools.reserved} + 1 end`,
+          reservedAt: sql`case when ${reservationAbandoned} or ${tenantTransactionalEmailPools.reserved} = 0 then now() else ${tenantTransactionalEmailPools.reservedAt} end`,
         },
-        setWhere: sql`${tenantTransactionalEmailPools.sent} + case when ${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes' then 0 else ${tenantTransactionalEmailPools.reserved} end < ${limit}`,
+        setWhere: sql`${tenantTransactionalEmailPools.sent} + case when ${reservationAbandoned} then 0 else ${tenantTransactionalEmailPools.reserved} end < ${limit}`,
       })
       .returning({ tenantId: tenantTransactionalEmailPools.tenantId });
     return row !== undefined;
@@ -40,7 +39,7 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
   settle: async (tenantId, successful) => {
     await db.update(tenantTransactionalEmailPools).set({
       reserved: sql`greatest(0, ${tenantTransactionalEmailPools.reserved} - 1)`,
-      reservedAt: sql`case when ${tenantTransactionalEmailPools.reserved} <= 1 then null else now() end`,
+      reservedAt: sql`case when ${tenantTransactionalEmailPools.reserved} <= 1 then null else ${tenantTransactionalEmailPools.reservedAt} end`,
       ...(successful ? { sent: sql`${tenantTransactionalEmailPools.sent} + 1` } : {}),
     }).where(eq(tenantTransactionalEmailPools.tenantId, tenantId));
   },

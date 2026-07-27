@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -96,6 +96,27 @@ describe('email outbox database adapter', () => {
     expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
     expect(await pool.reserve('tenant-outbox', 1000)).toBe(true);
     expect(await pool.reserve('tenant-outbox', 1000)).toBe(false);
+  });
+
+  it('keeps an abandoned reservation ageing while later sends reserve and settle', async () => {
+    await db.insert(tenantTransactionalEmailPools).values({
+      tenantId: 'tenant-outbox',
+      sent: 0,
+      reserved: 1,
+      reservedAt: new Date(Date.now() - 14 * 60 * 1000).toISOString(),
+    });
+    const pool = createPlatformTransactionalPool(db);
+
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(true);
+    await pool.settle('tenant-outbox', true);
+
+    const [row] = await db.select({
+      stillAgeing: sql<boolean>`${tenantTransactionalEmailPools.reservedAt} < now() - interval '13 minutes'`,
+    }).from(tenantTransactionalEmailPools)
+      .where(eq(tenantTransactionalEmailPools.tenantId, 'tenant-outbox'));
+
+    expect(row?.stillAgeing).toBe(true);
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 1, reserved: 1 });
   });
 
   it('rolls member, grant, and outbox writes back together', async () => {

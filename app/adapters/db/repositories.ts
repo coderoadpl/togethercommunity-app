@@ -105,6 +105,7 @@ import {
   emailEvents,
   erasedMemberImports,
   entityVersions,
+  invoices,
   memberCourseProgress,
   members,
   memberSubscriptions,
@@ -1667,8 +1668,19 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
             id: orders.id,
             createdAt: orders.createdAt,
             billing: orders.billing,
+            invoiceId: invoices.id,
+            invoiceStatus: invoices.status,
+            invoiceProvider: invoices.provider,
           })
           .from(orders)
+          .leftJoin(
+            invoices,
+            and(
+              eq(invoices.tenantId, orders.tenantId),
+              eq(invoices.orderId, orders.id),
+              inArray(invoices.status, ['issued', 'delivered']),
+            ),
+          )
           .where(condition)
           .orderBy(desc(orders.createdAt), desc(orders.id))
           .limit(pageSize)
@@ -1683,6 +1695,13 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           id: row.id,
           createdAt: row.createdAt,
           billing: billingDataSchema.parse(row.billing),
+          invoice: row.invoiceId === null
+            ? null
+            : {
+                id: row.invoiceId,
+                status: row.invoiceStatus === 'delivered' ? 'delivered' as const : 'issued' as const,
+                provider: row.invoiceProvider ?? '',
+              },
         })),
         total: totals[0]?.value ?? 0,
       };

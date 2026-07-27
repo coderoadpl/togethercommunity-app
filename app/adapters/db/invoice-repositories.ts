@@ -4,7 +4,7 @@ import { invoiceSchema } from '@core/domain/index.js';
 import type { InvoiceRepository, KsefSubmissionRepository } from '@core/server/index.js';
 
 import type { Db } from './client.js';
-import { fiscalArtifacts, invoiceEvents, invoices, ksefSubmissionJobs } from './app-schema.js';
+import { fiscalArtifacts, invoiceEvents, invoices, ksefSubmissionJobs, orders } from './app-schema.js';
 
 export const createInvoiceRepository = (
   db: Db,
@@ -18,6 +18,24 @@ export const createInvoiceRepository = (
         .limit(1)
     )[0];
     return row === undefined ? null : invoiceSchema.parse(row);
+  },
+  findByIdForMember: async (tenantId, memberId, id) => {
+    const row = (
+      await db
+        .select({ invoice: invoices })
+        .from(invoices)
+        .innerJoin(
+          orders,
+          and(
+            eq(orders.tenantId, invoices.tenantId),
+            eq(orders.id, invoices.orderId),
+            eq(orders.memberId, memberId),
+          ),
+        )
+        .where(and(eq(invoices.tenantId, tenantId), eq(invoices.id, id)))
+        .limit(1)
+    )[0];
+    return row === undefined ? null : invoiceSchema.parse(row.invoice);
   },
   findCurrentByOrder: async (tenantId, orderId) => {
     const row = (

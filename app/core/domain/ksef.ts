@@ -6,6 +6,7 @@ export const ksefSubmissionStateSchema = z.enum([
   'session_opened',
   'submitting',
   'processing',
+  'awaiting_upo',
   'succeeded',
   'rejected',
   'numbering_conflict',

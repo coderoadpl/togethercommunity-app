@@ -216,10 +216,18 @@ const handleDuplicate = async (
       state: 'numbering_conflict',
     }, deps);
   }
+  const accepted = await checkpoint(tenantId, { ...invoice, status: 'processing' }, {
+    ...duplicateData,
+    state: 'awaiting_upo',
+    ksefNumber: original.ksefNumber,
+    retryAt: null,
+    lastTransportError: null,
+  }, deps);
+  if (accepted.ksef?.state !== 'awaiting_upo') return accepted;
   return storeUpo(
     tenantId,
-    invoice,
-    duplicateData,
+    accepted,
+    accepted.ksef,
     credentials,
     original.sessionReference,
     null,
@@ -256,10 +264,18 @@ const poll = async (
     permanentStorageAt: polled.value.permanentStorageAt,
   };
   if (polled.value.code === 200 && polled.value.ksefNumber !== null) {
+    const accepted = await checkpoint(tenantId, { ...invoice, status: 'processing' }, {
+      ...statusData,
+      state: 'awaiting_upo',
+      ksefNumber: polled.value.ksefNumber,
+      retryAt: null,
+      lastTransportError: null,
+    }, deps);
+    if (accepted.ksef?.state !== 'awaiting_upo') return accepted;
     return storeUpo(
       tenantId,
-      invoice,
-      statusData,
+      accepted,
+      accepted.ksef,
       credentials,
       ksef.sessionReference,
       ksef.invoiceReference,
@@ -423,6 +439,18 @@ export const runKsefSubmission = async (
   }
   if (invoice.ksef?.state === 'processing') {
     invoice = await poll(tenantId, invoice, invoice.ksef, credentials, deps);
+  } else if (invoice.ksef?.state === 'awaiting_upo' && invoice.ksef.sessionReference !== null
+    && invoice.ksef.ksefNumber !== null) {
+    invoice = await storeUpo(
+      tenantId,
+      invoice,
+      invoice.ksef,
+      credentials,
+      invoice.ksef.originalSessionReference ?? invoice.ksef.sessionReference,
+      invoice.ksef.originalSessionReference === null ? invoice.ksef.invoiceReference : null,
+      invoice.ksef.ksefNumber,
+      deps,
+    );
   }
   return { ok: true, value: invoice };
 };

@@ -203,4 +203,92 @@ describe('OrderDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /odśwież status/i }));
     await waitFor(() => expect(refreshCalls).toBe(1));
   });
+
+  it('shows the KSeF number and awaiting-UPO state after fiscal acceptance', async () => {
+    const ksef = {
+      environment: 'test',
+      schemaSystemCode: 'FA (3)',
+      schemaVersion: '1-0E',
+      contextNip: '5555555555',
+      sellerName: 'Together',
+      sellerAddress: 'Prosta 1',
+      p2: 'FV/2026/000001',
+      invoiceType: 'VAT',
+      issueDate: '2026-07-28',
+      xmlArtifactKey: 'invoice/invoice-1/fa3.xml',
+      xmlByteSize: 100,
+      xmlSha256: 'a'.repeat(64),
+      state: 'awaiting_upo',
+      authConfigVersion: 1,
+      sessionReference: 'session-1',
+      invoiceReference: 'reference-1',
+      ksefNumber: '5555555555-20260728-ABCDEF-01',
+      lastStatusCode: 200,
+      lastStatusDescription: 'Sukces',
+      lastStatusDetails: [],
+      lastStatusExtensions: {},
+      lastPolledAt: '2026-07-28T10:00:00.000Z',
+      acquisitionAt: '2026-07-28T10:00:00.000Z',
+      invoicingAt: '2026-07-28T10:00:00.000Z',
+      permanentStorageAt: null,
+      upoArtifactKey: null,
+      upoSha256: null,
+      upoRetrievedAt: null,
+      originalSessionReference: null,
+      originalKsefNumber: null,
+      lastTransportError: null,
+      retryAt: '2026-07-28T10:01:00.000Z',
+      attempt: 1,
+      correlationChecks: 0,
+      version: 4,
+    };
+    const order = {
+      id: 'o1',
+      tenantId: 't1',
+      memberId: 'm1',
+      productId: 'p1',
+      priceId: null,
+      kind: 'one_time',
+      status: 'paid',
+      amountCents: 12300,
+      currency: 'PLN',
+      provider: 'stripe',
+      providerObjectIds: {},
+      couponId: null,
+      discountCents: 0,
+      billing: null,
+      createdAt: '2026-07-28T09:00:00.000Z',
+      memberEmail: 'member@example.com',
+      memberName: 'Ada',
+      productTitle: 'Workshop',
+      couponCode: null,
+    };
+    const invoice = {
+      id: 'invoice-1',
+      tenantId: 't1',
+      orderId: 'o1',
+      status: 'processing',
+      provider: 'ksef',
+      providerInvoiceId: 'reference-1',
+      invoiceNumber: 'FV/2026/000001',
+      pdfUrl: null,
+      error: null,
+      issuedAt: null,
+      createdAt: '2026-07-28T09:00:00.000Z',
+      ksef,
+    };
+    server.use(
+      http.get('/api/orders/o1', () =>
+        HttpResponse.json({ ok: true, data: { order, invoice } })),
+    );
+    renderWithProviders(<OrderDetailPage orderId="o1" />);
+
+    expect(await screen.findByText((_content, element) =>
+      element?.tagName === 'P'
+      && element.textContent?.includes('5555555555-20260728-ABCDEF-01') === true))
+      .toBeInTheDocument();
+    expect(screen.getByText(pl.sales.ksefStates.awaiting_upo)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.sales.ksefPdfDownload }))
+      .toHaveAttribute('href', '/api/invoices/invoice-1/download');
+  });
 });

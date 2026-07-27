@@ -126,6 +126,20 @@ export const MemberAccountPage = () => {
                   <Typography>
                     {order.billing?.postalCode} {order.billing?.city}, {order.billing?.country}
                   </Typography>
+                  {order.invoice?.provider === 'ksef'
+                    && (order.invoice.status === 'issued' || order.invoice.status === 'delivered') ? (
+                      <Button
+                        component="a"
+                        href={`/api/me/invoices/${encodeURIComponent(order.invoice.id)}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        variant="text"
+                        data-testid={`account-invoice-download-${order.invoice.id}`}
+                        sx={{ alignSelf: 'flex-start' }}
+                      >
+                        {t.account.invoiceDownload}
+                      </Button>
+                    ) : null}
                 </Stack>
               ))}
             </Stack>

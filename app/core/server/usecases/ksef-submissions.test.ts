@@ -101,6 +101,7 @@ const harness = (initial = invoice()) => {
     permanentStorageAt: now,
   }];
   let duplicateMatch = true;
+  let upoAvailable = true;
   const deps: KsefSubmissionDeps = {
     invoices: {
       findById: async () => structuredClone(current),
@@ -151,7 +152,12 @@ const harness = (initial = invoice()) => {
       },
       downloadUpo: async () => {
         calls.push('upo');
-        return ok('<UPO>signed</UPO>');
+        return upoAvailable
+          ? ok('<UPO>signed</UPO>')
+          : {
+              ok: false,
+              error: appError('integration_unavailable', 'UPO is not ready'),
+            };
       },
       verifyDuplicateOriginal: async () => {
         calls.push('verify-duplicate');
@@ -179,6 +185,7 @@ const harness = (initial = invoice()) => {
     setListed: (value: typeof listed) => { listed = value; },
     setStatuses: (value: typeof statuses) => { statuses = value; },
     setDuplicateMatch: (value: boolean) => { duplicateMatch = value; },
+    setUpoAvailable: (value: boolean) => { upoAvailable = value; },
   };
 };
 
@@ -202,6 +209,32 @@ describe('KSeF durable submission state machine', () => {
       },
     });
     expect(h.artifacts).toHaveLength(2);
+  });
+
+  it('persists the KSeF number before retrying an unavailable UPO', async () => {
+    const h = harness();
+    h.setUpoAvailable(false);
+
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.current()).toMatchObject({
+      status: 'processing',
+      ksef: {
+        state: 'awaiting_upo',
+        ksefNumber: '5555555555-20260727-ABC-01',
+        lastStatusCode: 200,
+        lastTransportError: 'UPO is not ready',
+      },
+    });
+
+    h.setUpoAvailable(true);
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.calls).toEqual(['open', 'submit', 'status', 'upo', 'upo']);
+    expect(h.current()).toMatchObject({
+      status: 'issued',
+      ksef: { state: 'succeeded', upoArtifactKey: 'invoice/invoice-1/upo.xml' },
+    });
   });
 
   it('correlates a lost response by the frozen invoice hash and never blindly resends', async () => {

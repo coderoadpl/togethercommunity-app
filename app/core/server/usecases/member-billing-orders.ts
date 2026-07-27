@@ -5,6 +5,7 @@ import {
   tenantNotFound,
   type AppError,
   type BillingData,
+  type Invoice,
   type Result,
 } from '@core/domain/index.js';
 
@@ -16,7 +17,12 @@ export const listMemberBillingOrders = async (
   input: { page: number; pageSize: number },
   deps: { orders: OrderRepository },
 ): Promise<Result<{
-  orders: Array<{ id: string; createdAt: string; billing: BillingData }>;
+  orders: Array<{
+    id: string;
+    createdAt: string;
+    billing: BillingData;
+    invoice: Pick<Invoice, 'id' | 'status' | 'provider'> | null;
+  }>;
   total: number;
   page: number;
   pageSize: number;

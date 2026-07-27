@@ -26,4 +26,5 @@ export * from './payment.js';
 export * from './commerce.js';
 export * from './coupon.js';
 export * from './invoice.js';
+export * from './fa3.js';
 export * from './versioning.js';

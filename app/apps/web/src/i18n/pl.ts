@@ -248,6 +248,7 @@ export const pl: Messages = {
     optional: 'opcjonalne',
     valuePercent: 'wartość procentowa',
     valueCents: 'wartość w groszach',
+    currency: 'waluta',
     products: 'produkty',
     exportCsv: 'Eksportuj CSV',
     exportJson: 'Eksportuj JSON',
@@ -255,6 +256,8 @@ export const pl: Messages = {
     timeSeries: 'Aktywność w czasie',
     noActivity: 'Brak użyć w wybranym okresie.',
     date: 'data',
+    previousPage: 'Poprzednia strona',
+    nextPage: 'Następna strona',
   },
   tenantNotFound: {
     title: 'Nie ma takiej przestrzeni',

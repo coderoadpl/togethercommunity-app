@@ -1,7 +1,8 @@
-import { and, desc, eq, ilike, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, lt, or, sql } from 'drizzle-orm';
 
 import {
   couponCheckoutSessionSchema,
+  couponOptionSchema,
   couponSchema,
   couponStatsItemSchema,
   normalizeCouponCode,
@@ -213,6 +214,14 @@ export const createProductPriceHistoryRepository = (
 });
 
 export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
+  listOptions: async (tenantId) => {
+    const rows = await db
+      .select({ id: coupons.id, code: coupons.code })
+      .from(coupons)
+      .where(eq(coupons.tenantId, tenantId))
+      .orderBy(asc(coupons.code));
+    return rows.map((row) => couponOptionSchema.parse(row));
+  },
   list: async (tenantId, query) => {
     const cursorCondition =
       query.cursor === undefined

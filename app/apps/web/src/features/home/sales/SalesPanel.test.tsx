@@ -64,38 +64,11 @@ describe('SalesPanel', () => {
           },
         });
       }),
-      http.get('/api/coupons', () =>
+      http.get('/api/coupons/options', () =>
         HttpResponse.json({
           ok: true,
           data: {
-            items: [{
-              coupon: {
-                id: 'coupon-1',
-                tenantId: 't1',
-                code: 'PARTNER20',
-                kind: 'percent',
-                value: 20,
-                scope: { kind: 'all' },
-                appliesTo: 'both',
-                recurringDuration: 'first_invoice',
-                startsAt: null,
-                endsAt: null,
-                maxRedemptions: null,
-                maxRedemptionsPerMember: null,
-                status: 'active',
-                partnerLabel: 'Partner',
-                stripeCouponId: null,
-                stripePromotionCodeId: null,
-                createdAt: '2026-07-01T10:00:00.000Z',
-              },
-              redemptions: 0,
-              sessionsWithCode: 0,
-              conversionRate: 0,
-              grossAttributed: [],
-              discountGiven: [],
-              timeSeries: [],
-            }],
-            nextCursor: null,
+            coupons: [{ id: 'coupon-1', code: 'PARTNER20' }],
           },
         }),
       ),

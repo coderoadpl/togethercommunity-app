@@ -28,6 +28,7 @@ import type {
   CouponAppliesTo,
   CouponKind,
   CouponRecurringDuration,
+  CouponStatsCursor,
   CouponStatsItem,
 } from '@core/domain/index.js';
 
@@ -55,7 +56,9 @@ const couponValue = (
   coupon: CouponStatsItem['coupon'],
   language: 'pl' | 'en',
 ): string =>
-  coupon.kind === 'percent' ? `${coupon.value}%` : formatPrice(coupon.value, 'PLN', language);
+  coupon.kind === 'percent'
+    ? `${coupon.value}%`
+    : formatPrice(coupon.value, coupon.currency ?? 'PLN', language);
 
 const optionalPositiveInteger = (value: string): number | null =>
   value.trim() === '' ? null : Number.parseInt(value, 10);
@@ -79,15 +82,23 @@ export const CouponsPanel = () => {
   const [partnerLabel, setPartnerLabel] = useState('');
   const [exporting, setExporting] = useState<'csv' | 'json' | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<CouponStatsCursor | null>(null);
+  const [previousCursors, setPreviousCursors] = useState<Array<CouponStatsCursor | null>>([]);
   const partnerFilter = useDebouncedValue(partnerLabel);
-  const query = partnerFilter === '' ? {} : { partnerLabel: partnerFilter };
-  const coupons = useQuery(actions.couponStats(query));
+  const filterQuery = partnerFilter === '' ? {} : { partnerLabel: partnerFilter };
+  const statsQuery = {
+    ...filterQuery,
+    ...(cursor === null
+      ? {}
+      : { cursorCreatedAt: cursor.createdAt, cursorId: cursor.id }),
+  };
+  const coupons = useQuery(actions.couponStats(statsQuery));
 
   const download = async (format: 'csv' | 'json') => {
     setExporting(format);
     setExportError(null);
     try {
-      const file = await queryClient.fetchQuery(actions.couponStatsExport({ ...query, format }));
+      const file = await queryClient.fetchQuery(actions.couponStatsExport({ ...filterQuery, format }));
       downloadFile(file);
     } catch (error) {
       setExportError(localizeError(error, t));
@@ -123,7 +134,11 @@ export const CouponsPanel = () => {
           search: (
             <SearchField
               value={partnerLabel}
-              onChange={setPartnerLabel}
+              onChange={(value) => {
+                setPartnerLabel(value);
+                setCursor(null);
+                setPreviousCursors([]);
+              }}
               placeholder={t.coupons.partnerFilter}
               testId="coupon-partner-filter"
             />
@@ -208,6 +223,30 @@ export const CouponsPanel = () => {
             </Table>
           </ResponsiveTable>
         )}
+        {coupons.isSuccess ? (
+          <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ justifyContent: 'flex-end' }}>
+            <Button
+              disabled={previousCursors.length === 0}
+              onClick={() => {
+                const previous = previousCursors.at(-1) ?? null;
+                setPreviousCursors((current) => current.slice(0, -1));
+                setCursor(previous);
+              }}
+            >
+              {t.coupons.previousPage}
+            </Button>
+            <Button
+              disabled={coupons.data.nextCursor === null}
+              onClick={() => {
+                if (coupons.data.nextCursor === null) return;
+                setPreviousCursors((current) => [...current, cursor]);
+                setCursor(coupons.data.nextCursor);
+              }}
+            >
+              {t.coupons.nextPage}
+            </Button>
+          </Stack>
+        ) : null}
       </ListSection>
       {exportError === null ? null : <Alert severity="error">{exportError}</Alert>}
     </PanelPage>
@@ -222,6 +261,7 @@ export const CouponCreatePage = () => {
   const [code, setCode] = useState('');
   const [kind, setKind] = useState<CouponKind>('percent');
   const [value, setValue] = useState('');
+  const [currency, setCurrency] = useState('PLN');
   const [scopeKind, setScopeKind] = useState<'all' | 'products'>('all');
   const [productIds, setProductIds] = useState<string[]>([]);
   const [appliesTo, setAppliesTo] = useState<CouponAppliesTo>('both');
@@ -250,6 +290,7 @@ export const CouponCreatePage = () => {
       code,
       kind,
       value: Number.parseInt(value, 10),
+      currency: kind === 'amount' ? currency.trim().toUpperCase() : null,
       scope: scopeKind === 'all' ? { kind: 'all' } : { kind: 'products', productIds },
       appliesTo,
       recurringDuration,
@@ -303,6 +344,18 @@ export const CouponCreatePage = () => {
             />
           </FormControl>
         </Stack>
+        {kind === 'amount' ? (
+          <FormControl fullWidth>
+            <FormLabel htmlFor="coupon-currency">{t.coupons.currency}</FormLabel>
+            <OutlinedInput
+              id="coupon-currency"
+              value={currency}
+              inputProps={{ maxLength: 3 }}
+              onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+              required
+            />
+          </FormControl>
+        ) : null}
         <FormControl fullWidth>
           <InputLabel id="coupon-scope-label">{t.coupons.scope}</InputLabel>
           <Select

@@ -45,6 +45,7 @@ const validationMessage = {
   expired: 'This coupon has expired',
   scope: 'This coupon does not apply to this product',
   purchase_kind: 'This coupon does not apply to this price',
+  currency: 'This coupon does not apply to this currency',
   limit: 'This coupon has reached its redemption limit',
   member_limit: 'This coupon has reached its per-member redemption limit',
 } as const;
@@ -66,6 +67,7 @@ export const validateCouponForCheckout = async (
     ...(input.sessionStartedAt === undefined ? {} : { sessionStartedAt: input.sessionStartedAt }),
     productId: input.productId,
     priceKind: input.priceKind,
+    currency: input.currency,
     totalRedemptions: counts.total,
     memberRedemptions: counts.member,
   });

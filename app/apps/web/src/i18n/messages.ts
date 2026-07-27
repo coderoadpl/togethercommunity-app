@@ -239,6 +239,7 @@ export interface Messages {
     optional: string;
     valuePercent: string;
     valueCents: string;
+    currency: string;
     products: string;
     exportCsv: string;
     exportJson: string;
@@ -246,6 +247,8 @@ export interface Messages {
     timeSeries: string;
     noActivity: string;
     date: string;
+    previousPage: string;
+    nextPage: string;
   };
   tenantNotFound: {
     title: string;

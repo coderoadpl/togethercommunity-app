@@ -174,6 +174,7 @@ export const salesScopes = {
 
 export const couponScopes = {
   all: () => ['coupons'] as const,
+  options: () => ['coupons', 'options'] as const,
   list: (input: CouponStatsQueryInput) => ['coupons', 'list', input] as const,
   detail: (id: string) => ['coupons', 'detail', id] as const,
   export: (input: CouponStatsExportQueryInput) => ['coupons', 'export', input] as const,
@@ -539,6 +540,12 @@ export const couponStatsQuery = (api: ApiClient, input: CouponStatsQueryInput) =
   defineQuery({
     queryKey: couponScopes.list(input),
     call: ({ signal }) => api.listCouponStats(input, signal),
+  });
+
+export const couponOptionsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: couponScopes.options(),
+    call: ({ signal }) => api.listCouponOptions(signal),
   });
 
 export const couponStatsDetailQuery = (api: ApiClient, id: string) =>

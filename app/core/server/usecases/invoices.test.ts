@@ -10,7 +10,7 @@ import {
 } from '@core/domain/index.js';
 
 import type { InvoiceDeps } from './invoices.js';
-import { autoIssueOnPayment, requestInvoice } from './invoices.js';
+import { autoIssueOnPayment, requestInvoice, testIfirmaConnection } from './invoices.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 const billing = {
@@ -52,6 +52,7 @@ const harness = (options: {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
   let calls = 0;
+  let testedConfig: { invoiceApiKey: string; username: string } | null = null;
   let ids = 0;
   const deps: InvoiceDeps = {
     invoices: {
@@ -91,6 +92,10 @@ const harness = (options: {
       },
       getInvoiceStatus: async () => ok('issued'),
       invoiceDownloadUrl: async () => ok('https://example.com/FV-1.pdf'),
+      testConnection: async ({ config }) => {
+        testedConfig = config;
+        return ok({ diagnostic: 'iFirma accepted the credentials.' });
+      },
     },
     orderDetails: { findById: async () => order() },
     tenants: {
@@ -118,7 +123,7 @@ const harness = (options: {
         id: key,
         tenantId: 'tenant-1',
         key,
-        ciphertext: key.endsWith('apiKey') ? 'key' : 'acme',
+        ciphertext: key.endsWith('invoiceApiKey') ? 'key' : 'owner@example.com',
         iv: 'iv',
         authTag: 'tag',
         maskedPreview: '••••',
@@ -134,7 +139,7 @@ const harness = (options: {
     ids: { nextId: () => `id-${++ids}` },
     clock: { nowIso: () => now },
   };
-  return { deps, invoices, events, calls: () => calls };
+  return { deps, invoices, events, calls: () => calls, testedConfig: () => testedConfig };
 };
 
 const ctx = {
@@ -200,5 +205,30 @@ describe('autoIssueOnPayment', () => {
     await expect(autoIssueOnPayment('tenant-1', order(), h.deps)).resolves.toBeUndefined();
     expect(h.invoices).toMatchObject([{ status: 'failed', error: 'integration_unavailable' }]);
     expect(h.events.some((event) => event.type === 'failed')).toBe(true);
+  });
+});
+
+describe('testIfirmaConnection', () => {
+  it('decrypts both iFirma secrets and exercises the invoicing authentication path', async () => {
+    const h = harness();
+    expect(await testIfirmaConnection(ctx, h.deps)).toEqual({
+      ok: true,
+      value: { ok: true, diagnostic: 'iFirma accepted the credentials.' },
+    });
+    expect(h.testedConfig()).toEqual({
+      invoiceApiKey: 'key',
+      username: 'owner@example.com',
+    });
+  });
+
+  it('allows only the tenant owner to test iFirma', async () => {
+    const h = harness();
+    expect(await testIfirmaConnection({
+      identity: { ...ctx.identity, staffRole: 'admin' },
+    }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(h.testedConfig()).toBeNull();
   });
 });

@@ -985,6 +985,12 @@ export const testStripeConnectionMutation = (api: ApiClient) =>
     call: () => api.testStripeConnection(),
   });
 
+export const testIfirmaConnectionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'ifirma-test'],
+    call: () => api.testIfirmaConnection(),
+  });
+
 export const bunnyVideosQuery = (api: ApiClient, input: { search?: string; page?: number } = {}) =>
   defineQuery({
     queryKey: bunnyScopes.videos(input.search ?? '', input.page ?? 1),

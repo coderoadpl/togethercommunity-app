@@ -27,6 +27,7 @@ import {
   grantCreateOutputSchema,
   grantRevokeOutputSchema,
   healthOutputSchema,
+  ifirmaTestConnectionOutputSchema,
   emailDispatchOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
   lessonOutputSchema,
@@ -1204,6 +1205,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.stripeTestConnection.method,
       API_ROUTES.stripeTestConnection.path,
       stripeTestConnectionOutputSchema,
+      {},
+      signal,
+    ),
+  testIfirmaConnection: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.ifirmaTestConnection.method,
+      API_ROUTES.ifirmaTestConnection.path,
+      ifirmaTestConnectionOutputSchema,
       {},
       signal,
     ),

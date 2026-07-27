@@ -236,6 +236,7 @@ import {
   validateCouponForCheckout,
   listBunnyVideos,
   testBunnyConnection,
+  testIfirmaConnection,
   testStripeConnection,
   fulfillStripeWebhook,
   autoIssueOnPayment,
@@ -1770,6 +1771,10 @@ export const buildApp = (deps: AppDeps) => {
     );
     return respond(result);
   });
+
+  app.post(API_PATHS.ifirmaTestConnection, async (c) =>
+    respond(await testIfirmaConnection({ identity: c.get('identity') }, deps)),
+  );
 
   app.get(API_PATHS.bunnyVideos, async (c) => {
     const parsed = bunnyVideosInputSchema.safeParse({

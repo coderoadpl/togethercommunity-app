@@ -816,6 +816,11 @@ export const stripeTestConnectionOutputSchema = z.object({
   diagnostic: z.string(),
 });
 
+export const ifirmaTestConnectionOutputSchema = z.object({
+  ok: z.literal(true),
+  diagnostic: z.string(),
+});
+
 export const bunnyVideosInputSchema = listStreamVideosInputSchema;
 
 export const bunnyVideosOutputSchema = z.object({
@@ -1119,6 +1124,7 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
+  ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
   bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
@@ -1274,6 +1280,7 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   stripeTestConnection: API_ROUTES.stripeTestConnection.path,
+  ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,
   bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,

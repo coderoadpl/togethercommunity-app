@@ -17,5 +17,6 @@ export const createFakeInvoicing = (): InvoicingPort => {
     getInvoiceStatus: async () => ok('issued'),
     invoiceDownloadUrl: async ({ providerInvoiceId }) =>
       ok(`https://fake.invoices.local/${providerInvoiceId}.pdf`),
+    testConnection: async () => ok({ diagnostic: 'Fake invoicing is available.' }),
   };
 };

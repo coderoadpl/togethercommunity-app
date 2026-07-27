@@ -83,6 +83,7 @@ const harness = (initial = invoice()) => {
     createdAt: now,
   }];
   const calls: string[] = [];
+  const events: string[] = [];
   let submitOutcome: Awaited<ReturnType<KsefSubmissionDeps['ksef']['submitInvoice']>> =
     ok({ invoiceReference: 'invoice-ref-1' });
   let listed: Array<{
@@ -105,8 +106,10 @@ const harness = (initial = invoice()) => {
   const deps: KsefSubmissionDeps = {
     invoices: {
       findById: async () => structuredClone(current),
-      checkpointKsef: async (_tenantId, next) => {
+      checkpointKsef: async (_tenantId, next, event) => {
+        if ((current.ksef?.version ?? -1) !== (next.ksef?.version ?? 0) - 1) return null;
         current = structuredClone(next);
+        events.push(event.type);
         return structuredClone(current);
       },
     },
@@ -181,6 +184,7 @@ const harness = (initial = invoice()) => {
     current: () => current,
     artifacts,
     calls,
+    events,
     setSubmitOutcome: (value: typeof submitOutcome) => { submitOutcome = value; },
     setListed: (value: typeof listed) => { listed = value; },
     setStatuses: (value: typeof statuses) => { statuses = value; },
@@ -196,6 +200,13 @@ describe('KSeF durable submission state machine', () => {
     await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
 
     expect(h.calls).toEqual(['open', 'submit', 'status', 'upo']);
+    expect(h.events).toEqual([
+      'session_opened',
+      'send_started',
+      'submitted',
+      'processing',
+      'upo_stored',
+    ]);
     expect(h.current()).toMatchObject({
       status: 'issued',
       providerInvoiceId: 'invoice-ref-1',

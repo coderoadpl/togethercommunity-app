@@ -22,18 +22,23 @@
    | failed, with provider refs in meta). Issuance is tenant-triggered
    (panel action on the order) or auto-on-payment (tenant toggle, default
    off) — never platform-automatic without tenant opt-in.
-3. **iFirma adapter (v1 provider).** BYO API credentials per tenant
-   (tenant_secrets `ifirma.invoiceApiKey` + `ifirma.username`, AES-GCM as
-   Stripe/Bunny/SES). iFirma issues the invoice and handles KSeF submission
-   itself (the tenant configures KSeF inside iFirma — their certificate
-   never touches us), returns the invoice number and authenticated PDF; we
-   store refs, proxy downloads, and surface status. Rationale: creators get KSeF compliance in minutes, the
-   platform never becomes fiscal infrastructure.
-4. **Direct KSeF adapter (deferred, port-shaped).** Same InvoicingPort; FA(3)
-   XML generation + tenant KSeF token. Deliberately NOT v1: certificate
-   custody, environment matrix (test/demo/prod), and error semantics are a
-   liability while iFirma covers the need. Revisit when a tenant
-   demands no-third-party invoicing.
+3. **iFirma adapter (v1 provider — owner decision 2026-07-27, replaces the
+   earlier Fakturownia pick; the owner uses iFirma personally, so the
+   integration is verifiable end-to-end on a real account).** BYO API
+   credentials per tenant (tenant_secrets `ifirma.invoiceApiKey` +
+   `ifirma.username`, AES-GCM as Stripe/Bunny/SES). iFirma issues the
+   invoice and handles KSeF submission itself (the tenant configures KSeF
+   inside iFirma — their certificate never touches us), returns the invoice
+   number and authenticated PDF; we store refs, proxy downloads, and
+   surface status.
+4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
+   drugie").** Same InvoicingPort; FA(3) XML generation + KSeF 2.0 API on a
+   tenant-generated KSeF token/certificate (tenant_secrets custody — KSeF has
+   no OAuth, key custody is inherent, which is also why the adapter layer
+   stays valuable). Sequence: short SPIKE against the open ksef-test sandbox
+   first (token auth, submit one FA(3), fetch UPO — no legal effects there),
+   then the adapter with own numbering + own PDF visualization + B2C
+   own-PDF path; corrections stay deferred. E2E targets ksef-test.
 
 ## Slice scope (implementation order)
 

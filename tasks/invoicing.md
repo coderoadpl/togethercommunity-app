@@ -44,21 +44,21 @@
   PL/EN, NIP validation, tests incl. fiscal-immutability.
 - `invoices` model + InvoicingPort + panel order action ("Wystaw fakturę") +
   status chip + download link; auto-issue toggle per tenant (default off).
-- Fakturownia adapter: issue (VAT invoice, positions from order incl. coupon
+- iFirma adapter: issue (VAT invoice, positions from order incl. coupon
   discount as a separate line note when present), status poll, error surfaces
   (bad key, validation) with actionable panel copy; test-mode support for
   e2e (fake adapter in dev, contract tests against recorded shapes).
-- Docs: tenant runbook — connect Fakturownia (API key, KSeF inside
-  Fakturownia), what auto-issue does, B2C-on-request workflow (issue from
+- Docs: tenant runbook — connect iFirma (API keys, KSeF inside
+  iFirma), what auto-issue does, B2C-on-request workflow (issue from
   the order detail within the 3-month window).
 - Anomaly guard: order without billing data + tenant auto-issue on → issue
-  a "paragon-like" B2C invoice per Fakturownia defaults or skip with a
+  a "paragon-like" B2C invoice per iFirma defaults or skip with a
   panel notice (tenant setting: `auto_issue_scope: b2b_only | all`,
   default b2b_only).
 
 ## Out of scope (v1)
 
-Self-billing, corrective invoices UI beyond a link-out to Fakturownia,
+Self-billing, corrective invoices UI beyond a link-out to iFirma,
 multi-currency fiscal logic (orders are PLN today), platform-level VAT
 registration (tenant is the seller of record — consistent with the
 controller/processor posture), OSS/MOSS.

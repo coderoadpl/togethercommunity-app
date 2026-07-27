@@ -192,7 +192,7 @@ export const publicOfferOutputSchema = z.object({
         definitionId: z.string().min(1),
         label: z.string().min(1),
         doubleOptIn: z.boolean(),
-        documentUrl: z.string().url().nullable(),
+        documentUrl: z.union([z.string().url(), z.string().regex(/^\/legal\/[^/]+\/v\/[1-9]\d*$/)]).nullable(),
       })).default([]),
     }),
   ),

@@ -195,10 +195,22 @@ export const recordCheckoutMarketingConsents = async (
   },
   deps: ConsentDeps,
 ): Promise<Result<{ recorded: number; pendingConfirmations: number }, AppError>> => {
+  const tenantId = tenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
   const attached = new Set(input.attachedDefinitionIds);
   const selected = [...new Set(input.selectedDefinitionIds)].filter((definitionId) => attached.has(definitionId));
+  let recordedCount = 0;
   let pendingConfirmations = 0;
   for (const definitionId of selected) {
+    const definition = await deps.definitions.findById(tenantId.value, definitionId);
+    if (definition !== null) {
+      const rows = await deps.consents.listByEmail(tenantId.value, input.email, definitionId);
+      const state = deriveConsentState(rows, definition);
+      const pendingStillValid = state.state === 'pending_confirmation'
+        && state.row !== null
+        && Date.parse(state.row.occurredAt) + 24 * 60 * 60 * 1000 > Date.parse(deps.clock.nowIso());
+      if (state.active || pendingStillValid) continue;
+    }
     const recorded = await recordMarketingConsent(ctx, {
       email: input.email,
       memberId: null,
@@ -208,9 +220,10 @@ export const recordCheckoutMarketingConsents = async (
       confirmationBaseUrl: input.confirmationBaseUrl,
     }, deps);
     if (!recorded.ok) return recorded;
+    recordedCount += 1;
     if (recorded.value.state === 'pending_confirmation') pendingConfirmations += 1;
   }
-  return ok({ recorded: selected.length, pendingConfirmations });
+  return ok({ recorded: recordedCount, pendingConfirmations });
 };
 
 export const confirmMarketingConsent = async (

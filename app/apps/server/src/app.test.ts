@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '@core/contract/index.js';
@@ -67,6 +67,7 @@ const deps = (input: {
   authenticated?: boolean;
   databaseUp?: boolean;
   dispatchEmails?: AppDeps['dispatchEmails'];
+  logger?: AppDeps['logger'];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
   const domains = input.domains ?? [];
@@ -401,6 +402,7 @@ const deps = (input: {
     health: { pingDatabase: async () => input.databaseUp ?? true },
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
+    logger: input.logger ?? { error: () => undefined },
     baseDomain: 'localhost',
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
@@ -442,6 +444,7 @@ const marketingDeps = (): MarketingAppDeps => ({
     listVersions: async () => [],
     saveDraft: async () => null,
     publishDraft: async () => null,
+    findPublishedVersionById: async () => null,
     findLatestPublished: async (tenantId, slug) => tenantId === 't-acme' && slug === 'terms' ? {
       document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z' },
       version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '2026-07-22T00:00:00.000Z', createdAt: '2026-07-22T00:00:00.000Z', createdBy: 'staff' },
@@ -1182,6 +1185,95 @@ describe('checkout consent ordering', () => {
         acceptedAt: '2026-07-12T00:00:00.000Z',
       }),
     ]);
+  });
+
+  it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {
+    const definitionId = 'checkout-news';
+    const attached = {
+      ...product({ id: 'checkout-product', tenantId: acme.id, title: 'Checkout Product', published: true }),
+      checkoutConsentDefinitionIds: [definitionId],
+    };
+    const marketing = marketingDeps();
+    await marketing.definitions.create(acme.id, {
+      id: definitionId,
+      tenantId: acme.id,
+      key: 'checkout-news',
+      kind: 'optional_marketing',
+      channel: 'email',
+      doubleOptIn: true,
+      documentRef: { mode: 'url', url: 'https://acme.example/newsletter' },
+      status: 'active',
+      createdAt: '2026-07-12T00:00:00.000Z',
+      updatedAt: '2026-07-12T00:00:00.000Z',
+    }, {
+      id: 'checkout-news-v1',
+      tenantId: acme.id,
+      definitionId,
+      version: 1,
+      label: 'Send me product news',
+      documentVersionRef: { mode: 'url', url: 'https://acme.example/newsletter' },
+      createdAt: '2026-07-12T00:00:00.000Z',
+      createdBy: null,
+    });
+    const logger = { error: vi.fn() };
+    const base = deps({ products: [attached], logger });
+    const queued: string[] = [];
+    let failEnqueue = false;
+    const app = buildApp({
+      ...base,
+      marketing,
+      tenantSecrets: {
+        ...base.tenantSecrets,
+        findByKey: async (tenantId, key) => ({
+          id: `secret-${key}`,
+          tenantId,
+          key,
+          ciphertext: 'ciphertext',
+          iv: 'iv',
+          authTag: 'auth-tag',
+          maskedPreview: '••••text',
+          updatedAt: '2026-07-12T00:00:00.000Z',
+        }),
+      },
+      emailOutbox: {
+        ...base.emailOutbox,
+        enqueue: async (message) => {
+          if (failEnqueue) return err(internal('outbox unavailable'));
+          queued.push(message.to);
+          return ok({ id: message.id });
+        },
+      },
+    });
+    const checkout = (email: string) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'acme.localhost:48730',
+        'user-agent': 'Checkout Browser/1.0',
+        'x-forwarded-for': '203.0.113.8, 10.0.0.1',
+      },
+      body: JSON.stringify({
+        email,
+        productId: attached.id,
+        termsAccepted: true,
+        marketingConsentDefinitionIds: [definitionId],
+      }),
+    });
+
+    expect((await checkout('buyer@together.dev')).status).toBe(200);
+    expect((await checkout('buyer@together.dev')).status).toBe(200);
+    expect(queued).toEqual(['buyer@together.dev']);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'buyer@together.dev')).toMatchObject([{
+      evidence: {
+        ip: '203.0.113.8',
+        userAgent: 'Checkout Browser/1.0',
+      },
+    }]);
+
+    failEnqueue = true;
+    expect((await checkout('failure@together.dev')).status).toBe(200);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] tenant=t-acme'));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outbox unavailable'));
   });
 });
 

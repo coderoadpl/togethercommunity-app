@@ -465,6 +465,19 @@ export class InMemoryTenantDocumentRepository implements TenantDocumentRepositor
     return published === undefined ? null : { document: structuredClone(document), version: published };
   }
 
+  async findPublishedVersionById(tenantId: string, versionId: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
+    const version = this.versions.find((row) =>
+      sameTenant(tenantId, row) && row.id === versionId && row.publishedAt !== null
+    );
+    if (version === undefined) return null;
+    const document = this.documents.find((row) =>
+      sameTenant(tenantId, row) && row.id === version.documentId && row.status === 'published'
+    );
+    return document === undefined
+      ? null
+      : { document: structuredClone(document), version: structuredClone(version) };
+  }
+
   async findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
     const document = this.documents.find((row) => sameTenant(tenantId, row) && row.slug === slug);
     if (document === undefined) return null;

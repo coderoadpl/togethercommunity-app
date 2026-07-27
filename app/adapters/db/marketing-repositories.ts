@@ -255,6 +255,23 @@ export const createTenantDocumentRepository = (db: Db): TenantDocumentRepository
       )).returning();
       return document === undefined ? null : { document: parseDocument(document), version: parseDocumentVersion(version) };
     }),
+    findPublishedVersionById: async (tenantId, versionId) => {
+      const [row] = await db.select({ document: tenantDocuments, version: tenantDocumentVersions })
+        .from(tenantDocumentVersions)
+        .innerJoin(tenantDocuments, eq(tenantDocuments.id, tenantDocumentVersions.documentId))
+        .where(and(
+          eq(tenantDocumentVersions.tenantId, tenantId),
+          eq(tenantDocumentVersions.id, versionId),
+          eq(tenantDocuments.tenantId, tenantId),
+          eq(tenantDocuments.status, 'published'),
+          sql`${tenantDocumentVersions.publishedAt} is not null`,
+        ))
+        .limit(1);
+      return row === undefined ? null : {
+        document: parseDocument(row.document),
+        version: parseDocumentVersion(row.version),
+      };
+    },
     findLatestPublished: (tenantId, slug) => find(tenantId, slug),
     findPublishedVersion: (tenantId, slug, version) => find(tenantId, slug, version),
   };

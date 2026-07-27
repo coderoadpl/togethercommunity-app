@@ -17,6 +17,7 @@ import type {
   ConsentDefinitionRepository,
   ProductPriceRepository,
   ProductRepository,
+  TenantDocumentRepository,
   TenantRepository,
 } from '../ports.js';
 
@@ -59,6 +60,7 @@ export interface PublicOfferDeps {
   prices: ProductPriceRepository;
   tenants: TenantRepository;
   definitions?: ConsentDefinitionRepository | undefined;
+  documents?: Pick<TenantDocumentRepository, 'findPublishedVersionById'> | undefined;
 }
 
 export const getPublicOffer = async (
@@ -93,7 +95,7 @@ export const getPublicOffer = async (
     contentVersion: tenant.contentVersion,
     products: await Promise.all(products.map(async (product) => ({
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
-      marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions),
+      marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
     }))),
   });
 };
@@ -120,6 +122,7 @@ const checkoutConsents = async (
   tenantId: string,
   product: Product,
   definitions: ConsentDefinitionRepository | undefined,
+  documents: Pick<TenantDocumentRepository, 'findPublishedVersionById'> | undefined,
 ): Promise<PublicOfferProduct['marketingConsents']> => {
   if (definitions === undefined) return [];
   const attached = product.checkoutConsentDefinitionIds ?? [];
@@ -129,11 +132,18 @@ const checkoutConsents = async (
     if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') continue;
     const version = (await definitions.listVersions(tenantId, definition.id)).at(-1);
     if (version === undefined) continue;
+    const hosted = version.documentVersionRef.mode === 'hosted'
+      ? await documents?.findPublishedVersionById(tenantId, version.documentVersionRef.documentVersionId)
+      : null;
     result.push({
       definitionId: definition.id,
       label: version.label,
       doubleOptIn: definition.doubleOptIn,
-      documentUrl: version.documentVersionRef.mode === 'url' ? version.documentVersionRef.url : null,
+      documentUrl: version.documentVersionRef.mode === 'url'
+        ? version.documentVersionRef.url
+        : hosted === null || hosted === undefined
+          ? null
+          : `/legal/${encodeURIComponent(hosted.document.slug)}/v/${String(hosted.version.version)}`,
     });
   }
   return result;

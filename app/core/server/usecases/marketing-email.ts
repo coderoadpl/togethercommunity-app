@@ -184,6 +184,35 @@ export const recordMarketingConsent = async (
   return queued.ok ? ok({ consent, state: 'pending_confirmation' }) : queued;
 };
 
+export const recordCheckoutMarketingConsents = async (
+  ctx: Ctx,
+  input: {
+    email: string;
+    selectedDefinitionIds: string[];
+    attachedDefinitionIds: string[];
+    evidence: ConsentEvidence;
+    confirmationBaseUrl: string;
+  },
+  deps: ConsentDeps,
+): Promise<Result<{ recorded: number; pendingConfirmations: number }, AppError>> => {
+  const attached = new Set(input.attachedDefinitionIds);
+  const selected = [...new Set(input.selectedDefinitionIds)].filter((definitionId) => attached.has(definitionId));
+  let pendingConfirmations = 0;
+  for (const definitionId of selected) {
+    const recorded = await recordMarketingConsent(ctx, {
+      email: input.email,
+      memberId: null,
+      definitionId,
+      evidence: input.evidence,
+      source: 'checkout',
+      confirmationBaseUrl: input.confirmationBaseUrl,
+    }, deps);
+    if (!recorded.ok) return recorded;
+    if (recorded.value.state === 'pending_confirmation') pendingConfirmations += 1;
+  }
+  return ok({ recorded: selected.length, pendingConfirmations });
+};
+
 export const confirmMarketingConsent = async (
   ctx: Ctx,
   input: { token: string; evidence: ConsentEvidence },

@@ -53,6 +53,7 @@ import {
   listCampaignsWithEngagement,
   liftMarketingSuppression,
   pauseCampaign,
+  recordCheckoutMarketingConsents,
   recordMarketingConsent,
   runMarketingRetentionJobs,
   runScheduledMarketingJobs,
@@ -783,6 +784,42 @@ describe('marketing e-mail use-case integration', () => {
       value: { pendingConsentsPurged: 1 },
     });
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
+  });
+
+  it('records only selected checkout consents with the current wording snapshot and DOI mail', async () => {
+    const deps = await setup([]);
+    await deps.definitions.appendVersion('tenant-1', {
+      ...version,
+      id: 'version-2',
+      version: 2,
+      label: 'Current checkout wording',
+    });
+
+    const refused = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-1' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(refused).toEqual({ ok: true, value: { recorded: 0, pendingConfirmations: 0 } });
+    expect(await deps.consents.listByEmail('tenant-1', 'buyer@example.test')).toEqual([]);
+
+    const accepted = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [definition.id],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-1' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(accepted).toEqual({ ok: true, value: { recorded: 1, pendingConfirmations: 1 } });
+    expect(await deps.consents.listByEmail('tenant-1', 'buyer@example.test')).toMatchObject([{
+      definitionVersion: 2,
+      wordingSnapshot: 'Current checkout wording',
+      source: 'checkout',
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-1' },
+    }]);
+    expect(deps.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation' } }]);
   });
 
   it('rejects future-dated consent evidence so a later withdrawal cannot be resurrected', async () => {

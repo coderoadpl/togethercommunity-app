@@ -207,6 +207,7 @@ export const products = pgTable(
     currency: text('currency').notNull(),
     published: boolean('published').notNull().default(false),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
+    checkoutConsentDefinitionIds: jsonb('checkout_consent_definition_ids').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
     // ISO 8601 string; the domain speaks ISO strings, not driver-specific Dates.
     createdAt: text('created_at').notNull(),

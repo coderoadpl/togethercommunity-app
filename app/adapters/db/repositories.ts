@@ -242,15 +242,19 @@ export const createProductRepository = (db: Db): ProductRepository => ({
       currency: product.currency,
       published: product.published,
       accessItems: product.accessItems,
+      checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
       legacyId: product.legacyId,
       createdAt: product.createdAt,
     });
   },
-  updateAccessItems: async (tenantId, id, accessItems, version) => {
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const apply = async (executor: Db): Promise<Product | null> => {
+      const changes = checkoutConsentDefinitionIds === undefined
+        ? { accessItems }
+        : { accessItems, checkoutConsentDefinitionIds };
       const rows = await executor
         .update(products)
-        .set({ accessItems })
+        .set(changes)
         .where(and(eq(products.tenantId, tenantId), eq(products.id, id)))
         .returning();
       const row = rows[0];

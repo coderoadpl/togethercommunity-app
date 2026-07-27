@@ -62,6 +62,10 @@ export const updateTenantSettings = async (
         parsed.data.autoIssueInvoiceScope === undefined
           ? current.autoIssueInvoiceScope
           : parsed.data.autoIssueInvoiceScope,
+      invoiceVatRatePercent:
+        parsed.data.invoiceVatRatePercent === undefined
+          ? current.invoiceVatRatePercent
+          : parsed.data.invoiceVatRatePercent,
     }),
   );
 };

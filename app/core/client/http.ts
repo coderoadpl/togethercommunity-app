@@ -66,6 +66,7 @@ import {
   tenantSchedulerRunOutputSchema,
   tenantSchedulerRunsOutputSchema,
   meOutputSchema,
+  memberBillingOrdersOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
   memberProgressResetOutputSchema,
@@ -533,6 +534,17 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   me: (signal?: AbortSignal) =>
     request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, signal),
+  listMemberBillingOrders: (page = 1, pageSize = 25, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    return request(
+      options,
+      API_ROUTES.memberBillingOrders.method,
+      `${API_ROUTES.memberBillingOrders.path}?${params.toString()}`,
+      memberBillingOrdersOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   listTenants: (signal?: AbortSignal) =>
     request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, signal),
   createTenant: (input: TenantCreateInput, signal?: AbortSignal) =>

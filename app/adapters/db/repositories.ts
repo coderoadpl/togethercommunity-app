@@ -3,6 +3,7 @@ import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, typ
 import {
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
+  billingDataSchema,
   courseLessonSchema,
   courseModuleSchema,
   courseSchema,
@@ -1654,6 +1655,38 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
           .orderBy(desc(orders.createdAt), desc(orders.id))
       ).map(parseOrder),
+    listBillingForMember: async (tenantId, memberId, page, pageSize) => {
+      const condition = and(
+        eq(orders.tenantId, tenantId),
+        eq(orders.memberId, memberId),
+        isNotNull(orders.billing),
+      );
+      const [rows, totals] = await Promise.all([
+        db
+          .select({
+            id: orders.id,
+            createdAt: orders.createdAt,
+            billing: orders.billing,
+          })
+          .from(orders)
+          .where(condition)
+          .orderBy(desc(orders.createdAt), desc(orders.id))
+          .limit(pageSize)
+          .offset((page - 1) * pageSize),
+        db
+          .select({ value: sql<number>`count(*)::int` })
+          .from(orders)
+          .where(condition),
+      ]);
+      return {
+        orders: rows.map((row) => ({
+          id: row.id,
+          createdAt: row.createdAt,
+          billing: billingDataSchema.parse(row.billing),
+        })),
+        total: totals[0]?.value ?? 0,
+      };
+    },
     revenueSince: async (tenantId, sinceIso) =>
       db
         .select({
@@ -2056,6 +2089,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         privacyUrl: tenants.privacyUrl,
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
+        invoiceVatRatePercent: tenants.invoiceVatRatePercent,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -2072,6 +2106,12 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
           privacyUrl: row.privacyUrl,
           autoIssueInvoices: row.autoIssueInvoices,
           autoIssueInvoiceScope: row.autoIssueInvoiceScope,
+          invoiceVatRatePercent:
+            row.invoiceVatRatePercent === 5 ||
+            row.invoiceVatRatePercent === 8 ||
+            row.invoiceVatRatePercent === 23
+              ? row.invoiceVatRatePercent
+              : null,
         }
       : null;
   },
@@ -2088,6 +2128,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         privacyUrl: settings.privacyUrl,
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
+        invoiceVatRatePercent: settings.invoiceVatRatePercent,
       })
       .where(eq(tenants.id, tenantId));
     return {
@@ -2100,6 +2141,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       privacyUrl: settings.privacyUrl,
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
+      invoiceVatRatePercent: settings.invoiceVatRatePercent,
     };
   },
   createTenantWithOwnerGrant: async (input) =>

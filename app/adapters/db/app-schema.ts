@@ -41,6 +41,7 @@ export const tenants = pgTable(
     autoIssueInvoiceScope: text('auto_issue_invoice_scope', { enum: ['b2b_only', 'all'] })
       .notNull()
       .default('b2b_only'),
+    invoiceVatRatePercent: integer('invoice_vat_rate_percent'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );
@@ -414,7 +415,7 @@ export const invoiceEvents = pgTable(
       .notNull()
       .references(() => orders.id, { onDelete: 'restrict' }),
     type: text('type', {
-      enum: ['requested', 'issued', 'delivered', 'failed', 'skipped', 'refreshed'],
+      enum: ['requested', 'provider_created', 'issued', 'delivered', 'failed', 'skipped', 'refreshed'],
     }).notNull(),
     error: text('error'),
     meta: jsonb('meta').$type<InvoiceEvent['meta']>().notNull().default({}),

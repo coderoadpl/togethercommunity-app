@@ -148,6 +148,24 @@ describe('startSubscription', () => {
 });
 
 describe('renewSubscriptionPeriod', () => {
+  it('carries the original billing snapshot onto renewal orders', async () => {
+    const h = harness([price()]);
+    const billing = {
+      nip: '5555555555',
+      companyName: 'Acme sp. z o.o.',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    };
+    const { order } = await renewSubscriptionPeriod(
+      't1',
+      { subscription: subscription(), providerObjectIds: { invoice: 'in-1' }, billing },
+      h.deps,
+    );
+    expect(order.billing).toEqual(billing);
+  });
+
   it('keeps forever coupon attribution on renewal orders', async () => {
     const h = harness([price()]);
     const { order } = await renewSubscriptionPeriod(

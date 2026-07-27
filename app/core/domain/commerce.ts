@@ -86,7 +86,13 @@ export const billingDataSchema = z.object({
   address: z.string().trim().min(1).max(300),
   postalCode: z.string().trim().min(1).max(30),
   city: z.string().trim().min(1).max(120),
-  country: z.string().trim().length(2).transform((value) => value.toUpperCase()).default('PL'),
+  country: z.preprocess(
+    (value) => value ?? 'PL',
+    z.string().trim().transform((value) => value.toUpperCase()).refine(
+      (value): boolean => value === 'PL',
+      'Only Polish billing addresses are supported',
+    ),
+  ),
 });
 
 export type BillingData = z.output<typeof billingDataSchema>;

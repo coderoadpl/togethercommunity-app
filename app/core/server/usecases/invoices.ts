@@ -84,27 +84,43 @@ const issue = async (
 ): Promise<Result<Invoice, AppError>> => {
   const existing = await deps.invoices.findCurrentByOrder(tenantId, order.id);
   if (existing !== null && existing.status !== 'failed') return ok(existing);
+  if (
+    existing?.status === 'failed' &&
+    existing.providerInvoiceId === null &&
+    existing.error === 'provider_create_uncertain'
+  ) {
+    return err(validation('iFirma may already have created this invoice. Verify it in iFirma before retrying.'));
+  }
   const createdAt = deps.clock.nowIso();
-  const invoice: Invoice = {
-    id: deps.ids.nextId(),
-    tenantId,
-    orderId: order.id,
-    status: 'requested',
-    provider: 'ifirma',
-    providerInvoiceId: null,
-    invoiceNumber: null,
-    pdfUrl: null,
-    error: null,
-    issuedAt: null,
-    createdAt,
-  };
+  let invoice: Invoice = existing === null
+    ? {
+        id: deps.ids.nextId(),
+        tenantId,
+        orderId: order.id,
+        status: 'requested',
+        provider: 'ifirma',
+        providerInvoiceId: null,
+        invoiceNumber: null,
+        pdfUrl: null,
+        error: null,
+        issuedAt: null,
+        createdAt,
+      }
+    : { ...existing, status: 'requested', error: null };
   const requested = eventFor(deps, tenantId, order.id, invoice.id, 'requested');
-  if (!(await deps.invoices.create(tenantId, invoice, requested))) {
+  const claimed = existing === null
+    ? await deps.invoices.create(tenantId, invoice, requested)
+    : await deps.invoices.claimRetry(tenantId, invoice, requested);
+  if (!claimed) {
     const winner = await deps.invoices.findCurrentByOrder(tenantId, order.id);
     return winner === null ? err(validation('Invoice request could not be claimed')) : ok(winner);
   }
+  let providerCreateUncertain = false;
   const fail = async (failure: AppError): Promise<Result<Invoice, AppError>> => {
-    const failed: Invoice = { ...invoice, status: 'failed', error: failure.code };
+    const projectionError = providerCreateUncertain && invoice.providerInvoiceId === null
+      ? 'provider_create_uncertain'
+      : failure.code;
+    const failed: Invoice = { ...invoice, status: 'failed', error: projectionError };
     const failedEvent = eventFor(deps, tenantId, order.id, invoice.id, 'failed', failure.code, {
       message: failure.message,
     });
@@ -113,10 +129,34 @@ const issue = async (
   };
   const config = await invoicingConfig(tenantId, deps);
   if (!config.ok) return fail(config.error);
+  const settings = await deps.tenants.findSettings(tenantId);
+  if (settings?.invoiceVatRatePercent == null) {
+    return fail(validation('Set the tenant VAT rate in Settings before issuing invoices'));
+  }
   const issued = await deps.invoicing.issueInvoice({
     order,
     billing,
     productName: order.productTitle,
+    vatRatePercent: settings.invoiceVatRatePercent,
+    providerInvoiceId: invoice.providerInvoiceId,
+    onProviderInvoiceCreateUncertain: async () => {
+      providerCreateUncertain = true;
+    },
+    onProviderInvoiceCreated: async (providerInvoiceId) => {
+      invoice = { ...invoice, providerInvoiceId };
+      const providerCreated = eventFor(
+        deps,
+        tenantId,
+        order.id,
+        invoice.id,
+        'provider_created',
+        null,
+        { providerInvoiceId },
+      );
+      const persisted = await deps.invoices.update(tenantId, invoice, providerCreated);
+      if (persisted === null) throw new Error('Invoice provider identifier could not be persisted');
+      invoice = persisted;
+    },
     config: config.value,
   });
   if (!issued.ok) return fail(issued.error);
@@ -125,7 +165,7 @@ const issue = async (
     status: issued.value.status,
     providerInvoiceId: issued.value.providerInvoiceId,
     invoiceNumber: issued.value.invoiceNumber,
-    pdfUrl: issued.value.pdfUrl,
+    pdfUrl: null,
     issuedAt: deps.clock.nowIso(),
   };
   const completedEvent = eventFor(deps, tenantId, order.id, invoice.id, issued.value.status, null, {
@@ -133,6 +173,27 @@ const issue = async (
   });
   await deps.invoices.update(tenantId, completed, completedEvent);
   return ok(completed);
+};
+
+export const downloadInvoice = async (
+  ctx: Ctx,
+  invoiceId: string,
+  deps: InvoiceDeps,
+): Promise<Result<{ content: Uint8Array; contentType: 'application/pdf'; filename: string }, AppError>> => {
+  if (ctx.identity.tenantId === null) return err(tenantNotFound());
+  if (ctx.identity.staffRole === null) return err(forbidden());
+  const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
+  if (invoice === null) return err(notFound('Invoice was not found'));
+  if (invoice.providerInvoiceId === null) return err(validation('The provider has not created this invoice yet'));
+  const config = await invoicingConfig(ctx.identity.tenantId, deps);
+  if (!config.ok) return config;
+  const downloaded = await deps.invoicing.downloadInvoice({
+    providerInvoiceId: invoice.providerInvoiceId,
+    config: config.value,
+  });
+  if (!downloaded.ok) return downloaded;
+  const filenameBase = (invoice.invoiceNumber ?? `invoice-${invoice.id}`).replace(/[^a-zA-Z0-9._-]+/g, '_');
+  return ok({ ...downloaded.value, filename: `${filenameBase}.pdf` });
 };
 
 export const requestInvoice = async (

@@ -751,6 +751,17 @@ describe('fulfillStripeWebhook', () => {
 
   it('renews the grant to the new period end plus grace on invoice.paid', async () => {
     const h = await subscribedHarness();
+    const billing = {
+      nip: '5555555555',
+      companyName: 'Acme sp. z o.o.',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    };
+    const initialOrder = h.orders[0];
+    if (initialOrder === undefined) throw new Error('checkout did not create an order');
+    h.orders[0] = { ...initialOrder, billing };
 
     const renewal = await fulfillStripeWebhook(
       tenantA,
@@ -777,6 +788,7 @@ describe('fulfillStripeWebhook', () => {
       status: 'paid',
       amountCents: 2900,
       providerObjectIds: { invoice: 'in-1', subscription: 'sub-1' },
+      billing,
     });
   });
 

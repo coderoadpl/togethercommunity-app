@@ -44,6 +44,7 @@ import {
   lastViewedInputSchema,
   memberProgressResetInputSchema,
   memberRemoveInputSchema,
+  memberBillingOrdersQuerySchema,
   m2mEnrollRequestSchema,
   marketingSuppressionCreateInputSchema,
   moduleAttachInputSchema,
@@ -140,6 +141,7 @@ import {
   getOrder,
   requestInvoice,
   refreshInvoiceStatus,
+  downloadInvoice,
   getEmailSend,
   listTenantApiKeys,
   listCampaignsWithEngagement,
@@ -152,6 +154,7 @@ import {
   listGlobalSchedulerRuns,
   listSchedulerRunsForTenant,
   listMemberEmailSends,
+  listMemberBillingOrders,
   sendTransactionalSmtpTest,
   m2mEnroll,
   revokeTenantApiKey,
@@ -487,9 +490,10 @@ const autoIssueFulfilledOrder = async (
   event: PaymentWebhookEvent,
 ): Promise<void> => {
   if (event.objectId === null || deps.orderDetails === undefined) return;
-  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, {
-    checkoutSession: event.objectId,
-  });
+  const providerObjectIds = event.type === 'invoice.paid'
+    ? { invoice: event.objectId }
+    : { checkoutSession: event.objectId };
+  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, providerObjectIds);
   if (order === null) return;
   try {
     await autoIssueOnPayment(tenantId, order, {
@@ -1164,7 +1168,9 @@ export const buildApp = (deps: AppDeps) => {
     });
     if (fulfilled.ok && fulfilled.value.processed) {
       await recordFulfilledCheckoutConsents(deps, tenant, event.value);
-      await autoIssueFulfilledOrder(deps, tenant.id, event.value);
+      queueMicrotask(() => {
+        void autoIssueFulfilledOrder(deps, tenant.id, event.value);
+      });
     }
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });
@@ -1582,12 +1588,6 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.me, async (c) => {
     const identity = c.get('identity');
-    const memberOrders =
-      identity.tenantId !== null &&
-      identity.memberId !== null &&
-      deps.orders.listForMember !== undefined
-        ? await deps.orders.listForMember(identity.tenantId, identity.memberId)
-        : [];
     return respond(
       ok({
         userId: identity.userId,
@@ -1606,9 +1606,21 @@ export const buildApp = (deps: AppDeps) => {
                 memberId: identity.memberId,
               }
           : null,
-        orders: memberOrders,
       }),
     );
+  });
+
+  app.get(API_PATHS.memberBillingOrders, async (c) => {
+    const parsed = memberBillingOrdersQuerySchema.safeParse({
+      page: c.req.query('page'),
+      pageSize: c.req.query('pageSize'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid billing-order query', parsed.error.flatten())));
+    return respond(await listMemberBillingOrders(
+      { identity: c.get('identity') },
+      parsed.data,
+      { orders: deps.orders },
+    ));
   });
 
   app.get(API_PATHS.tenants, async (c) => {
@@ -1921,6 +1933,33 @@ export const buildApp = (deps: AppDeps) => {
       },
     );
     return respond(result.ok ? ok({ invoice: result.value }) : result);
+  });
+
+  app.get(API_PATHS.invoiceDownload, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await downloadInvoice(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    if (!result.ok) return respond(result);
+    const content = Uint8Array.from(result.value.content);
+    return new Response(content.buffer, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `attachment; filename="${result.value.filename}"`,
+        'cache-control': 'private, no-store',
+      },
+    });
   });
 
   app.get(API_PATHS.salesSummary, async (c) => {

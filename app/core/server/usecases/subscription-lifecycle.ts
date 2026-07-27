@@ -131,6 +131,7 @@ export interface InvoiceCycleInput {
   subscription: MemberSubscription;
   providerObjectIds: Record<string, string>;
   paidOrder?: Order;
+  billing?: BillingData | null;
   amountCents?: number;
   currency?: string;
   periodEnd?: string;
@@ -189,6 +190,7 @@ export const renewSubscriptionPeriod = async (
           subscription.couponRecurringDuration === 'forever'
             ? subscription.couponDiscountCents
             : 0,
+        billing: input.billing ?? null,
       },
       deps,
     ));

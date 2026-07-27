@@ -143,4 +143,64 @@ describe('OrderDetailPage', () => {
     expect(await screen.findByText('PARTNER20')).toBeInTheDocument();
     expect(screen.getByText('9,80 zł')).toBeInTheDocument();
   });
+
+  it('uses the authenticated app download route and exposes status refresh', async () => {
+    let refreshCalls = 0;
+    const detail = {
+      order: {
+        id: 'o1',
+        tenantId: 't1',
+        memberId: 'm1',
+        productId: 'p1',
+        priceId: null,
+        kind: 'one_time',
+        status: 'paid',
+        amountCents: 7900,
+        currency: 'PLN',
+        provider: 'stripe',
+        providerObjectIds: {},
+        couponId: null,
+        discountCents: 0,
+        billing: {
+          nip: '5555555555',
+          companyName: 'Acme sp. z o.o.',
+          address: 'Prosta 1',
+          postalCode: '00-001',
+          city: 'Warszawa',
+          country: 'PL',
+        },
+        createdAt: '2026-07-27T10:00:00.000Z',
+        memberEmail: 'member@example.com',
+        memberName: 'Ada',
+        productTitle: 'Workshop',
+        couponCode: null,
+      },
+      invoice: {
+        id: 'invoice-1',
+        tenantId: 't1',
+        orderId: 'o1',
+        status: 'issued',
+        provider: 'ifirma',
+        providerInvoiceId: '1244512',
+        invoiceNumber: 'FV/1',
+        pdfUrl: null,
+        error: null,
+        issuedAt: '2026-07-27T10:00:00.000Z',
+        createdAt: '2026-07-27T10:00:00.000Z',
+      },
+    };
+    server.use(
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: detail })),
+      http.post('/api/invoices/invoice-1/refresh', () => {
+        refreshCalls += 1;
+        return HttpResponse.json({ ok: true, data: { invoice: { ...detail.invoice, status: 'delivered' } } });
+      }),
+    );
+    renderWithProviders(<OrderDetailPage orderId="o1" />);
+
+    const download = await screen.findByRole('link', { name: /pobierz fakturę/i });
+    expect(download).toHaveAttribute('href', '/api/invoices/invoice-1/download');
+    await userEvent.click(screen.getByRole('button', { name: /odśwież status/i }));
+    await waitFor(() => expect(refreshCalls).toBe(1));
+  });
 });

@@ -50,6 +50,16 @@ describe('billingDataSchema', () => {
       country: 'PL',
     });
   });
+
+  it('rejects non-Polish billing addresses in the domestic-invoice flow', () => {
+    expect(billingDataSchema.safeParse({
+      companyName: 'Acme GmbH',
+      address: 'Hauptstrasse 1',
+      postalCode: '10115',
+      city: 'Berlin',
+      country: 'DE',
+    }).success).toBe(false);
+  });
 });
 
 describe('graceExpiresAt', () => {

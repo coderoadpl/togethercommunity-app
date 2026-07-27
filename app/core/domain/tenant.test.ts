@@ -30,6 +30,13 @@ describe('updateTenantSettingsInputSchema', () => {
   it('rejects a malformed billing-portal URL rather than storing garbage', () => {
     expect(updateTenantSettingsInputSchema.safeParse({ billingPortalUrl: 'not-a-url' }).success).toBe(false);
   });
+
+  it('accepts supported domestic VAT rates and rejects arbitrary rates', () => {
+    expect(updateTenantSettingsInputSchema.parse({ invoiceVatRatePercent: 8 })).toEqual({
+      invoiceVatRatePercent: 8,
+    });
+    expect(updateTenantSettingsInputSchema.safeParse({ invoiceVatRatePercent: 12 }).success).toBe(false);
+  });
 });
 
 describe('tenantSettingsSchema', () => {

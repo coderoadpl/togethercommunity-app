@@ -35,6 +35,7 @@ export * from './usecases/stripe-webhook.js';
 export * from './usecases/product-prices.js';
 export * from './usecases/orders.js';
 export * from './usecases/invoices.js';
+export * from './usecases/member-billing-orders.js';
 export * from './usecases/subscription-lifecycle.js';
 export * from './usecases/subscription-simulate.js';
 export * from './usecases/entitlements.js';

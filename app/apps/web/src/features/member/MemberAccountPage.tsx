@@ -26,6 +26,7 @@ export const MemberAccountPage = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const me = useQuery(actions.me);
+  const billingOrders = useQuery(actions.memberBillingOrders);
   const tenantSettings = useQuery(actions.tenantSettings);
 
   const unauthorized = isUnauthorized(me.error);
@@ -60,7 +61,7 @@ export const MemberAccountPage = () => {
 
   const email = me.data.email;
   const billingPortalUrl = tenantSettings.data?.settings.billingPortalUrl ?? null;
-  const billedOrders = (me.data.orders ?? []).filter((order) => order.billing != null);
+  const billedOrders = billingOrders.data?.orders ?? [];
 
   return (
     <MemberSurface title={t.account.title} eyebrow={t.account.heading}>

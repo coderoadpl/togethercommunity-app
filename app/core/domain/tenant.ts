@@ -40,6 +40,7 @@ export const tenantSettingsSchema = z.object({
   privacyUrl: z.string().url().nullable().default(null),
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
+  invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
 });
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
@@ -76,6 +77,7 @@ export const updateTenantSettingsInputSchema = z.object({
   privacyUrl: clearableUrl,
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
+  invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

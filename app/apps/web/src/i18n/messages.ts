@@ -197,6 +197,8 @@ export interface Messages {
     billingDetails: string;
     issueInvoice: string;
     issuingInvoice: string;
+    refreshInvoice: string;
+    refreshingInvoice: string;
     invoiceStatus: string;
     invoiceDownload: string;
     invoiceStatuses: Record<'requested' | 'issued' | 'delivered' | 'failed', string>;
@@ -922,6 +924,8 @@ export interface Messages {
     autoIssueScope: string;
     b2bOnly: string;
     allBuyers: string;
+    vatRate: string;
+    vatRateUnset: string;
   };
   legal: {
     heading: string;

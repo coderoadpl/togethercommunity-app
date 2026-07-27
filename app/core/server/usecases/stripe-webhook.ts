@@ -373,11 +373,16 @@ const applyInvoiceEvent = async (
     const existingOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
       invoice: event.objectId,
     });
+    const previousOrder = existingOrder ?? await deps.paymentRefunds.findLatestSubscriptionOrder(
+      tenant.id,
+      providerSubscriptionId,
+    );
     const renewed = await renewSubscriptionPeriod(
       tenant.id,
       {
         ...cycle,
         ...(existingOrder === null ? {} : { paidOrder: existingOrder }),
+        billing: previousOrder?.billing ?? null,
         ...(event.invoice?.periodEnd == null ? {} : { periodEnd: event.invoice.periodEnd }),
       },
       deps,

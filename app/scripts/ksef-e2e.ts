@@ -18,6 +18,7 @@ const client = createKsefClient({
   },
 });
 const credentials = {
+  tenantId: 'external-ksef-test',
   token: config.KSEF_TEST_TOKEN,
   contextNip: config.KSEF_TEST_CONTEXT_NIP,
 };

@@ -127,7 +127,7 @@ const responseError = async (response: Response): Promise<AppError> => {
 const sessionKey = (
   environment: KsefEnvironment,
   credentials: KsefCredentials,
-): string => `${environment}:${credentials.contextNip}`;
+): string => `${environment}:${credentials.tenantId}:${credentials.contextNip}`;
 
 export const createKsefClient = (options: KsefClientOptions): KsefClientPort => {
   const fetcher = options.fetcher ?? fetch;
@@ -326,15 +326,29 @@ export const createKsefClient = (options: KsefClientOptions): KsefClientPort => 
     environment: KsefEnvironment,
     credentials: KsefCredentials,
     reference: string,
-  ) => parsedJson(
-    await protectedRequest(
-      environment,
-      credentials,
-      `/sessions/${encodeURIComponent(reference)}/invoices?pageSize=1000`,
-    ),
-    sessionInvoicesSchema,
-    'KSeF returned an invalid session invoice list',
-  );
+  ): Promise<Result<z.input<typeof sessionInvoicesSchema>, AppError>> => {
+    const invoices: z.input<typeof invoiceStatusSchema>[] = [];
+    let continuationToken: string | null = null;
+    for (let page = 0; page < 10; page += 1) {
+      const listed: Result<z.input<typeof sessionInvoicesSchema>, AppError> = await parsedJson(
+        await protectedRequest(
+          environment,
+          credentials,
+          `/sessions/${encodeURIComponent(reference)}/invoices?pageSize=1000`,
+          continuationToken === null
+            ? {}
+            : { headers: { 'x-continuation-token': continuationToken } },
+        ),
+        sessionInvoicesSchema,
+        'KSeF returned an invalid session invoice list',
+      );
+      if (!listed.ok) return listed;
+      invoices.push(...listed.value.invoices);
+      continuationToken = listed.value.continuationToken ?? null;
+      if (continuationToken === null) return ok({ invoices, continuationToken: null });
+    }
+    return err(integrationUnavailable('KSeF session invoice listing exceeded 10000 items'));
+  };
 
   return {
     validateCredentials: async ({ environment, credentials }) => {

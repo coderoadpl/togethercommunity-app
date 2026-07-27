@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, lt, lte, sql } from 'drizzle-orm';
 
 import type {
   FiscalArtifactRepository,
@@ -95,6 +95,14 @@ export const createKsefSubmissionJobRepository = (
 ): KsefSubmissionJobRepository => ({
   claimDue: async (now) =>
     db.transaction(async (tx) => {
+      const staleBefore = new Date(Date.parse(now) - 15 * 60 * 1000).toISOString();
+      await tx
+        .update(ksefSubmissionJobs)
+        .set({ status: 'queued', lockedAt: null })
+        .where(and(
+          eq(ksefSubmissionJobs.status, 'running'),
+          lt(ksefSubmissionJobs.lockedAt, staleBefore),
+        ));
       const row = (
         await tx
           .select()

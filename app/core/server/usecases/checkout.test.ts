@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type Product, type TenantSecret } from '@core/domain/index.js';
+import { ok, type Coupon, type Product, type ProductPrice, type TenantSecret } from '@core/domain/index.js';
 import type { CheckoutDeps, PaymentProvider } from '@core/server/index.js';
 
 const product: Product = {
@@ -26,6 +26,38 @@ const secret = (key: TenantSecret['key']): TenantSecret => ({
   maskedPreview: '••••test',
   updatedAt: '2026-07-14T10:00:00.000Z',
 });
+
+const freeCoupon: Coupon = {
+  id: 'coupon-free',
+  tenantId: 'tenant-a',
+  code: 'FREE',
+  kind: 'percent',
+  value: 100,
+  scope: { kind: 'all' },
+  appliesTo: 'both',
+  recurringDuration: 'first_invoice',
+  startsAt: null,
+  endsAt: null,
+  maxRedemptions: null,
+  maxRedemptionsPerMember: null,
+  status: 'active',
+  partnerLabel: null,
+  stripeCouponId: null,
+  stripePromotionCodeId: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+};
+
+const recurringPrice: ProductPrice = {
+  id: 'price-recurring',
+  tenantId: 'tenant-a',
+  productId: product.id,
+  kind: 'recurring',
+  interval: 'month',
+  amountCents: 4900,
+  currency: 'PLN',
+  active: true,
+  createdAt: '2026-07-01T00:00:00.000Z',
+};
 
 const checkoutDeps = (): CheckoutDeps => ({
   products: {
@@ -62,25 +94,6 @@ const checkoutDeps = (): CheckoutDeps => ({
 describe('createCheckoutSession', () => {
   it('returns a free fulfillment handoff without creating a provider session', async () => {
     let providerSessions = 0;
-    const coupon = {
-      id: 'coupon-free',
-      tenantId: 'tenant-a',
-      code: 'FREE',
-      kind: 'percent' as const,
-      value: 100,
-      scope: { kind: 'all' as const },
-      appliesTo: 'both' as const,
-      recurringDuration: 'first_invoice' as const,
-      startsAt: null,
-      endsAt: null,
-      maxRedemptions: null,
-      maxRedemptionsPerMember: null,
-      status: 'active' as const,
-      partnerLabel: null,
-      stripeCouponId: null,
-      stripePromotionCodeId: null,
-      createdAt: '2026-07-01T00:00:00.000Z',
-    };
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
       { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
@@ -98,9 +111,9 @@ describe('createCheckoutSession', () => {
           },
         },
         coupons: {
-          findByCode: async () => coupon,
-          findById: async () => coupon,
-          cacheStripeIds: async () => coupon,
+          findByCode: async () => freeCoupon,
+          findById: async () => freeCoupon,
+          cacheStripeIds: async () => freeCoupon,
         },
         couponRedemptions: {
           counts: async () => ({ total: 0, member: 0 }),
@@ -126,6 +139,61 @@ describe('createCheckoutSession', () => {
       },
     });
     expect(providerSessions).toBe(0);
+  });
+
+  it('uses the provider for a fully discounted recurring checkout', async () => {
+    const base = checkoutDeps();
+    let providerSessions = 0;
+    const result = await (await import('./checkout.js')).createCheckoutSession(
+      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      'https://alpha.example.com',
+      {
+        productId: product.id,
+        priceId: recurringPrice.id,
+        email: 'buyer@example.com',
+        couponCode: 'FREE',
+      },
+      {
+        ...base,
+        prices: {
+          ...base.prices,
+          findById: async () => recurringPrice,
+        },
+        payment: {
+          ...base.payment,
+          ensureCouponPromotion: async () =>
+            ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promotion-free' }),
+          createCheckoutSession: async (input) => {
+            providerSessions += 1;
+            expect(input.recurringInterval).toBe('month');
+            return ok({ url: 'https://checkout.stripe.test/subscription', sessionId: 'cs-sub' });
+          },
+        },
+        coupons: {
+          findByCode: async () => freeCoupon,
+          findById: async () => freeCoupon,
+          cacheStripeIds: async () => freeCoupon,
+        },
+        couponRedemptions: {
+          counts: async () => ({ total: 0, member: 0 }),
+          createOrderAndClaim: async () => true,
+        },
+        couponCheckoutSessions: {
+          create: async () => undefined,
+          attachProviderSession: async () => undefined,
+          findById: async () => null,
+        },
+        priceHistory: { lowestSince: async () => recurringPrice.amountCents },
+        ids: { nextId: () => 'coupon-session-subscription' },
+        clock: { nowIso: () => '2026-07-27T00:00:00.000Z' },
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { free: false, url: 'https://checkout.stripe.test/subscription' },
+    });
+    expect(providerSessions).toBe(1);
   });
 
   it('roundtrips product, email, language, metadata inputs and tenant-host return URLs', async () => {

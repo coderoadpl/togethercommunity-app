@@ -246,6 +246,9 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
               email: session.customer_details?.email ?? session.customer_email ?? null,
               subscriptionId: idOrNull(session.subscription),
               paymentIntentId: idOrNull(session.payment_intent),
+              invoiceId: idOrNull(session.invoice),
+              amountTotalCents: session.amount_total,
+              discountTotalCents: session.total_details?.amount_discount ?? null,
               metadata: {
                 tenantId: session.metadata?.tenantId ?? null,
                 productId: session.metadata?.productId ?? null,

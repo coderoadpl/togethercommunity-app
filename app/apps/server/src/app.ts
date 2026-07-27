@@ -687,6 +687,9 @@ export const buildApp = (deps: AppDeps) => {
           subscriptionId:
             selection.value.price?.kind === 'recurring' ? `subscription_${objectId}` : null,
           paymentIntentId: null,
+          invoiceId: null,
+          amountTotalCents: session.value.coupon?.finalCents ?? 0,
+          discountTotalCents: session.value.coupon?.discountCents ?? 0,
           metadata: {
             tenantId: tenant.value.tenant.id,
             productId: selection.value.product.id,
@@ -912,6 +915,9 @@ export const buildApp = (deps: AppDeps) => {
               email: parsed.data.email,
               subscriptionId: price?.kind === 'recurring' ? `subscription_${couponSessionId}` : null,
               paymentIntentId: null,
+              invoiceId: null,
+              amountTotalCents: validated.value.breakdown.finalCents,
+              discountTotalCents: validated.value.breakdown.discountCents,
               metadata: {
                 tenantId: tenant.value.tenant.id,
                 productId: selection.value.product.id,

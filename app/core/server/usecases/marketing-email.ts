@@ -133,6 +133,8 @@ export const listMarketingConsentDefinitions = async (
   return tenantId.ok ? ok({ definitions: await deps.definitions.list(tenantId.value) }) : tenantId;
 };
 
+const confirmationTokenTtlMs = 24 * 60 * 60 * 1000;
+
 export const recordMarketingConsent = async (
   ctx: Ctx,
   input: {
@@ -172,7 +174,7 @@ export const recordMarketingConsent = async (
   const now = deps.clock.nowIso();
   await deps.confirmations.create(tenantId.value, {
     id: deps.ids.nextId(), tenantId: tenantId.value, token: tokenValue, marketingConsentRowId: consent.id,
-    createdAt: now, expiresAt: new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(), usedAt: null,
+    createdAt: now, expiresAt: new Date(Date.parse(now) + confirmationTokenTtlMs).toISOString(), usedAt: null,
   });
   const queued = await deps.outbox.enqueue({
     id: deps.ids.nextId(), tenantId: tenantId.value, to: consent.email, now,
@@ -208,7 +210,7 @@ export const recordCheckoutMarketingConsents = async (
       const state = deriveConsentState(rows, definition);
       const pendingStillValid = state.state === 'pending_confirmation'
         && state.row !== null
-        && Date.parse(state.row.occurredAt) + 24 * 60 * 60 * 1000 > Date.parse(deps.clock.nowIso());
+        && Date.parse(state.row.occurredAt) + confirmationTokenTtlMs > Date.parse(deps.clock.nowIso());
       if (state.active || pendingStillValid) continue;
     }
     const recorded = await recordMarketingConsent(ctx, {

@@ -831,6 +831,18 @@ describe('marketing e-mail use-case integration', () => {
     expect(repeated).toEqual({ ok: true, value: { recorded: 0, pendingConfirmations: 0 } });
     expect(await deps.consents.listByEmail('tenant-1', 'buyer@example.test')).toHaveLength(1);
     expect(deps.outbox.items).toHaveLength(1);
+
+    const afterTokenExpiry = '1998-07-23T10:00:01.000Z';
+    deps.clock = { nowIso: () => afterTokenExpiry };
+    const retried = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [definition.id],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: afterTokenExpiry, proofRef: 'product:course-1;order:order-3' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(retried).toEqual({ ok: true, value: { recorded: 1, pendingConfirmations: 1 } });
+    expect(deps.outbox.items).toHaveLength(2);
   });
 
   it('rejects future-dated consent evidence so a later withdrawal cannot be resurrected', async () => {

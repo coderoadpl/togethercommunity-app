@@ -27,6 +27,7 @@ import {
   marketingDocumentPublishInputSchema,
   marketingDocumentUpdateInputSchema,
   marketingLayoutSaveInputSchema,
+  marketingSesIdentityStartInputSchema,
   marketingSesSettingsUpdateInputSchema,
   courseUpdateInputSchema,
   grantCreateInputSchema,
@@ -115,6 +116,10 @@ import {
   getMarketingConsentDefinition,
   getTenantDocument,
   getTenantSesMarketingSettings,
+  pollSesOnboarding,
+  provisionSesInfrastructure,
+  sendSesSimulatorTest,
+  startSesIdentityVerification,
   getEmailReputation,
   getContentHistory,
   getContentVersion,
@@ -990,6 +995,61 @@ export const buildApp = (deps: AppDeps) => {
       tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') }, clock: deps.clock,
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
       pool: deps.marketing.platformTransactionalPool,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesOnboarding, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await pollSesOnboarding({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesIdentityStart, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = marketingSesIdentityStartInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid SES identity payload', parsed.error.flatten())));
+    return respond(await startSesIdentityVerification({ identity: c.get('identity') }, parsed.data, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesProvision, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await provisionSesInfrastructure({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesSimulator, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await sendSesSimulatorTest({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
     }));
   });
 

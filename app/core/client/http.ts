@@ -41,6 +41,10 @@ import {
   marketingLayoutOutputSchema,
   marketingLayoutsOutputSchema,
   marketingSesSettingsOutputSchema,
+  marketingSesIdentityStartOutputSchema,
+  marketingSesOnboardingStatusSchema,
+  marketingSesProvisionOutputSchema,
+  marketingSesSimulatorOutputSchema,
   marketingSmtpTestOutputSchema,
   marketingReputationOutputSchema,
   marketingSuppressionOutputSchema,
@@ -135,6 +139,7 @@ import {
   type MarketingDocumentUpdateInput,
   type MarketingLayoutSaveInput,
   type MarketingSesSettingsUpdateInput,
+  type MarketingSesIdentityStartInput,
   type MarketingSuppressionCreateInput,
   type EmailSendsExportQueryInput,
   type EmailSendsQueryInput,
@@ -308,6 +313,14 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingLayoutsSave.method, API_ROUTES.marketingLayoutsSave.path, marketingLayoutOutputSchema, input, signal),
   getMarketingSesSettings: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
+  pollMarketingSesOnboarding: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesOnboarding.method, API_ROUTES.marketingSesOnboarding.path, marketingSesOnboardingStatusSchema, {}, signal),
+  startMarketingSesIdentity: (input: MarketingSesIdentityStartInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesIdentityStart.method, API_ROUTES.marketingSesIdentityStart.path, marketingSesIdentityStartOutputSchema, input, signal),
+  provisionMarketingSes: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesProvision.method, API_ROUTES.marketingSesProvision.path, marketingSesProvisionOutputSchema, {}, signal),
+  testMarketingSesSimulator: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesSimulator.method, API_ROUTES.marketingSesSimulator.path, marketingSesSimulatorOutputSchema, {}, signal),
   getMarketingReputation: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingReputation.method, API_ROUTES.marketingReputation.path, marketingReputationOutputSchema, undefined, signal),
   updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>

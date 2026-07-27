@@ -843,6 +843,48 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   footerAddress: z.string(),
 });
 export const marketingSmtpTestOutputSchema = z.object({ sent: z.literal(true) });
+export const marketingSesIdentityStartInputSchema = z.object({
+  kind: z.enum(['domain', 'email']),
+});
+export const marketingSesIdentityStartOutputSchema = z.object({
+  identity: z.string().min(1),
+  kind: z.enum(['domain', 'email']),
+  records: z.array(z.object({
+    name: z.string().min(1),
+    type: z.literal('CNAME'),
+    value: z.string().min(1),
+  })),
+});
+export const marketingSesOnboardingStatusSchema = z.object({
+  identityVerified: z.boolean(),
+  dkimVerified: z.boolean(),
+  identityRegressed: z.boolean(),
+  records: marketingSesIdentityStartOutputSchema.shape.records,
+  configurationSetReady: z.boolean(),
+  eventDestinationReady: z.boolean(),
+  subscriptionConfirmed: z.boolean(),
+  feedbackForwardingDisabled: z.boolean(),
+  checklist: z.object({
+    credentials: z.boolean(),
+    identity: z.boolean(),
+    configurationSet: z.boolean(),
+    snsSubscription: z.boolean(),
+    webhook: z.boolean(),
+    footer: z.boolean(),
+    productionAccess: z.boolean(),
+  }),
+});
+export const marketingSesProvisionOutputSchema = z.object({
+  configurationSet: z.string().min(1),
+  topicArn: z.string().min(1),
+  subscriptionConfirmed: z.boolean(),
+  feedbackForwardingDisabled: z.boolean(),
+});
+export const marketingSesSimulatorOutputSchema = z.object({
+  messageId: z.string().min(1),
+  webhookVerifiedAt: z.string().datetime().nullable(),
+  waitingForWebhook: z.boolean(),
+});
 export const marketingSuppressionCreateInputSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).nullable().default(null) });
 export const marketingSuppressionsOutputSchema = z.object({ suppressions: z.array(suppressionSchema), nextCursor: z.string().nullable() });
 export const marketingSuppressionOutputSchema = z.object({ suppression: suppressionSchema });
@@ -885,6 +927,7 @@ export type MarketingDocumentUpdateInput = z.input<typeof marketingDocumentUpdat
 export type MarketingDocumentPublishInput = z.input<typeof marketingDocumentPublishInputSchema>;
 export type MarketingLayoutSaveInput = z.input<typeof marketingLayoutSaveInputSchema>;
 export type MarketingSesSettingsUpdateInput = z.input<typeof marketingSesSettingsUpdateInputSchema>;
+export type MarketingSesIdentityStartInput = z.input<typeof marketingSesIdentityStartInputSchema>;
 export type MarketingSuppressionCreateInput = z.input<typeof marketingSuppressionCreateInputSchema>;
 export type EmailSendsQueryInput = z.input<typeof emailSendsQuerySchema>;
 export type EmailSendsExportQueryInput = z.input<typeof emailSendsExportQuerySchema>;
@@ -1019,6 +1062,10 @@ export const API_ROUTES = {
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
+  marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },
+  marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
+  marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
+  marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
   marketingSmtpTest: { method: 'POST', path: '/api/marketing/smtp/test' },
   marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
@@ -1155,6 +1202,10 @@ export const API_PATHS = {
   marketingDocumentPublish: API_ROUTES.marketingDocumentPublish.path,
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
+  marketingSesOnboarding: API_ROUTES.marketingSesOnboarding.path,
+  marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
+  marketingSesProvision: API_ROUTES.marketingSesProvision.path,
+  marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,
   marketingSmtpTest: API_ROUTES.marketingSmtpTest.path,
   marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,

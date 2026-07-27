@@ -22,7 +22,10 @@ const ctx = {
     email: 'owner@tenant.test',
     name: 'Owner',
     tenantId: 'tenant-1',
+    tenantSlug: 'tenant',
+    tenantName: 'Tenant',
     staffRole: 'owner' as const,
+    memberId: null,
   },
 };
 
@@ -89,6 +92,14 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
     });
   }
 
+  async readInfrastructure() {
+    return ok({
+      configurationSetReady: true,
+      eventDestinationReady: true,
+      subscriptionConfirmed: this.subscriptionConfirmed,
+    });
+  }
+
   async ensureEventDestination() {
     this.eventDestinationAttempts += 1;
     if (this.failEventDestinationOnce && this.eventDestinationAttempts === 1) {
@@ -105,7 +116,10 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
     return ok({ ratePerSecond: 14, daily: 50_000, sentLast24Hours: 120, inSandbox: false });
   }
 
-  async sendSimulator(input: { to: string }) {
+  async sendSimulator(
+    _credentials: { accessKeyId: string; secretAccessKey: string; region: string },
+    input: { to: string },
+  ) {
     this.simulatorRecipients.push(input.to);
     return ok({ messageId: 'ses-simulator-message' });
   }
@@ -137,15 +151,11 @@ describe('SES onboarding wizard', () => {
     const second = await startSesIdentityVerification(ctx, { kind: 'domain' }, deps(repository, controlPlane));
 
     expect(first).toEqual(second);
-    expect(first).toMatchObject({
-      ok: true,
-      value: {
-        identity: 'tenant.test',
-        kind: 'domain',
-        records: [
-          { name: 'token-1._domainkey.tenant.test', type: 'CNAME', value: 'token-1.dkim.amazonses.com' },
-        ],
-      },
+    expect(first).toMatchObject({ ok: true, value: { identity: 'tenant.test', kind: 'domain' } });
+    expect(first.ok && first.value.records[0]).toEqual({
+      name: 'token-1._domainkey.tenant.test',
+      type: 'CNAME',
+      value: 'token-1.dkim.amazonses.com',
     });
   });
 

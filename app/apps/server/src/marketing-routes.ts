@@ -465,7 +465,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
         suppressions: marketing.value.suppressions,
         hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
       });
-      if (applied.ok && applied.value.processed && settings.webhookVerifiedAt === null) {
+      if (applied.ok && settings.webhookVerifiedAt === null) {
         await marketing.value.sesSettings.upsert(settings.tenantId, { ...settings, webhookVerifiedAt: deps.clock.nowIso() });
       }
       return response(ok({ received: true }));

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -41,12 +41,23 @@ import {
   createTenantSecretRepository,
 } from './repositories.js';
 import {
+  createCouponRedemptionRepository,
+  createCouponStatsRepository,
+  createProductPriceHistoryRepository,
+} from './coupon-repositories.js';
+import {
   consents,
+  couponRedemptions,
+  couponCheckoutSessions,
+  coupons,
   emailEvents,
   erasedMemberImports,
   memberCourseProgress,
   members,
+  orders,
   posts,
+  productPriceHistory,
+  productPrices,
   suppressions,
   user,
 } from './schema.js';
@@ -108,6 +119,8 @@ const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: 
   currency: 'PLN',
   provider: 'stripe',
   providerObjectIds: {},
+  couponId: null,
+  discountCents: 0,
   createdAt: NOW,
   ...over,
 });
@@ -120,6 +133,9 @@ const subscription = (
   status: 'active',
   currentPeriodEnd: FUTURE,
   cancelAtPeriodEnd: false,
+  couponId: null,
+  couponDiscountCents: 0,
+  couponRecurringDuration: null,
   createdAt: NOW,
   updatedAt: NOW,
   ...over,
@@ -266,6 +282,242 @@ describe('order repository', () => {
     const revenue = await repo.revenueSince(ACME, PAST);
     expect(revenue).toEqual([{ currency: 'PLN', amountCents: 4900 }]);
     expect(await repo.countSince(ACME, PAST)).toBe(2);
+  });
+
+  it.each([
+    ['checkoutSession', 'cs-idempotent'],
+    ['invoice', 'in-idempotent'],
+  ])('deduplicates paid orders by provider %s', async (key, value) => {
+    const repo = createOrderRepository(db);
+    await Promise.all([
+      repo.create(ACME, order({
+        id: `order-${key}-one`,
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        productId: 'prod-acme',
+        providerObjectIds: { [key]: value },
+      })),
+      repo.create(ACME, order({
+        id: `order-${key}-two`,
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        productId: 'prod-acme',
+        providerObjectIds: { [key]: value },
+      })),
+    ]);
+
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(sql`${orders.providerObjectIds}->>${key} = ${value}`);
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe('coupon redemption repository', () => {
+  it('serializes concurrent limit claims with their order inserts', async () => {
+    await db.insert(coupons).values({
+      id: 'coupon-race',
+      tenantId: ACME,
+      code: 'RACE',
+      kind: 'percent',
+      value: 50,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: 1,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    const repo = createCouponRedemptionRepository(db);
+    const claim = (id: string) =>
+      repo.createOrderAndClaim(ACME, {
+        order: order({
+          id: `coupon-order-${id}`,
+          tenantId: ACME,
+          memberId: 'mem-acme',
+          productId: 'prod-acme',
+          amountCents: 2450,
+          couponId: 'coupon-race',
+          discountCents: 2450,
+          providerObjectIds: { checkoutSession: 'provider-race' },
+        }),
+        redemption: {
+          id: `coupon-redemption-${id}`,
+          tenantId: ACME,
+          couponId: 'coupon-race',
+          orderId: `coupon-order-${id}`,
+          memberId: 'mem-acme',
+          email: 'buyer-acme@together.dev',
+          discountCents: 2450,
+          createdAt: NOW,
+        },
+        event: {
+          id: `coupon-redemption-event-${id}`,
+          tenantId: ACME,
+          redemptionId: `coupon-redemption-${id}`,
+          couponId: 'coupon-race',
+          orderId: `coupon-order-${id}`,
+          type: 'redeemed',
+          occurredAt: NOW,
+        },
+        maxRedemptions: 1,
+        maxRedemptionsPerMember: null,
+      });
+    const results = await Promise.all([claim('one'), claim('two')]);
+
+    expect(results.sort()).toEqual([false, true]);
+    expect(
+      await db
+        .select()
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.couponId, 'coupon-race')),
+    ).toHaveLength(1);
+    await db.insert(couponCheckoutSessions).values({
+      id: 'coupon-race-session',
+      tenantId: ACME,
+      couponId: 'coupon-race',
+      providerSessionId: 'provider-race',
+      memberEmail: 'buyer-acme@together.dev',
+      productId: 'prod-acme',
+      priceId: null,
+      originalCents: 4900,
+      discountCents: 2450,
+      finalCents: 2450,
+      currency: 'PLN',
+      startedAt: NOW,
+    });
+    await db.insert(couponCheckoutSessions).values({
+      id: 'coupon-race-free-session',
+      tenantId: ACME,
+      couponId: 'coupon-race',
+      providerSessionId: null,
+      memberEmail: 'buyer-acme@together.dev',
+      productId: 'prod-acme',
+      priceId: null,
+      originalCents: 4900,
+      discountCents: 4900,
+      finalCents: 0,
+      currency: 'PLN',
+      startedAt: NOW,
+    });
+    await db.insert(orders).values(order({
+      id: 'coupon-order-free',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+      amountCents: 0,
+      couponId: 'coupon-race',
+      discountCents: 4900,
+      provider: 'simulated',
+      providerObjectIds: { checkoutSession: 'free_coupon-race-free-session' },
+    }));
+    await db.insert(couponRedemptions).values({
+      id: 'coupon-redemption-free',
+      tenantId: ACME,
+      couponId: 'coupon-race',
+      orderId: 'coupon-order-free',
+      memberId: 'mem-acme',
+      email: 'buyer-acme@together.dev',
+      discountCents: 4900,
+      createdAt: NOW,
+    });
+    const statsRepo = createCouponStatsRepository(db);
+    const stats = await statsRepo.list(ACME, {
+      limit: 10,
+      since: '1998-07-01T00:00:00.000Z',
+      through: '1998-07-31T23:59:59.999Z',
+    });
+    expect(stats.items).toMatchObject([
+      {
+        redemptions: 2,
+        sessionsWithCode: 2,
+        conversionRate: 1,
+        grossAttributed: [{ currency: 'PLN', amountCents: 2450 }],
+        discountGiven: [{ currency: 'PLN', amountCents: 7350 }],
+      },
+    ]);
+    expect(await statsRepo.listOptions(ACME)).toContainEqual({
+      id: 'coupon-race',
+      code: 'RACE',
+    });
+  });
+});
+
+describe('product price history repository', () => {
+  it('derives the lowest product price across replaced price rows', async () => {
+    const products = createProductRepository(db);
+    await products.create(ACME, product({
+      id: 'prod-omnibus',
+      tenantId: ACME,
+      priceCents: 9900,
+      createdAt: '1998-07-01T00:00:00.000Z',
+    }));
+    const prices = createProductPriceRepository(db);
+    await prices.create(ACME, price({
+      id: 'price-omnibus-old',
+      tenantId: ACME,
+      productId: 'prod-omnibus',
+      kind: 'one_time',
+      interval: null,
+      amountCents: 9900,
+      active: false,
+      createdAt: '1998-07-01T00:00:00.000Z',
+    }));
+    await prices.create(ACME, price({
+      id: 'price-omnibus-new',
+      tenantId: ACME,
+      productId: 'prod-omnibus',
+      kind: 'one_time',
+      interval: null,
+      amountCents: 14900,
+      createdAt: '1998-07-17T00:00:00.000Z',
+    }));
+
+    const lowest = await createProductPriceHistoryRepository(db).lowestSince(ACME, {
+      productId: 'prod-omnibus',
+      priceId: 'price-omnibus-new',
+      since: '1998-06-27T00:00:00.000Z',
+      through: '1998-07-27T23:59:59.999Z',
+      currentAmountCents: 14900,
+    });
+
+    expect(lowest).toBe(9900);
+  });
+
+  it('timestamps a price update when the change becomes effective', async () => {
+    await db.insert(productPrices).values({
+      id: 'price-omnibus-update',
+      tenantId: ACME,
+      productId: 'prod-omnibus',
+      kind: 'one_time',
+      interval: null,
+      amountCents: 17900,
+      currency: 'PLN',
+      active: true,
+      createdAt: '1997-01-01T00:00:00.000Z',
+    });
+    await db
+      .update(productPrices)
+      .set({ amountCents: 18900 })
+      .where(eq(productPrices.id, 'price-omnibus-update'));
+
+    const rows = await db
+      .select()
+      .from(productPriceHistory)
+      .where(eq(productPriceHistory.priceId, 'price-omnibus-update'));
+    const updated = rows.find((row) => row.amountCents === 18900);
+
+    expect(updated?.effectiveFrom).not.toBe('1997-01-01T00:00:00.000Z');
+    expect(Date.parse(updated?.effectiveFrom ?? '')).toBeGreaterThan(
+      Date.parse('1998-07-01T00:00:00.000Z'),
+    );
   });
 });
 
@@ -461,9 +713,56 @@ describe('member erasure repository', () => {
     const prices = createProductPriceRepository(db);
     await prices.create(RODO, price({ id: 'price-rodo', tenantId: RODO, productId: 'prod-rodo' }));
 
-    const orders = createOrderRepository(db);
-    await orders.create(RODO, order({ id: 'order-rodo-1', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
-    await orders.create(RODO, order({ id: 'order-rodo-2', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
+    const orderRepo = createOrderRepository(db);
+    await orderRepo.create(RODO, order({ id: 'order-rodo-1', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
+    await orderRepo.create(RODO, order({ id: 'order-rodo-2', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
+    await db.insert(coupons).values({
+      id: 'coupon-rodo',
+      tenantId: RODO,
+      code: 'RODO20',
+      kind: 'percent',
+      value: 20,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: null,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    await db
+      .update(orders)
+      .set({ couponId: 'coupon-rodo', discountCents: 2500 })
+      .where(eq(orders.id, 'order-rodo-1'));
+    await db.insert(couponRedemptions).values({
+      id: 'redemption-rodo',
+      tenantId: RODO,
+      couponId: 'coupon-rodo',
+      orderId: 'order-rodo-1',
+      memberId: 'mem-rodo',
+      email: 'jan.kowalski@together.dev',
+      discountCents: 2500,
+      createdAt: NOW,
+    });
+    await db.insert(couponCheckoutSessions).values({
+      id: 'coupon-session-rodo',
+      tenantId: RODO,
+      couponId: 'coupon-rodo',
+      providerSessionId: 'cs-rodo',
+      memberEmail: 'jan.kowalski@together.dev',
+      productId: 'prod-rodo',
+      priceId: null,
+      originalCents: 12500,
+      discountCents: 2500,
+      finalCents: 10000,
+      currency: 'PLN',
+      startedAt: NOW,
+    });
 
     const grants = createProductGrantRepository(db);
     await grants.createGrant(RODO, grant({ id: 'grant-rodo', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', expiresAt: null, legacyId: 'legacy-grant-rodo' }));
@@ -653,6 +952,18 @@ describe('member erasure repository', () => {
     expect(eventRows.every((event) =>
       !JSON.stringify(event.meta).toLowerCase().includes('jan.kowalski@together.dev'),
     )).toBe(true);
+    expect(
+      await db
+        .select({ email: couponRedemptions.email })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.id, 'redemption-rodo')),
+    ).toEqual([{ email: memberTombstone('mem-rodo').email }]);
+    expect(
+      await db
+        .select({ email: couponCheckoutSessions.memberEmail })
+        .from(couponCheckoutSessions)
+        .where(eq(couponCheckoutSessions.id, 'coupon-session-rodo')),
+    ).toEqual([{ email: memberTombstone('mem-rodo').email }]);
     const otherTenantEvents = await db
       .select()
       .from(emailEvents)

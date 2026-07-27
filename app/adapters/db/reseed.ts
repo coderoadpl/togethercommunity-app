@@ -5,6 +5,11 @@ import {
   courseLessons,
   courseModules,
   courses,
+  couponCheckoutSessions,
+  couponEvents,
+  couponRedemptionEvents,
+  couponRedemptions,
+  coupons,
   entityVersions,
   memberCourseProgress,
   members,
@@ -38,11 +43,46 @@ const record = (table: string, rows: unknown[]): void => {
 
 // Children before parents so the wipe holds even without ON DELETE CASCADE.
 record(
+  'coupon_redemption_events',
+  await db
+    .delete(couponRedemptionEvents)
+    .where(inArray(couponRedemptionEvents.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: couponRedemptionEvents.id }),
+);
+record(
+  'coupon_redemptions',
+  await db
+    .delete(couponRedemptions)
+    .where(inArray(couponRedemptions.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: couponRedemptions.id }),
+);
+record(
+  'coupon_checkout_sessions',
+  await db
+    .delete(couponCheckoutSessions)
+    .where(inArray(couponCheckoutSessions.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: couponCheckoutSessions.id }),
+);
+record(
+  'coupon_events',
+  await db
+    .delete(couponEvents)
+    .where(inArray(couponEvents.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: couponEvents.id }),
+);
+record(
   'orders',
   await db
     .delete(orders)
     .where(inArray(orders.tenantId, DEMO_TENANT_IDS))
     .returning({ id: orders.id }),
+);
+record(
+  'coupons',
+  await db
+    .delete(coupons)
+    .where(inArray(coupons.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: coupons.id }),
 );
 record(
   'member_subscriptions',

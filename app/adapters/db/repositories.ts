@@ -64,6 +64,7 @@ import type {
   MemberSubscriptionRepository,
   NotificationRepository,
   OrderRepository,
+  OrderDetailRepository,
   PaymentRefundRepository,
   ProductPriceRepository,
   PostRepository,
@@ -92,6 +93,9 @@ import {
   consents,
   campaignSends,
   checkoutConsentCaptures,
+  couponCheckoutSessions,
+  couponRedemptions,
+  coupons,
   courseLessons,
   courseModules,
   courses,
@@ -1310,6 +1314,20 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(campaignSends.memberId, input.memberId),
           eq(campaignSends.email, member.email),
         ));
+      await tx
+        .update(couponRedemptions)
+        .set({ email: input.tombstoneEmail })
+        .where(and(
+          eq(couponRedemptions.tenantId, tenantId),
+          eq(couponRedemptions.memberId, input.memberId),
+        ));
+      await tx
+        .update(couponCheckoutSessions)
+        .set({ memberEmail: input.tombstoneEmail })
+        .where(and(
+          eq(couponCheckoutSessions.tenantId, tenantId),
+          sql`lower(${couponCheckoutSessions.memberEmail}) = lower(${member.email})`,
+        ));
 
       const eventRows = await tx
         .select({ id: emailEvents.id, meta: emailEvents.meta })
@@ -1530,12 +1548,13 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
   },
 });
 
-export const createOrderRepository = (db: Db): OrderRepository => {
+export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepository => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
     if (query.productId !== undefined) conditions.push(eq(orders.productId, query.productId));
     if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
+    if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
       const search = or(
@@ -1550,20 +1569,43 @@ export const createOrderRepository = (db: Db): OrderRepository => {
 
   return {
     create: async (tenantId, order) => {
-      await db.insert(orders).values({
-        id: order.id,
-        tenantId,
-        memberId: order.memberId,
-        productId: order.productId,
-        priceId: order.priceId,
-        kind: order.kind,
-        status: order.status,
-        amountCents: order.amountCents,
-        currency: order.currency,
-        provider: order.provider,
-        providerObjectIds: order.providerObjectIds,
-        createdAt: order.createdAt,
-      });
+      await db
+        .insert(orders)
+        .values({
+          id: order.id,
+          tenantId,
+          memberId: order.memberId,
+          productId: order.productId,
+          priceId: order.priceId,
+          kind: order.kind,
+          status: order.status,
+          amountCents: order.amountCents,
+          currency: order.currency,
+          provider: order.provider,
+          providerObjectIds: order.providerObjectIds,
+          couponId: order.couponId,
+          discountCents: order.discountCents,
+          createdAt: order.createdAt,
+        })
+        .onConflictDoNothing();
+    },
+    findById: async (tenantId, id) => {
+      const rows = await db
+        .select({
+          order: orders,
+          memberEmail: members.email,
+          memberName: members.displayName,
+          productTitle: products.title,
+          couponCode: coupons.code,
+        })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.id, id)))
+        .limit(1);
+      const row = rows[0];
+      return row === undefined ? null : orderListItemSchema.parse({ ...row.order, ...row });
     },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
@@ -1573,10 +1615,12 @@ export const createOrderRepository = (db: Db): OrderRepository => {
           memberEmail: members.email,
           memberName: members.displayName,
           productTitle: products.title,
+          couponCode: coupons.code,
         })
         .from(orders)
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(...conditions))
         .orderBy(desc(orders.createdAt), desc(orders.id))
         .limit(query.pageSize)
@@ -1595,6 +1639,7 @@ export const createOrderRepository = (db: Db): OrderRepository => {
               memberEmail: row.memberEmail,
               memberName: row.memberName,
               productTitle: row.productTitle,
+              couponCode: row.couponCode,
             }),
         ),
         total: totals[0]?.value ?? 0,
@@ -1704,6 +1749,9 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
     status: subscription.status,
     currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    couponId: subscription.couponId,
+    couponDiscountCents: subscription.couponDiscountCents,
+    couponRecurringDuration: subscription.couponRecurringDuration,
     createdAt: subscription.createdAt,
     updatedAt: subscription.updatedAt,
   });

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  err,
   ok,
+  validation,
   type Member,
   type MemberSubscription,
   type Order,
@@ -9,6 +11,8 @@ import {
   type Product,
   type ProductGrant,
   type ProductPrice,
+  type Coupon,
+  type CouponRedemption,
 } from '@core/domain/index.js';
 
 import type { PaymentWebhookEvent } from '../ports.js';
@@ -16,7 +20,7 @@ import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
-const now = '2026-07-14T10:00:00.000Z';
+const now = '1998-07-14T10:00:00.000Z';
 const tenantA = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 };
 
 const product = (tenantId: string): Product => ({
@@ -53,6 +57,10 @@ const completedEvent = (overrides?: {
   subscriptionId?: string;
   email?: string;
   paymentIntentId?: string;
+  invoiceId?: string;
+  amountTotalCents?: number;
+  discountTotalCents?: number;
+  couponCheckoutSessionId?: string;
 }): PaymentWebhookEvent => ({
   id: overrides?.id ?? 'evt-1',
   type: 'checkout.session.completed',
@@ -61,12 +69,18 @@ const completedEvent = (overrides?: {
     email: overrides?.email ?? 'buyer@example.com',
     subscriptionId: overrides?.subscriptionId ?? null,
     paymentIntentId: overrides?.paymentIntentId ?? 'pi-1',
+    invoiceId: overrides?.invoiceId ?? null,
+    amountTotalCents: overrides?.amountTotalCents ?? null,
+    discountTotalCents: overrides?.discountTotalCents ?? null,
     metadata: {
       tenantId: overrides?.tenantId ?? 'tenant-a',
       productId: overrides?.productId ?? 'product-1',
       priceId: overrides?.priceId ?? null,
       memberEmail: null,
       language: 'pl',
+      ...(overrides?.couponCheckoutSessionId === undefined
+        ? {}
+        : { couponCheckoutSessionId: overrides.couponCheckoutSessionId }),
     },
   },
 });
@@ -351,7 +365,269 @@ const subscribedHarness = async () => {
   return { ...h, subscription };
 };
 
+const couponHarness = (
+  options: {
+    coupon?: Partial<Coupon>;
+    price?: ProductPrice;
+    claim?: boolean;
+    session?: Partial<{
+      originalCents: number;
+      discountCents: number;
+      finalCents: number;
+      providerSessionId: string | null;
+    }>;
+  } = {},
+) => {
+  const price = options.price;
+  const h = harness({ prices: price === undefined ? [] : [price] });
+  const coupon: Coupon = {
+    id: 'coupon-1',
+    tenantId: tenantA.id,
+    code: 'SAVE50',
+    kind: 'percent',
+    value: 50,
+    scope: { kind: 'all' },
+    appliesTo: 'both',
+    recurringDuration: 'first_invoice',
+    startsAt: null,
+    endsAt: null,
+    maxRedemptions: null,
+    maxRedemptionsPerMember: null,
+    status: 'active',
+    partnerLabel: null,
+    stripeCouponId: null,
+    stripePromotionCodeId: null,
+    createdAt: '1998-07-01T00:00:00.000Z',
+    ...options.coupon,
+  };
+  const redemptions: CouponRedemption[] = [];
+  h.deps.coupons = {
+    findByCode: async () => coupon,
+    findById: async () => coupon,
+    cacheStripeIds: async () => coupon,
+  };
+  h.deps.couponCheckoutSessions = {
+    create: async () => undefined,
+    attachProviderSession: async () => undefined,
+    findById: async () => ({
+      id: 'coupon-session-1',
+      tenantId: tenantA.id,
+      couponId: coupon.id,
+      providerSessionId: options.session?.providerSessionId ?? 'cs-coupon',
+      memberEmail: 'buyer@example.com',
+      productId: 'product-1',
+      priceId: price?.id ?? null,
+      originalCents: options.session?.originalCents ?? 4900,
+      discountCents: options.session?.discountCents ?? 2450,
+      finalCents: options.session?.finalCents ?? 2450,
+      currency: 'PLN',
+      startedAt: now,
+    }),
+  };
+  h.deps.priceHistory = { lowestSince: async () => 4900 };
+  h.deps.couponRedemptions = {
+    counts: async (_tenantId, couponId, email) => ({
+      total: redemptions.filter((row) => row.couponId === couponId).length,
+      member: redemptions.filter(
+        (row) => row.couponId === couponId && row.email === email,
+      ).length,
+    }),
+    createOrderAndClaim: async (_tenantId, input) => {
+      if (options.claim === false) return false;
+      h.orders.push(input.order);
+      redemptions.push(input.redemption);
+      return true;
+    },
+  };
+  return { ...h, coupon, redemptions };
+};
+
 describe('fulfillStripeWebhook', () => {
+  it('honors checkout-time expiry, records one redemption, and stays idempotent', async () => {
+    const h = harness();
+    const coupon: Coupon = {
+      id: 'coupon-1',
+      tenantId: tenantA.id,
+      code: 'SAVE50',
+      kind: 'percent',
+      value: 50,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: '1998-07-15T00:00:00.000Z',
+      maxRedemptions: 1,
+      maxRedemptionsPerMember: 1,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: '1998-07-01T00:00:00.000Z',
+    };
+    const redemptions: CouponRedemption[] = [];
+    h.deps.coupons = {
+      findByCode: async () => coupon,
+      findById: async () => coupon,
+      cacheStripeIds: async () => coupon,
+    };
+    h.deps.couponCheckoutSessions = {
+      create: async () => undefined,
+      attachProviderSession: async () => undefined,
+      findById: async () => ({
+        id: 'coupon-session-1',
+        tenantId: tenantA.id,
+        couponId: coupon.id,
+        providerSessionId: 'cs-coupon',
+        memberEmail: 'buyer@example.com',
+        productId: 'product-1',
+        priceId: null,
+        originalCents: 4900,
+        discountCents: 2450,
+        finalCents: 2450,
+        currency: 'PLN',
+        startedAt: '1998-07-14T10:00:00.000Z',
+      }),
+    };
+    h.deps.priceHistory = { lowestSince: async () => 4900 };
+    h.deps.couponRedemptions = {
+      counts: async (_tenantId, couponId, email) => ({
+        total: redemptions.filter((row) => row.couponId === couponId).length,
+        member: redemptions.filter(
+          (row) => row.couponId === couponId && row.email === email,
+        ).length,
+      }),
+      createOrderAndClaim: async (_tenantId, input) => {
+        if (redemptions.length >= 1) return false;
+        h.orders.push(input.order);
+        redemptions.push(input.redemption);
+        return true;
+      },
+    };
+    h.setNow('1998-07-16T10:00:00.000Z');
+    const event = completedEvent({
+      id: 'event-coupon',
+      objectId: 'cs-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: false },
+    });
+    expect(h.orders).toMatchObject([
+      { amountCents: 2450, discountCents: 2450, couponId: coupon.id },
+    ]);
+    expect(redemptions).toHaveLength(1);
+  });
+
+  it('does not commit coupon accounting until enrollment fulfillment succeeds', async () => {
+    const h = couponHarness();
+    const transaction = h.deps.enrollmentTransaction;
+    let attempts = 0;
+    h.deps.enrollmentTransaction = {
+      run: async (operation) => {
+        attempts += 1;
+        if (attempts === 1) return err(validation('outbox unavailable'));
+        return transaction.run(operation);
+      },
+    };
+    const event = completedEvent({
+      id: 'event-coupon-retry',
+      objectId: 'cs-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+    });
+
+    expect((await fulfillStripeWebhook(tenantA, event, h.deps)).ok).toBe(false);
+    expect(h.orders).toHaveLength(0);
+    expect(h.redemptions).toHaveLength(0);
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+  });
+
+  it.each([
+    { name: 'archived after checkout', coupon: { status: 'archived' as const }, claim: true },
+    { name: 'limit consumed during payment', coupon: {}, claim: false },
+  ])('fulfills a captured payment without attribution when the coupon is $name', async (scenario) => {
+    const h = couponHarness({ coupon: scenario.coupon, claim: scenario.claim });
+    const event = completedEvent({
+      id: `event-${scenario.name}`,
+      objectId: 'cs-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+      amountTotalCents: 2450,
+      discountTotalCents: 2450,
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(h.grants.size).toBe(1);
+    expect(h.orders).toMatchObject([
+      { amountCents: 2450, discountCents: 2450, couponId: null },
+    ]);
+    expect(h.redemptions).toHaveLength(0);
+  });
+
+  it('records the provider charged total and discount without poisoning fulfillment', async () => {
+    const h = couponHarness();
+    const event = completedEvent({
+      id: 'event-provider-total',
+      objectId: 'cs-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+      amountTotalCents: 2449,
+      discountTotalCents: 2451,
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(h.orders).toMatchObject([
+      { amountCents: 2449, discountCents: 2451, couponId: h.coupon.id },
+    ]);
+  });
+
+  it('reuses coupon accounting when a recurring checkout retries after subscription creation fails', async () => {
+    const h = couponHarness({ price: monthlyPrice(tenantA.id) });
+    const create = h.deps.subscriptions.create;
+    let attempts = 0;
+    h.deps.subscriptions.create = async (tenantId, subscription) => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('transient subscription write');
+      await create(tenantId, subscription);
+    };
+    const event = completedEvent({
+      id: 'event-recurring-retry',
+      objectId: 'cs-coupon',
+      priceId: 'price-monthly',
+      subscriptionId: 'sub-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+      amountTotalCents: 2450,
+      discountTotalCents: 2450,
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'internal' },
+    });
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+  });
+
   it('fulfills once when Stripe retries the same event', async () => {
     const h = harness();
     const first = await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
@@ -426,12 +702,12 @@ describe('fulfillStripeWebhook', () => {
       status: 'active',
       priceId: 'price-monthly',
       providerSubscriptionId: 'sub-1',
-      currentPeriodEnd: '2026-08-14T10:00:00.000Z',
+      currentPeriodEnd: '1998-08-14T10:00:00.000Z',
       cancelAtPeriodEnd: false,
     });
     expect(h.orders).toHaveLength(1);
     expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', amountCents: 2900 });
-    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('2026-08-17T10:00:00.000Z');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-17T10:00:00.000Z');
   });
 
   it('renews the grant to the new period end plus grace on invoice.paid', async () => {
@@ -444,7 +720,7 @@ describe('fulfillStripeWebhook', () => {
         type: 'invoice.paid',
         invoiceId: 'in-1',
         subscriptionId: 'sub-1',
-        periodEnd: '2026-09-14T10:00:00.000Z',
+        periodEnd: '1998-09-14T10:00:00.000Z',
       }),
       h.deps,
     );
@@ -453,9 +729,9 @@ describe('fulfillStripeWebhook', () => {
     const subscription = h.subscriptions.get(h.subscription.id);
     expect(subscription).toMatchObject({
       status: 'active',
-      currentPeriodEnd: '2026-09-14T10:00:00.000Z',
+      currentPeriodEnd: '1998-09-14T10:00:00.000Z',
     });
-    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('2026-09-17T10:00:00.000Z');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
     expect(h.orders).toHaveLength(2);
     expect(h.orders[1]).toMatchObject({
       kind: 'recurring',
@@ -463,6 +739,44 @@ describe('fulfillStripeWebhook', () => {
       amountCents: 2900,
       providerObjectIds: { invoice: 'in-1', subscription: 'sub-1' },
     });
+  });
+
+  it('does not append the first subscription order again when invoice.paid follows checkout', async () => {
+    const h = couponHarness({
+      price: monthlyPrice('tenant-a'),
+      coupon: { recurringDuration: 'forever' },
+    });
+    await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({
+        objectId: 'cs-coupon',
+        priceId: 'price-monthly',
+        subscriptionId: 'sub-first-invoice',
+        invoiceId: 'in-first',
+        amountTotalCents: 2900,
+        couponCheckoutSessionId: 'coupon-session-1',
+      }),
+      h.deps,
+    );
+
+    const result = await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-first-invoice',
+        type: 'invoice.paid',
+        invoiceId: 'in-first',
+        subscriptionId: 'sub-first-invoice',
+        periodEnd: '1998-09-14T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(result).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders).toHaveLength(1);
+    expect(h.redemptions).toHaveLength(1);
+    expect(Array.from(h.subscriptions.values())[0]?.currentPeriodEnd).toBe(
+      '1998-09-14T10:00:00.000Z',
+    );
   });
 
   it('appends exactly one order when the same invoice.paid event is retried', async () => {
@@ -604,7 +918,7 @@ describe('simulated subscription lifecycle', () => {
     if (cycled.ok) {
       expect(cycled.value.subscription.currentPeriodEnd > h.subscription.currentPeriodEnd).toBe(true);
       expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(
-        '2026-09-17T10:00:00.000Z',
+        '1998-09-17T10:00:00.000Z',
       );
     }
   });

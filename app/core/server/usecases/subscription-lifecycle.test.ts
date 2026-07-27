@@ -10,7 +10,7 @@ import {
   updateSubscriptionFromProvider,
 } from './subscription-lifecycle.js';
 
-const NOW = '2026-07-14T10:00:00.000Z';
+const NOW = '1998-07-14T10:00:00.000Z';
 
 const price = (over: Partial<ProductPrice> = {}): ProductPrice => ({
   id: 'price-1',
@@ -34,8 +34,11 @@ const subscription = (over: Partial<MemberSubscription> = {}): MemberSubscriptio
   provider: 'stripe',
   providerSubscriptionId: 'psub-1',
   status: 'active',
-  currentPeriodEnd: '2026-08-14T10:00:00.000Z',
+  currentPeriodEnd: '1998-08-14T10:00:00.000Z',
   cancelAtPeriodEnd: false,
+  couponId: null,
+  couponDiscountCents: 0,
+  couponRecurringDuration: null,
   createdAt: NOW,
   updatedAt: NOW,
   ...over,
@@ -117,9 +120,9 @@ describe('startSubscription', () => {
       },
       h.deps,
     );
-    expect(sub).toMatchObject({ status: 'active', currentPeriodEnd: '2026-08-14T10:00:00.000Z', cancelAtPeriodEnd: false });
+    expect(sub).toMatchObject({ status: 'active', currentPeriodEnd: '1998-08-14T10:00:00.000Z', cancelAtPeriodEnd: false });
     expect(order).toMatchObject({ kind: 'recurring', status: 'paid', amountCents: 2900, provider: 'stripe' });
-    expect([...h.grants.values()][0]?.expiresAt).toBe('2026-08-17T10:00:00.000Z');
+    expect([...h.grants.values()][0]?.expiresAt).toBe('1998-08-17T10:00:00.000Z');
     expect([...h.grants.values()][0]?.source).toBe('stripe');
   });
 
@@ -133,18 +136,39 @@ describe('startSubscription', () => {
         provider: 'simulated',
         providerSubscriptionId: null,
         providerObjectIds: {},
-        currentPeriodEnd: '2026-12-01T00:00:00.000Z',
+        currentPeriodEnd: '1998-12-01T00:00:00.000Z',
         amountCents: 1000,
       },
       h.deps,
     );
     expect(order.amountCents).toBe(1000);
     expect([...h.grants.values()][0]?.source).toBe('simulated');
-    expect([...h.grants.values()][0]?.expiresAt).toBe('2026-12-04T00:00:00.000Z');
+    expect([...h.grants.values()][0]?.expiresAt).toBe('1998-12-04T00:00:00.000Z');
   });
 });
 
 describe('renewSubscriptionPeriod', () => {
+  it('keeps forever coupon attribution on renewal orders', async () => {
+    const h = harness([price()]);
+    const { order } = await renewSubscriptionPeriod(
+      't1',
+      {
+        subscription: subscription({
+          couponId: 'coupon-1',
+          couponDiscountCents: 1000,
+          couponRecurringDuration: 'forever',
+        }),
+        providerObjectIds: { invoice: 'in-coupon' },
+      },
+      h.deps,
+    );
+    expect(order).toMatchObject({
+      amountCents: 1900,
+      couponId: 'coupon-1',
+      discountCents: 1000,
+    });
+  });
+
   it('extends from the current period end when it is still in the future, using the price interval', async () => {
     const h = harness([price({ interval: 'year' })]);
     const { subscription: sub, order } = await renewSubscriptionPeriod(
@@ -152,7 +176,7 @@ describe('renewSubscriptionPeriod', () => {
       { subscription: subscription(), providerObjectIds: { invoice: 'in-1' } },
       h.deps,
     );
-    expect(sub.currentPeriodEnd).toBe('2027-08-14T10:00:00.000Z');
+    expect(sub.currentPeriodEnd).toBe('1999-08-14T10:00:00.000Z');
     expect(order).toMatchObject({ status: 'paid', amountCents: 2900 });
   });
 
@@ -160,10 +184,10 @@ describe('renewSubscriptionPeriod', () => {
     const h = harness([price()]);
     const { subscription: sub } = await renewSubscriptionPeriod(
       't1',
-      { subscription: subscription({ currentPeriodEnd: '2026-01-01T00:00:00.000Z' }), providerObjectIds: {} },
+      { subscription: subscription({ currentPeriodEnd: '1998-01-01T00:00:00.000Z' }), providerObjectIds: {} },
       h.deps,
     );
-    expect(sub.currentPeriodEnd).toBe('2026-08-14T10:00:00.000Z');
+    expect(sub.currentPeriodEnd).toBe('1998-08-14T10:00:00.000Z');
   });
 
   it('falls back to a monthly period, zero amount and PLN when the price row is gone', async () => {
@@ -183,13 +207,13 @@ describe('renewSubscriptionPeriod', () => {
       {
         subscription: subscription(),
         providerObjectIds: {},
-        periodEnd: '2026-09-30T00:00:00.000Z',
+        periodEnd: '1998-09-30T00:00:00.000Z',
         amountCents: 500,
         currency: 'EUR',
       },
       h.deps,
     );
-    expect(sub.currentPeriodEnd).toBe('2026-09-30T00:00:00.000Z');
+    expect(sub.currentPeriodEnd).toBe('1998-09-30T00:00:00.000Z');
     expect(order).toMatchObject({ amountCents: 500, currency: 'EUR' });
   });
 });
@@ -216,7 +240,7 @@ describe('updateSubscriptionFromProvider', () => {
       { subscription: subscription(), cancelAtPeriodEnd: true },
       h.deps,
     );
-    expect(sub).toMatchObject({ cancelAtPeriodEnd: true, status: 'active', currentPeriodEnd: '2026-08-14T10:00:00.000Z' });
+    expect(sub).toMatchObject({ cancelAtPeriodEnd: true, status: 'active', currentPeriodEnd: '1998-08-14T10:00:00.000Z' });
   });
 
   it('marks canceled and adopts a new period end when the provider reports one', async () => {
@@ -227,10 +251,10 @@ describe('updateSubscriptionFromProvider', () => {
         subscription: subscription(),
         cancelAtPeriodEnd: true,
         canceled: true,
-        currentPeriodEnd: '2026-09-01T00:00:00.000Z',
+        currentPeriodEnd: '1998-09-01T00:00:00.000Z',
       },
       h.deps,
     );
-    expect(sub).toMatchObject({ status: 'canceled', currentPeriodEnd: '2026-09-01T00:00:00.000Z' });
+    expect(sub).toMatchObject({ status: 'canceled', currentPeriodEnd: '1998-09-01T00:00:00.000Z' });
   });
 });

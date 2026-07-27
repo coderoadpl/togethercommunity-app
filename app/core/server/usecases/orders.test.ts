@@ -28,10 +28,13 @@ const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem
   currency: 'PLN',
   provider: 'simulated',
   providerObjectIds: {},
+  couponId: null,
+  discountCents: 0,
   createdAt: '2026-07-10T00:00:00.000Z',
   memberEmail: 'buyer@together.dev',
   memberName: 'Buyer',
   productTitle: 'Course',
+  couponCode: null,
   ...over,
 });
 
@@ -47,6 +50,7 @@ const harness = (rows: OrderListItem[] = []) => {
             (query.status === undefined || row.status === query.status) &&
             (query.productId === undefined || row.productId === query.productId) &&
             (query.kind === undefined || row.kind === query.kind) &&
+            (query.couponId === undefined || row.couponId === query.couponId) &&
             (query.search === undefined ||
               row.memberEmail.includes(query.search) ||
               (row.memberName ?? '').includes(query.search)),
@@ -87,6 +91,20 @@ describe('listOrders', () => {
 
     const byKind = await listOrders({ identity: identity('owner') }, { kind: 'recurring' }, h.deps);
     expect(byKind).toMatchObject({ ok: true, value: { total: 1, orders: [{ id: 'o2' }] } });
+
+    const couponRows = [
+      orderItem('o4', { couponId: 'coupon-1', couponCode: 'PARTNER20', discountCents: 1000 }),
+    ];
+    const couponHarness = harness(couponRows);
+    const byCoupon = await listOrders(
+      { identity: identity('owner') },
+      { couponId: 'coupon-1' },
+      couponHarness.deps,
+    );
+    expect(byCoupon).toMatchObject({
+      ok: true,
+      value: { orders: [{ couponCode: 'PARTNER20', discountCents: 1000 }] },
+    });
 
     const bySearch = await listOrders({ identity: identity('owner') }, { search: 'anna' }, h.deps);
     expect(bySearch).toMatchObject({ ok: true, value: { total: 1, orders: [{ id: 'o3' }] } });
@@ -149,7 +167,9 @@ describe('exportOrders — CSV', () => {
     expect(result).toMatchObject({ ok: true, value: { filename: 'sales-alpha.csv', mimeType: 'text/csv; charset=utf-8' } });
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
-    expect(lines[0]).toBe('date,member,email,product,kind,amount_cents,currency,status');
+    expect(lines[0]).toBe(
+      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents',
+    );
     expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
     expect(lines[2]).toContain('""');
     expect(lines[2]).toContain('"Course, Deluxe"');

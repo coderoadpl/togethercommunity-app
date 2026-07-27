@@ -15,6 +15,11 @@ import {
   consentConfirmationTokens,
   consentDefinitions,
   consentDefinitionVersions,
+  couponCheckoutSessions,
+  couponEvents,
+  couponRedemptionEvents,
+  couponRedemptions,
+  coupons,
   emailEvents,
   emailOutbox,
   memberCourseProgress,
@@ -1435,6 +1440,40 @@ const orderDefs: OrderDef[] = [
 ];
 
 await db
+  .insert(coupons)
+  .values({
+    id: 'coupon-studio-partner20',
+    tenantId: 'tenant-studio',
+    code: 'PARTNER20',
+    kind: 'percent',
+    value: 20,
+    scope: { kind: 'all' },
+    appliesTo: 'both',
+    recurringDuration: 'forever',
+    startsAt: null,
+    endsAt: null,
+    maxRedemptions: null,
+    maxRedemptionsPerMember: null,
+    status: 'active',
+    partnerLabel: 'Akademia Partner',
+    stripeCouponId: null,
+    stripePromotionCodeId: null,
+    createdAt: relativeIso(-60),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(couponEvents)
+  .values({
+    id: 'coupon-event-studio-partner20-created',
+    tenantId: 'tenant-studio',
+    couponId: 'coupon-studio-partner20',
+    type: 'created',
+    occurredAt: relativeIso(-60),
+  })
+  .onConflictDoNothing();
+
+await db
   .insert(orders)
   .values(
     orderDefs.map((order) => ({
@@ -1452,6 +1491,60 @@ await db
       createdAt: order.createdAt,
     })),
   )
+  .onConflictDoNothing();
+
+await db
+  .update(orders)
+  .set({
+    couponId: 'coupon-studio-partner20',
+    discountCents: 7980,
+    amountCents: 31920,
+  })
+  .where(eq(orders.id, 'order-studio-aktywny-js'));
+
+await db
+  .insert(couponRedemptions)
+  .values({
+    id: 'coupon-redemption-studio-partner20',
+    tenantId: 'tenant-studio',
+    couponId: 'coupon-studio-partner20',
+    orderId: 'order-studio-aktywny-js',
+    memberId: 'member-studio-aktywny',
+    email: 'kursant.aktywny@together.dev',
+    discountCents: 7980,
+    createdAt: relativeIso(-30),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(couponRedemptionEvents)
+  .values({
+    id: 'coupon-redemption-event-studio-partner20',
+    tenantId: 'tenant-studio',
+    redemptionId: 'coupon-redemption-studio-partner20',
+    couponId: 'coupon-studio-partner20',
+    orderId: 'order-studio-aktywny-js',
+    type: 'redeemed',
+    occurredAt: relativeIso(-30),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(couponCheckoutSessions)
+  .values({
+    id: 'coupon-session-studio-partner20',
+    tenantId: 'tenant-studio',
+    couponId: 'coupon-studio-partner20',
+    providerSessionId: 'sim_cs_seed_aktywny',
+    memberEmail: 'kursant.aktywny@together.dev',
+    productId: 'product-js-full',
+    priceId: 'price-product-js-full',
+    originalCents: 39900,
+    discountCents: 7980,
+    finalCents: 31920,
+    currency: 'PLN',
+    startedAt: relativeIso(-30),
+  })
   .onConflictDoNothing();
 
 if (progressSpecs.length > 0) {

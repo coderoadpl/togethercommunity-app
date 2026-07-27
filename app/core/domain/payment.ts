@@ -9,6 +9,7 @@ export const checkoutSessionInputSchema = z.object({
   language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
+  couponCode: z.string().trim().min(1).max(100).optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
@@ -39,6 +40,10 @@ export const stripeWebhookPayloadSchema = z.object({
       payment_intent: z.string().nullable().optional(),
       charge: z.string().nullable().optional(),
       amount_total: z.number().int().nullable().optional(),
+      total_details: z
+        .object({ amount_discount: z.number().int().nullable().optional() })
+        .nullable()
+        .optional(),
       currency: z.string().nullable().optional(),
       period_end: z.number().nullable().optional(),
       cancel_at_period_end: z.boolean().optional(),

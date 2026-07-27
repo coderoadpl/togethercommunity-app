@@ -227,6 +227,30 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByTestId('product-row').first().waitFor(visible),
   },
   {
+    name: 'panel-coupons',
+    auth: 'creator',
+    path: '/panel/sales/coupons',
+    ready: (page) => page.getByTestId('coupon-row').first().waitFor(visible),
+  },
+  {
+    name: 'panel-coupon-create',
+    auth: 'creator',
+    path: '/panel/sales/coupons/new',
+    ready: (page) => page.locator('#coupon-code').waitFor(visible),
+  },
+  {
+    name: 'panel-coupon-detail',
+    auth: 'creator',
+    path: '/panel/sales/coupons/coupon-studio-partner20',
+    ready: (page) => page.getByText('Aktywność w czasie').waitFor(visible),
+  },
+  {
+    name: 'panel-order-detail',
+    auth: 'creator',
+    path: '/panel/sales/order-studio-aktywny-js',
+    ready: (page) => page.getByText('PARTNER20').waitFor(visible),
+  },
+  {
     name: 'panel-marketing-campaigns',
     auth: 'creator',
     path: '/panel/marketing/campaigns',

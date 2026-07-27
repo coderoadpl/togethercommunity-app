@@ -1,21 +1,32 @@
 import {
   err,
   graceExpiresAt,
+  internal,
   nextPeriodEnd,
+  normalizeEmail,
   ok,
   validation,
   type AppError,
   type ProcessedPaymentEvent,
   type Result,
   type Tenant,
+  type Coupon,
+  type CouponCheckoutSession,
+  type Order,
+  type ProductPrice,
 } from '@core/domain/index.js';
 
 import type {
   PaymentRefundRepository,
   PaymentWebhookEvent,
   ProcessedPaymentEventRepository,
+  CouponCheckoutSessionRepository,
+  CouponRedemptionRepository,
+  CouponRepository,
+  ProductPriceHistoryRepository,
 } from '../ports.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
+import { validateCouponForCheckout } from './coupon-checkout.js';
 import {
   appendOrder,
   failSubscriptionPayment,
@@ -28,6 +39,10 @@ import {
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
   paymentRefunds: PaymentRefundRepository;
+  coupons?: CouponRepository;
+  couponRedemptions?: CouponRedemptionRepository;
+  couponCheckoutSessions?: CouponCheckoutSessionRepository;
+  priceHistory?: ProductPriceHistoryRepository;
 }
 
 const HANDLED_EVENT_TYPES = new Set([
@@ -39,6 +54,156 @@ const HANDLED_EVENT_TYPES = new Set([
   'charge.refunded',
   'charge.dispute.created',
 ]);
+
+interface CouponPaymentContext {
+  coupon: Coupon;
+  session: CouponCheckoutSession;
+  price: ProductPrice | null;
+}
+
+const couponPaymentContext = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+): Promise<CouponPaymentContext | null> => {
+  const sessionId = event.checkoutSession?.metadata.couponCheckoutSessionId;
+  if (sessionId === undefined || sessionId === null) return null;
+  if (
+    deps.coupons === undefined ||
+    deps.couponRedemptions === undefined ||
+    deps.couponCheckoutSessions === undefined ||
+    deps.priceHistory === undefined
+  ) {
+    return null;
+  }
+  const session = await deps.couponCheckoutSessions.findById(tenant.id, sessionId);
+  if (
+    session === null ||
+    session.productId !== event.checkoutSession?.metadata.productId ||
+    (session.providerSessionId !== null && session.providerSessionId !== event.objectId)
+  ) {
+    return null;
+  }
+  const coupon = await deps.coupons.findById(tenant.id, session.couponId);
+  if (coupon === null) return null;
+  const price = session.priceId === null ? null : await deps.prices.findById(tenant.id, session.priceId);
+  return { coupon, session, price };
+};
+
+const couponStillAttributable = async (
+  tenant: Tenant,
+  context: CouponPaymentContext,
+  deps: StripeWebhookDeps,
+): Promise<boolean> => {
+  if (
+    deps.coupons === undefined ||
+    deps.couponRedemptions === undefined ||
+    deps.priceHistory === undefined
+  ) {
+    return false;
+  }
+  const validated = await validateCouponForCheckout(
+    tenant.id,
+    {
+      code: context.coupon.code,
+      email: context.session.memberEmail,
+      productId: context.session.productId,
+      priceId: context.session.priceId,
+      priceKind: context.price?.kind ?? 'one_time',
+      amountCents: context.session.originalCents,
+      currency: context.session.currency,
+      sessionStartedAt: context.session.startedAt,
+    },
+    {
+      coupons: deps.coupons,
+      redemptions: deps.couponRedemptions,
+      priceHistory: deps.priceHistory,
+      clock: deps.clock,
+    },
+  );
+  return validated.ok;
+};
+
+const providerObjectIdsForCheckout = (
+  event: PaymentWebhookEvent,
+): Record<string, string> => ({
+  checkoutSession: event.objectId ?? '',
+  ...(event.checkoutSession?.paymentIntentId == null
+    ? {}
+    : { paymentIntent: event.checkoutSession.paymentIntentId }),
+  ...(event.checkoutSession?.subscriptionId == null
+    ? {}
+    : { subscription: event.checkoutSession.subscriptionId }),
+  ...(event.checkoutSession?.invoiceId == null
+    ? {}
+    : { invoice: event.checkoutSession.invoiceId }),
+});
+
+const claimDiscountedOrder = async (
+  tenant: Tenant,
+  event: PaymentWebhookEvent,
+  provider: 'stripe' | 'simulated',
+  memberId: string,
+  context: CouponPaymentContext,
+  deps: StripeWebhookDeps,
+): Promise<{ order: Order; coupon: Coupon } | null> => {
+  if (deps.couponRedemptions === undefined) return null;
+  const existing = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
+    checkoutSession: event.objectId ?? '',
+  });
+  if (existing !== null) {
+    return existing.couponId === context.coupon.id
+      ? { order: existing, coupon: context.coupon }
+      : null;
+  }
+  if (!(await couponStillAttributable(tenant, context, deps))) return null;
+  const amountCents =
+    event.checkoutSession?.amountTotalCents ?? context.session.finalCents;
+  const discountCents =
+    event.checkoutSession?.discountTotalCents ?? context.session.discountCents;
+  const order: Order = {
+    id: deps.ids.nextId(),
+    tenantId: tenant.id,
+    memberId,
+    productId: context.session.productId,
+    priceId: context.session.priceId,
+    kind: context.price?.kind ?? 'one_time',
+    status: 'paid',
+    amountCents,
+    currency: context.session.currency,
+    provider,
+    providerObjectIds: providerObjectIdsForCheckout(event),
+    couponId: context.coupon.id,
+    discountCents,
+    createdAt: deps.clock.nowIso(),
+  };
+  const redemptionId = deps.ids.nextId();
+  const claimed = await deps.couponRedemptions.createOrderAndClaim(tenant.id, {
+    order,
+    redemption: {
+      id: redemptionId,
+      tenantId: tenant.id,
+      couponId: context.coupon.id,
+      orderId: order.id,
+      memberId,
+      email: normalizeEmail(context.session.memberEmail),
+      discountCents,
+      createdAt: order.createdAt,
+    },
+    event: {
+      id: deps.ids.nextId(),
+      tenantId: tenant.id,
+      redemptionId,
+      couponId: context.coupon.id,
+      orderId: order.id,
+      type: 'redeemed',
+      occurredAt: order.createdAt,
+    },
+    maxRedemptions: context.coupon.maxRedemptions,
+    maxRedemptionsPerMember: context.coupon.maxRedemptionsPerMember,
+  });
+  return claimed ? { order, coupon: context.coupon } : null;
+};
 
 const applyCheckoutCompleted = async (
   tenant: Tenant,
@@ -65,6 +230,7 @@ const applyCheckoutCompleted = async (
     price?.kind === 'recurring'
       ? nextPeriodEnd(deps.clock.nowIso(), price.interval ?? 'month')
       : null;
+  const couponContext = await couponPaymentContext(tenant, event, deps);
 
   const fulfilled = await fulfillEnrollment(
     tenant,
@@ -75,10 +241,53 @@ const applyCheckoutCompleted = async (
       language: metadata.language ?? 'pl',
       source: provider,
       sendEmail: true,
+      allowUnpublished: true,
     },
     deps,
   );
   if (!fulfilled.ok) return fulfilled;
+  const discounted =
+    couponContext === null
+      ? null
+      : await claimDiscountedOrder(
+          tenant,
+          event,
+          provider,
+          fulfilled.value.memberId,
+          couponContext,
+          deps,
+        );
+  const product = await deps.products.findById(tenant.id, metadata.productId);
+  const paidOrder =
+    discounted?.order ??
+    (await appendOrder(
+      tenant.id,
+      {
+        memberId: fulfilled.value.memberId,
+        productId: metadata.productId,
+        priceId: price?.id ?? null,
+        kind: price?.kind ?? 'one_time',
+        status: 'paid',
+        amountCents:
+          event.checkoutSession.amountTotalCents ??
+          couponContext?.session.finalCents ??
+          price?.amountCents ??
+          product?.priceCents ??
+          0,
+        currency:
+          couponContext?.session.currency ??
+          price?.currency ??
+          product?.currency ??
+          'PLN',
+        provider,
+        providerObjectIds: providerObjectIdsForCheckout(event),
+        discountCents:
+          event.checkoutSession.discountTotalCents ??
+          couponContext?.session.discountCents ??
+          0,
+      },
+      deps,
+    ));
 
   if (price?.kind === 'recurring') {
     await startSubscription(
@@ -98,33 +307,20 @@ const applyCheckoutCompleted = async (
             : { subscription: event.checkoutSession.subscriptionId }),
         },
         ...(periodEnd === null ? {} : { currentPeriodEnd: periodEnd }),
+        paidOrder,
+        ...(discounted === null
+          ? {}
+          : {
+              couponId: discounted.coupon.id,
+              couponDiscountCents: discounted.order.discountCents,
+              couponRecurringDuration: discounted.coupon.recurringDuration,
+            }),
       },
       deps,
     );
     return ok({ processed: true });
   }
 
-  const product = await deps.products.findById(tenant.id, metadata.productId);
-  await appendOrder(
-    tenant.id,
-    {
-      memberId: fulfilled.value.memberId,
-      productId: metadata.productId,
-      priceId: price?.id ?? null,
-      kind: 'one_time',
-      status: 'paid',
-      amountCents: price?.amountCents ?? product?.priceCents ?? 0,
-      currency: price?.currency ?? product?.currency ?? 'PLN',
-      provider,
-      providerObjectIds: {
-        checkoutSession: event.objectId,
-        ...(event.checkoutSession.paymentIntentId == null
-          ? {}
-          : { paymentIntent: event.checkoutSession.paymentIntentId }),
-      },
-    },
-    deps,
-  );
   return ok({ processed: true });
 };
 
@@ -155,11 +351,53 @@ const applyInvoiceEvent = async (
     ...(event.invoice?.currency == null ? {} : { currency: event.invoice.currency.toUpperCase() }),
   };
   if (event.type === 'invoice.paid') {
-    await renewSubscriptionPeriod(
+    const existingOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
+      invoice: event.objectId,
+    });
+    const renewed = await renewSubscriptionPeriod(
       tenant.id,
-      { ...cycle, ...(event.invoice?.periodEnd == null ? {} : { periodEnd: event.invoice.periodEnd }) },
+      {
+        ...cycle,
+        ...(existingOrder === null ? {} : { paidOrder: existingOrder }),
+        ...(event.invoice?.periodEnd == null ? {} : { periodEnd: event.invoice.periodEnd }),
+      },
       deps,
     );
+    if (
+      existingOrder === null &&
+      subscription.couponId !== null &&
+      subscription.couponRecurringDuration === 'forever' &&
+      deps.couponRedemptions !== undefined
+    ) {
+      const member = await deps.members.findById(tenant.id, subscription.memberId);
+      if (member !== null) {
+        const redemptionId = deps.ids.nextId();
+        await deps.couponRedemptions.createOrderAndClaim(tenant.id, {
+          order: renewed.order,
+          redemption: {
+            id: redemptionId,
+            tenantId: tenant.id,
+            couponId: subscription.couponId,
+            orderId: renewed.order.id,
+            memberId: subscription.memberId,
+            email: member.email,
+            discountCents: renewed.order.discountCents,
+            createdAt: renewed.order.createdAt,
+          },
+          event: {
+            id: deps.ids.nextId(),
+            tenantId: tenant.id,
+            redemptionId,
+            couponId: subscription.couponId,
+            orderId: renewed.order.id,
+            type: 'redeemed',
+            occurredAt: renewed.order.createdAt,
+          },
+          maxRedemptions: null,
+          maxRedemptionsPerMember: null,
+        });
+      }
+    }
   } else {
     await failSubscriptionPayment(tenant.id, cycle, deps);
   }
@@ -284,14 +522,20 @@ export const fulfillStripeWebhook = async (
   const claimed = await deps.processedPaymentEvents.claim(tenant.id, processedEvent);
   if (!claimed) return ok({ processed: false });
 
-  const applied =
-    event.type === 'checkout.session.completed'
-      ? await applyCheckoutCompleted(tenant, event, provider, deps)
-      : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
-        ? await applyInvoiceEvent(tenant, event, deps)
-        : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
-          ? await applyPaymentAdjustment(tenant, event, deps)
-        : await applySubscriptionEvent(tenant, event, deps);
+  let applied: Result<{ processed: boolean }, AppError>;
+  try {
+    applied =
+      event.type === 'checkout.session.completed'
+        ? await applyCheckoutCompleted(tenant, event, provider, deps)
+        : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
+          ? await applyInvoiceEvent(tenant, event, deps)
+          : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
+            ? await applyPaymentAdjustment(tenant, event, deps)
+            : await applySubscriptionEvent(tenant, event, deps);
+  } catch {
+    await deps.processedPaymentEvents.release(tenant.id, event.id);
+    return err(internal('Payment fulfillment failed'));
+  }
 
   if (!applied.ok || !applied.value.processed) {
     await deps.processedPaymentEvents.release(tenant.id, event.id);

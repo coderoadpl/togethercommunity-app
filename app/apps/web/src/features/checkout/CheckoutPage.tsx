@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,8 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
+
+import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { BrandMark } from '../../branding.js';
@@ -43,6 +45,39 @@ const priceLabel = (
   return t.checkout.subscribeMonthlyPrice({ price: formattedPrice });
 };
 
+const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const couponError = (
+  error: unknown,
+  t: ReturnType<typeof useTranslations>,
+): string => {
+  if (!(error instanceof ApiError)) return localizeError(error, t);
+  switch (error.appError.message) {
+    case 'Coupon code is invalid':
+      return t.checkout.couponInvalid;
+    case 'This coupon is inactive':
+      return t.checkout.couponInactive;
+    case 'This coupon is not valid yet':
+      return t.checkout.couponNotStarted;
+    case 'This coupon has expired':
+      return t.checkout.couponExpired;
+    case 'This coupon does not apply to this product':
+      return t.checkout.couponWrongScope;
+    case 'This coupon does not apply to this price':
+      return t.checkout.couponWrongPrice;
+    case 'This coupon has reached its redemption limit':
+      return t.checkout.couponLimit;
+    case 'This coupon has reached its per-member redemption limit':
+      return t.checkout.couponMemberLimit;
+    case 'An email is required to validate this coupon':
+      return t.checkout.couponEmailRequired;
+    case 'This coupon does not reduce the selected price':
+      return t.checkout.couponNoReduction;
+    default:
+      return localizeError(error, t);
+  }
+};
+
 export const CheckoutPage = ({ productId }: { productId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -51,6 +86,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const offer = useQuery({ ...actions.publicOffer, enabled: !statusPage });
   const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
+  const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
+  const [couponVisible, setCouponVisible] = useState(initialCouponCode !== '');
+  const [couponCode, setCouponCode] = useState(initialCouponCode);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
@@ -71,6 +109,31 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     ...actions.createCheckoutSession,
     onSuccess: (data) => window.location.assign(data.url),
   });
+  const couponValidation = useMutation({
+    ...actions.validateCouponForCheckout,
+  });
+  const autoAppliedCoupon = useRef(false);
+
+  useEffect(() => {
+    if (
+      autoAppliedCoupon.current ||
+      initialCouponCode === '' ||
+      product === undefined ||
+      !completeEmail(email)
+    ) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      autoAppliedCoupon.current = true;
+      couponValidation.mutate({
+        productId,
+        ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+        email,
+        couponCode: initialCouponCode,
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [couponValidation, email, initialCouponCode, product, productId, selectedPrice]);
 
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -79,7 +142,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const priceId = selectedPrice?.id;
-    if (paymentConfig.data?.stripeConfigured) {
+    if (paymentConfig.data?.stripeConfigured || payableCents === 0) {
       checkoutSession.mutate({
         productId,
         email,
@@ -87,6 +150,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
         ...consent,
         ...(priceId === undefined ? {} : { priceId }),
+        ...(couponValidation.data === undefined ? {} : { couponCode }),
       });
       return;
     }
@@ -97,6 +161,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
       ...(priceId === undefined ? {} : { priceId }),
+      ...(couponValidation.data === undefined ? {} : { couponCode }),
     });
   };
 
@@ -175,6 +240,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   const selectedAmountCents = selectedPrice?.amountCents ?? product.priceCents;
   const selectedCurrency = selectedPrice?.currency ?? product.currency;
+  const payableCents = couponValidation.data?.breakdown.finalCents ?? selectedAmountCents;
 
   if (purchaseComplete) {
     return (
@@ -216,7 +282,10 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               <RadioGroup
                 aria-labelledby="checkout-price-choice"
                 value={selectedPrice?.id ?? ''}
-                onChange={(event) => setSelectedPriceId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedPriceId(event.target.value);
+                  couponValidation.reset();
+                }}
               >
                 {product.prices.map((price) => (
                   <Paper key={price.id} variant="outlined" sx={{ px: '0.75rem', my: '0.3rem' }}>
@@ -241,11 +310,80 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               id="checkout-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                couponValidation.reset();
+              }}
               autoComplete="email"
               required
             />
           </FormControl>
+          {!couponVisible ? (
+            <Button type="button" variant="text" onClick={() => setCouponVisible(true)}>
+              {t.checkout.couponReveal}
+            </Button>
+          ) : (
+            <Stack useFlexGap spacing="0.5rem">
+              <FormControl fullWidth>
+                <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
+                <OutlinedInput
+                  id="checkout-coupon"
+                  value={couponCode}
+                  onChange={(event) => {
+                    setCouponCode(event.target.value);
+                    couponValidation.reset();
+                  }}
+                />
+              </FormControl>
+              <Button
+                type="button"
+                variant="outlined"
+                disabled={couponValidation.isPending || couponCode.trim() === ''}
+                onClick={() => couponValidation.mutate({
+                  productId,
+                  ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+                  ...(email === '' ? {} : { email }),
+                  couponCode,
+                })}
+              >
+                {couponValidation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
+              </Button>
+              {couponValidation.data === undefined ? null : (
+                <Paper variant="outlined" sx={{ p: '0.75rem' }}>
+                  <Stack useFlexGap spacing="0.25rem">
+                    <Typography>{t.checkout.couponOriginal({
+                      price: formatPrice(couponValidation.data.breakdown.originalCents, selectedCurrency, language),
+                    })}</Typography>
+                    <Typography>{t.checkout.couponDiscount({
+                      price: formatPrice(couponValidation.data.breakdown.discountCents, selectedCurrency, language),
+                    })}</Typography>
+                    <Typography>{t.checkout.couponFinal({
+                      price: formatPrice(couponValidation.data.breakdown.finalCents, selectedCurrency, language),
+                    })}</Typography>
+                    {selectedPrice?.kind !== 'recurring' ? null : (
+                      <Typography>
+                        {couponValidation.data.recurringDuration === 'forever'
+                          ? t.checkout.couponForever
+                          : t.checkout.couponFirstInvoice}
+                      </Typography>
+                    )}
+                    <FinePrint component="p" variant="caption">
+                      {t.checkout.omnibusLowest({
+                        price: formatPrice(
+                          couponValidation.data.breakdown.lowestPriceLast30DaysCents,
+                          selectedCurrency,
+                          language,
+                        ),
+                      })}
+                    </FinePrint>
+                  </Stack>
+                </Paper>
+              )}
+              {couponValidation.isError ? (
+                <Alert>{couponError(couponValidation.error, t)}</Alert>
+              ) : null}
+            </Stack>
+          )}
           {consentRequired ? (
             <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
           ) : null}
@@ -290,10 +428,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             disabled={
               simulatePurchase.isPending ||
               checkoutSession.isPending ||
-              (!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled)
+              (payableCents > 0 &&
+                !paymentConfig.data.stripeConfigured &&
+                !paymentConfig.data.simulatedPaymentsEnabled)
             }
           >
-            {selectedAmountCents === 0
+            {payableCents === 0
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
                 : t.checkout.freeIdle
@@ -319,9 +459,10 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                 ...consent,
                 ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+                ...(couponValidation.data === undefined ? {} : { couponCode }),
               })}
             >
-              {selectedAmountCents === 0
+              {payableCents === 0
                 ? simulatePurchase.isPending
                   ? t.checkout.freePending
                   : t.checkout.freeIdle

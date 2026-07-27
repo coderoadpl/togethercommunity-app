@@ -1271,6 +1271,8 @@ describe('checkout consent ordering', () => {
       currency: 'PLN',
       provider: 'stripe',
       providerObjectIds: { checkoutSession: 'cs_webhook' },
+      couponId: null,
+      discountCents: 0,
       createdAt: '2026-07-12T00:00:00.000Z',
     };
     const event: PaymentWebhookEvent = {

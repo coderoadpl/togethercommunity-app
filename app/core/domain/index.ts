@@ -24,4 +24,5 @@ export * from './onboarding.js';
 export * from './stream-video.js';
 export * from './payment.js';
 export * from './commerce.js';
+export * from './coupon.js';
 export * from './versioning.js';

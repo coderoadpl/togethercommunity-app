@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, lt, or, sql } from 'drizzle-orm';
 
 import {
   couponCheckoutSessionSchema,
@@ -199,9 +199,6 @@ export const createProductPriceHistoryRepository = (
         and(
           eq(productPriceHistory.tenantId, tenantId),
           eq(productPriceHistory.productId, input.productId),
-          input.priceId === null
-            ? sql`${productPriceHistory.priceId} is null`
-            : eq(productPriceHistory.priceId, input.priceId),
           sql`${productPriceHistory.effectiveFrom}::timestamptz >= ${input.since}::timestamptz`,
           sql`${productPriceHistory.effectiveFrom}::timestamptz <= ${input.through}::timestamptz`,
         ),
@@ -264,7 +261,6 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
           and(
             eq(couponCheckoutSessions.tenantId, tenantId),
             inArray(couponCheckoutSessions.couponId, ids),
-            isNotNull(couponCheckoutSessions.providerSessionId),
             sql`${couponCheckoutSessions.startedAt}::timestamptz >= ${query.since}::timestamptz`,
             sql`${couponCheckoutSessions.startedAt}::timestamptz <= ${query.through}::timestamptz`,
           ),
@@ -272,21 +268,31 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
         .groupBy(couponCheckoutSessions.couponId),
       db
         .select({
-          couponId: orders.couponId,
-          count: sql<number>`count(distinct ${orders.providerObjectIds}->>'checkoutSession')::int`,
+          couponId: couponCheckoutSessions.couponId,
+          count: sql<number>`count(distinct ${couponCheckoutSessions.id})::int`,
         })
-        .from(orders)
-        .where(
+        .from(couponCheckoutSessions)
+        .innerJoin(
+          orders,
           and(
-            eq(orders.tenantId, tenantId),
-            inArray(orders.couponId, ids),
+            eq(orders.tenantId, couponCheckoutSessions.tenantId),
+            eq(orders.couponId, couponCheckoutSessions.couponId),
             eq(orders.status, 'paid'),
-            sql`${orders.providerObjectIds} ? 'checkoutSession'`,
-            sql`${orders.createdAt}::timestamptz >= ${query.since}::timestamptz`,
-            sql`${orders.createdAt}::timestamptz <= ${query.through}::timestamptz`,
+            sql`${orders.providerObjectIds}->>'checkoutSession' = coalesce(
+              ${couponCheckoutSessions.providerSessionId},
+              'free_' || ${couponCheckoutSessions.id}
+            )`,
           ),
         )
-        .groupBy(orders.couponId),
+        .where(
+          and(
+            eq(couponCheckoutSessions.tenantId, tenantId),
+            inArray(couponCheckoutSessions.couponId, ids),
+            sql`${couponCheckoutSessions.startedAt}::timestamptz >= ${query.since}::timestamptz`,
+            sql`${couponCheckoutSessions.startedAt}::timestamptz <= ${query.through}::timestamptz`,
+          ),
+        )
+        .groupBy(couponCheckoutSessions.couponId),
       db
         .select({
           couponId: orders.couponId,

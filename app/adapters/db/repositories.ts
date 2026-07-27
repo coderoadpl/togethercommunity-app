@@ -93,6 +93,8 @@ import {
   consents,
   campaignSends,
   checkoutConsentCaptures,
+  couponCheckoutSessions,
+  couponRedemptions,
   coupons,
   courseLessons,
   courseModules,
@@ -1311,6 +1313,20 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(campaignSends.tenantId, tenantId),
           eq(campaignSends.memberId, input.memberId),
           eq(campaignSends.email, member.email),
+        ));
+      await tx
+        .update(couponRedemptions)
+        .set({ email: input.tombstoneEmail })
+        .where(and(
+          eq(couponRedemptions.tenantId, tenantId),
+          eq(couponRedemptions.memberId, input.memberId),
+        ));
+      await tx
+        .update(couponCheckoutSessions)
+        .set({ memberEmail: input.tombstoneEmail })
+        .where(and(
+          eq(couponCheckoutSessions.tenantId, tenantId),
+          sql`lower(${couponCheckoutSessions.memberEmail}) = lower(${member.email})`,
         ));
 
       const eventRows = await tx

@@ -1,5 +1,5 @@
-import { Chip, Stack, Typography } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
+import { Button, Chip, Link, Stack, Typography } from '@mui/material';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
@@ -10,6 +10,12 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const detail = useQuery(actions.order(orderId));
+  const issueInvoice = useMutation({
+    ...actions.issueInvoice,
+    onSuccess: () => {
+      void detail.refetch();
+    },
+  });
   const statusLabels = {
     paid: t.sales.paid,
     pending: t.sales.pending,
@@ -64,6 +70,50 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Typography color="text.secondary">{t.sales.status}</Typography>
             <Chip size="small" label={statusLabels[order.status]} />
           </Stack>
+        </Stack>
+      </SectionCard>
+      {order.billing == null ? null : (
+        <SectionCard title={t.sales.billingDetails}>
+          <Stack useFlexGap spacing="0.25rem">
+            <Typography>{order.billing.companyName}</Typography>
+            <Typography>{order.billing.nip ?? ''}</Typography>
+            <Typography>{order.billing.address}</Typography>
+            <Typography>
+              {order.billing.postalCode} {order.billing.city}, {order.billing.country}
+            </Typography>
+          </Stack>
+        </SectionCard>
+      )}
+      <SectionCard title={t.sales.invoiceStatus}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          useFlexGap
+          spacing="0.75rem"
+          sx={{ alignItems: 'flex-start' }}
+        >
+          {detail.data.invoice === null ? null : (
+            <Chip
+              size="small"
+              label={t.sales.invoiceStatuses[detail.data.invoice.status]}
+              color={detail.data.invoice.status === 'failed' ? 'error' : 'default'}
+            />
+          )}
+          {detail.data.invoice?.pdfUrl == null ? null : (
+            <Link href={detail.data.invoice.pdfUrl} target="_blank" rel="noreferrer">
+              {t.sales.invoiceDownload}
+            </Link>
+          )}
+          {order.billing !== null &&
+          order.billing !== undefined &&
+          (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (
+            <Button
+              variant="contained"
+              disabled={issueInvoice.isPending}
+              onClick={() => issueInvoice.mutate(order.id)}
+            >
+              {issueInvoice.isPending ? t.sales.issuingInvoice : t.sales.issueInvoice}
+            </Button>
+          ) : null}
         </Stack>
       </SectionCard>
     </PanelPage>

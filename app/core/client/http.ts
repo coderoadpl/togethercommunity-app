@@ -81,6 +81,7 @@ import {
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
   orderDetailOutputSchema,
+  invoiceOutputSchema,
   ordersExportOutputSchema,
   productPriceCreateOutputSchema,
   productPriceDeactivateOutputSchema,
@@ -615,6 +616,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.order.path.replace(':orderId', encodeURIComponent(id)),
       orderDetailOutputSchema,
       undefined,
+      signal,
+    ),
+  issueInvoice: (orderId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invoiceIssue.method,
+      API_ROUTES.invoiceIssue.path.replace(':orderId', encodeURIComponent(orderId)),
+      invoiceOutputSchema,
+      {},
+      signal,
+    ),
+  refreshInvoice: (invoiceId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invoiceRefresh.method,
+      API_ROUTES.invoiceRefresh.path.replace(':invoiceId', encodeURIComponent(invoiceId)),
+      invoiceOutputSchema,
+      {},
       signal,
     ),
   exportOrders: (input: OrdersExportQueryInput, signal?: AbortSignal) => {

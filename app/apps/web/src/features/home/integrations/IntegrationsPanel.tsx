@@ -284,6 +284,30 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           </Box>
         </SectionCard>
 
+        <SectionCard
+          title={t.integrations.fakturowniaHeading}
+          description={t.integrations.fakturowniaDescription}
+        >
+          {secrets.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+          ) : secrets.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+          ) : (
+            <Stack useFlexGap spacing="1.25rem">
+              <SecretField
+                secretKey="fakturownia.apiKey"
+                label={t.integrations.fakturowniaApiKeyLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'fakturownia.apiKey')}
+              />
+              <SecretField
+                secretKey="fakturownia.subdomain"
+                label={t.integrations.fakturowniaSubdomainLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'fakturownia.subdomain')}
+              />
+            </Stack>
+          )}
+        </SectionCard>
+
         <SectionCard title={t.integrations.bunnyHeading} description={t.integrations.bunnyDescription}>
 
           {secrets.isPending ? (

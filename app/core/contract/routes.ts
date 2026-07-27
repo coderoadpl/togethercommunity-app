@@ -45,6 +45,8 @@ import {
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
+  orderSchema,
+  invoiceSchema,
   priceIntervalSchema,
   priceKindSchema,
   productPriceSchema,
@@ -111,6 +113,7 @@ import {
   updateLastViewedInputSchema,
   updatePostInputSchema,
   updateProductAccessItemsInputSchema,
+  billingDataSchema,
 } from '@core/domain/index.js';
 
 /**
@@ -154,6 +157,7 @@ export const meOutputSchema = z.object({
       memberId: z.string().nullable(),
     })
     .nullable(),
+  orders: z.array(orderSchema).optional(),
 });
 
 export const tenantListOutputSchema = z.object({
@@ -335,6 +339,7 @@ export const simulatePurchaseInputSchema = z.object({
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
   couponCode: z.string().trim().min(1).max(100).optional(),
+  billing: billingDataSchema.optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -381,7 +386,11 @@ export const ordersListOutputSchema = z.object({
   pageSize: z.number().int().positive(),
 });
 
-export const orderDetailOutputSchema = z.object({ order: orderListItemSchema });
+export const orderDetailOutputSchema = z.object({
+  order: orderListItemSchema,
+  invoice: invoiceSchema.nullable().default(null),
+});
+export const invoiceOutputSchema = z.object({ invoice: invoiceSchema });
 
 export const ordersExportQuerySchema = exportOrdersQuerySchema;
 
@@ -1032,6 +1041,8 @@ export const API_ROUTES = {
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
   orders: { method: 'GET', path: '/api/orders' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
+  invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
+  invoiceRefresh: { method: 'POST', path: '/api/invoices/:invoiceId/refresh' },
   ordersExport: { method: 'GET', path: '/api/orders/export' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
   couponStats: { method: 'GET', path: '/api/coupons' },
@@ -1188,6 +1199,8 @@ export const API_PATHS = {
   productPrices: API_ROUTES.productPrices.path,
   orders: API_ROUTES.orders.path,
   order: API_ROUTES.order.path,
+  invoiceIssue: API_ROUTES.invoiceIssue.path,
+  invoiceRefresh: API_ROUTES.invoiceRefresh.path,
   ordersExport: API_ROUTES.ordersExport.path,
   salesSummary: API_ROUTES.salesSummary.path,
   couponStats: API_ROUTES.couponStats.path,

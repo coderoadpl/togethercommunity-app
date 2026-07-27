@@ -86,6 +86,13 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const offer = useQuery({ ...actions.publicOffer, enabled: !statusPage });
   const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
+  const [invoiceVisible, setInvoiceVisible] = useState(false);
+  const [nip, setNip] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('PL');
   const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
   const [couponVisible, setCouponVisible] = useState(initialCouponCode !== '');
   const [couponCode, setCouponCode] = useState(initialCouponCode);
@@ -138,6 +145,18 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
   const consent = consentRequired ? { termsAccepted } : {};
+  const billing = invoiceVisible
+    ? {
+        billing: {
+          nip: nip === '' ? null : nip,
+          companyName,
+          address: billingAddress,
+          postalCode,
+          city,
+          country,
+        },
+      }
+    : {};
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -149,6 +168,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
         language,
         ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
         ...consent,
+        ...billing,
         ...(priceId === undefined ? {} : { priceId }),
         ...(couponValidation.data === undefined ? {} : { couponCode }),
       });
@@ -160,6 +180,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
       language,
       ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
       ...consent,
+      ...billing,
       ...(priceId === undefined ? {} : { priceId }),
       ...(couponValidation.data === undefined ? {} : { couponCode }),
     });
@@ -318,6 +339,39 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               required
             />
           </FormControl>
+          <Button
+            type="button"
+            variant="text"
+            onClick={() => setInvoiceVisible((current) => !current)}
+            aria-expanded={invoiceVisible}
+          >
+            {t.checkout.invoiceReveal}
+          </Button>
+          {invoiceVisible ? (
+            <Stack useFlexGap spacing="0.75rem">
+              {[
+                ['checkout-nip', t.checkout.nipLabel, nip, setNip],
+                ['checkout-company', t.checkout.companyNameLabel, companyName, setCompanyName],
+                ['checkout-address', t.checkout.addressLabel, billingAddress, setBillingAddress],
+                ['checkout-postal-code', t.checkout.postalCodeLabel, postalCode, setPostalCode],
+                ['checkout-city', t.checkout.cityLabel, city, setCity],
+                ['checkout-country', t.checkout.countryLabel, country, setCountry],
+              ].map(([id, label, value, setValue]) => (
+                <FormControl key={String(id)} fullWidth>
+                  <FormLabel htmlFor={String(id)}>{String(label)}</FormLabel>
+                  <OutlinedInput
+                    id={String(id)}
+                    value={String(value)}
+                    onChange={(event) => {
+                      if (typeof setValue === 'function') setValue(event.target.value);
+                    }}
+                    required={id !== 'checkout-nip'}
+                    inputProps={id === 'checkout-nip' ? { inputMode: 'numeric', pattern: '[0-9]{10}' } : undefined}
+                  />
+                </FormControl>
+              ))}
+            </Stack>
+          ) : null}
           {!couponVisible ? (
             <Button type="button" variant="text" onClick={() => setCouponVisible(true)}>
               {t.checkout.couponReveal}
@@ -458,6 +512,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 language,
                 ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                 ...consent,
+                ...billing,
                 ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
                 ...(couponValidation.data === undefined ? {} : { couponCode }),
               })}

@@ -32,13 +32,30 @@
    number and authenticated PDF; we store refs, proxy downloads, and
    surface status.
 4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
-   drugie").** Same InvoicingPort; FA(3) XML generation + KSeF 2.0 API on a
-   tenant-generated KSeF token/certificate (tenant_secrets custody — KSeF has
-   no OAuth, key custody is inherent, which is also why the adapter layer
-   stays valuable). Sequence: short SPIKE against the open ksef-test sandbox
-   first (token auth, submit one FA(3), fetch UPO — no legal effects there),
-   then the adapter with own numbering + own PDF visualization + B2C
-   own-PDF path; corrections stay deferred. E2E targets ksef-test.
+   drugie"; SPIKED successfully 2026-07-27, full report + working e2e script:
+   `~/private-archive/ksef-spike/REPORT.md`).** Same InvoicingPort.
+   Confirmed design from the spike:
+   - **BYO secret = tenant-generated KSeF TOKEN** (`InvoiceWrite`) + context
+     NIP in tenant_secrets — NOT a certificate (no cert custody; token-auth
+     via challenge + RSA-OAEP-encrypted token). Environment (test/prod) is a
+     deployment concern.
+   - **Own numbering**: per-tenant immutable P_2 series; the KSeF global
+     duplicate key is `(NIP, RodzajFaktury, P_2)` retained 10 YEARS — never
+     "fix" a duplicate by changing P_2 or resending; status 440 recovery
+     adopts `originalKsefNumber` only when it provably matches the frozen
+     local invoice, else hard conflict for human resolution.
+   - **Async submission**: durable job, never blocks HTTP; state machine
+     freezes canonical FA(3) XML + SHA-256 BEFORE send, persists session and
+     invoice references at each step, correlates lost responses by invoice
+     hash via session listing (the iFirma duplicate-trap fix, one layer
+     deeper).
+   - Local FA(3) render + XSD validation, UPO stored durably, own PDF
+     visualization for the buyer (B2C path incl.), session reuse per tenant,
+     backoff bounded by Retry-After.
+   - Deferred explicitly: batch/TarGz, inbound sync, ALL offline modes
+     (offline24, QR, technical corrections, attachments). E2E targets
+     ksef-test (unique synthetic NIPs, no real data there — test env is not
+     isolated between integrators).
 
 ## Slice scope (implementation order)
 

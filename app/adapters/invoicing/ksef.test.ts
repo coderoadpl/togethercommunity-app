@@ -72,9 +72,9 @@ describe('KSeF API client', () => {
           referenceNumber: 'invoice-ref',
           invoiceHash: 'hash',
           ksefNumber: '5555555555-20260727-ABC-01',
-          acquisitionDate: '2026-07-27T10:01:00Z',
-          invoicingDate: '2026-07-27T10:01:00Z',
-          permanentStorageDate: '2026-07-27T10:02:00Z',
+          acquisitionDate: '2026-07-27T10:01:00.3403321+00:00',
+          invoicingDate: '2026-07-27T12:01:00.1234567+02:00',
+          permanentStorageDate: '2026-07-27T10:02:00.0000000+00:00',
           status: { code: 200, description: 'Sukces' },
         });
       }
@@ -116,7 +116,13 @@ describe('KSeF API client', () => {
       invoiceReference: 'invoice-ref',
     })).toMatchObject({
       ok: true,
-      value: { code: 200, ksefNumber: '5555555555-20260727-ABC-01' },
+      value: {
+        code: 200,
+        ksefNumber: '5555555555-20260727-ABC-01',
+        acquisitionAt: '2026-07-27T10:01:00.340Z',
+        invoicingAt: '2026-07-27T10:01:00.123Z',
+        permanentStorageAt: '2026-07-27T10:02:00.000Z',
+      },
     });
 
     const authRequest = requests.find((request) => request.path.endsWith('/auth/ksef-token'));

@@ -23,6 +23,7 @@ import type {
   EmailDeliveryStatus,
   EmailSendProjection,
   EmailSendStatus,
+  TransactionalEmailTransport,
 } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -52,6 +53,16 @@ const isSendStatus = (value: string): value is EmailSendStatus =>
 const isDeliveryStatus = (value: string): value is EmailDeliveryStatus =>
   value === 'delivered' || value === 'bounced' || value === 'complained';
 
+const isTransport = (value: string): value is TransactionalEmailTransport =>
+  value === 'tenant-ses' || value === 'smtp' || value === 'platform';
+
+const transportLabel = (transport: TransactionalEmailTransport, t: ReturnType<typeof useTranslations>) =>
+  transport === 'tenant-ses'
+    ? t.marketing.transportTenantSes
+    : transport === 'smtp'
+      ? t.marketing.transportSmtp
+      : t.marketing.transportPlatform;
+
 const SendCampaign = ({ send }: { send: EmailSendProjection }) => {
   const t = useTranslations();
   if (send.campaignId === null) return <>{send.source}</>;
@@ -73,6 +84,7 @@ export const SendsPanel = () => {
   const [kind, setKind] = useState<'all' | EmailSendProjection['kind']>('all');
   const [status, setStatus] = useState<'all' | EmailSendStatus>('all');
   const [deliveryStatus, setDeliveryStatus] = useState<'all' | EmailDeliveryStatus>('all');
+  const [transport, setTransport] = useState<'all' | TransactionalEmailTransport>('all');
   const [campaignId, setCampaignId] = useState('all');
   const [pageSize, setPageSize] = useState(25);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -85,6 +97,7 @@ export const SendsPanel = () => {
     ...(kind === 'all' ? {} : { kind }),
     ...(status === 'all' ? {} : { status }),
     ...(deliveryStatus === 'all' ? {} : { deliveryStatus }),
+    ...(transport === 'all' ? {} : { transport }),
     ...(campaignId === 'all' ? {} : { campaignId }),
     ...(runId.length === 0 ? {} : { runId }),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
@@ -192,6 +205,23 @@ export const SendsPanel = () => {
                   <MenuItem value="all">{t.marketing.all}</MenuItem>
                   {(['delivered', 'bounced', 'complained'] as const).map((value) => (
                     <MenuItem key={value} value={value}>{deliveryStatusLabel(value, t)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: '10rem' }}>
+                <InputLabel id="send-transport-label">{t.marketing.transportLabel}</InputLabel>
+                <Select
+                  labelId="send-transport-label"
+                  label={t.marketing.transportLabel}
+                  value={transport}
+                  onChange={(event) => {
+                    setTransport(isTransport(event.target.value) ? event.target.value : 'all');
+                    resetPagination();
+                  }}
+                >
+                  <MenuItem value="all">{t.marketing.all}</MenuItem>
+                  {(['tenant-ses', 'smtp', 'platform'] as const).map((value) => (
+                    <MenuItem key={value} value={value}>{transportLabel(value, t)}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -304,6 +334,7 @@ export const SendsPanel = () => {
                   <TableCell>{t.marketing.subject}</TableCell>
                   <TableCell>{t.marketing.statusLabel}</TableCell>
                   <TableCell>{t.marketing.deliveryStatusLabel}</TableCell>
+                  <TableCell>{t.marketing.transportLabel}</TableCell>
                   <TableCell>{t.marketing.source}</TableCell>
                   <TableCell>{t.marketing.sentTime}</TableCell>
                   <TableCell />
@@ -315,8 +346,23 @@ export const SendsPanel = () => {
                     <TableCell><Chip size="small" variant="outlined" label={sendKindLabel(send.kind, t)} /></TableCell>
                     <TableCell>{send.recipient}</TableCell>
                     <TableCell>{send.subject}</TableCell>
-                    <TableCell><Chip size="small" color={statusColor(send.status)} label={sendStatusLabel(send.status, t)} /></TableCell>
+                    <TableCell>
+                      <Stack useFlexGap spacing="0.25rem">
+                        <Chip size="small" color={statusColor(send.status)} label={sendStatusLabel(send.status, t)} />
+                        {send.failureCode === null ? null : (
+                          <Typography variant="caption" color="error.main">
+                            {send.failureCode}: {send.failureMessage}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </TableCell>
                     <TableCell><Chip size="small" variant="outlined" color={deliveryColor(send.deliveryStatus)} label={deliveryStatusLabel(send.deliveryStatus, t)} /></TableCell>
+                    <TableCell>
+                      <Stack direction="row" useFlexGap spacing="0.25rem" sx={{ flexWrap: 'wrap' }}>
+                        <Chip size="small" variant="outlined" label={transportLabel(send.transport, t)} />
+                        {send.transport === 'smtp' ? <Chip size="small" color="warning" label={t.marketing.limitedTracking} /> : null}
+                      </Stack>
+                    </TableCell>
                     <TableCell><SendCampaign send={send} /></TableCell>
                     <TableCell>{send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)}</TableCell>
                     <TableCell align="right">
@@ -366,11 +412,13 @@ export const SendDetailPage = () => {
             [t.marketing.subject, send.subject],
             [t.marketing.statusLabel, sendStatusLabel(send.status, t)],
             [t.marketing.deliveryStatusLabel, deliveryStatusLabel(send.deliveryStatus, t)],
+            [t.marketing.transportLabel, transportLabel(send.transport, t)],
             [t.marketing.source, send.campaignName ?? send.source],
             [t.marketing.sentTime, send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)],
             [t.marketing.createdTime, formatDateTime(send.createdAt, language)],
             [t.marketing.sesMessageId, send.sesMessageId ?? '—'],
             [t.marketing.skipReason, send.skipReason ?? '—'],
+            [t.marketing.eventError, send.failureCode === null ? '—' : `${send.failureCode}: ${send.failureMessage ?? ''}`],
           ].map(([label, value]) => (
             <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.25rem">
               <Typography component="dt" variant="body2" color="text.secondary" sx={{ minWidth: { sm: '10rem' } }}>{label}</Typography>

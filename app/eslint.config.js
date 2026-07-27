@@ -489,6 +489,7 @@ export default tseslint.config(
                 '@testing-library/react',
                 '@testing-library/user-event',
                 'dompurify',
+                'marked',
                 'msw',
                 'react',
                 'vitest',

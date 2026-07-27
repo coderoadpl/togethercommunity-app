@@ -9,6 +9,7 @@ import {
   FormLabel,
   MenuItem,
   OutlinedInput,
+  Paper,
   Select,
   Stack,
   ToggleButton,
@@ -180,12 +181,10 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
               required
             />
           </FormControl>
-          <Box
+          <Paper
             aria-label={t.marketing.livePreview}
+            variant="outlined"
             sx={{
-              border: 1,
-              borderColor: 'divider',
-              borderRadius: 1,
               minHeight: '18rem',
               overflowWrap: 'anywhere',
               p: '1rem',
@@ -200,7 +199,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
                   : sanitizeCampaignHtml(bodySource),
               }}
             />
-          </Box>
+          </Paper>
         </Box>
       </Stack>
       <FormControl fullWidth>

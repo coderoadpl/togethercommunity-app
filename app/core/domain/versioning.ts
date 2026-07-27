@@ -7,7 +7,7 @@ import { productSchema } from './product.js';
 import { courseSnapshotV2Schema } from './snapshots/course/v2.js';
 import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
 import { courseModuleSnapshotV1Schema } from './snapshots/course_module/v1.js';
-import { productSnapshotV1Schema } from './snapshots/product/v1.js';
+import { productSnapshotV2Schema } from './snapshots/product/v2.js';
 
 /**
  * Content versioning: every mutable content entity is snapshotted under a
@@ -27,7 +27,7 @@ const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV2Schema,
   course_module: courseModuleSnapshotV1Schema,
   course_lesson: courseLessonSnapshotV3Schema,
-  product: productSnapshotV1Schema,
+  product: productSnapshotV2Schema,
 };
 
 /** Live entity schemas the write-through path snapshots and the guard tracks. */
@@ -42,7 +42,7 @@ export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 2,
   course_module: 1,
   course_lesson: 3,
-  product: 1,
+  product: 2,
 };
 
 type Upcaster = (payload: unknown) => unknown;
@@ -60,7 +60,12 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
   // which additionally accepts same-origin paths, and v2 of v3 (durationMinutes
   // is optional) — so both widenings are identity.
   course_lesson: { 1: (payload) => payload, 2: (payload) => payload },
-  product: {},
+  product: {
+    1: (payload) => ({
+      ...z.object({}).passthrough().parse(payload),
+      checkoutConsentDefinitionIds: [],
+    }),
+  },
 };
 
 export interface VersionedSnapshot {
@@ -212,7 +217,7 @@ export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: '94a7899a',
   course_module: 'db069353',
   course_lesson: '8d56f36c',
-  product: '645c9735',
+  product: '94350883',
 };
 
 // --- read-surface DTOs -----------------------------------------------------

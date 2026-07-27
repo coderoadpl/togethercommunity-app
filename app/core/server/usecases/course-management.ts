@@ -569,5 +569,8 @@ export const updateProductAccessItems = async (
     snapshot.value,
     parsed.data.checkoutConsentDefinitionIds,
   );
+  if (updated && parsed.data.checkoutConsentDefinitionIds !== undefined) {
+    await deps.products.bumpContentVersion(tenant.value);
+  }
   return updated ? ok(updated) : err(notFound(`No product "${parsed.data.id}" in this tenant`));
 };

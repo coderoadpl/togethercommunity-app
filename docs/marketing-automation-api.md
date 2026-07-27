@@ -13,7 +13,7 @@ You need:
 - the tenant's own verified Amazon SES identity and credentials;
 - a verified SES event webhook, legal sender name, and sender address configured in Together;
 
-Together is BYO SES: marketing messages are sent through each tenant's Amazon SES account. Platform transactional mail does not share that account. Together injects the legal footer, unsubscribe link, RFC 8058 headers, and bulk-mail headers. An API caller cannot remove them.
+Together is BYO SES: marketing messages are sent through each tenant's Amazon SES account. Tenant transactional mail may also select that account before its SMTP and platform-pool fallbacks, but marketing never uses those fallbacks. Together injects the legal footer, unsubscribe link, RFC 8058 headers, and bulk-mail headers. An API caller cannot remove them.
 
 ### SES onboarding and optional tracking
 

@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   Button,
+  Checkbox,
   FormControl,
   FormControlLabel,
   FormLabel,
+  Link,
   OutlinedInput,
   Paper,
   Radio,
@@ -23,6 +25,12 @@ const meta = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+const marketingConsents = [{
+  definitionId: 'newsletter',
+  label: 'Chcę otrzymywać e-mailem wskazówki i informacje o nowych kursach.',
+  documentUrl: '/legal/newsletter/v/3',
+}];
 
 export const PriceSelection: Story = {
   name: 'Wybór ceny',
@@ -50,6 +58,23 @@ export const PriceSelection: Story = {
         <FormControl fullWidth>
           <FormLabel htmlFor="checkout-email">Adres e-mail</FormLabel>
           <OutlinedInput id="checkout-email" type="email" autoComplete="email" />
+        </FormControl>
+        <FormControl component="fieldset">
+          <FormLabel component="legend">Zgody marketingowe</FormLabel>
+          {marketingConsents.map((consent) => (
+            <FormControlLabel
+              key={consent.definitionId}
+              control={<Checkbox />}
+              label={(
+                <Typography variant="body2">
+                  {consent.label}{' '}
+                  <Link href={consent.documentUrl} target="_blank" rel="noreferrer">
+                    Przeczytaj regulamin
+                  </Link>
+                </Typography>
+              )}
+            />
+          ))}
         </FormControl>
         <Button type="submit" variant="contained" color="secondary">
           Kup i zapłać

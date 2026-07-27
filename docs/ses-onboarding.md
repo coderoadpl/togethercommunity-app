@@ -4,6 +4,14 @@ Together uses the tenant's own Amazon SES account for marketing mail and, once
 the identity is verified, for transactional mail. SMTP remains a
 transactional-only fallback. The platform SES key never sends tenant marketing.
 
+Tenant transactional delivery selects verified tenant SES, then tenant SMTP,
+then the 1,000-message lifetime platform starter pool. A failure after
+selection does not fall through to another provider because an accepted
+message with a lost response could otherwise be delivered twice. Repair or
+remove a broken tenant transport before retrying. Failed platform sends do not
+consume the allowance, and abandoned reservations are reclaimed after 15
+minutes.
+
 ## 1. Create a tenant AWS key
 
 Create an IAM user or role for Together in the AWS account that owns the SES
@@ -67,10 +75,12 @@ configuration sets, and the SNS topic are Region-specific.
    for Send, Delivery, Bounce, Complaint, Open, and Click. Together attaches
    the configuration set to every tenant SES send. Open/click events are stored
    only when the tenant enables engagement tracking.
-5. Select **Poll AWS status**. Once SNS confirms the subscription, Together
-   disables identity feedback forwarding so bounce and complaint handling stays
-   on the authenticated SNS path. If AWS later reports that the identity or
-   DKIM is no longer verified, the checklist regresses and broadcasts stop.
+5. Select **Poll AWS status**. A new HTTPS subscription remains pending until
+   SNS confirms it. Together keeps SES identity feedback forwarding enabled
+   during that period. Only after the poll sees the confirmed subscription does
+   Together disable forwarding so bounce and complaint handling stays on the
+   authenticated SNS path. If AWS later reports that the identity or DKIM is no
+   longer verified, the checklist regresses and broadcasts stop.
 6. Select **Send bounce simulator test**. Together sends through SES to
    `bounce@simulator.amazonses.com`. The signed event must return through the
    tenant SNS topic before the webhook checklist item completes. AWS documents
@@ -161,7 +171,8 @@ volume, consent source, or website that does not match the tenant's operation.
 
 ## 4. Free SMTP options for transactional mail
 
-SMTP in Together is only a layer-3 escape hatch for transactional messages.
+SMTP in Together is only the second tenant-scoped fallback for transactional
+messages, after verified tenant SES and before the platform starter pool.
 Together records that the relay accepted the message, but it cannot correlate
 later delivery, bounce, or complaint events. Marketing always requires the
 tenant's verified SES account.

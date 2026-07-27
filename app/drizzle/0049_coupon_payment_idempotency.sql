@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "orders_tenant_provider_checkout_uidx" ON "orders" USING btree ("tenant_id","provider",("provider_object_ids"->>'checkoutSession')) WHERE "orders"."provider_object_ids" ? 'checkoutSession';--> statement-breakpoint
+CREATE UNIQUE INDEX "orders_tenant_provider_invoice_uidx" ON "orders" USING btree ("tenant_id","provider",("provider_object_ids"->>'invoice')) WHERE "orders"."provider_object_ids" ? 'invoice';

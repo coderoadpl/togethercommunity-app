@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -282,6 +282,35 @@ describe('order repository', () => {
     const revenue = await repo.revenueSince(ACME, PAST);
     expect(revenue).toEqual([{ currency: 'PLN', amountCents: 4900 }]);
     expect(await repo.countSince(ACME, PAST)).toBe(2);
+  });
+
+  it.each([
+    ['checkoutSession', 'cs-idempotent'],
+    ['invoice', 'in-idempotent'],
+  ])('deduplicates paid orders by provider %s', async (key, value) => {
+    const repo = createOrderRepository(db);
+    await Promise.all([
+      repo.create(ACME, order({
+        id: `order-${key}-one`,
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        productId: 'prod-acme',
+        providerObjectIds: { [key]: value },
+      })),
+      repo.create(ACME, order({
+        id: `order-${key}-two`,
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        productId: 'prod-acme',
+        providerObjectIds: { [key]: value },
+      })),
+    ]);
+
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(sql`${orders.providerObjectIds}->>${key} = ${value}`);
+    expect(rows).toHaveLength(1);
   });
 });
 

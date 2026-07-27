@@ -180,7 +180,7 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
       title={t.marketing.credentials}
       description={t.marketing.credentialsHint}
       onSubmit={(event) => void submit(event)}
-      actions={<Button type="submit" variant="contained" disabled={save.isPending || [accessKeyId, secretAccessKey, region].every((value) => value.trim() === '')}>{save.isPending ? t.marketing.saving : t.marketing.save}</Button>}
+      actions={<Button type="submit" variant="contained" disabled={save.isPending || [accessKeyId, secretAccessKey, region].every((value) => value.trim() === '')}>{save.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
     >
       <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
       <Typography variant="body2">{t.marketing.writeOnlyHint}</Typography>
@@ -235,7 +235,7 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
       onSubmit={(event) => void submit(event)}
       actions={(
         <>
-          <Button type="submit" variant="contained" disabled={save.isPending}>{save.isPending ? t.marketing.saving : t.marketing.save}</Button>
+          <Button type="submit" variant="contained" disabled={save.isPending}>{save.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>
           <Button type="button" variant="outlined" disabled={!configured || test.isPending} onClick={() => test.mutate(undefined)}>
             {test.isPending ? t.marketing.testing : t.marketing.testSend}
           </Button>
@@ -348,7 +348,7 @@ export const MarketingSettingsPanel = () => {
         {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
       </SectionCard>
       <CredentialsForm configured={credentialsConfigured} />
-      <SectionCard title={t.marketing.sender} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}>
+      <SectionCard title={t.marketing.sender} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
         <Alert severity="info">{t.marketing.identityAuthenticationHint}</Alert>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-from-address">{t.marketing.fromAddressLabel}</FormLabel>
@@ -384,7 +384,7 @@ export const MarketingSettingsPanel = () => {
         title={t.marketing.reputationTitle}
         description={t.marketing.reputationDescription}
         onSubmit={submit}
-        actions={<Button type="submit" variant="contained" disabled={settings === null || update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}
+        actions={<Button type="submit" variant="contained" disabled={settings === null || update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
       >
         {reputation.isPending ? <Typography variant="body2">{t.marketing.reputationLoading}</Typography> : null}
         {reputation.isError ? <Alert>{localizeError(reputation.error, t)}</Alert> : null}
@@ -395,7 +395,7 @@ export const MarketingSettingsPanel = () => {
         />
         <Typography variant="body2">{t.marketing.autoPauseOnCriticalHint}</Typography>
       </SectionCard>
-      <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}>
+      <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-footer-name">{t.marketing.footerLegalNameLabel}</FormLabel>
           <OutlinedInput id="marketing-footer-name" value={values.footerLegalName} onChange={(event) => setFooterLegalName(event.target.value)} />

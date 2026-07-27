@@ -40,7 +40,9 @@ export const MarketingSummaryRow = ({
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ alignItems: { sm: 'center' } }}>
         <Typography variant="h2" component="h2">{title}</Typography>
         {chips}
-        {actions === undefined ? null : <Box sx={{ ml: { sm: 'auto' } }}>{actions}</Box>}
+        {actions === undefined ? null : (
+          <Box sx={{ ml: { sm: 'auto' }, '& .MuiButtonBase-root': { minHeight: '44px' } }}>{actions}</Box>
+        )}
       </Stack>
       {summary === undefined ? null : <Typography variant="body2">{summary}</Typography>}
       {date === undefined ? null : <EntryDate component="div">{date}</EntryDate>}

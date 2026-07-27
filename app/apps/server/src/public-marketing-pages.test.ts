@@ -27,6 +27,8 @@ describe('public marketing pages', () => {
     expect(html).toContain('Unsubscribe me from this scope');
     expect(html).toContain('Unsubscribe me from everything from Studio Demo');
     expect(html).toContain('name="consent" value="newsletter" checked');
+    expect(html).toContain('.languages a{display:inline-flex');
+    expect(html).toContain('min-height:44px');
   });
 
   it('renders hosted markdown as prose while escaping markup and unsafe links', () => {

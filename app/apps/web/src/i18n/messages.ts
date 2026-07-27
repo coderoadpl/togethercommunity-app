@@ -1041,6 +1041,8 @@ export interface Messages {
     testing: string;
     lockedHint: string;
     pausedReason: string;
+    cancelledCampaignHint: string;
+    finishedCampaignHint: string;
     counters: (params: { toSend: number; sent: number; failed: number }) => string;
     status: Record<'draft' | 'scheduled' | 'running' | 'paused' | 'cancelled' | 'finished', string>;
     consentsTitle: string;
@@ -1051,6 +1053,9 @@ export interface Messages {
     consentCreator: string;
     allConsents: string;
     keyLabel: string;
+    keyFormatHint: string;
+    createConsentAction: string;
+    saveConsentAction: string;
     wordingLabel: string;
     purposeLabel: string;
     purposeMarketing: string;
@@ -1080,6 +1085,8 @@ export interface Messages {
     slugLabel: string;
     titleLabel: string;
     markdownLabel: string;
+    createDocumentAction: string;
+    saveDocumentAction: string;
     publish: string;
     publishing: string;
     publicUrls: string;
@@ -1099,6 +1106,7 @@ export interface Messages {
     settingsTitle: string;
     settingsDescription: string;
     settingsLoading: string;
+    saveSettingsAction: string;
     credentials: string;
     credentialsHint: string;
     smtpTitle: string;

@@ -240,6 +240,7 @@ import {
   listBunnyVideos,
   testBunnyConnection,
   testIfirmaConnection,
+  testKsefConnection,
   testStripeConnection,
   fulfillStripeWebhook,
   autoIssueOnPayment,
@@ -1796,6 +1797,13 @@ export const buildApp = (deps: AppDeps) => {
 
   app.post(API_PATHS.ifirmaTestConnection, async (c) =>
     respond(await testIfirmaConnection({ identity: c.get('identity') }, deps)),
+  );
+
+  app.post(API_PATHS.ksefTestConnection, async (c) =>
+    respond(await testKsefConnection(
+      { identity: c.get('identity') },
+      { ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }) },
+    )),
   );
 
   app.get(API_PATHS.bunnyVideos, async (c) => {

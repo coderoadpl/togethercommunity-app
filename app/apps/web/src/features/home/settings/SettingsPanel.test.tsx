@@ -17,6 +17,7 @@ interface StoredSettings {
   faviconUrl: string | null;
   termsUrl: string | null;
   privacyUrl: string | null;
+  invoicingProvider?: 'ifirma' | 'ksef';
 }
 
 const EMPTY_SETTINGS: StoredSettings = {
@@ -31,6 +32,7 @@ const EMPTY_SETTINGS: StoredSettings = {
 
 const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
   let settings = { ...initial };
+  let secrets: Array<{ key: string; maskedPreview: string; updatedAt: string }> = [];
   const updates: unknown[] = [];
 
   server.use(
@@ -43,6 +45,24 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
       }
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
+    http.get('/api/tenant-secrets', () =>
+      HttpResponse.json({ ok: true, data: { secrets } })),
+    http.post('/api/tenant-secrets', async ({ request }) => {
+      const body = await request.json();
+      const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
+      const secret = {
+        key,
+        maskedPreview: '••••test',
+        updatedAt: '2026-07-28T10:00:00.000Z',
+      };
+      secrets = [...secrets.filter((item) => item.key !== key), secret];
+      return HttpResponse.json({ ok: true, data: { secret } });
+    }),
+    http.post('/api/integrations/ksef/test', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { ok: true, diagnostic: 'KSeF accepted the token for this NIP context.' },
+      })),
   );
 
   renderWithProviders(
@@ -89,6 +109,25 @@ describe('SettingsPanel legal documents', () => {
 
     expect(await screen.findByTestId('legal-saved')).toBeInTheDocument();
     expect(updates).toContainEqual({ termsUrl: null, privacyUrl: null });
+  });
+});
+
+describe('SettingsPanel direct KSeF', () => {
+  it('keeps the token write-only, explains InvoiceWrite, and tests stored credentials', async () => {
+    renderPanel({ ...EMPTY_SETTINGS, invoicingProvider: 'ksef' });
+
+    expect(await screen.findAllByText(/InvoiceWrite/)).not.toHaveLength(0);
+    expect(await screen.findByTestId('secret-input-ksef.token')).toHaveAttribute('type', 'password');
+    await userEvent.type(screen.getByTestId('secret-input-ksef.contextNip'), '5555555555');
+    await userEvent.click(screen.getByTestId('secret-save-ksef.contextNip'));
+    await userEvent.type(screen.getByTestId('secret-input-ksef.token'), 'test-token');
+    await userEvent.click(screen.getByTestId('secret-save-ksef.token'));
+    const testButton = screen.getByTestId('ksef-test-connection');
+    await waitFor(() => expect(testButton).toBeEnabled());
+    await userEvent.click(testButton);
+    expect(await screen.findByTestId('ksef-test-result')).toHaveTextContent(
+      'KSeF accepted the token for this NIP context.',
+    );
   });
 });
 

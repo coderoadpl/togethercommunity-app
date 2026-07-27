@@ -22,18 +22,21 @@
    | failed, with provider refs in meta). Issuance is tenant-triggered
    (panel action on the order) or auto-on-payment (tenant toggle, default
    off) — never platform-automatic without tenant opt-in.
-3. **Fakturownia adapter (v1 provider).** BYO API key per tenant
-   (tenant_secrets `fakturownia.apiKey` + account subdomain, AES-GCM as
-   Stripe/Bunny/SES). Fakturownia issues the invoice, handles KSeF submission
-   itself (the tenant configures KSeF inside Fakturownia — their certificate
-   never touches us), returns invoice number + PDF link; we store refs and
-   surface status. Rationale: creators get KSeF compliance in minutes, the
-   platform never becomes fiscal infrastructure.
-4. **Direct KSeF adapter (deferred, port-shaped).** Same InvoicingPort; FA(3)
-   XML generation + tenant KSeF token. Deliberately NOT v1: certificate
-   custody, environment matrix (test/demo/prod), and error semantics are a
-   liability while Fakturownia covers the need. Revisit when a tenant
-   demands no-third-party invoicing.
+3. **wFirma adapter (v1 provider — owner decision 2026-07-27, replaces the
+   earlier Fakturownia pick).** Rationale: the owner uses wFirma personally,
+   so the integration is verifiable end-to-end on a real account. BYO API
+   credentials per tenant (tenant_secrets `wfirma.*` keys, AES-GCM as
+   Stripe/Bunny/SES). wFirma issues the invoice, handles KSeF submission
+   itself (tenant configures KSeF inside wFirma — certificates never touch
+   us), returns invoice number + PDF; we store refs and surface status.
+4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
+   drugie").** Same InvoicingPort; FA(3) XML generation + KSeF 2.0 API on a
+   tenant-generated KSeF token/certificate (tenant_secrets custody — KSeF has
+   no OAuth, key custody is inherent, which is also why the adapter layer
+   stays valuable). Sequence: short SPIKE against the open ksef-test sandbox
+   first (token auth, submit one FA(3), fetch UPO — no legal effects there),
+   then the adapter with own numbering + own PDF visualization + B2C
+   own-PDF path; corrections stay deferred. E2E targets ksef-test.
 
 ## Slice scope (implementation order)
 

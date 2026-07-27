@@ -66,10 +66,10 @@ const isConfigurationSetMissing = (cause: unknown): boolean =>
   errorName(cause) === 'ConfigurationSetDoesNotExistException';
 
 const subscriptionArnState = (arn: string | undefined): { confirmed: boolean; arn: string | null } => {
-  const pending = arn?.replaceAll(' ', '').toLowerCase() === 'pendingconfirmation';
+  const confirmed = arn?.startsWith('arn:') === true;
   return {
-    confirmed: arn !== undefined && !pending,
-    arn: arn === undefined || pending ? null : arn,
+    confirmed,
+    arn: confirmed ? arn : null,
   };
 };
 

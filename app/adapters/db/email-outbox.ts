@@ -45,7 +45,10 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
   },
 });
 
-export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
+export const createEmailOutboxRepository = (
+  db: Db,
+  attemptsCap = 5,
+): EmailOutboxRepository => ({
   enqueue: async (input) => {
     try {
       const payload = emailOutboxPayloadSchema.parse(input.payload);
@@ -80,6 +83,18 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
   claimBatch: async (input) => {
     try {
       const rows = await db.transaction(async (tx) => {
+        const staleBefore = new Date(Date.parse(input.now) - 15 * 60 * 1000).toISOString();
+        await tx
+          .update(emailOutbox)
+          .set({
+            status: sql`case when ${emailOutbox.attempts} + 1 >= ${input.attemptsCap} then 'failed' else 'queued' end`,
+            attempts: sql`least(${emailOutbox.attempts} + 1, ${input.attemptsCap})`,
+            nextAttemptAt: input.now,
+          })
+          .where(and(
+            eq(emailOutbox.status, 'sending'),
+            lt(emailOutbox.nextAttemptAt, staleBefore),
+          ));
         const claimed = await tx
           .select({
             id: emailOutbox.id,
@@ -106,7 +121,10 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
           .for('update', { skipLocked: true });
         const ids = claimed.map((row) => row.id);
         if (ids.length > 0) {
-          await tx.update(emailOutbox).set({ status: 'sending' }).where(inArray(emailOutbox.id, ids));
+          await tx
+            .update(emailOutbox)
+            .set({ status: 'sending', nextAttemptAt: input.now })
+            .where(inArray(emailOutbox.id, ids));
           const lifecycle = claimed.flatMap((row) => row.tenantId === null
             ? []
             : [
@@ -251,7 +269,11 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
       .from(emailOutbox)
       .where(and(
         eq(emailOutbox.tenantId, tenantId),
-        or(eq(emailOutbox.status, 'queued'), eq(emailOutbox.status, 'sending'), eq(emailOutbox.status, 'failed')),
+        or(
+          eq(emailOutbox.status, 'queued'),
+          eq(emailOutbox.status, 'sending'),
+          and(eq(emailOutbox.status, 'failed'), lt(emailOutbox.attempts, attemptsCap)),
+        ),
       ))
       .limit(1);
     return rows.length > 0;

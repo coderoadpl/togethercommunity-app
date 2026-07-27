@@ -40,6 +40,10 @@ export const stripeWebhookPayloadSchema = z.object({
       payment_intent: z.string().nullable().optional(),
       charge: z.string().nullable().optional(),
       amount_total: z.number().int().nullable().optional(),
+      total_details: z
+        .object({ amount_discount: z.number().int().nullable().optional() })
+        .nullable()
+        .optional(),
       currency: z.string().nullable().optional(),
       period_end: z.number().nullable().optional(),
       cancel_at_period_end: z.boolean().optional(),

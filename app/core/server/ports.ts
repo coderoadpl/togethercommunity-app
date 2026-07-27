@@ -370,6 +370,9 @@ export interface PaymentWebhookEvent {
     email: string | null;
     subscriptionId: string | null;
     paymentIntentId?: string | null;
+    invoiceId?: string | null;
+    amountTotalCents?: number | null;
+    discountTotalCents?: number | null;
     metadata: {
       tenantId: string | null;
       productId: string | null;

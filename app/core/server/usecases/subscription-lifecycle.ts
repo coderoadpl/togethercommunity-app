@@ -125,6 +125,7 @@ export const startSubscription = async (
 export interface InvoiceCycleInput {
   subscription: MemberSubscription;
   providerObjectIds: Record<string, string>;
+  paidOrder?: Order;
   amountCents?: number;
   currency?: string;
   periodEnd?: string;
@@ -156,34 +157,36 @@ export const renewSubscriptionPeriod = async (
     },
     deps,
   );
-  const order = await appendOrder(
-    tenantId,
-    {
-      memberId: subscription.memberId,
-      productId: subscription.productId,
-      priceId: subscription.priceId,
-      kind: 'recurring',
-      status: 'paid',
-      amountCents:
-        input.amountCents ??
-        Math.max(
-          0,
-          (price?.amountCents ?? 0) -
-            (subscription.couponRecurringDuration === 'forever'
-              ? subscription.couponDiscountCents
-              : 0),
-        ),
-      currency: input.currency ?? price?.currency ?? 'PLN',
-      provider: subscription.provider,
-      providerObjectIds: input.providerObjectIds,
-      couponId: subscription.couponRecurringDuration === 'forever' ? subscription.couponId : null,
-      discountCents:
-        subscription.couponRecurringDuration === 'forever'
-          ? subscription.couponDiscountCents
-          : 0,
-    },
-    deps,
-  );
+  const order =
+    input.paidOrder ??
+    (await appendOrder(
+      tenantId,
+      {
+        memberId: subscription.memberId,
+        productId: subscription.productId,
+        priceId: subscription.priceId,
+        kind: 'recurring',
+        status: 'paid',
+        amountCents:
+          input.amountCents ??
+          Math.max(
+            0,
+            (price?.amountCents ?? 0) -
+              (subscription.couponRecurringDuration === 'forever'
+                ? subscription.couponDiscountCents
+                : 0),
+          ),
+        currency: input.currency ?? price?.currency ?? 'PLN',
+        provider: subscription.provider,
+        providerObjectIds: input.providerObjectIds,
+        couponId: subscription.couponRecurringDuration === 'forever' ? subscription.couponId : null,
+        discountCents:
+          subscription.couponRecurringDuration === 'forever'
+            ? subscription.couponDiscountCents
+            : 0,
+      },
+      deps,
+    ));
   return { subscription, order };
 };
 

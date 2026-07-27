@@ -146,7 +146,7 @@ export const startCheckoutSession = async (
       currency: validated.value.breakdown.currency,
       startedAt: deps.clock.nowIso(),
     });
-    if (validated.value.breakdown.finalCents === 0) {
+    if (validated.value.breakdown.finalCents === 0 && price?.kind !== 'recurring') {
       return ok({
         url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
         coupon: validated.value.breakdown,

@@ -1,6 +1,13 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
-import { err, ok, stripeWebhookPayloadSchema, validation } from '@core/domain/index.js';
+import {
+  checkoutConsentCaptureSchema,
+  err,
+  ok,
+  stripeWebhookPayloadSchema,
+  validation,
+  type CheckoutConsentCapture,
+} from '@core/domain/index.js';
 import type { PaymentProvider, TenantSecretResolver } from '@core/server/index.js';
 
 const signatureIsValid = (payload: string, header: string, secret: string): boolean => {
@@ -14,6 +21,17 @@ const signatureIsValid = (payload: string, header: string, secret: string): bool
     const actualBytes = Buffer.from(signature);
     return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
   });
+};
+
+const parseCheckoutConsent = (value: string | undefined): CheckoutConsentCapture | null => {
+  if (value === undefined) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    const capture = checkoutConsentCaptureSchema.safeParse(parsed);
+    return capture.success ? capture.data : null;
+  } catch {
+    return null;
+  }
 };
 
 /**
@@ -65,6 +83,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
                 priceId: object.metadata?.priceId || null,
                 memberEmail: object.metadata?.memberEmail || null,
                 language: object.metadata?.language || null,
+                checkoutConsent: parseCheckoutConsent(object.metadata?.checkoutConsent),
               },
             }
           : null,

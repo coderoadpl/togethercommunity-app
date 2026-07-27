@@ -154,6 +154,7 @@ import {
   getTenantSettings,
   updateTenantSettings,
   enforceTermsConsent,
+  validateTermsConsent,
   getCreatorOnboarding,
   dismissCreatorOnboarding,
   grantProductToMember,
@@ -229,6 +230,7 @@ import {
   updateModule,
   updateProductAccessItems,
   type AuthenticatedUser,
+  type PaymentWebhookEvent,
   type TenantSource,
 } from '@core/server/index.js';
 import {
@@ -366,13 +368,16 @@ const recordCheckoutConsents = async (
     email: string | undefined;
     selectedDefinitionIds: string[];
     attachedDefinitionIds: string[];
-    proofRef: string;
+    productId: string;
+    orderId: string;
+    collectedAt: string;
     confirmationBaseUrl: string;
     ip?: string;
     userAgent?: string;
   },
 ): Promise<void> => {
   if (deps.marketing === undefined || input.email === undefined || input.selectedDefinitionIds.length === 0) return;
+  const proofRef = `product:${input.productId};order:${input.orderId}`;
   try {
     const recorded = await recordCheckoutMarketingConsents(
       { identity: checkoutIdentity(input.tenant) },
@@ -381,8 +386,8 @@ const recordCheckoutConsents = async (
         selectedDefinitionIds: input.selectedDefinitionIds,
         attachedDefinitionIds: input.attachedDefinitionIds,
         evidence: {
-          collectedAt: deps.clock.nowIso(),
-          proofRef: input.proofRef,
+          collectedAt: input.collectedAt,
+          proofRef,
           ...(input.ip === undefined ? {} : { ip: input.ip }),
           ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
         },
@@ -399,11 +404,56 @@ const recordCheckoutConsents = async (
       },
     );
     if (!recorded.ok) {
-      deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${input.proofRef} error=${recorded.error.code}:${recorded.error.message}`);
+      deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${proofRef} error=${recorded.error.code}:${recorded.error.message}`);
     }
   } catch (cause) {
-    deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${input.proofRef} unexpected=${String(cause)}`);
+    deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${proofRef} unexpected=${String(cause)}`);
   }
+};
+
+const recordFulfilledCheckoutConsents = async (
+  deps: AppDeps,
+  tenant: { id: string; slug: string; name: string },
+  event: PaymentWebhookEvent,
+): Promise<void> => {
+  const checkout = event.checkoutSession;
+  const capture = checkout?.metadata.checkoutConsent;
+  if (checkout === null || capture === undefined || capture === null) return;
+  const email = checkout.email ?? checkout.metadata.memberEmail;
+  const terms = await enforceTermsConsent(
+    tenant.id,
+    {
+      accepted: capture.termsAccepted,
+      userId: null,
+      email,
+      source: 'checkout',
+    },
+    deps,
+  );
+  if (!terms.ok) {
+    deps.logger.error(`[checkout-consent] tenant=${tenant.id} terms=${terms.error.code}:${terms.error.message}`);
+  }
+  if (event.objectId === null || checkout.metadata.productId === null) return;
+  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(
+    tenant.id,
+    { checkoutSession: event.objectId },
+  );
+  if (order === null) {
+    deps.logger.error(`[checkout-consent] tenant=${tenant.id} checkout=${event.objectId} order=missing`);
+    return;
+  }
+  await recordCheckoutConsents(deps, {
+    tenant,
+    email: email ?? undefined,
+    selectedDefinitionIds: capture.selectedDefinitionIds,
+    attachedDefinitionIds: capture.attachedDefinitionIds,
+    productId: checkout.metadata.productId,
+    orderId: order.id,
+    collectedAt: capture.collectedAt,
+    confirmationBaseUrl: capture.confirmationBaseUrl,
+    ...(capture.ip === undefined ? {} : { ip: capture.ip }),
+    ...(capture.userAgent === undefined ? {} : { userAgent: capture.userAgent }),
+  });
 };
 
 export const buildApp = (deps: AppDeps) => {
@@ -519,15 +569,10 @@ export const buildApp = (deps: AppDeps) => {
     }
     const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
     if (!selection.ok) return respondPublic(selection);
-    const consent = await enforceTermsConsent(
+    const consent = await validateTermsConsent(
       tenant.value.tenant.id,
-      {
-        accepted: parsed.data.termsAccepted,
-        userId: null,
-        email: parsed.data.email ?? null,
-        source: 'checkout',
-      },
-      deps,
+      parsed.data.termsAccepted,
+      deps.tenants,
     );
     if (!consent.ok) return respondPublic(consent);
     const baseUrl = magicLinkBaseUrl(
@@ -536,18 +581,21 @@ export const buildApp = (deps: AppDeps) => {
       tenant.value.source,
       deps.appBaseUrl,
     );
-    const session = await startCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, selection.value, deps);
-    if (session.ok) {
-      await recordCheckoutConsents(deps, {
-        tenant: tenant.value.tenant,
-        email: parsed.data.email,
+    const session = await startCheckoutSession(
+      tenant.value.tenant,
+      baseUrl,
+      parsed.data,
+      selection.value,
+      deps,
+      {
+        termsAccepted: parsed.data.termsAccepted === true,
         selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
         attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
-        proofRef: `product:${selection.value.product.id}`,
+        collectedAt: deps.clock.nowIso(),
         confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
         ...checkoutConsentEvidence(c.req.raw.headers),
-      });
-    }
+      },
+    );
     return respondPublic(session);
   });
 
@@ -681,15 +729,10 @@ export const buildApp = (deps: AppDeps) => {
       const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
       if (!selection.ok) return respond(selection);
 
-      const consent = await enforceTermsConsent(
+      const consent = await validateTermsConsent(
         tenant.value.tenant.id,
-        {
-          accepted: parsed.data.termsAccepted,
-          userId: null,
-          email: parsed.data.email,
-          source: 'checkout',
-        },
-        deps,
+        parsed.data.termsAccepted,
+        deps.tenants,
       );
       if (!consent.ok) return respond(consent);
 
@@ -704,22 +747,36 @@ export const buildApp = (deps: AppDeps) => {
       );
       if (!result.ok) return respond(result);
 
-      await recordCheckoutConsents(deps, {
-        tenant: tenant.value.tenant,
-        email: parsed.data.email,
-        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
-        proofRef: result.value.orderId === null
-          ? `product:${selection.value.product.id}`
-          : `product:${selection.value.product.id};order:${result.value.orderId}`,
-        confirmationBaseUrl: `${magicLinkBaseUrl(
-          c.req.header('host') ?? '',
-          c.req.header('x-forwarded-proto') ?? null,
-          tenant.value.source,
-          deps.appBaseUrl,
-        )}/marketing/confirm`,
-        ...checkoutConsentEvidence(c.req.raw.headers),
-      });
+      const terms = await enforceTermsConsent(
+        tenant.value.tenant.id,
+        {
+          accepted: parsed.data.termsAccepted,
+          userId: null,
+          email: parsed.data.email,
+          source: 'checkout',
+        },
+        deps,
+      );
+      if (!terms.ok) return respond(terms);
+
+      if (result.value.orderId !== null) {
+        await recordCheckoutConsents(deps, {
+          tenant: tenant.value.tenant,
+          email: parsed.data.email,
+          selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+          attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+          productId: selection.value.product.id,
+          orderId: result.value.orderId,
+          collectedAt: deps.clock.nowIso(),
+          confirmationBaseUrl: `${magicLinkBaseUrl(
+            c.req.header('host') ?? '',
+            c.req.header('x-forwarded-proto') ?? null,
+            tenant.value.source,
+            deps.appBaseUrl,
+          )}/marketing/confirm`,
+          ...checkoutConsentEvidence(c.req.raw.headers),
+        });
+      }
 
       const baseUrl = magicLinkBaseUrl(
         c.req.header('host') ?? '',
@@ -827,6 +884,9 @@ export const buildApp = (deps: AppDeps) => {
       ...deps,
       exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
     });
+    if (fulfilled.ok && fulfilled.value.processed) {
+      await recordFulfilledCheckoutConsents(deps, tenant, event.value);
+    }
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });
 

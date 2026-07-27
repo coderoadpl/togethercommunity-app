@@ -50,6 +50,7 @@ import type {
   Campaign,
   CampaignEngagementStats,
   CampaignSend,
+  CheckoutConsentCapture,
   ConsentDefinition,
   ConsentDefinitionVersion,
   ConsentConfirmationToken,
@@ -368,6 +369,7 @@ export interface PaymentWebhookEvent {
       priceId: string | null;
       memberEmail: string | null;
       language: string | null;
+      checkoutConsent?: CheckoutConsentCapture | null;
     };
   } | null;
   invoice?: {
@@ -404,6 +406,7 @@ export interface PaymentProvider {
     language?: string;
     priceId?: string;
     recurringInterval?: 'month' | 'year';
+    checkoutConsent?: CheckoutConsentCapture;
   }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
   expireCheckoutSession(input: {
     tenantId: string;

@@ -9,6 +9,12 @@ import { emailEvents, emailOutbox, tenantTransactionalEmailPools } from './schem
 
 export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPool => ({
   usage: async (tenantId) => {
+    await db.update(tenantTransactionalEmailPools)
+      .set({ reserved: 0, reservedAt: null })
+      .where(and(
+        eq(tenantTransactionalEmailPools.tenantId, tenantId),
+        sql`${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes'`,
+      ));
     const [row] = await db.select({
       sent: tenantTransactionalEmailPools.sent,
       reserved: tenantTransactionalEmailPools.reserved,
@@ -19,11 +25,14 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
   },
   reserve: async (tenantId, limit) => {
     const [row] = await db.insert(tenantTransactionalEmailPools)
-      .values({ tenantId, sent: 0, reserved: 1 })
+      .values({ tenantId, sent: 0, reserved: 1, reservedAt: sql`now()` })
       .onConflictDoUpdate({
         target: tenantTransactionalEmailPools.tenantId,
-        set: { reserved: sql`${tenantTransactionalEmailPools.reserved} + 1` },
-        setWhere: sql`${tenantTransactionalEmailPools.sent} + ${tenantTransactionalEmailPools.reserved} < ${limit}`,
+        set: {
+          reserved: sql`case when ${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes' then 1 else ${tenantTransactionalEmailPools.reserved} + 1 end`,
+          reservedAt: sql`now()`,
+        },
+        setWhere: sql`${tenantTransactionalEmailPools.sent} + case when ${tenantTransactionalEmailPools.reservedAt} < now() - interval '15 minutes' then 0 else ${tenantTransactionalEmailPools.reserved} end < ${limit}`,
       })
       .returning({ tenantId: tenantTransactionalEmailPools.tenantId });
     return row !== undefined;
@@ -31,6 +40,7 @@ export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPo
   settle: async (tenantId, successful) => {
     await db.update(tenantTransactionalEmailPools).set({
       reserved: sql`greatest(0, ${tenantTransactionalEmailPools.reserved} - 1)`,
+      reservedAt: sql`case when ${tenantTransactionalEmailPools.reserved} <= 1 then null else now() end`,
       ...(successful ? { sent: sql`${tenantTransactionalEmailPools.sent} + 1` } : {}),
     }).where(eq(tenantTransactionalEmailPools.tenantId, tenantId));
   },

@@ -4,19 +4,25 @@ import type { InvoicingPort } from '@core/server/index.js';
 export const createFakeInvoicing = (): InvoicingPort => {
   const issued = new Map<string, string>();
   return {
-    issueInvoice: async ({ order }) => {
-      const providerInvoiceId = issued.get(order.id) ?? `fake-${order.id}`;
+    issueInvoice: async ({
+      order,
+      providerInvoiceId: existingProviderInvoiceId,
+      onProviderInvoiceCreated,
+    }) => {
+      const providerInvoiceId = existingProviderInvoiceId ?? issued.get(order.id) ?? `fake-${order.id}`;
       issued.set(order.id, providerInvoiceId);
+      if (existingProviderInvoiceId === null) {
+        await onProviderInvoiceCreated(providerInvoiceId);
+      }
       return ok({
         providerInvoiceId,
         invoiceNumber: `FV/${order.id}`,
-        pdfUrl: `https://fake.invoices.local/${providerInvoiceId}.pdf`,
         status: 'issued',
       });
     },
     getInvoiceStatus: async () => ok('issued'),
-    invoiceDownloadUrl: async ({ providerInvoiceId }) =>
-      ok(`https://fake.invoices.local/${providerInvoiceId}.pdf`),
+    downloadInvoice: async () =>
+      ok({ content: new TextEncoder().encode('%PDF-1.7 fake'), contentType: 'application/pdf' }),
     testConnection: async () => ok({ diagnostic: 'Fake invoicing is available.' }),
   };
 };

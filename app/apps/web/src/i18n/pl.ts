@@ -206,6 +206,8 @@ export const pl: Messages = {
     billingDetails: 'Dane do faktury',
     issueInvoice: 'Wystaw fakturę',
     issuingInvoice: 'Wystawianie…',
+    refreshInvoice: 'Odśwież status',
+    refreshingInvoice: 'Odświeżanie…',
     invoiceStatus: 'Status faktury',
     invoiceDownload: 'Pobierz fakturę',
     invoiceStatuses: {
@@ -1029,6 +1031,8 @@ export const pl: Messages = {
     autoIssueScope: 'Zakres automatyzacji',
     b2bOnly: 'Tylko zamówienia z NIP',
     allBuyers: 'Wszystkie zamówienia',
+    vatRate: 'Stawka VAT na fakturach',
+    vatRateUnset: 'Wybierz przed wystawieniem',
   },
   legal: {
     heading: 'Regulamin i polityka prywatności',

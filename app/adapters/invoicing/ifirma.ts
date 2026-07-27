@@ -30,28 +30,29 @@ const invoiceCreatedSchema = z.object({
   }),
 });
 
-const invoiceListSchema = z.object({
-  response: z.object({
+const invoiceDocumentItemSchema = z.object({
+  PelnyNumer: z.string().optional(),
+  CzyWyslano: z.boolean().optional(),
+}).passthrough();
+
+const invoiceDocumentBodySchema = invoiceDocumentItemSchema.extend({
+  Wynik: z.union([
+    invoiceDocumentItemSchema,
+    z.array(invoiceDocumentItemSchema),
+  ]).optional(),
+});
+
+const invoiceDocumentEnvelopeSchema = z.object({
+  response: invoiceDocumentBodySchema.extend({
     Kod: z.literal(0),
     Informacja: z.string().optional(),
-    Wynik: z.array(z.object({
-      FakturaId: z.union([z.string(), z.number()]).transform(String),
-      PelnyNumer: z.string(),
-      CzyWyslano: z.boolean().optional(),
-    }).passthrough()),
   }),
 });
 
-const invoiceStatusSchema = z.object({
-  response: z.object({
-    Kod: z.literal(0),
-    CzyWyslano: z.boolean().optional(),
-    Wynik: z.union([
-      z.object({ CzyWyslano: z.boolean().optional() }).passthrough(),
-      z.array(z.object({ CzyWyslano: z.boolean().optional() }).passthrough()),
-    ]).optional(),
-  }).passthrough(),
-});
+const invoiceDocumentSchema = z.union([
+  invoiceDocumentEnvelopeSchema,
+  invoiceDocumentBodySchema,
+]);
 
 type IfirmaConfig = Parameters<InvoicingPort['testConnection']>[0]['config'];
 
@@ -67,6 +68,7 @@ export const ifirmaAuthenticationHeader = (
   config: IfirmaConfig,
   requestContent = '',
 ): string => {
+  // iFirma requires query parameters to be excluded from the signed URL: https://api.ifirma.pl/naglowek-autoryzacji/
   const signedUrl = url.split('?')[0] ?? url;
   const digest = createHmac('sha1', invoiceApiKeyBytes(config.invoiceApiKey))
     .update(`${signedUrl}${config.username}${IFIRMA_KEY_NAME}${requestContent}`)
@@ -80,6 +82,7 @@ export const ifirmaInvoicePayload = (
 ) => {
   const grossAmount = input.order.amountCents / 100;
   const billing = input.billing;
+  const discount = (input.order.discountCents / 100).toFixed(2).replace('.', ',');
   return {
     Zaplacono: grossAmount,
     ZaplaconoNaDokumencie: grossAmount,
@@ -94,12 +97,12 @@ export const ifirmaInvoicePayload = (
     WidocznyNumerBdo: false,
     Numer: null,
     Pozycje: [{
-      StawkaVat: 0.23,
+      StawkaVat: input.vatRatePercent / 100,
       Ilosc: 1,
       CenaJednostkowa: grossAmount,
       NazwaPelna: input.order.couponId === null
         ? input.productName
-        : `${input.productName} (coupon discount applied)`,
+        : `${input.productName} (rabat kuponowy: ${discount} zł)`,
       Jednostka: 'szt.',
       PKWiU: '',
       TypStawkiVat: 'PRC',
@@ -120,12 +123,12 @@ export const ifirmaInvoicePayload = (
       : {
           Nazwa: billing.companyName,
           Identyfikator: null,
-          PrefiksUE: billing.country === 'PL' ? null : billing.country,
+          PrefiksUE: null,
           NIP: billing.nip,
           Ulica: billing.address,
           KodPocztowy: billing.postalCode,
-          Kraj: billing.country,
-          KodKraju: billing.country,
+          Kraj: 'Polska',
+          KodKraju: 'PL',
           Miejscowosc: billing.city,
           OsobaFizyczna: billing.nip === null,
         },
@@ -181,7 +184,12 @@ const authenticatedFetch = (
   if (!headers.has('accept')) headers.set('accept', 'application/json');
   headers.set('Authentication', ifirmaAuthenticationHeader(url, config, body));
   if (body !== '') headers.set('content-type', 'application/json; charset=UTF-8');
-  return fetcher(url, { ...init, headers, ...(body === '' ? {} : { body }) });
+  return fetcher(url, {
+    ...init,
+    headers,
+    signal: init.signal ?? AbortSignal.timeout(8_000),
+    ...(body === '' ? {} : { body }),
+  });
 };
 
 const invoiceListUrl = (date: string): string =>
@@ -206,12 +214,28 @@ const invalidConfig = (config: IfirmaConfig): AppError | null => {
   }
 };
 
-const wasDelivered = (input: z.infer<typeof invoiceStatusSchema>): boolean => {
-  if (input.response.CzyWyslano === true) return true;
-  if (Array.isArray(input.response.Wynik)) {
-    return input.response.Wynik.some((item) => item.CzyWyslano === true);
+const documentBody = (
+  input: z.infer<typeof invoiceDocumentSchema>,
+): z.infer<typeof invoiceDocumentBodySchema> => {
+  const envelope = invoiceDocumentEnvelopeSchema.safeParse(input);
+  return envelope.success ? envelope.data.response : invoiceDocumentBodySchema.parse(input);
+};
+
+const documentItem = (
+  input: z.infer<typeof invoiceDocumentSchema>,
+) => {
+  const body = documentBody(input);
+  if (Array.isArray(body.Wynik)) return body.Wynik[0] ?? {};
+  return body.Wynik ?? body;
+};
+
+const wasDelivered = (input: z.infer<typeof invoiceDocumentSchema>): boolean => {
+  const body = documentBody(input);
+  if (body.CzyWyslano === true) return true;
+  if (Array.isArray(body.Wynik)) {
+    return body.Wynik.some((item) => item.CzyWyslano === true);
   }
-  return input.response.Wynik?.CzyWyslano === true;
+  return body.Wynik?.CzyWyslano === true;
 };
 
 export const createIfirmaInvoicing = (
@@ -224,72 +248,78 @@ export const createIfirmaInvoicing = (
     if (input.order.currency !== 'PLN') {
       return err(validation('iFirma domestic VAT invoices require an order ledger amount in PLN.'));
     }
+    if (input.billing?.country !== undefined && input.billing.country !== 'PL') {
+      return err(validation('iFirma domestic VAT invoices require a Polish billing address.'));
+    }
+    let createAttempted = false;
     try {
       const issueDate = today();
-      const payload = JSON.stringify(ifirmaInvoicePayload(input, issueDate));
-      const createResponse = await authenticatedFetch(
-        fetcher,
-        `${IFIRMA_BASE_URL}/fakturakraj.json`,
-        input.config,
-        { method: 'POST' },
-        payload,
-      );
-      const createPayload: unknown = await createResponse.json().catch(() => null);
-      const providerResponse = providerResponseSchema.safeParse(createPayload);
-      if (!createResponse.ok || (providerResponse.success && providerResponse.data.response.Kod !== 0)) {
-        return err(providerError(
-          createResponse.status,
-          providerResponse.success ? providerResponse.data.response.Kod : null,
-          providerResponse.success ? providerResponse.data.response.Informacja : undefined,
-          'issue the invoice',
-        ));
-      }
-      const created = invoiceCreatedSchema.safeParse(createPayload);
-      if (!created.success) {
-        return err(validation('iFirma returned an invalid invoice-creation response. Retry and contact support if it persists.'));
+      let providerInvoiceId = input.providerInvoiceId;
+      if (providerInvoiceId === null) {
+        createAttempted = true;
+        const payload = JSON.stringify(ifirmaInvoicePayload(input, issueDate));
+        const createResponse = await authenticatedFetch(
+          fetcher,
+          `${IFIRMA_BASE_URL}/fakturakraj.json`,
+          input.config,
+          { method: 'POST' },
+          payload,
+        );
+        const createPayload: unknown = await createResponse.json().catch(() => null);
+        const providerResponse = providerResponseSchema.safeParse(createPayload);
+        if (!createResponse.ok || (providerResponse.success && providerResponse.data.response.Kod !== 0)) {
+          return err(providerError(
+            createResponse.status,
+            providerResponse.success ? providerResponse.data.response.Kod : null,
+            providerResponse.success ? providerResponse.data.response.Informacja : undefined,
+            'issue the invoice',
+          ));
+        }
+        const created = invoiceCreatedSchema.safeParse(createPayload);
+        if (!created.success) {
+          await input.onProviderInvoiceCreateUncertain();
+          return err(validation('iFirma returned an invalid invoice-creation response. Verify the document in iFirma before taking further action.'));
+        }
+        providerInvoiceId = created.data.response.Identyfikator;
+        await input.onProviderInvoiceCreated(providerInvoiceId);
       }
 
-      const listResponse = await authenticatedFetch(
+      const documentResponse = await authenticatedFetch(
         fetcher,
-        invoiceListUrl(issueDate),
+        invoiceUrl(providerInvoiceId, 'json'),
         input.config,
       );
-      const listPayload: unknown = await listResponse.json().catch(() => null);
-      const providerListResponse = providerResponseSchema.safeParse(listPayload);
-      if (!listResponse.ok || (providerListResponse.success && providerListResponse.data.response.Kod !== 0)) {
+      const documentPayload: unknown = await documentResponse.json().catch(() => null);
+      const providerDocumentResponse = providerResponseSchema.safeParse(documentPayload);
+      if (!documentResponse.ok || (
+        providerDocumentResponse.success &&
+        providerDocumentResponse.data.response.Kod !== 0
+      )) {
         return err(providerError(
-          listResponse.status,
-          providerListResponse.success ? providerListResponse.data.response.Kod : null,
-          providerListResponse.success ? providerListResponse.data.response.Informacja : undefined,
+          documentResponse.status,
+          providerDocumentResponse.success ? providerDocumentResponse.data.response.Kod : null,
+          providerDocumentResponse.success ? providerDocumentResponse.data.response.Informacja : undefined,
           'retrieve the issued invoice number',
         ));
       }
-      const listed = invoiceListSchema.safeParse(listPayload);
-      const invoice = listed.success
-        ? listed.data.response.Wynik.find(
-            (candidate) => candidate.FakturaId === created.data.response.Identyfikator,
-          )
+      const document = invoiceDocumentSchema.safeParse(documentPayload);
+      const item = document.success ? documentItem(document.data) : null;
+      const body = document.success ? documentBody(document.data) : null;
+      const invoiceNumber = document.success
+        ? body?.PelnyNumer ?? item?.PelnyNumer
         : undefined;
-      if (invoice === undefined) {
+      if (invoiceNumber === undefined) {
         return err(validation('iFirma issued the invoice but did not return its assigned number. Open iFirma and verify the document.'));
       }
-
-      const pdf = await authenticatedFetch(
-        fetcher,
-        invoiceUrl(created.data.response.Identyfikator, 'pdf'),
-        input.config,
-        { headers: { accept: 'application/pdf' } },
-      );
-      if (!pdf.ok || !pdf.headers.get('content-type')?.toLowerCase().includes('application/pdf')) {
-        return err(await responseError(pdf, 'retrieve the issued invoice PDF'));
-      }
       return ok({
-        providerInvoiceId: created.data.response.Identyfikator,
-        invoiceNumber: invoice.PelnyNumer,
-        pdfUrl: invoiceUrl(created.data.response.Identyfikator, 'pdf'),
-        status: invoice.CzyWyslano === true ? 'delivered' : 'issued',
+        providerInvoiceId,
+        invoiceNumber,
+        status: document.success && wasDelivered(document.data) ? 'delivered' : 'issued',
       });
     } catch {
+      if (createAttempted && input.providerInvoiceId === null) {
+        await input.onProviderInvoiceCreateUncertain().catch(() => undefined);
+      }
       return err(unreachable('invoice issuance'));
     }
   },
@@ -312,7 +342,7 @@ export const createIfirmaInvoicing = (
           'refresh the invoice status',
         ));
       }
-      const parsed = invoiceStatusSchema.safeParse(payload);
+      const parsed = invoiceDocumentSchema.safeParse(payload);
       return parsed.success
         ? ok(wasDelivered(parsed.data) ? 'delivered' : 'issued')
         : err(validation('iFirma returned an invalid invoice-status response.'));
@@ -320,7 +350,7 @@ export const createIfirmaInvoicing = (
       return err(unreachable('the status refresh'));
     }
   },
-  invoiceDownloadUrl: async (input) => {
+  downloadInvoice: async (input) => {
     const configError = invalidConfig(input.config);
     if (configError !== null) return err(configError);
     try {
@@ -331,9 +361,13 @@ export const createIfirmaInvoicing = (
         input.config,
         { headers: { accept: 'application/pdf' } },
       );
-      return response.ok && response.headers.get('content-type')?.toLowerCase().includes('application/pdf')
-        ? ok(url)
-        : err(await responseError(response, 'retrieve the invoice PDF'));
+      if (!response.ok || !response.headers.get('content-type')?.toLowerCase().includes('application/pdf')) {
+        return err(await responseError(response, 'retrieve the invoice PDF'));
+      }
+      return ok({
+        content: new Uint8Array(await response.arrayBuffer()),
+        contentType: 'application/pdf',
+      });
     } catch {
       return err(unreachable('the PDF download'));
     }

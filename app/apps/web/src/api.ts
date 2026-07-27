@@ -110,6 +110,8 @@ import {
   ordersQuery,
   orderQuery,
   issueInvoiceMutation,
+  refreshInvoiceMutation,
+  memberBillingOrdersQuery,
   ordersExportQuery,
   salesSummaryQuery,
   publishProductMutation,
@@ -196,6 +198,7 @@ const authClient = createBetterAuthClientAdapter('');
  */
 export const actions = {
   me: meQuery(apiClient),
+  memberBillingOrders: memberBillingOrdersQuery(apiClient),
   publicOffer: publicOfferQuery(apiClient),
   publicPaymentConfig: publicPaymentConfigQuery(apiClient),
   createCheckoutSession: createCheckoutSessionMutation(apiClient),
@@ -217,6 +220,7 @@ export const actions = {
   orders: (input: OrdersListQueryInput) => ordersQuery(apiClient, input),
   order: (id: string) => orderQuery(apiClient, id),
   issueInvoice: issueInvoiceMutation(apiClient),
+  refreshInvoice: refreshInvoiceMutation(apiClient),
   ordersExport: (input: OrdersExportQueryInput) => ordersExportQuery(apiClient, input),
   salesSummary: salesSummaryQuery(apiClient),
   couponStats: (input: CouponStatsQueryInput) => couponStatsQuery(apiClient, input),

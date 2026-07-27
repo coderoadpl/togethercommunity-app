@@ -21,6 +21,7 @@ export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
 
 export const invoiceEventTypeSchema = z.enum([
   'requested',
+  'provider_created',
   'issued',
   'delivered',
   'failed',

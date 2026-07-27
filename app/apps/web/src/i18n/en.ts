@@ -200,6 +200,8 @@ export const en: Messages = {
     billingDetails: 'Billing details',
     issueInvoice: 'Issue invoice',
     issuingInvoice: 'Issuing…',
+    refreshInvoice: 'Refresh status',
+    refreshingInvoice: 'Refreshing…',
     invoiceStatus: 'Invoice status',
     invoiceDownload: 'Download invoice',
     invoiceStatuses: {
@@ -1009,6 +1011,8 @@ export const en: Messages = {
     autoIssueScope: 'Automation scope',
     b2bOnly: 'Orders with a tax ID only',
     allBuyers: 'All orders',
+    vatRate: 'VAT rate for invoices',
+    vatRateUnset: 'Select before issuing',
   },
   legal: {
     heading: 'Terms of service and privacy policy',

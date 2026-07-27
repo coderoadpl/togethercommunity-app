@@ -102,6 +102,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   });
   const enabled = settings.data?.settings.autoIssueInvoices ?? false;
   const scope = settings.data?.settings.autoIssueInvoiceScope ?? 'b2b_only';
+  const vatRate = settings.data?.settings.invoiceVatRatePercent ?? '';
 
   return (
     <SectionCard title={t.billing.invoiceHeading} description={t.billing.invoiceIntro}>
@@ -128,6 +129,25 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         >
           <MenuItem value="b2b_only">{t.billing.b2bOnly}</MenuItem>
           <MenuItem value="all">{t.billing.allBuyers}</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel id="invoice-vat-rate-label">{t.billing.vatRate}</FormLabel>
+        <Select
+          labelId="invoice-vat-rate-label"
+          value={vatRate}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            updateSettings.mutate({
+              invoiceVatRatePercent: value === 5 || value === 8 || value === 23 ? value : null,
+            });
+          }}
+        >
+          <MenuItem value="">{t.billing.vatRateUnset}</MenuItem>
+          <MenuItem value={5}>5%</MenuItem>
+          <MenuItem value={8}>8%</MenuItem>
+          <MenuItem value={23}>23%</MenuItem>
         </Select>
       </FormControl>
       {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}

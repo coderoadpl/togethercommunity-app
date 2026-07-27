@@ -16,6 +16,12 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       void detail.refetch();
     },
   });
+  const refreshInvoice = useMutation({
+    ...actions.refreshInvoice,
+    onSuccess: () => {
+      void detail.refetch();
+    },
+  });
   const statusLabels = {
     paid: t.sales.paid,
     pending: t.sales.pending,
@@ -98,10 +104,23 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
               color={detail.data.invoice.status === 'failed' ? 'error' : 'default'}
             />
           )}
-          {detail.data.invoice?.pdfUrl == null ? null : (
-            <Link href={detail.data.invoice.pdfUrl} target="_blank" rel="noreferrer">
+          {detail.data.invoice?.providerInvoiceId == null ? null : (
+            <Link
+              href={`/api/invoices/${encodeURIComponent(detail.data.invoice.id)}/download`}
+              target="_blank"
+              rel="noreferrer"
+            >
               {t.sales.invoiceDownload}
             </Link>
+          )}
+          {detail.data.invoice?.providerInvoiceId == null ? null : (
+            <Button
+              variant="outlined"
+              disabled={refreshInvoice.isPending}
+              onClick={() => refreshInvoice.mutate(detail.data.invoice?.id ?? '')}
+            >
+              {refreshInvoice.isPending ? t.sales.refreshingInvoice : t.sales.refreshInvoice}
+            </Button>
           )}
           {order.billing !== null &&
           order.billing !== undefined &&

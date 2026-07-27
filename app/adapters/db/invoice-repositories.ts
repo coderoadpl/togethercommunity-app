@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { invoiceSchema } from '@core/domain/index.js';
 import type { InvoiceRepository } from '@core/server/index.js';
@@ -26,10 +26,9 @@ export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
           and(
             eq(invoices.tenantId, tenantId),
             eq(invoices.orderId, orderId),
-            ne(invoices.status, 'failed'),
           ),
         )
-        .orderBy(desc(invoices.createdAt))
+        .orderBy(desc(sql`${invoices.status} <> 'failed'`), desc(invoices.createdAt))
         .limit(1)
     )[0];
     return row === undefined ? null : invoiceSchema.parse(row);
@@ -42,6 +41,23 @@ export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
         .onConflictDoNothing()
         .returning({ id: invoices.id });
       if (inserted.length === 0) return false;
+      await tx.insert(invoiceEvents).values({ ...event, tenantId });
+      return true;
+    }),
+  claimRetry: async (tenantId, invoice, event) =>
+    db.transaction(async (tx) => {
+      const claimed = await tx
+        .update(invoices)
+        .set({ status: invoice.status, error: invoice.error })
+        .where(
+          and(
+            eq(invoices.tenantId, tenantId),
+            eq(invoices.id, invoice.id),
+            eq(invoices.status, 'failed'),
+          ),
+        )
+        .returning({ id: invoices.id });
+      if (claimed.length === 0) return false;
       await tx.insert(invoiceEvents).values({ ...event, tenantId });
       return true;
     }),

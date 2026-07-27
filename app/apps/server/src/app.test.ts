@@ -176,6 +176,7 @@ const deps = (input: {
       findById: async () => null,
       findCurrentByOrder: async () => null,
       create: async () => true,
+      claimRetry: async () => true,
       update: async () => null,
       appendEvent: async () => undefined,
     },
@@ -184,11 +185,13 @@ const deps = (input: {
         ok({
           providerInvoiceId: 'fake-1',
           invoiceNumber: 'FV/1',
-          pdfUrl: 'https://example.com/FV-1.pdf',
           status: 'issued',
         }),
       getInvoiceStatus: async () => ok('issued'),
-      invoiceDownloadUrl: async () => ok('https://example.com/FV-1.pdf'),
+      downloadInvoice: async () => ok({
+        content: new TextEncoder().encode('%PDF-1.7'),
+        contentType: 'application/pdf',
+      }),
       testConnection: async () => ok({ diagnostic: 'Fake invoicing is available.' }),
     },
     checkoutConsentCaptures: {

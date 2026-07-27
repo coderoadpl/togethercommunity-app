@@ -48,6 +48,8 @@ const harness = (options: {
   auto?: boolean;
   scope?: 'b2b_only' | 'all';
   fail?: boolean;
+  failAfterCreate?: boolean;
+  uncertainFailure?: boolean;
 } = {}) => {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
@@ -58,12 +60,19 @@ const harness = (options: {
     invoices: {
       findById: async (_tenantId, id) => invoices.find((invoice) => invoice.id === id) ?? null,
       findCurrentByOrder: async (_tenantId, orderId) =>
-        invoices.find((invoice) => invoice.orderId === orderId && invoice.status !== 'failed') ?? null,
+        invoices.find((invoice) => invoice.orderId === orderId) ?? null,
       create: async (_tenantId, invoice, event) => {
         if (invoices.some((item) => item.orderId === invoice.orderId && item.status !== 'failed')) {
           return false;
         }
         invoices.push(invoice);
+        events.push(event);
+        return true;
+      },
+      claimRetry: async (_tenantId, invoice, event) => {
+        const index = invoices.findIndex((item) => item.id === invoice.id && item.status === 'failed');
+        if (index < 0) return false;
+        invoices[index] = invoice;
         events.push(event);
         return true;
       },
@@ -79,19 +88,33 @@ const harness = (options: {
       },
     },
     invoicing: {
-      issueInvoice: async () => {
+      issueInvoice: async ({
+        providerInvoiceId,
+        onProviderInvoiceCreateUncertain,
+        onProviderInvoiceCreated,
+      }) => {
         calls += 1;
+        if (options.uncertainFailure === true) {
+          await onProviderInvoiceCreateUncertain();
+          return err(integrationUnavailable('connection lost'));
+        }
+        if (providerInvoiceId === null && options.failAfterCreate === true) {
+          await onProviderInvoiceCreated('provider-1');
+          return err(integrationUnavailable('read-back offline'));
+        }
         return options.fail
           ? err(integrationUnavailable('offline'))
           : ok({
-              providerInvoiceId: 'provider-1',
+              providerInvoiceId: providerInvoiceId ?? 'provider-1',
               invoiceNumber: 'FV/1',
-              pdfUrl: 'https://example.com/FV-1.pdf',
               status: 'issued',
             });
       },
       getInvoiceStatus: async () => ok('issued'),
-      invoiceDownloadUrl: async () => ok('https://example.com/FV-1.pdf'),
+      downloadInvoice: async () => ok({
+        content: new TextEncoder().encode('%PDF-1.7'),
+        contentType: 'application/pdf',
+      }),
       testConnection: async ({ config }) => {
         testedConfig = config;
         return ok({ diagnostic: 'iFirma accepted the credentials.' });
@@ -111,6 +134,7 @@ const harness = (options: {
         privacyUrl: null,
         autoIssueInvoices: options.auto ?? false,
         autoIssueInvoiceScope: options.scope ?? 'b2b_only',
+        invoiceVatRatePercent: 23,
       }),
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async () => {
@@ -182,6 +206,50 @@ describe('requestInvoice', () => {
     });
     expect(h.invoices).toMatchObject([{ status: 'failed', error: 'integration_not_configured' }]);
     expect(h.events.some((event) => event.type === 'failed')).toBe(true);
+  });
+
+  it('persists a provider checkpoint and resumes a failed read-back without creating again', async () => {
+    const h = harness({ failAfterCreate: true });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable' },
+    });
+    expect(h.invoices[0]).toMatchObject({
+      status: 'failed',
+      providerInvoiceId: 'provider-1',
+    });
+    expect(h.events.some((event) => event.type === 'provider_created')).toBe(true);
+
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(true);
+    expect(h.calls()).toBe(2);
+    expect(h.invoices).toHaveLength(1);
+    expect(h.invoices[0]).toMatchObject({ status: 'issued', providerInvoiceId: 'provider-1' });
+  });
+
+  it('fails before contacting iFirma when the VAT rate is not configured', async () => {
+    const h = harness();
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, invoiceVatRatePercent: null };
+    };
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+    expect(h.calls()).toBe(0);
+  });
+
+  it('blocks an automatic retry when the create outcome is unknown', async () => {
+    const h = harness({ uncertainFailure: true });
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
+    expect(h.invoices[0]).toMatchObject({
+      status: 'failed',
+      providerInvoiceId: null,
+      error: 'provider_create_uncertain',
+    });
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
+    expect(h.calls()).toBe(1);
   });
 });
 

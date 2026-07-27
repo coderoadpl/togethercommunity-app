@@ -45,7 +45,6 @@ import {
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
-  orderSchema,
   invoiceSchema,
   priceIntervalSchema,
   priceKindSchema,
@@ -157,7 +156,23 @@ export const meOutputSchema = z.object({
       memberId: z.string().nullable(),
     })
     .nullable(),
-  orders: z.array(orderSchema).optional(),
+});
+
+export const memberBillingOrdersQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(25),
+});
+export type MemberBillingOrdersQueryInput = z.input<typeof memberBillingOrdersQuerySchema>;
+
+export const memberBillingOrdersOutputSchema = z.object({
+  orders: z.array(z.object({
+    id: z.string(),
+    createdAt: z.string().datetime(),
+    billing: billingDataSchema,
+  })),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  pageSize: z.number().int().positive(),
 });
 
 export const tenantListOutputSchema = z.object({
@@ -1034,6 +1049,7 @@ export const API_ROUTES = {
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
+  memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
   products: { method: 'GET', path: '/api/products' },
@@ -1048,6 +1064,7 @@ export const API_ROUTES = {
   order: { method: 'GET', path: '/api/orders/:orderId' },
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
   invoiceRefresh: { method: 'POST', path: '/api/invoices/:invoiceId/refresh' },
+  invoiceDownload: { method: 'GET', path: '/api/invoices/:invoiceId/download' },
   ordersExport: { method: 'GET', path: '/api/orders/export' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
   couponStats: { method: 'GET', path: '/api/coupons' },
@@ -1195,6 +1212,7 @@ export const API_PATHS = {
   termsConsent: API_ROUTES.termsConsent.path,
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
+  memberBillingOrders: API_ROUTES.memberBillingOrders.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,
@@ -1207,6 +1225,7 @@ export const API_PATHS = {
   order: API_ROUTES.order.path,
   invoiceIssue: API_ROUTES.invoiceIssue.path,
   invoiceRefresh: API_ROUTES.invoiceRefresh.path,
+  invoiceDownload: API_ROUTES.invoiceDownload.path,
   ordersExport: API_ROUTES.ordersExport.path,
   salesSummary: API_ROUTES.salesSummary.path,
   couponStats: API_ROUTES.couponStats.path,

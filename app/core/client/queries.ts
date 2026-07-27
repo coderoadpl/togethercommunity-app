@@ -153,6 +153,10 @@ export const authConfigScopes = {
   all: () => ['auth-config'] as const,
 };
 
+export const memberBillingOrdersScopes = {
+  all: () => ['member-billing-orders'] as const,
+};
+
 export const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
@@ -514,6 +518,12 @@ export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
   defineQuery({
     queryKey: salesScopes.orders(input),
     call: ({ signal }) => api.listOrders(input, signal),
+  });
+
+export const memberBillingOrdersQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: memberBillingOrdersScopes.all(),
+    call: ({ signal }) => api.listMemberBillingOrders(1, 25, signal),
   });
 
 export const orderQuery = (api: ApiClient, id: string) =>

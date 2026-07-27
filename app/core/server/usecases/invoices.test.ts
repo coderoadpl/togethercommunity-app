@@ -50,6 +50,7 @@ const harness = (options: {
   fail?: boolean;
   failAfterCreate?: boolean;
   uncertainFailure?: boolean;
+  provider?: 'ifirma' | 'ksef';
 } = {}) => {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
@@ -86,6 +87,12 @@ const harness = (options: {
       appendEvent: async (_tenantId, event) => {
         events.push(event);
       },
+      createFrozenKsef: async (_tenantId, invoice, event) => {
+        invoices.push(invoice);
+        events.push(event);
+        return true;
+      },
+      checkpointKsef: async (_tenantId, invoice) => invoice,
     },
     invoicing: {
       issueInvoice: async ({
@@ -135,6 +142,9 @@ const harness = (options: {
         autoIssueInvoices: options.auto ?? false,
         autoIssueInvoiceScope: options.scope ?? 'b2b_only',
         invoiceVatRatePercent: 23,
+        invoicingProvider: options.provider ?? 'ifirma',
+        invoiceSellerName: 'Together sp. z o.o.',
+        invoiceSellerAddress: 'Prosta 1, 00-001 Warszawa',
       }),
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async () => {
@@ -162,6 +172,22 @@ const harness = (options: {
     },
     ids: { nextId: () => `id-${++ids}` },
     clock: { nowIso: () => now },
+    ksef: {
+      environment: 'test',
+      credentials: {
+        resolve: async () => ok({ token: 'ksef-token', contextNip: '5555555555' }),
+      },
+      numbers: {
+        allocate: async () => ({ p2: 'FV/2026/000001', sequence: 1 }),
+      },
+      artifacts: {
+        findByKey: async () => null,
+        store: async () => true,
+      },
+      hash: {
+        sha256: () => 'a'.repeat(64),
+      },
+    },
   };
   return { deps, invoices, events, calls: () => calls, testedConfig: () => testedConfig };
 };
@@ -250,6 +276,25 @@ describe('requestInvoice', () => {
     });
     expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
     expect(h.calls()).toBe(1);
+  });
+
+  it('freezes and queues KSeF issuance without making a provider HTTP call', async () => {
+    const h = harness({ provider: 'ksef' });
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        status: 'queued',
+        provider: 'ksef',
+        invoiceNumber: 'FV/2026/000001',
+        ksef: {
+          state: 'queued',
+          xmlSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      },
+    });
+    expect(h.calls()).toBe(0);
+    expect(h.events.at(-1)).toMatchObject({ type: 'frozen' });
   });
 });
 

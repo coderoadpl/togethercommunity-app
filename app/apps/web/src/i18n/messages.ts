@@ -1125,6 +1125,7 @@ export interface Messages {
     blocked: string;
     credentialsConfigured: string;
     identityVerified: string;
+    configurationSetConfigured: string;
     webhookVerified: string;
     footerConfigured: string;
     webhookUrl: string;

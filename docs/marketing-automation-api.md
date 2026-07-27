@@ -22,10 +22,12 @@ Complete the M19 checklist in the sending-settings panel before enabling broadca
 1. Verify the sending identity and DKIM in the same AWS Region as the tenant SES credentials.
 2. Create an SNS topic in that Region and subscribe the Together webhook URL shown in the panel. Copy the topic ARN into the tenant settings and allow SES to publish to the topic.
 3. In the Amazon SES console, open **Configuration → Configuration sets**, select the tenant configuration set, open **Event destinations**, and choose **Add destination**. Enable event publishing, select **Delivery**, **Bounce**, and **Complaint**, choose **Amazon SNS** as the destination, and select the tenant SNS topic. AWS documents the current console flow in [Creating Amazon SES event destinations](https://docs.aws.amazon.com/ses/latest/dg/event-destinations-manage.html) and the required SNS topic policy in [Set up an Amazon SNS event destination](https://docs.aws.amazon.com/ses/latest/dg/event-publishing-add-event-destination-sns.html).
-4. Save the configuration-set name in Together, then use the SES mailbox simulator bounce and complaint addresses to verify that the SNS webhook completes a round trip.
+4. Save the configuration-set name in Together. Together attaches this configuration set to every marketing send so delivery, bounce, and complaint processing remains active whether engagement tracking is on or off. Then use the SES mailbox simulator bounce and complaint addresses to verify that the SNS webhook completes a round trip.
 5. Fill in the tenant legal sender name and postal or electronic address.
 
-Open/click tracking is off by default. To enable it, edit the same SES event destination and additionally publish **Open** and **Click**, then turn on **Track marketing opens and clicks** in Together. The tenant is the data controller and must update its privacy notice before enabling tracking. Together attaches the configuration set only to marketing sends while the toggle is on. Transactional and test messages never receive the configuration set and are never open/click tracked.
+#### Open and click events
+
+Open/click tracking is off by default. To enable it, edit the same SES event destination and additionally publish **Open** and **Click**, then turn on **Track marketing opens and clicks** in Together. The tenant is the data controller and must update its privacy notice before enabling tracking. Together acknowledges but does not store Open or Click records while the toggle is off. Transactional and test messages never receive the configuration set and are never open/click tracked.
 
 ## Authentication and response envelope
 

@@ -13,6 +13,7 @@ import {
   bunnyVideosInputSchema,
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
+  couponCheckoutValidationRequestSchema,
   emailSendsExportQuerySchema,
   emailSendsQuerySchema,
   schedulerRunsQuerySchema,
@@ -219,6 +220,7 @@ import {
   testSendCampaignToSelf,
   simulatePurchase,
   validateCheckoutSelection,
+  validateCouponForCheckout,
   listBunnyVideos,
   testBunnyConnection,
   testStripeConnection,
@@ -231,6 +233,7 @@ import {
   updateProductAccessItems,
   type AuthenticatedUser,
   type PaymentWebhookEvent,
+  type SimulatePurchaseResult,
   type TenantSource,
 } from '@core/server/index.js';
 import {
@@ -562,6 +565,46 @@ export const buildApp = (deps: AppDeps) => {
     );
   });
 
+  app.post(API_PATHS.couponCheckoutValidation, async (c) => {
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = couponCheckoutValidationRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return respondPublic(err(validation('Invalid coupon payload', parsed.error.flatten())));
+    }
+    const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
+    if (!selection.ok) return respondPublic(selection);
+    if (
+      deps.coupons === undefined ||
+      deps.couponRedemptions === undefined ||
+      deps.priceHistory === undefined
+    ) {
+      return respondPublic(err(internal('Coupon checkout is not configured')));
+    }
+    const price = selection.value.price;
+    const result = await validateCouponForCheckout(
+      tenant.value.tenant.id,
+      {
+        code: parsed.data.couponCode,
+        ...(parsed.data.email === undefined ? {} : { email: parsed.data.email }),
+        productId: selection.value.product.id,
+        priceId: price?.id ?? null,
+        priceKind: price?.kind ?? 'one_time',
+        amountCents: price?.amountCents ?? selection.value.product.priceCents,
+        currency: price?.currency ?? selection.value.product.currency,
+      },
+      {
+        coupons: deps.coupons,
+        redemptions: deps.couponRedemptions,
+        priceHistory: deps.priceHistory,
+        clock: deps.clock,
+      },
+    );
+    return respondPublic(result.ok ? ok({ breakdown: result.value.breakdown }) : result);
+  });
+
   app.post(API_PATHS.checkoutSession, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respondPublic(tenant);
@@ -610,6 +653,41 @@ export const buildApp = (deps: AppDeps) => {
       deps,
       checkoutConsentCaptureId,
     );
+    if (
+      session.ok &&
+      session.value.free &&
+      session.value.couponCheckoutSessionId !== undefined
+    ) {
+      const objectId = `free_${session.value.couponCheckoutSessionId}`;
+      const event: PaymentWebhookEvent = {
+        id: `event_${objectId}`,
+        type: 'checkout.session.completed',
+        objectId,
+        checkoutSession: {
+          email: parsed.data.email ?? null,
+          subscriptionId:
+            selection.value.price?.kind === 'recurring' ? `subscription_${objectId}` : null,
+          paymentIntentId: null,
+          metadata: {
+            tenantId: tenant.value.tenant.id,
+            productId: selection.value.product.id,
+            priceId: selection.value.price?.id ?? null,
+            memberEmail: parsed.data.email ?? null,
+            language: parsed.data.language ?? null,
+            checkoutConsentCaptureId,
+            couponCheckoutSessionId: session.value.couponCheckoutSessionId,
+          },
+        },
+      };
+      const fulfilled = await fulfillStripeWebhook(
+        tenant.value.tenant,
+        event,
+        { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+        'simulated',
+      );
+      if (!fulfilled.ok) return respondPublic(fulfilled);
+      await recordFulfilledCheckoutConsents(deps, tenant.value.tenant, event);
+    }
     return respondPublic(session);
   });
 
@@ -750,15 +828,112 @@ export const buildApp = (deps: AppDeps) => {
       );
       if (!consent.ok) return respond(consent);
 
-      const result = await simulatePurchase(
-        tenant.value.tenant.id,
-        {
-          email: parsed.data.email,
-          productId: parsed.data.productId,
-          ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
-        },
-        deps,
-      );
+      let result: Result<SimulatePurchaseResult, AppError>;
+      if (parsed.data.couponCode === undefined) {
+        result = await simulatePurchase(
+          tenant.value.tenant.id,
+          {
+            email: parsed.data.email,
+            productId: parsed.data.productId,
+            ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
+          },
+          deps,
+        );
+      } else if (
+        deps.coupons === undefined ||
+        deps.couponRedemptions === undefined ||
+        deps.couponCheckoutSessions === undefined ||
+        deps.priceHistory === undefined
+      ) {
+        result = err(internal('Coupon checkout is not configured'));
+      } else {
+        const price = selection.value.price;
+        const validated = await validateCouponForCheckout(
+          tenant.value.tenant.id,
+          {
+            code: parsed.data.couponCode,
+            email: parsed.data.email,
+            productId: selection.value.product.id,
+            priceId: price?.id ?? null,
+            priceKind: price?.kind ?? 'one_time',
+            amountCents: price?.amountCents ?? selection.value.product.priceCents,
+            currency: price?.currency ?? selection.value.product.currency,
+          },
+          {
+            coupons: deps.coupons,
+            redemptions: deps.couponRedemptions,
+            priceHistory: deps.priceHistory,
+            clock: deps.clock,
+          },
+        );
+        if (!validated.ok) {
+          result = validated;
+        } else {
+          const couponSessionId = deps.ids.nextId();
+          const objectId = `simulated_${couponSessionId}`;
+          await deps.couponCheckoutSessions.create(tenant.value.tenant.id, {
+            id: couponSessionId,
+            tenantId: tenant.value.tenant.id,
+            couponId: validated.value.coupon.id,
+            providerSessionId: objectId,
+            memberEmail: parsed.data.email,
+            productId: selection.value.product.id,
+            priceId: price?.id ?? null,
+            originalCents: validated.value.breakdown.originalCents,
+            discountCents: validated.value.breakdown.discountCents,
+            finalCents: validated.value.breakdown.finalCents,
+            currency: validated.value.breakdown.currency,
+            startedAt: deps.clock.nowIso(),
+          });
+          const event: PaymentWebhookEvent = {
+            id: `event_${objectId}`,
+            type: 'checkout.session.completed',
+            objectId,
+            checkoutSession: {
+              email: parsed.data.email,
+              subscriptionId: price?.kind === 'recurring' ? `subscription_${couponSessionId}` : null,
+              paymentIntentId: null,
+              metadata: {
+                tenantId: tenant.value.tenant.id,
+                productId: selection.value.product.id,
+                priceId: price?.id ?? null,
+                memberEmail: parsed.data.email,
+                language: parsed.data.language,
+                couponCheckoutSessionId: couponSessionId,
+              },
+            },
+          };
+          const fulfilled = await fulfillStripeWebhook(
+            tenant.value.tenant,
+            event,
+            { ...deps, exposeMagicLinks: deps.devEndpoints.exposeMagicLinks },
+            'simulated',
+          );
+          if (!fulfilled.ok) {
+            result = fulfilled;
+          } else {
+            const order = await deps.paymentRefunds.findOrderByProviderObjectIds(
+              tenant.value.tenant.id,
+              { checkoutSession: objectId },
+            );
+            const subscription = order === null
+              ? undefined
+              : (await deps.subscriptions.listForMember(
+                  tenant.value.tenant.id,
+                  order.memberId,
+                )).find((candidate) => candidate.productId === selection.value.product.id);
+            result = order === null
+              ? err(internal('Coupon fulfillment did not create an order'))
+              : ok({
+                  memberId: order.memberId,
+                  productId: selection.value.product.id,
+                  alreadyOwned: false,
+                  subscriptionId: subscription?.id ?? null,
+                  orderId: order.id,
+                });
+          }
+        }
+      }
       if (!result.ok) return respond(result);
 
       const terms = await enforceTermsConsent(

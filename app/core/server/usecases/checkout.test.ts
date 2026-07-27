@@ -71,7 +71,10 @@ describe('createCheckoutSession', () => {
       deps,
     );
 
-    expect(result).toEqual({ ok: true, value: { url: 'https://checkout.stripe.test/cs_1' } });
+    expect(result).toEqual({
+      ok: true,
+      value: { url: 'https://checkout.stripe.test/cs_1', free: false },
+    });
     expect(calls).toEqual([
       {
         tenantId: 'tenant-a',

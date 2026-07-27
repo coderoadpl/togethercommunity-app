@@ -297,6 +297,7 @@ export const coupons = pgTable(
       table.createdAt.desc(),
       table.id,
     ),
+    index('coupons_tenant_created_idx').on(table.tenantId, table.createdAt.desc(), table.id),
   ],
 );
 
@@ -390,6 +391,7 @@ export const couponCheckoutSessions = pgTable(
     originalCents: integer('original_cents').notNull(),
     discountCents: integer('discount_cents').notNull(),
     finalCents: integer('final_cents').notNull(),
+    currency: text('currency').notNull(),
     startedAt: text('started_at').notNull(),
   },
   (table) => [

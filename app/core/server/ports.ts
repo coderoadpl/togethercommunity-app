@@ -51,6 +51,11 @@ import type {
   CampaignEngagementStats,
   CampaignSend,
   CheckoutConsentCapture,
+  Coupon,
+  CouponCheckoutSession,
+  CouponRedemption,
+  CouponStatsCursor,
+  CouponStatsItem,
   ConsentDefinition,
   ConsentDefinitionVersion,
   ConsentConfirmationToken,
@@ -370,6 +375,7 @@ export interface PaymentWebhookEvent {
       memberEmail: string | null;
       language: string | null;
       checkoutConsentCaptureId?: string | null;
+      couponCheckoutSessionId?: string | null;
     };
   } | null;
   invoice?: {
@@ -407,7 +413,20 @@ export interface PaymentProvider {
     priceId?: string;
     recurringInterval?: 'month' | 'year';
     checkoutConsentCaptureId?: string;
+    promotionCodeId?: string;
+    couponCheckoutSessionId?: string;
   }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
+  ensureCouponPromotion?(input: {
+    tenantId: string;
+    couponId: string;
+    code: string;
+    kind: 'percent' | 'amount';
+    value: number;
+    currency: string;
+    recurringDuration: 'first_invoice' | 'forever';
+    stripeCouponId: string | null;
+    stripePromotionCodeId: string | null;
+  }): Promise<Result<{ stripeCouponId: string; stripePromotionCodeId: string }, AppError>>;
   expireCheckoutSession(input: {
     tenantId: string;
     sessionId: string;
@@ -417,6 +436,65 @@ export interface PaymentProvider {
     signatureHeader: string;
     webhookSecret: string;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
+}
+
+export interface CouponRepository {
+  findByCode(tenantId: string, normalizedCode: string): Promise<Coupon | null>;
+  findById(tenantId: string, id: string): Promise<Coupon | null>;
+  cacheStripeIds(
+    tenantId: string,
+    id: string,
+    stripeIds: { stripeCouponId: string; stripePromotionCodeId: string },
+  ): Promise<Coupon | null>;
+}
+
+export interface CouponRedemptionRepository {
+  counts(
+    tenantId: string,
+    couponId: string,
+    normalizedEmail: string,
+  ): Promise<{ total: number; member: number }>;
+  createOrderAndClaim(
+    tenantId: string,
+    input: {
+      order: Order;
+      redemption: CouponRedemption;
+      maxRedemptions: number | null;
+      maxRedemptionsPerMember: number | null;
+    },
+  ): Promise<boolean>;
+}
+
+export interface CouponCheckoutSessionRepository {
+  create(tenantId: string, session: CouponCheckoutSession): Promise<void>;
+  attachProviderSession(tenantId: string, id: string, providerSessionId: string): Promise<void>;
+  findById(tenantId: string, id: string): Promise<CouponCheckoutSession | null>;
+}
+
+export interface ProductPriceHistoryRepository {
+  lowestSince(
+    tenantId: string,
+    input: {
+      productId: string;
+      priceId: string | null;
+      since: string;
+      through: string;
+      currentAmountCents: number;
+    },
+  ): Promise<number>;
+}
+
+export interface CouponStatsRepository {
+  list(
+    tenantId: string,
+    query: {
+      partnerLabel?: string;
+      cursor?: CouponStatsCursor;
+      limit: number;
+      since: string;
+      through: string;
+    },
+  ): Promise<{ items: CouponStatsItem[]; nextCursor: CouponStatsCursor | null }>;
 }
 
 export interface CheckoutConsentCaptureRepository {

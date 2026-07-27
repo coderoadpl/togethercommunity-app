@@ -9,6 +9,8 @@ import {
   type Product,
   type ProductGrant,
   type ProductPrice,
+  type Coupon,
+  type CouponRedemption,
 } from '@core/domain/index.js';
 
 import type { PaymentWebhookEvent } from '../ports.js';
@@ -53,6 +55,7 @@ const completedEvent = (overrides?: {
   subscriptionId?: string;
   email?: string;
   paymentIntentId?: string;
+  couponCheckoutSessionId?: string;
 }): PaymentWebhookEvent => ({
   id: overrides?.id ?? 'evt-1',
   type: 'checkout.session.completed',
@@ -67,6 +70,9 @@ const completedEvent = (overrides?: {
       priceId: overrides?.priceId ?? null,
       memberEmail: null,
       language: 'pl',
+      ...(overrides?.couponCheckoutSessionId === undefined
+        ? {}
+        : { couponCheckoutSessionId: overrides.couponCheckoutSessionId }),
     },
   },
 });
@@ -352,6 +358,87 @@ const subscribedHarness = async () => {
 };
 
 describe('fulfillStripeWebhook', () => {
+  it('honors checkout-time expiry, records one redemption, and stays idempotent', async () => {
+    const h = harness();
+    const coupon: Coupon = {
+      id: 'coupon-1',
+      tenantId: tenantA.id,
+      code: 'SAVE50',
+      kind: 'percent',
+      value: 50,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: '2026-07-15T00:00:00.000Z',
+      maxRedemptions: 1,
+      maxRedemptionsPerMember: 1,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: '2026-07-01T00:00:00.000Z',
+    };
+    const redemptions: CouponRedemption[] = [];
+    h.deps.coupons = {
+      findByCode: async () => coupon,
+      findById: async () => coupon,
+      cacheStripeIds: async () => coupon,
+    };
+    h.deps.couponCheckoutSessions = {
+      create: async () => undefined,
+      attachProviderSession: async () => undefined,
+      findById: async () => ({
+        id: 'coupon-session-1',
+        tenantId: tenantA.id,
+        couponId: coupon.id,
+        providerSessionId: 'cs-coupon',
+        memberEmail: 'buyer@example.com',
+        productId: 'product-1',
+        priceId: null,
+        originalCents: 4900,
+        discountCents: 2450,
+        finalCents: 2450,
+        currency: 'PLN',
+        startedAt: '2026-07-14T10:00:00.000Z',
+      }),
+    };
+    h.deps.priceHistory = { lowestSince: async () => 4900 };
+    h.deps.couponRedemptions = {
+      counts: async (_tenantId, couponId, email) => ({
+        total: redemptions.filter((row) => row.couponId === couponId).length,
+        member: redemptions.filter(
+          (row) => row.couponId === couponId && row.email === email,
+        ).length,
+      }),
+      createOrderAndClaim: async (_tenantId, input) => {
+        if (redemptions.length >= 1) return false;
+        h.orders.push(input.order);
+        redemptions.push(input.redemption);
+        return true;
+      },
+    };
+    h.setNow('2026-07-16T10:00:00.000Z');
+    const event = completedEvent({
+      id: 'event-coupon',
+      objectId: 'cs-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: false },
+    });
+    expect(h.orders).toMatchObject([
+      { amountCents: 2450, discountCents: 2450, couponId: coupon.id },
+    ]);
+    expect(redemptions).toHaveLength(1);
+  });
+
   it('fulfills once when Stripe retries the same event', async () => {
     const h = harness();
     const first = await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);

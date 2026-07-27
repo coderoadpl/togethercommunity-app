@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
+  couponCheckoutBreakdownSchema,
   courseLessonSchema,
   courseModuleSchema,
   courseSchema,
@@ -211,6 +212,21 @@ export const checkoutSessionOutputSchema = z.object({
   url: z.string().url(),
 });
 
+export const couponCheckoutValidationRequestSchema = checkoutSessionInputSchema.pick({
+  productId: true,
+  priceId: true,
+  email: true,
+  couponCode: true,
+}).required({ couponCode: true });
+
+export type CouponCheckoutValidationRequest = z.input<
+  typeof couponCheckoutValidationRequestSchema
+>;
+
+export const couponCheckoutValidationOutputSchema = z.object({
+  breakdown: couponCheckoutBreakdownSchema,
+});
+
 export const termsConsentOutputSchema = z.object({
   recorded: z.boolean(),
 });
@@ -313,6 +329,7 @@ export const simulatePurchaseInputSchema = z.object({
   language: languageSchema.default('pl'),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
+  couponCode: z.string().trim().min(1).max(100).optional(),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -952,6 +969,7 @@ export const API_ROUTES = {
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
+  couponCheckoutValidation: { method: 'POST', path: '/api/public/checkout/coupon' },
   termsConsent: { method: 'POST', path: '/api/public/terms-consent' },
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
@@ -1102,6 +1120,7 @@ export const API_PATHS = {
   publicOffer: API_ROUTES.publicOffer.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
+  couponCheckoutValidation: API_ROUTES.couponCheckoutValidation.path,
   termsConsent: API_ROUTES.termsConsent.path,
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,

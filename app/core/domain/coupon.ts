@@ -70,6 +70,69 @@ export const couponRedemptionSchema = z.object({
 });
 export type CouponRedemption = z.infer<typeof couponRedemptionSchema>;
 
+export const couponCheckoutSessionSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  couponId: z.string(),
+  providerSessionId: z.string().nullable(),
+  memberEmail: z.string().email(),
+  productId: z.string(),
+  priceId: z.string().nullable(),
+  originalCents: z.number().int().nonnegative(),
+  discountCents: z.number().int().nonnegative(),
+  finalCents: z.number().int().nonnegative(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  startedAt: z.string().datetime(),
+});
+export type CouponCheckoutSession = z.infer<typeof couponCheckoutSessionSchema>;
+
+export const couponCheckoutBreakdownSchema = z
+  .object({
+    couponId: z.string(),
+    code: z.string(),
+    originalCents: z.number().int().nonnegative(),
+    discountCents: z.number().int().positive(),
+    finalCents: z.number().int().nonnegative(),
+    lowestPriceLast30DaysCents: z.number().int().nonnegative(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+  })
+  .superRefine((value, ctx) => {
+    if (value.originalCents - value.discountCents !== value.finalCents) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Discount breakdown is inconsistent' });
+    }
+  });
+export type CouponCheckoutBreakdown = z.infer<typeof couponCheckoutBreakdownSchema>;
+
+export const couponMoneyTotalSchema = z.object({
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  amountCents: z.number().int().nonnegative(),
+});
+
+export const couponStatsPointSchema = z.object({
+  date: z.string().date(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  redemptions: z.number().int().nonnegative(),
+  grossAttributedCents: z.number().int().nonnegative(),
+  discountGivenCents: z.number().int().nonnegative(),
+});
+
+export const couponStatsItemSchema = z.object({
+  coupon: couponSchema,
+  redemptions: z.number().int().nonnegative(),
+  sessionsWithCode: z.number().int().nonnegative(),
+  conversionRate: z.number().min(0).max(1),
+  grossAttributed: z.array(couponMoneyTotalSchema),
+  discountGiven: z.array(couponMoneyTotalSchema),
+  timeSeries: z.array(couponStatsPointSchema),
+});
+export type CouponStatsItem = z.infer<typeof couponStatsItemSchema>;
+
+export const couponStatsCursorSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: z.string(),
+});
+export type CouponStatsCursor = z.infer<typeof couponStatsCursorSchema>;
+
 export const productPriceHistorySchema = z.object({
   id: z.number().int().positive(),
   tenantId: z.string(),

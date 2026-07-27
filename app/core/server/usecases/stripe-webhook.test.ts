@@ -61,6 +61,7 @@ const completedEvent = (overrides?: {
   amountTotalCents?: number;
   discountTotalCents?: number;
   couponCheckoutSessionId?: string;
+  checkoutConsentCaptureId?: string;
 }): PaymentWebhookEvent => ({
   id: overrides?.id ?? 'evt-1',
   type: 'checkout.session.completed',
@@ -81,6 +82,9 @@ const completedEvent = (overrides?: {
       ...(overrides?.couponCheckoutSessionId === undefined
         ? {}
         : { couponCheckoutSessionId: overrides.couponCheckoutSessionId }),
+      ...(overrides?.checkoutConsentCaptureId === undefined
+        ? {}
+        : { checkoutConsentCaptureId: overrides.checkoutConsentCaptureId }),
     },
   },
 });
@@ -443,6 +447,41 @@ const couponHarness = (
 };
 
 describe('fulfillStripeWebhook', () => {
+  it('copies captured billing data onto the paid order', async () => {
+    const h = harness();
+    const billing = {
+      nip: '5555555555',
+      companyName: 'Acme sp. z o.o.',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    };
+    h.deps.checkoutConsentCaptures = {
+      create: async () => undefined,
+      findById: async (_tenantId, id) =>
+        id === 'capture-1'
+          ? {
+              termsAccepted: true,
+              selectedDefinitionIds: [],
+              attachedDefinitionIds: [],
+              collectedAt: now,
+              confirmationBaseUrl: 'https://alpha.example.com/marketing/confirm',
+              billing,
+            }
+          : null,
+    };
+
+    expect(
+      await fulfillStripeWebhook(
+        tenantA,
+        completedEvent({ checkoutConsentCaptureId: 'capture-1' }),
+        h.deps,
+      ),
+    ).toMatchObject({ ok: true, value: { processed: true } });
+    expect(h.orders[0]?.billing).toEqual(billing);
+  });
+
   it('honors checkout-time expiry, records one redemption, and stays idempotent', async () => {
     const h = harness();
     const coupon: Coupon = {

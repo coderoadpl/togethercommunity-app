@@ -38,6 +38,8 @@ export const tenantSettingsSchema = z.object({
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
+  autoIssueInvoices: z.boolean().optional(),
+  autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
 });
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
@@ -72,6 +74,8 @@ export const updateTenantSettingsInputSchema = z.object({
   faviconUrl: clearableBrandingAssetUrl,
   termsUrl: clearableUrl,
   privacyUrl: clearableUrl,
+  autoIssueInvoices: z.boolean().optional(),
+  autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;

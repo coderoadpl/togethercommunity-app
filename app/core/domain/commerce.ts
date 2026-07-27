@@ -70,6 +70,28 @@ export const orderProviderSchema = z.enum(['stripe', 'simulated']);
 
 export type OrderProvider = z.infer<typeof orderProviderSchema>;
 
+const hasValidNipChecksum = (nip: string): boolean => {
+  if (!/^\d{10}$/.test(nip)) return false;
+  const digits = [...nip].map(Number);
+  const checksum = [6, 5, 7, 2, 3, 4, 5, 6, 7]
+    .reduce((sum, weight, index) => sum + weight * (digits[index] ?? 0), 0) % 11;
+  return checksum !== 10 && checksum === digits[9];
+};
+
+export const nipSchema = z.string().refine(hasValidNipChecksum, 'NIP must contain 10 digits and a valid checksum');
+
+export const billingDataSchema = z.object({
+  nip: nipSchema.nullable().default(null),
+  companyName: z.string().trim().min(1).max(200),
+  address: z.string().trim().min(1).max(300),
+  postalCode: z.string().trim().min(1).max(30),
+  city: z.string().trim().min(1).max(120),
+  country: z.string().trim().length(2).transform((value) => value.toUpperCase()).default('PL'),
+});
+
+export type BillingData = z.output<typeof billingDataSchema>;
+export type BillingDataInput = z.input<typeof billingDataSchema>;
+
 export const orderSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -84,6 +106,7 @@ export const orderSchema = z.object({
   providerObjectIds: z.record(z.string()),
   couponId: z.string().nullable(),
   discountCents: z.number().int().nonnegative(),
+  billing: billingDataSchema.nullable().optional(),
   createdAt: z.string().datetime(),
 });
 

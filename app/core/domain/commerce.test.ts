@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
+  billingDataSchema,
   exportOrdersQuerySchema,
   graceExpiresAt,
   listOrdersQuerySchema,
@@ -9,6 +10,47 @@ import {
   nextPeriodEnd,
   productPriceSchema,
 } from './commerce.js';
+
+describe('billingDataSchema', () => {
+  it.each([
+    ['5555555555', true],
+    ['8567346215', true],
+    ['1234567890', false],
+    ['5261040829', false],
+    ['526-104-08-28', false],
+    ['123456789', false],
+    ['12345678901', false],
+    ['', false],
+  ])('validates Polish NIP %s', (nip, valid) => {
+    const result = billingDataSchema.safeParse({
+      nip,
+      companyName: 'Acme sp. z o.o.',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    });
+    expect(result.success).toBe(valid);
+  });
+
+  it('allows a B2C billing snapshot without NIP and defaults country to PL', () => {
+    expect(
+      billingDataSchema.parse({
+        companyName: 'Jan Kowalski',
+        address: 'Prosta 1',
+        postalCode: '00-001',
+        city: 'Warszawa',
+      }),
+    ).toEqual({
+      nip: null,
+      companyName: 'Jan Kowalski',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    });
+  });
+});
 
 describe('graceExpiresAt', () => {
   it('adds exactly the grace window to the period end', () => {

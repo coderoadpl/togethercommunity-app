@@ -74,6 +74,9 @@ import type {
   TenantDocument,
   TenantDocumentVersion,
   UnsubscribeToken,
+  BillingData,
+  Invoice,
+  InvoiceEvent,
 } from '@core/domain/index.js';
 
 /**
@@ -444,6 +447,36 @@ export interface PaymentProvider {
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
 }
 
+export interface InvoicingPort {
+  issueInvoice(input: {
+    order: Order;
+    billing: BillingData | null;
+    productName: string;
+    config: { apiKey: string; subdomain: string };
+  }): Promise<Result<{
+    providerInvoiceId: string;
+    invoiceNumber: string;
+    pdfUrl: string;
+    status: 'issued' | 'delivered';
+  }, AppError>>;
+  getInvoiceStatus(input: {
+    providerInvoiceId: string;
+    config: { apiKey: string; subdomain: string };
+  }): Promise<Result<'issued' | 'delivered' | 'failed', AppError>>;
+  invoiceDownloadUrl(input: {
+    providerInvoiceId: string;
+    config: { apiKey: string; subdomain: string };
+  }): Promise<Result<string, AppError>>;
+}
+
+export interface InvoiceRepository {
+  findById(tenantId: string, id: string): Promise<Invoice | null>;
+  findCurrentByOrder(tenantId: string, orderId: string): Promise<Invoice | null>;
+  create(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
+  update(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<Invoice | null>;
+  appendEvent(tenantId: string, event: InvoiceEvent): Promise<void>;
+}
+
 export interface CouponRepository {
   findByCode(tenantId: string, normalizedCode: string): Promise<Coupon | null>;
   findById(tenantId: string, id: string): Promise<Coupon | null>;
@@ -574,6 +607,7 @@ export interface OrderListQuery {
 export interface OrderRepository {
   create(tenantId: string, order: Order): Promise<void>;
   list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
+  listForMember?(tenantId: string, memberId: string): Promise<Order[]>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;
   countSince(tenantId: string, sinceIso: string): Promise<number>;
 }

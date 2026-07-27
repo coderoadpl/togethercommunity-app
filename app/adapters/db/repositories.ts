@@ -1585,6 +1585,7 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           providerObjectIds: order.providerObjectIds,
           couponId: order.couponId,
           discountCents: order.discountCents,
+          billing: order.billing ?? null,
           createdAt: order.createdAt,
         })
         .onConflictDoNothing();
@@ -1645,6 +1646,14 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
         total: totals[0]?.value ?? 0,
       };
     },
+    listForMember: async (tenantId, memberId) =>
+      (
+        await db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
+          .orderBy(desc(orders.createdAt), desc(orders.id))
+      ).map(parseOrder),
     revenueSince: async (tenantId, sinceIso) =>
       db
         .select({
@@ -2045,6 +2054,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         faviconUrl: tenants.faviconUrl,
         termsUrl: tenants.termsUrl,
         privacyUrl: tenants.privacyUrl,
+        autoIssueInvoices: tenants.autoIssueInvoices,
+        autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -2059,6 +2070,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
           faviconUrl: row.faviconUrl,
           termsUrl: row.termsUrl,
           privacyUrl: row.privacyUrl,
+          autoIssueInvoices: row.autoIssueInvoices,
+          autoIssueInvoiceScope: row.autoIssueInvoiceScope,
         }
       : null;
   },
@@ -2073,6 +2086,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         faviconUrl: settings.faviconUrl,
         termsUrl: settings.termsUrl,
         privacyUrl: settings.privacyUrl,
+        autoIssueInvoices: settings.autoIssueInvoices,
+        autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       })
       .where(eq(tenants.id, tenantId));
     return {
@@ -2083,6 +2098,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       faviconUrl: settings.faviconUrl,
       termsUrl: settings.termsUrl,
       privacyUrl: settings.privacyUrl,
+      autoIssueInvoices: settings.autoIssueInvoices,
+      autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
     };
   },
   createTenantWithOwnerGrant: async (input) =>

@@ -133,6 +133,7 @@ export const MarketingSettingsPanel = () => {
         items={[
           { label: t.marketing.credentialsConfigured, ready: credentialsConfigured },
           { label: t.marketing.identityVerified, ready: verified },
+          { label: t.marketing.configurationSetConfigured, ready: settings?.configurationSet !== null && settings?.configurationSet !== undefined },
           { label: t.marketing.webhookVerified, ready: webhookVerified },
           { label: t.marketing.footerConfigured, ready: footerConfigured },
         ]}
@@ -167,7 +168,13 @@ export const MarketingSettingsPanel = () => {
         />
         <Alert severity="info">
           {t.marketing.trackingPrivacyNote}{' '}
-          <Link href="/docs/marketing-automation-api.md#open-and-click-events">{t.marketing.trackingDocsLink}</Link>
+          <Link
+            href="https://github.com/coderoadpl/together/blob/main/docs/marketing-automation-api.md#open-and-click-events"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t.marketing.trackingDocsLink}
+          </Link>
         </Alert>
         {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
       </SectionCard>

@@ -77,6 +77,10 @@ Together allocates P_2 from an immutable per-tenant yearly series such as `FV/20
 
 When 440 identifies an original with the same seller NIP, invoice type, P_2, and frozen hash, Together adopts the original KSeF number and downloads its UPO. Otherwise it stops in the hard-conflict state.
 
+### PDF visualization
+
+Together renders the A4 visualization itself from the frozen FA(3) XML, with no PDF service and no PDF dependency: seller, buyer, positions, VAT summary, KSeF number, verification note, and the XML SHA-256. The same bytes are produced for the same invoice. The structured invoice in KSeF and its UPO remain the fiscal documents; the PDF is only a readable copy. It uses the standard PDF fonts, so Polish diacritics are transliterated (`Żółć` prints as `Zolc`); embedding a font with full Polish coverage is a follow-up.
+
 ### Environments and operations
 
 `KSEF_ENVIRONMENT` is a deployment setting, not a tenant switch. Use `test` with `https://api-test.ksef.mf.gov.pl/v2` only for synthetic data. TEST is shared between integrators, so never use real personal, commercial, or production secrets there. Production uses `https://api.ksef.mf.gov.pl/v2`.

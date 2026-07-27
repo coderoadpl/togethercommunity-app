@@ -343,11 +343,12 @@ export const pl: Messages = {
     webhookUrlLabel: 'URL webhooka dla panelu Stripe',
     webhookUrlHint: 'Wklej ten adres w panelu Stripe → Deweloperzy → Webhooki.',
     loading: 'ładowanie integracji…',
-    fakturowniaHeading: 'Fakturownia',
-    fakturowniaDescription:
-      'Podłącz konto Fakturowni. KSeF skonfiguruj bezpośrednio w Fakturowni — certyfikat nie trafia do Together.',
-    fakturowniaApiKeyLabel: 'klucz API Fakturowni',
-    fakturowniaSubdomainLabel: 'subdomena konta Fakturowni',
+    ifirmaHeading: 'iFirma',
+    ifirmaDescription:
+      'Podłącz iFirmę kluczem API „faktura”. KSeF skonfiguruj bezpośrednio w iFirmie — certyfikat nie trafia do Together.',
+    ifirmaInvoiceApiKeyLabel: 'klucz API „faktura”',
+    ifirmaUsernameLabel: 'login do iFirmy',
+    ifirmaSaveFirst: 'Zapisz najpierw login i klucz API „faktura”, aby przetestować połączenie.',
     bunnyHeading: 'Bunny Stream',
     bunnyDescription:
       'Podaj klucz API biblioteki Bunny Stream oraz jej identyfikator, aby wybierać wideo do lekcji bez ręcznego wklejania identyfikatorów.',
@@ -1023,7 +1024,7 @@ export const pl: Messages = {
     configured: 'skonfigurowano',
     notConfigured: 'nie ustawiono',
     invoiceHeading: 'Automatyczne faktury',
-    invoiceIntro: 'Faktury są wystawiane przez Fakturownię po zakończeniu płatności.',
+    invoiceIntro: 'Faktury są wystawiane przez iFirmę po zakończeniu płatności.',
     autoIssue: 'Wystawiaj automatycznie po płatności',
     autoIssueScope: 'Zakres automatyzacji',
     b2bOnly: 'Tylko zamówienia z NIP',

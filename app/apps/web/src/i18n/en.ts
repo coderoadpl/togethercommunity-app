@@ -337,11 +337,12 @@ export const en: Messages = {
     webhookUrlLabel: 'Webhook URL for the Stripe dashboard',
     webhookUrlHint: 'Paste this into Stripe → Developers → Webhooks.',
     loading: 'loading integrations…',
-    fakturowniaHeading: 'Fakturownia',
-    fakturowniaDescription:
-      'Connect Fakturownia here. Configure KSeF inside Fakturownia; its certificate never reaches Together.',
-    fakturowniaApiKeyLabel: 'Fakturownia API key',
-    fakturowniaSubdomainLabel: 'Fakturownia account subdomain',
+    ifirmaHeading: 'iFirma',
+    ifirmaDescription:
+      'Connect iFirma with the faktura API key. Configure KSeF inside iFirma; its certificate never reaches Together.',
+    ifirmaInvoiceApiKeyLabel: 'faktura API key',
+    ifirmaUsernameLabel: 'iFirma username',
+    ifirmaSaveFirst: 'Save the iFirma username and faktura API key first to test the connection.',
     bunnyHeading: 'Bunny Stream',
     bunnyDescription:
       'Enter your Bunny Stream library API key and library id to pick lesson videos without pasting ids by hand.',
@@ -1003,7 +1004,7 @@ export const en: Messages = {
     configured: 'configured',
     notConfigured: 'not set',
     invoiceHeading: 'Automatic invoices',
-    invoiceIntro: 'Fakturownia issues invoices after payment fulfillment.',
+    invoiceIntro: 'iFirma issues invoices after payment fulfillment.',
     autoIssue: 'Issue automatically after payment',
     autoIssueScope: 'Automation scope',
     b2bOnly: 'Orders with a tax ID only',

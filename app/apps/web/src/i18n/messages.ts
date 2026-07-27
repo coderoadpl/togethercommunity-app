@@ -319,10 +319,11 @@ export interface Messages {
     webhookUrlLabel: string;
     webhookUrlHint: string;
     loading: string;
-    fakturowniaHeading: string;
-    fakturowniaDescription: string;
-    fakturowniaApiKeyLabel: string;
-    fakturowniaSubdomainLabel: string;
+    ifirmaHeading: string;
+    ifirmaDescription: string;
+    ifirmaInvoiceApiKeyLabel: string;
+    ifirmaUsernameLabel: string;
+    ifirmaSaveFirst: string;
     bunnyHeading: string;
     bunnyDescription: string;
     bunnyApiKeyLabel: string;

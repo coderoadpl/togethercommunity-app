@@ -29,7 +29,11 @@ const renderPanel = (
       const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
       const secret: TenantSecretMasked = {
         key:
-          key === 'stripe.webhookSecret' || key === 'bunny.apiKey' || key === 'bunny.securityKey'
+          key === 'stripe.webhookSecret' ||
+          key === 'bunny.apiKey' ||
+          key === 'bunny.securityKey' ||
+          key === 'ifirma.invoiceApiKey' ||
+          key === 'ifirma.username'
             ? key
             : 'stripe.restrictedKey',
         maskedPreview: '••••2345',
@@ -52,6 +56,12 @@ const renderPanel = (
     }),
     http.post('/api/integrations/stripe/test', () =>
       HttpResponse.json({ ok: true, data: { ok: true, diagnostic: 'Stripe accepted the credentials.' } }),
+    ),
+    http.post('/api/integrations/ifirma/test', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { ok: true, diagnostic: 'iFirma accepted the username and faktura API key.' },
+      }),
     ),
     http.post('/api/integrations/bunny/test', () =>
       HttpResponse.json({
@@ -117,6 +127,26 @@ describe('IntegrationsPanel', () => {
     expect(screen.getByTestId('bunny-test-connection')).toBeDisabled();
     expect(await screen.findByText(pl.integrations.bunnySecurityHint)).toBeInTheDocument();
     expect(await screen.findByTestId('secret-input-bunny.securityKey')).toBeInTheDocument();
+  });
+
+  it('keeps iFirma credentials write-only and tests the stored authentication pair', async () => {
+    renderPanel([
+      { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'ifirma.username', maskedPreview: '••••.com', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    expect(await screen.findByTestId('secret-input-ifirma.invoiceApiKey')).toHaveAttribute('type', 'password');
+    expect(screen.getByTestId('secret-input-ifirma.username')).toHaveAttribute('type', 'password');
+    await userEvent.click(screen.getByTestId('ifirma-test-connection'));
+    expect(await screen.findByTestId('ifirma-test-result')).toHaveTextContent(
+      'iFirma accepted the username and faktura API key.',
+    );
+  });
+
+  it('guards the iFirma test until both credentials are stored', async () => {
+    renderPanel();
+    expect(await screen.findByTestId('ifirma-test-connection')).toBeDisabled();
+    expect(screen.getByTestId('ifirma-test-hint')).toHaveTextContent(pl.integrations.ifirmaSaveFirst);
   });
 
   it('saves the Bunny library id and reports the connection diagnostic', async () => {

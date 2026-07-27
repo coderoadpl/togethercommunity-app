@@ -202,6 +202,38 @@ const BunnyTestConnection = ({ ready }: { ready: boolean }) => {
   );
 };
 
+const IfirmaTestConnection = ({ ready }: { ready: boolean }) => {
+  const t = useTranslations();
+  const testConnection = useMutation(actions.testIfirmaConnection);
+  return (
+    <Box sx={{ display: 'grid', gap: '0.5rem' }}>
+      <Button
+        type="button"
+        variant="contained"
+        data-testid="ifirma-test-connection"
+        disabled={testConnection.isPending || !ready}
+        onClick={() => testConnection.mutate(undefined)}
+        sx={{ justifySelf: 'start' }}
+      >
+        {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
+      </Button>
+      {!ready ? (
+        <Typography variant="caption" component="p" data-testid="ifirma-test-hint">
+          {t.integrations.ifirmaSaveFirst}
+        </Typography>
+      ) : null}
+      {testConnection.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="ifirma-test-result">
+          {testConnection.data.diagnostic}
+        </Typography>
+      ) : null}
+      {testConnection.isError ? (
+        <Alert data-testid="ifirma-test-error">{localizeError(testConnection.error, t)}</Alert>
+      ) : null}
+    </Box>
+  );
+};
+
 export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
   const t = useTranslations();
   const secrets = useQuery(actions.tenantSecrets);
@@ -214,6 +246,10 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'stripe.restrictedKey') !== null &&
     previewFor(storedSecrets, 'stripe.webhookSecret') !== null;
+  const ifirmaReady =
+    storedSecrets !== undefined &&
+    previewFor(storedSecrets, 'ifirma.invoiceApiKey') !== null &&
+    previewFor(storedSecrets, 'ifirma.username') !== null;
   const bunnyReady =
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'bunny.apiKey') !== null &&
@@ -282,6 +318,31 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
               </Alert>
             ) : null}
           </Box>
+        </SectionCard>
+
+        <SectionCard
+          title={t.integrations.ifirmaHeading}
+          description={t.integrations.ifirmaDescription}
+        >
+          {secrets.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+          ) : secrets.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+          ) : (
+            <Stack useFlexGap spacing="1.25rem">
+              <SecretField
+                secretKey="ifirma.invoiceApiKey"
+                label={t.integrations.ifirmaInvoiceApiKeyLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'ifirma.invoiceApiKey')}
+              />
+              <SecretField
+                secretKey="ifirma.username"
+                label={t.integrations.ifirmaUsernameLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'ifirma.username')}
+              />
+            </Stack>
+          )}
+          <IfirmaTestConnection ready={ifirmaReady} />
         </SectionCard>
 
         <SectionCard title={t.integrations.bunnyHeading} description={t.integrations.bunnyDescription}>

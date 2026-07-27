@@ -21,6 +21,7 @@ import type {
   MemberSubscriptionRepository,
   OrderDetailRepository,
   OrderRepository,
+  InvoiceRepository,
 } from '../ports.js';
 
 export interface OrdersDeps {
@@ -68,12 +69,16 @@ export const listOrders = async (
 export const getOrder = async (
   ctx: Ctx,
   id: string,
-  deps: { orders: OrderDetailRepository },
-): Promise<Result<{ order: OrderListItem }, AppError>> => {
+  deps: { orders: OrderDetailRepository; invoices?: InvoiceRepository },
+): Promise<Result<{ order: OrderListItem; invoice: Awaited<ReturnType<InvoiceRepository['findCurrentByOrder']>> }, AppError>> => {
   const tenant = requireStaffTenant(ctx);
   if (!tenant.ok) return tenant;
   const order = await deps.orders.findById(tenant.value, id);
-  return order === null ? err(notFound('Order was not found')) : ok({ order });
+  if (order === null) return err(notFound('Order was not found'));
+  const invoice = deps.invoices === undefined
+    ? null
+    : await deps.invoices.findCurrentByOrder(tenant.value, order.id);
+  return ok({ order, invoice });
 };
 
 const neutralizeFormula = (value: string): string =>
@@ -94,6 +99,12 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
       'status',
       'coupon',
       'discount_cents',
+      'billing_nip',
+      'billing_company',
+      'billing_address',
+      'billing_postal_code',
+      'billing_city',
+      'billing_country',
     ].join(','),
     ...orders.map((order) =>
       [
@@ -107,6 +118,12 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         order.status,
         order.couponCode ?? '',
         String(order.discountCents),
+        order.billing?.nip ?? '',
+        order.billing?.companyName ?? '',
+        order.billing?.address ?? '',
+        order.billing?.postalCode ?? '',
+        order.billing?.city ?? '',
+        order.billing?.country ?? '',
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),

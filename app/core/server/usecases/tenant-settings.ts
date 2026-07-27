@@ -54,6 +54,18 @@ export const updateTenantSettings = async (
       faviconUrl: parsed.data.faviconUrl === undefined ? current.faviconUrl : parsed.data.faviconUrl,
       termsUrl: parsed.data.termsUrl === undefined ? current.termsUrl : parsed.data.termsUrl,
       privacyUrl: parsed.data.privacyUrl === undefined ? current.privacyUrl : parsed.data.privacyUrl,
+      autoIssueInvoices:
+        parsed.data.autoIssueInvoices === undefined
+          ? current.autoIssueInvoices
+          : parsed.data.autoIssueInvoices,
+      autoIssueInvoiceScope:
+        parsed.data.autoIssueInvoiceScope === undefined
+          ? current.autoIssueInvoiceScope
+          : parsed.data.autoIssueInvoiceScope,
+      invoiceVatRatePercent:
+        parsed.data.invoiceVatRatePercent === undefined
+          ? current.invoiceVatRatePercent
+          : parsed.data.invoiceVatRatePercent,
     }),
   );
 };

@@ -44,6 +44,7 @@ import {
   lastViewedInputSchema,
   memberProgressResetInputSchema,
   memberRemoveInputSchema,
+  memberBillingOrdersQuerySchema,
   m2mEnrollRequestSchema,
   marketingSuppressionCreateInputSchema,
   moduleAttachInputSchema,
@@ -138,6 +139,9 @@ import {
   getCouponStats,
   listCouponOptions,
   getOrder,
+  requestInvoice,
+  refreshInvoiceStatus,
+  downloadInvoice,
   getEmailSend,
   listTenantApiKeys,
   listCampaignsWithEngagement,
@@ -150,6 +154,7 @@ import {
   listGlobalSchedulerRuns,
   listSchedulerRunsForTenant,
   listMemberEmailSends,
+  listMemberBillingOrders,
   sendTransactionalSmtpTest,
   m2mEnroll,
   revokeTenantApiKey,
@@ -234,8 +239,10 @@ import {
   validateCouponForCheckout,
   listBunnyVideos,
   testBunnyConnection,
+  testIfirmaConnection,
   testStripeConnection,
   fulfillStripeWebhook,
+  autoIssueOnPayment,
   unmarkLessonCompleted,
   updateCourse,
   updateLastViewed,
@@ -477,6 +484,33 @@ const recordFulfilledCheckoutConsents = async (
   });
 };
 
+const autoIssueFulfilledOrder = async (
+  deps: AppDeps,
+  tenantId: string,
+  event: PaymentWebhookEvent,
+): Promise<void> => {
+  if (event.objectId === null || deps.orderDetails === undefined) return;
+  const providerObjectIds = event.type === 'invoice.paid'
+    ? { invoice: event.objectId }
+    : { checkoutSession: event.objectId };
+  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, providerObjectIds);
+  if (order === null) return;
+  try {
+    await autoIssueOnPayment(tenantId, order, {
+      invoices: deps.invoices,
+      invoicing: deps.invoicing,
+      orderDetails: deps.orderDetails,
+      tenants: deps.tenants,
+      tenantSecrets: deps.tenantSecrets,
+      secretCrypto: deps.secretCrypto,
+      ids: deps.ids,
+      clock: deps.clock,
+    });
+  } catch (cause) {
+    deps.logger.error(`[invoice-auto] tenant=${tenantId} order=${order.id} unexpected=${String(cause)}`);
+  }
+};
+
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
 
@@ -657,6 +691,7 @@ export const buildApp = (deps: AppDeps) => {
       attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
       collectedAt: deps.clock.nowIso(),
       confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
+      ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
       ...checkoutConsentEvidence(c.req.raw.headers),
     };
     const checkoutConsentCaptureId = deps.ids.nextId();
@@ -710,6 +745,7 @@ export const buildApp = (deps: AppDeps) => {
       );
       if (!fulfilled.ok) return respondPublic(fulfilled);
       await recordFulfilledCheckoutConsents(deps, tenant.value.tenant, event);
+      await autoIssueFulfilledOrder(deps, tenant.value.tenant.id, event);
     }
     return respondPublic(session);
   });
@@ -859,6 +895,7 @@ export const buildApp = (deps: AppDeps) => {
             email: parsed.data.email,
             productId: parsed.data.productId,
             ...(parsed.data.priceId === undefined ? {} : { priceId: parsed.data.priceId }),
+            ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
           },
           deps,
         );
@@ -894,6 +931,19 @@ export const buildApp = (deps: AppDeps) => {
         } else {
           const couponSessionId = deps.ids.nextId();
           const objectId = `simulated_${couponSessionId}`;
+          const captureId = deps.ids.nextId();
+          await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
+            id: captureId,
+            capture: {
+              termsAccepted: parsed.data.termsAccepted === true,
+              selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+              attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+              collectedAt: deps.clock.nowIso(),
+              confirmationBaseUrl: `${deps.appBaseUrl}/marketing/confirm`,
+              ...(parsed.data.billing === undefined ? {} : { billing: parsed.data.billing }),
+            },
+            createdAt: deps.clock.nowIso(),
+          });
           await deps.couponCheckoutSessions.create(tenant.value.tenant.id, {
             id: couponSessionId,
             tenantId: tenant.value.tenant.id,
@@ -926,6 +976,7 @@ export const buildApp = (deps: AppDeps) => {
                 memberEmail: parsed.data.email,
                 language: parsed.data.language,
                 couponCheckoutSessionId: couponSessionId,
+                checkoutConsentCaptureId: captureId,
               },
             },
           };
@@ -991,6 +1042,22 @@ export const buildApp = (deps: AppDeps) => {
           )}/marketing/confirm`,
           ...checkoutConsentEvidence(c.req.raw.headers),
         });
+        const orderDetails = deps.orderDetails;
+        const paidOrder = orderDetails === undefined
+          ? null
+          : await orderDetails.findById(tenant.value.tenant.id, result.value.orderId);
+        if (paidOrder !== null && orderDetails !== undefined) {
+          await autoIssueOnPayment(tenant.value.tenant.id, paidOrder, {
+            invoices: deps.invoices,
+            invoicing: deps.invoicing,
+            orderDetails,
+            tenants: deps.tenants,
+            tenantSecrets: deps.tenantSecrets,
+            secretCrypto: deps.secretCrypto,
+            ids: deps.ids,
+            clock: deps.clock,
+          });
+        }
       }
 
       const baseUrl = magicLinkBaseUrl(
@@ -1101,6 +1168,9 @@ export const buildApp = (deps: AppDeps) => {
     });
     if (fulfilled.ok && fulfilled.value.processed) {
       await recordFulfilledCheckoutConsents(deps, tenant, event.value);
+      queueMicrotask(() => {
+        void autoIssueFulfilledOrder(deps, tenant.id, event.value);
+      });
     }
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });
@@ -1516,7 +1586,7 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result.ok ? ok({ suppression: result.value }) : result);
   });
 
-  app.get(API_PATHS.me, (c) => {
+  app.get(API_PATHS.me, async (c) => {
     const identity = c.get('identity');
     return respond(
       ok({
@@ -1535,9 +1605,22 @@ export const buildApp = (deps: AppDeps) => {
                 staffRole: identity.staffRole,
                 memberId: identity.memberId,
               }
-            : null,
+          : null,
       }),
     );
+  });
+
+  app.get(API_PATHS.memberBillingOrders, async (c) => {
+    const parsed = memberBillingOrdersQuerySchema.safeParse({
+      page: c.req.query('page'),
+      pageSize: c.req.query('pageSize'),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid billing-order query', parsed.error.flatten())));
+    return respond(await listMemberBillingOrders(
+      { identity: c.get('identity') },
+      parsed.data,
+      { orders: deps.orders },
+    ));
   });
 
   app.get(API_PATHS.tenants, async (c) => {
@@ -1701,6 +1784,10 @@ export const buildApp = (deps: AppDeps) => {
     return respond(result);
   });
 
+  app.post(API_PATHS.ifirmaTestConnection, async (c) =>
+    respond(await testIfirmaConnection({ identity: c.get('identity') }, deps)),
+  );
+
   app.get(API_PATHS.bunnyVideos, async (c) => {
     const parsed = bunnyVideosInputSchema.safeParse({
       search: c.req.query('search'),
@@ -1805,9 +1892,74 @@ export const buildApp = (deps: AppDeps) => {
       await getOrder(
         { identity: c.get('identity') },
         c.req.param('orderId'),
-        { orders: deps.orderDetails },
+        { orders: deps.orderDetails, invoices: deps.invoices },
       ),
     );
+  });
+
+  app.post(API_PATHS.invoiceIssue, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await requestInvoice(
+      { identity: c.get('identity') },
+      c.req.param('orderId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    return respond(result.ok ? ok({ invoice: result.value }) : result);
+  });
+
+  app.post(API_PATHS.invoiceRefresh, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await refreshInvoiceStatus(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    return respond(result.ok ? ok({ invoice: result.value }) : result);
+  });
+
+  app.get(API_PATHS.invoiceDownload, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await downloadInvoice(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    if (!result.ok) return respond(result);
+    const content = Uint8Array.from(result.value.content);
+    return new Response(content.buffer, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `attachment; filename="${result.value.filename}"`,
+        'cache-control': 'private, no-store',
+      },
+    });
   });
 
   app.get(API_PATHS.salesSummary, async (c) => {

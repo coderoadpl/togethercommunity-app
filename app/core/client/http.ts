@@ -27,6 +27,7 @@ import {
   grantCreateOutputSchema,
   grantRevokeOutputSchema,
   healthOutputSchema,
+  ifirmaTestConnectionOutputSchema,
   emailDispatchOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
   lessonOutputSchema,
@@ -65,6 +66,7 @@ import {
   tenantSchedulerRunOutputSchema,
   tenantSchedulerRunsOutputSchema,
   meOutputSchema,
+  memberBillingOrdersOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
   memberProgressResetOutputSchema,
@@ -81,6 +83,7 @@ import {
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
   orderDetailOutputSchema,
+  invoiceOutputSchema,
   ordersExportOutputSchema,
   productPriceCreateOutputSchema,
   productPriceDeactivateOutputSchema,
@@ -531,6 +534,17 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   me: (signal?: AbortSignal) =>
     request(options, API_ROUTES.me.method, API_ROUTES.me.path, meOutputSchema, undefined, signal),
+  listMemberBillingOrders: (page = 1, pageSize = 25, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    return request(
+      options,
+      API_ROUTES.memberBillingOrders.method,
+      `${API_ROUTES.memberBillingOrders.path}?${params.toString()}`,
+      memberBillingOrdersOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   listTenants: (signal?: AbortSignal) =>
     request(options, API_ROUTES.tenants.method, API_ROUTES.tenants.path, tenantListOutputSchema, undefined, signal),
   createTenant: (input: TenantCreateInput, signal?: AbortSignal) =>
@@ -615,6 +629,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.order.path.replace(':orderId', encodeURIComponent(id)),
       orderDetailOutputSchema,
       undefined,
+      signal,
+    ),
+  issueInvoice: (orderId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invoiceIssue.method,
+      API_ROUTES.invoiceIssue.path.replace(':orderId', encodeURIComponent(orderId)),
+      invoiceOutputSchema,
+      {},
+      signal,
+    ),
+  refreshInvoice: (invoiceId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.invoiceRefresh.method,
+      API_ROUTES.invoiceRefresh.path.replace(':invoiceId', encodeURIComponent(invoiceId)),
+      invoiceOutputSchema,
+      {},
       signal,
     ),
   exportOrders: (input: OrdersExportQueryInput, signal?: AbortSignal) => {
@@ -1185,6 +1217,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.stripeTestConnection.method,
       API_ROUTES.stripeTestConnection.path,
       stripeTestConnectionOutputSchema,
+      {},
+      signal,
+    ),
+  testIfirmaConnection: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.ifirmaTestConnection.method,
+      API_ROUTES.ifirmaTestConnection.path,
+      ifirmaTestConnectionOutputSchema,
       {},
       signal,
     ),

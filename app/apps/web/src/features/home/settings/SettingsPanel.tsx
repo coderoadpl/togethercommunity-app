@@ -3,9 +3,13 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   FormControl,
+  FormControlLabel,
   FormLabel,
+  MenuItem,
   OutlinedInput,
+  Select,
   Stack,
   Typography,
 } from '@mui/material';
@@ -82,6 +86,71 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           </Typography>
         ) : null}
         {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const updateSettings = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+  const enabled = settings.data?.settings.autoIssueInvoices ?? false;
+  const scope = settings.data?.settings.autoIssueInvoiceScope ?? 'b2b_only';
+  const vatRate = settings.data?.settings.invoiceVatRatePercent ?? '';
+
+  return (
+    <SectionCard title={t.billing.invoiceHeading} description={t.billing.invoiceIntro}>
+      <FormControlLabel
+        control={(
+          <Checkbox
+            checked={enabled}
+            disabled={!canEdit || settings.isPending || updateSettings.isPending}
+            onChange={(event) => updateSettings.mutate({ autoIssueInvoices: event.target.checked })}
+          />
+        )}
+        label={t.billing.autoIssue}
+      />
+      <FormControl fullWidth>
+        <FormLabel id="invoice-auto-scope-label">{t.billing.autoIssueScope}</FormLabel>
+        <Select
+          labelId="invoice-auto-scope-label"
+          value={scope}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) =>
+            updateSettings.mutate({
+              autoIssueInvoiceScope: event.target.value === 'all' ? 'all' : 'b2b_only',
+            })}
+        >
+          <MenuItem value="b2b_only">{t.billing.b2bOnly}</MenuItem>
+          <MenuItem value="all">{t.billing.allBuyers}</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel id="invoice-vat-rate-label">{t.billing.vatRate}</FormLabel>
+        <Select
+          labelId="invoice-vat-rate-label"
+          value={vatRate}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            updateSettings.mutate({
+              invoiceVatRatePercent: value === 5 || value === 8 || value === 23 ? value : null,
+            });
+          }}
+        >
+          <MenuItem value="">{t.billing.vatRateUnset}</MenuItem>
+          <MenuItem value={5}>5%</MenuItem>
+          <MenuItem value={8}>8%</MenuItem>
+          <MenuItem value={23}>23%</MenuItem>
+        </Select>
+      </FormControl>
+      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -418,6 +487,7 @@ export const SettingsPanel = () => {
   return (
     <PanelPage title={t.sections.settings}>
       <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+      <InvoiceSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <SecurityPanel />

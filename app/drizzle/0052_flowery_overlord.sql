@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "invoice_vat_rate_percent" integer;

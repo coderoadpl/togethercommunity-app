@@ -293,7 +293,7 @@ export const createDeps = (env: Env): AppDeps => {
     env.EMAIL_PROVIDER === 'ses'
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
-  const emailOutbox = createEmailOutboxRepository(db);
+  const emailOutbox = createEmailOutboxRepository(db, env.EMAIL_DISPATCH_ATTEMPTS_CAP);
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
   const schedulerRuns = createSchedulerRunRepository(db);

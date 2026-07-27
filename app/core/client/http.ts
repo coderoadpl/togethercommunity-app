@@ -13,6 +13,7 @@ import {
   checkoutSessionOutputSchema,
   couponCheckoutValidationOutputSchema,
   couponOutputSchema,
+  couponOptionsOutputSchema,
   couponStatsDetailOutputSchema,
   couponStatsExportOutputSchema,
   couponStatsOutputSchema,
@@ -659,6 +660,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  listCouponOptions: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.couponOptions.method,
+      API_ROUTES.couponOptions.path,
+      couponOptionsOutputSchema,
+      undefined,
+      signal,
+    ),
   getCouponStats: (id: string, signal?: AbortSignal) =>
     request(
       options,

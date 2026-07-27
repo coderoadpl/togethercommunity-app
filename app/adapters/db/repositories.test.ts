@@ -428,7 +428,8 @@ describe('coupon redemption repository', () => {
       discountCents: 4900,
       createdAt: NOW,
     });
-    const stats = await createCouponStatsRepository(db).list(ACME, {
+    const statsRepo = createCouponStatsRepository(db);
+    const stats = await statsRepo.list(ACME, {
       limit: 10,
       since: '1998-07-01T00:00:00.000Z',
       through: '1998-07-31T23:59:59.999Z',
@@ -442,6 +443,10 @@ describe('coupon redemption repository', () => {
         discountGiven: [{ currency: 'PLN', amountCents: 7350 }],
       },
     ]);
+    expect(await statsRepo.listOptions(ACME)).toContainEqual({
+      id: 'coupon-race',
+      code: 'RACE',
+    });
   });
 });
 

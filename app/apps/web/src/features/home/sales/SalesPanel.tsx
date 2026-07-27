@@ -35,7 +35,7 @@ export const SalesPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const products = useQuery(actions.products);
-  const coupons = useQuery(actions.couponStats({ limit: 100 }));
+  const coupons = useQuery(actions.couponOptions);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<OrderStatus | 'all'>('all');
   const [productId, setProductId] = useState('all');
@@ -140,9 +140,9 @@ export const SalesPanel = () => {
                   data-testid="sales-coupon-filter"
                 >
                   <MenuItem value="all">{t.sales.all}</MenuItem>
-                  {(coupons.data?.items ?? []).map((item) => (
-                    <MenuItem key={item.coupon.id} value={item.coupon.id}>
-                      {item.coupon.code}
+                  {(coupons.data?.coupons ?? []).map((coupon) => (
+                    <MenuItem key={coupon.id} value={coupon.id}>
+                      {coupon.code}
                     </MenuItem>
                   ))}
                 </Select>

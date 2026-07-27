@@ -136,6 +136,7 @@ import {
   createCoupon,
   archiveCoupon,
   getCouponStats,
+  listCouponOptions,
   getOrder,
   getEmailSend,
   listTenantApiKeys,
@@ -1851,6 +1852,16 @@ export const buildApp = (deps: AppDeps) => {
         { identity: c.get('identity') },
         parsed.data,
         { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.couponOptions, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon options are unavailable')));
+    return respond(
+      await listCouponOptions(
+        { identity: c.get('identity') },
+        { stats: deps.couponStats },
       ),
     );
   });

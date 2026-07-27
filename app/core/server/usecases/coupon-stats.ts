@@ -7,6 +7,7 @@ import {
   type AppError,
   type CouponStatsCursor,
   type CouponStatsItem,
+  type CouponOption,
   type Result,
 } from '@core/domain/index.js';
 
@@ -39,11 +40,18 @@ const windowFor = (
 ): { since: string; through: string } => {
   const through = query.through ?? clock.nowIso();
   return {
-    since:
-      query.since ??
-      new Date(Date.parse(through) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    since: query.since ?? '1970-01-01T00:00:00.000Z',
     through,
   };
+};
+
+export const listCouponOptions = async (
+  ctx: Ctx,
+  deps: Pick<CouponStatsDeps, 'stats'>,
+): Promise<Result<{ coupons: CouponOption[] }, AppError>> => {
+  const tenant = tenantFor(ctx);
+  if (!tenant.ok) return tenant;
+  return ok({ coupons: await deps.stats.listOptions(tenant.value) });
 };
 
 export const listCouponStats = async (

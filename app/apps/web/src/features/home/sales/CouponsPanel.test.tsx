@@ -56,8 +56,17 @@ describe('coupon sales surfaces', () => {
     const queries: string[] = [];
     server.use(
       http.get('/api/coupons', ({ request }) => {
-        queries.push(new URL(request.url).search);
-        return HttpResponse.json({ ok: true, data: { items: [item], nextCursor: null } });
+        const search = new URL(request.url).search;
+        queries.push(search);
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            items: [item],
+            nextCursor: search.includes('cursorId=')
+              ? null
+              : { createdAt: coupon.createdAt, id: coupon.id },
+          },
+        });
       }),
       http.get('/api/coupons/export', () =>
         HttpResponse.json({
@@ -75,6 +84,10 @@ describe('coupon sales surfaces', () => {
 
     expect(await screen.findByTestId('coupon-row')).toHaveTextContent('PARTNER20');
     expect(screen.getByTestId('coupon-row')).toHaveTextContent('80,00');
+    await userEvent.click(screen.getByRole('button', { name: pl.coupons.nextPage }));
+    await waitFor(() =>
+      expect(queries.some((query) => query.includes('cursorId=coupon-1'))).toBe(true),
+    );
     await userEvent.type(screen.getByTestId('coupon-partner-filter'), 'Partner A');
     await waitFor(() =>
       expect(queries.some((query) => query.includes('partnerLabel=Partner+A'))).toBe(true),

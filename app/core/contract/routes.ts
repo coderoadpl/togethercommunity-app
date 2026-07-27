@@ -6,6 +6,7 @@ import {
   couponCheckoutBreakdownSchema,
   couponRecurringDurationSchema,
   couponCreateInputSchema,
+  couponOptionSchema,
   couponStatsItemSchema,
   courseLessonSchema,
   courseModuleSchema,
@@ -409,6 +410,9 @@ export type CouponStatsQueryInput = z.input<typeof couponStatsQuerySchema>;
 export const couponStatsOutputSchema = z.object({
   items: z.array(couponStatsItemSchema),
   nextCursor: z.object({ createdAt: z.string().datetime(), id: z.string() }).nullable(),
+});
+export const couponOptionsOutputSchema = z.object({
+  coupons: z.array(couponOptionSchema),
 });
 export const couponStatsDetailOutputSchema = z.object({ item: couponStatsItemSchema });
 export const couponCreateRequestSchema = couponCreateInputSchema;
@@ -1031,6 +1035,7 @@ export const API_ROUTES = {
   ordersExport: { method: 'GET', path: '/api/orders/export' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
   couponStats: { method: 'GET', path: '/api/coupons' },
+  couponOptions: { method: 'GET', path: '/api/coupons/options' },
   couponStatsDetail: { method: 'GET', path: '/api/coupons/:couponId' },
   couponsCreate: { method: 'POST', path: '/api/coupons' },
   couponArchive: { method: 'POST', path: '/api/coupons/archive' },
@@ -1186,6 +1191,7 @@ export const API_PATHS = {
   ordersExport: API_ROUTES.ordersExport.path,
   salesSummary: API_ROUTES.salesSummary.path,
   couponStats: API_ROUTES.couponStats.path,
+  couponOptions: API_ROUTES.couponOptions.path,
   couponStatsDetail: API_ROUTES.couponStatsDetail.path,
   couponsCreate: API_ROUTES.couponsCreate.path,
   couponArchive: API_ROUTES.couponArchive.path,

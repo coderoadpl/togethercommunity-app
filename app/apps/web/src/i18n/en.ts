@@ -242,6 +242,7 @@ export const en: Messages = {
     optional: 'optional',
     valuePercent: 'percentage value',
     valueCents: 'value in cents',
+    currency: 'currency',
     products: 'products',
     exportCsv: 'Export CSV',
     exportJson: 'Export JSON',
@@ -249,6 +250,8 @@ export const en: Messages = {
     timeSeries: 'Activity over time',
     noActivity: 'No redemptions in the selected period.',
     date: 'date',
+    previousPage: 'Previous page',
+    nextPage: 'Next page',
   },
   tenantNotFound: {
     title: 'No such space',

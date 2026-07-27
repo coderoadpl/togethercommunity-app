@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { type CouponStatsItem, type Identity } from '@core/domain/index.js';
 
-import { exportCouponStats, listCouponStats } from './coupon-stats.js';
+import { exportCouponStats, listCouponOptions, listCouponStats } from './coupon-stats.js';
 
 const identity: Identity = {
   userId: 'owner-1',
@@ -51,8 +51,13 @@ const item: CouponStatsItem = {
   ],
 };
 
+const queries: Array<{ since: string; through: string }> = [];
 const stats = {
-  list: async () => ({ items: [item], nextCursor: null }),
+  listOptions: async () => [{ id: item.coupon.id, code: item.coupon.code }],
+  list: async (_tenantId: string, query: { since: string; through: string }) => {
+    queries.push(query);
+    return { items: [item], nextCursor: null };
+  },
 };
 
 describe('coupon stats', () => {
@@ -65,6 +70,17 @@ describe('coupon stats', () => {
     expect(result).toMatchObject({
       ok: true,
       value: { items: [{ redemptions: 2, sessionsWithCode: 4, conversionRate: 0.5 }] },
+    });
+    expect(queries.at(-1)).toMatchObject({
+      since: '1970-01-01T00:00:00.000Z',
+      through: '2026-07-27T12:00:00.000Z',
+    });
+  });
+
+  it('lists lightweight coupon options for sales filters', async () => {
+    expect(await listCouponOptions({ identity }, { stats })).toEqual({
+      ok: true,
+      value: { coupons: [{ id: 'coupon-1', code: 'PARTNER20' }] },
     });
   });
 

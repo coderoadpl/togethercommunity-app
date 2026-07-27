@@ -351,6 +351,13 @@
       "when": 1785173938286,
       "tag": "0049_coupon_payment_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1785174150924,
+      "tag": "0050_coupon_amount_currency",
+      "breakpoints": true
     }
   ]
 }

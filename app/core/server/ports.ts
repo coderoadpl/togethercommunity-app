@@ -52,6 +52,7 @@ import type {
   CampaignSend,
   CheckoutConsentCapture,
   Coupon,
+  CouponOption,
   CouponCheckoutSession,
   CouponEvent,
   CouponRedemptionEvent,
@@ -496,6 +497,7 @@ export interface ProductPriceHistoryRepository {
 }
 
 export interface CouponStatsRepository {
+  listOptions(tenantId: string): Promise<CouponOption[]>;
   list(
     tenantId: string,
     query: {

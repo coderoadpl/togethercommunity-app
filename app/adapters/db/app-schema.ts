@@ -274,6 +274,7 @@ export const coupons = pgTable(
     code: text('code').notNull(),
     kind: text('kind', { enum: ['percent', 'amount'] }).notNull(),
     value: integer('value').notNull(),
+    currency: text('currency'),
     scope: jsonb('scope').$type<CouponScope>().notNull(),
     appliesTo: text('applies_to', { enum: ['one_time', 'recurring', 'both'] }).notNull(),
     recurringDuration: text('recurring_duration', {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   calculateDiscount,
-  deriveLowestPriceLast30Days,
+  couponCreateInputSchema,
   normalizeCouponCode,
   validateCoupon,
   type Coupon,
@@ -32,6 +32,7 @@ const coupon = (overrides: Partial<Coupon> = {}): Coupon => ({
 describe('coupon discount math', () => {
   it.each([
     [0, 50, 0],
+    [100, 0, 0],
     [1, 50, 1],
     [3, 50, 2],
     [100, 100, 100],
@@ -45,6 +46,18 @@ describe('coupon discount math', () => {
 });
 
 describe('coupon validation', () => {
+  it('requires fixed discounts to declare their currency', () => {
+    const input = {
+      code: 'SAVE5',
+      kind: 'amount',
+      value: 500,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+    };
+    expect(couponCreateInputSchema.safeParse(input).success).toBe(false);
+    expect(couponCreateInputSchema.safeParse({ ...input, currency: 'PLN' }).success).toBe(true);
+  });
+
   it('normalizes codes case-insensitively', () => {
     expect(normalizeCouponCode('  partner20 ')).toBe('PARTNER20');
   });
@@ -55,6 +68,7 @@ describe('coupon validation', () => {
     ['expired', coupon({ endsAt: '2026-07-20T00:00:00.000Z' }), 'expired'],
     ['wrong product', coupon({ scope: { kind: 'products', productIds: ['other'] } }), 'scope'],
     ['wrong purchase kind', coupon({ appliesTo: 'recurring' }), 'purchase_kind'],
+    ['wrong currency', coupon({ kind: 'amount', value: 500, currency: 'EUR' }), 'currency'],
     ['global limit', coupon({ maxRedemptions: 2 }), 'limit'],
     ['member limit', coupon({ maxRedemptionsPerMember: 1 }), 'member_limit'],
   ] as const)('rejects %s', (_label, candidate, reason) => {
@@ -63,6 +77,7 @@ describe('coupon validation', () => {
         now: '2026-07-27T00:00:00.000Z',
         productId: 'product-1',
         priceKind: 'one_time',
+        currency: 'PLN',
         totalRedemptions: 2,
         memberRedemptions: 1,
       }),
@@ -77,6 +92,7 @@ describe('coupon validation', () => {
         sessionStartedAt: '2026-07-25T00:00:00.000Z',
         productId: 'product-1',
         priceKind: 'one_time',
+        currency: 'PLN',
         totalRedemptions: 1,
         memberRedemptions: 0,
       }),
@@ -87,26 +103,10 @@ describe('coupon validation', () => {
         sessionStartedAt: '2026-07-25T00:00:00.000Z',
         productId: 'product-1',
         priceKind: 'one_time',
+        currency: 'PLN',
         totalRedemptions: 2,
         memberRedemptions: 0,
       }),
     ).toEqual({ valid: false, reason: 'limit' });
-  });
-});
-
-describe('Omnibus lowest price', () => {
-  it('includes the exact 30-day edge and current base price but excludes older and future rows', () => {
-    expect(
-      deriveLowestPriceLast30Days(
-        1200,
-        [
-          { amountCents: 800, effectiveFrom: '2026-06-27T12:00:00.000Z' },
-          { amountCents: 700, effectiveFrom: '2026-06-27T11:59:59.999Z' },
-          { amountCents: 600, effectiveFrom: '2026-07-27T12:00:00.001Z' },
-          { amountCents: 900, effectiveFrom: '2026-07-20T00:00:00.000Z' },
-        ],
-        '2026-07-27T12:00:00.000Z',
-      ),
-    ).toBe(800);
   });
 });

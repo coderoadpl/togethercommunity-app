@@ -27,6 +27,7 @@ export const couponSchema = z
     code: z.string().min(1),
     kind: couponKindSchema,
     value: z.number().int().nonnegative(),
+    currency: z.string().regex(/^[A-Z]{3}$/).nullable().optional(),
     scope: couponScopeSchema,
     appliesTo: couponAppliesToSchema,
     recurringDuration: couponRecurringDurationSchema,
@@ -48,6 +49,20 @@ export const couponSchema = z
         message: 'A percentage discount cannot exceed 100',
       });
     }
+    if (value.kind === 'amount' && value.currency == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['currency'],
+        message: 'A fixed discount requires a currency',
+      });
+    }
+    if (value.kind === 'percent' && value.currency != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['currency'],
+        message: 'A percentage discount cannot declare a currency',
+      });
+    }
     if (value.startsAt !== null && value.endsAt !== null && value.startsAt >= value.endsAt) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -63,6 +78,7 @@ export const couponCreateInputSchema = z
     code: z.string().trim().min(1).max(100),
     kind: couponKindSchema,
     value: z.number().int().nonnegative(),
+    currency: z.string().regex(/^[A-Z]{3}$/).nullable().default(null),
     scope: couponScopeSchema,
     appliesTo: couponAppliesToSchema,
     recurringDuration: couponRecurringDurationSchema.default('first_invoice'),
@@ -78,6 +94,20 @@ export const couponCreateInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ['value'],
         message: 'A percentage discount cannot exceed 100',
+      });
+    }
+    if (value.kind === 'amount' && value.currency === null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['currency'],
+        message: 'A fixed discount requires a currency',
+      });
+    }
+    if (value.kind === 'percent' && value.currency !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['currency'],
+        message: 'A percentage discount cannot declare a currency',
       });
     }
     if (value.startsAt !== null && value.endsAt !== null && value.startsAt >= value.endsAt) {
@@ -179,6 +209,12 @@ export const couponStatsItemSchema = z.object({
 });
 export type CouponStatsItem = z.infer<typeof couponStatsItemSchema>;
 
+export const couponOptionSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+});
+export type CouponOption = z.infer<typeof couponOptionSchema>;
+
 export const couponStatsCursorSchema = z.object({
   createdAt: z.string().datetime(),
   id: z.string(),
@@ -201,6 +237,7 @@ export const couponValidationFailureSchema = z.enum([
   'expired',
   'scope',
   'purchase_kind',
+  'currency',
   'limit',
   'member_limit',
 ]);
@@ -227,6 +264,7 @@ export const validateCoupon = (
     sessionStartedAt?: string;
     productId: string;
     priceKind: PriceKind;
+    currency: string;
     totalRedemptions: number;
     memberRedemptions: number;
   },
@@ -245,6 +283,9 @@ export const validateCoupon = (
   if (coupon.appliesTo !== 'both' && coupon.appliesTo !== input.priceKind) {
     return { valid: false, reason: 'purchase_kind' };
   }
+  if (coupon.kind === 'amount' && coupon.currency !== input.currency) {
+    return { valid: false, reason: 'currency' };
+  }
   if (coupon.maxRedemptions !== null && input.totalRedemptions >= coupon.maxRedemptions) {
     return { valid: false, reason: 'limit' };
   }
@@ -255,24 +296,4 @@ export const validateCoupon = (
     return { valid: false, reason: 'member_limit' };
   }
   return { valid: true };
-};
-
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
-export const deriveLowestPriceLast30Days = (
-  currentBasePriceCents: number,
-  history: Array<Pick<ProductPriceHistory, 'amountCents' | 'effectiveFrom'>>,
-  now: string,
-): number => {
-  const nowMs = Date.parse(now);
-  const windowStart = nowMs - THIRTY_DAYS_MS;
-  return history.reduce(
-    (lowest, row) => {
-      const effectiveMs = Date.parse(row.effectiveFrom);
-      return effectiveMs >= windowStart && effectiveMs <= nowMs
-        ? Math.min(lowest, row.amountCents)
-        : lowest;
-    },
-    currentBasePriceCents,
-  );
 };

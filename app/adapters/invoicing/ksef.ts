@@ -22,6 +22,11 @@ import {
 } from '@core/domain/index.js';
 import type { KsefClientPort, KsefCredentials } from '@core/server/index.js';
 
+const ksefTimestampSchema = z
+  .string()
+  .refine((value) => !Number.isNaN(Date.parse(value)))
+  .transform((value) => new Date(value).toISOString());
+
 const tokenInfoSchema = z.object({
   token: z.string(),
   validUntil: z.string(),
@@ -63,9 +68,9 @@ const invoiceStatusSchema = z.object({
   ksefNumber: z.string().optional(),
   referenceNumber: z.string(),
   invoiceHash: z.string().optional(),
-  acquisitionDate: z.string().optional(),
-  invoicingDate: z.string().optional(),
-  permanentStorageDate: z.string().optional(),
+  acquisitionDate: ksefTimestampSchema.optional(),
+  invoicingDate: ksefTimestampSchema.optional(),
+  permanentStorageDate: ksefTimestampSchema.optional(),
   status: statusSchema,
 });
 const sessionInvoicesSchema = z.object({

@@ -59,11 +59,14 @@ const transactionalProjection = (
     source: row.kind,
     status: row.status,
     skipReason: null,
+    failureCode: row.lastErrorCode,
+    failureMessage: row.lastError,
     deliveryStatus: row.deliveryStatus,
     deliveryOccurredAt: row.deliveryOccurredAt === null ? null : new Date(row.deliveryOccurredAt).toISOString(),
     campaignId: null,
     campaignName: null,
     sesMessageId: row.sesMessageId,
+    transport: row.transport ?? 'platform',
     createdAt: new Date(row.createdAt).toISOString(),
     sentAt: row.sentAt === null ? null : new Date(row.sentAt).toISOString(),
   });
@@ -81,12 +84,15 @@ const marketingProjection = (
   subject: send.subject,
   source: send.source,
   status: send.status,
-  skipReason: send.skipReason,
+    skipReason: send.skipReason,
+    failureCode: null,
+    failureMessage: null,
   deliveryStatus: send.deliveryStatus,
   deliveryOccurredAt: send.deliveryOccurredAt === null ? null : new Date(send.deliveryOccurredAt).toISOString(),
   campaignId: send.campaignId,
   campaignName,
-  sesMessageId: send.sesMessageId,
+    sesMessageId: send.sesMessageId,
+    transport: 'tenant-ses',
   createdAt: new Date(send.createdAt).toISOString(),
   sentAt: send.sentAt === null ? null : new Date(send.sentAt).toISOString(),
 });
@@ -103,6 +109,7 @@ const transactionalRows = async (
   if (sendId !== undefined) filters.push(eq(emailOutbox.id, sendId));
   if (query.status !== undefined) filters.push(eq(emailOutbox.status, query.status));
   if (query.deliveryStatus !== undefined) filters.push(eq(emailOutbox.deliveryStatus, query.deliveryStatus));
+  if (query.transport !== undefined) filters.push(eq(emailOutbox.transport, query.transport));
   if (query.runId !== undefined) filters.push(sql`exists (
     select 1 from ${emailEvents}
     where ${emailEvents.tenantId} = ${tenantId}
@@ -130,6 +137,7 @@ const marketingRows = async (
   sendId?: string,
 ): Promise<EmailSendProjection[]> => {
   if (query.kind === 'transactional' || (query.status !== undefined && !marketingStatus(query.status))) return [];
+  if (query.transport !== undefined && query.transport !== 'tenant-ses') return [];
   const filters: SQL[] = [eq(campaignSends.tenantId, tenantId)];
   if (sendId !== undefined) filters.push(eq(campaignSends.id, sendId));
   if (query.status !== undefined) filters.push(eq(campaignSends.status, query.status));

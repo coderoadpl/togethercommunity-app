@@ -62,13 +62,14 @@ const neutralizeFormula = (value: string): string =>
 const quoteCsv = (value: string): string => `"${neutralizeFormula(value).replaceAll('"', '""')}"`;
 
 const csv = (rows: Awaited<ReturnType<EmailSendRepository['listPage']>>['sends']): string => [
-  'kind,recipient,subject,status,delivery_status,campaign,source,sent_at,created_at',
+  'kind,recipient,subject,status,delivery_status,transport,campaign,source,sent_at,created_at',
   ...rows.map((send) => [
     send.kind,
     send.recipient,
     send.subject,
     send.status,
     send.deliveryStatus ?? '',
+    send.transport,
     send.campaignName ?? '',
     send.source,
     send.sentAt ?? '',
@@ -89,6 +90,7 @@ export const exportEmailSends = async (
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
     ...(parsed.data.deliveryStatus === undefined ? {} : { deliveryStatus: parsed.data.deliveryStatus }),
+    ...(parsed.data.transport === undefined ? {} : { transport: parsed.data.transport }),
     ...(parsed.data.campaignId === undefined ? {} : { campaignId: parsed.data.campaignId }),
     ...(parsed.data.runId === undefined ? {} : { runId: parsed.data.runId }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),

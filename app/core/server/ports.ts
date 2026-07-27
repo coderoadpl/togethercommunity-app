@@ -13,6 +13,7 @@ import type {
   EmailReputationCounts,
   EmailSendListQuery,
   EmailSendProjection,
+  TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
   MemberGrant,
@@ -527,6 +528,25 @@ export interface EmailPort {
   send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string }, AppError>>;
 }
 
+export interface TransactionalEmailSender {
+  send(message: {
+    tenantId: string | null;
+    to: string;
+    headers?: Record<string, string>;
+    messageId?: string;
+  } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
+}
+
+export interface TransactionalEmailTransportResolver {
+  resolve(tenantId: string): Promise<EmailPort | null>;
+}
+
+export interface PlatformTransactionalPool {
+  usage(tenantId: string): Promise<{ sent: number; reserved: number }>;
+  reserve(tenantId: string, limit: number): Promise<boolean>;
+  settle(tenantId: string, successful: boolean): Promise<void>;
+}
+
 export interface EmailEventRepository {
   append(tenantId: string, event: EmailEvent): Promise<void>;
   listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
@@ -558,6 +578,7 @@ export interface EmailOutboxItem {
   payload: unknown;
   attempts: number;
   sesMessageId: string | null;
+  transport: TransactionalEmailTransport | null;
   deliveryStatus: 'delivered' | 'bounced' | 'complained' | null;
   deliveryOccurredAt: string | null;
 }
@@ -565,8 +586,8 @@ export interface EmailOutboxItem {
 export interface EmailOutboxRepository {
   enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>>;
   claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
-  markSent(input: { id: string; sentAt: string; sesMessageId: string; runId: string }): Promise<Result<void, AppError>>;
-  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; runId: string }): Promise<Result<void, AppError>>;
+  markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>>;
+  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>>;
   correlateBySesMessageId?(tenantId: string, sesMessageId: string): Promise<EmailOutboxItem | null>;
   markDelivery?(input: {
     tenantId: string;

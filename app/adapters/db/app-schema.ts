@@ -684,9 +684,11 @@ export const emailOutbox = pgTable(
     attempts: integer('attempts').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).notNull(),
     lastError: text('last_error'),
+    lastErrorCode: text('last_error_code'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
     sesMessageId: text('ses_message_id'),
+    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'platform'] }),
     deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
     deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
   },
@@ -700,6 +702,14 @@ export const emailOutbox = pgTable(
       .where(sql`${table.sesMessageId} is not null`),
   ],
 );
+
+export const tenantTransactionalEmailPools = pgTable('tenant_transactional_email_pools', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  sent: integer('sent').notNull().default(0),
+  reserved: integer('reserved').notNull().default(0),
+});
 
 export const emailEvents = pgTable(
   'email_events',

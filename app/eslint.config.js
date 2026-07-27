@@ -426,7 +426,7 @@ export default tseslint.config(
             },
             {
               from: ['adapter-email'],
-              allow: ['@aws-sdk/client-ses'],
+              allow: ['@aws-sdk/client-ses', 'nodemailer'],
             },
             {
               from: ['adapter-payment'],
@@ -637,7 +637,7 @@ export default tseslint.config(
         {
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
-          rules: [{ from: ['adapter-email'], allow: ['@aws-sdk/client-ses', 'vitest'] }],
+          rules: [{ from: ['adapter-email'], allow: ['@aws-sdk/client-ses', 'nodemailer', 'vitest'] }],
         },
       ],
     },

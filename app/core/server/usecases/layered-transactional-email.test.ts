@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, integrationUnavailable, ok, type EmailMessage } from '@core/domain/index.js';
+import { err, integrationUnavailable, ok, type AppError, type EmailMessage, type Result } from '@core/domain/index.js';
 import type {
   EmailPort,
   PlatformTransactionalPool,
@@ -41,7 +41,7 @@ class MemoryPool implements PlatformTransactionalPool {
 const port = (
   name: string,
   calls: string[],
-  result = ok({ messageId: `${name}-message` }),
+  result: Result<{ messageId: string }, AppError> = ok({ messageId: `${name}-message` }),
 ): EmailPort => ({
   send: async () => {
     calls.push(name);
@@ -103,7 +103,10 @@ describe('layered transactional e-mail sender', () => {
 
     const sent = await sender.send({ tenantId: 'tenant-1', to: 'member@example.test', ...message });
 
-    expect(sent).toEqual(err(integrationUnavailable('SES rejected the send')));
+    expect(sent).toEqual(err({
+      ...integrationUnavailable('SES rejected the send'),
+      details: { transport: 'tenant-ses', cause: undefined },
+    }));
     expect(calls).toEqual(['tenant-ses']);
   });
 

@@ -10,6 +10,11 @@ export const tenantSecretKeySchema = z.enum([
   'ses.accessKeyId',
   'ses.secretAccessKey',
   'ses.region',
+  'smtp.host',
+  'smtp.port',
+  'smtp.user',
+  'smtp.password',
+  'smtp.secure',
 ]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;

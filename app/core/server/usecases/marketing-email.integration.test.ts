@@ -693,7 +693,7 @@ describe('marketing e-mail use-case integration', () => {
     await dispatchEmailBatch({
       emailOutbox: deps.outbox,
       events: deps.events,
-      email: { send: async () => ok({ messageId: 'transactional-ses-id' }) },
+      email: { send: async () => ok({ messageId: 'transactional-ses-id', transport: 'platform' as const }) },
       clock,
       logger: { error: () => undefined },
       batchSize: 1,
@@ -935,6 +935,7 @@ describe('marketing e-mail use-case integration', () => {
       attempts: 0,
       status: 'queued',
       sesMessageId: null,
+      transport: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
     });

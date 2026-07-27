@@ -8,10 +8,10 @@ import { err, internal, ok, type Member, type ProductGrant } from '@core/domain/
 import { dispatchEmailBatch } from '@core/server/index.js';
 
 import { createDb, type Db } from './client.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort } from './email-outbox.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';
 import { createEmailEventRepository } from './email-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
-import { emailOutbox, members, productGrants, products, schedulerRuns, tenants } from './schema.js';
+import { emailOutbox, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
 
 const TEST_DB = 'together_email_outbox_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -40,6 +40,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(emailOutbox);
+  await db.delete(tenantTransactionalEmailPools);
   await db.delete(schedulerRuns);
   await db.delete(productGrants);
   await db.delete(members);
@@ -65,6 +66,24 @@ const enqueue = async (id: string, now = NOW) => {
 };
 
 describe('email outbox database adapter', () => {
+  it('atomically reserves only the remaining platform pool capacity', async () => {
+    await db.insert(tenantTransactionalEmailPools).values({
+      tenantId: 'tenant-outbox',
+      sent: 998,
+      reserved: 0,
+    });
+    const pool = createPlatformTransactionalPool(db);
+
+    const reservations = await Promise.all(
+      Array.from({ length: 5 }, () => pool.reserve('tenant-outbox', 1000)),
+    );
+
+    expect(reservations.filter(Boolean)).toHaveLength(2);
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 998, reserved: 2 });
+    await Promise.all([pool.settle('tenant-outbox', true), pool.settle('tenant-outbox', false)]);
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
+  });
+
   it('rolls member, grant, and outbox writes back together', async () => {
     const member: Member = { id: 'member-rollback', tenantId: 'tenant-outbox', userId: 'user-rollback', email: 'rollback@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null };
     const grant: ProductGrant = { id: 'grant-rollback', tenantId: 'tenant-outbox', memberId: member.id, productId: 'product-outbox', source: 'manual', startsAt: NOW, expiresAt: null, legacyId: null, createdAt: NOW };
@@ -86,7 +105,7 @@ describe('email outbox database adapter', () => {
     const deps = {
       emailOutbox: createEmailOutboxRepository(db),
       events: createEmailEventRepository(db),
-      email: { send: async (message: { to: string }) => { sent.push(message.to); return ok({ messageId: message.to }); } },
+      email: { send: async (message: { to: string }) => { sent.push(message.to); return ok({ messageId: message.to, transport: 'platform' as const }); } },
       clock: { nowIso: () => NOW },
       logger: console,
       batchSize: 10,
@@ -104,7 +123,7 @@ describe('email outbox database adapter', () => {
     const result = await dispatchEmailBatch({
       emailOutbox: createEmailOutboxRepository(db),
       events: createEmailEventRepository(db),
-      email: { send: async (message: { to: string }) => ok({ messageId: message.to }) },
+      email: { send: async (message: { to: string }) => ok({ messageId: message.to, transport: 'platform' as const }) },
       clock: { nowIso: () => NOW },
       logger: console,
       batchSize: 2,

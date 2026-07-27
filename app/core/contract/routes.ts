@@ -825,6 +825,8 @@ export const marketingLayoutSaveInputSchema = z.object({
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
+  smtpConfigured: z.boolean(),
+  platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
 });
 export const marketingReputationOutputSchema = emailReputationSchema;
@@ -840,6 +842,7 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   footerLegalName: z.string(),
   footerAddress: z.string(),
 });
+export const marketingSmtpTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingSuppressionCreateInputSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).nullable().default(null) });
 export const marketingSuppressionsOutputSchema = z.object({ suppressions: z.array(suppressionSchema), nextCursor: z.string().nullable() });
 export const marketingSuppressionOutputSchema = z.object({ suppression: suppressionSchema });
@@ -1016,6 +1019,7 @@ export const API_ROUTES = {
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
+  marketingSmtpTest: { method: 'POST', path: '/api/marketing/smtp/test' },
   marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
@@ -1151,6 +1155,7 @@ export const API_PATHS = {
   marketingDocumentPublish: API_ROUTES.marketingDocumentPublish.path,
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
+  marketingSmtpTest: API_ROUTES.marketingSmtpTest.path,
   marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   emailSends: API_ROUTES.emailSends.path,

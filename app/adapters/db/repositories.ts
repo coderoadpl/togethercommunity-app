@@ -1562,6 +1562,8 @@ export const createOrderRepository = (db: Db): OrderRepository => {
         currency: order.currency,
         provider: order.provider,
         providerObjectIds: order.providerObjectIds,
+        couponId: order.couponId,
+        discountCents: order.discountCents,
         createdAt: order.createdAt,
       });
     },
@@ -1704,6 +1706,9 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
     status: subscription.status,
     currentPeriodEnd: subscription.currentPeriodEnd,
     cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    couponId: subscription.couponId,
+    couponDiscountCents: subscription.couponDiscountCents,
+    couponRecurringDuration: subscription.couponRecurringDuration,
     createdAt: subscription.createdAt,
     updatedAt: subscription.updatedAt,
   });

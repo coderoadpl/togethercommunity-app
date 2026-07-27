@@ -28,6 +28,8 @@ const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem
   currency: 'PLN',
   provider: 'simulated',
   providerObjectIds: {},
+  couponId: null,
+  discountCents: 0,
   createdAt: '2026-07-10T00:00:00.000Z',
   memberEmail: 'buyer@together.dev',
   memberName: 'Buyer',

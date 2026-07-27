@@ -264,6 +264,7 @@ import {
 } from '@adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
+import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
 import { registerMarketingRoutes } from './marketing-routes.js';
@@ -510,7 +511,7 @@ const autoIssueFulfilledOrder = async (
       clock: deps.clock,
       ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
     });
-    if (deps.ksef !== undefined) void deps.ksef.dispatch();
+    dispatchKsefInBackground(deps.ksef, deps.logger, 'payment fulfilment');
   } catch (cause) {
     deps.logger.error(`[invoice-auto] tenant=${tenantId} order=${order.id} unexpected=${String(cause)}`);
   }
@@ -546,6 +547,14 @@ export const buildApp = (deps: AppDeps) => {
   app.post(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
     if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.ksef.dispatchSecret) {
+      return respond(err(unauthorized('Invalid KSeF dispatch secret')));
+    }
+    return respond(await deps.ksef.dispatch());
+  });
+
+  app.get(API_PATHS.ksefDispatch, async (c) => {
+    if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
+    if (c.req.header('authorization') !== `Bearer ${deps.ksef.dispatchSecret}`) {
       return respond(err(unauthorized('Invalid KSeF dispatch secret')));
     }
     return respond(await deps.ksef.dispatch());
@@ -1935,7 +1944,7 @@ export const buildApp = (deps: AppDeps) => {
       },
     );
     if (result.ok && result.value.provider === 'ksef' && deps.ksef !== undefined) {
-      void deps.ksef.dispatch();
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue');
     }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });

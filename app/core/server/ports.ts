@@ -678,6 +678,7 @@ export interface TenantDocumentRepository {
   listVersions(tenantId: string, documentId: string): Promise<TenantDocumentVersion[]>;
   saveDraft(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<TenantDocumentVersion | null>;
   publishDraft(tenantId: string, documentId: string, publishedAt: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+  findPublishedVersionById(tenantId: string, versionId: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
   findLatestPublished(tenantId: string, slug: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
   findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
 }

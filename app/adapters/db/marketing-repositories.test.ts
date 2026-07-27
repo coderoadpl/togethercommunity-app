@@ -484,6 +484,11 @@ describe('marketing database repositories', () => {
     };
     await repository.create('tenant-a', document, first);
     expect(await repository.publishDraft('tenant-a', document.id, NOW)).not.toBeNull();
+    expect(await repository.findPublishedVersionById('tenant-a', first.id)).toMatchObject({
+      document: { slug: 'privacy' },
+      version: { id: first.id, version: 1 },
+    });
+    expect(await repository.findPublishedVersionById('tenant-b', first.id)).toBeNull();
     const second: TenantDocumentVersion = {
       ...first, id: 'document-version-a-2', version: 2, content: '# Second', createdAt: '2026-07-22T01:00:00.000Z',
     };

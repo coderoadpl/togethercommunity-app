@@ -221,6 +221,7 @@ export interface AppDeps {
   health: HealthPort;
   ids: IdGenerator;
   clock: Clock;
+  logger: { error(message: string): void };
   baseDomain: string;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
@@ -347,12 +348,13 @@ export const createDeps = (env: Env): AppDeps => {
     ? { read: (credentials) => readSesQuota(credentials) }
     : undefined;
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
+  const logger = { error: (message: string) => process.stderr.write(`${message}\n`) };
   const dispatchDeps = {
     emailOutbox,
     events: emailEvents,
     email: transactionalEmail,
     clock,
-    logger: { error: (message: string) => process.stderr.write(`${message}\n`) },
+    logger,
     batchSize: Math.max(1, Math.floor(env.EMAIL_DISPATCH_RATE_PER_SECOND * env.EMAIL_DISPATCH_INTERVAL_MS / 1000)),
     attemptsCap: env.EMAIL_DISPATCH_ATTEMPTS_CAP,
     backoffBaseMs: env.EMAIL_DISPATCH_BACKOFF_BASE_MS,
@@ -557,6 +559,7 @@ export const createDeps = (env: Env): AppDeps => {
     health: createHealthPort(db),
     ids,
     clock,
+    logger,
     baseDomain: env.APP_BASE_DOMAIN,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {

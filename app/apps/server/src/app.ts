@@ -350,6 +350,15 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string }): I
   memberId: null,
 });
 
+const checkoutConsentEvidence = (headers: Headers) => {
+  const ip = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const userAgent = headers.get('user-agent') ?? undefined;
+  return {
+    ...(ip === undefined || ip === '' ? {} : { ip }),
+    ...(userAgent === undefined ? {} : { userAgent }),
+  };
+};
+
 const recordCheckoutConsents = async (
   deps: AppDeps,
   input: {
@@ -359,17 +368,24 @@ const recordCheckoutConsents = async (
     attachedDefinitionIds: string[];
     proofRef: string;
     confirmationBaseUrl: string;
+    ip?: string;
+    userAgent?: string;
   },
 ): Promise<void> => {
   if (deps.marketing === undefined || input.email === undefined || input.selectedDefinitionIds.length === 0) return;
   try {
-    await recordCheckoutMarketingConsents(
+    const recorded = await recordCheckoutMarketingConsents(
       { identity: checkoutIdentity(input.tenant) },
       {
         email: input.email,
         selectedDefinitionIds: input.selectedDefinitionIds,
         attachedDefinitionIds: input.attachedDefinitionIds,
-        evidence: { collectedAt: deps.clock.nowIso(), proofRef: input.proofRef },
+        evidence: {
+          collectedAt: deps.clock.nowIso(),
+          proofRef: input.proofRef,
+          ...(input.ip === undefined ? {} : { ip: input.ip }),
+          ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+        },
         confirmationBaseUrl: input.confirmationBaseUrl,
       },
       {
@@ -382,8 +398,11 @@ const recordCheckoutConsents = async (
         clock: deps.clock,
       },
     );
-  } catch {
-    return;
+    if (!recorded.ok) {
+      deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${input.proofRef} error=${recorded.error.code}:${recorded.error.message}`);
+    }
+  } catch (cause) {
+    deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${input.proofRef} unexpected=${String(cause)}`);
   }
 };
 
@@ -466,6 +485,7 @@ export const buildApp = (deps: AppDeps) => {
       prices: deps.prices,
       tenants: deps.tenants,
       definitions: deps.marketing?.definitions,
+      documents: deps.marketing?.documents,
     });
     if (!result.ok) return respondPublic(result, etag);
     const parsed = publicOfferOutputSchema.safeParse(result.value);
@@ -525,6 +545,7 @@ export const buildApp = (deps: AppDeps) => {
         attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
         proofRef: `product:${selection.value.product.id}`,
         confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
+        ...checkoutConsentEvidence(c.req.raw.headers),
       });
     }
     return respondPublic(session);
@@ -697,6 +718,7 @@ export const buildApp = (deps: AppDeps) => {
           tenant.value.source,
           deps.appBaseUrl,
         )}/marketing/confirm`,
+        ...checkoutConsentEvidence(c.req.raw.headers),
       });
 
       const baseUrl = magicLinkBaseUrl(

@@ -85,7 +85,7 @@ Together renders the A4 visualization itself from the frozen FA(3) XML, with no 
 
 `KSEF_ENVIRONMENT` is a deployment setting, not a tenant switch. Use `test` with `https://api-test.ksef.mf.gov.pl/v2` only for synthetic data. TEST is shared between integrators, so never use real personal, commercial, or production secrets there. Production uses `https://api.ksef.mf.gov.pl/v2`.
 
-The durable dispatcher is invoked through the protected internal KSeF dispatch route and coordinates one job per tenant. It respects `Retry-After`, refreshes expired access tokens once, stores every projection transition with an append-only lifecycle event, and persists UPO content rather than its expiring download URL.
+The durable dispatcher is invoked every minute by the Vercel cron entry for `GET /api/internal/dispatch-ksef`, authenticated with `Authorization: Bearer $CRON_SECRET`. Long-running Node deployments also invoke it every `KSEF_DISPATCH_INTERVAL_MS` (one second by default). Each invocation drains a bounded batch while the repository continues to serialize work per tenant. It respects `Retry-After`, refreshes expired access tokens once, stores every projection transition with an append-only lifecycle event, and persists UPO content rather than its expiring download URL. Operators can also invoke `POST /api/internal/dispatch-ksef` with `x-scheduler-operator-secret: $CRON_SECRET`.
 
 The isolated real-environment acceptance script:
 

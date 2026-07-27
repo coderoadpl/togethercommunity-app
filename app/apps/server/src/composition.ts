@@ -216,7 +216,11 @@ export interface KsefAppDeps {
   client: KsefClientPort;
   jobs: KsefSubmissionJobRepository;
   dispatchSecret: string;
-  dispatch(): Promise<Result<{ processed: boolean; invoiceId: string | null }, AppError>>;
+  dispatch(): Promise<Result<{
+    processed: boolean;
+    invoiceId: string | null;
+    processedCount: number;
+  }, AppError>>;
 }
 
 export interface AppDeps {

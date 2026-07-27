@@ -1,4 +1,10 @@
 export interface Fa3Party {
+  nip: string;
+  name: string;
+  addressLine: string;
+}
+
+export interface Fa3Buyer {
   nip: string | null;
   name: string;
   addressLine: string;
@@ -9,7 +15,7 @@ export interface Fa3InvoiceInput {
   issueDate: string;
   generatedAt: string;
   seller: Fa3Party;
-  buyer: Fa3Party | null;
+  buyer: Fa3Buyer | null;
   productName: string;
   grossAmountCents: number;
   discountCents: number;
@@ -32,7 +38,7 @@ const vatSummarySuffix = (rate: 5 | 8 | 23): '1' | '2' | '3' => {
   return '3';
 };
 
-const buyerXml = (buyer: Fa3Party | null): string => {
+const buyerXml = (buyer: Fa3Buyer | null): string => {
   if (buyer === null) {
     return '<Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>Klient detaliczny</Nazwa></DaneIdentyfikacyjne><JST>2</JST><GV>2</GV></Podmiot2>';
   }

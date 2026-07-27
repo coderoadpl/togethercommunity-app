@@ -729,6 +729,43 @@ describe('marketing HTTP surfaces', () => {
     expect(response.status).toBe(200);
   });
 
+  it('marks the webhook verified when an uncorrelated simulator bounce completes the signed SNS round-trip', async () => {
+    const marketing = marketingDeps();
+    const now = '2026-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const settings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: false,
+    }]);
+    marketing.sesSettings = settings;
+    marketing.sns = new FakeSnsVerifier(ok({
+      type: 'Notification',
+      topicArn,
+      message: JSON.stringify({
+        eventType: 'Bounce',
+        mail: { messageId: 'ses-simulator-message', timestamp: now },
+        bounce: {
+          timestamp: now,
+          bounceType: 'Permanent',
+          bouncedRecipients: [{ emailAddress: 'bounce@simulator.amazonses.com', status: '5.1.1' }],
+        },
+      }),
+      subscribeUrl: null,
+    }));
+
+    const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+      method: 'POST',
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect((await settings.findByTenant('t-acme'))?.webhookVerifiedAt).not.toBeNull();
+  });
+
   it('ingests SES configuration-set Open and Click records and tolerates unknown messages', async () => {
     const marketing = marketingDeps();
     const now = '2026-07-22T00:00:00.000Z';

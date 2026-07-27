@@ -39,6 +39,7 @@ import type {
   MarketingDocumentUpdateInput,
   MarketingLayoutSaveInput,
   MarketingSesSettingsUpdateInput,
+  MarketingSesIdentityStartInput,
   ModuleAttachInput,
   ModuleDetachInput,
   ModuleCreateInput,
@@ -331,6 +332,22 @@ export const saveMarketingLayoutMutation = (api: ApiClient) => defineMutation({
 });
 export const marketingSesSettingsQuery = (api: ApiClient) => defineQuery({
   queryKey: marketingScopes.settings(), call: ({ signal }) => api.getMarketingSesSettings(signal),
+});
+export const pollMarketingSesOnboardingMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'onboarding'],
+  call: api.pollMarketingSesOnboarding,
+});
+export const startMarketingSesIdentityMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'identity'],
+  call: (input: MarketingSesIdentityStartInput) => api.startMarketingSesIdentity(input),
+});
+export const provisionMarketingSesMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'provision'],
+  call: api.provisionMarketingSes,
+});
+export const testMarketingSesSimulatorMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'simulator'],
+  call: api.testMarketingSesSimulator,
 });
 export const marketingReputationQuery = (api: ApiClient) => defineQuery({
   queryKey: marketingScopes.reputation(), call: ({ signal }) => api.getMarketingReputation(signal),

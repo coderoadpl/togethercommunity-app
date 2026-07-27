@@ -824,6 +824,67 @@ export interface SesMarketingQuotaReader {
   }, AppError>>;
 }
 
+export interface SesDkimRecord {
+  name: string;
+  type: 'CNAME';
+  value: string;
+}
+
+export interface SesOnboardingControlPlane {
+  startDomainIdentity(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ records: SesDkimRecord[] }, AppError>>;
+  startEmailIdentity(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ records: SesDkimRecord[] }, AppError>>;
+  readIdentity(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ verified: boolean; dkimVerified: boolean; records: SesDkimRecord[] }, AppError>>;
+  ensureConfigurationSet(
+    credentials: SesMarketingCredentials,
+    name: string,
+  ): Promise<Result<{ name: string }, AppError>>;
+  ensureTopic(
+    credentials: SesMarketingCredentials,
+    name: string,
+  ): Promise<Result<{ arn: string }, AppError>>;
+  ensureSubscription(
+    credentials: SesMarketingCredentials,
+    input: { topicArn: string; endpoint: string },
+  ): Promise<Result<{ confirmed: boolean; arn: string | null }, AppError>>;
+  readInfrastructure(
+    credentials: SesMarketingCredentials,
+    input: { configurationSet: string; topicArn: string; endpoint: string },
+  ): Promise<Result<{ configurationSetReady: boolean; eventDestinationReady: boolean; subscriptionConfirmed: boolean }, AppError>>;
+  ensureEventDestination(
+    credentials: SesMarketingCredentials,
+    input: { configurationSet: string; topicArn: string },
+  ): Promise<Result<{ ready: true }, AppError>>;
+  disableFeedbackForwarding(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ disabled: true }, AppError>>;
+  readQuota(
+    credentials: SesMarketingCredentials,
+  ): Promise<Result<{
+    ratePerSecond: number;
+    daily: number;
+    sentLast24Hours: number;
+    inSandbox: boolean;
+  }, AppError>>;
+  sendSimulator(
+    credentials: SesMarketingCredentials,
+    input: {
+      from: { address: string; name: string };
+      to: string;
+      configurationSet: string;
+    },
+  ): Promise<Result<{ messageId: string }, AppError>>;
+}
+
 export interface MarketingThrottleRepository {
   claim(tenantId: string, input: {
     requested: number;

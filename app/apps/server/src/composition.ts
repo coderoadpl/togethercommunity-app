@@ -74,6 +74,7 @@ import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver }
 import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketing-ses.js';
 import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
 import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
+import { createSesOnboardingControlPlane } from '@adapters/email/ses-onboarding.js';
 import { createSnsVerifier } from '@adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
 import type {
@@ -140,6 +141,7 @@ import type {
   SchedulerRunRepository,
   SesMarketingSender,
   SesMarketingQuotaReader,
+  SesOnboardingControlPlane,
   SnsVerifier,
   SuppressionRepository,
   TenantDocumentRepository,
@@ -247,6 +249,10 @@ export interface MarketingAppDeps {
   marketingSes: SesMarketingSender;
   marketingCredentials: MarketingSesCredentialResolver;
   quotaReader: SesMarketingQuotaReader | undefined;
+  sesOnboarding?: {
+    controlPlane: SesOnboardingControlPlane;
+    credentials: MarketingSesCredentialResolver;
+  };
   throttle: MarketingThrottleRepository;
   hmac: EmailHmac;
   sns: SnsVerifier;
@@ -579,6 +585,10 @@ export const createDeps = (env: Env): AppDeps => {
       marketingSes,
       marketingCredentials,
       quotaReader,
+      sesOnboarding: {
+        controlPlane: createSesOnboardingControlPlane(),
+        credentials: tenantMarketingCredentials,
+      },
       throttle: marketingThrottle,
       hmac: emailHmac,
       sns,

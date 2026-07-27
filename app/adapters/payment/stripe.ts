@@ -58,6 +58,9 @@ export const stripeCheckoutSessionParams = (
       priceId: input.priceId ?? '',
       memberEmail: input.customerEmail ?? '',
       language: input.language ?? '',
+      ...(input.checkoutConsentCaptureId === undefined
+        ? {}
+        : { checkoutConsentCaptureId: input.checkoutConsentCaptureId }),
     },
   };
 };
@@ -208,6 +211,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
                 priceId: session.metadata?.priceId || null,
                 memberEmail: session.metadata?.memberEmail || null,
                 language: session.metadata?.language || null,
+                checkoutConsentCaptureId:
+                  session.metadata?.checkoutConsentCaptureId || null,
               },
             },
           });

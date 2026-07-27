@@ -1,6 +1,11 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
-import { err, ok, stripeWebhookPayloadSchema, validation } from '@core/domain/index.js';
+import {
+  err,
+  ok,
+  stripeWebhookPayloadSchema,
+  validation,
+} from '@core/domain/index.js';
 import type { PaymentProvider, TenantSecretResolver } from '@core/server/index.js';
 
 const signatureIsValid = (payload: string, header: string, secret: string): boolean => {
@@ -65,6 +70,8 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
                 priceId: object.metadata?.priceId || null,
                 memberEmail: object.metadata?.memberEmail || null,
                 language: object.metadata?.language || null,
+                checkoutConsentCaptureId:
+                  object.metadata?.checkoutConsentCaptureId || null,
               },
             }
           : null,

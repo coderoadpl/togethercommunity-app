@@ -57,6 +57,7 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   eventDestinationAttempts = 0;
   identityVerified = false;
   subscriptionConfirmed = true;
+  feedbackForwardingAttempts = 0;
   simulatorRecipients: string[] = [];
 
   async startDomainIdentity() {
@@ -109,6 +110,7 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   }
 
   async disableFeedbackForwarding() {
+    this.feedbackForwardingAttempts += 1;
     return ok({ disabled: true as const });
   }
 
@@ -184,6 +186,23 @@ describe('SES onboarding wizard', () => {
       },
     });
     expect(controlPlane.eventDestinationAttempts).toBe(2);
+  });
+
+  it('keeps SES feedback forwarding enabled while SNS confirmation is pending', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings()]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.subscriptionConfirmed = false;
+
+    const result = await provisionSesInfrastructure(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionConfirmed: false,
+        feedbackForwardingDisabled: false,
+      },
+    });
+    expect(controlPlane.feedbackForwardingAttempts).toBe(0);
   });
 
   it('removes stale identity readiness and reports a verification regression', async () => {

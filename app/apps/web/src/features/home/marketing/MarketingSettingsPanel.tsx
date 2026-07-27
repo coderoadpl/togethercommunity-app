@@ -333,8 +333,8 @@ export const MarketingSettingsPanel = () => {
         items={[
           { label: t.marketing.credentialsConfigured, ready: credentialsConfigured },
           { label: t.marketing.identityVerified, ready: liveChecklist?.identity ?? verified },
-          { label: t.marketing.configurationSetConfigured, ready: liveChecklist?.configurationSet ?? false },
-          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? false },
+          { label: t.marketing.configurationSetConfigured, ready: liveChecklist?.configurationSet ?? (settings?.configurationSet !== null && settings?.configurationSet !== undefined) },
+          { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? (settings?.snsTopicArn !== null && settings?.snsTopicArn !== undefined) },
           { label: t.marketing.webhookVerified, ready: liveChecklist?.webhook ?? webhookVerified },
           { label: t.marketing.footerConfigured, ready: liveChecklist?.footer ?? footerConfigured },
           { label: t.marketing.wizardProductionAccess, ready: liveChecklist?.productionAccess ?? (settings?.quotaRefreshedAt !== null && settings?.quotaRefreshedAt !== undefined && settings?.inSandbox === false) },

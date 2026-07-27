@@ -571,7 +571,7 @@ describe('importer', () => {
     expect(result.verification?.pass).toBe(true);
   }, 60000);
 
-  it('re-apply creates a fresh member without restoring a pseudonymized member or its history', async () => {
+  it('re-apply reports and skips a pseudonymized member without restoring identity or history', async () => {
     await restoreImportedCredential();
     await db.insert(orders).values({
       id: 'order-import-erasure',
@@ -623,17 +623,19 @@ describe('importer', () => {
       externalCustomerIds: {},
       deletedAt: removedAt,
     });
-    const freshRows = await db
+    const restoredRows = await db
       .select()
       .from(members)
       .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
-    expect(freshRows).toHaveLength(1);
-    expect(freshRows[0]).toMatchObject({
-      email: EMAIL_1,
-      displayName: 'Jan Import',
-      deletedAt: null,
+    expect(restoredRows).toEqual([]);
+
+    const memberReport = reportByKind(result.tenants[0]?.kinds ?? [], 'members');
+    expect(memberReport).toMatchObject({ create: 0, update: 0, skip: 2 });
+    expect(memberReport.anomalies).toContainEqual({
+      kind: 'pseudonymized-member-skipped',
+      subject: `members/${ids.u1}`,
+      detail: `member ${ids.u1} was previously pseudonymized; the bundle row was skipped`,
     });
-    expect(freshRows[0]?.id).not.toBe(ids.u1);
 
     const grantsAfter = await db
       .select()

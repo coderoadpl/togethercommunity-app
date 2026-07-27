@@ -20,7 +20,7 @@ export const listMemberBillingOrders = async (
   orders: Array<{
     id: string;
     createdAt: string;
-    billing: BillingData;
+    billing: BillingData | null;
     invoice: Pick<Invoice, 'id' | 'status' | 'provider'> | null;
   }>;
   total: number;

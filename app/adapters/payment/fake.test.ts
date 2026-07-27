@@ -15,7 +15,19 @@ const payload = JSON.stringify({
     object: {
       id: 'cs_123',
       customer_details: { email: 'buyer@example.com' },
-      metadata: { tenantId: 'tenant-a', productId: 'product-1', memberEmail: '', language: 'pl' },
+      metadata: {
+        tenantId: 'tenant-a',
+        productId: 'product-1',
+        memberEmail: '',
+        language: 'pl',
+        checkoutConsent: JSON.stringify({
+          termsAccepted: true,
+          selectedDefinitionIds: ['newsletter'],
+          attachedDefinitionIds: ['newsletter'],
+          collectedAt: '2026-07-27T12:00:00.000Z',
+          confirmationBaseUrl: 'https://alpha.example.com/marketing/confirm',
+        }),
+      },
     },
   },
 });
@@ -50,6 +62,13 @@ describe('fake Stripe webhook verification', () => {
             priceId: null,
             memberEmail: null,
             language: 'pl',
+            checkoutConsent: {
+              termsAccepted: true,
+              selectedDefinitionIds: ['newsletter'],
+              attachedDefinitionIds: ['newsletter'],
+              collectedAt: '2026-07-27T12:00:00.000Z',
+              confirmationBaseUrl: 'https://alpha.example.com/marketing/confirm',
+            },
           },
         },
         invoice: null,

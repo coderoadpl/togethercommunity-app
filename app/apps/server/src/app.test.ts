@@ -1086,6 +1086,7 @@ const purchase = (
 const consentApp = (simulatedPayments: boolean) => {
   const recorded: TermsConsent[] = [];
   const base = deps();
+  const checkoutSessions: Parameters<AppDeps['payment']['createCheckoutSession']>[0][] = [];
   const app = buildApp({
     ...base,
     tenants: {
@@ -1109,6 +1110,13 @@ const consentApp = (simulatedPayments: boolean) => {
         recorded.push(consent);
       },
     },
+    payment: {
+      ...base.payment,
+      createCheckoutSession: async (input) => {
+        checkoutSessions.push(input);
+        return ok({ url: 'https://checkout.local/cs', sessionId: 'cs' });
+      },
+    },
     tenantSecrets: {
       ...base.tenantSecrets,
       findByKey: async (tenantId, key) => ({
@@ -1124,12 +1132,12 @@ const consentApp = (simulatedPayments: boolean) => {
     },
     devEndpoints: { simulatedPayments, exposeMagicLinks: false },
   });
-  return { app, recorded };
+  return { app, checkoutSessions, recorded };
 };
 
 describe('checkout consent ordering', () => {
-  it('records real-checkout consent only after validating the product', async () => {
-    const { app, recorded } = consentApp(false);
+  it('does not record consent when a real checkout session is only started', async () => {
+    const { app, checkoutSessions, recorded } = consentApp(false);
     const request = (productId: string) =>
       app.request(API_PATHS.checkoutSession, {
         method: 'POST',
@@ -1144,17 +1152,17 @@ describe('checkout consent ordering', () => {
     expect((await request('missing-product')).status).toBe(404);
     expect(recorded).toEqual([]);
     expect((await request('acme-published')).status).toBe(200);
-    expect(recorded).toEqual([
-      expect.objectContaining({
-        email: 'buyer@together.dev',
-        termsUrl: 'https://acme.example/terms-v2',
-        privacyUrl: 'https://acme.example/privacy-v3',
-        acceptedAt: '2026-07-12T00:00:00.000Z',
-      }),
-    ]);
+    expect(recorded).toEqual([]);
+    expect(checkoutSessions[0]?.checkoutConsent).toMatchObject({
+      termsAccepted: true,
+      selectedDefinitionIds: [],
+      attachedDefinitionIds: [],
+      collectedAt: '2026-07-12T00:00:00.000Z',
+      confirmationBaseUrl: 'http://acme.localhost:48730/marketing/confirm',
+    });
   });
 
-  it('records simulated-checkout consent only after validating the product', async () => {
+  it('records simulated-checkout consent only after purchase fulfillment', async () => {
     const { app, recorded } = consentApp(true);
 
     expect(
@@ -1193,6 +1201,10 @@ describe('checkout consent ordering', () => {
       ...product({ id: 'checkout-product', tenantId: acme.id, title: 'Checkout Product', published: true }),
       checkoutConsentDefinitionIds: [definitionId],
     };
+    const secondAttached = {
+      ...product({ id: 'checkout-product-2', tenantId: acme.id, title: 'Second Checkout Product', published: true }),
+      checkoutConsentDefinitionIds: [definitionId],
+    };
     const marketing = marketingDeps();
     await marketing.definitions.create(acme.id, {
       id: definitionId,
@@ -1216,7 +1228,7 @@ describe('checkout consent ordering', () => {
       createdBy: null,
     });
     const logger = { error: vi.fn() };
-    const base = deps({ products: [attached], logger });
+    const base = deps({ products: [attached, secondAttached], logger });
     const queued: string[] = [];
     let failEnqueue = false;
     const app = buildApp({
@@ -1243,35 +1255,45 @@ describe('checkout consent ordering', () => {
           return ok({ id: message.id });
         },
       },
+      devEndpoints: { simulatedPayments: true, exposeMagicLinks: false },
     });
-    const checkout = (email: string) => app.request(API_PATHS.checkoutSession, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        host: 'acme.localhost:48730',
-        'user-agent': 'Checkout Browser/1.0',
-        'x-forwarded-for': '203.0.113.8, 10.0.0.1',
-      },
-      body: JSON.stringify({
+    const checkoutBody = (email: string, productId = attached.id) => ({
         email,
-        productId: attached.id,
+        productId,
         termsAccepted: true,
         marketingConsentDefinitionIds: [definitionId],
-      }),
     });
+    const headers = {
+      'content-type': 'application/json',
+      host: 'acme.localhost:48730',
+      'user-agent': 'Checkout Browser/1.0',
+      'x-forwarded-for': '203.0.113.8, 10.0.0.1',
+    };
+    const startCheckout = (email: string) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(checkoutBody(email)),
+    });
+    const fulfillCheckout = (email: string, productId = attached.id) =>
+      purchase(app, headers, checkoutBody(email, productId));
 
-    expect((await checkout('buyer@together.dev')).status).toBe(200);
-    expect((await checkout('buyer@together.dev')).status).toBe(200);
+    expect((await startCheckout('buyer@together.dev')).status).toBe(200);
+    expect(queued).toEqual([]);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'buyer@together.dev')).toEqual([]);
+
+    expect((await fulfillCheckout('buyer@together.dev')).status).toBe(200);
+    expect((await fulfillCheckout('buyer@together.dev', secondAttached.id)).status).toBe(200);
     expect(queued).toEqual(['buyer@together.dev']);
     expect(await marketing.marketingConsents.listByEmail(acme.id, 'buyer@together.dev')).toMatchObject([{
       evidence: {
         ip: '203.0.113.8',
         userAgent: 'Checkout Browser/1.0',
+        proofRef: expect.stringContaining('product:checkout-product;order:'),
       },
     }]);
 
     failEnqueue = true;
-    expect((await checkout('failure@together.dev')).status).toBe(200);
+    expect((await fulfillCheckout('failure@together.dev')).status).toBe(200);
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] tenant=t-acme'));
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outbox unavailable'));
   });

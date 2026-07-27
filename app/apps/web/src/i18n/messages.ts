@@ -883,6 +883,14 @@ export interface Messages {
     noMagicLinkNote: string;
     openCourse: string;
     emailLabel: string;
+    couponReveal: string;
+    couponLabel: string;
+    couponApply: string;
+    couponApplying: string;
+    couponOriginal: (params: { price: string }) => string;
+    couponDiscount: (params: { price: string }) => string;
+    couponFinal: (params: { price: string }) => string;
+    omnibusLowest: (params: { price: string }) => string;
     marketingConsentsLabel: string;
     marketingConsentDocument: string;
     marketingConsentDoiHint: string;

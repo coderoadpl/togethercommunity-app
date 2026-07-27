@@ -93,6 +93,57 @@ describe('CheckoutPage', () => {
     expect(screen.queryByRole('button', { name: pl.checkout.payIdle })).not.toBeInTheDocument();
   });
 
+  it('prefills an affiliate code and renders the required Omnibus breakdown before purchase', async () => {
+    window.history.replaceState(null, '', '/checkout/course-1?code=partner20');
+    const purchases: unknown[] = [];
+    server.use(
+      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+      http.post('/api/public/checkout/coupon', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            breakdown: {
+              couponId: 'coupon-1',
+              code: 'PARTNER20',
+              originalCents: 4900,
+              discountCents: 980,
+              finalCents: 3920,
+              lowestPriceLast30DaysCents: 4500,
+              currency: 'PLN',
+            },
+          },
+        }),
+      ),
+      http.post('/api/dev/simulate-purchase', async ({ request }) => {
+        purchases.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            memberId: 'm1',
+            productId: 'course-1',
+            alreadyOwned: false,
+            subscriptionId: null,
+            orderId: 'order-1',
+            magicLink: null,
+          },
+        });
+      }),
+    );
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    expect(await screen.findByLabelText(pl.checkout.couponLabel)).toHaveValue('partner20');
+    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.couponApply }));
+
+    expect(await screen.findByText('Do zapłaty: 39,20 zł')).toBeInTheDocument();
+    expect(screen.getByText('Najniższa cena z ostatnich 30 dni: 45,00 zł')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
+    expect(purchases).toMatchObject([{ couponCode: 'partner20' }]);
+  });
+
   it('requires accepting configured documents and sends the consent with the purchase', async () => {
     const requests: unknown[] = [];
     server.use(

@@ -107,8 +107,7 @@ export const startCheckoutSession = async (
       deps.couponCheckoutSessions === undefined ||
       deps.priceHistory === undefined ||
       deps.ids === undefined ||
-      deps.clock === undefined ||
-      deps.payment.ensureCouponPromotion === undefined
+      deps.clock === undefined
     ) {
       return err(validation('Coupon checkout is not configured'));
     }
@@ -132,19 +131,6 @@ export const startCheckoutSession = async (
     );
     if (!validated.ok) return validated;
     if (input.email === undefined) return err(validation('An email is required to use a coupon'));
-    const promotion = await deps.payment.ensureCouponPromotion({
-      tenantId: tenant.id,
-      couponId: validated.value.coupon.id,
-      code: validated.value.breakdown.code,
-      kind: validated.value.coupon.kind,
-      value: validated.value.coupon.value,
-      currency: validated.value.breakdown.currency,
-      recurringDuration: validated.value.coupon.recurringDuration,
-      stripeCouponId: validated.value.coupon.stripeCouponId,
-      stripePromotionCodeId: validated.value.coupon.stripePromotionCodeId,
-    });
-    if (!promotion.ok) return promotion;
-    await deps.coupons.cacheStripeIds(tenant.id, validated.value.coupon.id, promotion.value);
     const checkoutSessionId = deps.ids.nextId();
     await deps.couponCheckoutSessions.create(tenant.id, {
       id: checkoutSessionId,
@@ -160,19 +146,35 @@ export const startCheckoutSession = async (
       currency: validated.value.breakdown.currency,
       startedAt: deps.clock.nowIso(),
     });
+    if (validated.value.breakdown.finalCents === 0) {
+      return ok({
+        url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
+        coupon: validated.value.breakdown,
+        couponCheckoutSessionId: checkoutSessionId,
+        free: true,
+      });
+    }
+    if (deps.payment.ensureCouponPromotion === undefined) {
+      return err(validation('Coupon checkout is not configured'));
+    }
+    const promotion = await deps.payment.ensureCouponPromotion({
+      tenantId: tenant.id,
+      couponId: validated.value.coupon.id,
+      code: validated.value.breakdown.code,
+      kind: validated.value.coupon.kind,
+      value: validated.value.coupon.value,
+      currency: validated.value.breakdown.currency,
+      recurringDuration: validated.value.coupon.recurringDuration,
+      stripeCouponId: validated.value.coupon.stripeCouponId,
+      stripePromotionCodeId: validated.value.coupon.stripePromotionCodeId,
+    });
+    if (!promotion.ok) return promotion;
+    await deps.coupons.cacheStripeIds(tenant.id, validated.value.coupon.id, promotion.value);
     applied = {
       breakdown: validated.value.breakdown,
       promotionCodeId: promotion.value.stripePromotionCodeId,
       checkoutSessionId,
     };
-    if (applied.breakdown.finalCents === 0) {
-      return ok({
-        url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
-        coupon: applied.breakdown,
-        couponCheckoutSessionId: applied.checkoutSessionId,
-        free: true,
-      });
-    }
   }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
@@ -226,11 +228,14 @@ export const createCheckoutSession = async (
   const parsed = checkoutSessionInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid checkout payload', parsed.error.flatten()));
 
-  const configured = await getPaymentConfig(tenant.id, deps);
-  if (!configured.ok) return configured;
-  if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
-
   const selection = await validateCheckoutSelection(tenant.id, parsed.data, deps);
   if (!selection.ok) return selection;
+  if (parsed.data.couponCode === undefined) {
+    const configured = await getPaymentConfig(tenant.id, deps);
+    if (!configured.ok) return configured;
+    if (!configured.value.stripeConfigured) {
+      return err(validation('Stripe is not configured for this tenant'));
+    }
+  }
   return startCheckoutSession(tenant, tenantBaseUrl, parsed.data, selection.value, deps);
 };

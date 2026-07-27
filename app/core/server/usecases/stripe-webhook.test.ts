@@ -9,6 +9,8 @@ import {
   type Product,
   type ProductGrant,
   type ProductPrice,
+  type Coupon,
+  type CouponRedemption,
 } from '@core/domain/index.js';
 
 import type { PaymentWebhookEvent } from '../ports.js';
@@ -16,7 +18,7 @@ import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
-const now = '2026-07-14T10:00:00.000Z';
+const now = '1998-07-14T10:00:00.000Z';
 const tenantA = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 };
 
 const product = (tenantId: string): Product => ({
@@ -53,6 +55,7 @@ const completedEvent = (overrides?: {
   subscriptionId?: string;
   email?: string;
   paymentIntentId?: string;
+  couponCheckoutSessionId?: string;
 }): PaymentWebhookEvent => ({
   id: overrides?.id ?? 'evt-1',
   type: 'checkout.session.completed',
@@ -67,6 +70,9 @@ const completedEvent = (overrides?: {
       priceId: overrides?.priceId ?? null,
       memberEmail: null,
       language: 'pl',
+      ...(overrides?.couponCheckoutSessionId === undefined
+        ? {}
+        : { couponCheckoutSessionId: overrides.couponCheckoutSessionId }),
     },
   },
 });
@@ -352,6 +358,87 @@ const subscribedHarness = async () => {
 };
 
 describe('fulfillStripeWebhook', () => {
+  it('honors checkout-time expiry, records one redemption, and stays idempotent', async () => {
+    const h = harness();
+    const coupon: Coupon = {
+      id: 'coupon-1',
+      tenantId: tenantA.id,
+      code: 'SAVE50',
+      kind: 'percent',
+      value: 50,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: '1998-07-15T00:00:00.000Z',
+      maxRedemptions: 1,
+      maxRedemptionsPerMember: 1,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: '1998-07-01T00:00:00.000Z',
+    };
+    const redemptions: CouponRedemption[] = [];
+    h.deps.coupons = {
+      findByCode: async () => coupon,
+      findById: async () => coupon,
+      cacheStripeIds: async () => coupon,
+    };
+    h.deps.couponCheckoutSessions = {
+      create: async () => undefined,
+      attachProviderSession: async () => undefined,
+      findById: async () => ({
+        id: 'coupon-session-1',
+        tenantId: tenantA.id,
+        couponId: coupon.id,
+        providerSessionId: 'cs-coupon',
+        memberEmail: 'buyer@example.com',
+        productId: 'product-1',
+        priceId: null,
+        originalCents: 4900,
+        discountCents: 2450,
+        finalCents: 2450,
+        currency: 'PLN',
+        startedAt: '1998-07-14T10:00:00.000Z',
+      }),
+    };
+    h.deps.priceHistory = { lowestSince: async () => 4900 };
+    h.deps.couponRedemptions = {
+      counts: async (_tenantId, couponId, email) => ({
+        total: redemptions.filter((row) => row.couponId === couponId).length,
+        member: redemptions.filter(
+          (row) => row.couponId === couponId && row.email === email,
+        ).length,
+      }),
+      createOrderAndClaim: async (_tenantId, input) => {
+        if (redemptions.length >= 1) return false;
+        h.orders.push(input.order);
+        redemptions.push(input.redemption);
+        return true;
+      },
+    };
+    h.setNow('1998-07-16T10:00:00.000Z');
+    const event = completedEvent({
+      id: 'event-coupon',
+      objectId: 'cs-coupon',
+      couponCheckoutSessionId: 'coupon-session-1',
+    });
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: false },
+    });
+    expect(h.orders).toMatchObject([
+      { amountCents: 2450, discountCents: 2450, couponId: coupon.id },
+    ]);
+    expect(redemptions).toHaveLength(1);
+  });
+
   it('fulfills once when Stripe retries the same event', async () => {
     const h = harness();
     const first = await fulfillStripeWebhook(tenantA, completedEvent(), h.deps);
@@ -426,12 +513,12 @@ describe('fulfillStripeWebhook', () => {
       status: 'active',
       priceId: 'price-monthly',
       providerSubscriptionId: 'sub-1',
-      currentPeriodEnd: '2026-08-14T10:00:00.000Z',
+      currentPeriodEnd: '1998-08-14T10:00:00.000Z',
       cancelAtPeriodEnd: false,
     });
     expect(h.orders).toHaveLength(1);
     expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', amountCents: 2900 });
-    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('2026-08-17T10:00:00.000Z');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-17T10:00:00.000Z');
   });
 
   it('renews the grant to the new period end plus grace on invoice.paid', async () => {
@@ -444,7 +531,7 @@ describe('fulfillStripeWebhook', () => {
         type: 'invoice.paid',
         invoiceId: 'in-1',
         subscriptionId: 'sub-1',
-        periodEnd: '2026-09-14T10:00:00.000Z',
+        periodEnd: '1998-09-14T10:00:00.000Z',
       }),
       h.deps,
     );
@@ -453,9 +540,9 @@ describe('fulfillStripeWebhook', () => {
     const subscription = h.subscriptions.get(h.subscription.id);
     expect(subscription).toMatchObject({
       status: 'active',
-      currentPeriodEnd: '2026-09-14T10:00:00.000Z',
+      currentPeriodEnd: '1998-09-14T10:00:00.000Z',
     });
-    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('2026-09-17T10:00:00.000Z');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
     expect(h.orders).toHaveLength(2);
     expect(h.orders[1]).toMatchObject({
       kind: 'recurring',
@@ -604,7 +691,7 @@ describe('simulated subscription lifecycle', () => {
     if (cycled.ok) {
       expect(cycled.value.subscription.currentPeriodEnd > h.subscription.currentPeriodEnd).toBe(true);
       expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(
-        '2026-09-17T10:00:00.000Z',
+        '1998-09-17T10:00:00.000Z',
       );
     }
   });

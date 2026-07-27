@@ -148,6 +148,27 @@ describe('startSubscription', () => {
 });
 
 describe('renewSubscriptionPeriod', () => {
+  it('keeps forever coupon attribution on renewal orders', async () => {
+    const h = harness([price()]);
+    const { order } = await renewSubscriptionPeriod(
+      't1',
+      {
+        subscription: subscription({
+          couponId: 'coupon-1',
+          couponDiscountCents: 1000,
+          couponRecurringDuration: 'forever',
+        }),
+        providerObjectIds: { invoice: 'in-coupon' },
+      },
+      h.deps,
+    );
+    expect(order).toMatchObject({
+      amountCents: 1900,
+      couponId: 'coupon-1',
+      discountCents: 1000,
+    });
+  });
+
   it('extends from the current period end when it is still in the future, using the price interval', async () => {
     const h = harness([price({ interval: 'year' })]);
     const { subscription: sub, order } = await renewSubscriptionPeriod(

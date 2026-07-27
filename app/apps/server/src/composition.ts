@@ -22,6 +22,13 @@ import {
   createUnsubscribeTokenRepository,
 } from '@adapters/db/marketing-repositories.js';
 import {
+  createCouponCheckoutSessionRepository,
+  createCouponRedemptionRepository,
+  createCouponRepository,
+  createCouponStatsRepository,
+  createProductPriceHistoryRepository,
+} from '@adapters/db/coupon-repositories.js';
+import {
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
@@ -83,6 +90,10 @@ import type {
   AuthPort,
   Clock,
   CheckoutConsentCaptureRepository,
+  CouponCheckoutSessionRepository,
+  CouponRedemptionRepository,
+  CouponRepository,
+  CouponStatsRepository,
   PaymentProvider,
   PlatformTransactionalPool,
   SecretCrypto,
@@ -127,6 +138,7 @@ import type {
   PurchaseRepository,
   ProductGrantRepository,
   ProductPriceRepository,
+  ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
   OnboardingStateRepository,
@@ -205,6 +217,11 @@ export interface AppDeps {
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
+  coupons?: CouponRepository;
+  couponRedemptions?: CouponRedemptionRepository;
+  couponCheckoutSessions?: CouponCheckoutSessionRepository;
+  priceHistory?: ProductPriceHistoryRepository;
+  couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
   fileUrlSigner: FileUrlSigner;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
@@ -544,6 +561,11 @@ export const createDeps = (env: Env): AppDeps => {
     secretResolver,
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
+    coupons: createCouponRepository(db),
+    couponRedemptions: createCouponRedemptionRepository(db),
+    couponCheckoutSessions: createCouponCheckoutSessionRepository(db),
+    priceHistory: createProductPriceHistoryRepository(db),
+    couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
     fileUrlSigner: createS3UrlSigner(),

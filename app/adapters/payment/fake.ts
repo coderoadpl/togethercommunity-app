@@ -28,6 +28,12 @@ const signatureIsValid = (payload: string, header: string, secret: string): bool
  * touches the network.
  */
 export const createFakePaymentProvider = (resolver: TenantSecretResolver): PaymentProvider => ({
+  ensureCouponPromotion: async (input) =>
+    ok({
+      stripeCouponId: input.stripeCouponId ?? `fake_coupon_${input.couponId}`,
+      stripePromotionCodeId:
+        input.stripePromotionCodeId ?? `fake_promotion_${input.couponId}`,
+    }),
   createCheckoutSession: async (input) => {
     const key = await resolver.resolve(input.tenantId, 'stripe.restrictedKey');
     if (!key.ok) return key;
@@ -72,6 +78,8 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
                 language: object.metadata?.language || null,
                 checkoutConsentCaptureId:
                   object.metadata?.checkoutConsentCaptureId || null,
+                couponCheckoutSessionId:
+                  object.metadata?.couponCheckoutSessionId || null,
               },
             }
           : null,

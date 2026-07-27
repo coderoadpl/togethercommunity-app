@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { stripeCheckoutSessionParams } from './stripe.js';
+import { stripeCheckoutSessionParams, stripeCouponParams } from './stripe.js';
 
 describe('stripeCheckoutSessionParams', () => {
   it('maps checkout intent into hosted payment fields and fulfillment metadata', () => {
@@ -61,5 +61,50 @@ describe('stripeCheckoutSessionParams', () => {
     for (const value of values) {
       expect(String(value).length).toBeLessThanOrEqual(500);
     }
+  });
+
+  it('applies the server-selected promotion code', () => {
+    const params = stripeCheckoutSessionParams({
+      tenantId: 'tenant-a',
+      productId: 'product-1',
+      productName: 'Course One',
+      priceCents: 4900,
+      currency: 'PLN',
+      successUrl: 'https://alpha.example.com/success',
+      cancelUrl: 'https://alpha.example.com/cancel',
+      promotionCodeId: 'promo-1',
+      couponCheckoutSessionId: 'coupon-session-1',
+    });
+    expect(params.discounts).toEqual([{ promotion_code: 'promo-1' }]);
+    expect(params.metadata).toMatchObject({ couponCheckoutSessionId: 'coupon-session-1' });
+  });
+});
+
+describe('stripeCouponParams', () => {
+  const input = {
+    tenantId: 'tenant-a',
+    couponId: 'coupon-1',
+    code: 'SAVE',
+    kind: 'percent' as const,
+    value: 25,
+    currency: 'PLN',
+    recurringDuration: 'first_invoice' as const,
+    stripeCouponId: null,
+    stripePromotionCodeId: null,
+  };
+
+  it('maps first invoice percentage discounts to once', () => {
+    expect(stripeCouponParams(input)).toMatchObject({ duration: 'once', percent_off: 25 });
+  });
+
+  it('maps forever fixed discounts with minor-unit currency', () => {
+    expect(
+      stripeCouponParams({
+        ...input,
+        kind: 'amount',
+        value: 1200,
+        recurringDuration: 'forever',
+      }),
+    ).toMatchObject({ duration: 'forever', amount_off: 1200, currency: 'pln' });
   });
 });

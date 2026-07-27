@@ -40,8 +40,11 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
+import { createCouponRedemptionRepository } from './coupon-repositories.js';
 import {
   consents,
+  couponRedemptions,
+  coupons,
   emailEvents,
   erasedMemberImports,
   memberCourseProgress,
@@ -271,6 +274,64 @@ describe('order repository', () => {
     const revenue = await repo.revenueSince(ACME, PAST);
     expect(revenue).toEqual([{ currency: 'PLN', amountCents: 4900 }]);
     expect(await repo.countSince(ACME, PAST)).toBe(2);
+  });
+});
+
+describe('coupon redemption repository', () => {
+  it('serializes concurrent limit claims with their order inserts', async () => {
+    await db.insert(coupons).values({
+      id: 'coupon-race',
+      tenantId: ACME,
+      code: 'RACE',
+      kind: 'percent',
+      value: 50,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: 1,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    const repo = createCouponRedemptionRepository(db);
+    const claim = (id: string) =>
+      repo.createOrderAndClaim(ACME, {
+        order: order({
+          id: `coupon-order-${id}`,
+          tenantId: ACME,
+          memberId: 'mem-acme',
+          productId: 'prod-acme',
+          amountCents: 2450,
+          couponId: 'coupon-race',
+          discountCents: 2450,
+        }),
+        redemption: {
+          id: `coupon-redemption-${id}`,
+          tenantId: ACME,
+          couponId: 'coupon-race',
+          orderId: `coupon-order-${id}`,
+          memberId: 'mem-acme',
+          email: 'buyer-acme@together.dev',
+          discountCents: 2450,
+          createdAt: NOW,
+        },
+        maxRedemptions: 1,
+        maxRedemptionsPerMember: null,
+      });
+    const results = await Promise.all([claim('one'), claim('two')]);
+
+    expect(results.sort()).toEqual([false, true]);
+    expect(
+      await db
+        .select()
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.couponId, 'coupon-race')),
+    ).toHaveLength(1);
   });
 });
 

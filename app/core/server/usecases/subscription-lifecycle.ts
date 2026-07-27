@@ -62,6 +62,7 @@ export interface StartSubscriptionInput {
   couponId?: string;
   couponDiscountCents?: number;
   couponRecurringDuration?: CouponRecurringDuration;
+  paidOrder?: Order;
 }
 
 export const startSubscription = async (
@@ -99,23 +100,25 @@ export const startSubscription = async (
     },
     deps,
   );
-  const order = await appendOrder(
-    tenantId,
-    {
-      memberId: input.memberId,
-      productId: input.price.productId,
-      priceId: input.price.id,
-      kind: 'recurring',
-      status: 'paid',
-      amountCents: input.amountCents ?? input.price.amountCents,
-      couponId: input.couponId ?? null,
-      discountCents: input.couponDiscountCents ?? 0,
-      currency: input.price.currency,
-      provider: input.provider,
-      providerObjectIds: input.providerObjectIds,
-    },
-    deps,
-  );
+  const order =
+    input.paidOrder ??
+    (await appendOrder(
+      tenantId,
+      {
+        memberId: input.memberId,
+        productId: input.price.productId,
+        priceId: input.price.id,
+        kind: 'recurring',
+        status: 'paid',
+        amountCents: input.amountCents ?? input.price.amountCents,
+        couponId: input.couponId ?? null,
+        discountCents: input.couponDiscountCents ?? 0,
+        currency: input.price.currency,
+        provider: input.provider,
+        providerObjectIds: input.providerObjectIds,
+      },
+      deps,
+    ));
   return { subscription, order };
 };
 

@@ -9,6 +9,7 @@ export const checkoutSessionInputSchema = z.object({
   language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
+  couponCode: z.string().trim().min(1).max(100).optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;

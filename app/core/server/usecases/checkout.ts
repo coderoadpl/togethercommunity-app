@@ -6,6 +6,7 @@ import {
   validation,
   type AppError,
   type CheckoutSessionInput,
+  type CouponCheckoutBreakdown,
   type Product,
   type ProductPrice,
   type Result,
@@ -13,17 +14,30 @@ import {
 } from '@core/domain/index.js';
 
 import type {
+  Clock,
+  CouponCheckoutSessionRepository,
+  CouponRedemptionRepository,
+  CouponRepository,
+  IdGenerator,
   PaymentProvider,
   ProductPriceRepository,
+  ProductPriceHistoryRepository,
   ProductRepository,
   TenantSecretRepository,
 } from '../ports.js';
+import { validateCouponForCheckout } from './coupon-checkout.js';
 
 export interface CheckoutDeps {
   products: ProductRepository;
   prices: ProductPriceRepository;
   tenantSecrets: TenantSecretRepository;
   payment: PaymentProvider;
+  coupons?: CouponRepository;
+  couponRedemptions?: CouponRedemptionRepository;
+  couponCheckoutSessions?: CouponCheckoutSessionRepository;
+  priceHistory?: ProductPriceHistoryRepository;
+  ids?: IdGenerator;
+  clock?: Clock;
 }
 
 export interface CheckoutSelection {
@@ -68,12 +82,98 @@ export const startCheckoutSession = async (
   tenantBaseUrl: string,
   input: CheckoutSessionInput,
   selection: CheckoutSelection,
-  deps: Pick<CheckoutDeps, 'payment'>,
+  deps: CheckoutDeps,
   checkoutConsentCaptureId?: string,
-): Promise<Result<{ url: string }, AppError>> => {
+): Promise<Result<{
+  url: string;
+  coupon?: CouponCheckoutBreakdown;
+  couponCheckoutSessionId?: string;
+  free: boolean;
+}, AppError>> => {
   const { product, price } = selection;
   const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
   const purchaseKind = price?.kind === 'recurring' ? 'subscription' : 'one_time';
+  let applied:
+    | {
+        breakdown: CouponCheckoutBreakdown;
+        promotionCodeId: string;
+        checkoutSessionId: string;
+      }
+    | undefined;
+  if (input.couponCode !== undefined) {
+    if (
+      deps.coupons === undefined ||
+      deps.couponRedemptions === undefined ||
+      deps.couponCheckoutSessions === undefined ||
+      deps.priceHistory === undefined ||
+      deps.ids === undefined ||
+      deps.clock === undefined ||
+      deps.payment.ensureCouponPromotion === undefined
+    ) {
+      return err(validation('Coupon checkout is not configured'));
+    }
+    const validated = await validateCouponForCheckout(
+      tenant.id,
+      {
+        code: input.couponCode,
+        ...(input.email === undefined ? {} : { email: input.email }),
+        productId: product.id,
+        priceId: price?.id ?? null,
+        priceKind: price?.kind ?? 'one_time',
+        amountCents: price?.amountCents ?? product.priceCents,
+        currency: price?.currency ?? product.currency,
+      },
+      {
+        coupons: deps.coupons,
+        redemptions: deps.couponRedemptions,
+        priceHistory: deps.priceHistory,
+        clock: deps.clock,
+      },
+    );
+    if (!validated.ok) return validated;
+    if (input.email === undefined) return err(validation('An email is required to use a coupon'));
+    const promotion = await deps.payment.ensureCouponPromotion({
+      tenantId: tenant.id,
+      couponId: validated.value.coupon.id,
+      code: validated.value.breakdown.code,
+      kind: validated.value.coupon.kind,
+      value: validated.value.coupon.value,
+      currency: validated.value.breakdown.currency,
+      recurringDuration: validated.value.coupon.recurringDuration,
+      stripeCouponId: validated.value.coupon.stripeCouponId,
+      stripePromotionCodeId: validated.value.coupon.stripePromotionCodeId,
+    });
+    if (!promotion.ok) return promotion;
+    await deps.coupons.cacheStripeIds(tenant.id, validated.value.coupon.id, promotion.value);
+    const checkoutSessionId = deps.ids.nextId();
+    await deps.couponCheckoutSessions.create(tenant.id, {
+      id: checkoutSessionId,
+      tenantId: tenant.id,
+      couponId: validated.value.coupon.id,
+      providerSessionId: null,
+      memberEmail: input.email,
+      productId: product.id,
+      priceId: price?.id ?? null,
+      originalCents: validated.value.breakdown.originalCents,
+      discountCents: validated.value.breakdown.discountCents,
+      finalCents: validated.value.breakdown.finalCents,
+      currency: validated.value.breakdown.currency,
+      startedAt: deps.clock.nowIso(),
+    });
+    applied = {
+      breakdown: validated.value.breakdown,
+      promotionCodeId: promotion.value.stripePromotionCodeId,
+      checkoutSessionId,
+    };
+    if (applied.breakdown.finalCents === 0) {
+      return ok({
+        url: `${checkoutPath}?status=success&purchase_kind=${purchaseKind}`,
+        coupon: applied.breakdown,
+        couponCheckoutSessionId: applied.checkoutSessionId,
+        free: true,
+      });
+    }
+  }
   const created = await deps.payment.createCheckoutSession({
     tenantId: tenant.id,
     productId: product.id,
@@ -89,8 +189,27 @@ export const startCheckoutSession = async (
       ? { recurringInterval: price.interval }
       : {}),
     ...(checkoutConsentCaptureId === undefined ? {} : { checkoutConsentCaptureId }),
+    ...(applied === undefined
+      ? {}
+      : {
+          promotionCodeId: applied.promotionCodeId,
+          couponCheckoutSessionId: applied.checkoutSessionId,
+        }),
   });
-  return created.ok ? ok({ url: created.value.url }) : created;
+  if (!created.ok) return created;
+  if (applied !== undefined && deps.couponCheckoutSessions !== undefined) {
+    await deps.couponCheckoutSessions.attachProviderSession(
+      tenant.id,
+      applied.checkoutSessionId,
+      created.value.sessionId,
+    );
+  }
+  return ok({
+    url: created.value.url,
+    ...(applied === undefined ? {} : { coupon: applied.breakdown }),
+    ...(applied === undefined ? {} : { couponCheckoutSessionId: applied.checkoutSessionId }),
+    free: false,
+  });
 };
 
 export const createCheckoutSession = async (
@@ -98,7 +217,12 @@ export const createCheckoutSession = async (
   tenantBaseUrl: string,
   input: CheckoutSessionInput,
   deps: CheckoutDeps,
-): Promise<Result<{ url: string }, AppError>> => {
+): Promise<Result<{
+  url: string;
+  coupon?: CouponCheckoutBreakdown;
+  couponCheckoutSessionId?: string;
+  free: boolean;
+}, AppError>> => {
   const parsed = checkoutSessionInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid checkout payload', parsed.error.flatten()));
 

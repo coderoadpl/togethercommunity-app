@@ -361,6 +361,57 @@ describe('KSeF durable submission state machine', () => {
     });
   });
 
+  it.each([550, 503])('recovers business status %s before resending the frozen invoice', async (code) => {
+    const h = harness(invoice(ksefData({
+      state: 'processing',
+      sessionReference: 'session-ref-1',
+      invoiceReference: 'invoice-ref-1',
+      attempt: 1,
+    })));
+    h.setStatuses([{
+      code,
+      description: 'Retryable KSeF failure',
+      details: [],
+      extensions: {},
+      ksefNumber: null,
+      acquisitionAt: null,
+      invoicingAt: null,
+      permanentStorageAt: null,
+    }]);
+
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.current()).toMatchObject({
+      status: 'submitting',
+      error: null,
+      providerInvoiceId: null,
+      ksef: {
+        state: 'submitting',
+        invoiceReference: null,
+        lastStatusCode: code,
+        retryAt: '2026-07-27T10:00:02.000Z',
+      },
+    });
+
+    h.setListed([{
+      invoiceReference: 'invoice-ref-1',
+      invoiceHash: Buffer.from(hash, 'hex').toString('base64'),
+      status: { code, description: 'Retryable KSeF failure', details: [], extensions: {} },
+    }]);
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.calls).toEqual(['status', 'list', 'close']);
+    expect(h.current()).toMatchObject({
+      status: 'queued',
+      providerInvoiceId: null,
+      ksef: {
+        state: 'queued',
+        sessionReference: null,
+        invoiceReference: null,
+      },
+    });
+  });
+
   it('refuses a changed credential context and a tampered frozen artifact', async () => {
     const changedContext = harness();
     changedContext.deps.credentials.resolve = async () => ok({

@@ -406,6 +406,7 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
       eq(emailEvents.tenantId, campaignSends.tenantId),
       eq(emailEvents.mailKind, 'marketing'),
       eq(emailEvents.refId, campaignSends.id),
+      inArray(emailEvents.type, ['opened', 'clicked']),
     )).where(and(
       eq(campaignSends.tenantId, tenantId),
       inArray(campaignSends.campaignId, campaignIds),

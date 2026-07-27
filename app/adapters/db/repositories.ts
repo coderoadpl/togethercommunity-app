@@ -133,13 +133,20 @@ const parseOrder = (order: Order): Order => orderSchema.parse(order);
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const replaceEmailInText = (
+  value: string,
+  email: string,
+  replacement: string,
+): string =>
+  value.replace(new RegExp(escapeRegExp(email), 'gi'), replacement);
+
 const replaceEmailInJson = (
   value: unknown,
   email: string,
   replacement: string,
 ): unknown => {
   if (typeof value === 'string') {
-    return value.replace(new RegExp(escapeRegExp(email), 'gi'), replacement);
+    return replaceEmailInText(value, email, replacement);
   }
   if (Array.isArray(value)) {
     return value.map((item) => replaceEmailInJson(item, email, replacement));
@@ -147,7 +154,7 @@ const replaceEmailInJson = (
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
-        key,
+        replaceEmailInText(key, email, replacement),
         replaceEmailInJson(item, email, replacement),
       ]),
     );
@@ -162,7 +169,7 @@ const replaceEmailInMeta = (
 ): Record<string, unknown> =>
   Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
-      key,
+      replaceEmailInText(key, email, replacement),
       replaceEmailInJson(item, email, replacement),
     ]),
   );

@@ -1,20 +1,30 @@
 import {
   consumeUnsubscribeToken,
+  emailEventSchema,
   normalizeEmail,
   ok,
   type AppError,
   type AutomationIdempotencyKey,
   type Campaign,
+  type CampaignEngagementStats,
   type CampaignSend,
   type ConsentConfirmationToken,
   type ConsentDefinition,
   type ConsentDefinitionVersion,
   type EmailLayout,
+  type EmailEvent,
+  type EmailEventMailKind,
   type MarketingConsent,
   type Result,
+  schedulerRunSchema,
+  schedulerRunTenantSchema,
+  type SchedulerRun,
+  type SchedulerRunListQuery,
+  type SchedulerRunTenant,
   type Suppression,
   type TenantSesSettings,
   type TenantDocument,
+  type TransactionalEmailTransport,
   type TenantDocumentVersion,
   type UnsubscribeToken,
   type EmailOutboxPayload,
@@ -28,6 +38,7 @@ import type {
   ConsentDefinitionRepository,
   EmailLayoutRepository,
   EmailHmac,
+  EmailEventRepository,
   MarketingConsentRepository,
   MarketingThrottleRepository,
   MarketingAudienceMember,
@@ -35,6 +46,7 @@ import type {
   EmailOutboxItem,
   EmailOutboxRepository,
   SchedulerPort,
+  SchedulerRunRepository,
   SesMarketingSender,
   SnsVerifier,
   SuppressionRepository,
@@ -46,6 +58,205 @@ import type {
 
 const sameTenant = <T extends { tenantId: string }>(tenantId: string, value: T): boolean =>
   value.tenantId === tenantId;
+
+const schedulerRunCursor = (run: SchedulerRun): string =>
+  `${encodeURIComponent(run.startedAt)}~${encodeURIComponent(run.id)}`;
+
+export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
+  private readonly runs: SchedulerRun[] = [];
+  private readonly tenants: SchedulerRunTenant[] = [];
+
+  async start(run: SchedulerRun): Promise<void> {
+    if (this.runs.some((item) => item.id === run.id)) throw new Error('Scheduler run already exists');
+    this.runs.push(structuredClone(schedulerRunSchema.parse(run)));
+  }
+
+  async finalize(runId: string, input: Parameters<SchedulerRunRepository['finalize']>[1]): Promise<SchedulerRun | null> {
+    const index = this.runs.findIndex((run) => run.id === runId && run.status === 'running');
+    if (index < 0) return null;
+    const current = this.runs[index];
+    if (current === undefined) return null;
+    const finalized = schedulerRunSchema.parse({ ...current, ...input, tenants: undefined });
+    this.runs[index] = finalized;
+    this.tenants.push(...input.tenants.map((tenant) => structuredClone(schedulerRunTenantSchema.parse({ ...tenant, runId }))));
+    return structuredClone(finalized);
+  }
+
+  async listPage(input: SchedulerRunListQuery): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }> {
+    return this.page(this.runs, input);
+  }
+
+  async getWithTenants(runId: string): Promise<{ run: SchedulerRun; tenants: SchedulerRunTenant[] } | null> {
+    const run = this.runs.find((item) => item.id === runId);
+    return run === undefined ? null : {
+      run: structuredClone(run),
+      tenants: structuredClone(this.tenants.filter((tenant) => tenant.runId === runId)),
+    };
+  }
+
+  async getForTenant(tenantId: string, runId: string) {
+    const run = this.runs.find((item) => item.id === runId);
+    const tenant = this.tenants.find((item) => item.runId === runId && item.tenantId === tenantId);
+    return run === undefined || tenant === undefined
+      ? null
+      : { run: structuredClone(run), tenant: structuredClone(tenant) };
+  }
+
+  async listForTenant(tenantId: string, input: SchedulerRunListQuery) {
+    const tenantByRun = new Map(this.tenants
+      .filter((tenant) => tenant.tenantId === tenantId)
+      .map((tenant) => [tenant.runId, tenant]));
+    const page = this.page(this.runs.filter((run) => tenantByRun.has(run.id)), input);
+    const items: Array<{ run: SchedulerRun; tenant: SchedulerRunTenant }> = [];
+    for (const run of page.runs) {
+      const tenant = tenantByRun.get(run.id);
+      if (tenant !== undefined) items.push({ run, tenant: structuredClone(tenant) });
+    }
+    return {
+      items,
+      nextCursor: page.nextCursor,
+    };
+  }
+
+  async summarizeForTenant(tenantId: string, since: string) {
+    const items = this.tenants
+      .filter((tenant) => tenant.tenantId === tenantId)
+      .flatMap((tenant) => {
+        const run = this.runs.find((item) => item.id === tenant.runId);
+        return run === undefined ? [] : [{ run, tenant }];
+      })
+      .sort((left, right) =>
+        right.run.startedAt.localeCompare(left.run.startedAt) || right.run.id.localeCompare(left.run.id)
+      );
+    const recent = items.filter((item) => item.run.startedAt >= since);
+    return {
+      runsLast24Hours: recent.length,
+      sentLast24Hours: recent.reduce((total, item) => total + item.tenant.sent, 0),
+      failedLast24Hours: recent.reduce((total, item) => total + item.tenant.failed, 0),
+      lastRun: items[0] === undefined ? null : structuredClone(items[0].run),
+    };
+  }
+
+  async failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number> {
+    let failed = 0;
+    for (const [index, run] of this.runs.entries()) {
+      if (run.status !== 'running' || run.startedAt >= input.startedBefore) continue;
+      this.runs[index] = schedulerRunSchema.parse({
+        ...run,
+        status: 'failed',
+        error: input.error,
+        finishedAt: input.finishedAt,
+        durationMs: Math.max(0, Date.parse(input.finishedAt) - Date.parse(run.startedAt)),
+      });
+      failed += 1;
+    }
+    return failed;
+  }
+
+  private page(rows: SchedulerRun[], input: SchedulerRunListQuery): { runs: SchedulerRun[]; nextCursor: string | null } {
+    const sorted = rows.filter((run) =>
+      (input.kind === undefined || run.kind === input.kind)
+      && (input.status === undefined || run.status === input.status)
+      && (input.since === undefined || run.startedAt >= input.since)
+    ).sort((left, right) =>
+      right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id)
+    );
+    const [cursorStartedAt = '', cursorId = ''] = input.cursor === undefined
+      ? []
+      : input.cursor.split('~').map(decodeURIComponent);
+    const filtered = input.cursor === undefined
+      ? sorted
+      : sorted.filter((run) =>
+        run.startedAt < cursorStartedAt || (run.startedAt === cursorStartedAt && run.id < cursorId)
+      );
+    const page = filtered.slice(0, input.limit);
+    const last = page.at(-1);
+    return {
+      runs: structuredClone(page),
+      nextCursor: filtered.length > input.limit && last !== undefined ? schedulerRunCursor(last) : null,
+    };
+  }
+}
+
+export class InMemoryEmailEventRepository implements EmailEventRepository {
+  private rows: EmailEvent[] = [];
+  private readonly addresses = new Map<string, string>();
+  private readonly marketingSendTimes = new Map<string, string>();
+
+  associateEmail(
+    tenantId: string,
+    mailKind: EmailEventMailKind,
+    refId: string,
+    email: string,
+    sentAt: string | null = null,
+  ): void {
+    this.addresses.set(`${tenantId}:${mailKind}:${refId}`, normalizeEmail(email));
+    if (mailKind === 'marketing') {
+      const key = `${tenantId}:${refId}`;
+      if (sentAt === null) this.marketingSendTimes.delete(key);
+      else this.marketingSendTimes.set(key, sentAt);
+    }
+  }
+
+  async append(tenantId: string, event: EmailEvent): Promise<void> {
+    if (!sameTenant(tenantId, event)) throw new Error('Tenant mismatch');
+    if (this.rows.some((row) => row.id === event.id)) throw new Error('Email event repository is append-only');
+    this.rows.push(structuredClone(event));
+  }
+
+  async listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]> {
+    return this.ordered(this.rows.filter((row) =>
+      row.tenantId === tenantId && row.mailKind === mailKind && row.refId === refId
+    ));
+  }
+
+  async listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]> {
+    const normalized = normalizeEmail(email);
+    return this.ordered(this.rows.filter((row) =>
+      row.tenantId === tenantId
+      && this.addresses.get(`${tenantId}:${row.mailKind}:${row.refId}`) === normalized
+    ));
+  }
+
+  async purgeEngagement(tenantId: string, olderThan: string): Promise<number> {
+    const retained = this.rows.filter((row) =>
+      row.tenantId !== tenantId
+      || row.occurredAt >= olderThan
+      || (row.type !== 'opened' && row.type !== 'clicked')
+    );
+    const purged = this.rows.length - retained.length;
+    this.rows = retained;
+    return purged;
+  }
+
+  async reputationCounts(tenantId: string, window: { since: string; until: string }) {
+    const rows = this.rows.filter((row) =>
+      row.tenantId === tenantId
+      && row.mailKind === 'marketing'
+      && row.occurredAt <= window.until
+      && (() => {
+        const sentAt = this.marketingSendTimes.get(`${tenantId}:${row.refId}`);
+        return sentAt !== undefined && sentAt >= window.since && sentAt <= window.until;
+      })()
+    );
+    const distinct = (predicate: (row: EmailEvent) => boolean): number =>
+      new Set(rows.filter(predicate).map((row) => row.refId)).size;
+    return {
+      sends: new Set([...this.marketingSendTimes.entries()].flatMap(([key, sentAt]) =>
+        key.startsWith(`${tenantId}:`) && sentAt >= window.since && sentAt <= window.until ? [key] : []
+      )).size,
+      hardBounces: distinct((row) => row.type === 'bounced' && row.meta.classification === 'hard'),
+      complaints: distinct((row) => row.type === 'complained'),
+    };
+  }
+
+  private ordered(rows: EmailEvent[]): EmailEvent[] {
+    return [...rows].sort((left, right) =>
+      left.occurredAt.localeCompare(right.occurredAt)
+      || left.createdAt.localeCompare(right.createdAt)
+    ).map((row) => structuredClone(row));
+  }
+}
 
 export class InMemoryMarketingConsentRepository implements MarketingConsentRepository {
   private readonly rows: MarketingConsent[] = [];
@@ -254,6 +465,19 @@ export class InMemoryTenantDocumentRepository implements TenantDocumentRepositor
     return published === undefined ? null : { document: structuredClone(document), version: published };
   }
 
+  async findPublishedVersionById(tenantId: string, versionId: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
+    const version = this.versions.find((row) =>
+      sameTenant(tenantId, row) && row.id === versionId && row.publishedAt !== null
+    );
+    if (version === undefined) return null;
+    const document = this.documents.find((row) =>
+      sameTenant(tenantId, row) && row.id === version.documentId && row.status === 'published'
+    );
+    return document === undefined
+      ? null
+      : { document: structuredClone(document), version: structuredClone(version) };
+  }
+
   async findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null> {
     const document = this.documents.find((row) => sameTenant(tenantId, row) && row.slug === slug);
     if (document === undefined) return null;
@@ -362,13 +586,19 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
   afterClaim: ((send: CampaignSend) => Promise<void>) | null = null;
   renderedBodiesAgedOut = 0;
 
-  async claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean> {
+  constructor(private readonly events?: InMemoryEmailEventRepository) {}
+
+  async claimRecipient(tenantId: string, send: CampaignSend, events: EmailEvent[] = []): Promise<boolean> {
     if (!sameTenant(tenantId, send) || this.rows.some((row) => row.id === send.id)) return false;
     if (send.source === 'broadcast' && send.campaignId !== null && this.rows.some((row) =>
       row.source === 'broadcast' &&
       row.tenantId === tenantId && row.campaignId === send.campaignId && row.email === normalizeEmail(send.email)
     )) return false;
     this.rows.push(structuredClone(send));
+    if (this.events !== undefined) {
+      this.events.associateEmail(tenantId, 'marketing', send.id, send.email, send.sentAt);
+      for (const event of events) await this.events.append(tenantId, event);
+    }
     if (this.afterClaim !== null) await this.afterClaim(structuredClone(send));
     return true;
   }
@@ -378,13 +608,17 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
     return found === undefined ? null : structuredClone(found);
   }
 
-  async update(tenantId: string, send: CampaignSend): Promise<CampaignSend | null> {
+  async update(tenantId: string, send: CampaignSend, events: EmailEvent[] = []): Promise<CampaignSend | null> {
     const index = this.rows.findIndex((row) => sameTenant(tenantId, row) && row.id === send.id);
     if (index < 0 || !sameTenant(tenantId, send)) return null;
     if (send.sesMessageId !== null && this.rows.some((row, rowIndex) =>
       rowIndex !== index && row.sesMessageId === send.sesMessageId
     )) throw new Error('SES message id must be unique');
     this.rows[index] = structuredClone(send);
+    if (this.events !== undefined) {
+      this.events.associateEmail(tenantId, 'marketing', send.id, send.email, send.sentAt);
+      for (const event of events) await this.events.append(tenantId, event);
+    }
     return structuredClone(send);
   }
 
@@ -401,6 +635,29 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
 
   async listAll(tenantId: string): Promise<CampaignSend[]> {
     return this.rows.filter((row) => row.tenantId === tenantId).map((row) => structuredClone(row));
+  }
+
+  async engagementStats(
+    tenantId: string,
+    campaignIds: string[],
+  ): Promise<Map<string, CampaignEngagementStats>> {
+    const stats = new Map<string, CampaignEngagementStats>();
+    if (this.events === undefined) return stats;
+    for (const campaignId of campaignIds) {
+      const campaignRows = this.rows.filter((row) => row.tenantId === tenantId && row.campaignId === campaignId);
+      const events = (await Promise.all(campaignRows.map((row) =>
+        this.events?.listByRef(tenantId, 'marketing', row.id) ?? []
+      ))).flat();
+      const opened = events.filter((event) => event.type === 'opened');
+      const clicked = events.filter((event) => event.type === 'clicked');
+      stats.set(campaignId, {
+        uniqueOpens: new Set(opened.map((event) => event.refId)).size,
+        totalOpens: opened.length,
+        uniqueClicks: new Set(clicked.map((event) => event.refId)).size,
+        totalClicks: clicked.length,
+      });
+    }
+    return stats;
   }
 
   async listPage(tenantId: string, query: {
@@ -446,10 +703,13 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
 export class InMemorySuppressionRepository implements SuppressionRepository {
   private readonly rows: Suppression[] = [];
 
-  async record(tenantId: string, suppression: Suppression): Promise<boolean> {
+  constructor(private readonly events?: InMemoryEmailEventRepository) {}
+
+  async record(tenantId: string, suppression: Suppression, event?: EmailEvent): Promise<boolean> {
     if (!sameTenant(tenantId, suppression)) return false;
     if (this.rows.some((row) => row.tenantId === tenantId && row.emailHmac === suppression.emailHmac && row.liftedAt === null)) return false;
     this.rows.push(structuredClone(suppression));
+    if (event !== undefined && this.events !== undefined) await this.events.append(tenantId, event);
     return true;
   }
 
@@ -493,28 +753,134 @@ export interface InMemoryEmailOutboxItem extends EmailOutboxItem {
 export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
   readonly items: InMemoryEmailOutboxItem[] = [];
 
-  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload }): Promise<Result<{ id: string }, AppError>> {
-    this.items.push({ ...structuredClone(input), attempts: 0, status: 'queued' });
+  constructor(readonly events = new InMemoryEmailEventRepository()) {}
+
+  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>> {
+    this.items.push({
+      ...structuredClone(input),
+      attempts: 0,
+      status: 'queued',
+      sesMessageId: null,
+      transport: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+    });
+    if (input.tenantId !== null) {
+      this.events.associateEmail(input.tenantId, 'transactional', input.id, input.to);
+      await this.events.append(input.tenantId, emailEventSchema.parse({
+        id: `${input.id}:queued`,
+        tenantId: input.tenantId,
+        mailKind: 'transactional',
+        refId: input.id,
+        type: 'queued',
+        occurredAt: input.now,
+        meta: null,
+        createdAt: input.now,
+      }));
+    }
     return ok({ id: input.id });
   }
 
-  async claimBatch(input: { limit: number }): Promise<Result<EmailOutboxItem[], AppError>> {
+  async claimBatch(input: { limit: number; now: string; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>> {
     const claimed = this.items.filter((row) => row.status === 'queued' || row.status === 'failed').slice(0, input.limit);
-    claimed.forEach((row) => { row.status = 'sending'; });
+    for (const row of claimed) {
+      const retry = row.status === 'failed';
+      row.status = 'sending';
+      if (row.tenantId !== null) {
+        if (retry) {
+          await this.events.append(row.tenantId, emailEventSchema.parse({
+            id: `${row.id}:retried:${String(row.attempts)}`,
+            tenantId: row.tenantId,
+            mailKind: 'transactional',
+            refId: row.id,
+            type: 'retried',
+            occurredAt: input.now,
+            meta: { attempt: row.attempts + 1, runId: input.runId },
+            createdAt: input.now,
+          }));
+        }
+        await this.events.append(row.tenantId, emailEventSchema.parse({
+          id: `${row.id}:claimed:${String(row.attempts)}`,
+          tenantId: row.tenantId,
+          mailKind: 'transactional',
+          refId: row.id,
+          type: 'claimed',
+          occurredAt: input.now,
+          meta: { attempt: row.attempts + 1, runId: input.runId },
+          createdAt: input.now,
+        }));
+      }
+    }
     return ok(claimed.map((row) => structuredClone(row)));
   }
 
-  async markSent(input: { id: string }): Promise<Result<void, AppError>> {
+  async markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
-    if (found !== undefined) found.status = 'sent';
+    if (found !== undefined) {
+      found.status = 'sent';
+      found.sesMessageId = input.sesMessageId;
+      found.transport = input.transport;
+      if (found.tenantId !== null) {
+        await this.events.append(found.tenantId, emailEventSchema.parse({
+          id: `${found.id}:accepted`,
+          tenantId: found.tenantId,
+          mailKind: 'transactional',
+          refId: found.id,
+          type: 'accepted',
+          occurredAt: input.sentAt,
+          meta: { sesMessageId: input.sesMessageId, transport: input.transport, runId: input.runId },
+          createdAt: input.sentAt,
+        }));
+      }
+    }
     return ok(undefined);
   }
 
-  async markFailed(input: { id: string; attempts: number }): Promise<Result<void, AppError>> {
+  async markFailed(input: { id: string; attempts: number; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
     if (found !== undefined) {
       found.status = 'failed';
       found.attempts = input.attempts;
+      if (input.transport !== null) found.transport = input.transport;
+      if (found.tenantId !== null) {
+        await this.events.append(found.tenantId, emailEventSchema.parse({
+          id: `${found.id}:failed:${String(input.attempts)}`,
+          tenantId: found.tenantId,
+          mailKind: 'transactional',
+          refId: found.id,
+          type: 'failed',
+          occurredAt: input.failedAt,
+          meta: {
+            error: input.error,
+            errorCode: input.errorCode,
+            attempt: input.attempts,
+            ...(input.transport === null ? {} : { transport: input.transport }),
+            runId: input.runId,
+          },
+          createdAt: input.failedAt,
+        }));
+      }
+    }
+    return ok(undefined);
+  }
+
+  async correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<EmailOutboxItem | null> {
+    const found = this.items.find((row) => row.tenantId === tenantId && row.sesMessageId === sesMessageId);
+    return found === undefined ? null : structuredClone(found);
+  }
+
+  async markDelivery(input: {
+    tenantId: string;
+    id: string;
+    status: 'delivered' | 'bounced' | 'complained';
+    occurredAt: string;
+    event: EmailEvent;
+  }): Promise<Result<void, AppError>> {
+    const found = this.items.find((row) => row.tenantId === input.tenantId && row.id === input.id);
+    if (found !== undefined) {
+      found.deliveryStatus = input.status;
+      found.deliveryOccurredAt = input.occurredAt;
+      await this.events.append(input.tenantId, input.event);
     }
     return ok(undefined);
   }
@@ -527,6 +893,8 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
 export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepository {
   private readonly rows: UnsubscribeToken[] = [];
 
+  constructor(private readonly events?: InMemoryEmailEventRepository) {}
+
   async create(tenantId: string, token: UnsubscribeToken): Promise<void> {
     if (!sameTenant(tenantId, token)) throw new Error('Tenant mismatch');
     if (this.rows.some((row) => row.id === token.id || row.token === token.token)) throw new Error('Token already exists');
@@ -538,7 +906,7 @@ export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepos
     return found === undefined ? null : structuredClone(found);
   }
 
-  async consume(tenantId: string, token: string, usedAt: string): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null> {
+  async consume(tenantId: string, token: string, usedAt: string, event?: EmailEvent): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null> {
     const index = this.rows.findIndex((row) => sameTenant(tenantId, row) && row.token === token);
     if (index < 0) return null;
     const current = this.rows[index];
@@ -546,6 +914,9 @@ export class InMemoryUnsubscribeTokenRepository implements UnsubscribeTokenRepos
     const consumed = consumeUnsubscribeToken(current, usedAt);
     if (!consumed.ok) return null;
     this.rows[index] = consumed.value.token;
+    if (consumed.value.newlyUsed && event !== undefined && this.events !== undefined) {
+      await this.events.append(tenantId, event);
+    }
     return { token: structuredClone(consumed.value.token), newlyUsed: consumed.value.newlyUsed };
   }
 }

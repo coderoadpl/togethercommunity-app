@@ -21,14 +21,14 @@ describe('createDevEmailPort', () => {
     });
 
     const sent = await port.send({ to: recipient, ...rendered });
-    expect(sent).toEqual({ ok: true, value: { messageId: null } });
+    expect(sent).toMatchObject({ ok: true, value: { messageId: expect.stringMatching(/^dev-/) } });
 
     const stored = await reader.findByRecipient(normalizeEmail(recipient));
     expect(stored?.subject).toBe(rendered.subject);
     expect(stored?.html).toBe(rendered.html);
     expect(stored?.text).toBe(rendered.text);
     expect(stored?.headers).toEqual({});
-    expect(stored?.messageId).toBeNull();
+    expect(stored?.messageId).toBe(sent.ok ? sent.value.messageId : null);
     expect(stored?.to).toBe(normalizeEmail(recipient));
   });
 

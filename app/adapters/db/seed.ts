@@ -7,12 +7,16 @@ import { createDb } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
 import {
+  campaigns,
+  campaignSends,
   courseLessons,
   courseModules,
   courses,
   consentConfirmationTokens,
   consentDefinitions,
   consentDefinitionVersions,
+  emailEvents,
+  emailOutbox,
   memberCourseProgress,
   members,
   memberSubscriptions,
@@ -24,6 +28,8 @@ import {
   productGrants,
   productPrices,
   products,
+  schedulerRuns,
+  schedulerRunTenants,
   spaces,
   spaceSubscriptions,
   tenantAdmins,
@@ -872,6 +878,27 @@ await db
   .onConflictDoNothing();
 
 await db
+  .insert(consentDefinitions)
+  .values({
+    id: 'consent-definition-studio-news', tenantId: 'tenant-studio', key: 'aktualnosci',
+    kind: 'optional_marketing', channel: 'email', doubleOptIn: true,
+    documentRef: { mode: 'url', url: 'https://studio.example.test/privacy' }, status: 'active',
+    createdAt: relativeIso(-25), updatedAt: relativeIso(-25),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(consentDefinitionVersions)
+  .values({
+    id: 'consent-definition-studio-news-v1', tenantId: 'tenant-studio',
+    definitionId: 'consent-definition-studio-news', version: 1,
+    label: 'Chcę otrzymywać aktualności e-mailem',
+    documentVersionRef: { mode: 'url', url: 'https://studio.example.test/privacy' },
+    createdAt: relativeIso(-25), createdBy: null,
+  })
+  .onConflictDoNothing();
+
+await db
   .insert(marketingConsents)
   .values([
     {
@@ -1138,6 +1165,134 @@ await db
       createdAt: nextIso(),
     })),
   )
+  .onConflictDoNothing();
+
+await db
+  .insert(marketingConsents)
+  .values({
+    id: 'marketing-consent-studio-confirmed', tenantId: 'tenant-studio',
+    memberId: 'member-studio-aktywny', email: 'kursant.aktywny@together.dev',
+    definitionId: 'consent-definition-studio-news', definitionVersion: 1,
+    wordingSnapshot: 'Chcę otrzymywać aktualności e-mailem',
+    documentRefSnapshot: { mode: 'url', url: 'https://studio.example.test/privacy' },
+    status: 'confirmed', previousId: null, source: 'checkout',
+    evidence: { collectedAt: relativeIso(-20), proofRef: 'seeded-checkout' },
+    occurredAt: relativeIso(-20),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(campaigns)
+  .values({
+    id: 'campaign-studio-observability', tenantId: 'tenant-studio', name: 'Premiera kursu',
+    subject: 'Twój plan nauki na lipiec', bodyHtml: '<p>Plan nauki</p>', bodySource: '<p>Plan nauki</p>',
+    layoutId: null, consentDefinitionId: 'consent-definition-studio-news', audienceFilter: null,
+    status: 'finished', sendAt: relativeIso(-4), snapshotMaxMemberId: 'member-studio-aktywny',
+    cursorMemberId: 'member-studio-aktywny', toSend: 1, sent: 1, failed: 0,
+    lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
+    audienceNameSnapshot: 'Wszyscy uprawnieni', consentLabelSnapshot: 'Chcę otrzymywać aktualności e-mailem',
+    startedAt: relativeIso(-4), finishedAt: relativeIso(-4), createdAt: relativeIso(-5),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(schedulerRuns)
+  .values([
+    {
+      id: 'scheduler-run-studio-marketing', kind: 'marketing_tick', trigger: 'cron',
+      startedAt: relativeIso(-0.1), finishedAt: relativeIso(-0.1), durationMs: 684,
+      status: 'completed', error: null,
+      totals: {
+        campaignsTouched: 1, sendsAttempted: 1, sent: 1, failed: 0, skipped: 0, reEnqueued: false,
+      },
+      createdAt: relativeIso(-0.1),
+    },
+    {
+      id: 'scheduler-run-studio-outbox', kind: 'outbox_dispatch', trigger: 'cron',
+      startedAt: relativeIso(-0.2), finishedAt: relativeIso(-0.2), durationMs: 312,
+      status: 'failed', error: 'SES rejected one message',
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 2, sent: 1, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      createdAt: relativeIso(-0.2),
+    },
+  ])
+  .onConflictDoNothing();
+
+await db
+  .insert(schedulerRunTenants)
+  .values([
+    {
+      id: 'scheduler-run-tenant-studio-marketing', runId: 'scheduler-run-studio-marketing',
+      tenantId: 'tenant-studio', campaignsTouched: 1, batchSize: 1, sent: 1, failed: 0, skipped: 0,
+      budgetComputed: 25, budgetUsed: 1, errors: [], createdAt: relativeIso(-0.1),
+    },
+    {
+      id: 'scheduler-run-tenant-studio-outbox', runId: 'scheduler-run-studio-outbox',
+      tenantId: 'tenant-studio', campaignsTouched: 0, batchSize: 2, sent: 1, failed: 1, skipped: 0,
+      budgetComputed: 25, budgetUsed: 2, errors: ['SES rejected one message'], createdAt: relativeIso(-0.2),
+    },
+  ])
+  .onConflictDoNothing();
+
+await db
+  .insert(campaignSends)
+  .values({
+    id: 'send-studio-marketing', tenantId: 'tenant-studio', campaignId: 'campaign-studio-observability',
+    runId: 'scheduler-run-studio-marketing',
+    source: 'broadcast', memberId: 'member-studio-aktywny', email: 'kursant.aktywny@together.dev',
+    subject: 'Twój plan nauki na lipiec', consentRowId: 'marketing-consent-studio-confirmed',
+    unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-studio-marketing',
+    deliveryStatus: 'delivered', deliveryOccurredAt: relativeIso(-4), idempotencySource: null,
+    renderedBodyPurgedAt: null, createdAt: relativeIso(-4), sentAt: relativeIso(-4),
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(emailOutbox)
+  .values({
+    id: 'send-studio-transactional', tenantId: 'tenant-studio', kind: 'welcome-set-password',
+    to: 'kursant.aktywny@together.dev',
+    payload: {
+      kind: 'welcome-set-password', language: 'pl', tenantName: 'Studio Demo',
+      actionUrl: 'https://studio.example.test/set-password',
+    },
+    status: 'sent', attempts: 1, nextAttemptAt: relativeIso(-3), lastError: null,
+    createdAt: relativeIso(-3), sentAt: relativeIso(-3), sesMessageId: 'ses-studio-transactional',
+    deliveryStatus: null, deliveryOccurredAt: null,
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(emailEvents)
+  .values([
+    {
+      id: 'event-studio-marketing-queued', tenantId: 'tenant-studio', mailKind: 'marketing',
+      refId: 'send-studio-marketing', type: 'queued', occurredAt: relativeIso(-4),
+      meta: { source: 'broadcast', runId: 'scheduler-run-studio-marketing' }, createdAt: relativeIso(-4),
+    },
+    {
+      id: 'event-studio-marketing-accepted', tenantId: 'tenant-studio', mailKind: 'marketing',
+      refId: 'send-studio-marketing', type: 'accepted', occurredAt: relativeIso(-4),
+      meta: { sesMessageId: 'ses-studio-marketing' }, createdAt: relativeIso(-4),
+    },
+    {
+      id: 'event-studio-marketing-delivered', tenantId: 'tenant-studio', mailKind: 'marketing',
+      refId: 'send-studio-marketing', type: 'delivered', occurredAt: relativeIso(-4),
+      meta: { processingTimeMillis: 842 }, createdAt: relativeIso(-4),
+    },
+    {
+      id: 'event-studio-transactional-queued', tenantId: 'tenant-studio', mailKind: 'transactional',
+      refId: 'send-studio-transactional', type: 'queued', occurredAt: relativeIso(-3),
+      meta: null, createdAt: relativeIso(-3),
+    },
+    {
+      id: 'event-studio-transactional-accepted', tenantId: 'tenant-studio', mailKind: 'transactional',
+      refId: 'send-studio-transactional', type: 'accepted', occurredAt: relativeIso(-3),
+      meta: { sesMessageId: 'ses-studio-transactional', runId: 'scheduler-run-studio-outbox' },
+      createdAt: relativeIso(-3),
+    },
+  ])
   .onConflictDoNothing();
 
 await db

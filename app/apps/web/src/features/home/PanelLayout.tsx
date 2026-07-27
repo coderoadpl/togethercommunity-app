@@ -68,6 +68,8 @@ type PanelSection =
   | 'spaces'
   | 'sales'
   | 'integrations'
+  | 'marketingActivity'
+  | 'marketingSends'
   | 'marketingCampaigns'
   | 'marketingConsents'
   | 'marketingDocuments'
@@ -90,6 +92,8 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'spaces', to: '/panel/spaces' },
   { id: 'sales', to: '/panel/sales' },
   { id: 'integrations', to: '/panel/integrations' },
+  { id: 'marketingActivity', to: '/panel/marketing/activity' },
+  { id: 'marketingSends', to: '/panel/marketing/sends' },
   { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
   { id: 'marketingConsents', to: '/panel/marketing/consents' },
   { id: 'marketingDocuments', to: '/panel/marketing/documents' },
@@ -124,6 +128,8 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <SalesIcon />;
     case 'integrations':
       return <IntegrationsIcon />;
+    case 'marketingActivity':
+    case 'marketingSends':
     case 'marketingCampaigns':
     case 'marketingConsents':
     case 'marketingDocuments':
@@ -187,6 +193,7 @@ const UserMenu = ({
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+          sx={{ minHeight: '44px', minWidth: '44px' }}
         >
           <AccountIcon />
         </IconButton>
@@ -263,6 +270,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
                 data-testid="open-navigation"
                 aria-label={t.panel.openNavigation}
                 onClick={() => setMobileOpen(true)}
+                sx={{ minHeight: '44px', minWidth: '44px' }}
               >
                 <MenuIcon />
               </IconButton>

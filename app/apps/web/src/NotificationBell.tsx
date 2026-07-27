@@ -116,6 +116,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+          sx={{ minHeight: '44px', minWidth: '44px' }}
         >
           <Badge badgeContent={unreadCount} color="error" data-testid="notification-badge">
             <BellIcon />
@@ -129,7 +130,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       aria-haspopup="true"
       aria-expanded={open ? true : undefined}
       onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
-      sx={{ minWidth: 0, py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
+      sx={{ minHeight: '44px', minWidth: '44px', py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
     >
       <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
         <TabBellIcon />

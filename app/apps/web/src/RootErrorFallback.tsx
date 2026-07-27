@@ -32,6 +32,7 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'pending_confirmation':
     case 'ses_not_configured':
     case 'broadcasts_disabled':
+    case 'transactional_platform_cap_reached':
     case 'internal':
       return t.errors.headingGeneric;
   }

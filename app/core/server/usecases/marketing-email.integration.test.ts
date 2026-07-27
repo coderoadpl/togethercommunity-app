@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  emailEventSchema,
   err,
   integrationAuth,
   ok,
@@ -19,10 +20,12 @@ import {
   InMemoryConsentConfirmationTokenRepository,
   InMemoryConsentDefinitionRepository,
   InMemoryEmailLayoutRepository,
+  InMemoryEmailEventRepository,
   InMemoryEmailOutboxRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
   InMemoryMarketingThrottleRepository,
+  InMemorySchedulerRunRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
@@ -31,6 +34,7 @@ import {
 import type { Ctx } from '../context.js';
 import type { SesMarketingQuotaReader } from '../ports.js';
 import { removeMember } from './members.js';
+import { dispatchEmailBatch } from './dispatch-email-batch.js';
 import {
   addManualSuppression,
   applyVerifiedSesEvent,
@@ -43,10 +47,13 @@ import {
   deleteCampaign,
   getMarketingEligibility,
   getCampaign,
+  getCampaignWithEngagement,
   getUnsubscribePreferences,
   listCampaigns,
+  listCampaignsWithEngagement,
   liftMarketingSuppression,
   pauseCampaign,
+  recordCheckoutMarketingConsents,
   recordMarketingConsent,
   runMarketingRetentionJobs,
   runScheduledMarketingJobs,
@@ -91,6 +98,8 @@ const consent = (email: string, status: MarketingConsent['status'] = 'confirmed'
 const settings: TenantSesSettings = {
   tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
   identityVerifiedAt: NOW, configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
+  trackingEnabled: true,
+  autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
   quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Legal Ltd',
   quotaSentLast24Hours: 0,
@@ -111,18 +120,20 @@ const setup = async (emails = ['member@example.test']) => {
   const consents = new InMemoryMarketingConsentRepository();
   let quotaReader: SesMarketingQuotaReader | undefined;
   for (const email of emails) await consents.record('tenant-1', consent(email));
+  const events = new InMemoryEmailEventRepository();
   return {
     definitions, consents, confirmations: new InMemoryConsentConfirmationTokenRepository(),
-    suppressions: new InMemorySuppressionRepository(), unsubscribes: new InMemoryUnsubscribeTokenRepository(),
-    sends: new InMemoryCampaignSendRepository(), campaigns: new InMemoryCampaignRepository([campaign()]),
+    suppressions: new InMemorySuppressionRepository(events), unsubscribes: new InMemoryUnsubscribeTokenRepository(events),
+    sends: new InMemoryCampaignSendRepository(events), campaigns: new InMemoryCampaignRepository([campaign()]),
     layouts: new InMemoryEmailLayoutRepository(),
     audience: new InMemoryMarketingAudienceRepository(emails.map((email, index) => ({
       memberId: `member-${String(index + 1)}`, email, displayName: null, productIds: [],
     }))),
     sesSettings: new InMemoryTenantSesSettingsRepository([settings]), ses: new FakeSesMarketingSender(),
-    hmac: new FakeEmailHmac(), outbox: new InMemoryEmailOutboxRepository(), clock, ids, tokens,
+    hmac: new FakeEmailHmac(), events, outbox: new InMemoryEmailOutboxRepository(events), clock, ids, tokens,
     throttle: new InMemoryMarketingThrottleRepository(),
     scheduler: new FakeScheduler(),
+    runs: new InMemorySchedulerRunRepository(),
     credentials: { resolve: async () => ok({ accessKeyId: 'AKIA', secretAccessKey: 'secret', region: 'eu-central-1' }) },
     quotaReader,
     unsubscribeBaseUrl: 'https://tenant.test/u',
@@ -130,6 +141,115 @@ const setup = async (emails = ['member@example.test']) => {
 };
 
 describe('marketing e-mail use-case integration', () => {
+  it('records a completed tick with tenant budgets and links sends and events to the run', async () => {
+    const deps = await setup();
+    const result = await campaignTick(ctx, {
+      campaignId: 'campaign-1',
+      workerId: 'worker-1',
+      tickSeconds: 1,
+      trigger: 'cron',
+    }, deps);
+    expect(result).toMatchObject({ ok: true, value: { sent: 1, failed: 0, skipped: 0 } });
+    const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
+    const runs = page.items.map((item) => item.run);
+    expect(runs).toHaveLength(1);
+    const runId = runs[0]?.id ?? '';
+    expect(await deps.runs.getWithTenants(runId)).toMatchObject({
+      run: {
+        kind: 'marketing_tick',
+        trigger: 'cron',
+        status: 'completed',
+        totals: {
+          campaignsTouched: 1,
+          sendsAttempted: 1,
+          sent: 1,
+          failed: 0,
+          skipped: 0,
+          reEnqueued: false,
+        },
+      },
+      tenants: [{
+        tenantId: 'tenant-1',
+        campaignsTouched: 1,
+        batchSize: 1,
+        sent: 1,
+        failed: 0,
+        skipped: 0,
+        budgetComputed: 10,
+        budgetUsed: 1,
+      }],
+    });
+    const [send] = await deps.sends.listByCampaign('tenant-1', 'campaign-1');
+    expect(send?.runId).toBe(runId);
+    expect(await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'accepted', meta: expect.objectContaining({ runId }) }),
+      ]),
+    );
+  });
+
+  it('finalizes a tick as failed when execution throws', async () => {
+    const deps = await setup();
+    deps.audience.afterFetch = () => {
+      throw new Error('Audience unavailable');
+    };
+    await expect(campaignTick(ctx, {
+      campaignId: 'campaign-1',
+      workerId: 'worker-1',
+      tickSeconds: 1,
+      trigger: 'dev',
+    }, deps)).rejects.toThrow('Audience unavailable');
+    const page = await deps.runs.listForTenant('tenant-1', { limit: 10 });
+    const runs = page.items.map((item) => item.run);
+    expect(runs).toHaveLength(1);
+    expect(await deps.runs.getWithTenants(runs[0]?.id ?? '')).toMatchObject({
+      run: {
+        trigger: 'dev',
+        status: 'failed',
+        error: 'Audience unavailable',
+        totals: { campaignsTouched: 1, sendsAttempted: 0 },
+      },
+      tenants: [{ tenantId: 'tenant-1', budgetComputed: 10, budgetUsed: 0 }],
+    });
+  });
+
+  it('records the exact happy broadcast lifecycle sequence', async () => {
+    const deps = await setup();
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test',
+      memberId: 'member-1',
+      campaignId: 'campaign-1',
+      source: 'broadcast',
+      consentDefinitionId: definition.id,
+      subject: 'Hello',
+      bodyHtml: '<p>Content</p>',
+      data: {},
+    }], deps);
+    if (!result.ok || result.value[0]?.status !== 'sent') throw new Error('Expected a sent marketing message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', result.value[0].sendId)).map((event) => event.type))
+      .toEqual(['queued', 'claimed', 'rendered', 'accepted']);
+  });
+
+  it('records an exact skip event for a suppressed broadcast recipient', async () => {
+    const deps = await setup();
+    await addManualSuppression(ctx, { email: 'member@example.test', sourceRef: 'staff-1' }, deps);
+    const result = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test',
+      memberId: 'member-1',
+      campaignId: 'campaign-1',
+      source: 'broadcast',
+      consentDefinitionId: definition.id,
+      subject: 'Hello',
+      bodyHtml: '<p>Content</p>',
+      data: {},
+    }], deps);
+    if (!result.ok || result.value[0]?.status !== 'skipped' || result.value[0].sendId === null) {
+      throw new Error('Expected a skipped marketing message');
+    }
+    expect((await deps.events.listByRef('tenant-1', 'marketing', result.value[0].sendId)).map((event) => event.type))
+      .toEqual(['skipped']);
+  });
+
   it('derives send readiness instead of trusting a stale persisted flag', async () => {
     const deps = await setup();
     deps.sesSettings = new InMemoryTenantSesSettingsRepository([{ ...settings, broadcastsEnabled: false }]);
@@ -216,6 +336,25 @@ describe('marketing e-mail use-case integration', () => {
     expect(refused).toMatchObject({ ok: true, value: [{ status: 'skipped', reason: 'unsubscribed' }] });
   });
 
+  it('attaches the tenant configuration set independently of engagement tracking', async () => {
+    const enabled = await setup();
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Tracked',
+      bodyHtml: '<p>Tracked</p>', data: {},
+    }], enabled);
+    expect(enabled.ses.sent[0]?.configurationSet).toBe('marketing');
+
+    const disabled = await setup();
+    await disabled.sesSettings.upsert('tenant-1', { ...settings, trackingEnabled: false });
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Private',
+      bodyHtml: '<p>Private</p>', data: {},
+    }], disabled);
+    expect(disabled.ses.sent[0]?.configurationSet).toBe('marketing');
+  });
+
   it('I1 refuses broadcast and API messages with the same machine-readable reason matrix', async () => {
     const cases: Array<{ reason: 'suppressed' | 'unsubscribed' | 'pending_confirmation' | 'not_consented'; prepare(deps: Awaited<ReturnType<typeof setup>>, emails: string[]): Promise<void> }> = [
       { reason: 'suppressed', prepare: async (deps, emails) => { for (const email of emails) await addManualSuppression(ctx, { email, sourceRef: 'staff-1' }, deps); } },
@@ -287,6 +426,11 @@ describe('marketing e-mail use-case integration', () => {
     expect(result).toMatchObject({ ok: true, value: { sent: 0, skipped: 2 } });
     expect((await deps.sends.listByCampaign('tenant-1', 'campaign-1')).map((row) => row.skipReason).sort())
       .toEqual(['suppressed', 'unsubscribed']);
+    const withdrawn = (await deps.sends.listByCampaign('tenant-1', 'campaign-1'))
+      .find((send) => send.email === 'first@example.test');
+    expect(withdrawn).toBeDefined();
+    expect((await deps.events.listByRef('tenant-1', 'marketing', withdrawn?.id ?? '')).map((event) => event.type))
+      .toEqual(['queued', 'claimed', 'skipped']);
   });
 
   it('I2 skips a recipient changed between keyset batches and records the reason', async () => {
@@ -359,6 +503,51 @@ describe('marketing e-mail use-case integration', () => {
     expect((await pauseCampaign(ctx, { campaignId: 'campaign-1', resume: true }, deps)).ok).toBe(true);
   });
 
+  it('pauses a running campaign before sending when critical reputation auto-pause is enabled', async () => {
+    const deps = await setup();
+    await deps.sesSettings.upsert('tenant-1', { ...settings, autoPauseOnCritical: true });
+    for (let index = 0; index < 100; index += 1) {
+      const sentAt = '1998-07-21T10:00:00.000Z';
+      await deps.sends.claimRecipient('tenant-1', {
+        id: `reputation-send-${String(index)}`, runId: null, tenantId: 'tenant-1',
+        campaignId: null, source: 'api', memberId: null,
+        email: `reputation-${String(index)}@example.test`, subject: 'Reputation',
+        consentRowId: 'consent-reputation', unsubscribeTokenId: null, status: 'sent',
+        skipReason: null, sesMessageId: `ses-reputation-${String(index)}`,
+        deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+        renderedBodyPurgedAt: null, createdAt: sentAt, sentAt,
+      });
+    }
+    for (let index = 0; index < 10; index += 1) {
+      const occurredAt = '1998-07-21T11:00:00.000Z';
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id: `bounce-reputation-${String(index)}`,
+        tenantId: 'tenant-1',
+        mailKind: 'marketing',
+        refId: `reputation-send-${String(index)}`,
+        type: 'bounced',
+        occurredAt,
+        createdAt: occurredAt,
+        meta: { classification: 'hard', rawProviderPayload: {} },
+      }));
+    }
+
+    const result = await campaignTick(ctx, {
+      campaignId: 'campaign-1',
+      workerId: 'reputation-worker',
+      tickSeconds: 1,
+    }, deps);
+
+    expect(result).toMatchObject({ ok: true, value: { leased: true, sent: 0 } });
+    expect(deps.ses.sent).toHaveLength(0);
+    expect(await deps.campaigns.findById('tenant-1', 'campaign-1')).toMatchObject({
+      status: 'paused',
+      pausedReason: 'Broadcasts paused automatically: critical email reputation threshold exceeded',
+      lockedUntil: null,
+      lockedBy: null,
+    });
+  });
+
   it('I7 resets the consecutive error count after a successful send', async () => {
     const deps = await setup(['one@example.test', 'two@example.test', 'three@example.test']);
     await deps.sesSettings.upsert('tenant-1', { ...settings, quotaRatePerSec: 1 });
@@ -401,6 +590,9 @@ describe('marketing e-mail use-case integration', () => {
     const topicArn = 'arn:topic:tenant-1';
     const hard = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Permanent', status: null, occurredAt: NOW, raw: { event: 1 } }, deps);
     expect(hard).toEqual(ok({ processed: true }));
+    const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).map((item) => item.type))
+      .toEqual(['queued', 'claimed', 'rendered', 'accepted', 'bounced', 'suppressed_written']);
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
     const missing = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'unknown', kind: 'complaint', occurredAt: NOW, raw: {} }, deps);
     expect(missing).toEqual(ok({ processed: false }));
@@ -426,6 +618,118 @@ describe('marketing e-mail use-case integration', () => {
     expect(await applyVerifiedSesEvent(ctx, { topicArn: settings.snsTopicArn ?? '', messageId: 'fake-ses-message', kind: 'delivery', occurredAt: NOW, raw: {} }, deps)).toEqual(ok({ processed: true }));
     expect(await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message')).toMatchObject({ deliveryStatus: 'delivered', deliveryOccurredAt: NOW });
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(false);
+  });
+
+  it('records SES opens and clicks on the correlated marketing send', async () => {
+    const deps = await setup();
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Hi',
+      bodyHtml: '<p>Hi</p>', data: {},
+    }], deps);
+    const topicArn = settings.snsTopicArn ?? '';
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'open',
+      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1' } },
+    }, deps)).toEqual(ok({ processed: true }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'click',
+      linkUrl: 'https://tenant.test/offer', occurredAt: NOW,
+      raw: { click: { link: 'https://tenant.test/offer' } },
+    }, deps)).toEqual(ok({ processed: true }));
+    const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).slice(-2))
+      .toMatchObject([
+        { type: 'opened', meta: { rawProviderPayload: { open: { ipAddress: '192.0.2.1' } } } },
+        {
+          type: 'clicked',
+          meta: {
+            linkUrl: 'https://tenant.test/offer',
+            rawProviderPayload: { click: { link: 'https://tenant.test/offer' } },
+          },
+        },
+      ]);
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'unknown', kind: 'open', occurredAt: NOW, raw: {},
+    }, deps)).toEqual(ok({ processed: false }));
+  });
+
+  it('ignores SES opens and clicks when tenant engagement tracking is disabled', async () => {
+    const deps = await setup();
+    await deps.sesSettings.upsert('tenant-1', { ...settings, trackingEnabled: false });
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Hi',
+      bodyHtml: '<p>Hi</p>', data: {},
+    }], deps);
+    const topicArn = settings.snsTopicArn ?? '';
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'open',
+      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1' } },
+    }, deps)).toEqual(ok({ processed: false }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'click',
+      linkUrl: 'https://tenant.test/offer', occurredAt: NOW,
+      raw: { click: { link: 'https://tenant.test/offer' } },
+    }, deps)).toEqual(ok({ processed: false }));
+    const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? ''))
+      .filter((event) => event.type === 'opened' || event.type === 'clicked')).toEqual([]);
+  });
+
+  it('correlates transactional SNS complaints without writing marketing suppression', async () => {
+    const deps = await setup();
+    await deps.outbox.enqueue({
+      id: 'outbox-transactional',
+      tenantId: 'tenant-1',
+      to: 'transactional@example.test',
+      payload: {
+        kind: 'magic-link',
+        language: 'en',
+        tenantName: 'Tenant',
+        url: 'https://tenant.test/sign-in',
+      },
+      now: NOW,
+    });
+    await dispatchEmailBatch({
+      emailOutbox: deps.outbox,
+      events: deps.events,
+      email: { send: async () => ok({ messageId: 'transactional-ses-id', transport: 'platform' as const }) },
+      clock,
+      logger: { error: () => undefined },
+      batchSize: 1,
+      attemptsCap: 3,
+      backoffBaseMs: 1000,
+      backoffCapMs: 10000,
+      ids: deps.ids,
+      runs: deps.runs,
+      trigger: 'manual',
+    });
+
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn: settings.snsTopicArn ?? '',
+      messageId: 'transactional-ses-id',
+      kind: 'complaint',
+      occurredAt: NOW,
+      raw: { complaint: true },
+    }, deps)).toEqual(ok({ processed: true }));
+    expect(await deps.suppressions.isSuppressed(
+      'tenant-1',
+      deps.hmac.compute('tenant-1', 'transactional@example.test'),
+    )).toBe(false);
+    expect((await deps.events.listByRef(
+      'tenant-1',
+      'transactional',
+      'outbox-transactional',
+    )).map((event) => event.type)).toEqual([
+      'queued',
+      'claimed',
+      'rendered',
+      'accepted',
+      'complained',
+    ]);
+    expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
+      .toMatchObject({ deliveryStatus: 'complained', deliveryOccurredAt: NOW });
   });
 
   it('I10 erasure atomically keeps an HMAC tombstone, pseudonymizes sends, and preserves counters', async () => {
@@ -470,8 +774,75 @@ describe('marketing e-mail use-case integration', () => {
     await deps.consents.record('tenant-1', { ...consent('direct@example.test', 'granted', 'direct-grant'), definitionId: directDefinition.id, occurredAt: '1998-06-01T00:00:00.000Z' });
     await deps.confirmations.create('tenant-1', { id: 'expired-token', tenantId: 'tenant-1', token: 'expired_token_1234567890123456', marketingConsentRowId: recorded.ok ? recorded.value.consent.id : '', createdAt: '1998-07-20T00:00:00.000Z', expiresAt: '1998-07-21T00:00:00.000Z', usedAt: null });
     expect(await confirmMarketingConsent(ctx, { token: 'expired_token_1234567890123456', evidence: { collectedAt: NOW } }, deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await runMarketingRetentionJobs(ctx, { pendingOlderThan: '1998-07-01T00:00:00.000Z', renderedBodiesOlderThan: NOW, idempotencyNow: NOW }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({ ok: true, value: { pendingConsentsPurged: 1 } });
+    expect(await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: '1998-07-01T00:00:00.000Z',
+      renderedBodiesOlderThan: NOW,
+      engagementOlderThan: NOW,
+      idempotencyNow: NOW,
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
+      ok: true,
+      value: { pendingConsentsPurged: 1 },
+    });
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
+  });
+
+  it('records only selected checkout consents with the current wording snapshot and DOI mail', async () => {
+    const deps = await setup([]);
+    await deps.definitions.appendVersion('tenant-1', {
+      ...version,
+      id: 'version-2',
+      version: 2,
+      label: 'Current checkout wording',
+    });
+
+    const refused = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-1' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(refused).toEqual({ ok: true, value: { recorded: 0, pendingConfirmations: 0 } });
+    expect(await deps.consents.listByEmail('tenant-1', 'buyer@example.test')).toEqual([]);
+
+    const accepted = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [definition.id],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-1' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(accepted).toEqual({ ok: true, value: { recorded: 1, pendingConfirmations: 1 } });
+    expect(await deps.consents.listByEmail('tenant-1', 'buyer@example.test')).toMatchObject([{
+      definitionVersion: 2,
+      wordingSnapshot: 'Current checkout wording',
+      source: 'checkout',
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-1' },
+    }]);
+    expect(deps.outbox.items).toMatchObject([{ payload: { kind: 'marketing-consent-confirmation' } }]);
+
+    const repeated = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [definition.id],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: NOW, proofRef: 'product:course-1;order:order-2' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(repeated).toEqual({ ok: true, value: { recorded: 0, pendingConfirmations: 0 } });
+    expect(await deps.consents.listByEmail('tenant-1', 'buyer@example.test')).toHaveLength(1);
+    expect(deps.outbox.items).toHaveLength(1);
+
+    const afterTokenExpiry = '1998-07-23T10:00:01.000Z';
+    deps.clock = { nowIso: () => afterTokenExpiry };
+    const retried = await recordCheckoutMarketingConsents(anonymousCtx, {
+      email: 'buyer@example.test',
+      selectedDefinitionIds: [definition.id],
+      attachedDefinitionIds: [definition.id],
+      evidence: { collectedAt: afterTokenExpiry, proofRef: 'product:course-1;order:order-3' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+    expect(retried).toEqual({ ok: true, value: { recorded: 1, pendingConfirmations: 1 } });
+    expect(deps.outbox.items).toHaveLength(2);
   });
 
   it('rejects future-dated consent evidence so a later withdrawal cannot be resurrected', async () => {
@@ -488,10 +859,12 @@ describe('marketing e-mail use-case integration', () => {
   it('scans all due campaign work and runs retention for every marketing tenant', async () => {
     const dispatched: string[] = [];
     const retained: string[] = [];
+    const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
+      engagementOlderThan: '1998-06-22T10:00:00.000Z',
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -500,6 +873,7 @@ describe('marketing e-mail use-case integration', () => {
         ],
         listRetentionTenantIds: async () => ['tenant-1', 'tenant-3'],
       },
+      runs,
       dispatchCampaign: async (tenantId, campaignId) => {
         dispatched.push(`${tenantId}:${campaignId}`);
         return ok(undefined);
@@ -514,12 +888,61 @@ describe('marketing e-mail use-case integration', () => {
     expect(retained).toEqual(['tenant-1', 'tenant-3']);
   });
 
-  it('continues scheduled campaigns and retention after one tenant job fails', async () => {
-    const processed: string[] = [];
+  it('fails stale scheduler runs when there are no marketing retention tenants', async () => {
+    const runs = new InMemorySchedulerRunRepository();
+    await runs.start({
+      id: 'stuck-outbox-run',
+      kind: 'outbox_dispatch',
+      trigger: 'cron',
+      startedAt: '1998-07-22T08:00:00.000Z',
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: {
+        campaignsTouched: 0,
+        sendsAttempted: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 0,
+        reEnqueued: false,
+      },
+      createdAt: '1998-07-22T08:00:00.000Z',
+    });
+
     const result = await runScheduledMarketingJobs({
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
+      engagementOlderThan: '1998-06-22T10:00:00.000Z',
+    }, {
+      jobs: {
+        listRunnableCampaigns: async () => [],
+        listRetentionTenantIds: async () => [],
+      },
+      runs,
+      dispatchCampaign: async () => ok(undefined),
+      runRetention: async () => ok(undefined),
+    });
+
+    expect(result).toEqual(ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }));
+    expect(await runs.getWithTenants('stuck-outbox-run')).toMatchObject({
+      run: {
+        status: 'failed',
+        finishedAt: NOW,
+        error: 'Scheduler run exceeded its timeout',
+      },
+    });
+  });
+
+  it('continues scheduled campaigns and retention after one tenant job fails', async () => {
+    const processed: string[] = [];
+    const runs = new InMemorySchedulerRunRepository();
+    const result = await runScheduledMarketingJobs({
+      now: NOW,
+      pendingOlderThan: '1998-06-22T10:00:00.000Z',
+      renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
+      engagementOlderThan: '1998-06-22T10:00:00.000Z',
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -528,6 +951,7 @@ describe('marketing e-mail use-case integration', () => {
         ],
         listRetentionTenantIds: async () => ['tenant-1'],
       },
+      runs,
       dispatchCampaign: async (tenantId) => {
         processed.push(`campaign:${tenantId}`);
         return tenantId === 'tenant-1' ? err(integrationAuth('bad SES key')) : ok(undefined);
@@ -563,7 +987,18 @@ describe('marketing e-mail use-case integration', () => {
 
   it('I12 yields marketing while transactional outbox work is pending', async () => {
     const deps = await setup();
-    deps.outbox.items.push({ id: 'transactional-1', tenantId: 'tenant-1', to: 'x@example.test', payload: { kind: 'reset-password', language: 'en', actionUrl: 'https://tenant.test/reset' }, attempts: 0, status: 'queued' });
+    deps.outbox.items.push({
+      id: 'transactional-1',
+      tenantId: 'tenant-1',
+      to: 'x@example.test',
+      payload: { kind: 'reset-password', language: 'en', actionUrl: 'https://tenant.test/reset' },
+      attempts: 0,
+      status: 'queued',
+      sesMessageId: null,
+      transport: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+    });
     expect(await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'worker', tickSeconds: 1 }, deps)).toMatchObject({ ok: true, value: { yieldedToTransactional: true } });
     expect(deps.ses.sent).toHaveLength(0);
   });
@@ -578,6 +1013,47 @@ describe('marketing e-mail use-case integration', () => {
     expect((await unsubscribeOneClick(anonymousCtx, { token: '0123456789abcdef0123456789abcdef' }, deps)).ok).toBe(true);
     expect((await deps.consents.listByEmail('tenant-1', 'member@example.test')).filter((row) => row.status === 'withdrawn')).toHaveLength(1);
     expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
+  });
+
+  it('records unsubscribe and suppression writes against the originating message', async () => {
+    const deps = await setup();
+    const sent = await sendMarketingMessages(ctx, [{
+      to: 'member@example.test',
+      memberId: 'member-1',
+      campaignId: 'campaign-1',
+      source: 'broadcast',
+      consentDefinitionId: definition.id,
+      subject: 'Hello',
+      bodyHtml: '<p>Content</p>',
+      data: {},
+    }], deps);
+    if (!sent.ok || sent.value[0]?.status !== 'sent') throw new Error('Expected a sent marketing message');
+    const token = 'global_unsubscribe_token_123456789';
+    await deps.unsubscribes.create('tenant-1', {
+      id: 'global-unsubscribe',
+      tenantId: 'tenant-1',
+      token,
+      email: 'member@example.test',
+      memberId: 'member-1',
+      campaignSendId: sent.value[0].sendId,
+      scope: 'all_marketing',
+      createdAt: NOW,
+      usedAt: null,
+    });
+
+    expect(await unsubscribeAllMarketing(anonymousCtx, { token }, deps)).toEqual(ok({ unsubscribed: true }));
+    expect((await deps.events.listByRef(
+      'tenant-1',
+      'marketing',
+      sent.value[0].sendId,
+    )).map((event) => event.type)).toEqual([
+      'queued',
+      'claimed',
+      'rendered',
+      'accepted',
+      'unsubscribed',
+      'suppressed_written',
+    ]);
   });
 
   it('saves optional preferences, queues DOI when re-subscribing, and supports global withdrawal', async () => {
@@ -620,14 +1096,85 @@ describe('marketing e-mail use-case integration', () => {
     expect((await scheduleMarketingRetentionJobs(ctx, deps)).ok).toBe(true);
     expect(deps.scheduler.retentionTenants).toEqual(['tenant-1']);
     deps.sends.renderedBodiesAgedOut = 0;
-    const retention = await runMarketingRetentionJobs(ctx, { pendingOlderThan: NOW, renderedBodiesOlderThan: NOW, idempotencyNow: NOW }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
-    expect(retention).toMatchObject({ ok: true, value: { renderedBodiesPurged: 0 } });
+    await deps.events.append('tenant-1', emailEventSchema.parse({
+      id: 'old-open', tenantId: 'tenant-1', mailKind: 'marketing', refId: 'send-old',
+      type: 'opened', occurredAt: '1998-06-01T00:00:00.000Z',
+      meta: { rawProviderPayload: { ipAddress: '192.0.2.1' } },
+      createdAt: '1998-06-01T00:00:00.000Z',
+    }));
+    await deps.events.append('tenant-1', emailEventSchema.parse({
+      id: 'old-delivery', tenantId: 'tenant-1', mailKind: 'marketing', refId: 'send-old',
+      type: 'delivered', occurredAt: '1998-06-01T00:00:00.000Z',
+      meta: { rawProviderPayload: {} }, createdAt: '1998-06-01T00:00:00.000Z',
+    }));
+    const retention = await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: NOW,
+      renderedBodiesOlderThan: NOW,
+      engagementOlderThan: NOW,
+      idempotencyNow: NOW,
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
+    expect(retention).toMatchObject({
+      ok: true,
+      value: { renderedBodiesPurged: 0, engagementEventsPurged: 1 },
+    });
+    expect((await deps.events.listByRef('tenant-1', 'marketing', 'send-old')).map((event) => event.type))
+      .toEqual(['delivered']);
+  });
+
+  it('derives unique and total campaign engagement from events', async () => {
+    const deps = await setup(['one@example.test', 'two@example.test']);
+    await sendMarketingMessages(ctx, [
+      {
+        to: 'one@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+        source: 'broadcast', consentDefinitionId: definition.id, subject: 'One',
+        bodyHtml: '<p>One</p>', data: {},
+      },
+      {
+        to: 'two@example.test', memberId: 'member-2', campaignId: 'campaign-1',
+        source: 'broadcast', consentDefinitionId: definition.id, subject: 'Two',
+        bodyHtml: '<p>Two</p>', data: {},
+      },
+    ], deps);
+    const sends = await deps.sends.listByCampaign('tenant-1', 'campaign-1');
+    const first = sends[0];
+    const second = sends[1];
+    if (first === undefined || second === undefined) throw new Error('Expected two campaign sends');
+    for (const [refId, type] of [
+      [first.id, 'opened'],
+      [first.id, 'opened'],
+      [second.id, 'opened'],
+      [first.id, 'clicked'],
+      [first.id, 'clicked'],
+    ] as const) {
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id: deps.ids.nextId(), tenantId: 'tenant-1', mailKind: 'marketing',
+        refId, type, occurredAt: NOW,
+        meta: type === 'clicked'
+          ? { linkUrl: 'https://tenant.test/offer', rawProviderPayload: {} }
+          : { rawProviderPayload: {} },
+        createdAt: NOW,
+      }));
+    }
+    expect(await listCampaignsWithEngagement(ctx, deps)).toMatchObject({
+      ok: true,
+      value: [{
+        id: 'campaign-1',
+        engagement: { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
+      }],
+    });
+    expect(await getCampaignWithEngagement(ctx, { campaignId: 'campaign-1' }, deps)).toMatchObject({
+      ok: true,
+      value: {
+        engagement: { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
+      },
+    });
   });
 
   it('M27 sends a tagged, untracked self-test through the rendered-output and header gates', async () => {
     const deps = await setup();
     const before = await deps.sends.listAll('tenant-1');
     expect((await testSendCampaignToSelf(ctx, { campaignId: 'campaign-1' }, deps)).ok).toBe(true);
+    expect(deps.ses.sent.at(-1)?.configurationSet).toBeNull();
     expect(await deps.sends.listAll('tenant-1')).toEqual(before);
     expect(deps.ses.sent).toMatchObject([{
       to: ctx.identity.email,

@@ -229,12 +229,69 @@ const PricesSection = ({ product }: { product: Product }) => {
   );
 };
 
+const CheckoutConsentsSection = ({ product }: { product: Product }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const definitions = useQuery(actions.marketingConsents);
+  const [selected, setSelected] = useState<string[]>(product.checkoutConsentDefinitionIds ?? []);
+  const save = useMutation({
+    ...actions.updateProductAccessItems,
+    onSuccess: async () => queryClient.invalidateQueries(actions.productsInvalidates()),
+  });
+  const activeDefinitions = (definitions.data?.definitions ?? []).filter((definition) =>
+    definition.kind === 'optional_marketing' && definition.status === 'active');
+
+  return (
+    <SectionCard
+      title={t.products.checkoutConsentsHeading}
+      description={t.products.checkoutConsentsDescription}
+      actions={(
+        <Button
+          variant="contained"
+          disabled={save.isPending}
+          onClick={() => save.mutate({
+            id: product.id,
+            accessItems: product.accessItems,
+            checkoutConsentDefinitionIds: selected,
+          })}
+        >
+          {save.isPending ? t.products.checkoutConsentsSaving : t.products.checkoutConsentsSave}
+        </Button>
+      )}
+    >
+      <FormControl fullWidth>
+        <FormLabel id="product-checkout-consents-label">{t.products.checkoutConsentsLabel}</FormLabel>
+        <Select
+          multiple
+          labelId="product-checkout-consents-label"
+          value={selected}
+          disabled={definitions.isPending}
+          onChange={(event) => setSelected(
+            typeof event.target.value === 'string' ? event.target.value.split(',') : event.target.value,
+          )}
+          renderValue={(ids) => ids.length === 0
+            ? t.products.checkoutConsentsNone
+            : ids.map((id) => activeDefinitions.find((definition) => definition.id === id)?.key ?? id).join(', ')}
+        >
+          {activeDefinitions.map((definition) => (
+            <MenuItem key={definition.id} value={definition.id}>{definition.key}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      {definitions.isError || save.isError ? (
+        <Alert>{localizeError(definitions.error ?? save.error, t)}</Alert>
+      ) : null}
+    </SectionCard>
+  );
+};
+
 export const ProductEditorPage = ({ product }: { product: Product }) => {
   const t = useTranslations();
 
   return (
     <PanelPage title={product.title} backTo={{ label: t.products.allProducts, href: '/panel/products' }}>
       <PricesSection product={product} />
+      <CheckoutConsentsSection product={product} />
       <SectionCard title={t.access.heading}>
         <ProductAccessEditor product={product} />
       </SectionCard>

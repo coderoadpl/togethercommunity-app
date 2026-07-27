@@ -46,6 +46,21 @@ describe('createApiClient', () => {
     expect(seen?.get('x-email-dispatch-secret')).toBe('shhh');
   });
 
+  it('sends the scheduler operator secret on bodyless GET requests', async () => {
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      expect(init?.method).toBe('GET');
+      expect(init?.body).toBeNull();
+      expect(new Headers(init?.headers).get('x-scheduler-operator-secret')).toBe('operator-secret');
+      return jsonResponse({ ok: true, data: { runs: [], nextCursor: null } });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.listGlobalSchedulerRuns({}, 'operator-secret')).resolves.toEqual({
+      ok: true,
+      value: { runs: [], nextCursor: null },
+    });
+  });
+
   it('returns the contract AppError from a non-2xx envelope', async () => {
     const fetchImpl: typeof fetch = async () =>
       jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);

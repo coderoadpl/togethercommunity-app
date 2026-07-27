@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Chip,
   FormControl,
@@ -8,19 +9,61 @@ import {
   FormLabel,
   MenuItem,
   OutlinedInput,
+  Paper,
   Select,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
-import type { Campaign } from '@core/domain/index.js';
+import type { Campaign, CampaignEngagementStats } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
+import {
+  prepareCampaignHtml,
+  renderCampaignPreview,
+} from './marketing-markdown.js';
+
+const CampaignEngagementTiles = ({
+  engagement,
+}: {
+  engagement: CampaignEngagementStats;
+}) => {
+  const t = useTranslations();
+  const items = [
+    { label: t.marketing.uniqueOpens, value: engagement.uniqueOpens },
+    { label: t.marketing.totalOpens, value: engagement.totalOpens },
+    { label: t.marketing.uniqueClicks, value: engagement.uniqueClicks },
+    { label: t.marketing.totalClicks, value: engagement.totalClicks },
+  ];
+  return (
+    <Box
+      data-testid="campaign-engagement-stats"
+      sx={{
+        display: 'grid',
+        gap: '0.9rem',
+        gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' },
+      }}
+    >
+      {items.map((item) => (
+        <StatTile key={item.label}>
+          <Box sx={{ minWidth: 0 }}>
+            <StatTileValue component="p">{item.value}</StatTileValue>
+            <StatTileLabel component="p">{item.label}</StatTileLabel>
+          </Box>
+        </StatTile>
+      ))}
+    </Box>
+  );
+};
 
 const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const t = useTranslations();
@@ -31,7 +74,10 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const layouts = useQuery(actions.marketingLayouts);
   const [name, setName] = useState(campaign?.name ?? '');
   const [subject, setSubject] = useState(campaign?.subject ?? '');
-  const [bodyHtml, setBodyHtml] = useState(campaign?.bodyHtml ?? '');
+  const [bodySource, setBodySource] = useState(campaign?.bodySource ?? '');
+  const [bodyMode, setBodyMode] = useState<'markdown' | 'html'>(
+    campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
+  );
   const [consentDefinitionId, setConsentDefinitionId] = useState(campaign?.consentDefinitionId ?? '');
   const [productIds, setProductIds] = useState<string[]>(campaign?.audienceFilter?.productIds ?? []);
   const [layoutId, setLayoutId] = useState(campaign?.layoutId ?? '');
@@ -46,8 +92,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const previewAudience = preview.mutate;
 
   useEffect(() => {
-    if (effectiveConsentId !== '') previewAudience({ consentDefinitionId: effectiveConsentId, productIds });
-  }, [effectiveConsentId, previewAudience, productIds]);
+    if (editable && effectiveConsentId !== '') previewAudience({ consentDefinitionId: effectiveConsentId, productIds });
+  }, [editable, effectiveConsentId, previewAudience, productIds]);
 
   const create = useMutation({
     ...actions.createMarketingCampaign,
@@ -63,10 +109,12 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const bodyHtml = prepareCampaignHtml(bodySource, bodyMode);
     const input = {
       name,
       subject,
       bodyHtml,
+      bodySource,
       consentDefinitionId: effectiveConsentId,
       productIds,
       layoutId: layoutId === '' ? null : layoutId,
@@ -97,10 +145,62 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
         <FormLabel htmlFor="marketing-campaign-subject">{t.marketing.subjectLabel}</FormLabel>
         <OutlinedInput id="marketing-campaign-subject" value={subject} onChange={(event) => setSubject(event.target.value)} disabled={!editable} required />
       </FormControl>
-      <FormControl fullWidth>
-        <FormLabel htmlFor="marketing-campaign-body">{t.marketing.bodyLabel}</FormLabel>
-        <OutlinedInput id="marketing-campaign-body" value={bodyHtml} onChange={(event) => setBodyHtml(event.target.value)} disabled={!editable} multiline minRows={8} required />
-      </FormControl>
+      <Stack useFlexGap spacing="0.75rem">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          useFlexGap
+          spacing="0.75rem"
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+        >
+          <FormLabel htmlFor="marketing-campaign-body">{t.marketing.bodyLabel}</FormLabel>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={bodyMode}
+            onChange={(_event, value: 'markdown' | 'html' | null) => {
+              if (value !== null) setBodyMode(value);
+            }}
+            aria-label={t.marketing.editorMode}
+            disabled={!editable}
+          >
+            <ToggleButton value="markdown">{t.marketing.markdownMode}</ToggleButton>
+            <ToggleButton value="html">{t.marketing.rawHtmlMode}</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+        {bodyMode === 'html' ? <Alert severity="warning">{t.marketing.rawHtmlHint}</Alert> : null}
+        <Box sx={{ display: 'grid', gap: '1rem', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)' } }}>
+          <FormControl fullWidth>
+            <OutlinedInput
+              id="marketing-campaign-body"
+              value={bodySource}
+              onChange={(event) => setBodySource(event.target.value)}
+              disabled={!editable}
+              multiline
+              minRows={12}
+              required
+            />
+          </FormControl>
+          <Paper
+            aria-label={t.marketing.livePreview}
+            variant="outlined"
+            sx={{
+              minHeight: '18rem',
+              overflowWrap: 'anywhere',
+              p: '1rem',
+            }}
+          >
+            <Typography variant="overline" component="p">{t.marketing.livePreview}</Typography>
+            <Box
+              data-testid="campaign-body-preview"
+              dangerouslySetInnerHTML={{
+                __html: bodyMode === 'markdown'
+                  ? renderCampaignPreview(bodySource)
+                  : renderCampaignPreview(bodySource, 'html'),
+              }}
+            />
+          </Paper>
+        </Box>
+      </Stack>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-consent-label">{t.marketing.consentScopeLabel}</FormLabel>
         <Select
@@ -142,13 +242,15 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
               ? t.marketing.audienceCount({ count: preview.data.count })
               : t.marketing.allProducts}
         </FormHelperText>
-        <Button
-          variant="text"
-          disabled={effectiveConsentId === '' || preview.isPending}
-          onClick={() => previewAudience({ consentDefinitionId: effectiveConsentId, productIds })}
-        >
-          {t.marketing.audiencePreview}
-        </Button>
+        {editable ? (
+          <Button
+            variant="text"
+            disabled={effectiveConsentId === '' || preview.isPending}
+            onClick={() => previewAudience({ consentDefinitionId: effectiveConsentId, productIds })}
+          >
+            {t.marketing.audiencePreview}
+          </Button>
+        ) : null}
       </FormControl>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-layout-label">{t.marketing.layoutLabel}</FormLabel>
@@ -166,7 +268,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   );
 };
 
-const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
+export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [sendAt, setSendAt] = useState('');
@@ -174,9 +276,15 @@ const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   const schedule = useMutation({ ...actions.scheduleMarketingCampaign, onSuccess: invalidate });
   const action = useMutation({ ...actions.marketingCampaignAction, onSuccess: invalidate });
   const testSend = useMutation(actions.testMarketingCampaign);
+  const terminal = campaign.status === 'cancelled' || campaign.status === 'finished';
 
   return (
     <SectionCard title={t.marketing.schedule}>
+      {terminal ? (
+        <Alert severity="info">
+          {campaign.status === 'cancelled' ? t.marketing.cancelledCampaignHint : t.marketing.finishedCampaignHint}
+        </Alert>
+      ) : null}
       {campaign.status === 'draft' ? (
         <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
           <FormControl fullWidth>
@@ -198,9 +306,11 @@ const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         {['draft', 'scheduled', 'running', 'paused'].includes(campaign.status) ? (
           <Button color="error" onClick={() => action.mutate({ campaignId: campaign.id, action: 'cancel' })}>{t.marketing.cancelCampaign}</Button>
         ) : null}
-        <Button disabled={testSend.isPending} onClick={() => testSend.mutate({ campaignId: campaign.id })}>
-          {testSend.isPending ? t.marketing.testing : t.marketing.testSend}
-        </Button>
+        {terminal ? null : (
+          <Button disabled={testSend.isPending} onClick={() => testSend.mutate({ campaignId: campaign.id })}>
+            {testSend.isPending ? t.marketing.testing : t.marketing.testSend}
+          </Button>
+        )}
       </Stack>
       {campaign.pausedReason === null ? null : <Alert severity="warning"><strong>{t.marketing.pausedReason}:</strong> {campaign.pausedReason}</Alert>}
       {schedule.isError || action.isError || testSend.isError ? <Alert>{localizeError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
@@ -213,10 +323,17 @@ export const CampaignsPanel = () => {
   const { language } = useLanguage();
   const campaigns = useQuery(actions.marketingCampaigns);
   const consents = useQuery(actions.marketingConsents);
+  const reputation = useQuery(actions.marketingReputation);
   const navigate = useNavigate();
 
   return (
     <PanelPage title={t.marketing.campaignsTitle} description={t.marketing.campaignsDescription} action={<Button component={Link} to="/panel/marketing/campaigns/new" variant="contained">+ {t.common.add}</Button>}>
+      {reputation.data?.overallStatus === 'warn' ? (
+        <Alert severity="warning">{t.marketing.campaignReputationWarnBanner}</Alert>
+      ) : null}
+      {reputation.data?.overallStatus === 'critical' ? (
+        <Alert severity="error">{t.marketing.campaignReputationCriticalBanner}</Alert>
+      ) : null}
       <ListSection
         isEmpty={campaigns.isSuccess && campaigns.data.campaigns.length === 0}
         empty={<StatusView state={{ kind: 'empty', title: t.marketing.campaignsEmpty, action: <Button component={Link} to="/panel/marketing/campaigns/new">+ {t.common.add}</Button> }} />}
@@ -230,7 +347,19 @@ export const CampaignsPanel = () => {
                 key={campaign.id}
                 title={campaign.name}
                 chips={<><CampaignStatusChip status={campaign.status} label={t.marketing.status[campaign.status]} /><Chip size="small" variant="outlined" label={consents.data?.definitions.find((definition) => definition.id === campaign.consentDefinitionId)?.key ?? campaign.consentDefinitionId} /></>}
-                summary={t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed })}
+                summary={(
+                  <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing={{ xs: '0.25rem', sm: '1rem' }}>
+                    <span>{t.marketing.counters({ toSend: campaign.toSend, sent: campaign.sent, failed: campaign.failed })}</span>
+                    <span>{t.marketing.compactOpens({
+                      unique: campaign.engagement.uniqueOpens,
+                      total: campaign.engagement.totalOpens,
+                    })}</span>
+                    <span>{t.marketing.compactClicks({
+                      unique: campaign.engagement.uniqueClicks,
+                      total: campaign.engagement.totalClicks,
+                    })}</span>
+                  </Stack>
+                )}
                 date={formatDateTime(campaign.sendAt ?? campaign.createdAt, language)}
                 actions={<Button onClick={() => void navigate({ to: '/panel/marketing/campaigns/$campaignId', params: { campaignId: campaign.id } })}>{t.common.open}</Button>}
                 testId="marketing-campaign-row"
@@ -257,6 +386,7 @@ export const CampaignDetailPage = () => {
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
   return (
     <PanelPage title={campaign.data.campaign.name} backTo={{ label: t.marketing.allCampaigns, href: '/panel/marketing/campaigns' }}>
+      <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} />
       <CampaignForm campaign={campaign.data.campaign} />
       <CampaignActions campaign={campaign.data.campaign} />
     </PanelPage>

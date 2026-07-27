@@ -24,6 +24,7 @@ export const ThemeSwitcher = ({ inline = false }: { inline?: boolean }) => {
       getOptionLabel={(option) => option.label}
       onChange={(_event, option) => setMode(option.id)}
       renderInput={(params) => <TextField {...params} label={t.common.theme} />}
+      sx={{ '& .MuiInputBase-root': { minHeight: '44px' } }}
     />
   );
 

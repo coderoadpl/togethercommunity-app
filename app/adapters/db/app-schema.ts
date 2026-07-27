@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
   AccessItem,
@@ -8,7 +8,13 @@ import type {
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
   ConsentEvidence,
+  EmailEventType,
+  EmailEventMailKind,
   LessonBlock,
+  SchedulerRunKind,
+  SchedulerRunStatus,
+  SchedulerRunTotals,
+  SchedulerRunTrigger,
 } from '@core/domain/index.js';
 
 export const tenants = pgTable(
@@ -201,6 +207,7 @@ export const products = pgTable(
     currency: text('currency').notNull(),
     published: boolean('published').notNull().default(false),
     accessItems: jsonb('access_items').$type<AccessItem[]>().notNull().default([]),
+    checkoutConsentDefinitionIds: jsonb('checkout_consent_definition_ids').$type<string[]>().notNull().default([]),
     legacyId: text('legacy_id'),
     // ISO 8601 string; the domain speaks ISO strings, not driver-specific Dates.
     createdAt: text('created_at').notNull(),
@@ -678,10 +685,51 @@ export const emailOutbox = pgTable(
     attempts: integer('attempts').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).notNull(),
     lastError: text('last_error'),
+    lastErrorCode: text('last_error_code'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
+    sesMessageId: text('ses_message_id'),
+    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'platform'] }),
+    deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
+    deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
   },
-  (table) => [index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt)],
+  (table) => [
+    index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt),
+    index('email_outbox_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
+    index('email_outbox_tenant_normalized_to_created_id_idx')
+      .on(table.tenantId, sql`lower(btrim(${table.to}))`, table.createdAt, table.id),
+    uniqueIndex('email_outbox_ses_message_id_uidx')
+      .on(table.sesMessageId)
+      .where(sql`${table.sesMessageId} is not null`),
+  ],
+);
+
+export const tenantTransactionalEmailPools = pgTable('tenant_transactional_email_pools', {
+  tenantId: text('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  sent: integer('sent').notNull().default(0),
+  reserved: integer('reserved').notNull().default(0),
+  reservedAt: timestamp('reserved_at', { withTimezone: true, mode: 'string' }),
+});
+
+export const emailEvents = pgTable(
+  'email_events',
+  {
+    id: text('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }),
+    tenantId: text('tenant_id').notNull(),
+    mailKind: text('mail_kind').$type<EmailEventMailKind>().notNull(),
+    refId: text('ref_id').notNull(),
+    type: text('type').$type<EmailEventType>().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    meta: jsonb('meta').$type<Record<string, unknown> | null>(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('email_events_tenant_ref_occurred_idx').on(table.tenantId, table.refId, table.occurredAt, table.sequence),
+    index('email_events_tenant_occurred_idx').on(table.tenantId, table.occurredAt, table.sequence),
+  ],
 );
 
 export const tenantDomains = pgTable(
@@ -709,6 +757,48 @@ export const emailLayouts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
   (table) => [uniqueIndex('email_layouts_tenant_name_uidx').on(table.tenantId, table.name)],
+);
+
+export const schedulerRuns = pgTable(
+  'scheduler_runs',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').$type<SchedulerRunKind>().notNull(),
+    trigger: text('trigger').$type<SchedulerRunTrigger>().notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
+    durationMs: integer('duration_ms'),
+    status: text('status').$type<SchedulerRunStatus>().notNull(),
+    error: text('error'),
+    totals: jsonb('totals').$type<SchedulerRunTotals>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('scheduler_runs_started_id_idx').on(table.startedAt, table.id),
+    index('scheduler_runs_status_started_idx').on(table.status, table.startedAt),
+  ],
+);
+
+export const schedulerRunTenants = pgTable(
+  'scheduler_run_tenants',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull().references(() => schedulerRuns.id, { onDelete: 'cascade' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    campaignsTouched: integer('campaigns_touched').notNull(),
+    batchSize: integer('batch_size').notNull(),
+    sent: integer('sent').notNull(),
+    failed: integer('failed').notNull(),
+    skipped: integer('skipped').notNull(),
+    budgetComputed: integer('budget_computed').notNull(),
+    budgetUsed: integer('budget_used').notNull(),
+    errors: jsonb('errors').$type<string[]>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('scheduler_run_tenants_run_tenant_uidx').on(table.runId, table.tenantId),
+    index('scheduler_run_tenants_tenant_run_idx').on(table.tenantId, table.runId),
+  ],
 );
 
 export const campaigns = pgTable(
@@ -750,11 +840,13 @@ export const campaignSends = pgTable(
   'campaign_sends',
   {
     id: text('id').primaryKey(),
+    runId: text('run_id').references(() => schedulerRuns.id, { onDelete: 'set null' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
     source: text('source', { enum: ['broadcast', 'api'] }).notNull(),
     memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
     email: text('email').notNull(),
+    subject: text('subject').notNull(),
     consentRowId: text('consent_row_id').notNull().references(() => marketingConsents.id, { onDelete: 'restrict' }),
     unsubscribeTokenId: text('unsubscribe_token_id'),
     status: text('status', { enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] }).notNull(),
@@ -769,6 +861,10 @@ export const campaignSends = pgTable(
   },
   (table) => [
     index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
+    index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
+    index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),
+    index('campaign_sends_tenant_run_created_id_idx').on(table.tenantId, table.runId, table.createdAt, table.id),
+    index('campaign_sends_tenant_sent_at_idx').on(table.tenantId, table.sentAt),
     uniqueIndex('campaign_sends_ses_message_id_uidx')
       .on(table.sesMessageId)
       .where(sql`${table.sesMessageId} is not null`),
@@ -842,6 +938,8 @@ export const tenantSesSettings = pgTable(
     identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true, mode: 'string' }),
     configurationSet: text('configuration_set'),
     snsTopicArn: text('sns_topic_arn'),
+    trackingEnabled: boolean('tracking_enabled').notNull().default(false),
+    autoPauseOnCritical: boolean('auto_pause_on_critical').notNull().default(false),
     webhookToken: text('webhook_token').notNull(),
     quotaRatePerSec: doublePrecision('quota_rate_per_sec').notNull().default(0),
     quotaDaily: integer('quota_daily').notNull().default(0),

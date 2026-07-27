@@ -8,6 +8,12 @@ import type {
   EmailBranding,
   EmailMessage,
   EmailLayout,
+  EmailEvent,
+  EmailEventMailKind,
+  EmailReputationCounts,
+  EmailSendListQuery,
+  EmailSendProjection,
+  TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
   MemberGrant,
@@ -42,12 +48,19 @@ import type {
   TermsConsent,
   AutomationIdempotencyKey,
   Campaign,
+  CampaignEngagementStats,
   CampaignSend,
   ConsentDefinition,
   ConsentDefinitionVersion,
   ConsentConfirmationToken,
   MarketingConsent,
   Suppression,
+  SchedulerRun,
+  SchedulerRunListQuery,
+  SchedulerRunTenant,
+  SchedulerRunTenantItem,
+  SchedulerRunTenantSummary,
+  SchedulerRunTotals,
   TenantSesSettings,
   TenantDocument,
   TenantDocumentVersion,
@@ -96,6 +109,7 @@ export interface ProductRepository {
     id: string,
     accessItems: Product['accessItems'],
     version?: EntityVersionRecord,
+    checkoutConsentDefinitionIds?: string[],
   ): Promise<Product | null>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
@@ -512,7 +526,50 @@ export interface PurchaseRepository {
 }
 
 export interface EmailPort {
-  send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string | null }, AppError>>;
+  send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string }, AppError>>;
+}
+
+export interface TransactionalEmailSender {
+  send(message: {
+    tenantId: string | null;
+    to: string;
+    headers?: Record<string, string>;
+    messageId?: string;
+  } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
+}
+
+export interface TransactionalEmailTransportResolver {
+  resolve(tenantId: string): Promise<EmailPort | null>;
+}
+
+export interface PlatformTransactionalPool {
+  usage(tenantId: string): Promise<{ sent: number; reserved: number }>;
+  reserve(tenantId: string, limit: number): Promise<boolean>;
+  settle(tenantId: string, successful: boolean): Promise<void>;
+}
+
+export interface EmailEventRepository {
+  append(tenantId: string, event: EmailEvent): Promise<void>;
+  listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
+  listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]>;
+  purgeEngagement(tenantId: string, olderThan: string): Promise<number>;
+  reputationCounts(
+    tenantId: string,
+    window: { since: string; until: string },
+  ): Promise<EmailReputationCounts>;
+}
+
+export interface EmailSendRepository {
+  listPage(
+    tenantId: string,
+    query: EmailSendListQuery,
+  ): Promise<{ sends: EmailSendProjection[]; nextCursor: string | null }>;
+  findById(
+    tenantId: string,
+    kind: EmailEventMailKind,
+    id: string,
+  ): Promise<EmailSendProjection | null>;
+  listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailSendProjection[]>;
 }
 
 export interface EmailOutboxItem {
@@ -521,13 +578,25 @@ export interface EmailOutboxItem {
   to: string;
   payload: unknown;
   attempts: number;
+  sesMessageId: string | null;
+  transport: TransactionalEmailTransport | null;
+  deliveryStatus: 'delivered' | 'bounced' | 'complained' | null;
+  deliveryOccurredAt: string | null;
 }
 
 export interface EmailOutboxRepository {
   enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>>;
-  claimBatch(input: { now: string; limit: number; attemptsCap: number }): Promise<Result<EmailOutboxItem[], AppError>>;
-  markSent(input: { id: string; sentAt: string }): Promise<Result<void, AppError>>;
-  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; error: string }): Promise<Result<void, AppError>>;
+  claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
+  markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>>;
+  markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>>;
+  correlateBySesMessageId?(tenantId: string, sesMessageId: string): Promise<EmailOutboxItem | null>;
+  markDelivery?(input: {
+    tenantId: string;
+    id: string;
+    status: 'delivered' | 'bounced' | 'complained';
+    occurredAt: string;
+    event: EmailEvent;
+  }): Promise<Result<void, AppError>>;
   hasPendingForTenant?(tenantId: string): Promise<boolean>;
 }
 
@@ -609,6 +678,7 @@ export interface TenantDocumentRepository {
   listVersions(tenantId: string, documentId: string): Promise<TenantDocumentVersion[]>;
   saveDraft(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<TenantDocumentVersion | null>;
   publishDraft(tenantId: string, documentId: string, publishedAt: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
+  findPublishedVersionById(tenantId: string, versionId: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
   findLatestPublished(tenantId: string, slug: string): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
   findPublishedVersion(tenantId: string, slug: string, version: number): Promise<{ document: TenantDocument; version: TenantDocumentVersion } | null>;
 }
@@ -680,12 +750,16 @@ export interface EmailLayoutRepository {
 }
 
 export interface CampaignSendRepository {
-  claimRecipient(tenantId: string, send: CampaignSend): Promise<boolean>;
+  claimRecipient(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<boolean>;
   findById(tenantId: string, sendId: string): Promise<CampaignSend | null>;
-  update(tenantId: string, send: CampaignSend): Promise<CampaignSend | null>;
+  update(tenantId: string, send: CampaignSend, events?: EmailEvent[]): Promise<CampaignSend | null>;
   correlateBySesMessageId(tenantId: string, sesMessageId: string): Promise<CampaignSend | null>;
   listByCampaign(tenantId: string, campaignId: string): Promise<CampaignSend[]>;
   listAll(tenantId: string): Promise<CampaignSend[]>;
+  engagementStats(
+    tenantId: string,
+    campaignIds: string[],
+  ): Promise<Map<string, CampaignEngagementStats>>;
   listPage(tenantId: string, query: {
     campaignId?: string;
     email?: string;
@@ -699,7 +773,7 @@ export interface CampaignSendRepository {
 }
 
 export interface SuppressionRepository {
-  record(tenantId: string, suppression: Suppression): Promise<boolean>;
+  record(tenantId: string, suppression: Suppression, event?: EmailEvent): Promise<boolean>;
   findActive(tenantId: string, emailHmac: string): Promise<Suppression | null>;
   isSuppressed(tenantId: string, emailHmac: string): Promise<boolean>;
   lift(tenantId: string, suppression: Suppression): Promise<Suppression | null>;
@@ -714,6 +788,7 @@ export interface UnsubscribeTokenRepository {
     tenantId: string,
     token: string,
     usedAt: string,
+    event?: EmailEvent,
   ): Promise<{ token: UnsubscribeToken; newlyUsed: boolean } | null>;
 }
 
@@ -751,6 +826,67 @@ export interface SesMarketingQuotaReader {
   }, AppError>>;
 }
 
+export interface SesDkimRecord {
+  name: string;
+  type: 'CNAME';
+  value: string;
+}
+
+export interface SesOnboardingControlPlane {
+  startDomainIdentity(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ records: SesDkimRecord[] }, AppError>>;
+  startEmailIdentity(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ records: SesDkimRecord[] }, AppError>>;
+  readIdentity(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ verified: boolean; dkimVerified: boolean; records: SesDkimRecord[] }, AppError>>;
+  ensureConfigurationSet(
+    credentials: SesMarketingCredentials,
+    name: string,
+  ): Promise<Result<{ name: string }, AppError>>;
+  ensureTopic(
+    credentials: SesMarketingCredentials,
+    name: string,
+  ): Promise<Result<{ arn: string }, AppError>>;
+  ensureSubscription(
+    credentials: SesMarketingCredentials,
+    input: { topicArn: string; endpoint: string },
+  ): Promise<Result<{ confirmed: boolean; arn: string | null }, AppError>>;
+  readInfrastructure(
+    credentials: SesMarketingCredentials,
+    input: { configurationSet: string; topicArn: string; endpoint: string },
+  ): Promise<Result<{ configurationSetReady: boolean; eventDestinationReady: boolean; subscriptionConfirmed: boolean }, AppError>>;
+  ensureEventDestination(
+    credentials: SesMarketingCredentials,
+    input: { configurationSet: string; topicArn: string },
+  ): Promise<Result<{ ready: true }, AppError>>;
+  disableFeedbackForwarding(
+    credentials: SesMarketingCredentials,
+    identity: string,
+  ): Promise<Result<{ disabled: true }, AppError>>;
+  readQuota(
+    credentials: SesMarketingCredentials,
+  ): Promise<Result<{
+    ratePerSecond: number;
+    daily: number;
+    sentLast24Hours: number;
+    inSandbox: boolean;
+  }, AppError>>;
+  sendSimulator(
+    credentials: SesMarketingCredentials,
+    input: {
+      from: { address: string; name: string };
+      to: string;
+      configurationSet: string;
+    },
+  ): Promise<Result<{ messageId: string }, AppError>>;
+}
+
 export interface MarketingThrottleRepository {
   claim(tenantId: string, input: {
     requested: number;
@@ -782,6 +918,30 @@ export interface SchedulerPort {
   enqueueCampaignTick(tenantId: string, campaignId: string): Promise<Result<void, AppError>>;
   scheduleCampaignTick(tenantId: string, campaignId: string, runAt: string): Promise<Result<void, AppError>>;
   enqueueRetentionJobs(tenantId: string): Promise<Result<void, AppError>>;
+}
+
+export interface SchedulerRunRepository {
+  start(run: SchedulerRun): Promise<void>;
+  finalize(runId: string, input: {
+    finishedAt: string;
+    durationMs: number;
+    status: 'completed' | 'failed';
+    error: string | null;
+    totals: SchedulerRunTotals;
+    tenants: SchedulerRunTenant[];
+  }): Promise<SchedulerRun | null>;
+  listPage(input: SchedulerRunListQuery): Promise<{
+    runs: SchedulerRun[];
+    nextCursor: string | null;
+  }>;
+  getWithTenants(runId: string): Promise<{ run: SchedulerRun; tenants: SchedulerRunTenant[] } | null>;
+  getForTenant(tenantId: string, runId: string): Promise<SchedulerRunTenantItem | null>;
+  listForTenant(tenantId: string, input: SchedulerRunListQuery): Promise<{
+    items: SchedulerRunTenantItem[];
+    nextCursor: string | null;
+  }>;
+  summarizeForTenant(tenantId: string, since: string): Promise<SchedulerRunTenantSummary>;
+  failStale(input: { startedBefore: string; finishedAt: string; error: string }): Promise<number>;
 }
 
 export interface EmailHmac {

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -8,8 +8,10 @@ import { err, internal, ok, type Member, type ProductGrant } from '@core/domain/
 import { dispatchEmailBatch } from '@core/server/index.js';
 
 import { createDb, type Db } from './client.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort } from './email-outbox.js';
-import { emailOutbox, members, productGrants, products, tenants } from './schema.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';
+import { createEmailEventRepository } from './email-events.js';
+import { createSchedulerRunRepository } from './scheduler-runs.js';
+import { emailOutbox, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
 
 const TEST_DB = 'together_email_outbox_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -38,8 +40,17 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(emailOutbox);
+  await db.delete(tenantTransactionalEmailPools);
+  await db.delete(schedulerRuns);
   await db.delete(productGrants);
   await db.delete(members);
+});
+
+let schedulerRunId = 0;
+const instrumentation = () => ({
+  ids: { nextId: () => `scheduler-run-${String(++schedulerRunId)}` },
+  runs: createSchedulerRunRepository(db),
+  trigger: 'manual' as const,
 });
 
 const payload = (url = 'https://example.test/sign-in') => ({
@@ -55,6 +66,59 @@ const enqueue = async (id: string, now = NOW) => {
 };
 
 describe('email outbox database adapter', () => {
+  it('atomically reserves only the remaining platform pool capacity', async () => {
+    await db.insert(tenantTransactionalEmailPools).values({
+      tenantId: 'tenant-outbox',
+      sent: 998,
+      reserved: 0,
+    });
+    const pool = createPlatformTransactionalPool(db);
+
+    const reservations = await Promise.all(
+      Array.from({ length: 5 }, () => pool.reserve('tenant-outbox', 1000)),
+    );
+
+    expect(reservations.filter(Boolean)).toHaveLength(2);
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 998, reserved: 2 });
+    await Promise.all([pool.settle('tenant-outbox', true), pool.settle('tenant-outbox', false)]);
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
+  });
+
+  it('reclaims platform reservations abandoned by a crashed dispatcher', async () => {
+    await db.insert(tenantTransactionalEmailPools).values({
+      tenantId: 'tenant-outbox',
+      sent: 999,
+      reserved: 1,
+      reservedAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+    });
+    const pool = createPlatformTransactionalPool(db);
+
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(true);
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(false);
+  });
+
+  it('keeps an abandoned reservation ageing while later sends reserve and settle', async () => {
+    await db.insert(tenantTransactionalEmailPools).values({
+      tenantId: 'tenant-outbox',
+      sent: 0,
+      reserved: 1,
+      reservedAt: new Date(Date.now() - 14 * 60 * 1000).toISOString(),
+    });
+    const pool = createPlatformTransactionalPool(db);
+
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(true);
+    await pool.settle('tenant-outbox', true);
+
+    const [row] = await db.select({
+      stillAgeing: sql<boolean>`${tenantTransactionalEmailPools.reservedAt} < now() - interval '13 minutes'`,
+    }).from(tenantTransactionalEmailPools)
+      .where(eq(tenantTransactionalEmailPools.tenantId, 'tenant-outbox'));
+
+    expect(row?.stillAgeing).toBe(true);
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 1, reserved: 1 });
+  });
+
   it('rolls member, grant, and outbox writes back together', async () => {
     const member: Member = { id: 'member-rollback', tenantId: 'tenant-outbox', userId: 'user-rollback', email: 'rollback@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null };
     const grant: ProductGrant = { id: 'grant-rollback', tenantId: 'tenant-outbox', memberId: member.id, productId: 'product-outbox', source: 'manual', startsAt: NOW, expiresAt: null, legacyId: null, createdAt: NOW };
@@ -75,13 +139,15 @@ describe('email outbox database adapter', () => {
     const sent: string[] = [];
     const deps = {
       emailOutbox: createEmailOutboxRepository(db),
-      email: { send: async (message: { to: string }) => { sent.push(message.to); return ok({ messageId: message.to }); } },
+      events: createEmailEventRepository(db),
+      email: { send: async (message: { to: string }) => { sent.push(message.to); return ok({ messageId: message.to, transport: 'platform' as const }); } },
       clock: { nowIso: () => NOW },
       logger: console,
       batchSize: 10,
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ...instrumentation(),
     };
     await Promise.all([dispatchEmailBatch(deps), dispatchEmailBatch(deps)]);
     expect(sent.filter((to) => to === 'race-one@example.test')).toHaveLength(1);
@@ -91,13 +157,15 @@ describe('email outbox database adapter', () => {
     await Promise.all(Array.from({ length: 5 }, (_, index) => enqueue(`rate-${String(index)}`)));
     const result = await dispatchEmailBatch({
       emailOutbox: createEmailOutboxRepository(db),
-      email: { send: async () => ok({ messageId: null }) },
+      events: createEmailEventRepository(db),
+      email: { send: async (message: { to: string }) => ok({ messageId: message.to, transport: 'platform' as const }) },
       clock: { nowIso: () => NOW },
       logger: console,
       batchSize: 2,
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ...instrumentation(),
     });
     expect(result).toEqual(ok({ attemptsMade: 2, sentCount: 2, failedCount: 0 }));
   });
@@ -109,6 +177,7 @@ describe('email outbox database adapter', () => {
     const logger = { error: vi.fn() };
     const deps = {
       emailOutbox: createEmailOutboxRepository(db),
+      events: createEmailEventRepository(db),
       email: { send: async () => err(internal('sender unavailable')) },
       clock: { nowIso: () => now },
       logger,
@@ -116,6 +185,7 @@ describe('email outbox database adapter', () => {
       attemptsCap: 3,
       backoffBaseMs: 1000,
       backoffCapMs: 10000,
+      ...instrumentation(),
     };
     const nextTimes: string[] = [];
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -123,7 +193,7 @@ describe('email outbox database adapter', () => {
       const row = (await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)))[0];
       expect(row).toBeDefined();
       nextTimes.push(row?.nextAttemptAt ?? '');
-      now = row?.nextAttemptAt ?? now;
+      now = row === undefined ? now : new Date(row.nextAttemptAt).toISOString();
     }
     expect(Date.parse(nextTimes[1] ?? '') - Date.parse(nextTimes[0] ?? '')).toBe(2000);
     const row = (await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)))[0];

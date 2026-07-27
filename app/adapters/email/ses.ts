@@ -5,19 +5,23 @@ import type { EmailPort } from '@core/server/index.js';
 
 export interface SesEmailSettings {
   from: string;
+  region?: string;
+  credentials?: { accessKeyId: string; secretAccessKey: string };
+  configurationSet?: string | null;
 }
 
 export interface SesSender {
   send(command: SendEmailCommand): Promise<SendEmailCommandOutput>;
 }
 
-const messageIdFrom = (output: SendEmailCommandOutput): string | null => output.MessageId ?? null;
-
 export const createSesEmailPort = (
   settings: SesEmailSettings,
-  sender: SesSender = new SESClient({}),
+  sender: SesSender = new SESClient({
+    ...(settings.region === undefined ? {} : { region: settings.region }),
+    ...(settings.credentials === undefined ? {} : { credentials: settings.credentials }),
+  }),
 ): EmailPort => ({
-  send: async (message): Promise<Result<{ messageId: string | null }, AppError>> => {
+  send: async (message): Promise<Result<{ messageId: string }, AppError>> => {
     try {
       const output = await sender.send(
         new SendEmailCommand({
@@ -30,9 +34,15 @@ export const createSesEmailPort = (
               Text: { Data: message.text, Charset: 'UTF-8' },
             },
           },
+          ...(settings.configurationSet === undefined || settings.configurationSet === null
+            ? {}
+            : { ConfigurationSetName: settings.configurationSet }),
         }),
       );
-      return ok({ messageId: messageIdFrom(output) });
+      if (output.MessageId === undefined || output.MessageId === '') {
+        return { ok: false, error: internal('SES accepted the email without returning a MessageId') };
+      }
+      return ok({ messageId: output.MessageId });
     } catch (cause) {
       return { ok: false, error: internal(`Could not send SES email: ${String(cause)}`) };
     }

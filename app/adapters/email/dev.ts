@@ -4,9 +4,10 @@ import type { Db } from '@adapters/db/client.js';
 import { devEmails } from '@adapters/db/schema.js';
 
 export const createDevEmailPort = (db: Db): EmailPort => ({
-  send: async (message): Promise<Result<{ messageId: string | null }, AppError>> => {
+  send: async (message): Promise<Result<{ messageId: string }, AppError>> => {
     const to = normalizeEmail(message.to);
     const createdAt = new Date().toISOString();
+    const messageId = message.messageId ?? `dev-${crypto.randomUUID()}`;
     console.error(`[dev-email] to=${to} subject=${message.subject}`);
     try {
       await db
@@ -17,7 +18,7 @@ export const createDevEmailPort = (db: Db): EmailPort => ({
           html: message.html,
           text: message.text,
           headers: message.headers ?? {},
-          messageId: message.messageId ?? null,
+          messageId,
           createdAt,
         })
         .onConflictDoUpdate({
@@ -27,11 +28,11 @@ export const createDevEmailPort = (db: Db): EmailPort => ({
             html: message.html,
             text: message.text,
             headers: message.headers ?? {},
-            messageId: message.messageId ?? null,
+            messageId,
             createdAt,
           },
         });
-      return ok({ messageId: message.messageId ?? null });
+      return ok({ messageId });
     } catch (cause) {
       return { ok: false, error: internal(`Could not store dev email: ${String(cause)}`) };
     }

@@ -9,8 +9,8 @@ const adapterDbTestExternal = 'node_modules/(@neondatabase/serverless|drizzle-or
 const adapterAuthExternal = 'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|zod)(/|$)';
 const adapterAuthTestExternal =
   'node_modules/(@better-auth/passkey|better-auth|drizzle-orm|pg|vitest|zod)(/|$)';
-const adapterEmailExternal = 'node_modules/@aws-sdk/client-ses(/|$)';
-const adapterEmailTestExternal = 'node_modules/(@aws-sdk/client-ses|vitest)(/|$)';
+const adapterEmailExternal = 'node_modules/(@aws-sdk/client-ses|@aws-sdk/client-sns|nodemailer)(/|$)';
+const adapterEmailTestExternal = 'node_modules/(@aws-sdk/client-ses|@aws-sdk/client-sns|nodemailer|vitest)(/|$)';
 const adapterCryptoExternal = 'node_modules/zod(/|$)';
 const adapterCryptoTestExternal = 'node_modules/vitest(/|$)';
 const adapterPaymentExternal = 'node_modules/stripe(/|$)';
@@ -25,7 +25,7 @@ const appCliTestExternal = 'node_modules/vitest(/|$)';
 const appServerExternal =
   'node_modules/(@hono/node-server|@opentelemetry/(api|exporter-trace-otlp-http|resources|sdk-trace-base|sdk-trace-node|semantic-conventions)|hono|vitest|zod)(/|$)';
 const webExternal =
-  'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|msw|react|react-dom|vite|vitest)(/|$)';
+  'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|marked|msw|react|react-dom|vite|vitest)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
 const scriptsExternal =
   'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|axe-core|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
@@ -64,6 +64,12 @@ module.exports = {
       severity: 'error',
       from: { path: '^adapters' },
       to: { path: '^apps' },
+    },
+    {
+      name: 'marketing-transports-never-use-smtp',
+      severity: 'error',
+      from: { path: '^adapters/email/(marketing-ses|dev-marketing)' },
+      to: { path: '^(adapters/email/(smtp|transactional-resolvers)|node_modules/nodemailer)' },
     },
     {
       name: 'web-never-server-side',

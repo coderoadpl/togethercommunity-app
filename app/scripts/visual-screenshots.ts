@@ -233,6 +233,30 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByRole('heading', { name: 'Kampanie e-mail' }).waitFor(visible),
   },
   {
+    name: 'panel-marketing-activity',
+    auth: 'creator',
+    path: '/panel/marketing/activity',
+    ready: (page) => page.getByTestId('scheduler-activity-row').first().waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-activity-detail',
+    auth: 'creator',
+    path: '/panel/marketing/activity/scheduler-run-studio-outbox',
+    ready: (page) => page.getByText('SES rejected one message').last().waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-sends',
+    auth: 'creator',
+    path: '/panel/marketing/sends',
+    ready: (page) => page.getByTestId('email-send-row').first().waitFor(visible),
+  },
+  {
+    name: 'panel-marketing-send-detail',
+    auth: 'creator',
+    path: '/panel/marketing/sends/marketing/send-studio-marketing',
+    ready: (page) => page.getByTestId('email-event').last().waitFor(visible),
+  },
+  {
     name: 'panel-marketing-consents',
     auth: 'creator',
     path: '/panel/marketing/consents',
@@ -267,6 +291,15 @@ const SCREENS: ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/members/member-studio-aktywny',
     ready: (page) => page.getByTestId('grant-row').first().waitFor(visible),
+  },
+  {
+    name: 'member-email-timeline',
+    auth: 'creator',
+    path: '/panel/members/member-studio-aktywny',
+    ready: async (page) => {
+      await page.getByRole('tab', { name: 'E-maile' }).click();
+      await page.getByTestId('member-email-send').first().waitFor(visible);
+    },
   },
 ];
 

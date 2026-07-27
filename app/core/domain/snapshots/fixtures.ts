@@ -99,5 +99,18 @@ export const SNAPSHOT_FIXTURES: Record<EntityKind, Record<number, unknown>> = {
       legacyId: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     },
+    2: {
+      id: 'product-fixture-2',
+      tenantId: 'tenant-fixture',
+      title: 'Full access with checkout consent',
+      description: 'A representative product snapshot',
+      priceCents: 9900,
+      currency: 'PLN',
+      published: true,
+      accessItems: [{ level: 'course', courseId: 'course-fixture-1' }],
+      checkoutConsentDefinitionIds: ['definition-news'],
+      legacyId: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
   },
 };

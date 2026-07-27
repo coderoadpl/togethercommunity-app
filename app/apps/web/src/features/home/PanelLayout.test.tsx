@@ -118,6 +118,13 @@ describe('Creator panel routing', () => {
       'members',
       'sales',
       'integrations',
+      'marketingActivity',
+      'marketingSends',
+      'marketingCampaigns',
+      'marketingConsents',
+      'marketingLayouts',
+      'marketingDocuments',
+      'marketingSettings',
       'settings',
     ] as const) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();

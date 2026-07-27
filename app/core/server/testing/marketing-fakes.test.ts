@@ -36,7 +36,8 @@ const campaign = (): Campaign => ({
 
 const send = (): CampaignSend => ({
   id: 'send-1', tenantId: 'tenant-1', campaignId: 'campaign-1', source: 'broadcast', memberId: 'member-1',
-  email: 'member@example.com', consentRowId: 'consent-1', unsubscribeTokenId: null, status: 'pending',
+  email: 'member@example.com', subject: 'Hello', consentRowId: 'consent-1',
+  unsubscribeTokenId: null, status: 'pending',
   skipReason: null, sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null,
   idempotencySource: null, renderedBodyPurgedAt: null, createdAt: '2026-07-01T00:00:00.000Z', sentAt: null,
 });

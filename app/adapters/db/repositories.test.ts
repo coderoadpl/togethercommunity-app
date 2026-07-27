@@ -505,6 +505,7 @@ describe('member erasure repository', () => {
           rawProviderPayload: {
             mail: { destination: ['jan.kowalski@together.dev'] },
             delivery: { recipients: ['JAN.KOWALSKI@TOGETHER.DEV'] },
+            recipientByAddress: { 'jan.kowalski@together.dev': true },
           },
         },
         createdAt: NOW,

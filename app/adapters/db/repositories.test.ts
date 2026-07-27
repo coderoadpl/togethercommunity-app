@@ -45,12 +45,14 @@ import {
   createCouponStatsRepository,
   createProductPriceHistoryRepository,
 } from './coupon-repositories.js';
+import { createInvoiceRepository } from './invoice-repositories.js';
 import {
   consents,
   couponRedemptions,
   couponCheckoutSessions,
   coupons,
   emailEvents,
+  invoices,
   erasedMemberImports,
   memberCourseProgress,
   members,
@@ -624,6 +626,26 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
   });
 });
 
+describe('order billing snapshots', () => {
+  it('rejects billing changes after payment', async () => {
+    await expect(
+      db
+        .update(orders)
+        .set({
+          billing: {
+            nip: '5555555555',
+            companyName: 'Acme sp. z o.o.',
+            address: 'Prosta 1',
+            postalCode: '00-001',
+            city: 'Warszawa',
+            country: 'PL',
+          },
+        })
+        .where(eq(orders.id, 'order-acme-1')),
+    ).rejects.toThrow();
+  });
+});
+
 describe('course/module/lesson repositories', () => {
   it('creates and reads course content scoped to the tenant', async () => {
     const courses = createCourseRepository(db);
@@ -716,6 +738,32 @@ describe('member erasure repository', () => {
     const orderRepo = createOrderRepository(db);
     await orderRepo.create(RODO, order({ id: 'order-rodo-1', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
     await orderRepo.create(RODO, order({ id: 'order-rodo-2', tenantId: RODO, memberId: 'mem-rodo', productId: 'prod-rodo', amountCents: 10000, createdAt: NOW }));
+    await createInvoiceRepository(db).create(
+      RODO,
+      {
+        id: 'invoice-rodo',
+        tenantId: RODO,
+        orderId: 'order-rodo-1',
+        status: 'issued',
+        provider: 'fakturownia',
+        providerInvoiceId: 'provider-rodo',
+        invoiceNumber: 'FV/RODO/1',
+        pdfUrl: 'https://example.com/invoice-rodo.pdf',
+        error: null,
+        issuedAt: NOW,
+        createdAt: NOW,
+      },
+      {
+        id: 'invoice-event-rodo',
+        tenantId: RODO,
+        invoiceId: 'invoice-rodo',
+        orderId: 'order-rodo-1',
+        type: 'issued',
+        error: null,
+        meta: {},
+        occurredAt: NOW,
+      },
+    );
     await db.insert(coupons).values({
       id: 'coupon-rodo',
       tenantId: RODO,
@@ -942,6 +990,10 @@ describe('member erasure repository', () => {
       .where(eq(memberCourseProgress.memberId, 'mem-rodo'));
     expect(progressRows).toHaveLength(1);
     expect(progressRows[0]).toMatchObject({ completedLessonIds: ['l1', 'l2'] });
+
+    expect(
+      await db.select().from(invoices).where(eq(invoices.id, 'invoice-rodo')),
+    ).toMatchObject([{ invoiceNumber: 'FV/RODO/1', orderId: 'order-rodo-1' }]);
 
     const eventRows = await db.select().from(emailEvents).where(eq(emailEvents.tenantId, RODO));
     expect(eventRows.map((event) => event.type).sort()).toEqual([

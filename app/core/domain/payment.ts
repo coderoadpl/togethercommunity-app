@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { languageSchema } from './language.js';
+import { billingDataSchema } from './commerce.js';
 
 export const checkoutSessionInputSchema = z.object({
   productId: z.string().min(1),
@@ -10,6 +11,7 @@ export const checkoutSessionInputSchema = z.object({
   termsAccepted: z.boolean().optional(),
   marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
   couponCode: z.string().trim().min(1).max(100).optional(),
+  billing: billingDataSchema.optional(),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
@@ -22,6 +24,7 @@ export const checkoutConsentCaptureSchema = z.object({
   confirmationBaseUrl: z.string().url(),
   ip: z.string().min(1).optional(),
   userAgent: z.string().min(1).optional(),
+  billing: billingDataSchema.optional(),
 });
 
 export type CheckoutConsentCapture = z.infer<typeof checkoutConsentCaptureSchema>;

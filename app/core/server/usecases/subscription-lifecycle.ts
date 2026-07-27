@@ -7,6 +7,7 @@ import {
   type Order,
   type OrderProvider,
   type ProductPrice,
+  type BillingData,
 } from '@core/domain/index.js';
 
 import type {
@@ -36,6 +37,7 @@ export const appendOrder = async (
   input: Omit<Order, 'id' | 'tenantId' | 'createdAt' | 'couponId' | 'discountCents'> & {
     couponId?: string | null;
     discountCents?: number;
+    billing?: BillingData | null;
   },
   deps: Pick<SubscriptionLifecycleDeps, 'orders' | 'ids' | 'clock'>,
 ): Promise<Order> => {
@@ -43,6 +45,7 @@ export const appendOrder = async (
     ...input,
     couponId: input.couponId ?? null,
     discountCents: input.discountCents ?? 0,
+    billing: input.billing ?? null,
     id: deps.ids.nextId(),
     tenantId,
     createdAt: deps.clock.nowIso(),
@@ -63,6 +66,7 @@ export interface StartSubscriptionInput {
   couponDiscountCents?: number;
   couponRecurringDuration?: CouponRecurringDuration;
   paidOrder?: Order;
+  billing?: BillingData | null;
 }
 
 export const startSubscription = async (
@@ -116,6 +120,7 @@ export const startSubscription = async (
         currency: input.price.currency,
         provider: input.provider,
         providerObjectIds: input.providerObjectIds,
+        billing: input.billing ?? null,
       },
       deps,
     ));

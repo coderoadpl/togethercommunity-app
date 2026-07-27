@@ -39,6 +39,8 @@ describe('stripeCheckoutSessionParams', () => {
         },
       ],
     });
+    expect(JSON.stringify(params.metadata)).not.toContain('Acme');
+    expect(JSON.stringify(params.metadata)).not.toContain('5555555555');
   });
 
   it('keeps every metadata value inside the Stripe 500-character cap', () => {

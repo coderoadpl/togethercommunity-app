@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
+  billingDataSchema,
   exportOrdersQuerySchema,
   graceExpiresAt,
   listOrdersQuerySchema,
@@ -10,28 +11,69 @@ import {
   productPriceSchema,
 } from './commerce.js';
 
+describe('billingDataSchema', () => {
+  it.each([
+    ['5555555555', true],
+    ['8567346215', true],
+    ['1234567890', false],
+    ['5261040829', false],
+    ['526-104-08-28', false],
+    ['123456789', false],
+    ['12345678901', false],
+    ['', false],
+  ])('validates Polish NIP %s', (nip, valid) => {
+    const result = billingDataSchema.safeParse({
+      nip,
+      companyName: 'Acme sp. z o.o.',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    });
+    expect(result.success).toBe(valid);
+  });
+
+  it('allows a B2C billing snapshot without NIP and defaults country to PL', () => {
+    expect(
+      billingDataSchema.parse({
+        companyName: 'Jan Kowalski',
+        address: 'Prosta 1',
+        postalCode: '00-001',
+        city: 'Warszawa',
+      }),
+    ).toEqual({
+      nip: null,
+      companyName: 'Jan Kowalski',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    });
+  });
+});
+
 describe('graceExpiresAt', () => {
   it('adds exactly the grace window to the period end', () => {
-    expect(graceExpiresAt('2026-08-14T10:00:00.000Z')).toBe('2026-08-17T10:00:00.000Z');
+    expect(graceExpiresAt('1998-08-14T10:00:00.000Z')).toBe('1998-08-17T10:00:00.000Z');
     expect(SUBSCRIPTION_GRACE_DAYS).toBe(3);
   });
 
   it('crosses a month boundary correctly', () => {
-    expect(graceExpiresAt('2026-01-30T00:00:00.000Z')).toBe('2026-02-02T00:00:00.000Z');
+    expect(graceExpiresAt('1998-01-30T00:00:00.000Z')).toBe('1998-02-02T00:00:00.000Z');
   });
 });
 
 describe('nextPeriodEnd', () => {
   it('advances one month', () => {
-    expect(nextPeriodEnd('2026-07-14T10:00:00.000Z', 'month')).toBe('2026-08-14T10:00:00.000Z');
+    expect(nextPeriodEnd('1998-07-14T10:00:00.000Z', 'month')).toBe('1998-08-14T10:00:00.000Z');
   });
 
   it('advances one year across a leap boundary', () => {
-    expect(nextPeriodEnd('2026-02-28T00:00:00.000Z', 'year')).toBe('2027-02-28T00:00:00.000Z');
+    expect(nextPeriodEnd('1998-02-28T00:00:00.000Z', 'year')).toBe('1999-02-28T00:00:00.000Z');
   });
 
   it('rolls a month-end that overflows the next month into the following month (JS Date semantics)', () => {
-    expect(nextPeriodEnd('2026-01-31T00:00:00.000Z', 'month')).toBe('2026-03-03T00:00:00.000Z');
+    expect(nextPeriodEnd('1998-01-31T00:00:00.000Z', 'month')).toBe('1998-03-03T00:00:00.000Z');
   });
 });
 
@@ -65,7 +107,7 @@ describe('price interval / kind refinement', () => {
       amountCents: 2900,
       currency: 'PLN' as const,
       active: true,
-      createdAt: '2026-07-14T10:00:00.000Z',
+      createdAt: '1998-07-14T10:00:00.000Z',
     };
     expect(productPriceSchema.safeParse(stored).success).toBe(false);
     expect(productPriceSchema.safeParse({ ...stored, interval: 'month' }).success).toBe(true);

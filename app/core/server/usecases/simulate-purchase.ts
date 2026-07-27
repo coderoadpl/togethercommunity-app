@@ -7,6 +7,7 @@ import {
   type AppError,
   type ProductPrice,
   type Result,
+  type BillingData,
 } from '@core/domain/index.js';
 
 import type { AuthPort, MemberRepository, ProductRepository, PurchaseRepository } from '../ports.js';
@@ -32,6 +33,7 @@ export interface SimulatePurchaseInputData {
   email: string;
   productId: string;
   priceId?: string;
+  billing?: BillingData;
 }
 
 export const simulatePurchase = async (
@@ -78,6 +80,7 @@ export const simulatePurchase = async (
         provider: 'simulated',
         providerSubscriptionId: `sim_sub_${deps.ids.nextId()}`,
         providerObjectIds: { checkoutSession: `sim_cs_${deps.ids.nextId()}` },
+        billing: input.billing ?? null,
       },
       deps,
     );
@@ -116,6 +119,7 @@ export const simulatePurchase = async (
         currency: price?.currency ?? product.currency,
         provider: 'simulated',
         providerObjectIds: { checkoutSession: `sim_cs_${deps.ids.nextId()}` },
+        billing: input.billing ?? null,
       },
       deps,
     );

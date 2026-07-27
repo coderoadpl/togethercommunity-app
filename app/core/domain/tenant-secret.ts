@@ -15,6 +15,8 @@ export const tenantSecretKeySchema = z.enum([
   'smtp.user',
   'smtp.password',
   'smtp.secure',
+  'fakturownia.apiKey',
+  'fakturownia.subdomain',
 ]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;

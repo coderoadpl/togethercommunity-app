@@ -248,10 +248,17 @@ export const CampaignsPanel = () => {
   const { language } = useLanguage();
   const campaigns = useQuery(actions.marketingCampaigns);
   const consents = useQuery(actions.marketingConsents);
+  const reputation = useQuery(actions.marketingReputation);
   const navigate = useNavigate();
 
   return (
     <PanelPage title={t.marketing.campaignsTitle} description={t.marketing.campaignsDescription} action={<Button component={Link} to="/panel/marketing/campaigns/new" variant="contained">+ {t.common.add}</Button>}>
+      {reputation.data?.overallStatus === 'warn' ? (
+        <Alert severity="warning">{t.marketing.campaignReputationWarnBanner}</Alert>
+      ) : null}
+      {reputation.data?.overallStatus === 'critical' ? (
+        <Alert severity="error">{t.marketing.campaignReputationCriticalBanner}</Alert>
+      ) : null}
       <ListSection
         isEmpty={campaigns.isSuccess && campaigns.data.campaigns.length === 0}
         empty={<StatusView state={{ kind: 'empty', title: t.marketing.campaignsEmpty, action: <Button component={Link} to="/panel/marketing/campaigns/new">+ {t.common.add}</Button> }} />}

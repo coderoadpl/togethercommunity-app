@@ -18,6 +18,7 @@ import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
+import { ReputationSummary } from './ReputationSummary.js';
 
 const CredentialsForm = ({ configured }: { configured: boolean }) => {
   const t = useTranslations();
@@ -71,6 +72,7 @@ export const MarketingSettingsPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const result = useQuery(actions.marketingSesSettings);
+  const reputation = useQuery(actions.marketingReputation);
   const settings = result.data?.settings ?? null;
   const [fromAddress, setFromAddress] = useState<string | null>(null);
   const [fromName, setFromName] = useState<string | null>(null);
@@ -163,15 +165,26 @@ export const MarketingSettingsPanel = () => {
           control={<Switch checked={values.trackingEnabled} onChange={(event) => setTrackingEnabled(event.target.checked)} />}
           label={t.marketing.trackingEnabledLabel}
         />
-        <FormControlLabel
-          control={<Switch checked={values.autoPauseOnCritical} onChange={(event) => setAutoPauseOnCritical(event.target.checked)} />}
-          label={t.marketing.autoPauseOnCriticalLabel}
-        />
         <Alert severity="info">
           {t.marketing.trackingPrivacyNote}{' '}
           <Link href="/docs/marketing-automation-api.md#open-and-click-events">{t.marketing.trackingDocsLink}</Link>
         </Alert>
         {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
+      </SectionCard>
+      <SectionCard
+        title={t.marketing.reputationTitle}
+        description={t.marketing.reputationDescription}
+        onSubmit={submit}
+        actions={<Button type="submit" variant="contained" disabled={settings === null || update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}
+      >
+        {reputation.isPending ? <Typography variant="body2">{t.marketing.reputationLoading}</Typography> : null}
+        {reputation.isError ? <Alert>{localizeError(reputation.error, t)}</Alert> : null}
+        {reputation.isSuccess ? <ReputationSummary reputation={reputation.data} /> : null}
+        <FormControlLabel
+          control={<Switch checked={values.autoPauseOnCritical} disabled={settings === null} onChange={(event) => setAutoPauseOnCritical(event.target.checked)} />}
+          label={t.marketing.autoPauseOnCriticalLabel}
+        />
+        <Typography variant="body2">{t.marketing.autoPauseOnCriticalHint}</Typography>
       </SectionCard>
       <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}>
         <FormControl fullWidth>

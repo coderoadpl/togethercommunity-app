@@ -152,6 +152,18 @@ describe('marketing management use-cases', () => {
       consentDefinitionId: definition.id, productIds: [], layoutId: null,
     }, { campaigns, definitions, layouts });
     expect(locked.ok).toBe(false);
+
+    const editableCampaigns = new InMemoryCampaignRepository([campaign('draft')]);
+    const updated = await updateMarketingCampaign(ctx, {
+      campaignId: 'campaign-1', name: 'Changed', subject: 'Changed',
+      bodyHtml: '<h1>Hello</h1>', bodySource: '# Hello',
+      consentDefinitionId: definition.id, productIds: [], layoutId: null,
+    }, { campaigns: editableCampaigns, definitions, layouts });
+    expect(updated.ok).toBe(true);
+    if (updated.ok) {
+      expect(updated.value.campaign.bodySource).toBe('# Hello');
+      expect(updated.value.campaign.bodyHtml).toBe('<h1>Hello</h1>');
+    }
   });
 
   it('derives readiness from credentials and onboarding state instead of persisted flags', async () => {

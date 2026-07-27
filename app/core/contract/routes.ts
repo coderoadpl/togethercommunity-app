@@ -780,7 +780,8 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
 });
 export const marketingCampaignCreateInputSchema = z.object({
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
-  bodyHtml: z.string().min(1), consentDefinitionId: z.string().min(1),
+  bodyHtml: z.string().min(1), bodySource: z.string().min(1).optional(),
+  consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
   layoutId: z.string().min(1).nullable().default(null),
 });

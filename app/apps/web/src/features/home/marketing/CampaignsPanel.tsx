@@ -11,6 +11,9 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
@@ -23,6 +26,11 @@ import { localizeError, useLanguage, useTranslations } from '../../../i18n/index
 import { formatDateTime } from '../../../lib/format.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
+import {
+  renderCampaignMarkdown,
+  renderCampaignPreview,
+  sanitizeCampaignHtml,
+} from './marketing-markdown.js';
 
 const CampaignEngagementTiles = ({
   engagement,
@@ -66,7 +74,10 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const layouts = useQuery(actions.marketingLayouts);
   const [name, setName] = useState(campaign?.name ?? '');
   const [subject, setSubject] = useState(campaign?.subject ?? '');
-  const [bodyHtml, setBodyHtml] = useState(campaign?.bodyHtml ?? '');
+  const [bodySource, setBodySource] = useState(campaign?.bodySource ?? '');
+  const [bodyMode, setBodyMode] = useState<'markdown' | 'html'>(
+    campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
+  );
   const [consentDefinitionId, setConsentDefinitionId] = useState(campaign?.consentDefinitionId ?? '');
   const [productIds, setProductIds] = useState<string[]>(campaign?.audienceFilter?.productIds ?? []);
   const [layoutId, setLayoutId] = useState(campaign?.layoutId ?? '');
@@ -98,10 +109,12 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const bodyHtml = bodyMode === 'markdown' ? renderCampaignMarkdown(bodySource) : bodySource;
     const input = {
       name,
       subject,
       bodyHtml,
+      bodySource,
       consentDefinitionId: effectiveConsentId,
       productIds,
       layoutId: layoutId === '' ? null : layoutId,
@@ -132,10 +145,64 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
         <FormLabel htmlFor="marketing-campaign-subject">{t.marketing.subjectLabel}</FormLabel>
         <OutlinedInput id="marketing-campaign-subject" value={subject} onChange={(event) => setSubject(event.target.value)} disabled={!editable} required />
       </FormControl>
-      <FormControl fullWidth>
-        <FormLabel htmlFor="marketing-campaign-body">{t.marketing.bodyLabel}</FormLabel>
-        <OutlinedInput id="marketing-campaign-body" value={bodyHtml} onChange={(event) => setBodyHtml(event.target.value)} disabled={!editable} multiline minRows={8} required />
-      </FormControl>
+      <Stack useFlexGap spacing="0.75rem">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          useFlexGap
+          spacing="0.75rem"
+          sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+        >
+          <FormLabel htmlFor="marketing-campaign-body">{t.marketing.bodyLabel}</FormLabel>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={bodyMode}
+            onChange={(_event, value: 'markdown' | 'html' | null) => {
+              if (value !== null) setBodyMode(value);
+            }}
+            aria-label={t.marketing.editorMode}
+            disabled={!editable}
+          >
+            <ToggleButton value="markdown">{t.marketing.markdownMode}</ToggleButton>
+            <ToggleButton value="html">{t.marketing.rawHtmlMode}</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+        {bodyMode === 'html' ? <Alert severity="warning">{t.marketing.rawHtmlHint}</Alert> : null}
+        <Box sx={{ display: 'grid', gap: '1rem', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)' } }}>
+          <FormControl fullWidth>
+            <OutlinedInput
+              id="marketing-campaign-body"
+              value={bodySource}
+              onChange={(event) => setBodySource(event.target.value)}
+              disabled={!editable}
+              multiline
+              minRows={12}
+              required
+            />
+          </FormControl>
+          <Box
+            aria-label={t.marketing.livePreview}
+            sx={{
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 1,
+              minHeight: '18rem',
+              overflowWrap: 'anywhere',
+              p: '1rem',
+            }}
+          >
+            <Typography variant="overline" component="p">{t.marketing.livePreview}</Typography>
+            <Box
+              data-testid="campaign-body-preview"
+              dangerouslySetInnerHTML={{
+                __html: bodyMode === 'markdown'
+                  ? renderCampaignPreview(bodySource)
+                  : sanitizeCampaignHtml(bodySource),
+              }}
+            />
+          </Box>
+        </Box>
+      </Stack>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-consent-label">{t.marketing.consentScopeLabel}</FormLabel>
         <Select

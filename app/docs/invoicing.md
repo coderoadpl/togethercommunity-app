@@ -41,3 +41,15 @@ If the buyer did not request an invoice during checkout, the paid order has no b
 ## Retention and erasure
 
 Paid-order billing snapshots are immutable. Invoices and their append-only lifecycle events are fiscal records. Member erasure pseudonymizes the member but does not delete invoice rows or their order relationship.
+
+
+## Known limitation: VAT-exempt sellers (v1)
+
+Tenants exempt from VAT (zwolnienie podmiotowe/przedmiotowe, e.g. art. 113
+ust. 1) cannot issue invoices through this integration yet: the tenant VAT
+setting accepts only 5/8/23% and issuance refuses loudly until a rate is set.
+This is the SAFE failure mode (no incorrect 23% documents are ever created),
+but the refusal message is the generic "set the VAT rate" one. Exempt-rate
+support ("zw" positions with the legal-basis annotation required on the
+invoice) is tracked as a dedicated follow-up; until it ships, exempt sellers
+should issue invoices directly in iFirma.

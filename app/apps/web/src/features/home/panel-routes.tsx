@@ -17,6 +17,11 @@ import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 import { SalesPanel } from './sales/SalesPanel.js';
+import {
+  CouponCreatePage,
+  CouponDetailPage,
+  CouponsPanel,
+} from './sales/CouponsPanel.js';
 import { SpacesPanel } from './spaces/SpacesPanel.js';
 import { SpaceCreatePage } from './spaces/SpaceCreatePage.js';
 import { SpaceEditPage } from './spaces/SpaceEditPage.js';
@@ -145,5 +150,11 @@ export const PanelIntegrationsRoute = () => {
 };
 
 export const PanelSalesRoute = () => <SalesPanel />;
+export const PanelCouponsRoute = () => <CouponsPanel />;
+export const PanelCouponCreateRoute = () => <CouponCreatePage />;
+export const PanelCouponDetailRoute = () => {
+  const params = useParams({ strict: false });
+  return <CouponDetailPage couponId={params.couponId ?? ''} />;
+};
 
 export const PanelSettingsRoute = () => <SettingsPanel />;

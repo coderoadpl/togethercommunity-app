@@ -67,6 +67,73 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
   );
 };
 
+const SmtpForm = ({ configured }: { configured: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('');
+  const [user, setUser] = useState('');
+  const [password, setPassword] = useState('');
+  const [secure, setSecure] = useState(true);
+  const save = useMutation(actions.setTenantSecret);
+  const test = useMutation(actions.testMarketingSmtp);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const values = [
+      { key: 'smtp.host' as const, value: host },
+      { key: 'smtp.port' as const, value: port },
+      { key: 'smtp.user' as const, value: user },
+      { key: 'smtp.password' as const, value: password },
+      { key: 'smtp.secure' as const, value: String(secure) },
+    ].filter((entry) => entry.value.trim() !== '');
+    for (const value of values) await save.mutateAsync(value);
+    setHost('');
+    setPort('');
+    setUser('');
+    setPassword('');
+    await queryClient.invalidateQueries(actions.marketingInvalidates());
+    await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
+  };
+  return (
+    <SectionCard
+      title={t.marketing.smtpTitle}
+      description={t.marketing.smtpHint}
+      onSubmit={(event) => void submit(event)}
+      actions={(
+        <>
+          <Button type="submit" variant="contained" disabled={save.isPending}>{save.isPending ? t.marketing.saving : t.marketing.save}</Button>
+          <Button type="button" variant="outlined" disabled={!configured || test.isPending} onClick={() => test.mutate(undefined)}>
+            {test.isPending ? t.marketing.testing : t.marketing.testSend}
+          </Button>
+        </>
+      )}
+    >
+      <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
+      <Alert severity="info">{t.marketing.smtpTrackingNote}</Alert>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="marketing-smtp-host">{t.marketing.smtpHostLabel}</FormLabel>
+        <OutlinedInput id="marketing-smtp-host" value={host} onChange={(event) => setHost(event.target.value)} />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="marketing-smtp-port">{t.marketing.smtpPortLabel}</FormLabel>
+        <OutlinedInput id="marketing-smtp-port" inputMode="numeric" value={port} onChange={(event) => setPort(event.target.value)} />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="marketing-smtp-user">{t.marketing.smtpUserLabel}</FormLabel>
+        <OutlinedInput id="marketing-smtp-user" value={user} onChange={(event) => setUser(event.target.value)} />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="marketing-smtp-password">{t.marketing.smtpPasswordLabel}</FormLabel>
+        <OutlinedInput id="marketing-smtp-password" type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} />
+      </FormControl>
+      <FormControlLabel control={<Switch checked={secure} onChange={(event) => setSecure(event.target.checked)} />} label={t.marketing.smtpSecureLabel} />
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
+      {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
+      {test.isSuccess ? <Alert severity="success">{t.marketing.ready}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 export const MarketingSettingsPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -120,6 +187,7 @@ export const MarketingSettingsPanel = () => {
   const verified = settings?.identityVerifiedAt !== null && settings?.identityVerifiedAt !== undefined;
   const webhookVerified = settings?.webhookVerifiedAt !== null && settings?.webhookVerifiedAt !== undefined;
   const enabled = settings?.broadcastsEnabled ?? false;
+  const pool = result.data.platformPool;
 
   return (
     <PanelPage title={t.marketing.settingsTitle} description={t.marketing.settingsDescription}>
@@ -136,9 +204,17 @@ export const MarketingSettingsPanel = () => {
           { label: t.marketing.configurationSetConfigured, ready: settings?.configurationSet !== null && settings?.configurationSet !== undefined },
           { label: t.marketing.webhookVerified, ready: webhookVerified },
           { label: t.marketing.footerConfigured, ready: footerConfigured },
+          {
+            label: `${t.marketing.platformPoolChecklist}: ${pool.used}/${pool.limit}`,
+            ready: pool.used < pool.limit || credentialsConfigured || result.data.smtpConfigured,
+          },
         ]}
       />
+      <SectionCard title={t.marketing.platformPool({ used: pool.used, limit: pool.limit })}>
+        {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
+      </SectionCard>
       <CredentialsForm configured={credentialsConfigured} />
+      <SmtpForm configured={result.data.smtpConfigured} />
       <SectionCard title={t.marketing.sender} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.save}</Button>}>
         <Alert severity="info">{t.marketing.identityAuthenticationHint}</Alert>
         <FormControl fullWidth>

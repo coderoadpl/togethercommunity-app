@@ -5,7 +5,6 @@ import {
   type KsefInvoiceData,
   type Result,
 } from '@core/domain/index.js';
-import { z } from 'zod';
 
 import type {
   Clock,
@@ -33,8 +32,6 @@ export interface KsefSubmissionDeps {
   };
 }
 
-const retryDetailsSchema = z.object({ retryAfterMs: z.number().nonnegative().nullable() });
-
 const nextRetryAt = (
   now: string,
   attempt: number,
@@ -43,9 +40,11 @@ const nextRetryAt = (
 ): string => {
   const exponential = deps.retry.baseMs * 2 ** Math.min(attempt, 10);
   const bounded = Math.min(deps.retry.capMs, exponential) + deps.retry.jitter();
-  const parsed = retryDetailsSchema.safeParse(error?.details);
-  const delay = parsed.success && parsed.data.retryAfterMs !== null
-    ? Math.max(bounded, parsed.data.retryAfterMs)
+  const retryAfterMs = typeof error?.details === 'object' && error.details !== null
+    ? Reflect.get(error.details, 'retryAfterMs')
+    : null;
+  const delay = typeof retryAfterMs === 'number' && retryAfterMs >= 0
+    ? Math.max(bounded, retryAfterMs)
     : bounded;
   return new Date(Date.parse(now) + Math.max(0, delay)).toISOString();
 };

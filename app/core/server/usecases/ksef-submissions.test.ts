@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import { describe, expect, it } from 'vitest';
 
 import { ok, type FiscalArtifact, type Invoice, type KsefInvoiceData } from '@core/domain/index.js';
@@ -10,7 +8,7 @@ import type { KsefStatusResult } from '../ports.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 const xml = '<Faktura>frozen</Faktura>\n';
-const hash = createHash('sha256').update(xml).digest('hex');
+const hash = 'ac9c59d1ca542032ea81818d042399cb83f81e04bfd6672374d15d8419cb999f';
 
 const ksefData = (overrides: Partial<KsefInvoiceData> = {}): KsefInvoiceData => ({
   environment: 'test',
@@ -153,7 +151,7 @@ const harness = (initial = invoice()) => {
       validateCredentials: async () => ok({ diagnostic: 'ok' }),
     },
     hash: {
-      sha256: (content) => createHash('sha256').update(content).digest('hex'),
+      sha256: () => hash,
     },
     ids: { nextId: () => 'artifact-upo-1' },
     clock: { nowIso: () => now },

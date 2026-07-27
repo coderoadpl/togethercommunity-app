@@ -26,6 +26,7 @@ export const MemberAccountPage = () => {
   const { language } = useLanguage();
   const navigate = useNavigate();
   const me = useQuery(actions.me);
+  const billingOrders = useQuery(actions.memberBillingOrders);
   const tenantSettings = useQuery(actions.tenantSettings);
 
   const unauthorized = isUnauthorized(me.error);
@@ -60,6 +61,7 @@ export const MemberAccountPage = () => {
 
   const email = me.data.email;
   const billingPortalUrl = tenantSettings.data?.settings.billingPortalUrl ?? null;
+  const billedOrders = billingOrders.data?.orders ?? [];
 
   return (
     <MemberSurface title={t.account.title} eyebrow={t.account.heading}>
@@ -107,6 +109,26 @@ export const MemberAccountPage = () => {
                   {t.account.managePayments}
                 </Button>
               </Box>
+          </SectionCard>
+        ) : null}
+
+        {billedOrders.length > 0 ? (
+          <SectionCard title={t.account.invoiceOrdersHeading}>
+            <Stack useFlexGap spacing="1rem">
+              {billedOrders.map((order) => (
+                <Stack key={order.id} useFlexGap spacing="0.2rem">
+                  <Typography variant="subtitle2">
+                    {t.account.invoiceOrderLabel({ date: new Date(order.createdAt).toLocaleDateString(language) })}
+                  </Typography>
+                  <Typography>{order.billing?.companyName}</Typography>
+                  <Typography>{order.billing?.nip ?? ''}</Typography>
+                  <Typography>{order.billing?.address}</Typography>
+                  <Typography>
+                    {order.billing?.postalCode} {order.billing?.city}, {order.billing?.country}
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
           </SectionCard>
         ) : null}
 

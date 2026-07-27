@@ -27,6 +27,11 @@ const stubSettings = (billingPortalUrl: string | null) =>
     HttpResponse.json({ ok: true, data: { settings: { billingPortalUrl, bunnyStreamLibraryId: null } } }),
   );
 
+const stubBillingOrders = (orders: unknown[] = []) =>
+  http.get('*/api/me/billing-orders', () =>
+    HttpResponse.json({ ok: true, data: { orders, total: orders.length, page: 1, pageSize: 25 } }),
+  );
+
 const renderAccount = async () => {
   const rootRoute = createRootRoute({ component: MemberAccountPage });
   const router = createRouter({
@@ -39,7 +44,7 @@ const renderAccount = async () => {
 
 describe('MemberAccountPage', () => {
   it('hides the manage-payments link when no billing portal URL is set', async () => {
-    server.use(stubMe(), stubSettings(null));
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount();
 
     expect(await screen.findByTestId('account-email')).toHaveTextContent('member@together.dev');
@@ -47,7 +52,7 @@ describe('MemberAccountPage', () => {
   });
 
   it('shows the manage-payments link pointing at the billing portal when set', async () => {
-    server.use(stubMe(), stubSettings('https://billing.stripe.com/p/login/test_example'));
+    server.use(stubMe(), stubSettings('https://billing.stripe.com/p/login/test_example'), stubBillingOrders());
     await renderAccount();
 
     const link = await screen.findByTestId('account-manage-payments');
@@ -59,11 +64,34 @@ describe('MemberAccountPage', () => {
     server.use(
       stubMe(),
       stubSettings(null),
+      stubBillingOrders(),
       http.post('*', () => HttpResponse.json({ status: true })),
     );
     await renderAccount();
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
     expect(await screen.findByTestId('account-reset-sent')).toHaveTextContent(pl.account.resetSent);
+  });
+
+  it('renders only the narrow billing-order projection', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders([{
+        id: 'order-1',
+        createdAt: '2026-07-27T10:00:00.000Z',
+        billing: {
+          nip: '5555555555',
+          companyName: 'Acme sp. z o.o.',
+          address: 'Prosta 1',
+          postalCode: '00-001',
+          city: 'Warszawa',
+          country: 'PL',
+        },
+      }]),
+    );
+    await renderAccount();
+    expect(await screen.findByText('Acme sp. z o.o.')).toBeInTheDocument();
+    expect(screen.getByText('5555555555')).toBeInTheDocument();
   });
 });

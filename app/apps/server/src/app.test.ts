@@ -172,6 +172,28 @@ const deps = (input: {
       expireCheckoutSession: async () => ok({ expired: true }),
       verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test', objectId: null, checkoutSession: null }),
     },
+    invoices: {
+      findById: async () => null,
+      findCurrentByOrder: async () => null,
+      create: async () => true,
+      claimRetry: async () => true,
+      update: async () => null,
+      appendEvent: async () => undefined,
+    },
+    invoicing: {
+      issueInvoice: async () =>
+        ok({
+          providerInvoiceId: 'fake-1',
+          invoiceNumber: 'FV/1',
+          status: 'issued',
+        }),
+      getInvoiceStatus: async () => ok('issued'),
+      downloadInvoice: async () => ok({
+        content: new TextEncoder().encode('%PDF-1.7'),
+        contentType: 'application/pdf',
+      }),
+      testConnection: async () => ok({ diagnostic: 'Fake invoicing is available.' }),
+    },
     checkoutConsentCaptures: {
       create: async (_tenantId, capture) => {
         checkoutConsentCaptures.set(capture.id, structuredClone(capture));

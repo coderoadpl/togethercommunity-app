@@ -24,6 +24,7 @@ import type {
   CouponRedemptionRepository,
   CouponRepository,
   ProductPriceHistoryRepository,
+  CheckoutConsentCaptureRepository,
 } from '../ports.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
@@ -43,6 +44,7 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
+  checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
 }
 
 const HANDLED_EVENT_TYPES = new Set([
@@ -139,12 +141,25 @@ const providerObjectIdsForCheckout = (
     : { invoice: event.checkoutSession.invoiceId }),
 });
 
+const billingForCheckout = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+) => {
+  const captureId = event.checkoutSession?.metadata.checkoutConsentCaptureId;
+  if (captureId === undefined || captureId === null || deps.checkoutConsentCaptures === undefined) {
+    return null;
+  }
+  return (await deps.checkoutConsentCaptures.findById(tenantId, captureId))?.billing ?? null;
+};
+
 const claimDiscountedOrder = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
   provider: 'stripe' | 'simulated',
   memberId: string,
   context: CouponPaymentContext,
+  billing: Order['billing'],
   deps: StripeWebhookDeps,
 ): Promise<{ order: Order; coupon: Coupon } | null> => {
   if (deps.couponRedemptions === undefined) return null;
@@ -175,6 +190,7 @@ const claimDiscountedOrder = async (
     providerObjectIds: providerObjectIdsForCheckout(event),
     couponId: context.coupon.id,
     discountCents,
+    billing: billing ?? null,
     createdAt: deps.clock.nowIso(),
   };
   const redemptionId = deps.ids.nextId();
@@ -231,6 +247,7 @@ const applyCheckoutCompleted = async (
       ? nextPeriodEnd(deps.clock.nowIso(), price.interval ?? 'month')
       : null;
   const couponContext = await couponPaymentContext(tenant, event, deps);
+  const billing = await billingForCheckout(tenant.id, event, deps);
 
   const fulfilled = await fulfillEnrollment(
     tenant,
@@ -255,6 +272,7 @@ const applyCheckoutCompleted = async (
           provider,
           fulfilled.value.memberId,
           couponContext,
+          billing,
           deps,
         );
   const product = await deps.products.findById(tenant.id, metadata.productId);
@@ -285,6 +303,7 @@ const applyCheckoutCompleted = async (
           event.checkoutSession.discountTotalCents ??
           couponContext?.session.discountCents ??
           0,
+        billing,
       },
       deps,
     ));
@@ -354,11 +373,16 @@ const applyInvoiceEvent = async (
     const existingOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
       invoice: event.objectId,
     });
+    const previousOrder = existingOrder ?? await deps.paymentRefunds.findLatestSubscriptionOrder(
+      tenant.id,
+      providerSubscriptionId,
+    );
     const renewed = await renewSubscriptionPeriod(
       tenant.id,
       {
         ...cycle,
         ...(existingOrder === null ? {} : { paidOrder: existingOrder }),
+        billing: previousOrder?.billing ?? null,
         ...(event.invoice?.periodEnd == null ? {} : { periodEnd: event.invoice.periodEnd }),
       },
       deps,

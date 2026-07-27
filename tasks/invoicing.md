@@ -16,19 +16,21 @@
    (order detail + export CSV/JSON), and is immutable post-payment (fiscal
    data snapshot). Member /account shows billing data of their own orders.
 2. **InvoicingPort (core, this slice).** Port with a narrow surface:
-   `issueInvoice(order)`, `getInvoiceStatus(ref)`, `invoiceDownloadUrl(ref)`.
+   `issueInvoice(order)`, `getInvoiceStatus(ref)`, `downloadInvoice(ref)`.
    Invoice lifecycle rows follow the projection+events convention
-   (`invoices` + email_events-style lifecycle: requested → issued → delivered
+   (`invoices` + email_events-style lifecycle: requested → provider_created → issued → delivered
    | failed, with provider refs in meta). Issuance is tenant-triggered
    (panel action on the order) or auto-on-payment (tenant toggle, default
    off) — never platform-automatic without tenant opt-in.
 3. **iFirma adapter (v1 provider — owner decision 2026-07-27, replaces the
-   earlier Fakturownia pick).** Rationale: the owner uses iFirma personally,
-   so the integration is verifiable end-to-end on a real account. BYO API
-   credentials per tenant (tenant_secrets `ifirma.*` keys (invoice API key + username), AES-GCM as
-   Stripe/Bunny/SES). iFirma issues the invoice, handles KSeF submission
-   itself (tenant configures KSeF inside iFirma — certificates never touch
-   us), returns invoice number + PDF; we store refs and surface status.
+   earlier Fakturownia pick; the owner uses iFirma personally, so the
+   integration is verifiable end-to-end on a real account).** BYO API
+   credentials per tenant (tenant_secrets `ifirma.invoiceApiKey` +
+   `ifirma.username`, AES-GCM as Stripe/Bunny/SES). iFirma issues the
+   invoice and handles KSeF submission itself (the tenant configures KSeF
+   inside iFirma — their certificate never touches us), returns the invoice
+   number and authenticated PDF; we store refs, proxy downloads, and
+   surface status.
 4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
    drugie").** Same InvoicingPort; FA(3) XML generation + KSeF 2.0 API on a
    tenant-generated KSeF token/certificate (tenant_secrets custody — KSeF has
@@ -44,15 +46,15 @@
   PL/EN, NIP validation, tests incl. fiscal-immutability.
 - `invoices` model + InvoicingPort + panel order action ("Wystaw fakturę") +
   status chip + download link; auto-issue toggle per tenant (default off).
-- iFirma adapter: issue (VAT invoice, positions from order incl. coupon
+- iFirma adapter: issue (domestic VAT invoice, positions from order incl. coupon
   discount as a separate line note when present), status poll, error surfaces
   (bad key, validation) with actionable panel copy; test-mode support for
   e2e (fake adapter in dev, contract tests against recorded shapes).
-- Docs: tenant runbook — connect iFirma (API keys, KSeF inside
-  iFirma), what auto-issue does, B2C-on-request workflow (issue from
+- Docs: tenant runbook — connect iFirma (username and `faktura` API key, KSeF inside
+  iFirma), select the tenant VAT rate, what auto-issue does, B2C-on-request workflow (issue from
   the order detail within the 3-month window).
 - Anomaly guard: order without billing data + tenant auto-issue on → issue
-  a "paragon-like" B2C invoice per iFirma defaults or skip with a
+  a B2C domestic invoice through iFirma or skip with a
   panel notice (tenant setting: `auto_issue_scope: b2b_only | all`,
   default b2b_only).
 
@@ -60,7 +62,8 @@
 
 Self-billing, corrective invoices UI beyond a link-out to iFirma,
 multi-currency fiscal logic (orders are PLN today), platform-level VAT
-registration (tenant is the seller of record — consistent with the
+registration and VAT-rate determination (the tenant is the seller of record and must select
+the applicable supported rate before issuance — consistent with the
 controller/processor posture), OSS/MOSS.
 
 ## Interplay

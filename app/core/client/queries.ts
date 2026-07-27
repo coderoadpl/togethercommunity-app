@@ -153,6 +153,10 @@ export const authConfigScopes = {
   all: () => ['auth-config'] as const,
 };
 
+export const memberBillingOrdersScopes = {
+  all: () => ['member-billing-orders'] as const,
+};
+
 export const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
@@ -516,10 +520,28 @@ export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
     call: ({ signal }) => api.listOrders(input, signal),
   });
 
+export const memberBillingOrdersQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: memberBillingOrdersScopes.all(),
+    call: ({ signal }) => api.listMemberBillingOrders(1, 25, signal),
+  });
+
 export const orderQuery = (api: ApiClient, id: string) =>
   defineQuery({
     queryKey: salesScopes.order(id),
     call: ({ signal }) => api.getOrder(id, signal),
+  });
+
+export const issueInvoiceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'invoice'],
+    call: (orderId: string) => api.issueInvoice(orderId),
+  });
+
+export const refreshInvoiceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'invoice-refresh'],
+    call: (invoiceId: string) => api.refreshInvoice(invoiceId),
   });
 
 export const ordersExportQuery = (api: ApiClient, input: OrdersExportQueryInput) =>
@@ -971,6 +993,12 @@ export const testStripeConnectionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
     call: () => api.testStripeConnection(),
+  });
+
+export const testIfirmaConnectionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'ifirma-test'],
+    call: () => api.testIfirmaConnection(),
   });
 
 export const bunnyVideosQuery = (api: ApiClient, input: { search?: string; page?: number } = {}) =>

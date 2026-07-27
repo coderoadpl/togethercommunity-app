@@ -35,6 +35,7 @@ const orderItem = (id: string, over: Partial<OrderListItem> = {}): OrderListItem
   memberName: 'Buyer',
   productTitle: 'Course',
   couponCode: null,
+  billing: null,
   ...over,
 });
 
@@ -168,11 +169,32 @@ describe('exportOrders — CSV', () => {
     if (!result.ok) return;
     const lines = result.value.content.split('\n');
     expect(lines[0]).toBe(
-      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents',
+      'date,member,email,product,kind,amount_cents,currency,status,coupon,discount_cents,billing_nip,billing_company,billing_address,billing_postal_code,billing_city,billing_country',
     );
     expect(lines[1]).toContain('"\'=SUM(A1:A9)"');
     expect(lines[2]).toContain('""');
     expect(lines[2]).toContain('"Course, Deluxe"');
+  });
+
+  it('exports the immutable billing snapshot in CSV and JSON', async () => {
+    const billing = {
+      nip: '5555555555',
+      companyName: 'Acme sp. z o.o.',
+      address: 'Prosta 1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    };
+    const h = harness([orderItem('o1', { billing })]);
+    const csv = await exportOrders({ identity: identity('owner') }, { format: 'csv' }, h.deps);
+    const json = await exportOrders({ identity: identity('owner') }, { format: 'json' }, h.deps);
+
+    expect(csv).toMatchObject({ ok: true });
+    if (csv.ok) expect(csv.value.content).toContain('"5555555555","Acme sp. z o.o.","Prosta 1","00-001","Warszawa","PL"');
+    expect(json).toMatchObject({ ok: true });
+    if (json.ok) {
+      expect(orderListItemSchema.array().parse(JSON.parse(json.value.content))[0]?.billing).toEqual(billing);
+    }
   });
 
   it('falls back to the tenant id in the filename when no slug is present', async () => {

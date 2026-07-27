@@ -6,6 +6,8 @@ import type {
   Campaign,
   Chapter,
   CheckoutConsentCapture,
+  BillingData,
+  InvoiceEvent,
   CouponScope,
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
@@ -35,6 +37,11 @@ export const tenants = pgTable(
     faviconUrl: text('favicon_url'),
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
+    autoIssueInvoices: boolean('auto_issue_invoices').notNull().default(false),
+    autoIssueInvoiceScope: text('auto_issue_invoice_scope', { enum: ['b2b_only', 'all'] })
+      .notNull()
+      .default('b2b_only'),
+    invoiceVatRatePercent: integer('invoice_vat_rate_percent'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );
@@ -351,6 +358,7 @@ export const orders = pgTable(
       .default({}),
     couponId: text('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
     discountCents: integer('discount_cents').notNull().default(0),
+    billing: jsonb('billing').$type<BillingData>(),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
@@ -364,6 +372,62 @@ export const orders = pgTable(
     uniqueIndex('orders_tenant_provider_invoice_uidx')
       .on(table.tenantId, table.provider, sql`(${table.providerObjectIds}->>'invoice')`)
       .where(sql`${table.providerObjectIds} ? 'invoice'`),
+  ],
+);
+
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['requested', 'issued', 'delivered', 'failed'] }).notNull(),
+    provider: text('provider').notNull(),
+    providerInvoiceId: text('provider_invoice_id'),
+    invoiceNumber: text('invoice_number'),
+    pdfUrl: text('pdf_url'),
+    error: text('error'),
+    issuedAt: text('issued_at'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('invoices_tenant_order_idx').on(table.tenantId, table.orderId),
+    uniqueIndex('invoices_tenant_order_current_uidx')
+      .on(table.tenantId, table.orderId)
+      .where(sql`${table.status} <> 'failed'`),
+  ],
+);
+
+export const invoiceEvents = pgTable(
+  'invoice_events',
+  {
+    sequence: bigserial('sequence', { mode: 'number' }).primaryKey(),
+    id: text('id').notNull().unique(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    invoiceId: text('invoice_id').references(() => invoices.id, { onDelete: 'restrict' }),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    type: text('type', {
+      enum: ['requested', 'provider_created', 'issued', 'delivered', 'failed', 'skipped', 'refreshed'],
+    }).notNull(),
+    error: text('error'),
+    meta: jsonb('meta').$type<InvoiceEvent['meta']>().notNull().default({}),
+    occurredAt: text('occurred_at').notNull(),
+  },
+  (table) => [
+    index('invoice_events_tenant_order_occurred_idx').on(
+      table.tenantId,
+      table.orderId,
+      table.occurredAt,
+      table.sequence,
+    ),
   ],
 );
 

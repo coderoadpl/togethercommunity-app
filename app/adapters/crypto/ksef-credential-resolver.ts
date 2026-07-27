@@ -20,6 +20,6 @@ export const createKsefCredentialResolver = (
     }
     const parsedNip = nipSchema.safeParse(contextNip.value);
     if (!parsedNip.success) return err(validation('The KSeF context NIP is invalid'));
-    return ok({ token: token.value, contextNip: parsedNip.data });
+    return ok({ tenantId, token: token.value, contextNip: parsedNip.data });
   },
 });

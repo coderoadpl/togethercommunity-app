@@ -13,6 +13,7 @@ import type {
   IdGenerator,
   KsefClientPort,
   KsefCredentialResolver,
+  KsefCredentials,
   KsefStatusResult,
   KsefSubmissionRepository,
 } from '../ports.js';
@@ -71,7 +72,7 @@ const checkpoint = async (
               : invoice.ksef?.state === 'submitting'
                 ? 'submitted'
                 : 'processing';
-  return (await deps.invoices.checkpointKsef(tenantId, next, {
+  const persisted = await deps.invoices.checkpointKsef(tenantId, next, {
     id: deps.ids.nextId(),
     tenantId,
     invoiceId: invoice.id,
@@ -84,7 +85,9 @@ const checkpoint = async (
       statusCode: ksef.lastStatusCode,
     },
     occurredAt: deps.clock.nowIso(),
-  })) ?? next;
+  });
+  if (persisted !== null) return persisted;
+  return (await deps.invoices.findById(tenantId, invoice.id)) ?? invoice;
 };
 
 const retryTransport = async (
@@ -114,7 +117,7 @@ const storeUpo = async (
   tenantId: string,
   invoice: Invoice,
   ksef: KsefInvoiceData,
-  credentials: { token: string; contextNip: string },
+  credentials: KsefCredentials,
   sessionReference: string,
   invoiceReference: string | null,
   ksefNumber: string,
@@ -163,7 +166,7 @@ const handleDuplicate = async (
   tenantId: string,
   invoice: Invoice,
   ksef: KsefInvoiceData,
-  credentials: { token: string; contextNip: string },
+  credentials: KsefCredentials,
   status: KsefStatusResult,
   deps: KsefSubmissionDeps,
 ): Promise<Invoice> => {
@@ -214,7 +217,7 @@ const poll = async (
   tenantId: string,
   invoice: Invoice,
   ksef: KsefInvoiceData,
-  credentials: { token: string; contextNip: string },
+  credentials: KsefCredentials,
   deps: KsefSubmissionDeps,
 ): Promise<Invoice> => {
   if (ksef.sessionReference === null || ksef.invoiceReference === null) return invoice;
@@ -270,7 +273,7 @@ const correlate = async (
   tenantId: string,
   invoice: Invoice,
   ksef: KsefInvoiceData,
-  credentials: { token: string; contextNip: string },
+  credentials: KsefCredentials,
   deps: KsefSubmissionDeps,
 ): Promise<Invoice> => {
   if (ksef.sessionReference === null) return invoice;
@@ -348,6 +351,9 @@ export const runKsefSubmission = async (
       lastTransportError: null,
     };
     invoice = await checkpoint(tenantId, { ...invoice, status: 'submitting' }, ksef, deps);
+    if (invoice.ksef?.state !== 'submitting' || invoice.ksef.version !== ksef.version + 1) {
+      return { ok: true, value: invoice };
+    }
     const submitted = await deps.ksef.submitInvoice({
       environment: ksef.environment,
       credentials,

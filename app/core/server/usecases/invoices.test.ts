@@ -175,7 +175,11 @@ const harness = (options: {
     ksef: {
       environment: 'test',
       credentials: {
-        resolve: async () => ok({ token: 'ksef-token', contextNip: '5555555555' }),
+        resolve: async () => ok({
+          tenantId: 'tenant-1',
+          token: 'ksef-token',
+          contextNip: '5555555555',
+        }),
       },
       numbers: {
         allocate: async () => ({ p2: 'FV/2026/000001', sequence: 1 }),

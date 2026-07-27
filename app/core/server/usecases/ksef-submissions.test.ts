@@ -111,7 +111,11 @@ const harness = (initial = invoice()) => {
       },
     },
     credentials: {
-      resolve: async () => ok({ token: 'secret-token', contextNip: '5555555555' }),
+      resolve: async () => ok({
+        tenantId: 'tenant-1',
+        token: 'secret-token',
+        contextNip: '5555555555',
+      }),
     },
     ksef: {
       openSession: async () => {

@@ -537,6 +537,7 @@ export interface KsefSubmissionJobRepository {
 }
 
 export interface KsefCredentials {
+  tenantId: string;
   token: string;
   contextNip: string;
 }

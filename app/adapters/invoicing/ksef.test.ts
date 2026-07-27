@@ -16,7 +16,7 @@ const json = (value: unknown, status = 200, headers: Record<string, string> = {}
   });
 
 describe('KSeF API client', () => {
-  it('authenticates with an encrypted BYO token, reuses a session, and refreshes an expired access token', async () => {
+  it('authenticates with an encrypted BYO token, isolates tenant sessions, and refreshes access', async () => {
     const requests: Array<{ path: string; authorization: string | null; body: unknown }> = [];
     let statusCalls = 0;
     const fetcher: typeof fetch = async (input, init) => {
@@ -90,11 +90,18 @@ describe('KSeF API client', () => {
     });
     const input = {
       environment: 'test' as const,
-      credentials: { token: 'tenant-ksef-token', contextNip: '5555555555' },
+      credentials: { tenantId: 'tenant-1', token: 'tenant-ksef-token', contextNip: '5555555555' },
     };
 
     expect((await client.validateCredentials(input)).ok).toBe(true);
     expect(await client.openSession(input)).toEqual({
+      ok: true,
+      value: { sessionReference: 'session-ref' },
+    });
+    expect(await client.openSession({
+      ...input,
+      credentials: { ...input.credentials, tenantId: 'tenant-2' },
+    })).toEqual({
       ok: true,
       value: { sessionReference: 'session-ref' },
     });
@@ -118,7 +125,7 @@ describe('KSeF API client', () => {
       publicKeyId: 'public-key-id',
     });
     expect(authRequest?.body).not.toMatchObject({ encryptedToken: 'tenant-ksef-token' });
-    expect(requests.filter((request) => request.path.endsWith('/sessions/online'))).toHaveLength(1);
+    expect(requests.filter((request) => request.path.endsWith('/sessions/online'))).toHaveLength(2);
     expect(requests.find((request) => request.path.endsWith('/auth/token/refresh'))?.authorization)
       .toBe('Bearer refresh-1');
     expect(requests.at(-1)?.authorization).toBe('Bearer access-2');

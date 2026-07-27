@@ -417,8 +417,15 @@ const recordFulfilledCheckoutConsents = async (
   event: PaymentWebhookEvent,
 ): Promise<void> => {
   const checkout = event.checkoutSession;
-  const capture = checkout?.metadata.checkoutConsent;
-  if (checkout === null || capture === undefined || capture === null) return;
+  const captureId = checkout?.metadata.checkoutConsentCaptureId;
+  if (checkout === null || captureId === undefined || captureId === null) return;
+  const capture = await deps.checkoutConsentCaptures.findById(tenant.id, captureId);
+  if (capture === null) {
+    deps.logger.error(
+      `[checkout-consent] tenant=${tenant.id} capture=${captureId} missing`,
+    );
+    return;
+  }
   const email = checkout.email ?? checkout.metadata.memberEmail;
   const terms = await enforceTermsConsent(
     tenant.id,
@@ -581,20 +588,27 @@ export const buildApp = (deps: AppDeps) => {
       tenant.value.source,
       deps.appBaseUrl,
     );
+    const checkoutConsent = {
+      termsAccepted: parsed.data.termsAccepted === true,
+      selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+      attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+      collectedAt: deps.clock.nowIso(),
+      confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
+      ...checkoutConsentEvidence(c.req.raw.headers),
+    };
+    const checkoutConsentCaptureId = deps.ids.nextId();
+    await deps.checkoutConsentCaptures.create(tenant.value.tenant.id, {
+      id: checkoutConsentCaptureId,
+      capture: checkoutConsent,
+      createdAt: checkoutConsent.collectedAt,
+    });
     const session = await startCheckoutSession(
       tenant.value.tenant,
       baseUrl,
       parsed.data,
       selection.value,
       deps,
-      {
-        termsAccepted: parsed.data.termsAccepted === true,
-        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
-        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
-        collectedAt: deps.clock.nowIso(),
-        confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
-        ...checkoutConsentEvidence(c.req.raw.headers),
-      },
+      checkoutConsentCaptureId,
     );
     return respondPublic(session);
   });

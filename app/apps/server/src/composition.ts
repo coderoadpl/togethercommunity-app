@@ -25,6 +25,7 @@ import {
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
+  createCheckoutConsentCaptureRepository,
   createDevEmailReader,
   createDevMagicLinkReader,
   createEntityVersionRepository,
@@ -81,6 +82,7 @@ import type {
   ApiKeyCrypto,
   AuthPort,
   Clock,
+  CheckoutConsentCaptureRepository,
   PaymentProvider,
   PlatformTransactionalPool,
   SecretCrypto,
@@ -202,6 +204,7 @@ export interface AppDeps {
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
+  checkoutConsentCaptures: CheckoutConsentCaptureRepository;
   videoLibrary: VideoLibraryPort;
   fileUrlSigner: FileUrlSigner;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
@@ -540,6 +543,7 @@ export const createDeps = (env: Env): AppDeps => {
     secretCrypto,
     secretResolver,
     payment,
+    checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
     fileUrlSigner: createS3UrlSigner(),

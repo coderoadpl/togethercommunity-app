@@ -753,7 +753,10 @@ export interface InMemoryEmailOutboxItem extends EmailOutboxItem {
 export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
   readonly items: InMemoryEmailOutboxItem[] = [];
 
-  constructor(readonly events = new InMemoryEmailEventRepository()) {}
+  constructor(
+    readonly events = new InMemoryEmailEventRepository(),
+    private readonly attemptsCap = 3,
+  ) {}
 
   async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>> {
     this.items.push({
@@ -782,7 +785,13 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
   }
 
   async claimBatch(input: { limit: number; now: string; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>> {
-    const claimed = this.items.filter((row) => row.status === 'queued' || row.status === 'failed').slice(0, input.limit);
+    const claimed = this.items
+      .filter(
+        (row) =>
+          row.status === 'queued' ||
+          (row.status === 'failed' && row.attempts < input.attemptsCap),
+      )
+      .slice(0, input.limit);
     for (const row of claimed) {
       const retry = row.status === 'failed';
       row.status = 'sending';
@@ -886,7 +895,13 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
   }
 
   async hasPendingForTenant(tenantId: string): Promise<boolean> {
-    return this.items.some((row) => row.tenantId === tenantId && (row.status === 'queued' || row.status === 'sending' || row.status === 'failed'));
+    return this.items.some(
+      (row) =>
+        row.tenantId === tenantId &&
+        (row.status === 'queued' ||
+          row.status === 'sending' ||
+          (row.status === 'failed' && row.attempts < this.attemptsCap)),
+    );
   }
 }
 

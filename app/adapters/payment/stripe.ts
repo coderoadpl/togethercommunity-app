@@ -2,7 +2,6 @@ import Stripe from 'stripe';
 
 import {
   err,
-  checkoutConsentCaptureSchema,
   ok,
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
@@ -10,7 +9,6 @@ import {
   stripeSubscriptionObjectSchema,
   validation,
   type AppError,
-  type CheckoutConsentCapture,
   type Result,
 } from '@core/domain/index.js';
 import type { PaymentProvider, PaymentWebhookEvent, TenantSecretResolver } from '@core/server/index.js';
@@ -30,17 +28,6 @@ export interface StripePaymentProviderConfig {
 }
 
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
-
-const parseCheckoutConsent = (value: string | undefined): CheckoutConsentCapture | null => {
-  if (value === undefined) return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    const capture = checkoutConsentCaptureSchema.safeParse(parsed);
-    return capture.success ? capture.data : null;
-  } catch {
-    return null;
-  }
-};
 
 export const stripeCheckoutSessionParams = (
   input: CreateCheckoutSessionRequest,
@@ -71,9 +58,9 @@ export const stripeCheckoutSessionParams = (
       priceId: input.priceId ?? '',
       memberEmail: input.customerEmail ?? '',
       language: input.language ?? '',
-      ...(input.checkoutConsent === undefined
+      ...(input.checkoutConsentCaptureId === undefined
         ? {}
-        : { checkoutConsent: JSON.stringify(input.checkoutConsent) }),
+        : { checkoutConsentCaptureId: input.checkoutConsentCaptureId }),
     },
   };
 };
@@ -224,7 +211,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
                 priceId: session.metadata?.priceId || null,
                 memberEmail: session.metadata?.memberEmail || null,
                 language: session.metadata?.language || null,
-                checkoutConsent: parseCheckoutConsent(session.metadata?.checkoutConsent),
+                checkoutConsentCaptureId:
+                  session.metadata?.checkoutConsentCaptureId || null,
               },
             },
           });

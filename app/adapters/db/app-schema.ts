@@ -5,6 +5,7 @@ import type {
   AccessItem,
   Campaign,
   Chapter,
+  CheckoutConsentCapture,
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
   ConsentEvidence,
@@ -189,6 +190,25 @@ export const members = pgTable(
     index('members_userId_idx').on(table.userId),
     uniqueIndex('members_tenant_user_uidx').on(table.tenantId, table.userId),
     uniqueIndex('members_tenant_legacy_uidx')
+      .on(table.tenantId, table.legacyId)
+      .where(sql`${table.legacyId} is not null`),
+  ],
+);
+
+export const erasedMemberImports = pgTable(
+  'erased_member_imports',
+  {
+    memberId: text('member_id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    legacyId: text('legacy_id'),
+    emailHmac: text('email_hmac').notNull(),
+    erasedAt: text('erased_at').notNull(),
+  },
+  (table) => [
+    index('erased_member_imports_tenant_email_hmac_idx').on(table.tenantId, table.emailHmac),
+    uniqueIndex('erased_member_imports_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
       .where(sql`${table.legacyId} is not null`),
   ],
@@ -396,6 +416,19 @@ export const processedPaymentEvents = pgTable(
     index('processed_events_tenantId_idx').on(table.tenantId),
     uniqueIndex('processed_events_object_type_uidx').on(table.objectId, table.type),
   ],
+);
+
+export const checkoutConsentCaptures = pgTable(
+  'checkout_consent_captures',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    capture: jsonb('capture').$type<CheckoutConsentCapture>().notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [index('checkout_consent_captures_tenant_created_idx').on(table.tenantId, table.createdAt)],
 );
 
 export const courses = pgTable(

@@ -77,6 +77,14 @@ const eventFor = (
   occurredAt: deps.clock.nowIso(),
 });
 
+const warsawDate = (iso: string): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Warsaw',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
+
 const invoicingConfig = async (
   tenantId: string,
   deps: Pick<InvoiceDeps, 'tenantSecrets' | 'secretCrypto'>,
@@ -103,6 +111,7 @@ const issueIfirma = async (
   deps: InvoiceDeps,
 ): Promise<Result<Invoice, AppError>> => {
   const existing = await deps.invoices.findCurrentByOrder(tenantId, order.id);
+  if (existing !== null && existing.provider !== 'ifirma') return ok(existing);
   if (existing !== null && existing.status !== 'failed') return ok(existing);
   if (
     existing?.status === 'failed' &&
@@ -205,6 +214,7 @@ const issueKsef = async (
     return err(integrationNotConfigured('KSeF submission is unavailable in this deployment'));
   }
   const existing = await deps.invoices.findCurrentByOrder(tenantId, order.id);
+  if (existing !== null && existing.provider !== 'ksef') return ok(existing);
   if (existing !== null) return ok(existing);
   if (order.currency !== 'PLN') return err(validation('KSeF invoices require an order ledger amount in PLN'));
   if (billing?.country !== undefined && billing.country !== 'PL') {
@@ -220,7 +230,7 @@ const issueKsef = async (
   const credentials = await deps.ksef.credentials.resolve(tenantId);
   if (!credentials.ok) return credentials;
   const createdAt = deps.clock.nowIso();
-  const issueDate = createdAt.slice(0, 10);
+  const issueDate = warsawDate(createdAt);
   const allocated = await deps.ksef.numbers.allocate(tenantId, {
     orderId: order.id,
     invoiceType: 'VAT',
@@ -237,7 +247,7 @@ const issueKsef = async (
       name: settings.invoiceSellerName,
       addressLine: settings.invoiceSellerAddress,
     },
-    buyer: billing?.nip == null
+    buyer: billing === null
       ? null
       : {
           nip: billing.nip,

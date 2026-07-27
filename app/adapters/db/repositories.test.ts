@@ -39,7 +39,7 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
-import { consents, memberCourseProgress, members, posts, suppressions, user } from './schema.js';
+import { consents, emailEvents, memberCourseProgress, members, posts, suppressions, user } from './schema.js';
 
 const TEST_DB = 'together_repositories_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -493,6 +493,43 @@ describe('member erasure repository', () => {
       privacyUrl: null,
       acceptedAt: NOW,
     });
+    await db.insert(emailEvents).values([
+      {
+        id: 'event-rodo-delivered',
+        tenantId: RODO,
+        mailKind: 'marketing',
+        refId: 'send-rodo',
+        type: 'delivered',
+        occurredAt: NOW,
+        meta: {
+          rawProviderPayload: {
+            mail: { destination: ['jan.kowalski@together.dev'] },
+            delivery: { recipients: ['JAN.KOWALSKI@TOGETHER.DEV'] },
+          },
+        },
+        createdAt: NOW,
+      },
+      {
+        id: 'event-rodo-bounced',
+        tenantId: RODO,
+        mailKind: 'transactional',
+        refId: 'outbox-rodo',
+        type: 'bounced',
+        occurredAt: NOW,
+        meta: { recipient: 'mailto:jan.kowalski@together.dev', classification: 'hard' },
+        createdAt: NOW,
+      },
+      {
+        id: 'event-other-delivered',
+        tenantId: OTHER,
+        mailKind: 'marketing',
+        refId: 'send-other',
+        type: 'delivered',
+        occurredAt: NOW,
+        meta: { recipient: 'jan.kowalski@together.dev' },
+        createdAt: NOW,
+      },
+    ]);
   });
 
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
@@ -542,6 +579,17 @@ describe('member erasure repository', () => {
       .where(eq(memberCourseProgress.memberId, 'mem-rodo'));
     expect(progressRows).toHaveLength(1);
     expect(progressRows[0]).toMatchObject({ completedLessonIds: ['l1', 'l2'] });
+
+    const eventRows = await db.select().from(emailEvents).where(eq(emailEvents.tenantId, RODO));
+    expect(eventRows.map((event) => event.type).sort()).toEqual(['bounced', 'delivered']);
+    expect(eventRows.every((event) =>
+      !JSON.stringify(event.meta).toLowerCase().includes('jan.kowalski@together.dev'),
+    )).toBe(true);
+    const otherTenantEvents = await db
+      .select()
+      .from(emailEvents)
+      .where(eq(emailEvents.tenantId, OTHER));
+    expect(JSON.stringify(otherTenantEvents[0]?.meta)).toContain('jan.kowalski@together.dev');
   });
 
   it('keeps order rows, the sales list, and revenue unchanged after removal', async () => {

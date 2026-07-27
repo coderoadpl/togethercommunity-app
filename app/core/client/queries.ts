@@ -522,6 +522,18 @@ export const orderQuery = (api: ApiClient, id: string) =>
     call: ({ signal }) => api.getOrder(id, signal),
   });
 
+export const issueInvoiceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'invoice'],
+    call: (orderId: string) => api.issueInvoice(orderId),
+  });
+
+export const refreshInvoiceMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'invoice-refresh'],
+    call: (invoiceId: string) => api.refreshInvoice(invoiceId),
+  });
+
 export const ordersExportQuery = (api: ApiClient, input: OrdersExportQueryInput) =>
   defineQuery({
     queryKey: salesScopes.export(input.format, input),

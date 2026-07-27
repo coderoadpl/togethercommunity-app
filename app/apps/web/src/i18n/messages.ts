@@ -194,6 +194,12 @@ export interface Messages {
     orderTitle: (params: { id: string }) => string;
     allOrders: string;
     provider: string;
+    billingDetails: string;
+    issueInvoice: string;
+    issuingInvoice: string;
+    invoiceStatus: string;
+    invoiceDownload: string;
+    invoiceStatuses: Record<'requested' | 'issued' | 'delivered' | 'failed', string>;
   };
   coupons: {
     title: string;
@@ -313,6 +319,10 @@ export interface Messages {
     webhookUrlLabel: string;
     webhookUrlHint: string;
     loading: string;
+    fakturowniaHeading: string;
+    fakturowniaDescription: string;
+    fakturowniaApiKeyLabel: string;
+    fakturowniaSubdomainLabel: string;
     bunnyHeading: string;
     bunnyDescription: string;
     bunnyApiKeyLabel: string;
@@ -873,6 +883,8 @@ export interface Messages {
     billingHeading: string;
     billingIntro: string;
     managePayments: string;
+    invoiceOrdersHeading: string;
+    invoiceOrderLabel: (params: { date: string }) => string;
     preferencesHeading: string;
     preferencesIntro: string;
   };
@@ -903,6 +915,12 @@ export interface Messages {
     clear: string;
     configured: string;
     notConfigured: string;
+    invoiceHeading: string;
+    invoiceIntro: string;
+    autoIssue: string;
+    autoIssueScope: string;
+    b2bOnly: string;
+    allBuyers: string;
   };
   legal: {
     heading: string;
@@ -944,6 +962,13 @@ export interface Messages {
     noMagicLinkNote: string;
     openCourse: string;
     emailLabel: string;
+    invoiceReveal: string;
+    nipLabel: string;
+    companyNameLabel: string;
+    addressLabel: string;
+    postalCodeLabel: string;
+    cityLabel: string;
+    countryLabel: string;
     couponReveal: string;
     couponLabel: string;
     couponApply: string;

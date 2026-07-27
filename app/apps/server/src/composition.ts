@@ -4,6 +4,7 @@ import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '@adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import { createEmailSendRepository } from '@adapters/db/email-sends.js';
+import { createInvoiceRepository } from '@adapters/db/invoice-repositories.js';
 import { createSchedulerRunRepository } from '@adapters/db/scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
@@ -70,6 +71,8 @@ import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
 import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
+import { createFakeInvoicing } from '@adapters/invoicing/fake.js';
+import { createFakturowniaInvoicing } from '@adapters/invoicing/fakturownia.js';
 import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
 import { createBunnyEmbedTokenSigner } from '@adapters/crypto/bunny-embed-token-signer.js';
 import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
@@ -122,6 +125,8 @@ import type {
   BunnyEmbedTokenSigner,
   HealthPort,
   IdGenerator,
+  InvoiceRepository,
+  InvoicingPort,
   MemberCourseProgressRepository,
   MemberErasurePort,
   MemberRepository,
@@ -219,6 +224,8 @@ export interface AppDeps {
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
+  invoices: InvoiceRepository;
+  invoicing: InvoicingPort;
   coupons?: CouponManagementRepository;
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
@@ -334,6 +341,7 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingJobs = createMarketingJobRepository(db);
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
+  const invoicing = production ? createFakturowniaInvoicing() : createFakeInvoicing();
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
   const platformTransactionalPool = createPlatformTransactionalPool(db);
   const tenantSesTransactional = createTenantSesTransactionalResolver(
@@ -564,6 +572,8 @@ export const createDeps = (env: Env): AppDeps => {
     secretResolver,
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
+    invoices: createInvoiceRepository(db),
+    invoicing,
     coupons: createCouponRepository(db),
     couponRedemptions: createCouponRedemptionRepository(db),
     couponCheckoutSessions: createCouponCheckoutSessionRepository(db),

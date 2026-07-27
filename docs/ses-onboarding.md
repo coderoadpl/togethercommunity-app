@@ -73,8 +73,13 @@ configuration sets, and the SNS topic are Region-specific.
    the SES configuration set; an SNS topic and SES publish policy; the HTTPS
    subscription to `/api/webhooks/ses/:token`; and the SES event destination
    for Send, Delivery, Bounce, Complaint, Open, and Click. Together attaches
-   the configuration set to every tenant SES send. Open/click events are stored
-   only when the tenant enables engagement tracking.
+   the configuration set only to marketing sends. Transactional sends omit it
+   so magic links and other one-to-one messages cannot receive SES open pixels
+   or click link wrapping. Transactional telemetry is consciously limited to
+   SES acceptance; delivery, bounce, complaint, open, and click events from the
+   marketing configuration-set path are not correlated to transactional mail.
+   Open/click events are stored only when the tenant enables engagement
+   tracking.
 5. Select **Poll AWS status**. A new HTTPS subscription remains pending until
    SNS confirms it. Together keeps SES identity feedback forwarding enabled
    during that period. Only after the poll sees the confirmed subscription does

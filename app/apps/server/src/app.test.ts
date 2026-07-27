@@ -429,6 +429,12 @@ const marketingDeps = (): MarketingAppDeps => ({
   suppressions: new InMemorySuppressionRepository(),
   unsubscribes: new InMemoryUnsubscribeTokenRepository(),
   sesSettings: new InMemoryTenantSesSettingsRepository(),
+  platformTransactionalPool: {
+    usage: async () => ({ sent: 0, reserved: 0 }),
+    reserve: async () => true,
+    settle: async () => undefined,
+  },
+  smtpTest: { resolve: async () => null },
   documents: {
     create: async () => undefined,
     findById: async () => null,

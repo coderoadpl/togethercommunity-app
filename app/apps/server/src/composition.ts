@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '@adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import { createEmailSendRepository } from '@adapters/db/email-sends.js';
 import { createSchedulerRunRepository } from '@adapters/db/scheduler-runs.js';
@@ -69,6 +69,8 @@ import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
+import { createSmtpEmailPort } from '@adapters/email/smtp.js';
+import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver } from '@adapters/email/transactional-resolvers.js';
 import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketing-ses.js';
 import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
 import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
@@ -79,6 +81,7 @@ import type {
   AuthPort,
   Clock,
   PaymentProvider,
+  PlatformTransactionalPool,
   SecretCrypto,
   TenantSecretRepository,
   TenantSecretResolver,
@@ -141,12 +144,13 @@ import type {
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
+  TransactionalEmailTransportResolver,
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { campaignTick, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
@@ -236,6 +240,8 @@ export interface MarketingAppDeps {
   suppressions: SuppressionRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
+  platformTransactionalPool: PlatformTransactionalPool;
+  smtpTest: TransactionalEmailTransportResolver;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
   marketingSes: SesMarketingSender;
@@ -300,6 +306,25 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
+  const platformTransactionalPool = createPlatformTransactionalPool(db);
+  const tenantSesTransactional = createTenantSesTransactionalResolver(
+    sesSettings,
+    tenantMarketingCredentials,
+    production ? createSesEmailPort : () => email,
+  );
+  const smtpTransactional = createSmtpTransactionalResolver(
+    sesSettings,
+    secretResolver,
+    production ? createSmtpEmailPort : () => email,
+  );
+  const smtpTest = createSmtpTransactionalResolver(sesSettings, secretResolver);
+  const transactionalEmail = createLayeredTransactionalEmailSender({
+    tenantSes: tenantSesTransactional,
+    smtp: smtpTransactional,
+    platform: email,
+    pool: platformTransactionalPool,
+    platformLimit: 1000,
+  });
   const marketingCredentials: MarketingSesCredentialResolver = production
     ? tenantMarketingCredentials
     : { resolve: async () => ok({ accessKeyId: 'dev', secretAccessKey: 'dev', region: 'eu-central-1' }) };
@@ -319,7 +344,7 @@ export const createDeps = (env: Env): AppDeps => {
   const dispatchDeps = {
     emailOutbox,
     events: emailEvents,
-    email,
+    email: transactionalEmail,
     clock,
     logger: { error: (message: string) => process.stderr.write(`${message}\n`) },
     batchSize: Math.max(1, Math.floor(env.EMAIL_DISPATCH_RATE_PER_SECOND * env.EMAIL_DISPATCH_INTERVAL_MS / 1000)),
@@ -547,6 +572,8 @@ export const createDeps = (env: Env): AppDeps => {
       suppressions,
       unsubscribes,
       sesSettings,
+      platformTransactionalPool,
+      smtpTest,
       documents,
       idempotency,
       marketingSes,

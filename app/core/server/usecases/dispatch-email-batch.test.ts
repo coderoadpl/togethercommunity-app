@@ -68,7 +68,7 @@ describe('transactional email event lifecycle', () => {
     await dispatchEmailBatch({
       ...deps,
       batchSize: 3,
-      email: { send: async () => ok({ messageId: 'ses-1' }) },
+      email: { send: async () => ok({ messageId: 'ses-1', transport: 'platform' as const }) },
     });
 
     const [run] = (await deps.runs.listPage({ limit: 10 })).runs;
@@ -93,7 +93,7 @@ describe('transactional email event lifecycle', () => {
     const deps = await setup();
     await dispatchEmailBatch({
       ...deps,
-      email: { send: async () => ok({ messageId: 'ses-1' }) },
+      email: { send: async () => ok({ messageId: 'ses-1', transport: 'smtp' as const }) },
     });
     expect((await deps.events.listByRef(
       'tenant-1',
@@ -122,9 +122,17 @@ describe('transactional email event lifecycle', () => {
     });
     expect(await deps.events.listByRef('tenant-1', 'transactional', 'outbox-1')).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: 'accepted', meta: expect.objectContaining({ runId }) }),
+        expect.objectContaining({
+          type: 'accepted',
+          meta: expect.objectContaining({ runId, transport: 'smtp' }),
+        }),
       ]),
     );
+    expect(deps.emailOutbox.items[0]).toMatchObject({
+      status: 'sent',
+      transport: 'smtp',
+      deliveryStatus: null,
+    });
   });
 
   it('records failure, retry, and acceptance in exact order', async () => {
@@ -135,7 +143,7 @@ describe('transactional email event lifecycle', () => {
         attempt += 1;
         return attempt === 1
           ? err(internal('SES unavailable'))
-          : ok({ messageId: 'ses-recovered' });
+          : ok({ messageId: 'ses-recovered', transport: 'platform' as const });
       },
     };
     await dispatchEmailBatch({ ...deps, email });

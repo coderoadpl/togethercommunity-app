@@ -41,6 +41,7 @@ import {
   marketingLayoutOutputSchema,
   marketingLayoutsOutputSchema,
   marketingSesSettingsOutputSchema,
+  marketingSmtpTestOutputSchema,
   marketingReputationOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
@@ -311,6 +312,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingReputation.method, API_ROUTES.marketingReputation.path, marketingReputationOutputSchema, undefined, signal),
   updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettingsUpdate.method, API_ROUTES.marketingSesSettingsUpdate.path, marketingSesSettingsOutputSchema, input, signal),
+  testMarketingSmtp: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSmtpTest.method, API_ROUTES.marketingSmtpTest.path, marketingSmtpTestOutputSchema, {}, signal),
   listMarketingSuppressions: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressions.method, API_ROUTES.marketingStaffSuppressions.path, marketingSuppressionsOutputSchema, undefined, signal),
   addMarketingSuppression: (input: MarketingSuppressionCreateInput, signal?: AbortSignal) =>
@@ -320,6 +323,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.status !== undefined) params.set('status', input.status);
     if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
+    if (input.transport !== undefined) params.set('transport', input.transport);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
     if (input.search !== undefined) params.set('search', input.search);

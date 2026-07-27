@@ -4,9 +4,9 @@ import type {
   Clock,
   EmailEventRepository,
   EmailOutboxRepository,
-  EmailPort,
   IdGenerator,
   SchedulerRunRepository,
+  TransactionalEmailSender,
 } from '../ports.js';
 
 export interface DispatchEmailBatchResult {
@@ -18,7 +18,7 @@ export interface DispatchEmailBatchResult {
 export interface DispatchEmailBatchDeps {
   emailOutbox: EmailOutboxRepository;
   events: EmailEventRepository;
-  email: EmailPort;
+  email: TransactionalEmailSender;
   clock: Clock;
   logger: { error(message: string): void };
   batchSize: number;
@@ -33,6 +33,14 @@ export interface DispatchEmailBatchDeps {
 const nextAttemptAt = (now: string, attempts: number, deps: DispatchEmailBatchDeps): string => {
   const delay = Math.min(deps.backoffBaseMs * 2 ** Math.max(0, attempts - 1), deps.backoffCapMs);
   return new Date(Date.parse(now) + delay).toISOString();
+};
+
+const transportFromError = (details: unknown) => {
+  if (typeof details !== 'object' || details === null) return null;
+  const transport = Reflect.get(details, 'transport');
+  return transport === 'tenant-ses' || transport === 'smtp' || transport === 'platform'
+    ? transport
+    : null;
 };
 
 export const dispatchEmailBatch = async (
@@ -99,18 +107,19 @@ export const dispatchEmailBatch = async (
             refId: item.id,
             type: 'rendered',
             occurredAt: now,
-            meta: { attempt: item.attempts + 1, runId },
+          meta: { attempt: item.attempts + 1, runId },
             createdAt: now,
           }));
         }
         const sent = rendered.success
-          ? await deps.email.send({ to: item.to, ...rendered.data })
+          ? await deps.email.send({ tenantId: item.tenantId, to: item.to, ...rendered.data })
           : err(internal(`Invalid email outbox payload: ${rendered.error.message}`));
         if (sent.ok) {
           const marked = await deps.emailOutbox.markSent({
             id: item.id,
             sentAt: deps.clock.nowIso(),
             sesMessageId: sent.value.messageId,
+            transport: sent.value.transport,
             runId,
           });
           if (!marked.ok) {
@@ -131,6 +140,8 @@ export const dispatchEmailBatch = async (
           nextAttemptAt: nextAttemptAt(deps.clock.nowIso(), attempts, deps),
           failedAt: deps.clock.nowIso(),
           error: sent.error.message,
+          errorCode: sent.error.code,
+          transport: transportFromError(sent.error.details) ?? item.transport,
           runId,
         });
         if (!marked.ok) {

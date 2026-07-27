@@ -40,6 +40,7 @@ export * from './usecases/community-access.js';
 export * from './usecases/community.js';
 export * from './usecases/spaces.js';
 export * from './usecases/dispatch-email-batch.js';
+export * from './usecases/layered-transactional-email.js';
 export * from './usecases/email-send-observability.js';
 export * from './usecases/email-reputation.js';
 export * from './usecases/scheduler-activity.js';

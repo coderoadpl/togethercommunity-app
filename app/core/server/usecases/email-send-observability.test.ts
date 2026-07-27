@@ -32,11 +32,14 @@ const sends: EmailSendProjection[] = [
     source: 'broadcast',
     status: 'sent',
     skipReason: null,
+    failureCode: null,
+    failureMessage: null,
     deliveryStatus: 'delivered',
     deliveryOccurredAt: '2026-07-25T11:00:00.000Z',
     campaignId: 'campaign-1',
     campaignName: 'Launch',
     sesMessageId: 'ses-1',
+    transport: 'tenant-ses',
     createdAt: '2026-07-25T10:00:00.000Z',
     sentAt: '2026-07-25T10:01:00.000Z',
   },
@@ -49,8 +52,11 @@ const sends: EmailSendProjection[] = [
     source: 'welcome-set-password',
     status: 'sent',
     skipReason: null,
+    failureCode: null,
+    failureMessage: null,
     deliveryStatus: null,
     deliveryOccurredAt: null,
+    transport: 'platform',
     campaignId: null,
     campaignName: null,
     sesMessageId: 'ses-2',
@@ -145,7 +151,7 @@ describe('email send observability use-cases', () => {
     if (!result.ok) return;
     expect(queries.at(-1)).toMatchObject({ runId: 'scheduler-run-1' });
     expect(result.value.content.split('\n')[0]).toBe(
-      'kind,recipient,subject,status,delivery_status,campaign,source,sent_at,created_at',
+      'kind,recipient,subject,status,delivery_status,transport,campaign,source,sent_at,created_at',
     );
     expect(result.value.content).toContain('"\'=member@example.test"');
     expect(result.value.content).toContain('"Launch, today"');

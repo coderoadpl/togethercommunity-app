@@ -1,11 +1,40 @@
-import { and, eq, inArray, lt, lte, or } from 'drizzle-orm';
+import { and, eq, inArray, lt, lte, or, sql } from 'drizzle-orm';
 
 import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, type AppError, type Result } from '@core/domain/index.js';
-import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort } from '@core/server/index.js';
+import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformTransactionalPool } from '@core/server/index.js';
 
 import type { Db } from './client.js';
 import { createMemberRepository, createProductGrantRepository } from './repositories.js';
-import { emailEvents, emailOutbox } from './schema.js';
+import { emailEvents, emailOutbox, tenantTransactionalEmailPools } from './schema.js';
+
+export const createPlatformTransactionalPool = (db: Db): PlatformTransactionalPool => ({
+  usage: async (tenantId) => {
+    const [row] = await db.select({
+      sent: tenantTransactionalEmailPools.sent,
+      reserved: tenantTransactionalEmailPools.reserved,
+    }).from(tenantTransactionalEmailPools)
+      .where(eq(tenantTransactionalEmailPools.tenantId, tenantId))
+      .limit(1);
+    return row ?? { sent: 0, reserved: 0 };
+  },
+  reserve: async (tenantId, limit) => {
+    const [row] = await db.insert(tenantTransactionalEmailPools)
+      .values({ tenantId, sent: 0, reserved: 1 })
+      .onConflictDoUpdate({
+        target: tenantTransactionalEmailPools.tenantId,
+        set: { reserved: sql`${tenantTransactionalEmailPools.reserved} + 1` },
+        setWhere: sql`${tenantTransactionalEmailPools.sent} + ${tenantTransactionalEmailPools.reserved} < ${limit}`,
+      })
+      .returning({ tenantId: tenantTransactionalEmailPools.tenantId });
+    return row !== undefined;
+  },
+  settle: async (tenantId, successful) => {
+    await db.update(tenantTransactionalEmailPools).set({
+      reserved: sql`greatest(0, ${tenantTransactionalEmailPools.reserved} - 1)`,
+      ...(successful ? { sent: sql`${tenantTransactionalEmailPools.sent} + 1` } : {}),
+    }).where(eq(tenantTransactionalEmailPools.tenantId, tenantId));
+  },
+});
 
 export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
   enqueue: async (input) => {
@@ -51,6 +80,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
             attempts: emailOutbox.attempts,
             status: emailOutbox.status,
             sesMessageId: emailOutbox.sesMessageId,
+            transport: emailOutbox.transport,
             deliveryStatus: emailOutbox.deliveryStatus,
             deliveryOccurredAt: emailOutbox.deliveryOccurredAt,
           })
@@ -114,6 +144,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
           status: 'sent',
           sentAt: input.sentAt,
           sesMessageId: input.sesMessageId,
+          transport: input.transport,
           lastError: null,
         }).where(eq(emailOutbox.id, input.id)).returning({ tenantId: emailOutbox.tenantId });
         if (row?.tenantId !== null && row?.tenantId !== undefined) {
@@ -124,7 +155,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
             refId: input.id,
             type: 'accepted',
             occurredAt: input.sentAt,
-            meta: { sesMessageId: input.sesMessageId, runId: input.runId },
+            meta: { sesMessageId: input.sesMessageId, transport: input.transport, runId: input.runId },
             createdAt: input.sentAt,
           }));
         }
@@ -142,6 +173,8 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
           attempts: input.attempts,
           nextAttemptAt: input.nextAttemptAt,
           lastError: input.error,
+          lastErrorCode: input.errorCode,
+          ...(input.transport === null ? {} : { transport: input.transport }),
         }).where(eq(emailOutbox.id, input.id)).returning({ tenantId: emailOutbox.tenantId });
         if (row?.tenantId !== null && row?.tenantId !== undefined) {
           await tx.insert(emailEvents).values(emailEventSchema.parse({
@@ -151,7 +184,13 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
             refId: input.id,
             type: 'failed',
             occurredAt: input.failedAt,
-            meta: { error: input.error, attempt: input.attempts, runId: input.runId },
+            meta: {
+              error: input.error,
+              errorCode: input.errorCode,
+              attempt: input.attempts,
+              ...(input.transport === null ? {} : { transport: input.transport }),
+              runId: input.runId,
+            },
             createdAt: input.failedAt,
           }));
         }
@@ -169,6 +208,7 @@ export const createEmailOutboxRepository = (db: Db): EmailOutboxRepository => ({
       payload: emailOutbox.payload,
       attempts: emailOutbox.attempts,
       sesMessageId: emailOutbox.sesMessageId,
+      transport: emailOutbox.transport,
       deliveryStatus: emailOutbox.deliveryStatus,
       deliveryOccurredAt: emailOutbox.deliveryOccurredAt,
     }).from(emailOutbox).where(and(

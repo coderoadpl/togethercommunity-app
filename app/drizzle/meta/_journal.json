@@ -274,6 +274,20 @@
       "when": 1785138800241,
       "tag": "0038_youthful_thunderbolt_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1785140985299,
+      "tag": "0039_neat_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785141887582,
+      "tag": "0040_flashy_ultimo",
+      "breakpoints": true
     }
   ]
 }

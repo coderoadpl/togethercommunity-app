@@ -134,6 +134,7 @@ import {
   listGlobalSchedulerRuns,
   listSchedulerRunsForTenant,
   listMemberEmailSends,
+  sendTransactionalSmtpTest,
   m2mEnroll,
   revokeTenantApiKey,
   getCourseStructureWithAccess,
@@ -964,7 +965,11 @@ export const buildApp = (deps: AppDeps) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     return respond(await getTenantSesMarketingSettings({ identity: c.get('identity') }, {
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
-    }, { settings: deps.marketing.sesSettings, secrets: deps.tenantSecrets }));
+    }, {
+      settings: deps.marketing.sesSettings,
+      secrets: deps.tenantSecrets,
+      pool: deps.marketing.platformTransactionalPool,
+    }));
   });
 
   app.get(API_PATHS.marketingReputation, async (c) => {
@@ -984,7 +989,16 @@ export const buildApp = (deps: AppDeps) => {
       settings: deps.marketing.sesSettings, secrets: deps.tenantSecrets,
       tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') }, clock: deps.clock,
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      pool: deps.marketing.platformTransactionalPool,
     }));
+  });
+
+  app.post(API_PATHS.marketingSmtpTest, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await sendTransactionalSmtpTest(
+      { identity: c.get('identity') },
+      { smtp: deps.marketing.smtpTest },
+    ));
   });
 
   app.get(API_PATHS.marketingStaffSuppressions, async (c) => {

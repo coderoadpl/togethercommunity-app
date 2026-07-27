@@ -18,6 +18,8 @@ describe('unified email send projection', () => {
       campaignId: null,
       campaignName: null,
       sesMessageId: null,
+      failureCode: null,
+      failureMessage: null,
       createdAt: '2026-07-25T10:00:00.000Z',
       sentAt: null,
     };
@@ -28,6 +30,7 @@ describe('unified email send projection', () => {
       source: 'welcome-set-password',
       status: 'queued',
       skipReason: null,
+      transport: 'platform',
     }).status).toBe('queued');
     expect(emailSendProjectionSchema.parse({
       ...base,
@@ -35,6 +38,7 @@ describe('unified email send projection', () => {
       source: 'api',
       status: 'skipped',
       skipReason: 'not_consented',
+      transport: 'tenant-ses',
     }).status).toBe('skipped');
   });
 

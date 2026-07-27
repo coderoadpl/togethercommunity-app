@@ -24,6 +24,7 @@ import {
   type Suppression,
   type TenantSesSettings,
   type TenantDocument,
+  type TransactionalEmailTransport,
   type TenantDocumentVersion,
   type UnsubscribeToken,
   type EmailOutboxPayload,
@@ -747,6 +748,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
       attempts: 0,
       status: 'queued',
       sesMessageId: null,
+      transport: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
     });
@@ -799,11 +801,12 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     return ok(claimed.map((row) => structuredClone(row)));
   }
 
-  async markSent(input: { id: string; sentAt: string; sesMessageId: string; runId: string }): Promise<Result<void, AppError>> {
+  async markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
     if (found !== undefined) {
       found.status = 'sent';
       found.sesMessageId = input.sesMessageId;
+      found.transport = input.transport;
       if (found.tenantId !== null) {
         await this.events.append(found.tenantId, emailEventSchema.parse({
           id: `${found.id}:accepted`,
@@ -812,7 +815,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
           refId: found.id,
           type: 'accepted',
           occurredAt: input.sentAt,
-          meta: { sesMessageId: input.sesMessageId, runId: input.runId },
+          meta: { sesMessageId: input.sesMessageId, transport: input.transport, runId: input.runId },
           createdAt: input.sentAt,
         }));
       }
@@ -820,11 +823,12 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     return ok(undefined);
   }
 
-  async markFailed(input: { id: string; attempts: number; failedAt: string; error: string; runId: string }): Promise<Result<void, AppError>> {
+  async markFailed(input: { id: string; attempts: number; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>> {
     const found = this.items.find((row) => row.id === input.id);
     if (found !== undefined) {
       found.status = 'failed';
       found.attempts = input.attempts;
+      if (input.transport !== null) found.transport = input.transport;
       if (found.tenantId !== null) {
         await this.events.append(found.tenantId, emailEventSchema.parse({
           id: `${found.id}:failed:${String(input.attempts)}`,
@@ -833,7 +837,13 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
           refId: found.id,
           type: 'failed',
           occurredAt: input.failedAt,
-          meta: { error: input.error, attempt: input.attempts, runId: input.runId },
+          meta: {
+            error: input.error,
+            errorCode: input.errorCode,
+            attempt: input.attempts,
+            ...(input.transport === null ? {} : { transport: input.transport }),
+            runId: input.runId,
+          },
           createdAt: input.failedAt,
         }));
       }

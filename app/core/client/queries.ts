@@ -338,6 +338,10 @@ export const marketingReputationQuery = (api: ApiClient) => defineQuery({
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
 });
+export const testMarketingSmtpMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'smtp-test'],
+  call: api.testMarketingSmtp,
+});
 
 export const emailSendsQuery = (api: ApiClient, input: EmailSendsQueryInput) => defineQuery({
   queryKey: marketingScopes.sends(input), call: ({ signal }) => api.listEmailSends(input, signal),

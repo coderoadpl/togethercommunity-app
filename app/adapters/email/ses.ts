@@ -5,6 +5,9 @@ import type { EmailPort } from '@core/server/index.js';
 
 export interface SesEmailSettings {
   from: string;
+  region?: string;
+  credentials?: { accessKeyId: string; secretAccessKey: string };
+  configurationSet?: string | null;
 }
 
 export interface SesSender {
@@ -13,7 +16,10 @@ export interface SesSender {
 
 export const createSesEmailPort = (
   settings: SesEmailSettings,
-  sender: SesSender = new SESClient({}),
+  sender: SesSender = new SESClient({
+    ...(settings.region === undefined ? {} : { region: settings.region }),
+    ...(settings.credentials === undefined ? {} : { credentials: settings.credentials }),
+  }),
 ): EmailPort => ({
   send: async (message): Promise<Result<{ messageId: string }, AppError>> => {
     try {
@@ -28,6 +34,9 @@ export const createSesEmailPort = (
               Text: { Data: message.text, Charset: 'UTF-8' },
             },
           },
+          ...(settings.configurationSet === undefined || settings.configurationSet === null
+            ? {}
+            : { ConfigurationSetName: settings.configurationSet }),
         }),
       );
       if (output.MessageId === undefined || output.MessageId === '') {

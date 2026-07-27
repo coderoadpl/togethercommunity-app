@@ -24,10 +24,15 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
     dispatchEmailBatch({
       emailOutbox,
       events: createEmailEventRepository(db),
-      email: createDevEmailPort(db),
+      email: {
+        send: async (message) => {
+          const sent = await createDevEmailPort(db).send(message);
+          return sent.ok ? ok({ ...sent.value, transport: 'platform' as const }) : sent;
+        },
+      },
       clock,
       logger: console,
-      batchSize: 5,
+      batchSize: 100,
       attemptsCap: 5,
       backoffBaseMs: 1000,
       backoffCapMs: 900000,

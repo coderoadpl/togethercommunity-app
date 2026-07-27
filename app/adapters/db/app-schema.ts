@@ -357,6 +357,12 @@ export const orders = pgTable(
     index('orders_tenant_member_idx').on(table.tenantId, table.memberId),
     index('orders_tenant_product_idx').on(table.tenantId, table.productId),
     index('orders_tenant_coupon_created_idx').on(table.tenantId, table.couponId, table.createdAt.desc()),
+    uniqueIndex('orders_tenant_provider_checkout_uidx')
+      .on(table.tenantId, table.provider, sql`(${table.providerObjectIds}->>'checkoutSession')`)
+      .where(sql`${table.providerObjectIds} ? 'checkoutSession'`),
+    uniqueIndex('orders_tenant_provider_invoice_uidx')
+      .on(table.tenantId, table.provider, sql`(${table.providerObjectIds}->>'invoice')`)
+      .where(sql`${table.providerObjectIds} ? 'invoice'`),
   ],
 );
 

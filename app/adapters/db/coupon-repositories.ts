@@ -173,7 +173,12 @@ export const createCouponRedemptionRepository = (db: Db): CouponRedemptionReposi
       ) {
         return false;
       }
-      await tx.insert(orders).values({ ...input.order, tenantId }).onConflictDoNothing();
+      const insertedOrder = await tx
+        .insert(orders)
+        .values({ ...input.order, tenantId })
+        .onConflictDoNothing()
+        .returning({ id: orders.id });
+      if (insertedOrder.length === 0) return false;
       const inserted = await tx
         .insert(couponRedemptions)
         .values({ ...input.redemption, tenantId })

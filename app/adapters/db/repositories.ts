@@ -1569,22 +1569,25 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
 
   return {
     create: async (tenantId, order) => {
-      await db.insert(orders).values({
-        id: order.id,
-        tenantId,
-        memberId: order.memberId,
-        productId: order.productId,
-        priceId: order.priceId,
-        kind: order.kind,
-        status: order.status,
-        amountCents: order.amountCents,
-        currency: order.currency,
-        provider: order.provider,
-        providerObjectIds: order.providerObjectIds,
-        couponId: order.couponId,
-        discountCents: order.discountCents,
-        createdAt: order.createdAt,
-      });
+      await db
+        .insert(orders)
+        .values({
+          id: order.id,
+          tenantId,
+          memberId: order.memberId,
+          productId: order.productId,
+          priceId: order.priceId,
+          kind: order.kind,
+          status: order.status,
+          amountCents: order.amountCents,
+          currency: order.currency,
+          provider: order.provider,
+          providerObjectIds: order.providerObjectIds,
+          couponId: order.couponId,
+          discountCents: order.discountCents,
+          createdAt: order.createdAt,
+        })
+        .onConflictDoNothing();
     },
     findById: async (tenantId, id) => {
       const rows = await db

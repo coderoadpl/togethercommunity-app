@@ -82,6 +82,8 @@ export const orderSchema = z.object({
   currency: currencySchema,
   provider: orderProviderSchema,
   providerObjectIds: z.record(z.string()),
+  couponId: z.string().nullable(),
+  discountCents: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
 });
 
@@ -140,6 +142,9 @@ export const memberSubscriptionSchema = z.object({
   status: subscriptionStatusSchema,
   currentPeriodEnd: z.string().datetime(),
   cancelAtPeriodEnd: z.boolean(),
+  couponId: z.string().nullable(),
+  couponDiscountCents: z.number().int().nonnegative(),
+  couponRecurringDuration: z.enum(['first_invoice', 'forever']).nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

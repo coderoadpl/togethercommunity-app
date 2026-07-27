@@ -6,6 +6,7 @@ import type {
   Campaign,
   Chapter,
   CheckoutConsentCapture,
+  CouponScope,
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
   ConsentEvidence,
@@ -263,6 +264,42 @@ export const productPrices = pgTable(
   ],
 );
 
+export const coupons = pgTable(
+  'coupons',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    kind: text('kind', { enum: ['percent', 'amount'] }).notNull(),
+    value: integer('value').notNull(),
+    scope: jsonb('scope').$type<CouponScope>().notNull(),
+    appliesTo: text('applies_to', { enum: ['one_time', 'recurring', 'both'] }).notNull(),
+    recurringDuration: text('recurring_duration', {
+      enum: ['first_invoice', 'forever'],
+    }).notNull().default('first_invoice'),
+    startsAt: text('starts_at'),
+    endsAt: text('ends_at'),
+    maxRedemptions: integer('max_redemptions'),
+    maxRedemptionsPerMember: integer('max_redemptions_per_member'),
+    status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+    partnerLabel: text('partner_label'),
+    stripeCouponId: text('stripe_coupon_id'),
+    stripePromotionCodeId: text('stripe_promotion_code_id'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('coupons_tenant_code_uidx').on(table.tenantId, sql`upper(${table.code})`),
+    index('coupons_tenant_partner_created_idx').on(
+      table.tenantId,
+      table.partnerLabel,
+      table.createdAt.desc(),
+      table.id,
+    ),
+  ],
+);
+
 export const orders = pgTable(
   'orders',
   {
@@ -286,12 +323,106 @@ export const orders = pgTable(
       .$type<Record<string, string>>()
       .notNull()
       .default({}),
+    couponId: text('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
+    discountCents: integer('discount_cents').notNull().default(0),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
     index('orders_tenant_created_idx').on(table.tenantId, table.createdAt.desc()),
     index('orders_tenant_member_idx').on(table.tenantId, table.memberId),
     index('orders_tenant_product_idx').on(table.tenantId, table.productId),
+    index('orders_tenant_coupon_created_idx').on(table.tenantId, table.couponId, table.createdAt.desc()),
+  ],
+);
+
+export const couponRedemptions = pgTable(
+  'coupon_redemptions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    couponId: text('coupon_id')
+      .notNull()
+      .references(() => coupons.id, { onDelete: 'restrict' }),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'no action' }),
+    email: text('email').notNull(),
+    discountCents: integer('discount_cents').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('coupon_redemptions_order_uidx').on(table.orderId),
+    index('coupon_redemptions_tenant_coupon_created_idx').on(
+      table.tenantId,
+      table.couponId,
+      table.createdAt.desc(),
+      table.id,
+    ),
+    index('coupon_redemptions_tenant_coupon_member_idx').on(
+      table.tenantId,
+      table.couponId,
+      table.memberId,
+    ),
+  ],
+);
+
+export const couponCheckoutSessions = pgTable(
+  'coupon_checkout_sessions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    couponId: text('coupon_id')
+      .notNull()
+      .references(() => coupons.id, { onDelete: 'restrict' }),
+    providerSessionId: text('provider_session_id'),
+    memberEmail: text('member_email').notNull(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
+    originalCents: integer('original_cents').notNull(),
+    discountCents: integer('discount_cents').notNull(),
+    finalCents: integer('final_cents').notNull(),
+    startedAt: text('started_at').notNull(),
+  },
+  (table) => [
+    index('coupon_checkout_sessions_tenant_coupon_started_idx').on(
+      table.tenantId,
+      table.couponId,
+      table.startedAt.desc(),
+      table.id,
+    ),
+  ],
+);
+
+export const productPriceHistory = pgTable(
+  'product_price_history',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    priceId: text('price_id').references(() => productPrices.id, { onDelete: 'set null' }),
+    amountCents: integer('amount_cents').notNull(),
+    effectiveFrom: text('effective_from').notNull(),
+  },
+  (table) => [
+    index('product_price_history_lookup_idx').on(
+      table.tenantId,
+      table.productId,
+      table.priceId,
+      table.effectiveFrom.desc(),
+    ),
   ],
 );
 
@@ -316,6 +447,11 @@ export const memberSubscriptions = pgTable(
     status: text('status', { enum: ['active', 'past_due', 'canceled'] }).notNull(),
     currentPeriodEnd: text('current_period_end').notNull(),
     cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+    couponId: text('coupon_id').references(() => coupons.id, { onDelete: 'set null' }),
+    couponDiscountCents: integer('coupon_discount_cents').notNull().default(0),
+    couponRecurringDuration: text('coupon_recurring_duration', {
+      enum: ['first_invoice', 'forever'],
+    }),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },

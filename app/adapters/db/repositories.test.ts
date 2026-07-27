@@ -108,6 +108,8 @@ const order = (over: Partial<Order> & { id: string; tenantId: string; memberId: 
   currency: 'PLN',
   provider: 'stripe',
   providerObjectIds: {},
+  couponId: null,
+  discountCents: 0,
   createdAt: NOW,
   ...over,
 });
@@ -120,6 +122,9 @@ const subscription = (
   status: 'active',
   currentPeriodEnd: FUTURE,
   cancelAtPeriodEnd: false,
+  couponId: null,
+  couponDiscountCents: 0,
+  couponRecurringDuration: null,
   createdAt: NOW,
   updatedAt: NOW,
   ...over,

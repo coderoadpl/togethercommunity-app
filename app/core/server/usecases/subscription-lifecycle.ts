@@ -2,6 +2,7 @@ import {
   graceExpiresAt,
   nextPeriodEnd,
   type GrantSource,
+  type CouponRecurringDuration,
   type MemberSubscription,
   type Order,
   type OrderProvider,
@@ -32,11 +33,16 @@ const grantSourceFor = (provider: OrderProvider): GrantSource =>
 
 export const appendOrder = async (
   tenantId: string,
-  input: Omit<Order, 'id' | 'tenantId' | 'createdAt'>,
+  input: Omit<Order, 'id' | 'tenantId' | 'createdAt' | 'couponId' | 'discountCents'> & {
+    couponId?: string | null;
+    discountCents?: number;
+  },
   deps: Pick<SubscriptionLifecycleDeps, 'orders' | 'ids' | 'clock'>,
 ): Promise<Order> => {
   const order: Order = {
     ...input,
+    couponId: input.couponId ?? null,
+    discountCents: input.discountCents ?? 0,
     id: deps.ids.nextId(),
     tenantId,
     createdAt: deps.clock.nowIso(),
@@ -53,6 +59,9 @@ export interface StartSubscriptionInput {
   providerObjectIds: Record<string, string>;
   currentPeriodEnd?: string;
   amountCents?: number;
+  couponId?: string;
+  couponDiscountCents?: number;
+  couponRecurringDuration?: CouponRecurringDuration;
 }
 
 export const startSubscription = async (
@@ -73,6 +82,9 @@ export const startSubscription = async (
     status: 'active',
     currentPeriodEnd: periodEnd,
     cancelAtPeriodEnd: false,
+    couponId: input.couponId ?? null,
+    couponDiscountCents: input.couponDiscountCents ?? 0,
+    couponRecurringDuration: input.couponRecurringDuration ?? null,
     createdAt: now,
     updatedAt: now,
   };
@@ -96,6 +108,8 @@ export const startSubscription = async (
       kind: 'recurring',
       status: 'paid',
       amountCents: input.amountCents ?? input.price.amountCents,
+      couponId: input.couponId ?? null,
+      discountCents: input.couponDiscountCents ?? 0,
       currency: input.price.currency,
       provider: input.provider,
       providerObjectIds: input.providerObjectIds,
@@ -147,10 +161,23 @@ export const renewSubscriptionPeriod = async (
       priceId: subscription.priceId,
       kind: 'recurring',
       status: 'paid',
-      amountCents: input.amountCents ?? price?.amountCents ?? 0,
+      amountCents:
+        input.amountCents ??
+        Math.max(
+          0,
+          (price?.amountCents ?? 0) -
+            (subscription.couponRecurringDuration === 'forever'
+              ? subscription.couponDiscountCents
+              : 0),
+        ),
       currency: input.currency ?? price?.currency ?? 'PLN',
       provider: subscription.provider,
       providerObjectIds: input.providerObjectIds,
+      couponId: subscription.couponRecurringDuration === 'forever' ? subscription.couponId : null,
+      discountCents:
+        subscription.couponRecurringDuration === 'forever'
+          ? subscription.couponDiscountCents
+          : 0,
     },
     deps,
   );

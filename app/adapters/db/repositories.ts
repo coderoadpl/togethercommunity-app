@@ -1657,10 +1657,15 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           .orderBy(desc(orders.createdAt), desc(orders.id))
       ).map(parseOrder),
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
-      const condition = and(
+      const memberCondition = and(
         eq(orders.tenantId, tenantId),
         eq(orders.memberId, memberId),
-        isNotNull(orders.billing),
+      );
+      const visibleCondition = or(isNotNull(orders.billing), eq(invoices.provider, 'ksef'));
+      const invoiceJoin = and(
+        eq(invoices.tenantId, orders.tenantId),
+        eq(invoices.orderId, orders.id),
+        inArray(invoices.status, ['issued', 'delivered']),
       );
       const [rows, totals] = await Promise.all([
         db
@@ -1673,28 +1678,22 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
             invoiceProvider: invoices.provider,
           })
           .from(orders)
-          .leftJoin(
-            invoices,
-            and(
-              eq(invoices.tenantId, orders.tenantId),
-              eq(invoices.orderId, orders.id),
-              inArray(invoices.status, ['issued', 'delivered']),
-            ),
-          )
-          .where(condition)
+          .leftJoin(invoices, invoiceJoin)
+          .where(and(memberCondition, visibleCondition))
           .orderBy(desc(orders.createdAt), desc(orders.id))
           .limit(pageSize)
           .offset((page - 1) * pageSize),
         db
           .select({ value: sql<number>`count(*)::int` })
           .from(orders)
-          .where(condition),
+          .leftJoin(invoices, invoiceJoin)
+          .where(and(memberCondition, visibleCondition)),
       ]);
       return {
         orders: rows.map((row) => ({
           id: row.id,
           createdAt: row.createdAt,
-          billing: billingDataSchema.parse(row.billing),
+          billing: row.billing === null ? null : billingDataSchema.parse(row.billing),
           invoice: row.invoiceId === null
             ? null
             : {

@@ -102,14 +102,7 @@ describe('MemberAccountPage', () => {
       stubBillingOrders([{
         id: 'order-1',
         createdAt: '2026-07-28T10:00:00.000Z',
-        billing: {
-          nip: '5555555555',
-          companyName: 'Acme sp. z o.o.',
-          address: 'Prosta 1',
-          postalCode: '00-001',
-          city: 'Warszawa',
-          country: 'PL',
-        },
+        billing: null,
         invoice: { id: 'invoice-1', status: 'issued', provider: 'ksef' },
       }]),
     );

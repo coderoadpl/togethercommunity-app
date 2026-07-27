@@ -168,7 +168,7 @@ export const memberBillingOrdersOutputSchema = z.object({
   orders: z.array(z.object({
     id: z.string(),
     createdAt: z.string().datetime(),
-    billing: billingDataSchema,
+    billing: billingDataSchema.nullable(),
     invoice: invoiceSchema.pick({ id: true, status: true, provider: true }).nullable().default(null),
   })),
   total: z.number().int().nonnegative(),

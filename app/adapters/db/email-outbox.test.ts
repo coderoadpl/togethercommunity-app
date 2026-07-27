@@ -60,8 +60,8 @@ const payload = (url = 'https://example.test/sign-in') => ({
   url,
 });
 
-const enqueue = async (id: string, now = NOW) => {
-  const result = await createEmailOutboxRepository(db).enqueue({ id, tenantId: null, to: `${id}@example.test`, payload: payload(`https://example.test/${id}`), now });
+const enqueue = async (id: string, now = NOW, tenantId: string | null = null) => {
+  const result = await createEmailOutboxRepository(db).enqueue({ id, tenantId, to: `${id}@example.test`, payload: payload(`https://example.test/${id}`), now });
   expect(result.ok).toBe(true);
 };
 
@@ -132,6 +132,67 @@ describe('email outbox database adapter', () => {
     expect(await db.select().from(members).where(eq(members.id, member.id))).toEqual([]);
     expect(await db.select().from(productGrants).where(eq(productGrants.id, grant.id))).toEqual([]);
     expect(await db.select().from(emailOutbox).where(eq(emailOutbox.id, 'email-rollback'))).toEqual([]);
+  });
+
+  it('reclaims stale sending rows without touching fresh leases or exceeding the attempts cap', async () => {
+    await Promise.all([
+      enqueue('stale-sending'),
+      enqueue('fresh-sending'),
+      enqueue('exhausted-sending', NOW, 'tenant-outbox'),
+    ]);
+    const staleAt = new Date(Date.parse(NOW) - 16 * 60 * 1000).toISOString();
+    await db
+      .update(emailOutbox)
+      .set({ status: 'sending', nextAttemptAt: staleAt })
+      .where(eq(emailOutbox.id, 'stale-sending'));
+    await db
+      .update(emailOutbox)
+      .set({ status: 'sending', nextAttemptAt: NOW })
+      .where(eq(emailOutbox.id, 'fresh-sending'));
+    await db
+      .update(emailOutbox)
+      .set({ status: 'sending', attempts: 2, nextAttemptAt: staleAt })
+      .where(eq(emailOutbox.id, 'exhausted-sending'));
+
+    const sent: string[] = [];
+    const result = await dispatchEmailBatch({
+      emailOutbox: createEmailOutboxRepository(db, 3),
+      events: createEmailEventRepository(db),
+      email: {
+        send: async (message) => {
+          sent.push(message.to);
+          return ok({ messageId: message.to, transport: 'platform' as const });
+        },
+      },
+      clock: { nowIso: () => NOW },
+      logger: console,
+      batchSize: 10,
+      attemptsCap: 3,
+      backoffBaseMs: 1000,
+      backoffCapMs: 10000,
+      ...instrumentation(),
+    });
+
+    expect(result).toEqual(ok({ attemptsMade: 1, sentCount: 1, failedCount: 0 }));
+    expect(sent).toEqual(['stale-sending@example.test']);
+    const rows = await db.select().from(emailOutbox);
+    expect(rows.find((row) => row.id === 'stale-sending')).toMatchObject({
+      status: 'sent',
+      attempts: 1,
+    });
+    const fresh = rows.find((row) => row.id === 'fresh-sending');
+    expect(fresh).toMatchObject({
+      status: 'sending',
+      attempts: 0,
+    });
+    expect(new Date(fresh?.nextAttemptAt ?? '').toISOString()).toBe(NOW);
+    expect(rows.find((row) => row.id === 'exhausted-sending')).toMatchObject({
+      status: 'failed',
+      attempts: 3,
+    });
+    await expect(
+      createEmailOutboxRepository(db, 3).hasPendingForTenant?.('tenant-outbox'),
+    ).resolves.toBe(false);
   });
 
   it('never sends a row twice when dispatchers race', async () => {

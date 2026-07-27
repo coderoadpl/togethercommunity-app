@@ -47,6 +47,7 @@ describe('SES onboarding AWS adapter', () => {
   it.each([
     ['PendingConfirmation', false, null],
     ['pending confirmation', false, null],
+    ['Deleted', false, null],
     ['arn:aws:sns:eu-central-1:123456789012:together:subscription-id', true, 'arn:aws:sns:eu-central-1:123456789012:together:subscription-id'],
   ])('maps the SNS subscription ARN %s to confirmed=%s', async (subscriptionArn, confirmed, arn) => {
     const controlPlane = createSesOnboardingControlPlane(factory, {

@@ -13,11 +13,13 @@ import {
   ok,
   type Member,
   type Membership,
+  type Order,
   type Product,
   type Tenant,
   type TenantDomain,
   type TermsConsent,
 } from '@core/domain/index.js';
+import type { PaymentWebhookEvent } from '@core/server/index.js';
 import {
   FakeEmailHmac,
   FakeScheduler,
@@ -78,6 +80,7 @@ const deps = (input: {
   ];
   const memberships: Membership[] = [];
   const members: Member[] = [];
+  const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
   return {
     auth: {
@@ -168,6 +171,13 @@ const deps = (input: {
       createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
       expireCheckoutSession: async () => ok({ expired: true }),
       verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test', objectId: null, checkoutSession: null }),
+    },
+    checkoutConsentCaptures: {
+      create: async (_tenantId, capture) => {
+        checkoutConsentCaptures.set(capture.id, structuredClone(capture));
+      },
+      findById: async (_tenantId, id) =>
+        structuredClone(checkoutConsentCaptures.get(id)?.capture ?? null),
     },
     videoLibrary: {
       listVideos: async () => ok({ videos: [], totalItems: 0 }),
@@ -1085,7 +1095,12 @@ const purchase = (
 
 const consentApp = (simulatedPayments: boolean) => {
   const recorded: TermsConsent[] = [];
+  const captures = new Map<
+    string,
+    Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]
+  >();
   const base = deps();
+  const checkoutSessions: Parameters<AppDeps['payment']['createCheckoutSession']>[0][] = [];
   const app = buildApp({
     ...base,
     tenants: {
@@ -1109,6 +1124,20 @@ const consentApp = (simulatedPayments: boolean) => {
         recorded.push(consent);
       },
     },
+    payment: {
+      ...base.payment,
+      createCheckoutSession: async (input) => {
+        checkoutSessions.push(input);
+        return ok({ url: 'https://checkout.local/cs', sessionId: 'cs' });
+      },
+    },
+    checkoutConsentCaptures: {
+      create: async (_tenantId, capture) => {
+        captures.set(capture.id, structuredClone(capture));
+      },
+      findById: async (_tenantId, id) =>
+        structuredClone(captures.get(id)?.capture ?? null),
+    },
     tenantSecrets: {
       ...base.tenantSecrets,
       findByKey: async (tenantId, key) => ({
@@ -1124,12 +1153,12 @@ const consentApp = (simulatedPayments: boolean) => {
     },
     devEndpoints: { simulatedPayments, exposeMagicLinks: false },
   });
-  return { app, recorded };
+  return { app, captures, checkoutSessions, recorded };
 };
 
 describe('checkout consent ordering', () => {
-  it('records real-checkout consent only after validating the product', async () => {
-    const { app, recorded } = consentApp(false);
+  it('does not record consent when a real checkout session is only started', async () => {
+    const { app, captures, checkoutSessions, recorded } = consentApp(false);
     const request = (productId: string) =>
       app.request(API_PATHS.checkoutSession, {
         method: 'POST',
@@ -1144,17 +1173,18 @@ describe('checkout consent ordering', () => {
     expect((await request('missing-product')).status).toBe(404);
     expect(recorded).toEqual([]);
     expect((await request('acme-published')).status).toBe(200);
-    expect(recorded).toEqual([
-      expect.objectContaining({
-        email: 'buyer@together.dev',
-        termsUrl: 'https://acme.example/terms-v2',
-        privacyUrl: 'https://acme.example/privacy-v3',
-        acceptedAt: '2026-07-12T00:00:00.000Z',
-      }),
-    ]);
+    expect(recorded).toEqual([]);
+    expect(checkoutSessions[0]?.checkoutConsentCaptureId).toBe('id-1');
+    expect(captures.get('id-1')?.capture).toMatchObject({
+      termsAccepted: true,
+      selectedDefinitionIds: [],
+      attachedDefinitionIds: [],
+      collectedAt: '2026-07-12T00:00:00.000Z',
+      confirmationBaseUrl: 'http://acme.localhost:48730/marketing/confirm',
+    });
   });
 
-  it('records simulated-checkout consent only after validating the product', async () => {
+  it('records simulated-checkout consent only after purchase fulfillment', async () => {
     const { app, recorded } = consentApp(true);
 
     expect(
@@ -1187,10 +1217,253 @@ describe('checkout consent ordering', () => {
     ]);
   });
 
+  it('records locally captured consent after a real webhook and stays idempotent', async () => {
+    const definitionId = 'webhook-news';
+    const attached = {
+      ...product({
+        id: 'webhook-product',
+        tenantId: acme.id,
+        title: 'Webhook Product',
+        published: true,
+      }),
+      checkoutConsentDefinitionIds: [definitionId],
+    };
+    const marketing = marketingDeps();
+    await marketing.definitions.create(
+      acme.id,
+      {
+        id: definitionId,
+        tenantId: acme.id,
+        key: definitionId,
+        kind: 'optional_marketing',
+        channel: 'email',
+        doubleOptIn: false,
+        documentRef: { mode: 'url', url: 'https://acme.example/webhook-news' },
+        status: 'active',
+        createdAt: '2026-07-12T00:00:00.000Z',
+        updatedAt: '2026-07-12T00:00:00.000Z',
+      },
+      {
+        id: `${definitionId}-v1`,
+        tenantId: acme.id,
+        definitionId,
+        version: 1,
+        label: 'Webhook news',
+        documentVersionRef: {
+          mode: 'url',
+          url: 'https://acme.example/webhook-news',
+        },
+        createdAt: '2026-07-12T00:00:00.000Z',
+        createdBy: null,
+      },
+    );
+    const base = deps({ products: [attached] });
+    const recorded: TermsConsent[] = [];
+    const order: Order = {
+      id: 'order-webhook',
+      tenantId: acme.id,
+      memberId: 'member-webhook',
+      productId: attached.id,
+      priceId: null,
+      kind: 'one_time',
+      status: 'paid',
+      amountCents: 1000,
+      currency: 'PLN',
+      provider: 'stripe',
+      providerObjectIds: { checkoutSession: 'cs_webhook' },
+      createdAt: '2026-07-12T00:00:00.000Z',
+    };
+    const event: PaymentWebhookEvent = {
+      id: 'evt_webhook',
+      type: 'checkout.session.completed',
+      objectId: 'cs_webhook',
+      checkoutSession: {
+        email: 'webhook-buyer@together.dev',
+        subscriptionId: null,
+        paymentIntentId: 'pi_webhook',
+        metadata: {
+          tenantId: acme.id,
+          productId: attached.id,
+          priceId: null,
+          memberEmail: null,
+          language: 'pl',
+          checkoutConsentCaptureId: 'capture-webhook',
+        },
+      },
+    };
+    const claimedEvents = new Set<string>();
+    let orderResult: Order | null = order;
+    const orderLookups: Record<string, string>[] = [];
+    const logger = { error: vi.fn() };
+    const app = buildApp({
+      ...base,
+      marketing,
+      logger,
+      tenants: {
+        ...base.tenants,
+        findSettings: async (tenantId) =>
+          tenantId === acme.id
+            ? {
+                billingPortalUrl: null,
+                bunnyStreamLibraryId: null,
+                logoUrl: null,
+                accentColor: null,
+                faviconUrl: null,
+                termsUrl: 'https://acme.example/terms-v2',
+                privacyUrl: 'https://acme.example/privacy-v3',
+              }
+            : null,
+      },
+      consents: {
+        ...base.consents,
+        record: async (_tenantId, consent) => {
+          recorded.push(consent);
+        },
+      },
+      checkoutConsentCaptures: {
+        create: async () => undefined,
+        findById: async (_tenantId, id) =>
+          id === 'capture-webhook'
+            ? {
+                termsAccepted: true,
+                selectedDefinitionIds: [definitionId],
+                attachedDefinitionIds: [definitionId],
+                collectedAt: '2026-07-12T00:00:00.000Z',
+                confirmationBaseUrl: 'https://acme.example/marketing/confirm',
+                ip: '203.0.113.90',
+                userAgent: 'Webhook Browser/99',
+              }
+            : null,
+      },
+      payment: {
+        ...base.payment,
+        verifyWebhookEvent: async () => ok(event),
+      },
+      processedPaymentEvents: {
+        claim: async (_tenantId, paymentEvent) => {
+          if (claimedEvents.has(paymentEvent.id)) return false;
+          claimedEvents.add(paymentEvent.id);
+          return true;
+        },
+        release: async () => undefined,
+      },
+      paymentRefunds: {
+        ...base.paymentRefunds,
+        findOrderByProviderObjectIds: async (_tenantId, providerObjectIds) => {
+          orderLookups.push(providerObjectIds);
+          return orderResult;
+        },
+      },
+      prices: {
+        ...base.prices,
+        findById: async (_tenantId, priceId) =>
+          priceId === 'price-webhook-monthly'
+            ? {
+                id: priceId,
+                tenantId: acme.id,
+                productId: attached.id,
+                kind: 'recurring',
+                interval: 'month',
+                amountCents: 900,
+                currency: 'PLN',
+                active: true,
+                createdAt: '2026-07-12T00:00:00.000Z',
+              }
+            : null,
+      },
+      devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
+    });
+    const deliver = () =>
+      app.request('/api/webhooks/stripe/t-acme', {
+        method: 'POST',
+        headers: { 'stripe-signature': 'test-signature' },
+        body: '{}',
+      });
+
+    expect((await deliver()).status).toBe(200);
+    expect((await deliver()).status).toBe(200);
+    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    expect(recorded).toEqual([
+      expect.objectContaining({
+        email: 'webhook-buyer@together.dev',
+        source: 'checkout',
+      }),
+    ]);
+    expect(
+      await marketing.marketingConsents.listByEmail(
+        acme.id,
+        'webhook-buyer@together.dev',
+      ),
+    ).toMatchObject([
+      {
+        status: 'granted',
+        evidence: {
+          ip: '203.0.113.90',
+          userAgent: 'Webhook Browser/99',
+          proofRef: 'product:webhook-product;order:order-webhook',
+        },
+      },
+    ]);
+    expect(logger.error).not.toHaveBeenCalled();
+
+    event.id = 'evt_webhook_subscription';
+    event.objectId = 'cs_webhook_subscription';
+    if (event.checkoutSession !== null) {
+      event.checkoutSession.subscriptionId = 'sub_webhook';
+      event.checkoutSession.metadata.priceId = 'price-webhook-monthly';
+    }
+    orderResult = {
+      ...order,
+      id: 'order-webhook-subscription',
+      priceId: 'price-webhook-monthly',
+      kind: 'recurring',
+      providerObjectIds: {
+        checkoutSession: 'cs_webhook_subscription',
+        subscription: 'sub_webhook',
+      },
+    };
+    expect((await deliver()).status).toBe(200);
+    expect(orderLookups.at(-1)).toEqual({
+      checkoutSession: 'cs_webhook_subscription',
+    });
+
+    event.id = 'evt_webhook_missing_order';
+    event.objectId = 'cs_webhook_missing_order';
+    orderResult = null;
+    expect((await deliver()).status).toBe(200);
+    expect(logger.error).toHaveBeenCalledWith(
+      '[checkout-consent] tenant=t-acme checkout=cs_webhook_missing_order order=missing',
+    );
+
+    const grantedBefore = await marketing.marketingConsents.listByEmail(
+      acme.id,
+      'webhook-buyer@together.dev',
+    );
+    event.id = 'evt_webhook_missing_capture';
+    event.objectId = 'cs_webhook_missing_capture';
+    orderResult = order;
+    if (event.checkoutSession !== null) {
+      event.checkoutSession.metadata.checkoutConsentCaptureId = 'capture-gone';
+    }
+    const recordedBefore = recorded.length;
+    expect((await deliver()).status).toBe(200);
+    expect(logger.error).toHaveBeenCalledWith(
+      '[checkout-consent] tenant=t-acme capture=capture-gone missing',
+    );
+    expect(recorded).toHaveLength(recordedBefore);
+    expect(
+      await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
+    ).toEqual(grantedBefore);
+  });
+
   it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {
     const definitionId = 'checkout-news';
     const attached = {
       ...product({ id: 'checkout-product', tenantId: acme.id, title: 'Checkout Product', published: true }),
+      checkoutConsentDefinitionIds: [definitionId],
+    };
+    const secondAttached = {
+      ...product({ id: 'checkout-product-2', tenantId: acme.id, title: 'Second Checkout Product', published: true }),
       checkoutConsentDefinitionIds: [definitionId],
     };
     const marketing = marketingDeps();
@@ -1216,7 +1489,7 @@ describe('checkout consent ordering', () => {
       createdBy: null,
     });
     const logger = { error: vi.fn() };
-    const base = deps({ products: [attached], logger });
+    const base = deps({ products: [attached, secondAttached], logger });
     const queued: string[] = [];
     let failEnqueue = false;
     const app = buildApp({
@@ -1243,35 +1516,45 @@ describe('checkout consent ordering', () => {
           return ok({ id: message.id });
         },
       },
+      devEndpoints: { simulatedPayments: true, exposeMagicLinks: false },
     });
-    const checkout = (email: string) => app.request(API_PATHS.checkoutSession, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        host: 'acme.localhost:48730',
-        'user-agent': 'Checkout Browser/1.0',
-        'x-forwarded-for': '203.0.113.8, 10.0.0.1',
-      },
-      body: JSON.stringify({
+    const checkoutBody = (email: string, productId = attached.id) => ({
         email,
-        productId: attached.id,
+        productId,
         termsAccepted: true,
         marketingConsentDefinitionIds: [definitionId],
-      }),
     });
+    const headers = {
+      'content-type': 'application/json',
+      host: 'acme.localhost:48730',
+      'user-agent': 'Checkout Browser/1.0',
+      'x-forwarded-for': '203.0.113.8, 10.0.0.1',
+    };
+    const startCheckout = (email: string) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(checkoutBody(email)),
+    });
+    const fulfillCheckout = (email: string, productId = attached.id) =>
+      purchase(app, headers, checkoutBody(email, productId));
 
-    expect((await checkout('buyer@together.dev')).status).toBe(200);
-    expect((await checkout('buyer@together.dev')).status).toBe(200);
+    expect((await startCheckout('buyer@together.dev')).status).toBe(200);
+    expect(queued).toEqual([]);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'buyer@together.dev')).toEqual([]);
+
+    expect((await fulfillCheckout('buyer@together.dev')).status).toBe(200);
+    expect((await fulfillCheckout('buyer@together.dev', secondAttached.id)).status).toBe(200);
     expect(queued).toEqual(['buyer@together.dev']);
     expect(await marketing.marketingConsents.listByEmail(acme.id, 'buyer@together.dev')).toMatchObject([{
       evidence: {
         ip: '203.0.113.8',
         userAgent: 'Checkout Browser/1.0',
+        proofRef: expect.stringContaining('product:checkout-product;order:'),
       },
     }]);
 
     failEnqueue = true;
-    expect((await checkout('failure@together.dev')).status).toBe(200);
+    expect((await fulfillCheckout('failure@together.dev')).status).toBe(200);
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] tenant=t-acme'));
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outbox unavailable'));
   });

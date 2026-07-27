@@ -13,6 +13,18 @@ export const checkoutSessionInputSchema = z.object({
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
 
+export const checkoutConsentCaptureSchema = z.object({
+  termsAccepted: z.boolean(),
+  selectedDefinitionIds: z.array(z.string().min(1)),
+  attachedDefinitionIds: z.array(z.string().min(1)),
+  collectedAt: z.string().datetime(),
+  confirmationBaseUrl: z.string().url(),
+  ip: z.string().min(1).optional(),
+  userAgent: z.string().min(1).optional(),
+});
+
+export type CheckoutConsentCapture = z.infer<typeof checkoutConsentCaptureSchema>;
+
 export const stripeWebhookPayloadSchema = z.object({
   id: z.string().min(1),
   type: z.string().min(1),

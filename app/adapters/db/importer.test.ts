@@ -316,7 +316,7 @@ describe('importer', () => {
   it('dry-run plans creates without writing anything', async () => {
     const result = await runImport(db, gateway, targets(buildBundle()), {
       apply: false,
-      nowIso,
+      nowIso, emailHmac,
     });
     expect(result.mode).toBe('dry-run');
     expect(result.users.create).toBe(2);
@@ -334,7 +334,7 @@ describe('importer', () => {
   it('apply imports everything keyed by legacyId and passes verification', async () => {
     const result = await runImport(db, gateway, targets(buildBundle()), {
       apply: true,
-      nowIso,
+      nowIso, emailHmac,
     });
     expect(result.users.create).toBe(2);
 
@@ -415,7 +415,7 @@ describe('importer', () => {
   it('is idempotent: a second apply skips every row', async () => {
     const result = await runImport(db, gateway, targets(buildBundle()), {
       apply: true,
-      nowIso,
+      nowIso, emailHmac,
     });
     expect(result.users.create).toBe(0);
     expect(result.users.update).toBe(0);
@@ -444,7 +444,7 @@ describe('importer', () => {
     progress.completedLessonIds = [ids.l2];
     progress.lastViewedLessonId = ids.l2;
 
-    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso });
+    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso, emailHmac });
     const courseReport = reportByKind(result.tenants[0]?.kinds ?? [], 'courses');
     expect(courseReport.update).toBe(1);
     expect(courseReport.samples[0]?.changes.some((change) => change.field === 'name')).toBe(true);
@@ -470,7 +470,7 @@ describe('importer', () => {
 
     const result = await runImport(db, gateway, targets(buildBundle()), {
       apply: true,
-      nowIso,
+      nowIso, emailHmac,
     });
     expect(
       result.users.anomalies.some((anomaly) => anomaly.kind === 'credential-kept-native'),
@@ -511,7 +511,7 @@ describe('importer', () => {
       chapters: [],
     });
 
-    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso });
+    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso, emailHmac });
     const moduleReport = reportByKind(result.tenants[0]?.kinds ?? [], 'modules');
     expect(
       moduleReport.anomalies.some((anomaly) => anomaly.kind === 'module-detached-from-course'),
@@ -552,7 +552,7 @@ describe('importer', () => {
       chapters: [],
     });
 
-    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso });
+    const result = await runImport(db, gateway, targets(bundle), { apply: true, nowIso, emailHmac });
     const moduleReport = reportByKind(result.tenants[0]?.kinds ?? [], 'modules');
     expect(moduleReport.update).toBe(1);
     const memberReport = reportByKind(result.tenants[0]?.kinds ?? [], 'members');
@@ -571,8 +571,12 @@ describe('importer', () => {
     expect(result.verification?.pass).toBe(true);
   }, 60000);
 
-  it('re-apply creates a fresh member without restoring a pseudonymized member or its history', async () => {
+  it('re-apply reports and skips a pseudonymized member without restoring identity or history', async () => {
     await restoreImportedCredential();
+    const erasedAuthUserId = (
+      await db.select({ id: user.id }).from(user).where(eq(user.email, EMAIL_1))
+    )[0]?.id;
+    expect(erasedAuthUserId).toBeDefined();
     await db.insert(orders).values({
       id: 'order-import-erasure',
       tenantId: TENANT_ID,
@@ -610,7 +614,7 @@ describe('importer', () => {
       .from(memberCourseProgress)
       .where(eq(memberCourseProgress.memberId, ids.u1));
 
-    const result = await runImport(db, gateway, targets(buildBundle()), { apply: true, nowIso });
+    const result = await runImport(db, gateway, targets(buildBundle()), { apply: true, nowIso, emailHmac });
 
     const tombstones = await db.select().from(members).where(eq(members.id, ids.u1));
     expect(tombstones[0]).toMatchObject({
@@ -623,17 +627,19 @@ describe('importer', () => {
       externalCustomerIds: {},
       deletedAt: removedAt,
     });
-    const freshRows = await db
+    const restoredRows = await db
       .select()
       .from(members)
       .where(and(eq(members.tenantId, TENANT_ID), eq(members.legacyId, ids.u1)));
-    expect(freshRows).toHaveLength(1);
-    expect(freshRows[0]).toMatchObject({
-      email: EMAIL_1,
-      displayName: 'Jan Import',
-      deletedAt: null,
+    expect(restoredRows).toEqual([]);
+
+    const memberReport = reportByKind(result.tenants[0]?.kinds ?? [], 'members');
+    expect(memberReport).toMatchObject({ create: 0, update: 0, skip: 2 });
+    expect(memberReport.anomalies).toContainEqual({
+      kind: 'pseudonymized-member-skipped',
+      subject: `members/${ids.u1}`,
+      detail: `member ${ids.u1} was previously pseudonymized; the bundle row was skipped`,
     });
-    expect(freshRows[0]?.id).not.toBe(ids.u1);
 
     const grantsAfter = await db
       .select()
@@ -653,6 +659,121 @@ describe('importer', () => {
     expect(
       await createOrderRepository(db).revenueSince(TENANT_ID, '2025-01-01T00:00:00.000Z'),
     ).toEqual(revenueBefore);
+    expect(await db.select().from(user).where(eq(user.email, EMAIL_1))).toEqual([]);
+    expect(
+      await db
+        .select()
+        .from(account)
+        .where(eq(account.userId, erasedAuthUserId ?? 'missing')),
+    ).toEqual([]);
+    expect(result.users.anomalies).toContainEqual({
+      kind: 'pseudonymized-user-skipped',
+      subject: `users/${ids.u1}`,
+      detail: `${EMAIL_1} belongs only to previously pseudonymized target members; the auth account was skipped`,
+    });
     expect(result.verification?.pass).toBe(true);
+  }, 60000);
+
+  it('re-apply does not recreate an erased member adopted from a native row', async () => {
+    const nativeEmail = 'native-buyer@together.dev';
+    const nativeUserId = 'native-user-9';
+    const nativeMemberId = 'native-mem-9';
+    const nativeLegacyId = '64b7dd851bb3ae9014e30009';
+    const nativeGrantId = '67c495dc37610bc83aa11009';
+    await db.insert(user).values({
+      id: nativeUserId,
+      name: 'Native Buyer',
+      email: nativeEmail,
+      emailVerified: true,
+    });
+    await db.insert(members).values({
+      id: nativeMemberId,
+      tenantId: TENANT_ID,
+      userId: nativeUserId,
+      email: nativeEmail,
+      displayName: 'Native Buyer',
+      createdAt: '2026-07-01T00:00:00.000Z',
+    });
+    const bundle = buildBundle();
+    bundle.users = [
+      {
+        legacyId: nativeLegacyId,
+        email: nativeEmail,
+        name: 'Native Buyer',
+        payloadPasswordMarker: MARKER,
+        role: 'student',
+      },
+    ];
+    bundle.members = [
+      {
+        legacyId: nativeLegacyId,
+        email: nativeEmail,
+        displayName: 'Native Buyer',
+      },
+    ];
+    bundle.grants = [
+      {
+        legacyId: nativeGrantId,
+        memberLegacyId: nativeLegacyId,
+        productLegacyId: ids.p1,
+        startsAt: '2026-07-01T00:00:00.000Z',
+        expiresAt: null,
+      },
+    ];
+    bundle.progress = [];
+
+    const first = await runImport(db, gateway, targets(bundle), {
+      apply: true,
+      nowIso,
+      emailHmac,
+    });
+    expect(reportByKind(first.tenants[0]?.kinds ?? [], 'members').anomalies).toContainEqual(
+      expect.objectContaining({
+        kind: 'member-adopted-existing',
+        subject: `members/${nativeLegacyId}`,
+      }),
+    );
+    expect(
+      await db.select().from(members).where(eq(members.id, nativeMemberId)),
+    ).toMatchObject([{ legacyId: nativeLegacyId }]);
+
+    const removedAt = '2026-07-20T12:00:00.000Z';
+    await createMemberErasureRepository(db, emailHmac).pseudonymize(TENANT_ID, {
+      memberId: nativeMemberId,
+      deletedAt: removedAt,
+      tombstoneEmail: memberTombstone(nativeMemberId).email,
+      severedUserId: memberTombstone(nativeMemberId).userId,
+      postAuthorDisplay: 'Konto usunięte',
+    });
+
+    const second = await runImport(db, gateway, targets(bundle), {
+      apply: true,
+      nowIso,
+      emailHmac,
+    });
+    expect(
+      await db
+        .select()
+        .from(members)
+        .where(and(eq(members.tenantId, TENANT_ID), eq(members.email, nativeEmail))),
+    ).toEqual([]);
+    expect(
+      await db.select().from(productGrants).where(eq(productGrants.memberId, nativeMemberId)),
+    ).toMatchObject([{ expiresAt: removedAt }]);
+    expect(await db.select().from(user).where(eq(user.email, nativeEmail))).toEqual([]);
+    expect(
+      await db.select().from(account).where(eq(account.userId, nativeUserId)),
+    ).toEqual([]);
+    expect(reportByKind(second.tenants[0]?.kinds ?? [], 'members')).toMatchObject({
+      create: 0,
+      update: 0,
+      skip: 1,
+    });
+    expect(reportByKind(second.tenants[0]?.kinds ?? [], 'grants')).toMatchObject({
+      create: 0,
+      update: 0,
+      skip: 1,
+    });
+    expect(second.verification?.pass).toBe(true);
   }, 60000);
 });

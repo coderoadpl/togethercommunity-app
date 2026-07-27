@@ -3,6 +3,7 @@ import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
 import { normalizeEmail } from '@core/domain/index.js';
 import { isLessonAccessible } from '@core/server/index.js';
+import type { EmailHmac } from '@core/server/index.js';
 import type {
   ImportAuthGateway,
   ImportedUserOutcome,
@@ -23,6 +24,7 @@ import {
   courseLessons,
   courseModules,
   courses,
+  erasedMemberImports,
   memberCourseProgress,
   members,
   productGrants,
@@ -159,6 +161,7 @@ export interface ImportTarget {
 export interface ImportRunOptions {
   apply: boolean;
   nowIso: () => string;
+  emailHmac: EmailHmac;
 }
 
 export interface VerificationCount {
@@ -521,10 +524,80 @@ const mergeBundleUsers = (
   return merged;
 };
 
+interface ErasedMemberLinks {
+  legacyIds: Set<string>;
+  emailHmacs: Set<string>;
+  deletedMemberIds: Set<string>;
+}
+
+const emptyErasedMemberLinks = (): ErasedMemberLinks => ({
+  legacyIds: new Set(),
+  emailHmacs: new Set(),
+  deletedMemberIds: new Set(),
+});
+
+const loadErasedMemberLinks = async (
+  db: Db,
+  tenantIds: string[],
+): Promise<Map<string, ErasedMemberLinks>> => {
+  const byTenant = new Map<string, ErasedMemberLinks>();
+  if (tenantIds.length === 0) return byTenant;
+  const linksFor = (tenantId: string): ErasedMemberLinks => {
+    const existing = byTenant.get(tenantId);
+    if (existing !== undefined) return existing;
+    const created = emptyErasedMemberLinks();
+    byTenant.set(tenantId, created);
+    return created;
+  };
+  const [importRows, deletedRows] = await Promise.all([
+    db
+      .select()
+      .from(erasedMemberImports)
+      .where(inArray(erasedMemberImports.tenantId, tenantIds)),
+    db
+      .select({ id: members.id, tenantId: members.tenantId })
+      .from(members)
+      .where(and(inArray(members.tenantId, tenantIds), isNotNull(members.deletedAt))),
+  ]);
+  for (const row of importRows) {
+    const links = linksFor(row.tenantId);
+    if (row.legacyId !== null) links.legacyIds.add(row.legacyId);
+    links.emailHmacs.add(row.emailHmac);
+  }
+  for (const row of deletedRows) linksFor(row.tenantId).deletedMemberIds.add(row.id);
+  return byTenant;
+};
+
+const bundleMemberErased = (
+  entry: BundleMember,
+  tenant: { tenantId: string; tenantSlug: string },
+  links: ErasedMemberLinks,
+  emailHmac: EmailHmac,
+): boolean =>
+  links.legacyIds.has(entry.legacyId) ||
+  links.emailHmacs.has(emailHmac.compute(tenant.tenantId, entry.email)) ||
+  // Members erased before erased_member_imports existed carry no stable link,
+  // so the importer's own row-id convention is the last remaining match.
+  links.deletedMemberIds.has(entry.legacyId) ||
+  links.deletedMemberIds.has(`${tenant.tenantSlug}-${entry.legacyId}`);
+
+const erasedBundleMemberLegacyIds = (
+  target: ImportTarget,
+  links: ErasedMemberLinks,
+  emailHmac: EmailHmac,
+): Set<string> =>
+  new Set(
+    target.bundle.members
+      .filter((entry) => bundleMemberErased(entry, target.tenant, links, emailHmac))
+      .map((entry) => entry.legacyId),
+  );
+
 const importUsers = async (
   gateway: ImportAuthGateway,
   targets: ImportTarget[],
   apply: boolean,
+  erasedByTenant: ReadonlyMap<string, ErasedMemberLinks>,
+  emailHmac: EmailHmac,
 ): Promise<UsersOutcome> => {
   const report = emptyReport('users');
   const merged = mergeBundleUsers(targets, report);
@@ -534,6 +607,31 @@ const importUsers = async (
   for (const email of emails) {
     const bundleUser = merged.get(email);
     if (bundleUser === undefined) continue;
+    const memberEntries = targets.flatMap((target) =>
+      target.bundle.members
+        .filter((member) => normalizeEmail(member.email) === email)
+        .map((member) => ({ tenant: target.tenant, member })),
+    );
+    const erasedFromEveryMemberTarget =
+      memberEntries.length > 0 &&
+      memberEntries.every(({ tenant, member }) =>
+        bundleMemberErased(
+          member,
+          tenant,
+          erasedByTenant.get(tenant.tenantId) ?? emptyErasedMemberLinks(),
+          emailHmac,
+        ),
+      );
+    if (erasedFromEveryMemberTarget) {
+      userIdByEmail.set(email, null);
+      report.skip += 1;
+      report.anomalies.push({
+        kind: 'pseudonymized-user-skipped',
+        subject: `users/${bundleUser.legacyId}`,
+        detail: `${email} belongs only to previously pseudonymized target members; the auth account was skipped`,
+      });
+      continue;
+    }
     if (bundleUser.payloadPasswordMarker !== null) {
       markerByEmail.set(email, bundleUser.payloadPasswordMarker);
     } else {
@@ -727,6 +825,13 @@ const importTenant = async (
   const activeMemberRows = memberRows.filter((row) => row.deletedAt === null);
   const deletedMemberIds = new Set(
     memberRows.filter((row) => row.deletedAt !== null).map((row) => row.id),
+  );
+  const erasedLinks =
+    (await loadErasedMemberLinks(db, [tenantId])).get(tenantId) ?? emptyErasedMemberLinks();
+  const pseudonymizedMemberLegacyIds = erasedBundleMemberLegacyIds(
+    target,
+    erasedLinks,
+    options.emailHmac,
   );
 
   const takenIn =
@@ -965,6 +1070,16 @@ const importTenant = async (
   }
   const seenMemberEmails = new Set<string>();
   for (const entry of bundle.members) {
+    if (pseudonymizedMemberLegacyIds.has(entry.legacyId)) {
+      memberReport.skip += 1;
+      memberReport.anomalies.push({
+        kind: 'pseudonymized-member-skipped',
+        subject: `members/${entry.legacyId}`,
+        detail: `member ${entry.legacyId} was previously pseudonymized; the bundle row was skipped`,
+      });
+      maps.memberIds.delete(entry.legacyId);
+      continue;
+    }
     const email = normalizeEmail(entry.email);
     if (seenMemberEmails.has(email)) {
       memberReport.dropped += 1;
@@ -1046,6 +1161,15 @@ const importTenant = async (
   const grantsByPair = new Map(grantRows.map((row) => [`${row.memberId}::${row.productId}`, row]));
   for (const entry of dedupeGrants(bundle.grants, grantReport)) {
     const subject = `grants/${entry.legacyId}`;
+    if (pseudonymizedMemberLegacyIds.has(entry.memberLegacyId)) {
+      grantReport.skip += 1;
+      grantReport.anomalies.push({
+        kind: 'pseudonymized-member-grant-skipped',
+        subject,
+        detail: `member ${entry.memberLegacyId} was previously pseudonymized; the grant was skipped`,
+      });
+      continue;
+    }
     const memberId = maps.memberIds.get(entry.memberLegacyId);
     const productId = maps.productIds.get(entry.productLegacyId);
     if (memberId === undefined || productId === undefined) {
@@ -1293,7 +1417,14 @@ const importTenant = async (
 };
 
 const expectedKindCount = (report: KindReport): number =>
-  report.create + report.update + report.skip;
+  report.create +
+  report.update +
+  report.skip -
+  report.anomalies.filter(
+    (anomaly) =>
+      anomaly.kind === 'pseudonymized-member-skipped' ||
+      anomaly.kind === 'pseudonymized-member-grant-skipped',
+  ).length;
 
 const verifyTenant = async (
   db: Db,
@@ -1529,7 +1660,11 @@ const runSpotChecks = async (
     .sort();
 
   const memberRowsNow = await db.select().from(members).where(eq(members.tenantId, tenantId));
+  const erasedLinks =
+    (await loadErasedMemberLinks(db, [tenantId])).get(tenantId) ?? emptyErasedMemberLinks();
+  const erasedLegacyIds = erasedBundleMemberLegacyIds(target, erasedLinks, options.emailHmac);
   const membersWithGrants = [...new Set(dedupedGrants.map((grant) => grant.memberLegacyId))]
+    .filter((legacyId) => !erasedLegacyIds.has(legacyId))
     .sort()
     .slice(0, 3);
   const memberByLegacy = legacyRowsById(memberRowsNow);
@@ -1618,7 +1753,16 @@ export const runImport = async (
   targets: ImportTarget[],
   options: ImportRunOptions,
 ): Promise<ImportRunResult> => {
-  const usersOutcome = await importUsers(gateway, targets, options.apply);
+  const erasedByTenant = await loadErasedMemberLinks(db, [
+    ...new Set(targets.map((target) => target.tenant.tenantId)),
+  ]);
+  const usersOutcome = await importUsers(
+    gateway,
+    targets,
+    options.apply,
+    erasedByTenant,
+    options.emailHmac,
+  );
   const claimed = createClaimedIds();
   const tenantResults: TenantImportResult[] = [];
   for (const target of targets) {

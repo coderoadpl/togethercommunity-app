@@ -69,6 +69,7 @@ export const startCheckoutSession = async (
   input: CheckoutSessionInput,
   selection: CheckoutSelection,
   deps: Pick<CheckoutDeps, 'payment'>,
+  checkoutConsentCaptureId?: string,
 ): Promise<Result<{ url: string }, AppError>> => {
   const { product, price } = selection;
   const checkoutPath = `${tenantBaseUrl}/checkout/${encodeURIComponent(product.id)}`;
@@ -87,6 +88,7 @@ export const startCheckoutSession = async (
     ...(price !== null && price.kind === 'recurring' && price.interval !== null
       ? { recurringInterval: price.interval }
       : {}),
+    ...(checkoutConsentCaptureId === undefined ? {} : { checkoutConsentCaptureId }),
   });
   return created.ok ? ok({ url: created.value.url }) : created;
 };

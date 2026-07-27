@@ -77,6 +77,9 @@ import type {
   BillingData,
   Invoice,
   InvoiceEvent,
+  FiscalArtifact,
+  KsefEnvironment,
+  KsefStatus,
 } from '@core/domain/index.js';
 
 /**
@@ -480,11 +483,158 @@ export interface InvoicingPort {
 
 export interface InvoiceRepository {
   findById(tenantId: string, id: string): Promise<Invoice | null>;
+  findByIdForMember?(tenantId: string, memberId: string, id: string): Promise<Invoice | null>;
   findCurrentByOrder(tenantId: string, orderId: string): Promise<Invoice | null>;
   create(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   claimRetry(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   update(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<Invoice | null>;
   appendEvent(tenantId: string, event: InvoiceEvent): Promise<void>;
+  createFrozenKsef?(
+    tenantId: string,
+    invoice: Invoice,
+    event: InvoiceEvent,
+    artifact: FiscalArtifact,
+    job: KsefSubmissionJob,
+  ): Promise<boolean>;
+  checkpointKsef?(
+    tenantId: string,
+    invoice: Invoice,
+    event: InvoiceEvent,
+  ): Promise<Invoice | null>;
+}
+
+export interface KsefNumberAllocation {
+  p2: string;
+  sequence: number;
+}
+
+export interface KsefNumberRepository {
+  allocate(
+    tenantId: string,
+    input: { orderId: string; invoiceType: 'VAT'; year: number; allocatedAt: string },
+  ): Promise<KsefNumberAllocation>;
+}
+
+export interface KsefSubmissionJob {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  attempts: number;
+  nextAttemptAt: string;
+  lockedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface KsefSubmissionJobRepository {
+  claimDue(now: string): Promise<KsefSubmissionJob | null>;
+  reschedule(
+    tenantId: string,
+    jobId: string,
+    input: { nextAttemptAt: string; error: string | null },
+  ): Promise<void>;
+  complete(tenantId: string, jobId: string): Promise<void>;
+}
+
+export interface KsefCredentials {
+  tenantId: string;
+  token: string;
+  contextNip: string;
+}
+
+export interface KsefStatusResult extends KsefStatus {
+  ksefNumber: string | null;
+  acquisitionAt: string | null;
+  invoicingAt: string | null;
+  permanentStorageAt: string | null;
+}
+
+export interface KsefClientPort {
+  validateCredentials(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+  }): Promise<Result<{ diagnostic: string }, AppError>>;
+  openSession(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+  }): Promise<Result<{ sessionReference: string }, AppError>>;
+  submitInvoice(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+    sessionReference: string;
+    xml: string;
+    invoiceHashHex: string;
+  }): Promise<Result<{ invoiceReference: string }, AppError>>;
+  listSessionInvoices(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+    sessionReference: string;
+  }): Promise<Result<Array<{
+    invoiceReference: string;
+    invoiceHash: string;
+    status: KsefStatus;
+  }>, AppError>>;
+  getInvoiceStatus(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+    sessionReference: string;
+    invoiceReference: string;
+  }): Promise<Result<KsefStatusResult, AppError>>;
+  downloadUpo(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+    sessionReference: string;
+    invoiceReference: string | null;
+    ksefNumber: string | null;
+  }): Promise<Result<string, AppError>>;
+  verifyDuplicateOriginal(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+    originalSessionReference: string;
+    originalKsefNumber: string;
+    expected: {
+      contextNip: string;
+      invoiceType: 'VAT';
+      invoiceNumber: string;
+      invoiceHashHex: string;
+    };
+  }): Promise<Result<boolean, AppError>>;
+  closeSession(input: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentials;
+    sessionReference: string;
+  }): Promise<Result<void, AppError>>;
+}
+
+export interface KsefCredentialResolver {
+  resolve(tenantId: string): Promise<Result<KsefCredentials, AppError>>;
+}
+
+export interface KsefSubmissionRepository {
+  findById(tenantId: string, invoiceId: string): Promise<Invoice | null>;
+  checkpointKsef(
+    tenantId: string,
+    invoice: Invoice,
+    event: InvoiceEvent,
+  ): Promise<Invoice | null>;
+}
+
+export interface FiscalArtifactRepository {
+  findByKey(tenantId: string, key: string): Promise<FiscalArtifact | null>;
+  store(tenantId: string, artifact: FiscalArtifact): Promise<boolean>;
+}
+
+export interface ContentHash {
+  sha256(content: string | Uint8Array): string;
+}
+
+export interface Fa3Validator {
+  validate(xml: string): Promise<Result<void, AppError>>;
+}
+
+export interface KsefInvoicePdf {
+  render(input: { invoice: Invoice; xml: string }): Uint8Array;
 }
 
 export interface CouponRepository {
@@ -624,7 +774,12 @@ export interface OrderRepository {
     page: number,
     pageSize: number,
   ): Promise<{
-    orders: Array<{ id: string; createdAt: string; billing: BillingData }>;
+    orders: Array<{
+      id: string;
+      createdAt: string;
+      billing: BillingData | null;
+      invoice: Pick<Invoice, 'id' | 'status' | 'provider'> | null;
+    }>;
     total: number;
   }>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;

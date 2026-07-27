@@ -8,3 +8,4 @@ app/dist/
 app/out/
 app/storybook-static/
 app/coverage/
+.ksef-spike-ref/

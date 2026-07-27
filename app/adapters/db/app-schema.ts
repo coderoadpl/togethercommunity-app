@@ -8,6 +8,7 @@ import type {
   CheckoutConsentCapture,
   BillingData,
   InvoiceEvent,
+  KsefInvoiceData,
   CouponScope,
   ConsentDocumentRef,
   ConsentDocumentVersionRef,
@@ -42,6 +43,9 @@ export const tenants = pgTable(
       .notNull()
       .default('b2b_only'),
     invoiceVatRatePercent: integer('invoice_vat_rate_percent'),
+    invoicingProvider: text('invoicing_provider', { enum: ['ifirma', 'ksef'] }).notNull().default('ifirma'),
+    invoiceSellerName: text('invoice_seller_name'),
+    invoiceSellerAddress: text('invoice_seller_address'),
   },
   (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
 );
@@ -385,7 +389,9 @@ export const invoices = pgTable(
     orderId: text('order_id')
       .notNull()
       .references(() => orders.id, { onDelete: 'restrict' }),
-    status: text('status', { enum: ['requested', 'issued', 'delivered', 'failed'] }).notNull(),
+    status: text('status', {
+      enum: ['requested', 'queued', 'submitting', 'processing', 'issued', 'delivered', 'failed', 'conflict'],
+    }).notNull(),
     provider: text('provider').notNull(),
     providerInvoiceId: text('provider_invoice_id'),
     invoiceNumber: text('invoice_number'),
@@ -393,6 +399,7 @@ export const invoices = pgTable(
     error: text('error'),
     issuedAt: text('issued_at'),
     createdAt: text('created_at').notNull(),
+    ksef: jsonb('ksef').$type<KsefInvoiceData>(),
   },
   (table) => [
     index('invoices_tenant_order_idx').on(table.tenantId, table.orderId),
@@ -415,7 +422,23 @@ export const invoiceEvents = pgTable(
       .notNull()
       .references(() => orders.id, { onDelete: 'restrict' }),
     type: text('type', {
-      enum: ['requested', 'provider_created', 'issued', 'delivered', 'failed', 'skipped', 'refreshed'],
+      enum: [
+        'requested',
+        'provider_created',
+        'issued',
+        'delivered',
+        'failed',
+        'skipped',
+        'refreshed',
+        'frozen',
+        'session_opened',
+        'send_started',
+        'submitted',
+        'correlated',
+        'processing',
+        'upo_stored',
+        'numbering_conflict',
+      ],
     }).notNull(),
     error: text('error'),
     meta: jsonb('meta').$type<InvoiceEvent['meta']>().notNull().default({}),
@@ -428,6 +451,100 @@ export const invoiceEvents = pgTable(
       table.occurredAt,
       table.sequence,
     ),
+  ],
+);
+
+export const ksefNumberSequences = pgTable(
+  'ksef_number_sequences',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    invoiceType: text('invoice_type', { enum: ['VAT'] }).notNull(),
+    year: integer('year').notNull(),
+    nextValue: integer('next_value').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('ksef_number_sequences_tenant_type_year_uidx')
+      .on(table.tenantId, table.invoiceType, table.year),
+  ],
+);
+
+export const ksefNumberAllocations = pgTable(
+  'ksef_number_allocations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    invoiceType: text('invoice_type', { enum: ['VAT'] }).notNull(),
+    year: integer('year').notNull(),
+    sequence: integer('sequence').notNull(),
+    p2: text('p2').notNull(),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    allocatedAt: text('allocated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('ksef_number_allocations_tenant_type_sequence_uidx')
+      .on(table.tenantId, table.invoiceType, table.year, table.sequence),
+    uniqueIndex('ksef_number_allocations_tenant_type_p2_uidx')
+      .on(table.tenantId, table.invoiceType, table.p2),
+    uniqueIndex('ksef_number_allocations_tenant_order_uidx')
+      .on(table.tenantId, table.orderId),
+  ],
+);
+
+export const fiscalArtifacts = pgTable(
+  'fiscal_artifacts',
+  {
+    key: text('key').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    invoiceId: text('invoice_id')
+      .notNull()
+      .references(() => invoices.id, { onDelete: 'restrict' }),
+    kind: text('kind', { enum: ['fa3', 'upo'] }).notNull(),
+    content: text('content').notNull(),
+    sha256: text('sha256').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('fiscal_artifacts_tenant_invoice_kind_uidx')
+      .on(table.tenantId, table.invoiceId, table.kind),
+  ],
+);
+
+export const ksefSubmissionJobs = pgTable(
+  'ksef_submission_jobs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    invoiceId: text('invoice_id')
+      .notNull()
+      .references(() => invoices.id, { onDelete: 'restrict' }),
+    status: text('status', { enum: ['queued', 'running', 'completed', 'failed'] })
+      .notNull()
+      .default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: text('next_attempt_at').notNull(),
+    lockedAt: text('locked_at'),
+    lastError: text('last_error'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('ksef_submission_jobs_invoice_uidx').on(table.invoiceId),
+    index('ksef_submission_jobs_dispatch_idx').on(table.status, table.nextAttemptAt),
+    uniqueIndex('ksef_submission_jobs_one_running_per_tenant_uidx')
+      .on(table.tenantId)
+      .where(sql`${table.status} = 'running'`),
   ],
 );
 

@@ -16,12 +16,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { accentColorSchema } from '@core/domain/index.js';
+import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
+import { SecretField } from '../integrations/SecretField.js';
 import { usePanelContext } from '../panel-context.js';
 
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
@@ -90,6 +92,71 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
+const previewFor = (
+  secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
+  key: TenantSecretKey,
+): string | null => secrets?.find((secret) => secret.key === key)?.maskedPreview ?? null;
+
+const KsefSettings = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const secrets = useQuery(actions.tenantSecrets);
+  const testConnection = useMutation(actions.testKsefConnection);
+  const tokenPreview = previewFor(secrets.data?.secrets, 'ksef.token');
+  const nipPreview = previewFor(secrets.data?.secrets, 'ksef.contextNip');
+  const ready = tokenPreview !== null && nipPreview !== null;
+
+  return (
+    <Stack useFlexGap spacing="1rem">
+      <Typography variant="h6" component="h3">{t.integrations.ksefHeading}</Typography>
+      <Typography color="text.secondary">{t.integrations.ksefDescription}</Typography>
+      <Typography variant="body2">{t.integrations.ksefTokenHelp}</Typography>
+      {secrets.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+      ) : secrets.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+      ) : canEdit ? (
+        <>
+          <SecretField
+            secretKey="ksef.contextNip"
+            label={t.integrations.ksefContextNipLabel}
+            maskedPreview={nipPreview}
+          />
+          <SecretField
+            secretKey="ksef.token"
+            label={t.integrations.ksefTokenLabel}
+            maskedPreview={tokenPreview}
+          />
+        </>
+      ) : (
+        <Typography variant="body2">
+          {ready ? t.integrations.configured : t.integrations.notConfigured}
+        </Typography>
+      )}
+      <Button
+        type="button"
+        variant="contained"
+        data-testid="ksef-test-connection"
+        disabled={!canEdit || !ready || testConnection.isPending}
+        onClick={() => testConnection.mutate(undefined)}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
+      </Button>
+      {!ready ? (
+        <Typography variant="caption" component="p">{t.integrations.ksefSaveFirst}</Typography>
+      ) : null}
+      {testConnection.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="ksef-test-result">
+          {testConnection.data.diagnostic}
+        </Typography>
+      ) : null}
+      {testConnection.isError ? (
+        <Alert data-testid="ksef-test-error">{localizeError(testConnection.error, t)}</Alert>
+      ) : null}
+    </Stack>
+  );
+};
+
 const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -103,6 +170,9 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const enabled = settings.data?.settings.autoIssueInvoices ?? false;
   const scope = settings.data?.settings.autoIssueInvoiceScope ?? 'b2b_only';
   const vatRate = settings.data?.settings.invoiceVatRatePercent ?? '';
+  const provider = settings.data?.settings.invoicingProvider ?? 'ifirma';
+  const [sellerName, setSellerName] = useState<string | null>(null);
+  const [sellerAddress, setSellerAddress] = useState<string | null>(null);
 
   return (
     <SectionCard title={t.billing.invoiceHeading} description={t.billing.invoiceIntro}>
@@ -116,6 +186,21 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         )}
         label={t.billing.autoIssue}
       />
+      <FormControl fullWidth>
+        <FormLabel id="invoice-provider-label">{t.billing.invoicingProvider}</FormLabel>
+        <Select
+          labelId="invoice-provider-label"
+          value={provider}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) =>
+            updateSettings.mutate({
+              invoicingProvider: event.target.value === 'ksef' ? 'ksef' : 'ifirma',
+            })}
+        >
+          <MenuItem value="ifirma">{t.billing.providerIfirma}</MenuItem>
+          <MenuItem value="ksef">{t.billing.providerKsef}</MenuItem>
+        </Select>
+      </FormControl>
       <FormControl fullWidth>
         <FormLabel id="invoice-auto-scope-label">{t.billing.autoIssueScope}</FormLabel>
         <Select
@@ -150,6 +235,35 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <MenuItem value={23}>23%</MenuItem>
         </Select>
       </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="invoice-seller-name">{t.billing.sellerName}</FormLabel>
+        <OutlinedInput
+          id="invoice-seller-name"
+          value={sellerName ?? settings.data?.settings.invoiceSellerName ?? ''}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) => setSellerName(event.target.value)}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="invoice-seller-address">{t.billing.sellerAddress}</FormLabel>
+        <OutlinedInput
+          id="invoice-seller-address"
+          value={sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? ''}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) => setSellerAddress(event.target.value)}
+        />
+      </FormControl>
+      <Button
+        variant="contained"
+        disabled={!canEdit || settings.isPending || updateSettings.isPending}
+        onClick={() => updateSettings.mutate({
+          invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
+          invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
+        })}
+      >
+        {t.billing.saveSeller}
+      </Button>
+      {provider === 'ksef' ? <KsefSettings canEdit={canEdit} /> : null}
       {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );

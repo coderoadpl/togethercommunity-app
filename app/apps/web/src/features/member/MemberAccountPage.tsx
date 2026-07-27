@@ -120,12 +120,30 @@ export const MemberAccountPage = () => {
                   <Typography variant="subtitle2">
                     {t.account.invoiceOrderLabel({ date: new Date(order.createdAt).toLocaleDateString(language) })}
                   </Typography>
-                  <Typography>{order.billing?.companyName}</Typography>
-                  <Typography>{order.billing?.nip ?? ''}</Typography>
-                  <Typography>{order.billing?.address}</Typography>
-                  <Typography>
-                    {order.billing?.postalCode} {order.billing?.city}, {order.billing?.country}
-                  </Typography>
+                  {order.billing === null ? null : (
+                    <>
+                      <Typography>{order.billing.companyName}</Typography>
+                      <Typography>{order.billing.nip ?? ''}</Typography>
+                      <Typography>{order.billing.address}</Typography>
+                      <Typography>
+                        {order.billing.postalCode} {order.billing.city}, {order.billing.country}
+                      </Typography>
+                    </>
+                  )}
+                  {order.invoice?.provider === 'ksef'
+                    && (order.invoice.status === 'issued' || order.invoice.status === 'delivered') ? (
+                      <Button
+                        component="a"
+                        href={`/api/me/invoices/${encodeURIComponent(order.invoice.id)}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        variant="text"
+                        data-testid={`account-invoice-download-${order.invoice.id}`}
+                        sx={{ alignSelf: 'flex-start' }}
+                      >
+                        {t.account.invoiceDownload}
+                      </Button>
+                    ) : null}
                 </Stack>
               ))}
             </Stack>

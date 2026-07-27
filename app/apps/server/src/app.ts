@@ -142,6 +142,8 @@ import {
   requestInvoice,
   refreshInvoiceStatus,
   downloadInvoice,
+  downloadInvoiceUpo,
+  downloadMemberInvoice,
   getEmailSend,
   listTenantApiKeys,
   listCampaignsWithEngagement,
@@ -240,6 +242,7 @@ import {
   listBunnyVideos,
   testBunnyConnection,
   testIfirmaConnection,
+  testKsefConnection,
   testStripeConnection,
   fulfillStripeWebhook,
   autoIssueOnPayment,
@@ -261,6 +264,7 @@ import {
 } from '@adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
+import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { recordAppError, recordException, telemetryMiddleware } from './telemetry.js';
 import { registerMarketingRoutes } from './marketing-routes.js';
@@ -505,7 +509,9 @@ const autoIssueFulfilledOrder = async (
       secretCrypto: deps.secretCrypto,
       ids: deps.ids,
       clock: deps.clock,
+      ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
     });
+    dispatchKsefInBackground(deps.ksef, deps.logger, 'payment fulfilment');
   } catch (cause) {
     deps.logger.error(`[invoice-auto] tenant=${tenantId} order=${order.id} unexpected=${String(cause)}`);
   }
@@ -536,6 +542,22 @@ export const buildApp = (deps: AppDeps) => {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     return respond(await deps.dispatchEmails('manual'));
+  });
+
+  app.post(API_PATHS.ksefDispatch, async (c) => {
+    if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
+    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.ksef.dispatchSecret) {
+      return respond(err(unauthorized('Invalid KSeF dispatch secret')));
+    }
+    return respond(await deps.ksef.dispatch());
+  });
+
+  app.get(API_PATHS.ksefDispatch, async (c) => {
+    if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
+    if (c.req.header('authorization') !== `Bearer ${deps.ksef.dispatchSecret}`) {
+      return respond(err(unauthorized('Invalid KSeF dispatch secret')));
+    }
+    return respond(await deps.ksef.dispatch());
   });
 
   app.get(API_PATHS.globalSchedulerRuns, async (c) => {
@@ -1788,6 +1810,13 @@ export const buildApp = (deps: AppDeps) => {
     respond(await testIfirmaConnection({ identity: c.get('identity') }, deps)),
   );
 
+  app.post(API_PATHS.ksefTestConnection, async (c) =>
+    respond(await testKsefConnection(
+      { identity: c.get('identity') },
+      { ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }) },
+    )),
+  );
+
   app.get(API_PATHS.bunnyVideos, async (c) => {
     const parsed = bunnyVideosInputSchema.safeParse({
       search: c.req.query('search'),
@@ -1911,8 +1940,12 @@ export const buildApp = (deps: AppDeps) => {
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
+    if (result.ok && result.value.provider === 'ksef' && deps.ksef !== undefined) {
+      dispatchKsefInBackground(deps.ksef, deps.logger, 'invoice issue');
+    }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });
 
@@ -1930,6 +1963,7 @@ export const buildApp = (deps: AppDeps) => {
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
     return respond(result.ok ? ok({ invoice: result.value }) : result);
@@ -1949,6 +1983,55 @@ export const buildApp = (deps: AppDeps) => {
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
+      },
+    );
+    if (!result.ok) return respond(result);
+    const content = Uint8Array.from(result.value.content);
+    return new Response(content.buffer, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `attachment; filename="${result.value.filename}"`,
+        'cache-control': 'private, no-store',
+      },
+    });
+  });
+
+  app.get(API_PATHS.invoiceUpoDownload, async (c) => {
+    const result = await downloadInvoiceUpo(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
+      },
+    );
+    if (!result.ok) return respond(result);
+    const content = Uint8Array.from(result.value.content);
+    return new Response(content.buffer, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `attachment; filename="${result.value.filename}"`,
+        'cache-control': 'private, no-store',
+      },
+    });
+  });
+
+  app.get(API_PATHS.memberInvoiceDownload, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await downloadMemberInvoice(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
     if (!result.ok) return respond(result);

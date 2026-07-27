@@ -10,7 +10,14 @@ import {
 } from '@core/domain/index.js';
 
 import type { InvoiceDeps } from './invoices.js';
-import { autoIssueOnPayment, requestInvoice, testIfirmaConnection } from './invoices.js';
+import {
+  autoIssueOnPayment,
+  downloadInvoiceUpo,
+  downloadMemberInvoice,
+  requestInvoice,
+  testIfirmaConnection,
+  testKsefConnection,
+} from './invoices.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 const billing = {
@@ -50,11 +57,16 @@ const harness = (options: {
   fail?: boolean;
   failAfterCreate?: boolean;
   uncertainFailure?: boolean;
+  provider?: 'ifirma' | 'ksef';
+  nowIso?: string;
 } = {}) => {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
   let calls = 0;
+  let allocatedYear: number | null = null;
+  let frozenXml: string | null = null;
   let testedConfig: { invoiceApiKey: string; username: string } | null = null;
+  let testedKsefCredentials: { tenantId: string; token: string; contextNip: string } | null = null;
   let ids = 0;
   const deps: InvoiceDeps = {
     invoices: {
@@ -86,6 +98,13 @@ const harness = (options: {
       appendEvent: async (_tenantId, event) => {
         events.push(event);
       },
+      createFrozenKsef: async (_tenantId, invoice, event, artifact) => {
+        invoices.push(invoice);
+        events.push(event);
+        frozenXml = artifact.content;
+        return true;
+      },
+      checkpointKsef: async (_tenantId, invoice) => invoice,
     },
     invoicing: {
       issueInvoice: async ({
@@ -135,6 +154,9 @@ const harness = (options: {
         autoIssueInvoices: options.auto ?? false,
         autoIssueInvoiceScope: options.scope ?? 'b2b_only',
         invoiceVatRatePercent: 23,
+        invoicingProvider: options.provider ?? 'ifirma',
+        invoiceSellerName: 'Together sp. z o.o.',
+        invoiceSellerAddress: 'Prosta 1, 00-001 Warszawa',
       }),
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async () => {
@@ -161,9 +183,66 @@ const harness = (options: {
       decrypt: (secret) => ok(secret.ciphertext),
     },
     ids: { nextId: () => `id-${++ids}` },
-    clock: { nowIso: () => now },
+    clock: { nowIso: () => options.nowIso ?? now },
+    ksef: {
+      environment: 'test',
+      credentials: {
+        resolve: async () => ok({
+          tenantId: 'tenant-1',
+          token: 'ksef-token',
+          contextNip: '5555555555',
+        }),
+      },
+      numbers: {
+        allocate: async (_tenantId, input) => {
+          allocatedYear = input.year;
+          return { p2: `FV/${String(input.year)}/000001`, sequence: 1 };
+        },
+      },
+      artifacts: {
+        findByKey: async () => null,
+        store: async () => true,
+      },
+      hash: {
+        sha256: () => 'a'.repeat(64),
+      },
+      validator: {
+        validate: async () => ok(undefined),
+      },
+      client: {
+        validateCredentials: async ({ credentials }) => {
+          testedKsefCredentials = credentials;
+          return ok({ diagnostic: 'KSeF accepted the token for this NIP context.' });
+        },
+        openSession: async () => ok({ sessionReference: 'session-1' }),
+        submitInvoice: async () => ok({ invoiceReference: 'invoice-reference-1' }),
+        listSessionInvoices: async () => ok([]),
+        getInvoiceStatus: async () => ok({
+          code: 150,
+          description: 'Processing',
+          details: [],
+          extensions: {},
+          ksefNumber: null,
+          acquisitionAt: null,
+          invoicingAt: null,
+          permanentStorageAt: null,
+        }),
+        downloadUpo: async () => ok('<upo/>'),
+        verifyDuplicateOriginal: async () => ok(false),
+        closeSession: async () => ok(undefined),
+      },
+    },
   };
-  return { deps, invoices, events, calls: () => calls, testedConfig: () => testedConfig };
+  return {
+    deps,
+    invoices,
+    events,
+    calls: () => calls,
+    allocatedYear: () => allocatedYear,
+    frozenXml: () => frozenXml,
+    testedConfig: () => testedConfig,
+    testedKsefCredentials: () => testedKsefCredentials,
+  };
 };
 
 const ctx = {
@@ -188,13 +267,10 @@ describe('requestInvoice', () => {
     expect(h.invoices).toHaveLength(1);
   });
 
-  it('requires a billing snapshot', async () => {
+  it('supports a B2C order without a billing snapshot', async () => {
     const h = harness();
     h.deps.orderDetails.findById = async () => order(null);
-    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
-      ok: false,
-      error: { code: 'validation' },
-    });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
   });
 
   it('records missing provider configuration as a failed lifecycle', async () => {
@@ -251,6 +327,94 @@ describe('requestInvoice', () => {
     expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
     expect(h.calls()).toBe(1);
   });
+
+  it('freezes and queues KSeF issuance without making a provider HTTP call', async () => {
+    const h = harness({ provider: 'ksef' });
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        status: 'queued',
+        provider: 'ksef',
+        invoiceNumber: 'FV/2026/000001',
+        ksef: {
+          state: 'queued',
+          xmlSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      },
+    });
+    expect(h.calls()).toBe(0);
+    expect(h.events.at(-1)).toMatchObject({ type: 'frozen' });
+  });
+
+  it('preserves a frozen KSeF row after the tenant switches to iFirma', async () => {
+    const h = harness({ provider: 'ksef' });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const frozen = h.invoices[0];
+    if (frozen === undefined) throw new Error('Expected a frozen invoice');
+    frozen.status = 'failed';
+    frozen.error = 'ksef_430';
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, invoicingProvider: 'ifirma' };
+    };
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        id: frozen.id,
+        provider: 'ksef',
+        invoiceNumber: 'FV/2026/000001',
+        status: 'failed',
+      },
+    });
+    expect(h.calls()).toBe(0);
+  });
+
+  it('preserves a failed iFirma row after the tenant switches to KSeF', async () => {
+    const h = harness({ fail: true });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, invoicingProvider: 'ksef' };
+    };
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: { provider: 'ifirma', status: 'failed' },
+    });
+    expect(h.calls()).toBe(1);
+  });
+
+  it('keeps the captured B2C identity in the frozen FA(3)', async () => {
+    const h = harness({ provider: 'ksef' });
+    h.deps.orderDetails.findById = async () => order({ ...billing, nip: null });
+
+    await requestInvoice(ctx, 'order-1', h.deps);
+
+    expect(h.frozenXml()).toContain('<BrakID>1</BrakID>');
+    expect(h.frozenXml()).toContain('<Nazwa>Acme sp. z o.o.</Nazwa>');
+    expect(h.frozenXml()).toContain('<AdresL1>Prosta 1, 00-001 Warszawa</AdresL1>');
+  });
+
+  it('uses the Warsaw calendar date for P_1 and the numbering year', async () => {
+    const h = harness({
+      provider: 'ksef',
+      nowIso: '2025-12-31T23:30:00.000Z',
+    });
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        invoiceNumber: 'FV/2026/000001',
+        ksef: { issueDate: '2026-01-01' },
+      },
+    });
+    expect(h.allocatedYear()).toBe(2026);
+    expect(h.frozenXml()).toContain('<P_1>2026-01-01</P_1>');
+  });
 });
 
 describe('autoIssueOnPayment', () => {
@@ -298,5 +462,106 @@ describe('testIfirmaConnection', () => {
       error: { code: 'forbidden' },
     });
     expect(h.testedConfig()).toBeNull();
+  });
+});
+
+describe('testKsefConnection', () => {
+  it('runs the real token authentication bootstrap with resolved tenant credentials', async () => {
+    const h = harness();
+    expect(await testKsefConnection(ctx, h.deps)).toEqual({
+      ok: true,
+      value: { ok: true, diagnostic: 'KSeF accepted the token for this NIP context.' },
+    });
+    expect(h.testedKsefCredentials()).toEqual({
+      tenantId: 'tenant-1',
+      token: 'ksef-token',
+      contextNip: '5555555555',
+    });
+  });
+
+  it('allows only the tenant owner to test KSeF', async () => {
+    const h = harness();
+    expect(await testKsefConnection({
+      identity: { ...ctx.identity, staffRole: 'admin' },
+    }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(h.testedKsefCredentials()).toBeNull();
+  });
+});
+
+describe('KSeF artifact downloads', () => {
+  it('allows only the owning member to render an issued frozen invoice', async () => {
+    const h = harness({ provider: 'ksef' });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const frozen = h.invoices[0];
+    if (frozen?.ksef === null || frozen?.ksef === undefined || h.deps.ksef === undefined) {
+      throw new Error('Expected a frozen KSeF invoice');
+    }
+    frozen.status = 'issued';
+    frozen.ksef = {
+      ...frozen.ksef,
+      state: 'succeeded',
+      ksefNumber: '5555555555-20260727-ABC-01',
+    };
+    h.deps.invoices.findByIdForMember = async (_tenantId, memberId) =>
+      memberId === 'member-1' ? frozen : null;
+    h.deps.ksef.artifacts.findByKey = async () => ({
+      key: frozen.ksef?.xmlArtifactKey ?? '',
+      tenantId: 'tenant-1',
+      invoiceId: frozen.id,
+      kind: 'fa3',
+      content: '<Faktura/>',
+      sha256: 'a'.repeat(64),
+      byteSize: 11,
+      createdAt: now,
+    });
+    h.deps.ksef.pdf = {
+      render: () => new TextEncoder().encode('%PDF-1.4 own invoice'),
+    };
+
+    const memberCtx = {
+      identity: { ...ctx.identity, staffRole: null, memberId: 'member-1' },
+    };
+    expect(await downloadMemberInvoice(memberCtx, frozen.id, h.deps)).toMatchObject({
+      ok: true,
+      value: { contentType: 'application/pdf', filename: 'FV_2026_000001.pdf' },
+    });
+    expect(await downloadMemberInvoice({
+      identity: { ...memberCtx.identity, memberId: 'member-2' },
+    }, frozen.id, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+
+  it('downloads a hash-verified UPO for tenant staff', async () => {
+    const h = harness({ provider: 'ksef' });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const frozen = h.invoices[0];
+    if (frozen?.ksef === null || frozen?.ksef === undefined || h.deps.ksef === undefined) {
+      throw new Error('Expected a frozen KSeF invoice');
+    }
+    frozen.ksef = {
+      ...frozen.ksef,
+      upoArtifactKey: `invoice/${frozen.id}/upo.xml`,
+      upoSha256: 'a'.repeat(64),
+    };
+    h.deps.ksef.artifacts.findByKey = async () => ({
+      key: frozen.ksef?.upoArtifactKey ?? '',
+      tenantId: 'tenant-1',
+      invoiceId: frozen.id,
+      kind: 'upo',
+      content: '<UPO>signed</UPO>',
+      sha256: 'a'.repeat(64),
+      byteSize: 17,
+      createdAt: now,
+    });
+
+    expect(await downloadInvoiceUpo(ctx, frozen.id, h.deps)).toMatchObject({
+      ok: true,
+      value: { contentType: 'application/xml', filename: 'FV_2026_000001-UPO.xml' },
+    });
   });
 });

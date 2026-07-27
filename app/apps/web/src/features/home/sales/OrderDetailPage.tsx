@@ -101,27 +101,70 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             <Chip
               size="small"
               label={t.sales.invoiceStatuses[detail.data.invoice.status]}
-              color={detail.data.invoice.status === 'failed' ? 'error' : 'default'}
+              color={detail.data.invoice.status === 'failed' || detail.data.invoice.status === 'conflict'
+                ? 'error'
+                : 'default'}
             />
           )}
-          {detail.data.invoice?.providerInvoiceId == null ? null : (
-            <Link
-              href={`/api/invoices/${encodeURIComponent(detail.data.invoice.id)}/download`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t.sales.invoiceDownload}
-            </Link>
-          )}
-          {detail.data.invoice?.providerInvoiceId == null ? null : (
-            <Button
-              variant="outlined"
-              disabled={refreshInvoice.isPending}
-              onClick={() => refreshInvoice.mutate(detail.data.invoice?.id ?? '')}
-            >
-              {refreshInvoice.isPending ? t.sales.refreshingInvoice : t.sales.refreshInvoice}
-            </Button>
-          )}
+          {detail.data.invoice?.provider === 'ksef' && detail.data.invoice.ksef !== null
+            && detail.data.invoice.ksef !== undefined ? (
+              <Stack useFlexGap spacing="0.35rem">
+                <Typography variant="body2">
+                  {t.sales.ksefStates[detail.data.invoice.ksef.state]}
+                </Typography>
+                {detail.data.invoice.ksef.ksefNumber === null ? null : (
+                  <Typography variant="body2">
+                    {t.sales.ksefNumber}: {detail.data.invoice.ksef.ksefNumber}
+                  </Typography>
+                )}
+                {detail.data.invoice.ksef.state === 'numbering_conflict' ? (
+                  <Typography color="error" variant="body2">
+                    {t.sales.ksefConflictHelp}
+                  </Typography>
+                ) : null}
+              </Stack>
+            ) : null}
+          {detail.data.invoice?.provider === 'ksef'
+            && detail.data.invoice.ksef?.ksefNumber !== null
+            && detail.data.invoice.ksef?.ksefNumber !== undefined ? (
+              <Link
+                href={`/api/invoices/${encodeURIComponent(detail.data.invoice.id)}/download`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t.sales.ksefPdfDownload}
+              </Link>
+            ) : null}
+          {detail.data.invoice?.provider === 'ksef'
+            && detail.data.invoice.ksef?.upoArtifactKey != null ? (
+              <Link
+                href={`/api/invoices/${encodeURIComponent(detail.data.invoice.id)}/upo`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t.sales.ksefUpoDownload}
+              </Link>
+            ) : null}
+          {detail.data.invoice?.provider !== 'ksef'
+            && detail.data.invoice?.providerInvoiceId != null ? (
+              <Link
+                href={`/api/invoices/${encodeURIComponent(detail.data.invoice.id)}/download`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t.sales.invoiceDownload}
+              </Link>
+            ) : null}
+          {detail.data.invoice?.provider !== 'ksef'
+            && detail.data.invoice?.providerInvoiceId != null ? (
+              <Button
+                variant="outlined"
+                disabled={refreshInvoice.isPending}
+                onClick={() => refreshInvoice.mutate(detail.data.invoice?.id ?? '')}
+              >
+                {refreshInvoice.isPending ? t.sales.refreshingInvoice : t.sales.refreshInvoice}
+              </Button>
+            ) : null}
           {order.billing !== null &&
           order.billing !== undefined &&
           (detail.data.invoice === null || detail.data.invoice.status === 'failed') ? (

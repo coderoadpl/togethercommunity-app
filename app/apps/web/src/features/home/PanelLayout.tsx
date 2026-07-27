@@ -193,6 +193,7 @@ const UserMenu = ({
           aria-haspopup="true"
           aria-expanded={open ? true : undefined}
           onClick={(event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget)}
+          sx={{ minHeight: '44px', minWidth: '44px' }}
         >
           <AccountIcon />
         </IconButton>
@@ -269,6 +270,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
                 data-testid="open-navigation"
                 aria-label={t.panel.openNavigation}
                 onClick={() => setMobileOpen(true)}
+                sx={{ minHeight: '44px', minWidth: '44px' }}
               >
                 <MenuIcon />
               </IconButton>

@@ -51,7 +51,11 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
               </Button>
             )}
             <Button type="submit" variant="contained" disabled={create.isPending || update.isPending}>
-              {create.isPending || update.isPending ? t.marketing.saving : document === undefined ? t.marketing.create : t.marketing.save}
+              {create.isPending || update.isPending
+                ? t.marketing.saving
+                : document === undefined
+                  ? t.marketing.createDocumentAction
+                  : t.marketing.saveDocumentAction}
             </Button>
           </>
         }

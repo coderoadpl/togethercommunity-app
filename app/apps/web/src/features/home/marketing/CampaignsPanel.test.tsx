@@ -5,7 +5,35 @@ import { describe, expect, it } from 'vitest';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
-import { CampaignsPanel } from './CampaignsPanel.js';
+import { CampaignActions, CampaignsPanel } from './CampaignsPanel.js';
+
+const cancelledCampaign = {
+  id: 'campaign-cancelled',
+  tenantId: 'tenant-1',
+  name: 'Cancelled',
+  subject: 'Cancelled subject',
+  bodyHtml: '<p>Cancelled</p>',
+  bodySource: '# Cancelled',
+  layoutId: null,
+  consentDefinitionId: 'consent-1',
+  audienceFilter: null,
+  status: 'cancelled',
+  sendAt: null,
+  snapshotMaxMemberId: null,
+  cursorMemberId: null,
+  toSend: 0,
+  sent: 0,
+  failed: 0,
+  lockedUntil: null,
+  lockedBy: null,
+  errorCount: 0,
+  pausedReason: null,
+  audienceNameSnapshot: null,
+  consentLabelSnapshot: null,
+  startedAt: null,
+  finishedAt: null,
+  createdAt: '2026-07-27T10:00:00.000Z',
+} as const;
 
 describe('campaign reputation warning', () => {
   it('surfaces a critical reputation banner on the campaign list', async () => {
@@ -41,5 +69,13 @@ describe('campaign reputation warning', () => {
     renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByText(/Reputacja wysyłki jest krytyczna/)).toBeInTheDocument();
+  });
+
+  it('shows terminal copy without test-send controls for a cancelled campaign', () => {
+    renderWithProviders(<CampaignActions campaign={cancelledCampaign} />);
+
+    expect(screen.getByText(/kampania została anulowana/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Wyślij test/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Przelicz odbiorców/i })).not.toBeInTheDocument();
   });
 });

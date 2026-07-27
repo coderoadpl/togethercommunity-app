@@ -92,8 +92,8 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const previewAudience = preview.mutate;
 
   useEffect(() => {
-    if (effectiveConsentId !== '') previewAudience({ consentDefinitionId: effectiveConsentId, productIds });
-  }, [effectiveConsentId, previewAudience, productIds]);
+    if (editable && effectiveConsentId !== '') previewAudience({ consentDefinitionId: effectiveConsentId, productIds });
+  }, [editable, effectiveConsentId, previewAudience, productIds]);
 
   const create = useMutation({
     ...actions.createMarketingCampaign,
@@ -244,13 +244,15 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
               ? t.marketing.audienceCount({ count: preview.data.count })
               : t.marketing.allProducts}
         </FormHelperText>
-        <Button
-          variant="text"
-          disabled={effectiveConsentId === '' || preview.isPending}
-          onClick={() => previewAudience({ consentDefinitionId: effectiveConsentId, productIds })}
-        >
-          {t.marketing.audiencePreview}
-        </Button>
+        {editable ? (
+          <Button
+            variant="text"
+            disabled={effectiveConsentId === '' || preview.isPending}
+            onClick={() => previewAudience({ consentDefinitionId: effectiveConsentId, productIds })}
+          >
+            {t.marketing.audiencePreview}
+          </Button>
+        ) : null}
       </FormControl>
       <FormControl fullWidth>
         <FormLabel id="marketing-campaign-layout-label">{t.marketing.layoutLabel}</FormLabel>
@@ -268,7 +270,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   );
 };
 
-const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
+export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [sendAt, setSendAt] = useState('');
@@ -276,9 +278,15 @@ const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   const schedule = useMutation({ ...actions.scheduleMarketingCampaign, onSuccess: invalidate });
   const action = useMutation({ ...actions.marketingCampaignAction, onSuccess: invalidate });
   const testSend = useMutation(actions.testMarketingCampaign);
+  const terminal = campaign.status === 'cancelled' || campaign.status === 'finished';
 
   return (
     <SectionCard title={t.marketing.schedule}>
+      {terminal ? (
+        <Alert severity="info">
+          {campaign.status === 'cancelled' ? t.marketing.cancelledCampaignHint : t.marketing.finishedCampaignHint}
+        </Alert>
+      ) : null}
       {campaign.status === 'draft' ? (
         <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
           <FormControl fullWidth>
@@ -300,9 +308,11 @@ const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         {['draft', 'scheduled', 'running', 'paused'].includes(campaign.status) ? (
           <Button color="error" onClick={() => action.mutate({ campaignId: campaign.id, action: 'cancel' })}>{t.marketing.cancelCampaign}</Button>
         ) : null}
-        <Button disabled={testSend.isPending} onClick={() => testSend.mutate({ campaignId: campaign.id })}>
-          {testSend.isPending ? t.marketing.testing : t.marketing.testSend}
-        </Button>
+        {terminal ? null : (
+          <Button disabled={testSend.isPending} onClick={() => testSend.mutate({ campaignId: campaign.id })}>
+            {testSend.isPending ? t.marketing.testing : t.marketing.testSend}
+          </Button>
+        )}
       </Stack>
       {campaign.pausedReason === null ? null : <Alert severity="warning"><strong>{t.marketing.pausedReason}:</strong> {campaign.pausedReason}</Alert>}
       {schedule.isError || action.isError || testSend.isError ? <Alert>{localizeError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}

@@ -84,6 +84,7 @@ import {
   consentDocumentRefSchema,
   consentDefinitionSchema,
   emailEventSchema,
+  emailReputationSchema,
   emailLayoutSchema,
   emailSendExportFileSchema,
   emailSendExportQuerySchema,
@@ -826,6 +827,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   credentialsConfigured: z.boolean(),
   webhookUrl: z.string().url().nullable(),
 });
+export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
@@ -1013,6 +1015,7 @@ export const API_ROUTES = {
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
+  marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
   emailSends: { method: 'GET', path: '/api/marketing/sends' },
@@ -1147,6 +1150,7 @@ export const API_PATHS = {
   marketingDocumentPublish: API_ROUTES.marketingDocumentPublish.path,
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
+  marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   emailSends: API_ROUTES.emailSends.path,
   emailSendsExport: API_ROUTES.emailSendsExport.path,

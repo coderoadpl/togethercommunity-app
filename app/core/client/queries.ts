@@ -263,6 +263,7 @@ export const marketingScopes = {
   document: (id: string) => ['marketing', 'documents', id] as const,
   layouts: () => ['marketing', 'layouts'] as const,
   settings: () => ['marketing', 'settings'] as const,
+  reputation: () => ['marketing', 'reputation'] as const,
   sends: (input: EmailSendsQueryInput) => ['marketing', 'sends', input] as const,
   send: (kind: 'transactional' | 'marketing', id: string) => ['marketing', 'sends', kind, id] as const,
   memberSends: (memberId: string) => ['marketing', 'member-sends', memberId] as const,
@@ -330,6 +331,9 @@ export const saveMarketingLayoutMutation = (api: ApiClient) => defineMutation({
 });
 export const marketingSesSettingsQuery = (api: ApiClient) => defineQuery({
   queryKey: marketingScopes.settings(), call: ({ signal }) => api.getMarketingSesSettings(signal),
+});
+export const marketingReputationQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.reputation(), call: ({ signal }) => api.getMarketingReputation(signal),
 });
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),

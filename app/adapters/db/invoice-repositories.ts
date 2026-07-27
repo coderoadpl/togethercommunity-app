@@ -1,12 +1,14 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { invoiceSchema } from '@core/domain/index.js';
-import type { InvoiceRepository } from '@core/server/index.js';
+import type { InvoiceRepository, KsefSubmissionRepository } from '@core/server/index.js';
 
 import type { Db } from './client.js';
 import { fiscalArtifacts, invoiceEvents, invoices, ksefSubmissionJobs } from './app-schema.js';
 
-export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
+export const createInvoiceRepository = (
+  db: Db,
+): InvoiceRepository & KsefSubmissionRepository => ({
   findById: async (tenantId, id) => {
     const row = (
       await db
@@ -98,27 +100,30 @@ export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
       await tx.insert(ksefSubmissionJobs).values({ ...job, tenantId });
       return true;
     }),
-  checkpointKsef: async (tenantId, invoice) => {
-    const row = (
-      await db
-        .update(invoices)
-        .set({
-          status: invoice.status,
-          providerInvoiceId: invoice.providerInvoiceId,
-          invoiceNumber: invoice.invoiceNumber,
-          error: invoice.error,
-          issuedAt: invoice.issuedAt,
-          ksef: invoice.ksef,
-        })
-        .where(and(
-          eq(invoices.tenantId, tenantId),
-          eq(invoices.id, invoice.id),
-          sql`coalesce((${invoices.ksef}->>'version')::int, -1) = ${invoice.ksef?.version === undefined
-            ? -1
-            : invoice.ksef.version - 1}`,
-        ))
-        .returning()
-    )[0];
-    return row === undefined ? null : invoiceSchema.parse(row);
-  },
+  checkpointKsef: async (tenantId, invoice, event) =>
+    db.transaction(async (tx) => {
+      const row = (
+        await tx
+          .update(invoices)
+          .set({
+            status: invoice.status,
+            providerInvoiceId: invoice.providerInvoiceId,
+            invoiceNumber: invoice.invoiceNumber,
+            error: invoice.error,
+            issuedAt: invoice.issuedAt,
+            ksef: invoice.ksef,
+          })
+          .where(and(
+            eq(invoices.tenantId, tenantId),
+            eq(invoices.id, invoice.id),
+            sql`coalesce((${invoices.ksef}->>'version')::int, -1) = ${invoice.ksef?.version === undefined
+              ? -1
+              : invoice.ksef.version - 1}`,
+          ))
+          .returning()
+      )[0];
+      if (row === undefined) return null;
+      await tx.insert(invoiceEvents).values({ ...event, tenantId });
+      return invoiceSchema.parse(row);
+    }),
 });

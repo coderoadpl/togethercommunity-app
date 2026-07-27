@@ -505,7 +505,9 @@ const autoIssueFulfilledOrder = async (
       secretCrypto: deps.secretCrypto,
       ids: deps.ids,
       clock: deps.clock,
+      ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
     });
+    if (deps.ksef !== undefined) void deps.ksef.dispatch();
   } catch (cause) {
     deps.logger.error(`[invoice-auto] tenant=${tenantId} order=${order.id} unexpected=${String(cause)}`);
   }
@@ -536,6 +538,14 @@ export const buildApp = (deps: AppDeps) => {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
     return respond(await deps.dispatchEmails('manual'));
+  });
+
+  app.post(API_PATHS.ksefDispatch, async (c) => {
+    if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
+    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.ksef.dispatchSecret) {
+      return respond(err(unauthorized('Invalid KSeF dispatch secret')));
+    }
+    return respond(await deps.ksef.dispatch());
   });
 
   app.get(API_PATHS.globalSchedulerRuns, async (c) => {
@@ -1911,8 +1921,12 @@ export const buildApp = (deps: AppDeps) => {
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
+    if (result.ok && result.value.provider === 'ksef' && deps.ksef !== undefined) {
+      void deps.ksef.dispatch();
+    }
     return respond(result.ok ? ok({ invoice: result.value }) : result);
   });
 
@@ -1930,6 +1944,7 @@ export const buildApp = (deps: AppDeps) => {
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
     return respond(result.ok ? ok({ invoice: result.value }) : result);
@@ -1949,6 +1964,7 @@ export const buildApp = (deps: AppDeps) => {
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
       },
     );
     if (!result.ok) return respond(result);

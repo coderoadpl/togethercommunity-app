@@ -329,6 +329,10 @@ export interface Messages {
     ifirmaInvoiceApiKeyLabel: string;
     ifirmaUsernameLabel: string;
     ifirmaSaveFirst: string;
+    ksefHeading: string;
+    ksefDescription: string;
+    ksefTokenLabel: string;
+    ksefContextNipLabel: string;
     bunnyHeading: string;
     bunnyDescription: string;
     bunnyApiKeyLabel: string;
@@ -929,6 +933,12 @@ export interface Messages {
     allBuyers: string;
     vatRate: string;
     vatRateUnset: string;
+    invoicingProvider: string;
+    providerIfirma: string;
+    providerKsef: string;
+    sellerName: string;
+    sellerAddress: string;
+    saveSeller: string;
   };
   legal: {
     heading: string;

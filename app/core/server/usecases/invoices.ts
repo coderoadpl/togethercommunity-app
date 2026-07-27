@@ -4,12 +4,15 @@ import {
   integrationNotConfigured,
   notFound,
   ok,
+  renderFa3Invoice,
   tenantNotFound,
+  validateFa3Structure,
   validation,
   type AppError,
   type BillingData,
   type Invoice,
   type InvoiceEvent,
+  type KsefEnvironment,
   type Order,
   type OrderListItem,
   type Result,
@@ -18,10 +21,15 @@ import {
 import type { Ctx } from '../context.js';
 import type {
   Clock,
+  ContentHash,
+  FiscalArtifactRepository,
   IdGenerator,
   InvoiceRepository,
   InvoicingPort,
   OrderDetailRepository,
+  KsefCredentialResolver,
+  KsefInvoicePdf,
+  KsefNumberRepository,
   SecretCrypto,
   TenantRepository,
   TenantSecretRepository,
@@ -36,6 +44,14 @@ export interface InvoiceDeps {
   secretCrypto: SecretCrypto;
   ids: IdGenerator;
   clock: Clock;
+  ksef?: {
+    environment: KsefEnvironment;
+    credentials: KsefCredentialResolver;
+    numbers: KsefNumberRepository;
+    artifacts: FiscalArtifactRepository;
+    hash: ContentHash;
+    pdf?: KsefInvoicePdf;
+  };
 }
 
 const eventFor = (
@@ -76,7 +92,7 @@ const invoicingConfig = async (
     : username;
 };
 
-const issue = async (
+const issueIfirma = async (
   tenantId: string,
   order: OrderListItem,
   billing: BillingData | null,
@@ -175,6 +191,162 @@ const issue = async (
   return ok(completed);
 };
 
+const issueKsef = async (
+  tenantId: string,
+  order: OrderListItem,
+  billing: BillingData | null,
+  deps: InvoiceDeps,
+): Promise<Result<Invoice, AppError>> => {
+  if (deps.ksef === undefined || deps.invoices.createFrozenKsef === undefined) {
+    return err(integrationNotConfigured('KSeF submission is unavailable in this deployment'));
+  }
+  const existing = await deps.invoices.findCurrentByOrder(tenantId, order.id);
+  if (existing !== null) return ok(existing);
+  if (order.currency !== 'PLN') return err(validation('KSeF invoices require an order ledger amount in PLN'));
+  if (billing?.country !== undefined && billing.country !== 'PL') {
+    return err(validation('KSeF domestic invoices require a Polish billing address'));
+  }
+  const settings = await deps.tenants.findSettings(tenantId);
+  if (settings?.invoiceVatRatePercent == null) {
+    return err(validation('Set the tenant VAT rate in Settings before issuing invoices'));
+  }
+  if (settings.invoiceSellerName == null || settings.invoiceSellerAddress == null) {
+    return err(validation('Set the invoice seller name and address before issuing through KSeF'));
+  }
+  const credentials = await deps.ksef.credentials.resolve(tenantId);
+  if (!credentials.ok) return credentials;
+  const createdAt = deps.clock.nowIso();
+  const issueDate = createdAt.slice(0, 10);
+  const allocated = await deps.ksef.numbers.allocate(tenantId, {
+    orderId: order.id,
+    invoiceType: 'VAT',
+    year: Number(issueDate.slice(0, 4)),
+    allocatedAt: createdAt,
+  });
+  const invoiceId = deps.ids.nextId();
+  const xml = renderFa3Invoice({
+    invoiceNumber: allocated.p2,
+    issueDate,
+    generatedAt: createdAt,
+    seller: {
+      nip: credentials.value.contextNip,
+      name: settings.invoiceSellerName,
+      addressLine: settings.invoiceSellerAddress,
+    },
+    buyer: billing?.nip == null
+      ? null
+      : {
+          nip: billing.nip,
+          name: billing.companyName,
+          addressLine: `${billing.address}, ${billing.postalCode} ${billing.city}`,
+        },
+    productName: order.productTitle,
+    grossAmountCents: order.amountCents,
+    discountCents: order.discountCents,
+    vatRatePercent: settings.invoiceVatRatePercent,
+  });
+  const structural = validateFa3Structure(xml);
+  if (!structural.ok) return err(validation('Generated FA(3) failed local validation', structural.errors));
+  const xmlSha256 = deps.ksef.hash.sha256(xml);
+  const xmlArtifactKey = `invoice/${invoiceId}/fa3.xml`;
+  const invoice: Invoice = {
+    id: invoiceId,
+    tenantId,
+    orderId: order.id,
+    status: 'queued',
+    provider: 'ksef',
+    providerInvoiceId: null,
+    invoiceNumber: allocated.p2,
+    pdfUrl: null,
+    error: null,
+    issuedAt: null,
+    createdAt,
+    ksef: {
+      environment: deps.ksef.environment,
+      schemaSystemCode: 'FA (3)',
+      schemaVersion: '1-0E',
+      contextNip: credentials.value.contextNip,
+      sellerName: settings.invoiceSellerName,
+      sellerAddress: settings.invoiceSellerAddress,
+      p2: allocated.p2,
+      invoiceType: 'VAT',
+      issueDate,
+      xmlArtifactKey,
+      xmlByteSize: new TextEncoder().encode(xml).byteLength,
+      xmlSha256,
+      state: 'queued',
+      authConfigVersion: 1,
+      sessionReference: null,
+      invoiceReference: null,
+      ksefNumber: null,
+      lastStatusCode: null,
+      lastStatusDescription: null,
+      lastStatusDetails: [],
+      lastStatusExtensions: {},
+      lastPolledAt: null,
+      acquisitionAt: null,
+      invoicingAt: null,
+      permanentStorageAt: null,
+      upoArtifactKey: null,
+      upoSha256: null,
+      upoRetrievedAt: null,
+      originalSessionReference: null,
+      originalKsefNumber: null,
+      lastTransportError: null,
+      retryAt: null,
+      attempt: 0,
+      correlationChecks: 0,
+      version: 0,
+    },
+  };
+  const frozen = eventFor(deps, tenantId, order.id, invoice.id, 'frozen', null, {
+    p2: allocated.p2,
+    xmlSha256,
+  });
+  const stored = await deps.invoices.createFrozenKsef(
+    tenantId,
+    invoice,
+    frozen,
+    {
+      key: xmlArtifactKey,
+      tenantId,
+      invoiceId,
+      kind: 'fa3',
+      content: xml,
+      sha256: xmlSha256,
+      byteSize: invoice.ksef?.xmlByteSize ?? 0,
+      createdAt,
+    },
+    {
+      id: deps.ids.nextId(),
+      tenantId,
+      invoiceId,
+      status: 'queued',
+      attempts: 0,
+      nextAttemptAt: createdAt,
+      lockedAt: null,
+      lastError: null,
+      createdAt,
+    },
+  );
+  if (stored) return ok(invoice);
+  const winner = await deps.invoices.findCurrentByOrder(tenantId, order.id);
+  return winner === null ? err(validation('KSeF invoice request could not be claimed')) : ok(winner);
+};
+
+const issue = async (
+  tenantId: string,
+  order: OrderListItem,
+  billing: BillingData | null,
+  deps: InvoiceDeps,
+): Promise<Result<Invoice, AppError>> => {
+  const settings = await deps.tenants.findSettings(tenantId);
+  if ((settings?.invoicingProvider ?? 'ifirma') === 'ksef') {
+    return issueKsef(tenantId, order, billing, deps);
+  }
+  return issueIfirma(tenantId, order, billing, deps);
+};
+
 export const downloadInvoice = async (
   ctx: Ctx,
   invoiceId: string,
@@ -184,6 +356,24 @@ export const downloadInvoice = async (
   if (ctx.identity.staffRole === null) return err(forbidden());
   const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
   if (invoice === null) return err(notFound('Invoice was not found'));
+  if (invoice.provider === 'ksef') {
+    if (invoice.ksef === null || invoice.ksef === undefined || deps.ksef?.pdf === undefined) {
+      return err(validation('The KSeF invoice visualization is unavailable'));
+    }
+    const artifact = await deps.ksef.artifacts.findByKey(
+      ctx.identity.tenantId,
+      invoice.ksef.xmlArtifactKey,
+    );
+    if (artifact === null || deps.ksef.hash.sha256(artifact.content) !== invoice.ksef.xmlSha256) {
+      return err(validation('The frozen KSeF invoice artifact failed its integrity check'));
+    }
+    const filenameBase = invoice.ksef.p2.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    return ok({
+      content: deps.ksef.pdf.render({ invoice, xml: artifact.content }),
+      contentType: 'application/pdf',
+      filename: `${filenameBase}.pdf`,
+    });
+  }
   if (invoice.providerInvoiceId === null) return err(validation('The provider has not created this invoice yet'));
   const config = await invoicingConfig(ctx.identity.tenantId, deps);
   if (!config.ok) return config;
@@ -205,8 +395,7 @@ export const requestInvoice = async (
   if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can issue invoices'));
   const order = await deps.orderDetails.findById(ctx.identity.tenantId, orderId);
   if (order === null) return err(notFound('Order was not found'));
-  if (order.billing == null) return err(validation('Add billing data before issuing an invoice'));
-  return issue(ctx.identity.tenantId, order, order.billing, deps);
+  return issue(ctx.identity.tenantId, order, order.billing ?? null, deps);
 };
 
 export const autoIssueOnPayment = async (
@@ -241,6 +430,7 @@ export const refreshInvoiceStatus = async (
   if (ctx.identity.staffRole === null) return err(forbidden());
   const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
   if (invoice === null) return err(notFound('Invoice was not found'));
+  if (invoice.provider === 'ksef') return ok(invoice);
   if (invoice.providerInvoiceId === null) return ok(invoice);
   const config = await invoicingConfig(ctx.identity.tenantId, deps);
   if (!config.ok) return config;

@@ -5,6 +5,11 @@ import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPla
 import { createEmailEventRepository } from '@adapters/db/email-events.js';
 import { createEmailSendRepository } from '@adapters/db/email-sends.js';
 import { createInvoiceRepository } from '@adapters/db/invoice-repositories.js';
+import {
+  createFiscalArtifactRepository,
+  createKsefNumberRepository,
+  createKsefSubmissionJobRepository,
+} from '@adapters/db/ksef-repositories.js';
 import { createSchedulerRunRepository } from '@adapters/db/scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
@@ -67,12 +72,16 @@ import {
 import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
 import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
+import { createContentHash } from '@adapters/crypto/content-hash.js';
+import { createKsefCredentialResolver } from '@adapters/crypto/ksef-credential-resolver.js';
 import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
 import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createFakeInvoicing } from '@adapters/invoicing/fake.js';
 import { createIfirmaInvoicing } from '@adapters/invoicing/ifirma.js';
+import { createKsefClient } from '@adapters/invoicing/ksef.js';
+import { createKsefInvoicePdf } from '@adapters/invoicing/ksef-pdf.js';
 import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
 import { createBunnyEmbedTokenSigner } from '@adapters/crypto/bunny-embed-token-signer.js';
 import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
@@ -127,6 +136,13 @@ import type {
   IdGenerator,
   InvoiceRepository,
   InvoicingPort,
+  ContentHash,
+  FiscalArtifactRepository,
+  KsefClientPort,
+  KsefCredentialResolver,
+  KsefNumberRepository,
+  KsefInvoicePdf,
+  KsefSubmissionJobRepository,
   MemberCourseProgressRepository,
   MemberErasurePort,
   MemberRepository,
@@ -172,8 +188,8 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { ok, type AppError, type KsefEnvironment, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
 import type { Env } from './env.js';
@@ -185,6 +201,19 @@ export interface DevEndpoints {
 
 export interface AuthConfig {
   googleEnabled: boolean;
+}
+
+export interface KsefAppDeps {
+  environment: KsefEnvironment;
+  credentials: KsefCredentialResolver;
+  numbers: KsefNumberRepository;
+  artifacts: FiscalArtifactRepository;
+  hash: ContentHash;
+  pdf: KsefInvoicePdf;
+  client: KsefClientPort;
+  jobs: KsefSubmissionJobRepository;
+  dispatchSecret: string;
+  dispatch(): Promise<Result<{ processed: boolean; invoiceId: string | null }, AppError>>;
 }
 
 export interface AppDeps {
@@ -226,6 +255,7 @@ export interface AppDeps {
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
   invoices: InvoiceRepository;
   invoicing: InvoicingPort;
+  ksef?: KsefAppDeps;
   coupons?: CouponManagementRepository;
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
@@ -314,6 +344,35 @@ export const createDeps = (env: Env): AppDeps => {
   const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
   const emailHmac = createEmailHmac(env.SECRETS_MASTER_KEY);
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  const invoiceRepository = createInvoiceRepository(db);
+  const ksefCredentials = createKsefCredentialResolver(secretResolver);
+  const ksefNumbers = createKsefNumberRepository(db);
+  const fiscalArtifacts = createFiscalArtifactRepository(db);
+  const ksefJobs = createKsefSubmissionJobRepository(db);
+  const contentHash = createContentHash();
+  const ksefPdf = createKsefInvoicePdf();
+  const ksefClient = createKsefClient({
+    baseUrls: {
+      test: env.KSEF_TEST_BASE_URL,
+      production: env.KSEF_PRODUCTION_BASE_URL,
+    },
+  });
+  const ksefSubmissionDeps = {
+    invoices: invoiceRepository,
+    artifacts: fiscalArtifacts,
+    credentials: ksefCredentials,
+    ksef: ksefClient,
+    hash: contentHash,
+    ids,
+    clock,
+    retry: {
+      baseMs: 1000,
+      capMs: 15 * 60 * 1000,
+      jitter: () => Math.floor(Math.random() * 250),
+    },
+    jobs: ksefJobs,
+  };
+  const dispatchKsef = () => dispatchKsefJob(ksefSubmissionDeps);
   const payment =
     env.PAYMENT_PROVIDER === 'stripe'
       ? createStripePaymentProvider({ resolver: secretResolver })
@@ -572,8 +631,20 @@ export const createDeps = (env: Env): AppDeps => {
     secretResolver,
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
-    invoices: createInvoiceRepository(db),
+    invoices: invoiceRepository,
     invoicing,
+    ksef: {
+      environment: env.KSEF_ENVIRONMENT,
+      credentials: ksefCredentials,
+      numbers: ksefNumbers,
+      artifacts: fiscalArtifacts,
+      hash: contentHash,
+      pdf: ksefPdf,
+      client: ksefClient,
+      jobs: ksefJobs,
+      dispatchSecret: env.CRON_SECRET ?? env.MARKETING_TICK_SECRET,
+      dispatch: dispatchKsef,
+    },
     coupons: createCouponRepository(db),
     couponRedemptions: createCouponRedemptionRepository(db),
     couponCheckoutSessions: createCouponCheckoutSessionRepository(db),

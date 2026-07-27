@@ -16,6 +16,9 @@ const envSchema = z
     // 32-byte AES-256-GCM key, base64. Generate: openssl rand -base64 32
     SECRETS_MASTER_KEY: z.string().min(1).default('dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE='),
     PAYMENT_PROVIDER: z.enum(['stripe', 'fake']).default('fake'),
+    KSEF_ENVIRONMENT: z.enum(['test', 'production']).default('test'),
+    KSEF_TEST_BASE_URL: z.string().url().default('https://api-test.ksef.mf.gov.pl/v2'),
+    KSEF_PRODUCTION_BASE_URL: z.string().url().default('https://api.ksef.mf.gov.pl/v2'),
     SECURE_COOKIES: z
       .enum(['true', 'false'])
       .default('false')
@@ -76,6 +79,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['AUTH_DEV_EXPOSE_MAGIC_LINKS'],
         message: 'AUTH_DEV_EXPOSE_MAGIC_LINKS cannot be enabled in production',
+      });
+    }
+    if (env.KSEF_ENVIRONMENT !== 'production') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['KSEF_ENVIRONMENT'],
+        message: 'KSEF_ENVIRONMENT must be production in a production deployment',
       });
     }
     if (env.EMAIL_PROVIDER === 'ses' && !env.EMAIL_FROM) {

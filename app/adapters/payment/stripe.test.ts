@@ -14,15 +14,7 @@ describe('stripeCheckoutSessionParams', () => {
       cancelUrl: 'https://alpha.example.com/checkout/product-1?status=cancelled',
       customerEmail: 'buyer@example.com',
       language: 'pl',
-      checkoutConsent: {
-        termsAccepted: true,
-        selectedDefinitionIds: ['newsletter'],
-        attachedDefinitionIds: ['newsletter'],
-        collectedAt: '2026-07-27T12:00:00.000Z',
-        confirmationBaseUrl: 'https://alpha.example.com/marketing/confirm',
-        ip: '203.0.113.8',
-        userAgent: 'Checkout Browser/1.0',
-      },
+      checkoutConsentCaptureId: 'capture-opaque-1',
     });
 
     expect(params).toMatchObject({
@@ -34,15 +26,7 @@ describe('stripeCheckoutSessionParams', () => {
         productId: 'product-1',
         memberEmail: 'buyer@example.com',
         language: 'pl',
-        checkoutConsent: JSON.stringify({
-          termsAccepted: true,
-          selectedDefinitionIds: ['newsletter'],
-          attachedDefinitionIds: ['newsletter'],
-          collectedAt: '2026-07-27T12:00:00.000Z',
-          confirmationBaseUrl: 'https://alpha.example.com/marketing/confirm',
-          ip: '203.0.113.8',
-          userAgent: 'Checkout Browser/1.0',
-        }),
+        checkoutConsentCaptureId: 'capture-opaque-1',
       },
       line_items: [
         {
@@ -55,5 +39,27 @@ describe('stripeCheckoutSessionParams', () => {
         },
       ],
     });
+  });
+
+  it('keeps every metadata value inside the Stripe 500-character cap', () => {
+    const params = stripeCheckoutSessionParams({
+      tenantId: 'tenant-a',
+      productId: 'product-1',
+      productName: 'Course One',
+      priceCents: 4900,
+      currency: 'PLN',
+      successUrl: 'https://alpha.example.com/checkout/product-1?status=success',
+      cancelUrl: 'https://alpha.example.com/checkout/product-1?status=cancelled',
+      customerEmail: 'buyer@example.com',
+      language: 'pl',
+      priceId: 'price-1',
+      checkoutConsentCaptureId: 'capture-opaque-1',
+    });
+
+    const values = Object.values(params.metadata ?? {});
+    expect(values).not.toHaveLength(0);
+    for (const value of values) {
+      expect(String(value).length).toBeLessThanOrEqual(500);
+    }
   });
 });

@@ -1003,6 +1003,34 @@ describe('marketing e-mail use-case integration', () => {
     expect(deps.ses.sent).toHaveLength(0);
   });
 
+  it('does not yield marketing for a transactional failure at the attempts cap', async () => {
+    const deps = await setup();
+    deps.outbox.items.push({
+      id: 'transactional-exhausted',
+      tenantId: 'tenant-1',
+      to: 'x@example.test',
+      payload: {
+        kind: 'reset-password',
+        language: 'en',
+        actionUrl: 'https://tenant.test/reset',
+      },
+      attempts: 3,
+      status: 'failed',
+      sesMessageId: null,
+      transport: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+    });
+    expect(
+      await campaignTick(
+        ctx,
+        { campaignId: 'campaign-1', workerId: 'worker', tickSeconds: 1 },
+        deps,
+      ),
+    ).toMatchObject({ ok: true, value: { yieldedToTransactional: false } });
+    expect(deps.ses.sent).toHaveLength(1);
+  });
+
   it('I13 keeps GET read-only and makes one-click POST idempotent with global suppression', async () => {
     const deps = await setup();
     await deps.unsubscribes.create('tenant-1', { id: 'unsubscribe-1', tenantId: 'tenant-1', token: '0123456789abcdef0123456789abcdef', email: 'member@example.test', memberId: 'member-1', campaignSendId: null, scope: 'all_marketing', createdAt: NOW, usedAt: null });

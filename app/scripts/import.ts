@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { accessItemSchema, chapterSchema, lessonBlockSchema } from '@core/domain/index.js';
 import { createAuth } from '@adapters/auth/create-auth.js';
 import { createImportAuthGateway } from '@adapters/auth/import-credential.js';
+import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
 import { createDb } from '@adapters/db/client.js';
 import { createEmailOutboxRepository } from '@adapters/db/email-outbox.js';
 import {
@@ -341,6 +342,10 @@ const main = async (): Promise<number> => {
     google: null,
   });
   const gateway = createImportAuthGateway(auth);
+  const emailHmac = createEmailHmac(
+    process.env['SECRETS_MASTER_KEY'] ??
+      'dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE=',
+  );
   const nowIso = (): string => new Date().toISOString();
 
   const resolved = await resolveImportTenants(db, gateway, args.mappings, {
@@ -355,7 +360,11 @@ const main = async (): Promise<number> => {
     bundle: loadTenantBundle(args.bundleDir, tenant.bundleSlug),
   }));
 
-  const result = await runImport(db, gateway, targets, { apply: args.apply, nowIso });
+  const result = await runImport(db, gateway, targets, {
+    apply: args.apply,
+    nowIso,
+    emailHmac,
+  });
 
   const report = renderReport(args, targets, result);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

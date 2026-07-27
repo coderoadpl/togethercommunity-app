@@ -25,6 +25,7 @@ import {
   createCourseLessonRepository,
   createCourseModuleRepository,
   createCourseRepository,
+  createCheckoutConsentCaptureRepository,
   createHealthPort,
   createMemberErasureRepository,
   createMemberRepository,
@@ -39,7 +40,16 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
-import { consents, emailEvents, memberCourseProgress, members, posts, suppressions, user } from './schema.js';
+import {
+  consents,
+  emailEvents,
+  erasedMemberImports,
+  memberCourseProgress,
+  members,
+  posts,
+  suppressions,
+  user,
+} from './schema.js';
 
 const TEST_DB = 'together_repositories_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -406,6 +416,7 @@ describe('member erasure repository', () => {
       { id: 'user-rodo-owner', name: 'Rodo Owner', email: 'owner-rodo@together.dev' },
       { id: 'user-rodo-buyer', name: 'Jan Kowalski', email: 'jan.kowalski@together.dev' },
       { id: 'user-rodo-shared', name: 'Anna Shared', email: 'anna.shared@together.dev' },
+      { id: 'user-rodo-dollar', name: 'Dollar Test', email: 'dollar@together.dev' },
     ]);
 
     const tenants = createTenantRepository(db);
@@ -435,6 +446,15 @@ describe('member erasure repository', () => {
       .where(eq(members.id, 'mem-rodo'));
     await membersRepo.create(RODO, member({ id: 'mem-rodo-shared', tenantId: RODO, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
     await membersRepo.create(OTHER, member({ id: 'mem-other-shared', tenantId: OTHER, userId: 'user-rodo-shared', email: 'anna.shared@together.dev' }));
+    await membersRepo.create(
+      RODO,
+      member({
+        id: 'mem-rodo-dollar',
+        tenantId: RODO,
+        userId: 'user-rodo-dollar',
+        email: 'dollar@together.dev',
+      }),
+    );
 
     const products = createProductRepository(db);
     await products.create(RODO, product({ id: 'prod-rodo', tenantId: RODO, title: 'Kurs' }));
@@ -530,7 +550,37 @@ describe('member erasure repository', () => {
         meta: { recipient: 'jan.kowalski@together.dev' },
         createdAt: NOW,
       },
+      {
+        id: 'event-rodo-dollar',
+        tenantId: RODO,
+        mailKind: 'transactional',
+        refId: 'outbox-rodo-dollar',
+        type: 'delivered',
+        occurredAt: NOW,
+        meta: { recipient: 'dollar@together.dev' },
+        createdAt: NOW,
+      },
     ]);
+  });
+
+  it('stores checkout consent evidence locally with tenant-scoped lookup', async () => {
+    const repo = createCheckoutConsentCaptureRepository(db);
+    const capture = {
+      termsAccepted: true,
+      selectedDefinitionIds: ['newsletter'],
+      attachedDefinitionIds: ['newsletter'],
+      collectedAt: NOW,
+      confirmationBaseUrl: 'https://rodo.example/marketing/confirm',
+      ip: '203.0.113.44',
+      userAgent: 'A'.repeat(1200),
+    };
+    await repo.create(RODO, {
+      id: 'capture-rodo',
+      capture,
+      createdAt: NOW,
+    });
+    expect(await repo.findById(RODO, 'capture-rodo')).toEqual(capture);
+    expect(await repo.findById(OTHER, 'capture-rodo')).toBeNull();
   });
 
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
@@ -573,6 +623,19 @@ describe('member erasure repository', () => {
       emailHmac: emailHmac.compute(RODO, 'jan.kowalski@together.dev'),
       reason: 'erasure',
     }]);
+    expect(
+      await db
+        .select()
+        .from(erasedMemberImports)
+        .where(eq(erasedMemberImports.memberId, 'mem-rodo')),
+    ).toEqual([
+      expect.objectContaining({
+        tenantId: RODO,
+        legacyId: 'legacy-mem-rodo',
+        emailHmac: emailHmac.compute(RODO, 'jan.kowalski@together.dev'),
+        erasedAt: REMOVAL_AT,
+      }),
+    ]);
 
     const progressRows = await db
       .select()
@@ -582,7 +645,11 @@ describe('member erasure repository', () => {
     expect(progressRows[0]).toMatchObject({ completedLessonIds: ['l1', 'l2'] });
 
     const eventRows = await db.select().from(emailEvents).where(eq(emailEvents.tenantId, RODO));
-    expect(eventRows.map((event) => event.type).sort()).toEqual(['bounced', 'delivered']);
+    expect(eventRows.map((event) => event.type).sort()).toEqual([
+      'bounced',
+      'delivered',
+      'delivered',
+    ]);
     expect(eventRows.every((event) =>
       !JSON.stringify(event.meta).toLowerCase().includes('jan.kowalski@together.dev'),
     )).toBe(true);
@@ -591,6 +658,18 @@ describe('member erasure repository', () => {
       .from(emailEvents)
       .where(eq(emailEvents.tenantId, OTHER));
     expect(JSON.stringify(otherTenantEvents[0]?.meta)).toContain('jan.kowalski@together.dev');
+  });
+
+  it('treats tombstone dollar characters as literal JSON replacements', async () => {
+    await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, {
+      ...pseudonymizationInput('mem-rodo-dollar'),
+      tombstoneEmail: 'deleted-$&@anonymized.invalid',
+    });
+    const rows = await db
+      .select({ meta: emailEvents.meta })
+      .from(emailEvents)
+      .where(eq(emailEvents.id, 'event-rodo-dollar'));
+    expect(rows[0]?.meta).toEqual({ recipient: 'deleted-$&@anonymized.invalid' });
   });
 
   it('keeps order rows, the sales list, and revenue unchanged after removal', async () => {

@@ -369,7 +369,7 @@ export interface PaymentWebhookEvent {
       priceId: string | null;
       memberEmail: string | null;
       language: string | null;
-      checkoutConsent?: CheckoutConsentCapture | null;
+      checkoutConsentCaptureId?: string | null;
     };
   } | null;
   invoice?: {
@@ -406,7 +406,7 @@ export interface PaymentProvider {
     language?: string;
     priceId?: string;
     recurringInterval?: 'month' | 'year';
-    checkoutConsent?: CheckoutConsentCapture;
+    checkoutConsentCaptureId?: string;
   }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
   expireCheckoutSession(input: {
     tenantId: string;
@@ -417,6 +417,14 @@ export interface PaymentProvider {
     signatureHeader: string;
     webhookSecret: string;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
+}
+
+export interface CheckoutConsentCaptureRepository {
+  create(
+    tenantId: string,
+    input: { id: string; capture: CheckoutConsentCapture; createdAt: string },
+  ): Promise<void>;
+  findById(tenantId: string, id: string): Promise<CheckoutConsentCapture | null>;
 }
 
 /**

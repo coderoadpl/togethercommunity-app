@@ -28,6 +28,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type CheckoutConsentCapture,
   type MemberCourseProgress,
   type MemberGrant,
   type MemberSubscription,
@@ -50,6 +51,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
+  CheckoutConsentCaptureRepository,
   DevEmailReader,
   DevMagicLinkReader,
   EntityVersionRecord,
@@ -89,12 +91,14 @@ import { buildPrefixTsquery } from './post-search-query.js';
 import {
   consents,
   campaignSends,
+  checkoutConsentCaptures,
   courseLessons,
   courseModules,
   courses,
   devEmails,
   devMagicLinks,
   emailEvents,
+  erasedMemberImports,
   entityVersions,
   memberCourseProgress,
   members,
@@ -133,12 +137,15 @@ const parseOrder = (order: Order): Order => orderSchema.parse(order);
 const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const containsPattern = (value: string): string =>
+  `%${value.replace(/[\\%_]/g, '\\$&')}%`;
+
 const replaceEmailInText = (
   value: string,
   email: string,
   replacement: string,
 ): string =>
-  value.replace(new RegExp(escapeRegExp(email), 'gi'), replacement);
+  value.replace(new RegExp(escapeRegExp(email), 'gi'), () => replacement);
 
 const replaceEmailInJson = (
   value: unknown,
@@ -1238,6 +1245,14 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       if (!member) return null;
       if (member.deletedAt !== null) return { alreadyDeleted: true, authUserErased: false };
 
+      await tx.insert(erasedMemberImports).values({
+        memberId: member.id,
+        tenantId,
+        legacyId: member.legacyId,
+        emailHmac: emailHmac.compute(tenantId, member.email),
+        erasedAt: input.deletedAt,
+      }).onConflictDoNothing({ target: erasedMemberImports.memberId });
+
       await tx
         .update(productGrants)
         .set({ expiresAt: input.deletedAt, legacyId: null })
@@ -1299,7 +1314,13 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       const eventRows = await tx
         .select({ id: emailEvents.id, meta: emailEvents.meta })
         .from(emailEvents)
-        .where(and(eq(emailEvents.tenantId, tenantId), isNotNull(emailEvents.meta)));
+        .where(
+          and(
+            eq(emailEvents.tenantId, tenantId),
+            isNotNull(emailEvents.meta),
+            sql`${emailEvents.meta}::text ilike ${containsPattern(member.email)} escape '\\'`,
+          ),
+        );
       for (const event of eventRows) {
         if (event.meta === null) continue;
         const meta = replaceEmailInMeta(event.meta, member.email, input.tombstoneEmail);
@@ -2045,6 +2066,27 @@ export const createTermsConsentRepository = (db: Db): TermsConsentRepository => 
       .where(and(eq(consents.tenantId, tenantId), eq(consents.email, email)))
       .orderBy(asc(consents.acceptedAt));
     return rows.map((row) => termsConsentSchema.parse(row));
+  },
+});
+
+export const createCheckoutConsentCaptureRepository = (
+  db: Db,
+): CheckoutConsentCaptureRepository => ({
+  create: async (tenantId, input) => {
+    await db.insert(checkoutConsentCaptures).values({ ...input, tenantId });
+  },
+  findById: async (tenantId, id): Promise<CheckoutConsentCapture | null> => {
+    const rows = await db
+      .select({ capture: checkoutConsentCaptures.capture })
+      .from(checkoutConsentCaptures)
+      .where(
+        and(
+          eq(checkoutConsentCaptures.tenantId, tenantId),
+          eq(checkoutConsentCaptures.id, id),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.capture ?? null;
   },
 });
 

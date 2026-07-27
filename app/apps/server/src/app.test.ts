@@ -512,6 +512,59 @@ const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> 
   return buildApp(configured);
 };
 
+const ksefApp = (
+  dispatch: NonNullable<AppDeps['ksef']>['dispatch'],
+): ReturnType<typeof buildApp> => {
+  const configured = deps();
+  configured.ksef = {
+    environment: 'test',
+    credentials: {
+      resolve: async () => ok({
+        tenantId: 't-acme',
+        token: 'token',
+        contextNip: '5555555555',
+      }),
+    },
+    numbers: {
+      allocate: async () => ({ p2: 'FV/2026/000001', sequence: 1 }),
+    },
+    artifacts: {
+      findByKey: async () => null,
+      store: async () => true,
+    },
+    hash: { sha256: () => 'a'.repeat(64) },
+    validator: { validate: async () => ok(undefined) },
+    pdf: { render: () => new Uint8Array() },
+    client: {
+      validateCredentials: async () => ok({ diagnostic: 'ok' }),
+      openSession: async () => ok({ sessionReference: 'session-1' }),
+      submitInvoice: async () => ok({ invoiceReference: 'invoice-1' }),
+      listSessionInvoices: async () => ok([]),
+      getInvoiceStatus: async () => ok({
+        code: 150,
+        description: 'processing',
+        details: [],
+        extensions: {},
+        ksefNumber: null,
+        acquisitionAt: null,
+        invoicingAt: null,
+        permanentStorageAt: null,
+      }),
+      downloadUpo: async () => ok('<UPO/>'),
+      verifyDuplicateOriginal: async () => ok(true),
+      closeSession: async () => ok(undefined),
+    },
+    jobs: {
+      claimDue: async () => null,
+      reschedule: async () => undefined,
+      complete: async () => undefined,
+    },
+    dispatchSecret: 'test-ksef-cron-secret',
+    dispatch,
+  };
+  return buildApp(configured);
+};
+
 const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
   const marketing = marketingDeps();
   await marketing.definitions.create('t-acme', {
@@ -895,6 +948,25 @@ describe('marketing HTTP surfaces', () => {
     }
     expect(await sends.correlateBySesMessageId('t-acme', 'ses-delivery'))
       .toMatchObject({ deliveryStatus: 'delivered' });
+  });
+});
+
+describe('KSeF HTTP surfaces', () => {
+  it('runs the durable dispatcher only for the configured cron bearer', async () => {
+    const dispatch = vi.fn(async () => ok({
+      processed: false,
+      invoiceId: null,
+      processedCount: 0,
+    }));
+    const app = ksefApp(dispatch);
+
+    expect((await app.request(API_PATHS.ksefDispatch)).status).toBe(401);
+    const response = await app.request(API_PATHS.ksefDispatch, {
+      headers: { authorization: 'Bearer test-ksef-cron-secret' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(dispatch).toHaveBeenCalledOnce();
   });
 });
 

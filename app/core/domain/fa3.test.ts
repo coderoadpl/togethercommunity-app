@@ -50,12 +50,28 @@ describe('FA(3) renderer', () => {
   });
 
   it('renders a B2C buyer without inventing a tax identifier', () => {
+    const xml = renderFa3Invoice({
+      ...input,
+      buyer: {
+        nip: null,
+        name: 'Jan Kowalski',
+        addressLine: 'Testowa 3, 00-003 Warszawa',
+      },
+      discountCents: 0,
+    });
+
+    expect(xml).toContain('<BrakID>1</BrakID>');
+    expect(xml).toContain('<Nazwa>Jan Kowalski</Nazwa>');
+    expect(xml).toContain('<AdresL1>Testowa 3, 00-003 Warszawa</AdresL1>');
+    expect(xml).not.toContain('<NIP>1111111111</NIP>');
+    expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('uses the anonymous buyer only when no billing snapshot exists', () => {
     const xml = renderFa3Invoice({ ...input, buyer: null, discountCents: 0 });
 
     expect(xml).toContain('<BrakID>1</BrakID>');
     expect(xml).toContain('<Nazwa>Klient detaliczny</Nazwa>');
-    expect(xml).not.toContain('<NIP>1111111111</NIP>');
-    expect(validateFa3Structure(xml)).toEqual({ ok: true, errors: [] });
   });
 
   it('rejects malformed or non-canonical structural variants before submission', () => {

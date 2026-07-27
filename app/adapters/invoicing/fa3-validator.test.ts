@@ -36,4 +36,13 @@ describe('FA(3) XSD validator', () => {
       error: { code: 'validation' },
     });
   });
+
+  it('fails closed when the XSD validator executable is unavailable', async () => {
+    expect(await createFa3XsdValidator({
+      executable: 'missing-xmllint-for-ksef-test',
+    }).validate(xml)).toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable' },
+    });
+  });
 });

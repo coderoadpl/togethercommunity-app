@@ -58,10 +58,13 @@ const harness = (options: {
   failAfterCreate?: boolean;
   uncertainFailure?: boolean;
   provider?: 'ifirma' | 'ksef';
+  nowIso?: string;
 } = {}) => {
   const invoices: Invoice[] = [];
   const events: InvoiceEvent[] = [];
   let calls = 0;
+  let allocatedYear: number | null = null;
+  let frozenXml: string | null = null;
   let testedConfig: { invoiceApiKey: string; username: string } | null = null;
   let testedKsefCredentials: { tenantId: string; token: string; contextNip: string } | null = null;
   let ids = 0;
@@ -95,9 +98,10 @@ const harness = (options: {
       appendEvent: async (_tenantId, event) => {
         events.push(event);
       },
-      createFrozenKsef: async (_tenantId, invoice, event) => {
+      createFrozenKsef: async (_tenantId, invoice, event, artifact) => {
         invoices.push(invoice);
         events.push(event);
+        frozenXml = artifact.content;
         return true;
       },
       checkpointKsef: async (_tenantId, invoice) => invoice,
@@ -179,7 +183,7 @@ const harness = (options: {
       decrypt: (secret) => ok(secret.ciphertext),
     },
     ids: { nextId: () => `id-${++ids}` },
-    clock: { nowIso: () => now },
+    clock: { nowIso: () => options.nowIso ?? now },
     ksef: {
       environment: 'test',
       credentials: {
@@ -190,7 +194,10 @@ const harness = (options: {
         }),
       },
       numbers: {
-        allocate: async () => ({ p2: 'FV/2026/000001', sequence: 1 }),
+        allocate: async (_tenantId, input) => {
+          allocatedYear = input.year;
+          return { p2: `FV/${String(input.year)}/000001`, sequence: 1 };
+        },
       },
       artifacts: {
         findByKey: async () => null,
@@ -231,6 +238,8 @@ const harness = (options: {
     invoices,
     events,
     calls: () => calls,
+    allocatedYear: () => allocatedYear,
+    frozenXml: () => frozenXml,
     testedConfig: () => testedConfig,
     testedKsefCredentials: () => testedKsefCredentials,
   };
@@ -336,6 +345,75 @@ describe('requestInvoice', () => {
     });
     expect(h.calls()).toBe(0);
     expect(h.events.at(-1)).toMatchObject({ type: 'frozen' });
+  });
+
+  it('preserves a frozen KSeF row after the tenant switches to iFirma', async () => {
+    const h = harness({ provider: 'ksef' });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const frozen = h.invoices[0];
+    if (frozen === undefined) throw new Error('Expected a frozen invoice');
+    frozen.status = 'failed';
+    frozen.error = 'ksef_430';
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, invoicingProvider: 'ifirma' };
+    };
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        id: frozen.id,
+        provider: 'ksef',
+        invoiceNumber: 'FV/2026/000001',
+        status: 'failed',
+      },
+    });
+    expect(h.calls()).toBe(0);
+  });
+
+  it('preserves a failed iFirma row after the tenant switches to KSeF', async () => {
+    const h = harness({ fail: true });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : { ...settings, invoicingProvider: 'ksef' };
+    };
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: { provider: 'ifirma', status: 'failed' },
+    });
+    expect(h.calls()).toBe(1);
+  });
+
+  it('keeps the captured B2C identity in the frozen FA(3)', async () => {
+    const h = harness({ provider: 'ksef' });
+    h.deps.orderDetails.findById = async () => order({ ...billing, nip: null });
+
+    await requestInvoice(ctx, 'order-1', h.deps);
+
+    expect(h.frozenXml()).toContain('<BrakID>1</BrakID>');
+    expect(h.frozenXml()).toContain('<Nazwa>Acme sp. z o.o.</Nazwa>');
+    expect(h.frozenXml()).toContain('<AdresL1>Prosta 1, 00-001 Warszawa</AdresL1>');
+  });
+
+  it('uses the Warsaw calendar date for P_1 and the numbering year', async () => {
+    const h = harness({
+      provider: 'ksef',
+      nowIso: '2025-12-31T23:30:00.000Z',
+    });
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: true,
+      value: {
+        invoiceNumber: 'FV/2026/000001',
+        ksef: { issueDate: '2026-01-01' },
+      },
+    });
+    expect(h.allocatedYear()).toBe(2026);
+    expect(h.frozenXml()).toContain('<P_1>2026-01-01</P_1>');
   });
 });
 

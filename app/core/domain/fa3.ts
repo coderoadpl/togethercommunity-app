@@ -1,5 +1,5 @@
 export interface Fa3Party {
-  nip: string;
+  nip: string | null;
   name: string;
   addressLine: string;
 }
@@ -36,7 +36,10 @@ const buyerXml = (buyer: Fa3Party | null): string => {
   if (buyer === null) {
     return '<Podmiot2><DaneIdentyfikacyjne><BrakID>1</BrakID><Nazwa>Klient detaliczny</Nazwa></DaneIdentyfikacyjne><JST>2</JST><GV>2</GV></Podmiot2>';
   }
-  return `<Podmiot2><DaneIdentyfikacyjne><NIP>${escaped(buyer.nip)}</NIP><Nazwa>${escaped(buyer.name)}</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>${escaped(buyer.addressLine)}</AdresL1></Adres><JST>2</JST><GV>2</GV></Podmiot2>`;
+  const identifier = buyer.nip === null
+    ? '<BrakID>1</BrakID>'
+    : `<NIP>${escaped(buyer.nip)}</NIP>`;
+  return `<Podmiot2><DaneIdentyfikacyjne>${identifier}<Nazwa>${escaped(buyer.name)}</Nazwa></DaneIdentyfikacyjne><Adres><KodKraju>PL</KodKraju><AdresL1>${escaped(buyer.addressLine)}</AdresL1></Adres><JST>2</JST><GV>2</GV></Podmiot2>`;
 };
 
 export const renderFa3Invoice = (input: Fa3InvoiceInput): string => {

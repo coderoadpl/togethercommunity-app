@@ -35,6 +35,9 @@ export interface KsefSubmissionDeps {
 
 const correlationMissLimit = 3;
 
+const isRetryableBusinessStatus = (code: number): boolean =>
+  code === 550 || code >= 500;
+
 const nextRetryAt = (
   now: string,
   attempt: number,
@@ -286,6 +289,20 @@ const poll = async (
   if (polled.value.code === 440) {
     return handleDuplicate(tenantId, invoice, statusData, credentials, polled.value, deps);
   }
+  if (isRetryableBusinessStatus(polled.value.code)) {
+    return retryTransport(tenantId, {
+      ...invoice,
+      status: 'submitting',
+      providerInvoiceId: null,
+      error: null,
+    }, {
+      ...statusData,
+      state: 'submitting',
+      invoiceReference: null,
+    }, integrationUnavailable(
+      `KSeF business status ${String(polled.value.code)}: ${polled.value.description}`,
+    ), deps);
+  }
   if (polled.value.code >= 400) {
     return checkpoint(tenantId, { ...invoice, status: 'failed', error: `ksef_${String(polled.value.code)}` }, {
       ...statusData,
@@ -342,6 +359,27 @@ const correlate = async (
       state: 'queued',
       sessionReference: null,
       retryAt: nextRetryAt(deps.clock.nowIso(), ksef.correlationChecks, deps),
+    }, deps);
+  }
+  if (isRetryableBusinessStatus(correlated.status.code)) {
+    const closed = await deps.ksef.closeSession({
+      environment: ksef.environment,
+      credentials,
+      sessionReference: ksef.sessionReference,
+    });
+    if (!closed.ok) return retryTransport(tenantId, invoice, ksef, closed.error, deps);
+    return checkpoint(tenantId, {
+      ...invoice,
+      status: 'queued',
+      providerInvoiceId: null,
+      error: null,
+    }, {
+      ...ksef,
+      state: 'queued',
+      sessionReference: null,
+      invoiceReference: null,
+      retryAt: nextRetryAt(deps.clock.nowIso(), ksef.attempt, deps),
+      correlationChecks: 0,
     }, deps);
   }
   return checkpoint(tenantId, { ...invoice, status: 'processing', providerInvoiceId: correlated.invoiceReference }, {

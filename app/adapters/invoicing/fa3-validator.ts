@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   err,
+  integrationUnavailable,
   ok,
   validation,
   type AppError,
@@ -14,10 +15,10 @@ const schemaPath = fileURLToPath(
   new URL('./xsd/schemat_FA(3)_v1-0E.xsd', import.meta.url),
 );
 
-const validate = (xml: string): Promise<Result<void, AppError>> =>
+const validate = (executable: string, xml: string): Promise<Result<void, AppError>> =>
   new Promise((resolve) => {
     const process = spawn(
-      'xmllint',
+      executable,
       ['--noout', '--schema', schemaPath, '-'],
       { stdio: ['pipe', 'ignore', 'pipe'], timeout: 10_000 },
     );
@@ -26,8 +27,9 @@ const validate = (xml: string): Promise<Result<void, AppError>> =>
     process.stderr.on('data', (chunk: string) => {
       diagnostic += chunk;
     });
-    process.on('error', () => {
-      resolve(ok(undefined));
+    process.stdin.on('error', () => undefined);
+    process.on('error', (cause) => {
+      resolve(err(integrationUnavailable(`FA(3) XSD validator is unavailable: ${cause.message}`)));
     });
     process.on('close', (code) => {
       resolve(code === 0
@@ -37,4 +39,8 @@ const validate = (xml: string): Promise<Result<void, AppError>> =>
     process.stdin.end(xml, 'utf8');
   });
 
-export const createFa3XsdValidator = (): Fa3Validator => ({ validate });
+export const createFa3XsdValidator = (
+  options: { executable?: string } = {},
+): Fa3Validator => ({
+  validate: (xml) => validate(options.executable ?? 'xmllint', xml),
+});

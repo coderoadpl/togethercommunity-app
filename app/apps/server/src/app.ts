@@ -612,7 +612,14 @@ export const buildApp = (deps: AppDeps) => {
         clock: deps.clock,
       },
     );
-    return respondPublic(result.ok ? ok({ breakdown: result.value.breakdown }) : result);
+    return respondPublic(
+      result.ok
+        ? ok({
+            breakdown: result.value.breakdown,
+            recurringDuration: result.value.coupon.recurringDuration,
+          })
+        : result,
+    );
   });
 
   app.post(API_PATHS.checkoutSession, async (c) => {

@@ -4,6 +4,7 @@ import {
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
   couponCheckoutBreakdownSchema,
+  couponRecurringDurationSchema,
   couponCreateInputSchema,
   couponStatsItemSchema,
   courseLessonSchema,
@@ -227,6 +228,7 @@ export type CouponCheckoutValidationRequest = z.input<
 
 export const couponCheckoutValidationOutputSchema = z.object({
   breakdown: couponCheckoutBreakdownSchema,
+  recurringDuration: couponRecurringDurationSchema,
 });
 
 export const termsConsentOutputSchema = z.object({

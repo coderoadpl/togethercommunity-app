@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,8 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
+
+import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { BrandMark } from '../../branding.js';
@@ -41,6 +43,39 @@ const priceLabel = (
   if (price.kind === 'one_time') return t.checkout.buyPrice({ price: formattedPrice });
   if (price.interval === 'year') return t.checkout.subscribeYearlyPrice({ price: formattedPrice });
   return t.checkout.subscribeMonthlyPrice({ price: formattedPrice });
+};
+
+const completeEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+const couponError = (
+  error: unknown,
+  t: ReturnType<typeof useTranslations>,
+): string => {
+  if (!(error instanceof ApiError)) return localizeError(error, t);
+  switch (error.appError.message) {
+    case 'Coupon code is invalid':
+      return t.checkout.couponInvalid;
+    case 'This coupon is inactive':
+      return t.checkout.couponInactive;
+    case 'This coupon is not valid yet':
+      return t.checkout.couponNotStarted;
+    case 'This coupon has expired':
+      return t.checkout.couponExpired;
+    case 'This coupon does not apply to this product':
+      return t.checkout.couponWrongScope;
+    case 'This coupon does not apply to this price':
+      return t.checkout.couponWrongPrice;
+    case 'This coupon has reached its redemption limit':
+      return t.checkout.couponLimit;
+    case 'This coupon has reached its per-member redemption limit':
+      return t.checkout.couponMemberLimit;
+    case 'An email is required to validate this coupon':
+      return t.checkout.couponEmailRequired;
+    case 'This coupon does not reduce the selected price':
+      return t.checkout.couponNoReduction;
+    default:
+      return localizeError(error, t);
+  }
 };
 
 export const CheckoutPage = ({ productId }: { productId: string }) => {
@@ -77,6 +112,28 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const couponValidation = useMutation({
     ...actions.validateCouponForCheckout,
   });
+  const autoAppliedCoupon = useRef(false);
+
+  useEffect(() => {
+    if (
+      autoAppliedCoupon.current ||
+      initialCouponCode === '' ||
+      product === undefined ||
+      !completeEmail(email)
+    ) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      autoAppliedCoupon.current = true;
+      couponValidation.mutate({
+        productId,
+        ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+        email,
+        couponCode: initialCouponCode,
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [couponValidation, email, initialCouponCode, product, productId, selectedPrice]);
 
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -303,6 +360,13 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                     <Typography>{t.checkout.couponFinal({
                       price: formatPrice(couponValidation.data.breakdown.finalCents, selectedCurrency, language),
                     })}</Typography>
+                    {selectedPrice?.kind !== 'recurring' ? null : (
+                      <Typography>
+                        {couponValidation.data.recurringDuration === 'forever'
+                          ? t.checkout.couponForever
+                          : t.checkout.couponFirstInvoice}
+                      </Typography>
+                    )}
                     <FinePrint component="p" variant="caption">
                       {t.checkout.omnibusLowest({
                         price: formatPrice(
@@ -316,7 +380,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 </Paper>
               )}
               {couponValidation.isError ? (
-                <Alert>{localizeError(couponValidation.error, t)}</Alert>
+                <Alert>{couponError(couponValidation.error, t)}</Alert>
               ) : null}
             </Stack>
           )}

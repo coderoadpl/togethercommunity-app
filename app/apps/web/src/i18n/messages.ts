@@ -891,6 +891,18 @@ export interface Messages {
     couponDiscount: (params: { price: string }) => string;
     couponFinal: (params: { price: string }) => string;
     omnibusLowest: (params: { price: string }) => string;
+    couponFirstInvoice: string;
+    couponForever: string;
+    couponInvalid: string;
+    couponInactive: string;
+    couponNotStarted: string;
+    couponExpired: string;
+    couponWrongScope: string;
+    couponWrongPrice: string;
+    couponLimit: string;
+    couponMemberLimit: string;
+    couponEmailRequired: string;
+    couponNoReduction: string;
     marketingConsentsLabel: string;
     marketingConsentDocument: string;
     marketingConsentDoiHint: string;

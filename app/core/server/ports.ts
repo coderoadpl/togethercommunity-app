@@ -627,6 +627,10 @@ export interface ContentHash {
   sha256(content: string | Uint8Array): string;
 }
 
+export interface Fa3Validator {
+  validate(xml: string): Promise<Result<void, AppError>>;
+}
+
 export interface KsefInvoicePdf {
   render(input: { invoice: Invoice; xml: string }): Uint8Array;
 }

@@ -22,6 +22,7 @@ import type { Ctx } from '../context.js';
 import type {
   Clock,
   ContentHash,
+  Fa3Validator,
   FiscalArtifactRepository,
   IdGenerator,
   InvoiceRepository,
@@ -50,6 +51,7 @@ export interface InvoiceDeps {
     numbers: KsefNumberRepository;
     artifacts: FiscalArtifactRepository;
     hash: ContentHash;
+    validator: Fa3Validator;
     pdf?: KsefInvoicePdf;
   };
 }
@@ -247,6 +249,8 @@ const issueKsef = async (
   });
   const structural = validateFa3Structure(xml);
   if (!structural.ok) return err(validation('Generated FA(3) failed local validation', structural.errors));
+  const xsd = await deps.ksef.validator.validate(xml);
+  if (!xsd.ok) return xsd;
   const xmlSha256 = deps.ksef.hash.sha256(xml);
   const xmlArtifactKey = `invoice/${invoiceId}/fa3.xml`;
   const invoice: Invoice = {

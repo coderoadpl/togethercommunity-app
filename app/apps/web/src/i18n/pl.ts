@@ -1076,6 +1076,7 @@ export const pl: Messages = {
     fromNameLabel: 'nazwa nadawcy', identityLabel: 'zweryfikowana domena lub adres', identityVerifiedLabel: 'tożsamość i DKIM są zweryfikowane',
     identityAuthenticationHint: 'Potwierdź dopiero, gdy AWS zgłosi DKIM jako zweryfikowany. Przed wysyłką kampanii opublikuj rekordy SPF i DMARC domeny nadawczej.',
     configurationSetLabel: 'configuration set', snsTopicLabel: 'ARN tematu SNS', trackingEnabledLabel: 'Śledź otwarcia i kliknięcia marketingowe',
+    autoPauseOnCriticalLabel: 'Wstrzymaj wysyłki przy krytycznej reputacji',
     trackingPrivacyNote: 'Twoja organizacja jest administratorem danych. Włączenie śledzenia wymaga opisania analityki otwarć i kliknięć w polityce prywatności.',
     trackingDocsLink: 'Przeczytaj dokumentację śledzenia.',
     footer: 'Obowiązkowa stopka', footerLegalNameLabel: 'pełna nazwa prawna',

@@ -5,6 +5,7 @@ import {
   campaignCanTransition,
   classifySesEvent,
   deriveConsentState,
+  deriveEmailReputation,
   deriveMarketingEligibility,
   emailEventSchema,
   err,
@@ -14,6 +15,7 @@ import {
   notFound,
   ok,
   renderMarketingTemplate,
+  reputationWindow,
   throttleBudget,
   tenantSesBroadcastsReady,
   validateRenderedMarketingOutput,
@@ -1111,6 +1113,22 @@ const campaignTickExecution = async (
   }
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  if (settings.autoPauseOnCritical) {
+    const reputation = deriveEmailReputation(await deps.events.reputationCounts(
+      tenantId.value,
+      reputationWindow(now),
+    ));
+    if (reputation.overallStatus === 'critical') {
+      await deps.campaigns.update(tenantId.value, {
+        ...campaign,
+        status: 'paused',
+        pausedReason: 'Broadcasts paused automatically: critical email reputation threshold exceeded',
+        lockedUntil: null,
+        lockedBy: null,
+      });
+      return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
+    }
+  }
   const sentSince = new Date(Date.parse(now) - 24 * 60 * 60 * 1000).toISOString();
   const sentLast24Hours = (await deps.sends.listAll(tenantId.value))
     .filter((send) => send.status === 'sent' && send.sentAt !== null && send.sentAt >= sentSince)

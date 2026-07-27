@@ -301,6 +301,7 @@ export const updateTenantSesMarketingSettings = async (
     configurationSet: string | null;
     snsTopicArn: string | null;
     trackingEnabled: boolean;
+    autoPauseOnCritical: boolean;
     footerLegalName: string;
     footerAddress: string;
   },
@@ -329,6 +330,7 @@ export const updateTenantSesMarketingSettings = async (
     configurationSet: input.configurationSet,
     snsTopicArn: input.snsTopicArn,
     trackingEnabled: input.trackingEnabled,
+    autoPauseOnCritical: input.autoPauseOnCritical,
     webhookToken: current?.webhookToken ?? deps.tokens.nextToken(),
     quotaRatePerSec: current?.quotaRatePerSec ?? 0,
     quotaDaily: current?.quotaDaily ?? 0,

@@ -159,6 +159,7 @@ describe('marketing management use-cases', () => {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
       identityVerifiedAt: NOW, configurationSet: null, snsTopicArn: 'arn:topic',
       trackingEnabled: false,
+      autoPauseOnCritical: false,
       webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
       quotaSentLast24Hours: 0,
       quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Ltd',
@@ -175,6 +176,7 @@ describe('marketing management use-cases', () => {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
       identityVerified: true, configurationSet: 'marketing', snsTopicArn: settings.snsTopicArn,
       trackingEnabled: true,
+      autoPauseOnCritical: true,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
     }, {
       settings: new InMemoryTenantSesSettingsRepository([{ ...settings, inSandbox: true }]), secrets,
@@ -183,11 +185,13 @@ describe('marketing management use-cases', () => {
     });
     expect(sandboxed.ok && sandboxed.value.settings.broadcastsEnabled).toBe(false);
     expect(sandboxed.ok && sandboxed.value.settings.trackingEnabled).toBe(true);
+    expect(sandboxed.ok && sandboxed.value.settings.autoPauseOnCritical).toBe(true);
 
     expect(await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
       identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
       trackingEnabled: true,
+      autoPauseOnCritical: false,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
     }, {
       settings: repository, secrets,
@@ -199,6 +203,7 @@ describe('marketing management use-cases', () => {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
       identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
       trackingEnabled: false,
+      autoPauseOnCritical: false,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
     }, {
       settings: new InMemoryTenantSesSettingsRepository(), secrets,

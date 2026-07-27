@@ -260,6 +260,13 @@
       "when": 1785104616174,
       "tag": "0036_yellow_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785136903000,
+      "tag": "0037_tenant_reputation_auto_pause",
+      "breakpoints": true
     }
   ]
 }

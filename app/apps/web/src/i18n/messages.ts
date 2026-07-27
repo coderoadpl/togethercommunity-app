@@ -1095,6 +1095,7 @@ export interface Messages {
     configurationSetLabel: string;
     snsTopicLabel: string;
     trackingEnabledLabel: string;
+    autoPauseOnCriticalLabel: string;
     trackingPrivacyNote: string;
     trackingDocsLink: string;
     footer: string;

@@ -509,6 +509,7 @@ export const tenantSesSettingsSchema = z.object({
   configurationSet: z.string().nullable(),
   snsTopicArn: z.string().nullable(),
   trackingEnabled: z.boolean(),
+  autoPauseOnCritical: z.boolean(),
   webhookToken: z.string().min(22),
   quotaRatePerSec: z.number().nonnegative(),
   quotaDaily: z.number().int().nonnegative(),

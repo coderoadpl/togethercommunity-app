@@ -1050,6 +1050,7 @@ export const en: Messages = {
     fromAddressLabel: 'from address', fromNameLabel: 'from name', identityLabel: 'verified domain or address', identityVerifiedLabel: 'identity and DKIM are verified',
     identityAuthenticationHint: 'Confirm this only after AWS reports DKIM as verified. Publish SPF and DMARC records for the sending domain before broadcasting.',
     configurationSetLabel: 'configuration set', snsTopicLabel: 'SNS topic ARN', trackingEnabledLabel: 'Track marketing opens and clicks',
+    autoPauseOnCriticalLabel: 'Pause broadcasts when reputation is critical',
     trackingPrivacyNote: 'Your organization is the data controller. Enabling tracking means your privacy notice must describe open and click analytics.',
     trackingDocsLink: 'Read the tracking documentation.',
     footer: 'Mandatory footer', footerLegalNameLabel: 'full legal name', footerAddressLabel: 'postal or electronic address',

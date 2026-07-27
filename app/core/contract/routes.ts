@@ -836,6 +836,7 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   configurationSet: z.string().trim().min(1).nullable(),
   snsTopicArn: z.string().trim().min(1).nullable(),
   trackingEnabled: z.boolean(),
+  autoPauseOnCritical: z.boolean(),
   footerLegalName: z.string(),
   footerAddress: z.string(),
 });

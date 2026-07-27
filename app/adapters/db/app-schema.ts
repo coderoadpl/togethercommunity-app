@@ -852,6 +852,7 @@ export const campaignSends = pgTable(
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),
     index('campaign_sends_tenant_run_created_id_idx').on(table.tenantId, table.runId, table.createdAt, table.id),
+    index('campaign_sends_tenant_sent_at_idx').on(table.tenantId, table.sentAt),
     uniqueIndex('campaign_sends_ses_message_id_uidx')
       .on(table.sesMessageId)
       .where(sql`${table.sesMessageId} is not null`),

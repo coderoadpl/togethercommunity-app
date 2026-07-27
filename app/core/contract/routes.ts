@@ -1042,6 +1042,7 @@ export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
   emailDispatch: { method: 'POST', path: '/api/internal/dispatch-email' },
+  ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -1205,6 +1206,7 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 export const API_PATHS = {
   health: API_ROUTES.health.path,
   emailDispatch: API_ROUTES.emailDispatch.path,
+  ksefDispatch: API_ROUTES.ksefDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,

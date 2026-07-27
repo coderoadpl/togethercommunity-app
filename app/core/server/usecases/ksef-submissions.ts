@@ -5,6 +5,7 @@ import {
   type KsefInvoiceData,
   type Result,
 } from '@core/domain/index.js';
+import { z } from 'zod';
 
 import type {
   Clock,
@@ -32,9 +33,20 @@ export interface KsefSubmissionDeps {
   };
 }
 
-const nextRetryAt = (now: string, attempt: number, deps: KsefSubmissionDeps): string => {
+const retryDetailsSchema = z.object({ retryAfterMs: z.number().nonnegative().nullable() });
+
+const nextRetryAt = (
+  now: string,
+  attempt: number,
+  deps: KsefSubmissionDeps,
+  error?: AppError,
+): string => {
   const exponential = deps.retry.baseMs * 2 ** Math.min(attempt, 10);
-  const delay = Math.min(deps.retry.capMs, exponential) + deps.retry.jitter();
+  const bounded = Math.min(deps.retry.capMs, exponential) + deps.retry.jitter();
+  const parsed = retryDetailsSchema.safeParse(error?.details);
+  const delay = parsed.success && parsed.data.retryAfterMs !== null
+    ? Math.max(bounded, parsed.data.retryAfterMs)
+    : bounded;
   return new Date(Date.parse(now) + Math.max(0, delay)).toISOString();
 };
 
@@ -45,7 +57,35 @@ const checkpoint = async (
   deps: KsefSubmissionDeps,
 ): Promise<Invoice> => {
   const next = { ...invoice, ksef: { ...ksef, version: ksef.version + 1 } };
-  return (await deps.invoices.checkpointKsef(tenantId, next)) ?? next;
+  const eventType = ksef.state === 'session_opened'
+    ? 'session_opened'
+    : ksef.state === 'submitting'
+      ? 'send_started'
+      : ksef.state === 'succeeded'
+        ? 'upo_stored'
+        : ksef.state === 'numbering_conflict'
+          ? 'numbering_conflict'
+          : ksef.state === 'rejected'
+            ? 'failed'
+            : invoice.ksef?.state === 'submitting' && ksef.correlationChecks > invoice.ksef.correlationChecks
+              ? 'correlated'
+              : invoice.ksef?.state === 'submitting'
+                ? 'submitted'
+                : 'processing';
+  return (await deps.invoices.checkpointKsef(tenantId, next, {
+    id: deps.ids.nextId(),
+    tenantId,
+    invoiceId: invoice.id,
+    orderId: invoice.orderId,
+    type: eventType,
+    error: next.error,
+    meta: {
+      state: ksef.state,
+      attempt: ksef.attempt,
+      statusCode: ksef.lastStatusCode,
+    },
+    occurredAt: deps.clock.nowIso(),
+  })) ?? next;
 };
 
 const retryTransport = async (
@@ -58,7 +98,7 @@ const retryTransport = async (
   checkpoint(tenantId, invoice, {
     ...ksef,
     lastTransportError: error.message,
-    retryAt: nextRetryAt(deps.clock.nowIso(), ksef.attempt, deps),
+    retryAt: nextRetryAt(deps.clock.nowIso(), ksef.attempt, deps, error),
   }, deps);
 
 const originalReferences = (

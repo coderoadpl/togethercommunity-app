@@ -250,6 +250,9 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'ifirma.invoiceApiKey') !== null &&
     previewFor(storedSecrets, 'ifirma.username') !== null;
+  const ksefReady =
+    previewFor(storedSecrets, 'ksef.token') !== null
+    && previewFor(storedSecrets, 'ksef.contextNip') !== null;
   const bunnyReady =
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'bunny.apiKey') !== null &&
@@ -343,6 +346,33 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
             </Stack>
           )}
           <IfirmaTestConnection ready={ifirmaReady} />
+        </SectionCard>
+
+        <SectionCard
+          title={t.integrations.ksefHeading}
+          description={t.integrations.ksefDescription}
+        >
+          {secrets.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+          ) : secrets.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+          ) : (
+            <Stack useFlexGap spacing="1.25rem">
+              <SecretField
+                secretKey="ksef.token"
+                label={t.integrations.ksefTokenLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'ksef.token')}
+              />
+              <SecretField
+                secretKey="ksef.contextNip"
+                label={t.integrations.ksefContextNipLabel}
+                maskedPreview={previewFor(secrets.data.secrets, 'ksef.contextNip')}
+              />
+              <Typography variant="caption" component="p">
+                {ksefReady ? t.integrations.configured : t.integrations.notConfigured}
+              </Typography>
+            </Stack>
+          )}
         </SectionCard>
 
         <SectionCard title={t.integrations.bunnyHeading} description={t.integrations.bunnyDescription}>

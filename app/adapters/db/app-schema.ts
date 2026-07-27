@@ -432,6 +432,7 @@ export const invoiceEvents = pgTable(
         'refreshed',
         'frozen',
         'session_opened',
+        'send_started',
         'submitted',
         'correlated',
         'processing',

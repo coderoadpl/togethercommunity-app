@@ -103,6 +103,9 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const enabled = settings.data?.settings.autoIssueInvoices ?? false;
   const scope = settings.data?.settings.autoIssueInvoiceScope ?? 'b2b_only';
   const vatRate = settings.data?.settings.invoiceVatRatePercent ?? '';
+  const provider = settings.data?.settings.invoicingProvider ?? 'ifirma';
+  const [sellerName, setSellerName] = useState<string | null>(null);
+  const [sellerAddress, setSellerAddress] = useState<string | null>(null);
 
   return (
     <SectionCard title={t.billing.invoiceHeading} description={t.billing.invoiceIntro}>
@@ -116,6 +119,21 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         )}
         label={t.billing.autoIssue}
       />
+      <FormControl fullWidth>
+        <FormLabel id="invoice-provider-label">{t.billing.invoicingProvider}</FormLabel>
+        <Select
+          labelId="invoice-provider-label"
+          value={provider}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) =>
+            updateSettings.mutate({
+              invoicingProvider: event.target.value === 'ksef' ? 'ksef' : 'ifirma',
+            })}
+        >
+          <MenuItem value="ifirma">{t.billing.providerIfirma}</MenuItem>
+          <MenuItem value="ksef">{t.billing.providerKsef}</MenuItem>
+        </Select>
+      </FormControl>
       <FormControl fullWidth>
         <FormLabel id="invoice-auto-scope-label">{t.billing.autoIssueScope}</FormLabel>
         <Select
@@ -150,6 +168,34 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           <MenuItem value={23}>23%</MenuItem>
         </Select>
       </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="invoice-seller-name">{t.billing.sellerName}</FormLabel>
+        <OutlinedInput
+          id="invoice-seller-name"
+          value={sellerName ?? settings.data?.settings.invoiceSellerName ?? ''}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) => setSellerName(event.target.value)}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="invoice-seller-address">{t.billing.sellerAddress}</FormLabel>
+        <OutlinedInput
+          id="invoice-seller-address"
+          value={sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? ''}
+          disabled={!canEdit || settings.isPending || updateSettings.isPending}
+          onChange={(event) => setSellerAddress(event.target.value)}
+        />
+      </FormControl>
+      <Button
+        variant="contained"
+        disabled={!canEdit || settings.isPending || updateSettings.isPending}
+        onClick={() => updateSettings.mutate({
+          invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
+          invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
+        })}
+      >
+        {t.billing.saveSeller}
+      </Button>
       {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );

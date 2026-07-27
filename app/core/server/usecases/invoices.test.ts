@@ -214,13 +214,10 @@ describe('requestInvoice', () => {
     expect(h.invoices).toHaveLength(1);
   });
 
-  it('requires a billing snapshot', async () => {
+  it('supports a B2C order without a billing snapshot', async () => {
     const h = harness();
     h.deps.orderDetails.findById = async () => order(null);
-    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
-      ok: false,
-      error: { code: 'validation' },
-    });
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
   });
 
   it('records missing provider configuration as a failed lifecycle', async () => {

@@ -495,7 +495,11 @@ export interface InvoiceRepository {
     artifact: FiscalArtifact,
     job: KsefSubmissionJob,
   ): Promise<boolean>;
-  checkpointKsef?(tenantId: string, invoice: Invoice): Promise<Invoice | null>;
+  checkpointKsef?(
+    tenantId: string,
+    invoice: Invoice,
+    event: InvoiceEvent,
+  ): Promise<Invoice | null>;
 }
 
 export interface KsefNumberAllocation {
@@ -607,7 +611,11 @@ export interface KsefCredentialResolver {
 
 export interface KsefSubmissionRepository {
   findById(tenantId: string, invoiceId: string): Promise<Invoice | null>;
-  checkpointKsef(tenantId: string, invoice: Invoice): Promise<Invoice | null>;
+  checkpointKsef(
+    tenantId: string,
+    invoice: Invoice,
+    event: InvoiceEvent,
+  ): Promise<Invoice | null>;
 }
 
 export interface FiscalArtifactRepository {
@@ -617,6 +625,10 @@ export interface FiscalArtifactRepository {
 
 export interface ContentHash {
   sha256(content: string | Uint8Array): string;
+}
+
+export interface KsefInvoicePdf {
+  render(input: { invoice: Invoice; xml: string }): Uint8Array;
 }
 
 export interface CouponRepository {

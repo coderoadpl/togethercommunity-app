@@ -28,6 +28,7 @@ import {
   grantRevokeOutputSchema,
   healthOutputSchema,
   ifirmaTestConnectionOutputSchema,
+  ksefTestConnectionOutputSchema,
   emailDispatchOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
   lessonOutputSchema,
@@ -1226,6 +1227,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.ifirmaTestConnection.method,
       API_ROUTES.ifirmaTestConnection.path,
       ifirmaTestConnectionOutputSchema,
+      {},
+      signal,
+    ),
+  testKsefConnection: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.ksefTestConnection.method,
+      API_ROUTES.ksefTestConnection.path,
+      ksefTestConnectionOutputSchema,
       {},
       signal,
     ),

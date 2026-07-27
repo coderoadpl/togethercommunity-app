@@ -168,7 +168,8 @@ export const memberBillingOrdersOutputSchema = z.object({
   orders: z.array(z.object({
     id: z.string(),
     createdAt: z.string().datetime(),
-    billing: billingDataSchema,
+    billing: billingDataSchema.nullable(),
+    invoice: invoiceSchema.pick({ id: true, status: true, provider: true }).nullable().default(null),
   })),
   total: z.number().int().nonnegative(),
   page: z.number().int().positive(),
@@ -836,6 +837,11 @@ export const ifirmaTestConnectionOutputSchema = z.object({
   diagnostic: z.string(),
 });
 
+export const ksefTestConnectionOutputSchema = z.object({
+  ok: z.literal(true),
+  diagnostic: z.string(),
+});
+
 export const bunnyVideosInputSchema = listStreamVideosInputSchema;
 
 export const bunnyVideosOutputSchema = z.object({
@@ -1042,6 +1048,7 @@ export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
   emailDispatch: { method: 'POST', path: '/api/internal/dispatch-email' },
+  ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
   publicPaymentConfig: { method: 'GET', path: '/api/public/payment-config' },
   checkoutSession: { method: 'POST', path: '/api/public/checkout/session' },
@@ -1065,6 +1072,8 @@ export const API_ROUTES = {
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
   invoiceRefresh: { method: 'POST', path: '/api/invoices/:invoiceId/refresh' },
   invoiceDownload: { method: 'GET', path: '/api/invoices/:invoiceId/download' },
+  invoiceUpoDownload: { method: 'GET', path: '/api/invoices/:invoiceId/upo' },
+  memberInvoiceDownload: { method: 'GET', path: '/api/me/invoices/:invoiceId/download' },
   ordersExport: { method: 'GET', path: '/api/orders/export' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
   couponStats: { method: 'GET', path: '/api/coupons' },
@@ -1142,6 +1151,7 @@ export const API_ROUTES = {
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
+  ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
   bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
@@ -1205,6 +1215,7 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 export const API_PATHS = {
   health: API_ROUTES.health.path,
   emailDispatch: API_ROUTES.emailDispatch.path,
+  ksefDispatch: API_ROUTES.ksefDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,
   publicPaymentConfig: API_ROUTES.publicPaymentConfig.path,
   checkoutSession: API_ROUTES.checkoutSession.path,
@@ -1226,6 +1237,8 @@ export const API_PATHS = {
   invoiceIssue: API_ROUTES.invoiceIssue.path,
   invoiceRefresh: API_ROUTES.invoiceRefresh.path,
   invoiceDownload: API_ROUTES.invoiceDownload.path,
+  invoiceUpoDownload: API_ROUTES.invoiceUpoDownload.path,
+  memberInvoiceDownload: API_ROUTES.memberInvoiceDownload.path,
   ordersExport: API_ROUTES.ordersExport.path,
   salesSummary: API_ROUTES.salesSummary.path,
   couponStats: API_ROUTES.couponStats.path,
@@ -1300,6 +1313,7 @@ export const API_PATHS = {
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   stripeTestConnection: API_ROUTES.stripeTestConnection.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
+  ksefTestConnection: API_ROUTES.ksefTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,
   bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,

@@ -1,6 +1,17 @@
 import { z } from 'zod';
 
-export const invoiceStatusSchema = z.enum(['requested', 'issued', 'delivered', 'failed']);
+import { ksefInvoiceDataSchema } from './ksef.js';
+
+export const invoiceStatusSchema = z.enum([
+  'requested',
+  'queued',
+  'submitting',
+  'processing',
+  'issued',
+  'delivered',
+  'failed',
+  'conflict',
+]);
 
 export const invoiceSchema = z.object({
   id: z.string(),
@@ -14,6 +25,7 @@ export const invoiceSchema = z.object({
   error: z.string().nullable(),
   issuedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
+  ksef: ksefInvoiceDataSchema.nullable().optional(),
 });
 
 export type Invoice = z.infer<typeof invoiceSchema>;
@@ -27,6 +39,14 @@ export const invoiceEventTypeSchema = z.enum([
   'failed',
   'skipped',
   'refreshed',
+  'frozen',
+  'session_opened',
+  'send_started',
+  'submitted',
+  'correlated',
+  'processing',
+  'upo_stored',
+  'numbering_conflict',
 ]);
 
 export const invoiceEventSchema = z.object({

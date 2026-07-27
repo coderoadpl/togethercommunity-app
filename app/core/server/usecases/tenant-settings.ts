@@ -66,6 +66,18 @@ export const updateTenantSettings = async (
         parsed.data.invoiceVatRatePercent === undefined
           ? current.invoiceVatRatePercent
           : parsed.data.invoiceVatRatePercent,
+      invoicingProvider:
+        parsed.data.invoicingProvider === undefined
+          ? current.invoicingProvider
+          : parsed.data.invoicingProvider,
+      invoiceSellerName:
+        parsed.data.invoiceSellerName === undefined
+          ? current.invoiceSellerName
+          : parsed.data.invoiceSellerName,
+      invoiceSellerAddress:
+        parsed.data.invoiceSellerAddress === undefined
+          ? current.invoiceSellerAddress
+          : parsed.data.invoiceSellerAddress,
     }),
   );
 };

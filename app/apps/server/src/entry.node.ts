@@ -4,6 +4,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { loadEnv } from './env.js';
+import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { startServerObservability } from './observability.js';
 
 startServerObservability();
@@ -18,6 +19,9 @@ if (env.NODE_ENV !== 'test') {
       if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${result.error.message}\n`);
     });
   }, env.EMAIL_DISPATCH_INTERVAL_MS).unref();
+  setInterval(() => {
+    dispatchKsefInBackground(deps.ksef, deps.logger, 'node ticker');
+  }, env.KSEF_DISPATCH_INTERVAL_MS).unref();
 }
 
 // Same process serves the SPA build — one origin per tenant domain, no CORS.

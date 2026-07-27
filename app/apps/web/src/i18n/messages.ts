@@ -201,7 +201,18 @@ export interface Messages {
     refreshingInvoice: string;
     invoiceStatus: string;
     invoiceDownload: string;
-    invoiceStatuses: Record<'requested' | 'issued' | 'delivered' | 'failed', string>;
+    ksefNumber: string;
+    ksefPdfDownload: string;
+    ksefUpoDownload: string;
+    ksefConflictHelp: string;
+    ksefStates: Record<
+      'queued' | 'session_opened' | 'submitting' | 'processing' | 'awaiting_upo' | 'succeeded' | 'rejected' | 'numbering_conflict',
+      string
+    >;
+    invoiceStatuses: Record<
+      'requested' | 'queued' | 'submitting' | 'processing' | 'issued' | 'delivered' | 'failed' | 'conflict',
+      string
+    >;
   };
   coupons: {
     title: string;
@@ -326,6 +337,12 @@ export interface Messages {
     ifirmaInvoiceApiKeyLabel: string;
     ifirmaUsernameLabel: string;
     ifirmaSaveFirst: string;
+    ksefHeading: string;
+    ksefDescription: string;
+    ksefTokenHelp: string;
+    ksefSaveFirst: string;
+    ksefTokenLabel: string;
+    ksefContextNipLabel: string;
     bunnyHeading: string;
     bunnyDescription: string;
     bunnyApiKeyLabel: string;
@@ -888,6 +905,7 @@ export interface Messages {
     managePayments: string;
     invoiceOrdersHeading: string;
     invoiceOrderLabel: (params: { date: string }) => string;
+    invoiceDownload: string;
     preferencesHeading: string;
     preferencesIntro: string;
   };
@@ -926,6 +944,12 @@ export interface Messages {
     allBuyers: string;
     vatRate: string;
     vatRateUnset: string;
+    invoicingProvider: string;
+    providerIfirma: string;
+    providerKsef: string;
+    sellerName: string;
+    sellerAddress: string;
+    saveSeller: string;
   };
   legal: {
     heading: string;

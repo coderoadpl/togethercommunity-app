@@ -105,6 +105,7 @@ import {
   emailEvents,
   erasedMemberImports,
   entityVersions,
+  invoices,
   memberCourseProgress,
   members,
   memberSubscriptions,
@@ -1656,10 +1657,15 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           .orderBy(desc(orders.createdAt), desc(orders.id))
       ).map(parseOrder),
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
-      const condition = and(
+      const memberCondition = and(
         eq(orders.tenantId, tenantId),
         eq(orders.memberId, memberId),
-        isNotNull(orders.billing),
+      );
+      const visibleCondition = or(isNotNull(orders.billing), eq(invoices.provider, 'ksef'));
+      const invoiceJoin = and(
+        eq(invoices.tenantId, orders.tenantId),
+        eq(invoices.orderId, orders.id),
+        inArray(invoices.status, ['issued', 'delivered']),
       );
       const [rows, totals] = await Promise.all([
         db
@@ -1667,22 +1673,34 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
             id: orders.id,
             createdAt: orders.createdAt,
             billing: orders.billing,
+            invoiceId: invoices.id,
+            invoiceStatus: invoices.status,
+            invoiceProvider: invoices.provider,
           })
           .from(orders)
-          .where(condition)
+          .leftJoin(invoices, invoiceJoin)
+          .where(and(memberCondition, visibleCondition))
           .orderBy(desc(orders.createdAt), desc(orders.id))
           .limit(pageSize)
           .offset((page - 1) * pageSize),
         db
           .select({ value: sql<number>`count(*)::int` })
           .from(orders)
-          .where(condition),
+          .leftJoin(invoices, invoiceJoin)
+          .where(and(memberCondition, visibleCondition)),
       ]);
       return {
         orders: rows.map((row) => ({
           id: row.id,
           createdAt: row.createdAt,
-          billing: billingDataSchema.parse(row.billing),
+          billing: row.billing === null ? null : billingDataSchema.parse(row.billing),
+          invoice: row.invoiceId === null
+            ? null
+            : {
+                id: row.invoiceId,
+                status: row.invoiceStatus === 'delivered' ? 'delivered' as const : 'issued' as const,
+                provider: row.invoiceProvider ?? '',
+              },
         })),
         total: totals[0]?.value ?? 0,
       };
@@ -2090,6 +2108,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
+        invoicingProvider: tenants.invoicingProvider,
+        invoiceSellerName: tenants.invoiceSellerName,
+        invoiceSellerAddress: tenants.invoiceSellerAddress,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -2112,6 +2133,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
             row.invoiceVatRatePercent === 23
               ? row.invoiceVatRatePercent
               : null,
+          invoicingProvider: row.invoicingProvider,
+          invoiceSellerName: row.invoiceSellerName,
+          invoiceSellerAddress: row.invoiceSellerAddress,
         }
       : null;
   },
@@ -2129,6 +2153,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
+        invoicingProvider: settings.invoicingProvider,
+        invoiceSellerName: settings.invoiceSellerName,
+        invoiceSellerAddress: settings.invoiceSellerAddress,
       })
       .where(eq(tenants.id, tenantId));
     return {
@@ -2142,6 +2169,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,
+      invoicingProvider: settings.invoicingProvider,
+      invoiceSellerName: settings.invoiceSellerName,
+      invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
   createTenantWithOwnerGrant: async (input) =>

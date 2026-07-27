@@ -12,6 +12,7 @@ import {
   ksefNumberAllocations,
   ksefNumberSequences,
   ksefSubmissionJobs,
+  tenants,
 } from './app-schema.js';
 
 export const createKsefNumberRepository = (db: Db): KsefNumberRepository => ({
@@ -105,8 +106,19 @@ export const createKsefSubmissionJobRepository = (
         ));
       const row = (
         await tx
-          .select()
+          .select({
+            id: ksefSubmissionJobs.id,
+            tenantId: ksefSubmissionJobs.tenantId,
+            invoiceId: ksefSubmissionJobs.invoiceId,
+            status: ksefSubmissionJobs.status,
+            attempts: ksefSubmissionJobs.attempts,
+            nextAttemptAt: ksefSubmissionJobs.nextAttemptAt,
+            lockedAt: ksefSubmissionJobs.lockedAt,
+            lastError: ksefSubmissionJobs.lastError,
+            createdAt: ksefSubmissionJobs.createdAt,
+          })
           .from(ksefSubmissionJobs)
+          .innerJoin(tenants, eq(tenants.id, ksefSubmissionJobs.tenantId))
           .where(and(
             eq(ksefSubmissionJobs.status, 'queued'),
             lte(ksefSubmissionJobs.nextAttemptAt, now),
@@ -118,7 +130,7 @@ export const createKsefSubmissionJobRepository = (
           ))
           .orderBy(ksefSubmissionJobs.nextAttemptAt, ksefSubmissionJobs.createdAt)
           .limit(1)
-          .for('update', { skipLocked: true })
+          .for('update', { of: [ksefSubmissionJobs, tenants], skipLocked: true })
       )[0];
       if (row === undefined) return null;
       const claimed = (

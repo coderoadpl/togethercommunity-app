@@ -4,8 +4,18 @@ import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { createDb, type Db } from './client.js';
-import { createKsefNumberRepository } from './ksef-repositories.js';
-import { members, orders, products, tenants } from './schema.js';
+import {
+  createKsefNumberRepository,
+  createKsefSubmissionJobRepository,
+} from './ksef-repositories.js';
+import {
+  invoices,
+  ksefSubmissionJobs,
+  members,
+  orders,
+  products,
+  tenants,
+} from './schema.js';
 
 const TEST_DB = 'together_ksef_test';
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -85,5 +95,50 @@ describe('KSeF invoice numbering', () => {
       year: 2026,
       allocatedAt: now,
     })).toEqual(allocated[0]);
+  });
+});
+
+describe('KSeF submission jobs', () => {
+  it('serializes each tenant under concurrent claims and reclaims an expired lease', async () => {
+    await db.insert(invoices).values([1, 2].map((sequence) => ({
+      id: `invoice-job-${String(sequence)}`,
+      tenantId: 'tenant-ksef',
+      orderId: `order-${String(sequence)}`,
+      status: 'queued' as const,
+      provider: 'ksef',
+      createdAt: new Date(Date.parse(now) + sequence).toISOString(),
+    })));
+    await db.insert(ksefSubmissionJobs).values([1, 2].map((sequence) => ({
+      id: `job-${String(sequence)}`,
+      tenantId: 'tenant-ksef',
+      invoiceId: `invoice-job-${String(sequence)}`,
+      status: 'queued' as const,
+      nextAttemptAt: now,
+      createdAt: new Date(Date.parse(now) + sequence).toISOString(),
+    })));
+    const repository = createKsefSubmissionJobRepository(db);
+
+    const claimed = await Promise.all([
+      repository.claimDue(now),
+      repository.claimDue(now),
+    ]);
+
+    expect(claimed.filter((job) => job !== null)).toHaveLength(1);
+    expect(claimed.filter((job) => job === null)).toHaveLength(1);
+    expect(claimed.find((job) => job !== null)).toMatchObject({
+      id: 'job-1',
+      status: 'running',
+      attempts: 1,
+    });
+
+    const reclaimed = await repository.claimDue(
+      new Date(Date.parse(now) + 16 * 60 * 1000).toISOString(),
+    );
+
+    expect(reclaimed).toMatchObject({
+      id: 'job-1',
+      status: 'running',
+      attempts: 2,
+    });
   });
 });

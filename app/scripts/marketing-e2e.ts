@@ -431,6 +431,8 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
       identityVerified: true,
       configurationSet: 'marketing-e2e',
       snsTopicArn: topicArn,
+      trackingEnabled: false,
+      autoPauseOnCritical: false,
       footerLegalName: legalName,
       footerAddress: legalAddress,
     }), 200);

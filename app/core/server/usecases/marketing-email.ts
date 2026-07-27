@@ -1021,7 +1021,7 @@ export const sendMarketingMessages = async (
       credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName },
       to: send.email, subject: rendered.value.subject, html: rendered.value.html, text: rendered.value.text,
       headers: rendered.value.headers,
-      configurationSet: settings.trackingEnabled ? settings.configurationSet : null,
+      configurationSet: settings.configurationSet,
     });
     if (!sent.ok) {
       await deps.sends.update(
@@ -1453,6 +1453,7 @@ export const applyVerifiedSesEvent = async (
       return marked.ok ? ok({ processed: true }) : ok({ processed: false });
     }
     if (event.kind === 'open' || event.kind === 'click') {
+      if (!settings.trackingEnabled) return ok({ processed: false });
       await deps.events.append(
         tenantId.value,
         lifecycleEvent(
@@ -1536,20 +1537,32 @@ export const applyVerifiedSesEvent = async (
 
 export const runMarketingRetentionJobs = async (
   ctx: Ctx,
-  input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string },
+  input: {
+    pendingOlderThan: string;
+    renderedBodiesOlderThan: string;
+    engagementOlderThan: string;
+    idempotencyNow: string;
+  },
   deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
     sends: CampaignSendRepository;
+    events: EmailEventRepository;
     idempotency: AutomationIdempotencyRepository;
   },
-): Promise<Result<{ pendingConsentsPurged: number; renderedBodiesPurged: number; idempotencyKeysPurged: number }, AppError>> => {
+): Promise<Result<{
+  pendingConsentsPurged: number;
+  renderedBodiesPurged: number;
+  engagementEventsPurged: number;
+  idempotencyKeysPurged: number;
+}, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const definitions = await deps.definitions.list(tenantId.value);
   const doubleOptInDefinitionIds = definitions.filter((definition) => definition.doubleOptIn).map((definition) => definition.id);
   const pendingConsentsPurged = await deps.consents.purgeStalePending(tenantId.value, input.pendingOlderThan, doubleOptInDefinitionIds);
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
+  const engagementEventsPurged = await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementEventsPurged, idempotencyKeysPurged });
 };
 
 export const scheduleMarketingRetentionJobs = async (
@@ -1562,7 +1575,12 @@ export const scheduleMarketingRetentionJobs = async (
 };
 
 export const runScheduledMarketingJobs = async (
-  input: { now: string; pendingOlderThan: string; renderedBodiesOlderThan: string },
+  input: {
+    now: string;
+    pendingOlderThan: string;
+    renderedBodiesOlderThan: string;
+    engagementOlderThan: string;
+  },
   deps: {
     jobs: MarketingJobRepository;
     runs: SchedulerRunRepository;
@@ -1570,6 +1588,7 @@ export const runScheduledMarketingJobs = async (
     runRetention(tenantId: string, input: {
       pendingOlderThan: string;
       renderedBodiesOlderThan: string;
+      engagementOlderThan: string;
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
   },
@@ -1590,6 +1609,7 @@ export const runScheduledMarketingJobs = async (
     const retained = await deps.runRetention(tenantId, {
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
+      engagementOlderThan: input.engagementOlderThan,
       idempotencyNow: input.now,
     });
     if (!retained.ok && firstError === null) firstError = retained.error;

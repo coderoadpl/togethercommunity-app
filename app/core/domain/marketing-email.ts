@@ -526,6 +526,7 @@ export type TenantSesSettings = z.output<typeof tenantSesSettingsSchema>;
 
 export const tenantSesBroadcastsReady = (settings: TenantSesSettings): boolean =>
   settings.identityVerifiedAt !== null
+  && settings.configurationSet !== null
   && settings.webhookVerifiedAt !== null
   && settings.quotaRefreshedAt !== null
   && settings.footerLegalName.trim() !== ''

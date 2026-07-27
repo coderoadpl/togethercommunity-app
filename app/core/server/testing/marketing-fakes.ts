@@ -178,11 +178,23 @@ export class InMemorySchedulerRunRepository implements SchedulerRunRepository {
 }
 
 export class InMemoryEmailEventRepository implements EmailEventRepository {
-  private readonly rows: EmailEvent[] = [];
+  private rows: EmailEvent[] = [];
   private readonly addresses = new Map<string, string>();
+  private readonly marketingSendTimes = new Map<string, string>();
 
-  associateEmail(tenantId: string, mailKind: EmailEventMailKind, refId: string, email: string): void {
+  associateEmail(
+    tenantId: string,
+    mailKind: EmailEventMailKind,
+    refId: string,
+    email: string,
+    sentAt: string | null = null,
+  ): void {
     this.addresses.set(`${tenantId}:${mailKind}:${refId}`, normalizeEmail(email));
+    if (mailKind === 'marketing') {
+      const key = `${tenantId}:${refId}`;
+      if (sentAt === null) this.marketingSendTimes.delete(key);
+      else this.marketingSendTimes.set(key, sentAt);
+    }
   }
 
   async append(tenantId: string, event: EmailEvent): Promise<void> {
@@ -205,17 +217,33 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
     ));
   }
 
+  async purgeEngagement(tenantId: string, olderThan: string): Promise<number> {
+    const retained = this.rows.filter((row) =>
+      row.tenantId !== tenantId
+      || row.occurredAt >= olderThan
+      || (row.type !== 'opened' && row.type !== 'clicked')
+    );
+    const purged = this.rows.length - retained.length;
+    this.rows = retained;
+    return purged;
+  }
+
   async reputationCounts(tenantId: string, window: { since: string; until: string }) {
     const rows = this.rows.filter((row) =>
       row.tenantId === tenantId
       && row.mailKind === 'marketing'
-      && row.occurredAt >= window.since
       && row.occurredAt <= window.until
+      && (() => {
+        const sentAt = this.marketingSendTimes.get(`${tenantId}:${row.refId}`);
+        return sentAt !== undefined && sentAt >= window.since && sentAt <= window.until;
+      })()
     );
     const distinct = (predicate: (row: EmailEvent) => boolean): number =>
       new Set(rows.filter(predicate).map((row) => row.refId)).size;
     return {
-      sends: distinct((row) => row.type === 'accepted'),
+      sends: new Set([...this.marketingSendTimes.entries()].flatMap(([key, sentAt]) =>
+        key.startsWith(`${tenantId}:`) && sentAt >= window.since && sentAt <= window.until ? [key] : []
+      )).size,
       hardBounces: distinct((row) => row.type === 'bounced' && row.meta.classification === 'hard'),
       complaints: distinct((row) => row.type === 'complained'),
     };
@@ -554,7 +582,7 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
     )) return false;
     this.rows.push(structuredClone(send));
     if (this.events !== undefined) {
-      this.events.associateEmail(tenantId, 'marketing', send.id, send.email);
+      this.events.associateEmail(tenantId, 'marketing', send.id, send.email, send.sentAt);
       for (const event of events) await this.events.append(tenantId, event);
     }
     if (this.afterClaim !== null) await this.afterClaim(structuredClone(send));
@@ -574,6 +602,7 @@ export class InMemoryCampaignSendRepository implements CampaignSendRepository {
     )) throw new Error('SES message id must be unique');
     this.rows[index] = structuredClone(send);
     if (this.events !== undefined) {
+      this.events.associateEmail(tenantId, 'marketing', send.id, send.email, send.sentAt);
       for (const event of events) await this.events.append(tenantId, event);
     }
     return structuredClone(send);

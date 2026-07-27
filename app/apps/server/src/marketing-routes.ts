@@ -133,7 +133,7 @@ const sesDeliveryEventSchema = z.discriminatedUnion('notificationType', [
   }).passthrough(),
 ]);
 
-const sesEngagementEventSchema = z.discriminatedUnion('eventType', [
+const sesConfigurationSetEventSchema = z.discriminatedUnion('eventType', [
   z.object({
     eventType: z.literal('Open'),
     mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
@@ -147,6 +147,30 @@ const sesEngagementEventSchema = z.discriminatedUnion('eventType', [
       link: z.string().min(1),
     }).passthrough(),
   }).passthrough(),
+  z.object({
+    eventType: z.literal('Bounce'),
+    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
+    bounce: z.object({
+      bounceType: z.string().min(1),
+      timestamp: z.string().datetime(),
+      bouncedRecipients: z.array(z.object({ status: z.string().nullable().optional() })).min(1),
+    }).passthrough(),
+  }).passthrough(),
+  z.object({
+    eventType: z.literal('Complaint'),
+    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
+    complaint: z.object({ timestamp: z.string().datetime() }).passthrough(),
+  }).passthrough(),
+  z.object({
+    eventType: z.literal('Delivery'),
+    mail: z.object({ messageId: z.string().min(1), timestamp: z.string().datetime() }),
+    delivery: z.object({ timestamp: z.string().datetime() }).passthrough(),
+  }).passthrough(),
+]);
+
+const sesEventDiscriminatorSchema = z.union([
+  z.object({ eventType: z.string().min(1) }).passthrough(),
+  z.object({ notificationType: z.string().min(1) }).passthrough(),
 ]);
 
 const publicBrand = async (deps: AppDeps, tenant: Tenant): Promise<PublicBrand> => ({
@@ -446,24 +470,47 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       }
       return response(ok({ received: true }));
     };
-    const engagement = sesEngagementEventSchema.safeParse(message);
+    const configurationSetEvent = sesConfigurationSetEventSchema.safeParse(message);
     const delivery = sesDeliveryEventSchema.safeParse(message);
-    if (engagement.success) {
-      const event = engagement.data.eventType === 'Open'
+    if (configurationSetEvent.success) {
+      const event = configurationSetEvent.data.eventType === 'Open'
         ? {
             kind: 'open' as const, topicArn: verified.value.topicArn,
-            messageId: engagement.data.mail.messageId, occurredAt: engagement.data.open.timestamp,
+            messageId: configurationSetEvent.data.mail.messageId, occurredAt: configurationSetEvent.data.open.timestamp,
             raw: message,
           }
-        : {
+        : configurationSetEvent.data.eventType === 'Click'
+          ? {
             kind: 'click' as const, topicArn: verified.value.topicArn,
-            messageId: engagement.data.mail.messageId, occurredAt: engagement.data.click.timestamp,
-            linkUrl: engagement.data.click.link, raw: message,
-          };
+            messageId: configurationSetEvent.data.mail.messageId, occurredAt: configurationSetEvent.data.click.timestamp,
+            linkUrl: configurationSetEvent.data.click.link, raw: message,
+          }
+          : configurationSetEvent.data.eventType === 'Bounce'
+            ? {
+                kind: 'bounce' as const, topicArn: verified.value.topicArn,
+                messageId: configurationSetEvent.data.mail.messageId,
+                occurredAt: configurationSetEvent.data.bounce.timestamp,
+                bounceType: configurationSetEvent.data.bounce.bounceType,
+                status: configurationSetEvent.data.bounce.bouncedRecipients[0]?.status ?? null,
+                raw: message,
+              }
+            : configurationSetEvent.data.eventType === 'Complaint'
+              ? {
+                  kind: 'complaint' as const, topicArn: verified.value.topicArn,
+                  messageId: configurationSetEvent.data.mail.messageId,
+                  occurredAt: configurationSetEvent.data.complaint.timestamp, raw: message,
+                }
+              : {
+                  kind: 'delivery' as const, topicArn: verified.value.topicArn,
+                  messageId: configurationSetEvent.data.mail.messageId,
+                  occurredAt: configurationSetEvent.data.delivery.timestamp, raw: message,
+                };
       return applyEvent(event);
     }
     if (!delivery.success) {
-      return response(err(validation('Malformed SES notification', delivery.error.flatten())));
+      return sesEventDiscriminatorSchema.safeParse(message).success
+        ? response(ok({ received: true }))
+        : response(err(validation('Malformed SES notification', delivery.error.flatten())));
     }
     const event = delivery.data.notificationType === 'Bounce'
       ? {

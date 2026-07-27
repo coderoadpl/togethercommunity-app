@@ -335,7 +335,7 @@ describe('marketing e-mail use-case integration', () => {
     expect(refused).toMatchObject({ ok: true, value: [{ status: 'skipped', reason: 'unsubscribed' }] });
   });
 
-  it('attaches the tenant configuration set only when tracking is enabled', async () => {
+  it('attaches the tenant configuration set independently of engagement tracking', async () => {
     const enabled = await setup();
     await sendMarketingMessages(ctx, [{
       to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
@@ -351,7 +351,7 @@ describe('marketing e-mail use-case integration', () => {
       source: 'broadcast', consentDefinitionId: definition.id, subject: 'Private',
       bodyHtml: '<p>Private</p>', data: {},
     }], disabled);
-    expect(disabled.ses.sent[0]?.configurationSet).toBeNull();
+    expect(disabled.ses.sent[0]?.configurationSet).toBe('marketing');
   });
 
   it('I1 refuses broadcast and API messages with the same machine-readable reason matrix', async () => {
@@ -506,17 +506,16 @@ describe('marketing e-mail use-case integration', () => {
     const deps = await setup();
     await deps.sesSettings.upsert('tenant-1', { ...settings, autoPauseOnCritical: true });
     for (let index = 0; index < 100; index += 1) {
-      const occurredAt = '2026-07-21T10:00:00.000Z';
-      await deps.events.append('tenant-1', emailEventSchema.parse({
-        id: `accepted-reputation-${String(index)}`,
-        tenantId: 'tenant-1',
-        mailKind: 'marketing',
-        refId: `reputation-send-${String(index)}`,
-        type: 'accepted',
-        occurredAt,
-        createdAt: occurredAt,
-        meta: { sesMessageId: `ses-reputation-${String(index)}` },
-      }));
+      const sentAt = '2026-07-21T10:00:00.000Z';
+      await deps.sends.claimRecipient('tenant-1', {
+        id: `reputation-send-${String(index)}`, runId: null, tenantId: 'tenant-1',
+        campaignId: null, source: 'api', memberId: null,
+        email: `reputation-${String(index)}@example.test`, subject: 'Reputation',
+        consentRowId: 'consent-reputation', unsubscribeTokenId: null, status: 'sent',
+        skipReason: null, sesMessageId: `ses-reputation-${String(index)}`,
+        deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+        renderedBodyPurgedAt: null, createdAt: sentAt, sentAt,
+      });
     }
     for (let index = 0; index < 10; index += 1) {
       const occurredAt = '2026-07-21T11:00:00.000Z';
@@ -654,6 +653,29 @@ describe('marketing e-mail use-case integration', () => {
     }, deps)).toEqual(ok({ processed: false }));
   });
 
+  it('ignores SES opens and clicks when tenant engagement tracking is disabled', async () => {
+    const deps = await setup();
+    await deps.sesSettings.upsert('tenant-1', { ...settings, trackingEnabled: false });
+    await sendMarketingMessages(ctx, [{
+      to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1',
+      source: 'broadcast', consentDefinitionId: definition.id, subject: 'Hi',
+      bodyHtml: '<p>Hi</p>', data: {},
+    }], deps);
+    const topicArn = settings.snsTopicArn ?? '';
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'open',
+      occurredAt: NOW, raw: { open: { ipAddress: '192.0.2.1' } },
+    }, deps)).toEqual(ok({ processed: false }));
+    expect(await applyVerifiedSesEvent(ctx, {
+      topicArn, messageId: 'fake-ses-message', kind: 'click',
+      linkUrl: 'https://tenant.test/offer', occurredAt: NOW,
+      raw: { click: { link: 'https://tenant.test/offer' } },
+    }, deps)).toEqual(ok({ processed: false }));
+    const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
+    expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? ''))
+      .filter((event) => event.type === 'opened' || event.type === 'clicked')).toEqual([]);
+  });
+
   it('correlates transactional SNS complaints without writing marketing suppression', async () => {
     const deps = await setup();
     await deps.outbox.enqueue({
@@ -751,7 +773,15 @@ describe('marketing e-mail use-case integration', () => {
     await deps.consents.record('tenant-1', { ...consent('direct@example.test', 'granted', 'direct-grant'), definitionId: directDefinition.id, occurredAt: '2026-06-01T00:00:00.000Z' });
     await deps.confirmations.create('tenant-1', { id: 'expired-token', tenantId: 'tenant-1', token: 'expired_token_1234567890123456', marketingConsentRowId: recorded.ok ? recorded.value.consent.id : '', createdAt: '2026-07-20T00:00:00.000Z', expiresAt: '2026-07-21T00:00:00.000Z', usedAt: null });
     expect(await confirmMarketingConsent(ctx, { token: 'expired_token_1234567890123456', evidence: { collectedAt: NOW } }, deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await runMarketingRetentionJobs(ctx, { pendingOlderThan: '2026-07-01T00:00:00.000Z', renderedBodiesOlderThan: NOW, idempotencyNow: NOW }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({ ok: true, value: { pendingConsentsPurged: 1 } });
+    expect(await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: '2026-07-01T00:00:00.000Z',
+      renderedBodiesOlderThan: NOW,
+      engagementOlderThan: NOW,
+      idempotencyNow: NOW,
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() })).toMatchObject({
+      ok: true,
+      value: { pendingConsentsPurged: 1 },
+    });
     expect(await deps.consents.listByEmail('tenant-1', 'direct@example.test')).toHaveLength(1);
   });
 
@@ -774,6 +804,7 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '2026-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '2026-06-22T10:00:00.000Z',
+      engagementOlderThan: '2026-06-22T10:00:00.000Z',
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -823,6 +854,7 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '2026-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '2026-06-22T10:00:00.000Z',
+      engagementOlderThan: '2026-06-22T10:00:00.000Z',
     }, {
       jobs: {
         listRunnableCampaigns: async () => [],
@@ -850,6 +882,7 @@ describe('marketing e-mail use-case integration', () => {
       now: NOW,
       pendingOlderThan: '2026-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '2026-06-22T10:00:00.000Z',
+      engagementOlderThan: '2026-06-22T10:00:00.000Z',
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -1002,8 +1035,29 @@ describe('marketing e-mail use-case integration', () => {
     expect((await scheduleMarketingRetentionJobs(ctx, deps)).ok).toBe(true);
     expect(deps.scheduler.retentionTenants).toEqual(['tenant-1']);
     deps.sends.renderedBodiesAgedOut = 0;
-    const retention = await runMarketingRetentionJobs(ctx, { pendingOlderThan: NOW, renderedBodiesOlderThan: NOW, idempotencyNow: NOW }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
-    expect(retention).toMatchObject({ ok: true, value: { renderedBodiesPurged: 0 } });
+    await deps.events.append('tenant-1', emailEventSchema.parse({
+      id: 'old-open', tenantId: 'tenant-1', mailKind: 'marketing', refId: 'send-old',
+      type: 'opened', occurredAt: '2026-06-01T00:00:00.000Z',
+      meta: { rawProviderPayload: { ipAddress: '192.0.2.1' } },
+      createdAt: '2026-06-01T00:00:00.000Z',
+    }));
+    await deps.events.append('tenant-1', emailEventSchema.parse({
+      id: 'old-delivery', tenantId: 'tenant-1', mailKind: 'marketing', refId: 'send-old',
+      type: 'delivered', occurredAt: '2026-06-01T00:00:00.000Z',
+      meta: { rawProviderPayload: {} }, createdAt: '2026-06-01T00:00:00.000Z',
+    }));
+    const retention = await runMarketingRetentionJobs(ctx, {
+      pendingOlderThan: NOW,
+      renderedBodiesOlderThan: NOW,
+      engagementOlderThan: NOW,
+      idempotencyNow: NOW,
+    }, { ...deps, idempotency: new InMemoryAutomationIdempotencyRepository() });
+    expect(retention).toMatchObject({
+      ok: true,
+      value: { renderedBodiesPurged: 0, engagementEventsPurged: 1 },
+    });
+    expect((await deps.events.listByRef('tenant-1', 'marketing', 'send-old')).map((event) => event.type))
+      .toEqual(['delivered']);
   });
 
   it('derives unique and total campaign engagement from events', async () => {

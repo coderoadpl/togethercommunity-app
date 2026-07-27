@@ -39,7 +39,8 @@ const hardBounceThresholds: Thresholds = { absoluteFloor: 5, warn: 0.05, critica
 const complaintThresholds: Thresholds = { absoluteFloor: 2, warn: 0.00075, critical: 0.0015 };
 
 const deriveMetric = (sends: number, count: number, thresholds: Thresholds): EmailReputationMetric => {
-  if (sends < 100 || count < thresholds.absoluteFloor) {
+  const minimumVolume = Math.ceil(thresholds.absoluteFloor / thresholds.critical);
+  if (sends < Math.max(100, minimumVolume) || count < thresholds.absoluteFloor) {
     return { count, sends, rate: null, status: 'insufficient_data' as const };
   }
   const rate = count / sends;

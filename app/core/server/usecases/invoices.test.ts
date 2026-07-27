@@ -187,6 +187,9 @@ const harness = (options: {
       hash: {
         sha256: () => 'a'.repeat(64),
       },
+      validator: {
+        validate: async () => ok(undefined),
+      },
     },
   };
   return { deps, invoices, events, calls: () => calls, testedConfig: () => testedConfig };

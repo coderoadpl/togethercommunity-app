@@ -82,6 +82,7 @@ import { createFakeInvoicing } from '@adapters/invoicing/fake.js';
 import { createIfirmaInvoicing } from '@adapters/invoicing/ifirma.js';
 import { createKsefClient } from '@adapters/invoicing/ksef.js';
 import { createKsefInvoicePdf } from '@adapters/invoicing/ksef-pdf.js';
+import { createFa3XsdValidator } from '@adapters/invoicing/fa3-validator.js';
 import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
 import { createBunnyEmbedTokenSigner } from '@adapters/crypto/bunny-embed-token-signer.js';
 import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
@@ -137,6 +138,7 @@ import type {
   InvoiceRepository,
   InvoicingPort,
   ContentHash,
+  Fa3Validator,
   FiscalArtifactRepository,
   KsefClientPort,
   KsefCredentialResolver,
@@ -209,6 +211,7 @@ export interface KsefAppDeps {
   numbers: KsefNumberRepository;
   artifacts: FiscalArtifactRepository;
   hash: ContentHash;
+  validator: Fa3Validator;
   pdf: KsefInvoicePdf;
   client: KsefClientPort;
   jobs: KsefSubmissionJobRepository;
@@ -351,6 +354,7 @@ export const createDeps = (env: Env): AppDeps => {
   const ksefJobs = createKsefSubmissionJobRepository(db);
   const contentHash = createContentHash();
   const ksefPdf = createKsefInvoicePdf();
+  const fa3Validator = createFa3XsdValidator();
   const ksefClient = createKsefClient({
     baseUrls: {
       test: env.KSEF_TEST_BASE_URL,
@@ -639,6 +643,7 @@ export const createDeps = (env: Env): AppDeps => {
       numbers: ksefNumbers,
       artifacts: fiscalArtifacts,
       hash: contentHash,
+      validator: fa3Validator,
       pdf: ksefPdf,
       client: ksefClient,
       jobs: ksefJobs,

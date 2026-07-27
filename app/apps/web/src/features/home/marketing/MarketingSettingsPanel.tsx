@@ -79,6 +79,7 @@ export const MarketingSettingsPanel = () => {
   const [configurationSet, setConfigurationSet] = useState<string | null>(null);
   const [snsTopicArn, setSnsTopicArn] = useState<string | null>(null);
   const [trackingEnabled, setTrackingEnabled] = useState<boolean | null>(null);
+  const [autoPauseOnCritical, setAutoPauseOnCritical] = useState<boolean | null>(null);
   const [footerLegalName, setFooterLegalName] = useState<string | null>(null);
   const [footerAddress, setFooterAddress] = useState<string | null>(null);
 
@@ -90,6 +91,7 @@ export const MarketingSettingsPanel = () => {
     configurationSet: configurationSet ?? settings?.configurationSet ?? '',
     snsTopicArn: snsTopicArn ?? settings?.snsTopicArn ?? '',
     trackingEnabled: trackingEnabled ?? settings?.trackingEnabled ?? false,
+    autoPauseOnCritical: autoPauseOnCritical ?? settings?.autoPauseOnCritical ?? false,
     footerLegalName: footerLegalName ?? settings?.footerLegalName ?? '',
     footerAddress: footerAddress ?? settings?.footerAddress ?? '',
   };
@@ -160,6 +162,10 @@ export const MarketingSettingsPanel = () => {
         <FormControlLabel
           control={<Switch checked={values.trackingEnabled} onChange={(event) => setTrackingEnabled(event.target.checked)} />}
           label={t.marketing.trackingEnabledLabel}
+        />
+        <FormControlLabel
+          control={<Switch checked={values.autoPauseOnCritical} onChange={(event) => setAutoPauseOnCritical(event.target.checked)} />}
+          label={t.marketing.autoPauseOnCriticalLabel}
         />
         <Alert severity="info">
           {t.marketing.trackingPrivacyNote}{' '}

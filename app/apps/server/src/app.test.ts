@@ -620,7 +620,8 @@ describe('marketing HTTP surfaces', () => {
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
-      snsTopicArn: null, trackingEnabled: false, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
+      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
@@ -707,7 +708,8 @@ describe('marketing HTTP surfaces', () => {
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
-      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false, webhookToken: 'webhook-token',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
+      autoPauseOnCritical: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
       broadcastsEnabled: true,
@@ -740,7 +742,7 @@ describe('marketing HTTP surfaces', () => {
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
-      trackingEnabled: true, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
       broadcastsEnabled: true,

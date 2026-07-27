@@ -98,6 +98,7 @@ const settings: TenantSesSettings = {
   tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
   identityVerifiedAt: NOW, configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
   trackingEnabled: true,
+  autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
   quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Legal Ltd',
   quotaSentLast24Hours: 0,
@@ -499,6 +500,52 @@ describe('marketing e-mail use-case integration', () => {
     }
     expect(await deps.campaigns.findById('tenant-1', 'campaign-1')).toMatchObject({ status: 'paused', pausedReason: 'bad SES key' });
     expect((await pauseCampaign(ctx, { campaignId: 'campaign-1', resume: true }, deps)).ok).toBe(true);
+  });
+
+  it('pauses a running campaign before sending when critical reputation auto-pause is enabled', async () => {
+    const deps = await setup();
+    await deps.sesSettings.upsert('tenant-1', { ...settings, autoPauseOnCritical: true });
+    for (let index = 0; index < 100; index += 1) {
+      const occurredAt = '1998-07-21T10:00:00.000Z';
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id: `accepted-reputation-${String(index)}`,
+        tenantId: 'tenant-1',
+        mailKind: 'marketing',
+        refId: `reputation-send-${String(index)}`,
+        type: 'accepted',
+        occurredAt,
+        createdAt: occurredAt,
+        meta: { sesMessageId: `ses-reputation-${String(index)}` },
+      }));
+    }
+    for (let index = 0; index < 10; index += 1) {
+      const occurredAt = '1998-07-21T11:00:00.000Z';
+      await deps.events.append('tenant-1', emailEventSchema.parse({
+        id: `bounce-reputation-${String(index)}`,
+        tenantId: 'tenant-1',
+        mailKind: 'marketing',
+        refId: `reputation-send-${String(index)}`,
+        type: 'bounced',
+        occurredAt,
+        createdAt: occurredAt,
+        meta: { classification: 'hard', rawProviderPayload: {} },
+      }));
+    }
+
+    const result = await campaignTick(ctx, {
+      campaignId: 'campaign-1',
+      workerId: 'reputation-worker',
+      tickSeconds: 1,
+    }, deps);
+
+    expect(result).toMatchObject({ ok: true, value: { leased: true, sent: 0 } });
+    expect(deps.ses.sent).toHaveLength(0);
+    expect(await deps.campaigns.findById('tenant-1', 'campaign-1')).toMatchObject({
+      status: 'paused',
+      pausedReason: 'Broadcasts paused automatically: critical email reputation threshold exceeded',
+      lockedUntil: null,
+      lockedBy: null,
+    });
   });
 
   it('I7 resets the consecutive error count after a successful send', async () => {

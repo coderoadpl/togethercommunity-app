@@ -17,6 +17,9 @@ import type {
   CourseUpdateInput,
   GrantCreateInput,
   GrantRevokeInput,
+  EmailSendsExportQueryInput,
+  EmailSendsQueryInput,
+  SchedulerRunsQueryInput,
   LastViewedInput,
   LessonCompleteInput,
   LessonUncompleteInput,
@@ -36,6 +39,7 @@ import type {
   MarketingDocumentUpdateInput,
   MarketingLayoutSaveInput,
   MarketingSesSettingsUpdateInput,
+  MarketingSesIdentityStartInput,
   ModuleAttachInput,
   ModuleDetachInput,
   ModuleCreateInput,
@@ -260,6 +264,13 @@ export const marketingScopes = {
   document: (id: string) => ['marketing', 'documents', id] as const,
   layouts: () => ['marketing', 'layouts'] as const,
   settings: () => ['marketing', 'settings'] as const,
+  reputation: () => ['marketing', 'reputation'] as const,
+  sends: (input: EmailSendsQueryInput) => ['marketing', 'sends', input] as const,
+  send: (kind: 'transactional' | 'marketing', id: string) => ['marketing', 'sends', kind, id] as const,
+  memberSends: (memberId: string) => ['marketing', 'member-sends', memberId] as const,
+  sendsExport: (input: EmailSendsExportQueryInput) => ['marketing', 'sends-export', input] as const,
+  schedulerRuns: (input: SchedulerRunsQueryInput) => ['marketing', 'scheduler-runs', input] as const,
+  schedulerRun: (id: string) => ['marketing', 'scheduler-runs', id] as const,
 };
 
 export const marketingCampaignsQuery = (api: ApiClient) => defineQuery({
@@ -322,8 +333,57 @@ export const saveMarketingLayoutMutation = (api: ApiClient) => defineMutation({
 export const marketingSesSettingsQuery = (api: ApiClient) => defineQuery({
   queryKey: marketingScopes.settings(), call: ({ signal }) => api.getMarketingSesSettings(signal),
 });
+export const pollMarketingSesOnboardingMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'onboarding'],
+  call: api.pollMarketingSesOnboarding,
+});
+export const startMarketingSesIdentityMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'identity'],
+  call: (input: MarketingSesIdentityStartInput) => api.startMarketingSesIdentity(input),
+});
+export const provisionMarketingSesMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'provision'],
+  call: api.provisionMarketingSes,
+});
+export const testMarketingSesSimulatorMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'simulator'],
+  call: api.testMarketingSesSimulator,
+});
+export const marketingReputationQuery = (api: ApiClient) => defineQuery({
+  queryKey: marketingScopes.reputation(), call: ({ signal }) => api.getMarketingReputation(signal),
+});
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
+});
+export const testMarketingSmtpMutation = (api: ApiClient) => defineMutation({
+  mutationKey: [...marketingScopes.settings(), 'smtp-test'],
+  call: api.testMarketingSmtp,
+});
+
+export const emailSendsQuery = (api: ApiClient, input: EmailSendsQueryInput) => defineQuery({
+  queryKey: marketingScopes.sends(input), call: ({ signal }) => api.listEmailSends(input, signal),
+});
+export const emailSendQuery = (api: ApiClient, kind: 'transactional' | 'marketing', id: string) => defineQuery({
+  queryKey: marketingScopes.send(kind, id), call: ({ signal }) => api.getEmailSend(kind, id, signal),
+});
+export const memberEmailSendsQuery = (api: ApiClient, memberId: string) => defineQuery({
+  queryKey: marketingScopes.memberSends(memberId), call: ({ signal }) => api.listMemberEmailSends(memberId, signal),
+});
+export const emailSendsExportQuery = (api: ApiClient, input: EmailSendsExportQueryInput) => defineQuery({
+  queryKey: marketingScopes.sendsExport(input),
+  staleTime: 0,
+  gcTime: 0,
+  call: ({ signal }) => api.exportEmailSends(input, signal),
+});
+
+export const schedulerRunsQuery = (api: ApiClient, input: SchedulerRunsQueryInput) => defineQuery({
+  queryKey: marketingScopes.schedulerRuns(input),
+  call: ({ signal }) => api.listTenantSchedulerRuns(input, signal),
+});
+
+export const schedulerRunQuery = (api: ApiClient, id: string) => defineQuery({
+  queryKey: marketingScopes.schedulerRun(id),
+  call: ({ signal }) => api.getTenantSchedulerRun(id, signal),
 });
 
 export const marketingInvalidates = () => ({ queryKey: marketingScopes.all() });

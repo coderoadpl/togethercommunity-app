@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   API_KEY_HEADER,
   EMAIL_DISPATCH_SECRET_HEADER,
+  SCHEDULER_OPERATOR_SECRET_HEADER,
   API_PATHS,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
@@ -12,6 +13,9 @@ import {
   bunnyVideosInputSchema,
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
+  emailSendsExportQuerySchema,
+  emailSendsQuerySchema,
+  schedulerRunsQuerySchema,
   marketingCampaignCreateInputSchema,
   marketingCampaignActionInputSchema,
   marketingCampaignScheduleInputSchema,
@@ -23,6 +27,7 @@ import {
   marketingDocumentPublishInputSchema,
   marketingDocumentUpdateInputSchema,
   marketingLayoutSaveInputSchema,
+  marketingSesIdentityStartInputSchema,
   marketingSesSettingsUpdateInputSchema,
   courseUpdateInputSchema,
   grantCreateInputSchema,
@@ -107,20 +112,34 @@ import {
   deleteLesson,
   deleteTenantSecret,
   listLessonReferences,
-  getCampaign,
+  getCampaignWithEngagement,
   getMarketingConsentDefinition,
   getTenantDocument,
   getTenantSesMarketingSettings,
+  pollSesOnboarding,
+  provisionSesInfrastructure,
+  sendSesSimulatorTest,
+  startSesIdentityVerification,
+  getEmailReputation,
   getContentHistory,
   getContentVersion,
   devGrantProduct,
   exportMembers,
+  exportEmailSends,
   exportOrders,
+  getEmailSend,
   listTenantApiKeys,
-  listCampaigns,
+  listCampaignsWithEngagement,
   listMarketingConsentDefinitions,
   listTenantDocuments,
   listEmailLayouts,
+  listEmailSends,
+  getGlobalSchedulerRun,
+  getSchedulerRunForTenant,
+  listGlobalSchedulerRuns,
+  listSchedulerRunsForTenant,
+  listMemberEmailSends,
+  sendTransactionalSmtpTest,
   m2mEnroll,
   revokeTenantApiKey,
   getCourseStructureWithAccess,
@@ -195,6 +214,7 @@ import {
   updateTenantSesMarketingSettings,
   pauseCampaign,
   cancelCampaign,
+  recordCheckoutMarketingConsents,
   testSendCampaignToSelf,
   simulatePurchase,
   validateCheckoutSelection,
@@ -319,6 +339,73 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberId: null,
 });
 
+const checkoutIdentity = (tenant: { id: string; slug: string; name: string }): Identity => ({
+  userId: 'checkout',
+  email: 'checkout@invalid.test',
+  name: 'Checkout',
+  tenantId: tenant.id,
+  tenantSlug: tenant.slug,
+  tenantName: tenant.name,
+  staffRole: null,
+  memberId: null,
+});
+
+const checkoutConsentEvidence = (headers: Headers) => {
+  const ip = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const userAgent = headers.get('user-agent') ?? undefined;
+  return {
+    ...(ip === undefined || ip === '' ? {} : { ip }),
+    ...(userAgent === undefined ? {} : { userAgent }),
+  };
+};
+
+const recordCheckoutConsents = async (
+  deps: AppDeps,
+  input: {
+    tenant: { id: string; slug: string; name: string };
+    email: string | undefined;
+    selectedDefinitionIds: string[];
+    attachedDefinitionIds: string[];
+    proofRef: string;
+    confirmationBaseUrl: string;
+    ip?: string;
+    userAgent?: string;
+  },
+): Promise<void> => {
+  if (deps.marketing === undefined || input.email === undefined || input.selectedDefinitionIds.length === 0) return;
+  try {
+    const recorded = await recordCheckoutMarketingConsents(
+      { identity: checkoutIdentity(input.tenant) },
+      {
+        email: input.email,
+        selectedDefinitionIds: input.selectedDefinitionIds,
+        attachedDefinitionIds: input.attachedDefinitionIds,
+        evidence: {
+          collectedAt: deps.clock.nowIso(),
+          proofRef: input.proofRef,
+          ...(input.ip === undefined ? {} : { ip: input.ip }),
+          ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+        },
+        confirmationBaseUrl: input.confirmationBaseUrl,
+      },
+      {
+        definitions: deps.marketing.definitions,
+        consents: deps.marketing.marketingConsents,
+        confirmations: deps.marketing.confirmations,
+        outbox: deps.emailOutbox,
+        ids: deps.ids,
+        tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
+        clock: deps.clock,
+      },
+    );
+    if (!recorded.ok) {
+      deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${input.proofRef} error=${recorded.error.code}:${recorded.error.message}`);
+    }
+  } catch (cause) {
+    deps.logger.error(`[checkout-consent] tenant=${input.tenant.id} proof=${input.proofRef} unexpected=${String(cause)}`);
+  }
+};
+
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
 
@@ -343,7 +430,32 @@ export const buildApp = (deps: AppDeps) => {
     if (c.req.header(EMAIL_DISPATCH_SECRET_HEADER) !== deps.emailDispatchSecret) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
     }
-    return respond(await deps.dispatchEmails());
+    return respond(await deps.dispatchEmails('manual'));
+  });
+
+  app.get(API_PATHS.globalSchedulerRuns, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.marketing.cronSecret) {
+      return respond(err(unauthorized('Invalid scheduler operator secret')));
+    }
+    const parsed = schedulerRunsQuerySchema.safeParse({
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
+      ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    });
+    return parsed.success
+      ? respond(await listGlobalSchedulerRuns(parsed.data, { runs: deps.marketing.runs }))
+      : respond(err(validation('Invalid scheduler runs query', parsed.error.flatten())));
+  });
+
+  app.get(API_PATHS.globalSchedulerRun, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.marketing.cronSecret) {
+      return respond(err(unauthorized('Invalid scheduler operator secret')));
+    }
+    return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));
   });
 
   app.options(API_PATHS.publicOffer, () =>
@@ -368,7 +480,13 @@ export const buildApp = (deps: AppDeps) => {
       return new Response(null, { status: 304, headers: publicOkHeaders(etag) });
     }
 
-    const result = await getPublicOffer(tenant.value.tenant, deps);
+    const result = await getPublicOffer(tenant.value.tenant, {
+      products: deps.products,
+      prices: deps.prices,
+      tenants: deps.tenants,
+      definitions: deps.marketing?.definitions,
+      documents: deps.marketing?.documents,
+    });
     if (!result.ok) return respondPublic(result, etag);
     const parsed = publicOfferOutputSchema.safeParse(result.value);
     if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
@@ -418,9 +536,19 @@ export const buildApp = (deps: AppDeps) => {
       tenant.value.source,
       deps.appBaseUrl,
     );
-    return respondPublic(
-      await startCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, selection.value, deps),
-    );
+    const session = await startCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, selection.value, deps);
+    if (session.ok) {
+      await recordCheckoutConsents(deps, {
+        tenant: tenant.value.tenant,
+        email: parsed.data.email,
+        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+        proofRef: `product:${selection.value.product.id}`,
+        confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
+        ...checkoutConsentEvidence(c.req.raw.headers),
+      });
+    }
+    return respondPublic(session);
   });
 
   // Public path (not the authenticated /api/* block): a freshly registered
@@ -576,6 +704,23 @@ export const buildApp = (deps: AppDeps) => {
       );
       if (!result.ok) return respond(result);
 
+      await recordCheckoutConsents(deps, {
+        tenant: tenant.value.tenant,
+        email: parsed.data.email,
+        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+        proofRef: result.value.orderId === null
+          ? `product:${selection.value.product.id}`
+          : `product:${selection.value.product.id};order:${result.value.orderId}`,
+        confirmationBaseUrl: `${magicLinkBaseUrl(
+          c.req.header('host') ?? '',
+          c.req.header('x-forwarded-proto') ?? null,
+          tenant.value.source,
+          deps.appBaseUrl,
+        )}/marketing/confirm`,
+        ...checkoutConsentEvidence(c.req.raw.headers),
+      });
+
       const baseUrl = magicLinkBaseUrl(
         c.req.header('host') ?? '',
         c.req.header('x-forwarded-proto') ?? null,
@@ -706,6 +851,33 @@ export const buildApp = (deps: AppDeps) => {
     return respond(await listMarketingConsentDefinitions({ identity: c.get('identity') }, { definitions: deps.marketing.definitions }));
   });
 
+  app.get(API_PATHS.tenantSchedulerRuns, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = schedulerRunsQuerySchema.safeParse({
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
+      ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    });
+    return parsed.success
+      ? respond(await listSchedulerRunsForTenant(
+        { identity: c.get('identity') },
+        parsed.data,
+        { runs: deps.marketing.runs, clock: deps.clock },
+      ))
+      : respond(err(validation('Invalid scheduler runs query', parsed.error.flatten())));
+  });
+
+  app.get(API_PATHS.tenantSchedulerRun, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await getSchedulerRunForTenant(
+      { identity: c.get('identity') },
+      { runId: c.req.param('id') },
+      { runs: deps.marketing.runs },
+    ));
+  });
+
   app.post(API_PATHS.marketingConsentDefinitions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const body: unknown = await c.req.json().catch(() => null);
@@ -737,7 +909,10 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.marketingCampaigns, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const result = await listCampaigns({ identity: c.get('identity') }, { campaigns: deps.marketing.campaigns });
+    const result = await listCampaignsWithEngagement({ identity: c.get('identity') }, {
+      campaigns: deps.marketing.campaigns,
+      sends: deps.marketing.campaignSends,
+    });
     return respond(result.ok ? ok({ campaigns: result.value }) : result);
   });
 
@@ -768,7 +943,11 @@ export const buildApp = (deps: AppDeps) => {
 
   app.get(API_PATHS.marketingCampaign, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    const result = await getCampaign({ identity: c.get('identity') }, { campaignId: c.req.param('id') }, { campaigns: deps.marketing.campaigns });
+    const result = await getCampaignWithEngagement(
+      { identity: c.get('identity') },
+      { campaignId: c.req.param('id') },
+      { campaigns: deps.marketing.campaigns, sends: deps.marketing.campaignSends },
+    );
     return respond(result.ok ? ok({ campaign: result.value }) : result);
   });
 
@@ -807,6 +986,7 @@ export const buildApp = (deps: AppDeps) => {
     const result = await testSendCampaignToSelf({ identity: c.get('identity') }, parsed.data, {
       definitions: deps.marketing.definitions, consents: deps.marketing.marketingConsents,
       campaigns: deps.marketing.campaigns, layouts: deps.marketing.layouts, sends: deps.marketing.campaignSends,
+      events: deps.marketing.events,
       audience: deps.marketing.audience, suppressions: deps.marketing.suppressions,
       unsubscribes: deps.marketing.unsubscribes, sesSettings: deps.marketing.sesSettings,
       ses: deps.marketing.marketingSes, credentials: deps.marketing.marketingCredentials,
@@ -814,6 +994,7 @@ export const buildApp = (deps: AppDeps) => {
       hmac: deps.marketing.hmac, ids: deps.ids, tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
       clock: deps.clock, unsubscribeBaseUrl: `${deps.appBaseUrl}/u`,
       scheduler: deps.marketing.scheduler,
+      runs: deps.marketing.runs,
       outbox: { enqueue: async () => ok({ id: '' }), claimBatch: async () => ok([]), markSent: async () => ok(undefined), markFailed: async () => ok(undefined) },
     });
     return respond(result.ok ? ok({ sent: true as const }) : result);
@@ -890,7 +1071,19 @@ export const buildApp = (deps: AppDeps) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     return respond(await getTenantSesMarketingSettings({ identity: c.get('identity') }, {
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
-    }, { settings: deps.marketing.sesSettings, secrets: deps.tenantSecrets }));
+    }, {
+      settings: deps.marketing.sesSettings,
+      secrets: deps.tenantSecrets,
+      pool: deps.marketing.platformTransactionalPool,
+    }));
+  });
+
+  app.get(API_PATHS.marketingReputation, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await getEmailReputation(
+      { identity: c.get('identity') },
+      { events: deps.marketing.events, clock: deps.clock },
+    ));
   });
 
   app.post(API_PATHS.marketingSesSettings, async (c) => {
@@ -902,7 +1095,71 @@ export const buildApp = (deps: AppDeps) => {
       settings: deps.marketing.sesSettings, secrets: deps.tenantSecrets,
       tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') }, clock: deps.clock,
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+      pool: deps.marketing.platformTransactionalPool,
     }));
+  });
+
+  app.post(API_PATHS.marketingSesOnboarding, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await pollSesOnboarding({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesIdentityStart, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = marketingSesIdentityStartInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid SES identity payload', parsed.error.flatten())));
+    return respond(await startSesIdentityVerification({ identity: c.get('identity') }, parsed.data, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesProvision, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await provisionSesInfrastructure({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSesSimulator, async (c) => {
+    if (deps.marketing?.sesOnboarding === undefined) {
+      return respond(err(internal('SES onboarding is not configured')));
+    }
+    return respond(await sendSesSimulatorTest({ identity: c.get('identity') }, {
+      settings: deps.marketing.sesSettings,
+      credentials: deps.marketing.sesOnboarding.credentials,
+      controlPlane: deps.marketing.sesOnboarding.controlPlane,
+      clock: deps.clock,
+      webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
+    }));
+  });
+
+  app.post(API_PATHS.marketingSmtpTest, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await sendTransactionalSmtpTest(
+      { identity: c.get('identity') },
+      { smtp: deps.marketing.smtpTest },
+    ));
   });
 
   app.get(API_PATHS.marketingStaffSuppressions, async (c) => {
@@ -911,6 +1168,65 @@ export const buildApp = (deps: AppDeps) => {
     const tenantId = identity.tenantId;
     if (tenantId === null || identity.staffRole === null) return respond(err(forbidden('Tenant staff access is required')));
     return respond(ok(await deps.marketing.suppressions.list(tenantId, { limit: 100 })));
+  });
+
+  app.get(API_PATHS.emailSendsExport, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = emailSendsExportQuerySchema.safeParse({
+      format: c.req.query('format'),
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
+      ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid e-mail sends export query', parsed.error.flatten())));
+    return respond(await exportEmailSends(
+      { identity: c.get('identity') },
+      parsed.data,
+      { sends: deps.marketing.emailSends },
+    ));
+  });
+
+  app.get(API_PATHS.emailSends, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const parsed = emailSendsQuerySchema.safeParse({
+      ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
+      ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
+      ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
+      ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
+      ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+      ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid e-mail sends query', parsed.error.flatten())));
+    return respond(await listEmailSends(
+      { identity: c.get('identity') },
+      parsed.data,
+      { sends: deps.marketing.emailSends },
+    ));
+  });
+
+  app.get(API_PATHS.emailSend, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    const kind = z.enum(['transactional', 'marketing']).safeParse(c.req.param('kind'));
+    if (!kind.success) return respond(err(validation('Invalid e-mail kind', kind.error.flatten())));
+    return respond(await getEmailSend(
+      { identity: c.get('identity') },
+      { kind: kind.data, id: c.req.param('id') },
+      { sends: deps.marketing.emailSends, events: deps.marketing.events },
+    ));
+  });
+
+  app.get(API_PATHS.memberEmailSends, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await listMemberEmailSends(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('id') },
+      { sends: deps.marketing.emailSends, members: deps.members },
+    ));
   });
 
   app.post(API_PATHS.marketingStaffSuppressions, async (c) => {

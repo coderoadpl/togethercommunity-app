@@ -170,6 +170,68 @@ describe('CheckoutPage', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
+  it('renders attached marketing consent unchecked and submits it only after an explicit tick', async () => {
+    const requests: unknown[] = [];
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            ...offerBody,
+            products: [{
+              ...offerBody.products[0],
+              marketingConsents: [{
+                definitionId: 'consent-news',
+                label: 'Chcę otrzymywać wiadomości o nowych kursach.',
+                doubleOptIn: true,
+                documentUrl: 'https://acme.test/marketing',
+              }],
+            }],
+          },
+        }),
+      ),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
+      ),
+      http.post('/api/dev/simulate-purchase', async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            memberId: 'm1',
+            productId: 'course-1',
+            alreadyOwned: false,
+            subscriptionId: null,
+            orderId: 'order-1',
+            magicLink: null,
+          },
+        });
+      }),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    const checkbox = await screen.findByRole('checkbox', {
+      name: /Chcę otrzymywać wiadomości o nowych kursach/,
+    });
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).not.toBeRequired();
+    expect(screen.getByRole('link', { name: pl.checkout.marketingConsentDocument }))
+      .toHaveAttribute('href', 'https://acme.test/marketing');
+
+    await userEvent.type(screen.getByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
+    await userEvent.click(checkbox);
+    await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
+
+    expect(await screen.findByRole('heading', { name: pl.checkout.accessGrantedTitle })).toBeInTheDocument();
+    expect(requests).toEqual([{
+      email: 'buyer@together.dev',
+      productId: 'course-1',
+      language: 'pl',
+      marketingConsentDefinitionIds: ['consent-news'],
+    }]);
+  });
+
   it('tells a repeat buyer they already own the product', async () => {
     server.use(
       http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),

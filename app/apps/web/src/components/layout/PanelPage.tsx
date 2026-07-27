@@ -48,7 +48,9 @@ export const PanelPage = ({
               </Typography>
             )}
           </Box>
-          {action !== undefined && <Box sx={{ flexShrink: 0 }}>{action}</Box>}
+          {action !== undefined && (
+            <Box sx={{ flexShrink: 0, '& .MuiButtonBase-root': { minHeight: '44px' } }}>{action}</Box>
+          )}
         </Stack>
       </Box>
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>

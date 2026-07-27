@@ -14,7 +14,7 @@ const app = buildApp(deps);
 
 if (env.NODE_ENV !== 'test') {
   setInterval(() => {
-    void deps.dispatchEmails().then((result) => {
+    void deps.dispatchEmails('cron').then((result) => {
       if (!result.ok) process.stderr.write(`[email-outbox] ticker dispatch failed: ${result.error.message}\n`);
     });
   }, env.EMAIL_DISPATCH_INTERVAL_MS).unref();

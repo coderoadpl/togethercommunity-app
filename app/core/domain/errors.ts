@@ -16,6 +16,7 @@ export const ERROR_CODES = [
   'pending_confirmation',
   'ses_not_configured',
   'broadcasts_disabled',
+  'transactional_platform_cap_reached',
   'internal',
 ] as const;
 

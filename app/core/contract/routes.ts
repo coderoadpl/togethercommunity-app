@@ -79,10 +79,22 @@ import {
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
   campaignSchema,
+  campaignEngagementStatsSchema,
   consentDefinitionVersionSchema,
   consentDocumentRefSchema,
   consentDefinitionSchema,
+  emailEventSchema,
+  emailReputationSchema,
   emailLayoutSchema,
+  emailSendExportFileSchema,
+  emailSendExportQuerySchema,
+  emailSendListQuerySchema,
+  emailSendProjectionSchema,
+  schedulerRunListQuerySchema,
+  schedulerRunSchema,
+  schedulerRunTenantItemSchema,
+  schedulerRunTenantSchema,
+  schedulerRunTenantSummarySchema,
   suppressionSchema,
   tenantDocumentSchema,
   tenantDocumentVersionSchema,
@@ -176,6 +188,12 @@ export const publicOfferOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
+      marketingConsents: z.array(z.object({
+        definitionId: z.string().min(1),
+        label: z.string().min(1),
+        doubleOptIn: z.boolean(),
+        documentUrl: z.union([z.string().url(), z.string().regex(/^\/legal\/[^/]+\/v\/[1-9]\d*$/)]).nullable(),
+      })).default([]),
     }),
   ),
 });
@@ -294,6 +312,7 @@ export const simulatePurchaseInputSchema = z.object({
   priceId: z.string().min(1).optional(),
   language: languageSchema.default('pl'),
   termsAccepted: z.boolean().optional(),
+  marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;
@@ -768,7 +787,8 @@ export const marketingConsentDefinitionUpdateInputSchema = z.object({
 });
 export const marketingCampaignCreateInputSchema = z.object({
   name: z.string().trim().min(1), subject: z.string().trim().min(1),
-  bodyHtml: z.string().min(1), consentDefinitionId: z.string().min(1),
+  bodyHtml: z.string().min(1), bodySource: z.string().min(1).optional(),
+  consentDefinitionId: z.string().min(1),
   productIds: z.array(z.string().min(1)).default([]),
   layoutId: z.string().min(1).nullable().default(null),
 });
@@ -784,7 +804,12 @@ export const marketingAudiencePreviewInputSchema = z.object({
 });
 export const marketingAudiencePreviewOutputSchema = z.object({ count: z.number().int().nonnegative() });
 export const marketingCampaignOutputSchema = z.object({ campaign: campaignSchema });
-export const marketingCampaignsOutputSchema = z.object({ campaigns: z.array(campaignSchema) });
+export const marketingCampaignDetailOutputSchema = z.object({
+  campaign: campaignSchema.extend({ engagement: campaignEngagementStatsSchema }),
+});
+export const marketingCampaignsOutputSchema = z.object({
+  campaigns: z.array(campaignSchema.extend({ engagement: campaignEngagementStatsSchema })),
+});
 export const marketingCampaignTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingDocumentsOutputSchema = z.object({ documents: z.array(tenantDocumentSchema) });
 export const marketingDocumentDetailOutputSchema = z.object({
@@ -808,8 +833,11 @@ export const marketingLayoutSaveInputSchema = z.object({
 export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
+  smtpConfigured: z.boolean(),
+  platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
 });
+export const marketingReputationOutputSchema = emailReputationSchema;
 export const marketingSesSettingsUpdateInputSchema = z.object({
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
@@ -817,12 +845,84 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   identityVerified: z.boolean(),
   configurationSet: z.string().trim().min(1).nullable(),
   snsTopicArn: z.string().trim().min(1).nullable(),
+  trackingEnabled: z.boolean(),
+  autoPauseOnCritical: z.boolean(),
   footerLegalName: z.string(),
   footerAddress: z.string(),
+});
+export const marketingSmtpTestOutputSchema = z.object({ sent: z.literal(true) });
+export const marketingSesIdentityStartInputSchema = z.object({
+  kind: z.enum(['domain', 'email']),
+});
+export const marketingSesIdentityStartOutputSchema = z.object({
+  identity: z.string().min(1),
+  kind: z.enum(['domain', 'email']),
+  records: z.array(z.object({
+    name: z.string().min(1),
+    type: z.literal('CNAME'),
+    value: z.string().min(1),
+  })),
+});
+export const marketingSesOnboardingStatusSchema = z.object({
+  identityVerified: z.boolean(),
+  dkimVerified: z.boolean(),
+  identityRegressed: z.boolean(),
+  records: marketingSesIdentityStartOutputSchema.shape.records,
+  configurationSetReady: z.boolean(),
+  eventDestinationReady: z.boolean(),
+  subscriptionConfirmed: z.boolean(),
+  feedbackForwardingDisabled: z.boolean(),
+  checklist: z.object({
+    credentials: z.boolean(),
+    identity: z.boolean(),
+    configurationSet: z.boolean(),
+    snsSubscription: z.boolean(),
+    webhook: z.boolean(),
+    footer: z.boolean(),
+    productionAccess: z.boolean(),
+  }),
+});
+export const marketingSesProvisionOutputSchema = z.object({
+  configurationSet: z.string().min(1),
+  topicArn: z.string().min(1),
+  subscriptionConfirmed: z.boolean(),
+  feedbackForwardingDisabled: z.boolean(),
+});
+export const marketingSesSimulatorOutputSchema = z.object({
+  messageId: z.string().min(1),
+  webhookVerifiedAt: z.string().datetime().nullable(),
+  waitingForWebhook: z.boolean(),
 });
 export const marketingSuppressionCreateInputSchema = z.object({ email: z.string().email(), sourceRef: z.string().min(1).nullable().default(null) });
 export const marketingSuppressionsOutputSchema = z.object({ suppressions: z.array(suppressionSchema), nextCursor: z.string().nullable() });
 export const marketingSuppressionOutputSchema = z.object({ suppression: suppressionSchema });
+export const emailSendsOutputSchema = z.object({
+  sends: z.array(emailSendProjectionSchema),
+  nextCursor: z.string().nullable(),
+});
+export const emailSendDetailOutputSchema = z.object({
+  send: emailSendProjectionSchema,
+  events: z.array(emailEventSchema),
+});
+export const memberEmailSendsOutputSchema = z.object({ sends: z.array(emailSendProjectionSchema) });
+export const emailSendsExportOutputSchema = emailSendExportFileSchema;
+export const emailSendsQuerySchema = emailSendListQuerySchema;
+export const emailSendsExportQuerySchema = emailSendExportQuerySchema;
+export const schedulerRunsQuerySchema = schedulerRunListQuerySchema;
+export const tenantSchedulerRunsOutputSchema = z.object({
+  items: z.array(schedulerRunTenantItemSchema),
+  summary: schedulerRunTenantSummarySchema,
+  nextCursor: z.string().nullable(),
+});
+export const tenantSchedulerRunOutputSchema = schedulerRunTenantItemSchema;
+export const globalSchedulerRunsOutputSchema = z.object({
+  runs: z.array(schedulerRunSchema),
+  nextCursor: z.string().nullable(),
+});
+export const globalSchedulerRunOutputSchema = z.object({
+  run: schedulerRunSchema,
+  tenants: z.array(schedulerRunTenantSchema),
+});
 export type MarketingConsentDefinitionCreateInput = z.input<typeof marketingConsentDefinitionCreateInputSchema>;
 export type MarketingCampaignCreateInput = z.input<typeof marketingCampaignCreateInputSchema>;
 export type MarketingCampaignScheduleInput = z.input<typeof marketingCampaignScheduleInputSchema>;
@@ -835,7 +935,11 @@ export type MarketingDocumentUpdateInput = z.input<typeof marketingDocumentUpdat
 export type MarketingDocumentPublishInput = z.input<typeof marketingDocumentPublishInputSchema>;
 export type MarketingLayoutSaveInput = z.input<typeof marketingLayoutSaveInputSchema>;
 export type MarketingSesSettingsUpdateInput = z.input<typeof marketingSesSettingsUpdateInputSchema>;
+export type MarketingSesIdentityStartInput = z.input<typeof marketingSesIdentityStartInputSchema>;
 export type MarketingSuppressionCreateInput = z.input<typeof marketingSuppressionCreateInputSchema>;
+export type EmailSendsQueryInput = z.input<typeof emailSendsQuerySchema>;
+export type EmailSendsExportQueryInput = z.input<typeof emailSendsExportQuerySchema>;
+export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
 
 /**
  * Every route carries its HTTP method so clients can discriminate reads from
@@ -966,8 +1070,22 @@ export const API_ROUTES = {
   marketingLayoutsSave: { method: 'POST', path: '/api/marketing/layouts' },
   marketingSesSettings: { method: 'GET', path: '/api/marketing/ses-settings' },
   marketingSesSettingsUpdate: { method: 'POST', path: '/api/marketing/ses-settings' },
+  marketingSesOnboarding: { method: 'POST', path: '/api/marketing/ses-onboarding/poll' },
+  marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
+  marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
+  marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
+  marketingSmtpTest: { method: 'POST', path: '/api/marketing/smtp/test' },
+  marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
+  emailSends: { method: 'GET', path: '/api/marketing/sends' },
+  emailSendsExport: { method: 'GET', path: '/api/marketing/sends/export' },
+  emailSend: { method: 'GET', path: '/api/marketing/sends/:kind/:id' },
+  tenantSchedulerRuns: { method: 'GET', path: '/api/marketing/scheduler-runs' },
+  tenantSchedulerRun: { method: 'GET', path: '/api/marketing/scheduler-runs/:id' },
+  globalSchedulerRuns: { method: 'GET', path: '/api/internal/scheduler-runs' },
+  globalSchedulerRun: { method: 'GET', path: '/api/internal/scheduler-runs/:id' },
+  memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
@@ -1050,6 +1168,7 @@ export const API_PATHS = {
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
+  memberEmailSends: API_ROUTES.memberEmailSends.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,
   devSimulatePurchase: API_ROUTES.devSimulatePurchase.path,
@@ -1091,7 +1210,20 @@ export const API_PATHS = {
   marketingDocumentPublish: API_ROUTES.marketingDocumentPublish.path,
   marketingLayouts: API_ROUTES.marketingLayouts.path,
   marketingSesSettings: API_ROUTES.marketingSesSettings.path,
+  marketingSesOnboarding: API_ROUTES.marketingSesOnboarding.path,
+  marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
+  marketingSesProvision: API_ROUTES.marketingSesProvision.path,
+  marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,
+  marketingSmtpTest: API_ROUTES.marketingSmtpTest.path,
+  marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
+  emailSends: API_ROUTES.emailSends.path,
+  emailSendsExport: API_ROUTES.emailSendsExport.path,
+  emailSend: API_ROUTES.emailSend.path,
+  tenantSchedulerRuns: API_ROUTES.tenantSchedulerRuns.path,
+  tenantSchedulerRun: API_ROUTES.tenantSchedulerRun.path,
+  globalSchedulerRuns: API_ROUTES.globalSchedulerRuns.path,
+  globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
   onboarding: API_ROUTES.onboarding.path,
@@ -1110,3 +1242,4 @@ export const TENANT_HEADER = 'x-tenant';
 
 /** Header carrying a tenant API-key secret for the M2M enroll endpoint. */
 export const API_KEY_HEADER = 'x-api-key';
+export const SCHEDULER_OPERATOR_SECRET_HEADER = 'x-scheduler-operator-secret';

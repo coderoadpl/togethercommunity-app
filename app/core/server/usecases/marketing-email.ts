@@ -5,7 +5,9 @@ import {
   campaignCanTransition,
   classifySesEvent,
   deriveConsentState,
+  deriveEmailReputation,
   deriveMarketingEligibility,
+  emailEventSchema,
   err,
   forbidden,
   liftSuppression,
@@ -13,16 +15,19 @@ import {
   notFound,
   ok,
   renderMarketingTemplate,
+  reputationWindow,
   throttleBudget,
   tenantSesBroadcastsReady,
   validateRenderedMarketingOutput,
   validation,
   type AppError,
   type Campaign,
+  type CampaignEngagementStats,
   type CampaignSend,
   type ConsentDocumentRef,
   type ConsentDocumentVersionRef,
   type ConsentEvidence,
+  type EmailEvent,
   type MarketingConsent,
   type MarketingIneligibilityReason,
   type Result,
@@ -40,6 +45,7 @@ import type {
   ConsentDefinitionRepository,
   EmailLayoutRepository,
   EmailHmac,
+  EmailEventRepository,
   EmailOutboxRepository,
   IdGenerator,
   MarketingAudienceRepository,
@@ -55,6 +61,7 @@ import type {
   TokenGenerator,
   UnsubscribeTokenRepository,
   SchedulerPort,
+  SchedulerRunRepository,
 } from '../ports.js';
 
 const tenantIdFrom = (ctx: Ctx): Result<string, AppError> =>
@@ -126,6 +133,8 @@ export const listMarketingConsentDefinitions = async (
   return tenantId.ok ? ok({ definitions: await deps.definitions.list(tenantId.value) }) : tenantId;
 };
 
+const confirmationTokenTtlMs = 24 * 60 * 60 * 1000;
+
 export const recordMarketingConsent = async (
   ctx: Ctx,
   input: {
@@ -165,7 +174,7 @@ export const recordMarketingConsent = async (
   const now = deps.clock.nowIso();
   await deps.confirmations.create(tenantId.value, {
     id: deps.ids.nextId(), tenantId: tenantId.value, token: tokenValue, marketingConsentRowId: consent.id,
-    createdAt: now, expiresAt: new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(), usedAt: null,
+    createdAt: now, expiresAt: new Date(Date.parse(now) + confirmationTokenTtlMs).toISOString(), usedAt: null,
   });
   const queued = await deps.outbox.enqueue({
     id: deps.ids.nextId(), tenantId: tenantId.value, to: consent.email, now,
@@ -175,6 +184,48 @@ export const recordMarketingConsent = async (
     },
   });
   return queued.ok ? ok({ consent, state: 'pending_confirmation' }) : queued;
+};
+
+export const recordCheckoutMarketingConsents = async (
+  ctx: Ctx,
+  input: {
+    email: string;
+    selectedDefinitionIds: string[];
+    attachedDefinitionIds: string[];
+    evidence: ConsentEvidence;
+    confirmationBaseUrl: string;
+  },
+  deps: ConsentDeps,
+): Promise<Result<{ recorded: number; pendingConfirmations: number }, AppError>> => {
+  const tenantId = tenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const attached = new Set(input.attachedDefinitionIds);
+  const selected = [...new Set(input.selectedDefinitionIds)].filter((definitionId) => attached.has(definitionId));
+  let recordedCount = 0;
+  let pendingConfirmations = 0;
+  for (const definitionId of selected) {
+    const definition = await deps.definitions.findById(tenantId.value, definitionId);
+    if (definition !== null) {
+      const rows = await deps.consents.listByEmail(tenantId.value, input.email, definitionId);
+      const state = deriveConsentState(rows, definition);
+      const pendingStillValid = state.state === 'pending_confirmation'
+        && state.row !== null
+        && Date.parse(state.row.occurredAt) + confirmationTokenTtlMs > Date.parse(deps.clock.nowIso());
+      if (state.active || pendingStillValid) continue;
+    }
+    const recorded = await recordMarketingConsent(ctx, {
+      email: input.email,
+      memberId: null,
+      definitionId,
+      evidence: input.evidence,
+      source: 'checkout',
+      confirmationBaseUrl: input.confirmationBaseUrl,
+    }, deps);
+    if (!recorded.ok) return recorded;
+    recordedCount += 1;
+    if (recorded.value.state === 'pending_confirmation') pendingConfirmations += 1;
+  }
+  return ok({ recorded: recordedCount, pendingConfirmations });
 };
 
 export const confirmMarketingConsent = async (
@@ -306,6 +357,7 @@ export const liftMarketingSuppression = async (
 
 interface UnsubscribeDeps extends EligibilityDeps {
   unsubscribes: UnsubscribeTokenRepository;
+  events: EmailEventRepository;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -421,7 +473,24 @@ export const unsubscribeOneClick = async (
 ): Promise<Result<{ unsubscribed: true }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
-  const consumed = await deps.unsubscribes.consume(tenantId.value, input.token, deps.clock.nowIso());
+  const existing = await deps.unsubscribes.findByToken(tenantId.value, input.token);
+  if (existing === null) return err(notFound('Unsubscribe token was not found'));
+  const event = existing.campaignSendId === null
+    ? undefined
+    : lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        existing.campaignSendId,
+        'unsubscribed',
+        { scope: existing.scope },
+      );
+  const consumed = await deps.unsubscribes.consume(
+    tenantId.value,
+    input.token,
+    deps.clock.nowIso(),
+    event,
+  );
   if (consumed === null) return err(notFound('Unsubscribe token was not found'));
   const definitions = consumed.token.scope === 'all_marketing'
     ? (await deps.definitions.list(tenantId.value, 'active')).filter((definition) => definition.kind === 'optional_marketing')
@@ -433,11 +502,24 @@ export const unsubscribeOneClick = async (
   }
   if (consumed.token.scope === 'all_marketing') {
     const emailHmac = deps.hmac.compute(tenantId.value, consumed.token.email);
-    await deps.suppressions.record(tenantId.value, {
-      id: deps.ids.nextId(), tenantId: tenantId.value, email: consumed.token.email, emailHmac,
-      reason: 'unsubscribe_global', sourceRef: consumed.token.id, meta: null, createdAt: deps.clock.nowIso(),
-      liftedAt: null, liftedBy: null,
-    });
+    await deps.suppressions.record(
+      tenantId.value,
+      {
+        id: deps.ids.nextId(), tenantId: tenantId.value, email: consumed.token.email, emailHmac,
+        reason: 'unsubscribe_global', sourceRef: consumed.token.id, meta: null, createdAt: deps.clock.nowIso(),
+        liftedAt: null, liftedBy: null,
+      },
+      consumed.token.campaignSendId === null
+        ? undefined
+        : lifecycleEvent(
+            deps,
+            tenantId.value,
+            'marketing',
+            consumed.token.campaignSendId,
+            'suppressed_written',
+            { reason: 'unsubscribe_global' },
+          ),
+    );
   }
   return ok({ unsubscribed: true });
 };
@@ -449,8 +531,26 @@ export const unsubscribeAllMarketing = async (
 ): Promise<Result<{ unsubscribed: true }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
-  const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
-  if (token === null) return err(notFound('Unsubscribe token was not found'));
+  const existing = await deps.unsubscribes.findByToken(tenantId.value, input.token);
+  if (existing === null) return err(notFound('Unsubscribe token was not found'));
+  const event = existing.campaignSendId === null
+    ? undefined
+    : lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        existing.campaignSendId,
+        'unsubscribed',
+        { scope: 'all_marketing' },
+      );
+  const consumed = await deps.unsubscribes.consume(
+    tenantId.value,
+    input.token,
+    deps.clock.nowIso(),
+    event,
+  );
+  if (consumed === null) return err(notFound('Unsubscribe token was not found'));
+  const token = consumed.token;
   const definitions = (await deps.definitions.list(tenantId.value, 'active'))
     .filter((definition) => definition.kind === 'optional_marketing');
   for (const definition of definitions) {
@@ -464,11 +564,24 @@ export const unsubscribeAllMarketing = async (
     if (!withdrawn.ok) return withdrawn;
   }
   const emailHmac = deps.hmac.compute(tenantId.value, token.email);
-  await deps.suppressions.record(tenantId.value, {
-    id: deps.ids.nextId(), tenantId: tenantId.value, email: token.email, emailHmac,
-    reason: 'unsubscribe_global', sourceRef: token.id, meta: null, createdAt: deps.clock.nowIso(),
-    liftedAt: null, liftedBy: null,
-  });
+  await deps.suppressions.record(
+    tenantId.value,
+    {
+      id: deps.ids.nextId(), tenantId: tenantId.value, email: token.email, emailHmac,
+      reason: 'unsubscribe_global', sourceRef: token.id, meta: null, createdAt: deps.clock.nowIso(),
+      liftedAt: null, liftedBy: null,
+    },
+    token.campaignSendId === null
+      ? undefined
+      : lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          token.campaignSendId,
+          'suppressed_written',
+          { reason: 'unsubscribe_global' },
+        ),
+  );
   return ok({ unsubscribed: true });
 };
 
@@ -488,6 +601,7 @@ export const createCampaign = async (
     name: string;
     subject: string;
     bodyHtml: string;
+    bodySource?: string | undefined;
     consentDefinitionId: string;
     productIds?: string[];
     layoutId?: string | null;
@@ -508,7 +622,7 @@ export const createCampaign = async (
   const now = deps.clock.nowIso();
   const campaign: Campaign = {
     id: deps.ids.nextId(), tenantId: tenantId.value, name: input.name, subject: input.subject,
-    bodyHtml: input.bodyHtml, bodySource: input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
+    bodyHtml: input.bodyHtml, bodySource: input.bodySource ?? input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
     audienceFilter: input.productIds === undefined || input.productIds.length === 0 ? null : { productIds: input.productIds }, status: 'draft', sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null,
     toSend: 0, sent: 0, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
     audienceNameSnapshot: null, consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: now,
@@ -535,6 +649,38 @@ export const listCampaigns = async (
   const tenantId = staffTenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   return ok(await deps.campaigns.list(tenantId.value));
+};
+
+const emptyEngagementStats = (): CampaignEngagementStats => ({
+  uniqueOpens: 0,
+  totalOpens: 0,
+  uniqueClicks: 0,
+  totalClicks: 0,
+});
+
+export const getCampaignWithEngagement = async (
+  ctx: Ctx,
+  input: { campaignId: string },
+  deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
+): Promise<Result<Campaign & { engagement: CampaignEngagementStats }, AppError>> => {
+  const campaign = await getCampaign(ctx, input, deps);
+  if (!campaign.ok) return campaign;
+  const stats = await deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]);
+  return ok({ ...campaign.value, engagement: stats.get(campaign.value.id) ?? emptyEngagementStats() });
+};
+
+export const listCampaignsWithEngagement = async (
+  ctx: Ctx,
+  deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
+): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats }>, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const campaigns = await deps.campaigns.list(tenantId.value);
+  const stats = await deps.sends.engagementStats(tenantId.value, campaigns.map((campaign) => campaign.id));
+  return ok(campaigns.map((campaign) => ({
+    ...campaign,
+    engagement: stats.get(campaign.id) ?? emptyEngagementStats(),
+  })));
 };
 
 export const deleteCampaign = async (
@@ -636,6 +782,7 @@ export const updateCampaignContent = async (
 interface SendDeps extends EligibilityDeps {
   layouts: EmailLayoutRepository;
   sends: CampaignSendRepository;
+  events: EmailEventRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
   ses: SesMarketingSender;
@@ -646,7 +793,27 @@ interface SendDeps extends EligibilityDeps {
   tokens: TokenGenerator;
   clock: Clock;
   unsubscribeBaseUrl: string;
+  runId?: string;
 }
+
+const lifecycleEvent = (
+  deps: { ids: IdGenerator; clock: Clock; runId?: string },
+  tenantId: string,
+  mailKind: 'transactional' | 'marketing',
+  refId: string,
+  type: EmailEvent['type'],
+  meta: Record<string, unknown> | null,
+  occurredAt = deps.clock.nowIso(),
+): EmailEvent => emailEventSchema.parse({
+  id: deps.ids.nextId(),
+  tenantId,
+  mailKind,
+  refId,
+  type,
+  occurredAt,
+  meta: deps.runId === undefined ? meta : { ...(meta ?? {}), runId: deps.runId },
+  createdAt: deps.clock.nowIso(),
+});
 
 export interface MarketingMessageInput {
   to: string;
@@ -723,6 +890,9 @@ export const sendMarketingMessages = async (
   if (!tenantId.ok) return tenantId;
   let settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  if (settings.trackingEnabled && settings.configurationSet === null) {
+    return err(validation('Open and click tracking requires an SES configuration set'));
+  }
   const credentials = await deps.credentials.resolve(tenantId.value);
   if (!credentials.ok) return credentials;
   const now = deps.clock.nowIso();
@@ -756,39 +926,61 @@ export const sendMarketingMessages = async (
       const skippedId = input.campaignId === null || initial.latest === null ? null : deps.ids.nextId();
       if (skippedId !== null && initial.latest !== null) {
         const skipped: CampaignSend = {
-          id: skippedId, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
-          memberId: input.memberId, email: normalizeEmail(input.to), consentRowId: initial.latest.id,
+          id: skippedId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+          memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
+          consentRowId: initial.latest.id,
           unsubscribeTokenId: null, status: 'skipped', skipReason: initial.eligibility.reason,
           sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null,
           idempotencySource: input.idempotencySource ?? null, renderedBodyPurgedAt: null,
           createdAt: deps.clock.nowIso(), sentAt: null,
         };
-        await deps.sends.claimRecipient(tenantId.value, skipped);
+        await deps.sends.claimRecipient(tenantId.value, skipped, [
+          lifecycleEvent(
+            deps,
+            tenantId.value,
+            'marketing',
+            skipped.id,
+            'skipped',
+            { reason: initial.eligibility.reason },
+          ),
+        ]);
       }
       results.push({ to: normalizeEmail(input.to), sendId: skippedId, status: 'skipped', reason: initial.eligibility.reason });
       continue;
     }
     const sendId = deps.ids.nextId();
     const send: CampaignSend = {
-      id: sendId, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
-      memberId: input.memberId, email: normalizeEmail(input.to), consentRowId: initial.eligibility.consentRow.id,
+      id: sendId, runId: deps.runId ?? null, tenantId: tenantId.value, campaignId: input.campaignId, source: input.source,
+      memberId: input.memberId, email: normalizeEmail(input.to), subject: input.subject,
+      consentRowId: initial.eligibility.consentRow.id,
       unsubscribeTokenId: null, status: 'pending', skipReason: null, sesMessageId: null,
       deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: input.idempotencySource ?? null,
       renderedBodyPurgedAt: null, createdAt: deps.clock.nowIso(), sentAt: null,
     };
-    if (!await deps.sends.claimRecipient(tenantId.value, send)) {
+    if (!await deps.sends.claimRecipient(tenantId.value, send, [
+      lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'queued', null),
+      lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'claimed', null),
+    ])) {
       results.push({ to: send.email, sendId: null, status: 'deduplicated' });
       continue;
     }
     const dequeue = await eligibilityFor(tenantId.value, input, deps);
     if (dequeue === null) {
-      await deps.sends.update(tenantId.value, { ...send, status: 'skipped', skipReason: 'not_consented' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, status: 'skipped', skipReason: 'not_consented' },
+        [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'skipped', { reason: 'not_consented' })],
+      );
       results.push({ to: send.email, sendId, status: 'skipped', reason: 'not_consented' });
       continue;
     }
     if (!dequeue.eligibility.eligible) {
       const reason = dequeue.eligibility.reason;
-      await deps.sends.update(tenantId.value, { ...send, status: 'skipped', skipReason: reason });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, status: 'skipped', skipReason: reason },
+        [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'skipped', { reason })],
+      );
       results.push({ to: send.email, sendId, status: 'skipped', reason });
       continue;
     }
@@ -803,7 +995,18 @@ export const sendMarketingMessages = async (
       ? null
       : await deps.layouts.findById(tenantId.value, input.layoutId);
     if (input.layoutId !== undefined && input.layoutId !== null && layout === null) {
-      await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, status: 'failed' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, unsubscribeTokenId, status: 'failed' },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'failed',
+          { error: 'Marketing e-mail layout was not found' },
+        )],
+      );
       results.push({
         to: send.email,
         sendId,
@@ -838,25 +1041,61 @@ export const sendMarketingMessages = async (
       layoutHtml: layout?.bodyHtml ?? null,
     });
     if (!rendered.ok) {
-      await deps.sends.update(tenantId.value, { ...send, unsubscribeTokenId, status: 'failed' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, unsubscribeTokenId, status: 'failed' },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'failed',
+          { error: rendered.error.message },
+        )],
+      );
       results.push({ to: send.email, sendId, status: 'failed', error: rendered.error });
       continue;
     }
     const sending = { ...send, unsubscribeTokenId, status: 'sending' as const };
-    await deps.sends.update(tenantId.value, sending);
+    await deps.sends.update(
+      tenantId.value,
+      sending,
+      [lifecycleEvent(deps, tenantId.value, 'marketing', send.id, 'rendered', null)],
+    );
     const sent = await deps.ses.send({
       credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName },
       to: send.email, subject: rendered.value.subject, html: rendered.value.html, text: rendered.value.text,
-      headers: rendered.value.headers, configurationSet: settings.configurationSet,
+      headers: rendered.value.headers,
+      configurationSet: settings.configurationSet,
     });
     if (!sent.ok) {
-      await deps.sends.update(tenantId.value, { ...sending, status: 'failed' });
+      await deps.sends.update(
+        tenantId.value,
+        { ...sending, status: 'failed' },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'failed',
+          { error: sent.error.message },
+        )],
+      );
       results.push({ to: send.email, sendId, status: 'failed', error: sent.error });
       continue;
     }
-    await deps.sends.update(tenantId.value, {
-      ...sending, status: 'sent', sesMessageId: sent.value.messageId, sentAt: deps.clock.nowIso(),
-    });
+    await deps.sends.update(
+      tenantId.value,
+      { ...sending, status: 'sent', sesMessageId: sent.value.messageId, sentAt: deps.clock.nowIso() },
+      [lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        send.id,
+        'accepted',
+        { sesMessageId: sent.value.messageId },
+      )],
+    );
     results.push({ to: send.email, sendId, status: 'sent' });
   }
   return ok(results);
@@ -867,17 +1106,32 @@ interface TickDeps extends SendDeps {
   audience: MarketingAudienceRepository;
   outbox: EmailOutboxRepository;
   scheduler: SchedulerPort;
+  runs: SchedulerRunRepository;
 }
 
-export const campaignTick = async (
+interface CampaignTickMetrics {
+  campaignsTouched: number;
+  batchSize: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  budgetComputed: number;
+  budgetUsed: number;
+  reEnqueued: boolean;
+  errors: string[];
+}
+
+const campaignTickExecution = async (
   ctx: Ctx,
-  input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number },
+  input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number; trigger?: 'cron' | 'dev' | 'manual' },
   deps: TickDeps,
+  metrics: CampaignTickMetrics,
 ): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   let campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
+  metrics.campaignsTouched = 1;
   const now = deps.clock.nowIso();
   if (campaign.status === 'scheduled' && campaign.sendAt !== null && campaign.sendAt <= now) {
     campaign = await deps.campaigns.update(tenantId.value, { ...campaign, status: 'running', startedAt: now });
@@ -888,11 +1142,15 @@ export const campaignTick = async (
     workerId: input.workerId, now, lockedUntil: new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
   });
   if (!leased) return ok({ leased: false, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
-  const scheduleNextTick = () => deps.scheduler.scheduleCampaignTick(
-    tenantId.value,
-    campaign.id,
-    new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
-  );
+  const scheduleNextTick = async () => {
+    const scheduled = await deps.scheduler.scheduleCampaignTick(
+      tenantId.value,
+      campaign.id,
+      new Date(Date.parse(now) + input.tickSeconds * 1000).toISOString(),
+    );
+    if (scheduled.ok) metrics.reEnqueued = true;
+    return scheduled;
+  };
   if (deps.outbox.hasPendingForTenant !== undefined && await deps.outbox.hasPendingForTenant(tenantId.value)) {
     const scheduled = await scheduleNextTick();
     if (!scheduled.ok) return scheduled;
@@ -900,6 +1158,22 @@ export const campaignTick = async (
   }
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
+  if (settings.autoPauseOnCritical) {
+    const reputation = deriveEmailReputation(await deps.events.reputationCounts(
+      tenantId.value,
+      reputationWindow(now),
+    ));
+    if (reputation.overallStatus === 'critical') {
+      await deps.campaigns.update(tenantId.value, {
+        ...campaign,
+        status: 'paused',
+        pausedReason: 'Broadcasts paused automatically: critical email reputation threshold exceeded',
+        lockedUntil: null,
+        lockedBy: null,
+      });
+      return ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 });
+    }
+  }
   const sentSince = new Date(Date.parse(now) - 24 * 60 * 60 * 1000).toISOString();
   const sentLast24Hours = (await deps.sends.listAll(tenantId.value))
     .filter((send) => send.status === 'sent' && send.sentAt !== null && send.sentAt >= sentSince)
@@ -909,6 +1183,7 @@ export const campaignTick = async (
     dailyQuota: settings.quotaDaily, sentLast24Hours, inSandbox: settings.inSandbox,
   });
   const budget = Math.min(tickBudget, Math.max(1, Math.floor(settings.quotaRatePerSec)));
+  metrics.budgetComputed = budget;
   const maxMemberId = campaign.snapshotMaxMemberId;
   if (maxMemberId === null && campaign.toSend === 0) {
     await deps.campaigns.update(tenantId.value, { ...campaign, status: 'finished', finishedAt: now });
@@ -924,6 +1199,8 @@ export const campaignTick = async (
     definitionId: campaign.consentDefinitionId, productIds: campaign.audienceFilter?.productIds ?? [],
     afterMemberId: campaign.cursorMemberId, maxMemberId, limit: budget,
   });
+  metrics.batchSize = members.length;
+  metrics.budgetUsed = members.length;
   let sentCount = 0;
   let failedCount = 0;
   let skippedCount = 0;
@@ -942,15 +1219,21 @@ export const campaignTick = async (
     const item = outcome.value[0];
     if (item?.status === 'sent') {
       sentCount += 1;
+      metrics.sent += 1;
       consecutiveErrors = 0;
       lastError = null;
     }
     else if (item?.status === 'failed') {
       failedCount += 1;
+      metrics.failed += 1;
       consecutiveErrors += 1;
       lastError = item.error.message;
+      metrics.errors.push(item.error.message);
     }
-    else if (item?.status === 'skipped') skippedCount += 1;
+    else if (item?.status === 'skipped') {
+      skippedCount += 1;
+      metrics.skipped += 1;
+    }
     lastCursor = member.memberId;
     const advanced = await deps.campaigns.advanceCursor(tenantId.value, campaign.id, {
       cursorMemberId: member.memberId, sentDelta: item?.status === 'sent' ? 1 : 0, failedDelta: item?.status === 'failed' ? 1 : 0,
@@ -970,6 +1253,92 @@ export const campaignTick = async (
     if (!scheduled.ok) return scheduled;
   }
   return ok({ leased: true, yieldedToTransactional: false, sent: sentCount, failed: failedCount, skipped: skippedCount });
+};
+
+export const campaignTick = async (
+  ctx: Ctx,
+  input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number; trigger?: 'cron' | 'dev' | 'manual' },
+  deps: TickDeps,
+): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
+  const tenantId = tenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const startedAt = deps.clock.nowIso();
+  const runId = deps.ids.nextId();
+  const emptyTotals = {
+    campaignsTouched: 0,
+    sendsAttempted: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    reEnqueued: false,
+  };
+  await deps.runs.start({
+    id: runId,
+    kind: 'marketing_tick',
+    trigger: input.trigger ?? 'manual',
+    startedAt,
+    finishedAt: null,
+    durationMs: null,
+    status: 'running',
+    error: null,
+    totals: emptyTotals,
+    createdAt: startedAt,
+  });
+  const metrics: CampaignTickMetrics = {
+    campaignsTouched: 0,
+    batchSize: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    budgetComputed: 0,
+    budgetUsed: 0,
+    reEnqueued: false,
+    errors: [],
+  };
+  let result: Awaited<ReturnType<typeof campaignTickExecution>> | undefined;
+  let thrown: unknown;
+  try {
+    result = await campaignTickExecution(ctx, input, { ...deps, runId }, metrics);
+  } catch (cause) {
+    thrown = cause;
+  } finally {
+    const finishedAt = deps.clock.nowIso();
+    const resultError = result !== undefined && !result.ok ? result.error.message : null;
+    const thrownError = thrown instanceof Error ? thrown.message : thrown === undefined ? null : String(thrown);
+    const error = thrownError ?? resultError;
+    const totals = {
+      campaignsTouched: metrics.campaignsTouched,
+      sendsAttempted: metrics.sent + metrics.failed + metrics.skipped,
+      sent: metrics.sent,
+      failed: metrics.failed,
+      skipped: metrics.skipped,
+      reEnqueued: metrics.reEnqueued,
+    };
+    await deps.runs.finalize(runId, {
+      finishedAt,
+      durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+      status: error === null ? 'completed' : 'failed',
+      error,
+      totals,
+      tenants: [{
+        id: deps.ids.nextId(),
+        runId,
+        tenantId: tenantId.value,
+        campaignsTouched: metrics.campaignsTouched,
+        batchSize: metrics.batchSize,
+        sent: metrics.sent,
+        failed: metrics.failed,
+        skipped: metrics.skipped,
+        budgetComputed: metrics.budgetComputed,
+        budgetUsed: metrics.budgetUsed,
+        errors: error === null ? metrics.errors : [...metrics.errors, error],
+        createdAt: finishedAt,
+      }],
+    });
+  }
+  if (thrown !== undefined) throw thrown;
+  if (result === undefined) throw new Error('Campaign tick did not produce a result');
+  return result;
 };
 
 export const testSendCampaignToSelf = async (
@@ -1029,7 +1398,7 @@ export const testSendCampaignToSelf = async (
     credentials: credentials.value, from: { address: settings.fromAddress, name: settings.fromName }, to: ctx.identity.email,
     subject: `[TEST] ${rendered.value.subject}`, html: rendered.value.html, text: rendered.value.text,
     headers: rendered.value.headers,
-    configurationSet: settings.configurationSet,
+    configurationSet: null,
   });
 };
 
@@ -1070,12 +1439,19 @@ type VerifiedSesEvent = {
   messageId: string;
   occurredAt: string;
   raw: unknown;
-} & ({ kind: 'delivery' } | { kind: 'complaint' } | { kind: 'bounce'; bounceType: string; status: string | null });
+} & (
+  | { kind: 'delivery' }
+  | { kind: 'open' }
+  | { kind: 'click'; linkUrl: string }
+  | { kind: 'complaint' }
+  | { kind: 'bounce'; bounceType: string; status: string | null }
+);
 
 export const applyVerifiedSesEvent = async (
   ctx: Ctx,
   event: VerifiedSesEvent,
-  deps: Pick<SendDeps, 'sesSettings' | 'sends' | 'suppressions' | 'hmac' | 'ids' | 'clock'>,
+  deps: Pick<SendDeps, 'sesSettings' | 'sends' | 'events' | 'suppressions' | 'hmac' | 'ids' | 'clock'>
+    & { outbox: EmailOutboxRepository },
 ): Promise<Result<{ processed: boolean }, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
@@ -1088,21 +1464,115 @@ export const applyVerifiedSesEvent = async (
   if (settings === null || settings.snsTopicArn !== event.topicArn) return err(forbidden('SNS topic does not match this tenant'));
   try {
     const send = await deps.sends.correlateBySesMessageId(tenantId.value, event.messageId);
-    if (send === null) return ok({ processed: false });
+    if (send === null) {
+      if (event.kind === 'open' || event.kind === 'click') return ok({ processed: false });
+      if (deps.outbox.correlateBySesMessageId === undefined || deps.outbox.markDelivery === undefined) {
+        return ok({ processed: false });
+      }
+      const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
+      if (outbox === null) return ok({ processed: false });
+      const classification = event.kind === 'bounce' ? classifySesEvent(event) : null;
+      const status = event.kind === 'delivery'
+        ? 'delivered'
+        : event.kind === 'complaint'
+          ? 'complained'
+          : 'bounced';
+      const meta = status === 'bounced'
+        ? { classification: classification ?? 'hard', rawProviderPayload: event.raw }
+        : { rawProviderPayload: event.raw };
+      const marked = await deps.outbox.markDelivery({
+        tenantId: tenantId.value,
+        id: outbox.id,
+        status,
+        occurredAt: event.occurredAt,
+        event: lifecycleEvent(
+          deps,
+          tenantId.value,
+          'transactional',
+          outbox.id,
+          status,
+          meta,
+          event.occurredAt,
+        ),
+      });
+      return marked.ok ? ok({ processed: true }) : ok({ processed: false });
+    }
+    if (event.kind === 'open' || event.kind === 'click') {
+      if (!settings.trackingEnabled) return ok({ processed: false });
+      await deps.events.append(
+        tenantId.value,
+        lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          event.kind === 'open' ? 'opened' : 'clicked',
+          event.kind === 'open'
+            ? { rawProviderPayload: event.raw }
+            : { linkUrl: event.linkUrl, rawProviderPayload: event.raw },
+          event.occurredAt,
+        ),
+      );
+      return ok({ processed: true });
+    }
     if (event.kind === 'delivery') {
-      await deps.sends.update(tenantId.value, { ...send, deliveryStatus: 'delivered', deliveryOccurredAt: event.occurredAt });
+      await deps.sends.update(
+        tenantId.value,
+        { ...send, deliveryStatus: 'delivered', deliveryOccurredAt: event.occurredAt },
+        [lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'delivered',
+          { rawProviderPayload: event.raw },
+          event.occurredAt,
+        )],
+      );
       return ok({ processed: true });
     }
     const classification = classifySesEvent(event);
     const deliveryStatus = classification === 'complaint' ? 'complained' : 'bounced';
-    await deps.sends.update(tenantId.value, { ...send, deliveryStatus, deliveryOccurredAt: event.occurredAt });
+    await deps.sends.update(
+      tenantId.value,
+      { ...send, deliveryStatus, deliveryOccurredAt: event.occurredAt },
+      [lifecycleEvent(
+        deps,
+        tenantId.value,
+        'marketing',
+        send.id,
+        deliveryStatus,
+        deliveryStatus === 'bounced'
+          ? { classification, rawProviderPayload: event.raw }
+          : { rawProviderPayload: event.raw },
+        event.occurredAt,
+      )],
+    );
     if (classification !== 'soft') {
-      await deps.suppressions.record(tenantId.value, {
-        id: deps.ids.nextId(), tenantId: tenantId.value, email: send.email,
-        emailHmac: deps.hmac.compute(tenantId.value, send.email),
-        reason: classification === 'complaint' ? 'complaint' : 'hard_bounce', sourceRef: send.id,
-        meta: event.raw, createdAt: deps.clock.nowIso(), liftedAt: null, liftedBy: null,
-      });
+      await deps.suppressions.record(
+        tenantId.value,
+        {
+          id: deps.ids.nextId(),
+          tenantId: tenantId.value,
+          email: send.email,
+          emailHmac: deps.hmac.compute(tenantId.value, send.email),
+          reason: classification === 'complaint' ? 'complaint' : 'hard_bounce',
+          sourceRef: send.id,
+          meta: event.raw,
+          createdAt: deps.clock.nowIso(),
+          liftedAt: null,
+          liftedBy: null,
+        },
+        lifecycleEvent(
+          deps,
+          tenantId.value,
+          'marketing',
+          send.id,
+          'suppressed_written',
+          { reason: classification === 'complaint' ? 'complaint' : 'hard_bounce' },
+          event.occurredAt,
+        ),
+      );
     }
     return ok({ processed: true });
   } catch {
@@ -1112,17 +1582,32 @@ export const applyVerifiedSesEvent = async (
 
 export const runMarketingRetentionJobs = async (
   ctx: Ctx,
-  input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string },
-  deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & { sends: CampaignSendRepository; idempotency: AutomationIdempotencyRepository },
-): Promise<Result<{ pendingConsentsPurged: number; renderedBodiesPurged: number; idempotencyKeysPurged: number }, AppError>> => {
+  input: {
+    pendingOlderThan: string;
+    renderedBodiesOlderThan: string;
+    engagementOlderThan: string;
+    idempotencyNow: string;
+  },
+  deps: Pick<ConsentDeps, 'consents' | 'definitions' | 'clock'> & {
+    sends: CampaignSendRepository;
+    events: EmailEventRepository;
+    idempotency: AutomationIdempotencyRepository;
+  },
+): Promise<Result<{
+  pendingConsentsPurged: number;
+  renderedBodiesPurged: number;
+  engagementEventsPurged: number;
+  idempotencyKeysPurged: number;
+}, AppError>> => {
   const tenantId = tenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const definitions = await deps.definitions.list(tenantId.value);
   const doubleOptInDefinitionIds = definitions.filter((definition) => definition.doubleOptIn).map((definition) => definition.id);
   const pendingConsentsPurged = await deps.consents.purgeStalePending(tenantId.value, input.pendingOlderThan, doubleOptInDefinitionIds);
   const renderedBodiesPurged = await deps.sends.ageOutRenderedBodies(tenantId.value, input.renderedBodiesOlderThan, deps.clock.nowIso());
+  const engagementEventsPurged = await deps.events.purgeEngagement(tenantId.value, input.engagementOlderThan);
   const idempotencyKeysPurged = await deps.idempotency.sweepExpired(input.idempotencyNow);
-  return ok({ pendingConsentsPurged, renderedBodiesPurged, idempotencyKeysPurged });
+  return ok({ pendingConsentsPurged, renderedBodiesPurged, engagementEventsPurged, idempotencyKeysPurged });
 };
 
 export const scheduleMarketingRetentionJobs = async (
@@ -1135,14 +1620,30 @@ export const scheduleMarketingRetentionJobs = async (
 };
 
 export const runScheduledMarketingJobs = async (
-  input: { now: string; pendingOlderThan: string; renderedBodiesOlderThan: string },
+  input: {
+    now: string;
+    pendingOlderThan: string;
+    renderedBodiesOlderThan: string;
+    engagementOlderThan: string;
+  },
   deps: {
     jobs: MarketingJobRepository;
+    runs: SchedulerRunRepository;
     dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<unknown, AppError>>;
-    runRetention(tenantId: string, input: { pendingOlderThan: string; renderedBodiesOlderThan: string; idempotencyNow: string }): Promise<Result<unknown, AppError>>;
+    runRetention(tenantId: string, input: {
+      pendingOlderThan: string;
+      renderedBodiesOlderThan: string;
+      engagementOlderThan: string;
+      idempotencyNow: string;
+    }): Promise<Result<unknown, AppError>>;
   },
 ): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>> => {
   let firstError: AppError | null = null;
+  await deps.runs.failStale({
+    startedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
+    finishedAt: input.now,
+    error: 'Scheduler run exceeded its timeout',
+  });
   const runnable = await deps.jobs.listRunnableCampaigns(input.now);
   for (const job of runnable) {
     const dispatched = await deps.dispatchCampaign(job.tenantId, job.campaignId);
@@ -1153,6 +1654,7 @@ export const runScheduledMarketingJobs = async (
     const retained = await deps.runRetention(tenantId, {
       pendingOlderThan: input.pendingOlderThan,
       renderedBodiesOlderThan: input.renderedBodiesOlderThan,
+      engagementOlderThan: input.engagementOlderThan,
       idempotencyNow: input.now,
     });
     if (!retained.ok && firstError === null) firstError = retained.error;

@@ -1,7 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '@adapters/db/client.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort } from '@adapters/db/email-outbox.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '@adapters/db/email-outbox.js';
+import { createEmailEventRepository } from '@adapters/db/email-events.js';
+import { createEmailSendRepository } from '@adapters/db/email-sends.js';
+import { createSchedulerRunRepository } from '@adapters/db/scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -66,9 +69,12 @@ import { createDevEmailPort } from '@adapters/email/dev.js';
 import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
 import { createSesEmailPort } from '@adapters/email/ses.js';
+import { createSmtpEmailPort } from '@adapters/email/smtp.js';
+import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver } from '@adapters/email/transactional-resolvers.js';
 import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketing-ses.js';
 import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
 import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
+import { createSesOnboardingControlPlane } from '@adapters/email/ses-onboarding.js';
 import { createSnsVerifier } from '@adapters/crypto/sns.js';
 import { createCronMarketingScheduler, createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
 import type {
@@ -76,6 +82,7 @@ import type {
   AuthPort,
   Clock,
   PaymentProvider,
+  PlatformTransactionalPool,
   SecretCrypto,
   TenantSecretRepository,
   TenantSecretResolver,
@@ -88,6 +95,8 @@ import type {
   EmailPort,
   EmailOutboxRepository,
   EmailHmac,
+  EmailEventRepository,
+  EmailSendRepository,
   EmailLayoutRepository,
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -129,18 +138,21 @@ import type {
   TenantRepository,
   TermsConsentRepository,
   SchedulerPort,
+  SchedulerRunRepository,
   SesMarketingSender,
   SesMarketingQuotaReader,
+  SesOnboardingControlPlane,
   SnsVerifier,
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
+  TransactionalEmailTransportResolver,
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
 } from '@core/server/index.js';
-import { campaignTick, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
 
@@ -196,7 +208,7 @@ export interface AppDeps {
   email: EmailPort;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
-  dispatchEmails(): Promise<Result<DispatchEmailBatchResult, AppError>>;
+  dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
   devEmails: DevEmailReader;
@@ -209,6 +221,7 @@ export interface AppDeps {
   health: HealthPort;
   ids: IdGenerator;
   clock: Clock;
+  logger: { error(message: string): void };
   baseDomain: string;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
@@ -217,6 +230,9 @@ export interface AppDeps {
 }
 
 export interface MarketingAppDeps {
+  runs: SchedulerRunRepository;
+  events: EmailEventRepository;
+  emailSends: EmailSendRepository;
   definitions: ConsentDefinitionRepository;
   marketingConsents: MarketingConsentRepository;
   confirmations: ConsentConfirmationTokenRepository;
@@ -227,25 +243,31 @@ export interface MarketingAppDeps {
   suppressions: SuppressionRepository;
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
+  platformTransactionalPool: PlatformTransactionalPool;
+  smtpTest: TransactionalEmailTransportResolver;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
   marketingSes: SesMarketingSender;
   marketingCredentials: MarketingSesCredentialResolver;
   quotaReader: SesMarketingQuotaReader | undefined;
+  sesOnboarding?: {
+    controlPlane: SesOnboardingControlPlane;
+    credentials: MarketingSesCredentialResolver;
+  };
   throttle: MarketingThrottleRepository;
   hmac: EmailHmac;
   sns: SnsVerifier;
   scheduler: SchedulerPort;
   tickSecret: string;
   cronSecret: string;
-  dispatchCampaign(tenantId: string, campaignId: string): Promise<Result<{
+  dispatchCampaign(tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{
     leased: boolean;
     yieldedToTransactional: boolean;
     sent: number;
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
 }
 
 /**
@@ -272,6 +294,9 @@ export const createDeps = (env: Env): AppDeps => {
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
       : createDevEmailPort(db);
   const emailOutbox = createEmailOutboxRepository(db);
+  const emailEvents = createEmailEventRepository(db);
+  const emailSends = createEmailSendRepository(db);
+  const schedulerRuns = createSchedulerRunRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
@@ -288,6 +313,25 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
+  const platformTransactionalPool = createPlatformTransactionalPool(db);
+  const tenantSesTransactional = createTenantSesTransactionalResolver(
+    sesSettings,
+    tenantMarketingCredentials,
+    production ? createSesEmailPort : () => email,
+  );
+  const smtpTransactional = createSmtpTransactionalResolver(
+    sesSettings,
+    secretResolver,
+    production ? createSmtpEmailPort : () => email,
+  );
+  const smtpTest = createSmtpTransactionalResolver(sesSettings, secretResolver);
+  const transactionalEmail = createLayeredTransactionalEmailSender({
+    tenantSes: tenantSesTransactional,
+    smtp: smtpTransactional,
+    platform: email,
+    pool: platformTransactionalPool,
+    platformLimit: 1000,
+  });
   const marketingCredentials: MarketingSesCredentialResolver = production
     ? tenantMarketingCredentials
     : { resolve: async () => ok({ accessKeyId: 'dev', secretAccessKey: 'dev', region: 'eu-central-1' }) };
@@ -304,23 +348,27 @@ export const createDeps = (env: Env): AppDeps => {
     ? { read: (credentials) => readSesQuota(credentials) }
     : undefined;
   const tokens = { nextToken: () => randomBytes(24).toString('base64url') };
+  const logger = { error: (message: string) => process.stderr.write(`${message}\n`) };
   const dispatchDeps = {
     emailOutbox,
-    email,
+    events: emailEvents,
+    email: transactionalEmail,
     clock,
-    logger: { error: (message: string) => process.stderr.write(`${message}\n`) },
+    logger,
     batchSize: Math.max(1, Math.floor(env.EMAIL_DISPATCH_RATE_PER_SECOND * env.EMAIL_DISPATCH_INTERVAL_MS / 1000)),
     attemptsCap: env.EMAIL_DISPATCH_ATTEMPTS_CAP,
     backoffBaseMs: env.EMAIL_DISPATCH_BACKOFF_BASE_MS,
     backoffCapMs: env.EMAIL_DISPATCH_BACKOFF_CAP_MS,
+    ids,
+    runs: schedulerRuns,
   };
-  const dispatchEmails = () => dispatchEmailBatch(dispatchDeps);
+  const dispatchEmails = (trigger: 'cron' | 'dev' | 'manual') => dispatchEmailBatch({ ...dispatchDeps, trigger });
   const dispatchEmail = (): void => {
-    void dispatchEmails().then((result) => {
+    void dispatchEmails('dev').then((result) => {
       if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${result.error.message}\n`);
     });
   };
-  const dispatchCampaign = async (tenantId: string, campaignId: string) => {
+  const dispatchCampaign = async (tenantId: string, campaignId: string, trigger: 'cron' | 'dev' | 'manual') => {
     const settings = await sesSettings.findByTenant(tenantId);
     if (production && settings !== null && (settings.quotaRefreshedAt === null
       || Date.parse(clock.nowIso()) - Date.parse(settings.quotaRefreshedAt) >= 15 * 60 * 1000)) {
@@ -344,32 +392,34 @@ export const createDeps = (env: Env): AppDeps => {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
       },
-    }, { campaignId, workerId: randomUUID(), tickSeconds: 50 }, {
-      definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, audience,
+    }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
+      definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
       quotaReader, throttle: marketingThrottle, hmac: emailHmac, ids, tokens, clock,
-      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler,
+      unsubscribeBaseUrl: `${env.APP_BASE_URL}/u`, outbox: emailOutbox, scheduler, runs: schedulerRuns,
     });
   };
   devScheduler?.setCampaignHandler(async (tenantId, campaignId) => {
-    const result = await dispatchCampaign(tenantId, campaignId);
+    const result = await dispatchCampaign(tenantId, campaignId, 'dev');
     if (!result.ok) process.stderr.write(`[marketing] campaign tick failed: ${result.error.message}\n`);
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
   });
-  const dispatchScheduledMarketing = () => {
+  const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
     return runScheduledMarketingJobs({
       now,
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      engagementOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
     }, {
       jobs: marketingJobs,
-      dispatchCampaign,
+      runs: schedulerRuns,
+      dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger),
       runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
-        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock,
+        definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock,
       }),
     });
   };
@@ -509,6 +559,7 @@ export const createDeps = (env: Env): AppDeps => {
     health: createHealthPort(db),
     ids,
     clock,
+    logger,
     baseDomain: env.APP_BASE_DOMAIN,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {
@@ -517,7 +568,10 @@ export const createDeps = (env: Env): AppDeps => {
     },
     authConfig: { googleEnabled: google !== null },
     marketing: {
+      runs: schedulerRuns,
       definitions,
+      events: emailEvents,
+      emailSends,
       marketingConsents,
       confirmations,
       campaigns,
@@ -527,11 +581,17 @@ export const createDeps = (env: Env): AppDeps => {
       suppressions,
       unsubscribes,
       sesSettings,
+      platformTransactionalPool,
+      smtpTest,
       documents,
       idempotency,
       marketingSes,
       marketingCredentials,
       quotaReader,
+      sesOnboarding: {
+        controlPlane: createSesOnboardingControlPlane(),
+        credentials: tenantMarketingCredentials,
+      },
       throttle: marketingThrottle,
       hmac: emailHmac,
       sns,

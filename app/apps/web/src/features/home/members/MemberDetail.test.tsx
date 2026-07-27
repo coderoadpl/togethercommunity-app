@@ -3,7 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { MemberGrant, MemberWithProductIds, Product } from '@core/domain/index.js';
+import type {
+  EmailSendProjection,
+  MemberGrant,
+  MemberWithProductIds,
+  Product,
+} from '@core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -59,11 +64,58 @@ const products: Product[] = [
   },
 ];
 
+const emailSends: EmailSendProjection[] = [
+  {
+    id: 'marketing-send',
+    tenantId: 't1',
+    kind: 'marketing',
+    recipient: member.email,
+    subject: 'July news',
+    source: 'broadcast',
+    status: 'sent',
+    skipReason: null,
+    failureCode: null,
+    failureMessage: null,
+    deliveryStatus: 'delivered',
+    deliveryOccurredAt: '2026-07-10T10:01:00.000Z',
+    campaignId: 'campaign-1',
+    campaignName: 'July',
+    sesMessageId: 'ses-marketing',
+    transport: 'tenant-ses',
+    createdAt: '2026-07-10T10:00:00.000Z',
+    sentAt: '2026-07-10T10:00:30.000Z',
+  },
+  {
+    id: 'transactional-send',
+    tenantId: 't1',
+    kind: 'transactional',
+    recipient: member.email,
+    subject: 'Welcome',
+    source: 'welcome-set-password',
+    status: 'sent',
+    skipReason: null,
+    failureCode: null,
+    failureMessage: null,
+    deliveryStatus: null,
+    deliveryOccurredAt: null,
+    transport: 'platform',
+    campaignId: null,
+    campaignName: null,
+    sesMessageId: 'ses-transactional',
+    createdAt: '2026-07-09T10:00:00.000Z',
+    sentAt: '2026-07-09T10:00:30.000Z',
+  },
+];
+
 const setup = (): { grantBodies: unknown[]; revoked: string[] } => {
   const grantBodies: unknown[] = [];
   const revoked: string[] = [];
   server.use(
     http.get('/api/members/:memberId/grants', () => HttpResponse.json({ ok: true, data: { grants } })),
+    http.get('/api/members/:memberId/emails', () => HttpResponse.json({
+      ok: true,
+      data: { sends: emailSends },
+    })),
     http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products } })),
     http.post('/api/grants', async ({ request }) => {
       grantBodies.push(await request.json());
@@ -112,5 +164,22 @@ describe('MemberDetail', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: pl.members.revoke }));
 
     await waitFor(() => expect(revoked).toEqual(['grant-active']));
+  });
+
+  it('shows all email kinds newest-first in the email tab and links to send history', async () => {
+    setup();
+    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+
+    await userEvent.click(screen.getByRole('tab', { name: pl.members.emailsTab }));
+
+    const rows = await screen.findAllByTestId('member-email-send');
+    expect(rows).toHaveLength(2);
+    const marketingRow = rows[0];
+    const transactionalRow = rows[1];
+    if (marketingRow === undefined || transactionalRow === undefined) return;
+    expect(within(marketingRow).getByText('July news')).toBeInTheDocument();
+    expect(within(transactionalRow).getByText('Welcome')).toBeInTheDocument();
+    expect(within(marketingRow).getByRole('link', { name: pl.marketing.sendDetails }))
+      .toHaveAttribute('href', '/panel/marketing/sends/marketing/marketing-send');
   });
 });

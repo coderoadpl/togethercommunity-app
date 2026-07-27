@@ -108,7 +108,9 @@ SES account, while Together enforces consent, suppression, unsubscribe, sender
 identity, throttling, and send logging. Multi-step automations are intentionally
 orchestrated in n8n or Make through the M2M API; there is no native drip builder
 by design. See the [marketing automation API guide](../docs/marketing-automation-api.md)
-and its ready-made n8n and Make scenarios.
+and its ready-made n8n and Make scenarios. Tenant setup, the ready-to-paste AWS
+production-access answers, and transactional SMTP fallbacks are in the
+[SES onboarding guide](../docs/ses-onboarding.md).
 
 ## Architecture in one screen
 

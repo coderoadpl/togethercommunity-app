@@ -227,6 +227,15 @@ const sendRowsSchema = z.array(z.object({
   consent_row_id: z.string(), ses_message_id: z.string().nullable(), delivery_status: z.string().nullable(),
 }));
 const campaignRowSchema = z.object({ status: z.string(), to_send: z.number().int(), sent: z.number().int(), failed: z.number().int() });
+const schedulerRunRowSchema = z.object({
+  id: z.string(),
+  trigger: z.string(),
+  status: z.string(),
+  campaigns_touched: z.number().int(),
+  batch_size: z.number().int(),
+  budget_computed: z.number().int(),
+  budget_used: z.number().int(),
+});
 const capturedEmailSchema = z.object({
   to: z.string(), subject: z.string(), html: z.string(), text: z.string(),
   headers: z.record(z.string()), message_id: z.string().nullable(), created_at: z.string(),
@@ -268,6 +277,44 @@ const scheduleAndTick = async (
     )).rows[0]);
     return row.status === 'finished';
   });
+  const run = schedulerRunRowSchema.parse((await db.query(
+    `select r.id, r.trigger, r.status, t.campaigns_touched, t.batch_size, t.budget_computed, t.budget_used
+     from scheduler_runs r
+     join scheduler_run_tenants t on t.run_id = r.id
+     where r.kind = 'marketing_tick' and t.tenant_id = $1
+       and exists (
+         select 1 from campaign_sends s
+         where s.tenant_id = $1 and s.campaign_id = $2 and s.run_id = r.id
+       )
+     order by r.started_at, r.id
+     limit 1`,
+    [tenantId, campaignId],
+  )).rows[0]);
+  assert(run.trigger === 'manual' && run.status === 'completed', `campaign ${campaignId}: scheduler run was not completed`);
+  assert(run.campaigns_touched === 1, `campaign ${campaignId}: scheduler run did not record the campaign`);
+  assert(run.batch_size === run.budget_used && run.budget_used <= run.budget_computed, `campaign ${campaignId}: scheduler run budget metrics mismatch`);
+  const linkedSends = await queryCount(db,
+    'select count(*) from campaign_sends where tenant_id = $1 and campaign_id = $2 and run_id = $3',
+    [tenantId, campaignId, run.id],
+  );
+  const allSends = await queryCount(db,
+    'select count(*) from campaign_sends where tenant_id = $1 and campaign_id = $2',
+    [tenantId, campaignId],
+  );
+  const allLinkedSends = await queryCount(db,
+    'select count(*) from campaign_sends where tenant_id = $1 and campaign_id = $2 and run_id is not null',
+    [tenantId, campaignId],
+  );
+  assert(linkedSends > 0 && allLinkedSends === allSends, `campaign ${campaignId}: campaign sends are not linked to scheduler runs`);
+  const linkedTerminalEvents = await queryCount(db,
+    `select count(*) from email_events e
+     join campaign_sends s on s.id = e.ref_id and s.tenant_id = e.tenant_id
+     where s.tenant_id = $1 and s.campaign_id = $2
+       and e.type in ('accepted', 'failed', 'skipped')
+       and e.meta ->> 'runId' = s.run_id`,
+    [tenantId, campaignId],
+  );
+  assert(linkedTerminalEvents === allSends, `campaign ${campaignId}: terminal events are not linked to scheduler runs`);
 };
 
 const createCampaign = async (
@@ -384,6 +431,8 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
       identityVerified: true,
       configurationSet: 'marketing-e2e',
       snsTopicArn: topicArn,
+      trackingEnabled: false,
+      autoPauseOnCritical: false,
       footerLegalName: legalName,
       footerAddress: legalAddress,
     }), 200);

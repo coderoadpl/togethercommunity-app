@@ -3,6 +3,7 @@ import {
   emailLayoutSchema,
   err,
   forbidden,
+  integrationNotConfigured,
   notFound,
   ok,
   requiresConsentVersionBump,
@@ -28,9 +29,11 @@ import type {
   EmailLayoutRepository,
   IdGenerator,
   MarketingAudienceRepository,
+  PlatformTransactionalPool,
   TenantDocumentRepository,
   TenantSecretRepository,
   TenantSesSettingsRepository,
+  TransactionalEmailTransportResolver,
   TokenGenerator,
 } from '../ports.js';
 
@@ -232,6 +235,7 @@ export const updateMarketingCampaign = async (
     name: string;
     subject: string;
     bodyHtml: string;
+    bodySource?: string | undefined;
     consentDefinitionId: string;
     productIds: string[];
     layoutId: string | null;
@@ -255,7 +259,7 @@ export const updateMarketingCampaign = async (
     name: input.name,
     subject: input.subject,
     bodyHtml: input.bodyHtml,
-    bodySource: input.bodyHtml,
+    bodySource: input.bodySource ?? input.bodyHtml,
     consentDefinitionId: input.consentDefinitionId,
     audienceFilter: input.productIds.length === 0 ? null : { productIds: input.productIds },
     layoutId: input.layoutId,
@@ -264,29 +268,56 @@ export const updateMarketingCampaign = async (
 };
 
 const sesSecretKeys = ['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region'] as const;
+const smtpSecretKeys = ['smtp.host', 'smtp.port', 'smtp.user', 'smtp.password', 'smtp.secure'] as const;
 
 const credentialsConfigured = async (tenantId: string, secrets: TenantSecretRepository): Promise<boolean> => {
   const stored = await secrets.listByTenant(tenantId);
   return sesSecretKeys.every((key) => stored.some((secret) => secret.key === key));
 };
 
+const smtpConfigured = async (tenantId: string, secrets: TenantSecretRepository): Promise<boolean> => {
+  const stored = await secrets.listByTenant(tenantId);
+  return smtpSecretKeys.every((key) => stored.some((secret) => secret.key === key));
+};
+
 const broadcastsEnabled = (settings: TenantSesSettings, hasCredentials: boolean): boolean =>
   hasCredentials && tenantSesBroadcastsReady(settings);
+
+interface TenantSendingSettingsOutput {
+  settings: TenantSesSettings | null;
+  credentialsConfigured: boolean;
+  smtpConfigured: boolean;
+  platformPool: { used: number; limit: 1000 };
+  webhookUrl: string | null;
+}
 
 export const getTenantSesMarketingSettings = async (
   ctx: Ctx,
   input: { webhookBaseUrl: string },
-  deps: { settings: TenantSesSettingsRepository; secrets: TenantSecretRepository },
-): Promise<Result<{ settings: TenantSesSettings | null; credentialsConfigured: boolean; webhookUrl: string | null }, AppError>> => {
+  deps: {
+    settings: TenantSesSettingsRepository;
+    secrets: TenantSecretRepository;
+    pool: PlatformTransactionalPool;
+  },
+): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
   const settings = await deps.settings.findByTenant(tenantId.value);
-  const hasCredentials = await credentialsConfigured(tenantId.value, deps.secrets);
-  if (settings === null) return ok({ settings: null, credentialsConfigured: hasCredentials, webhookUrl: null });
+  const [hasCredentials, hasSmtp, usage] = await Promise.all([
+    credentialsConfigured(tenantId.value, deps.secrets),
+    smtpConfigured(tenantId.value, deps.secrets),
+    deps.pool.usage(tenantId.value),
+  ]);
+  const transport = {
+    credentialsConfigured: hasCredentials,
+    smtpConfigured: hasSmtp,
+    platformPool: { used: usage.sent, limit: 1000 as const },
+  };
+  if (settings === null) return ok({ settings: null, ...transport, webhookUrl: null });
   const derived = { ...settings, broadcastsEnabled: broadcastsEnabled(settings, hasCredentials) };
   return ok({
     settings: derived,
-    credentialsConfigured: hasCredentials,
+    ...transport,
     webhookUrl: `${input.webhookBaseUrl}/${settings.webhookToken}`,
   });
 };
@@ -300,6 +331,8 @@ export const updateTenantSesMarketingSettings = async (
     identityVerified: boolean;
     configurationSet: string | null;
     snsTopicArn: string | null;
+    trackingEnabled: boolean;
+    autoPauseOnCritical: boolean;
     footerLegalName: string;
     footerAddress: string;
   },
@@ -309,13 +342,19 @@ export const updateTenantSesMarketingSettings = async (
     tokens: TokenGenerator;
     clock: Clock;
     webhookBaseUrl: string;
+    pool: PlatformTransactionalPool;
   },
-): Promise<Result<{ settings: TenantSesSettings; credentialsConfigured: boolean; webhookUrl: string }, AppError>> => {
+): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx);
   if (!tenantId.ok) return tenantId;
+  if (input.trackingEnabled && input.configurationSet === null) {
+    return err(validation('Open and click tracking requires an SES configuration set'));
+  }
   const current = await deps.settings.findByTenant(tenantId.value);
   const now = deps.clock.nowIso();
   const hasCredentials = await credentialsConfigured(tenantId.value, deps.secrets);
+  const hasSmtp = await smtpConfigured(tenantId.value, deps.secrets);
+  const usage = await deps.pool.usage(tenantId.value);
   const settings: TenantSesSettings = {
     tenantId: tenantId.value,
     fromAddress: input.fromAddress,
@@ -324,6 +363,8 @@ export const updateTenantSesMarketingSettings = async (
     identityVerifiedAt: input.identityVerified ? current?.identityVerifiedAt ?? now : null,
     configurationSet: input.configurationSet,
     snsTopicArn: input.snsTopicArn,
+    trackingEnabled: input.trackingEnabled,
+    autoPauseOnCritical: input.autoPauseOnCritical,
     webhookToken: current?.webhookToken ?? deps.tokens.nextToken(),
     quotaRatePerSec: current?.quotaRatePerSec ?? 0,
     quotaDaily: current?.quotaDaily ?? 0,
@@ -340,6 +381,25 @@ export const updateTenantSesMarketingSettings = async (
   return ok({
     settings: stored,
     credentialsConfigured: hasCredentials,
+    smtpConfigured: hasSmtp,
+    platformPool: { used: usage.sent, limit: 1000 as const },
     webhookUrl: `${deps.webhookBaseUrl}/${stored.webhookToken}`,
   });
+};
+
+export const sendTransactionalSmtpTest = async (
+  ctx: Ctx,
+  deps: { smtp: TransactionalEmailTransportResolver },
+) => {
+  const tenantId = staffTenantIdFrom(ctx);
+  if (!tenantId.ok) return tenantId;
+  const smtp = await deps.smtp.resolve(tenantId.value);
+  if (smtp === null) return err(integrationNotConfigured('SMTP is not fully configured'));
+  const sent = await smtp.send({
+    to: ctx.identity.email,
+    subject: 'Together SMTP test',
+    html: '<p>Your transactional SMTP connection works.</p>',
+    text: 'Your transactional SMTP connection works.',
+  });
+  return sent.ok ? ok({ sent: true as const }) : sent;
 };

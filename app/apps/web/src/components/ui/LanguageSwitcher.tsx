@@ -20,6 +20,7 @@ export const LanguageSwitcher = ({ inline = false }: { inline?: boolean }) => {
       onChange={(_event, next: Language | null) => {
         if (next) setLanguage(next);
       }}
+      sx={{ '& .MuiToggleButton-root': { minHeight: '44px', minWidth: '44px' } }}
     >
       {languageOptions.map((option) => (
         <ToggleButton key={option} value={option} aria-label={option}>

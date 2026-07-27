@@ -10,12 +10,14 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +35,7 @@ import { localizeError, useLanguage, useTranslations, type Messages } from '../.
 import { formatDate, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
+import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
 
 const toIsoOrNull = (localValue: string): string | null =>
   localValue.trim() === '' ? null : new Date(localValue).toISOString();
@@ -299,6 +302,11 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const grants = useQuery(actions.memberGrants(member.id));
+  const [tab, setTab] = useState<'overview' | 'emails'>('overview');
+  const emails = useQuery({
+    ...actions.memberEmailSends(member.id),
+    enabled: tab === 'emails',
+  });
   const [revoking, setRevoking] = useState<MemberGrant | null>(null);
 
   const refresh = async () => {
@@ -335,11 +343,41 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
         </EntryDate>
       </Typography>
 
-      <LearningSummary memberId={member.id} />
+      <Tabs
+        value={tab}
+        onChange={(_event, value: string) => setTab(value === 'emails' ? 'emails' : 'overview')}
+        aria-label={t.members.heading}
+      >
+        <Tab value="overview" label={t.members.overviewTab} />
+        <Tab value="emails" label={t.members.emailsTab} />
+      </Tabs>
 
-      <GrantForm memberId={member.id} onGranted={refresh} />
+      {tab === 'emails' ? (
+        <Box component="section">
+          <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
+            {t.members.emailsTab}
+          </Typography>
+          {emails.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.members.emailsLoading }} />
+          ) : emails.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(emails.error, t) }} />
+          ) : emails.data.sends.length === 0 ? (
+            <StatusView state={{ kind: 'empty', title: t.members.emailsEmpty }} />
+          ) : (
+            <Stack useFlexGap spacing="1rem">
+              {emails.data.sends.map((send) => (
+                <EmailSendSummary key={`${send.kind}:${send.id}`} send={send} />
+              ))}
+            </Stack>
+          )}
+        </Box>
+      ) : (
+        <>
+          <LearningSummary memberId={member.id} />
 
-      <Box component="section">
+          <GrantForm memberId={member.id} onGranted={refresh} />
+
+          <Box component="section">
         <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
           {t.members.grantedProducts}
         </Typography>
@@ -392,20 +430,22 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           </TableContainer>
         )}
         {revoke.isError ? <MutationError error={revoke.error} /> : null}
-      </Box>
+          </Box>
 
-      <ConfirmDialog
-        open={revoking !== null}
-        title={t.members.revokeAccess}
-        body={t.members.revokeConfirm({ product: revoking?.productName ?? '', email: member.email })}
-        confirmLabel={revoke.isPending ? t.members.revoking : t.members.revoke}
-        cancelLabel={t.common.cancel}
-        pending={revoke.isPending}
-        onClose={() => setRevoking(null)}
-        onConfirm={() => {
-          if (revoking) revoke.mutate({ grantId: revoking.id });
-        }}
-      />
+          <ConfirmDialog
+            open={revoking !== null}
+            title={t.members.revokeAccess}
+            body={t.members.revokeConfirm({ product: revoking?.productName ?? '', email: member.email })}
+            confirmLabel={revoke.isPending ? t.members.revoking : t.members.revoke}
+            cancelLabel={t.common.cancel}
+            pending={revoke.isPending}
+            onClose={() => setRevoking(null)}
+            onConfirm={() => {
+              if (revoking) revoke.mutate({ grantId: revoking.id });
+            }}
+          />
+        </>
+      )}
     </PanelPage>
   );
 };

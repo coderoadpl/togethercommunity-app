@@ -3,9 +3,12 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { Campaign, CampaignSend, ConsentDefinition, ConsentDefinitionVersion, EmailLayout, MarketingConsent, TenantDocument, TenantDocumentVersion } from '@core/domain/index.js';
+import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinition, type ConsentDefinitionVersion, type EmailLayout, type MarketingConsent, type Suppression, type TenantDocument, type TenantDocumentVersion } from '@core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
+import { createEmailEventRepository } from './email-events.js';
+import { createEmailSendRepository } from './email-sends.js';
+import { createSchedulerRunRepository } from './scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -14,9 +17,10 @@ import {
   createEmailLayoutRepository,
   createMarketingConsentRepository,
   createMarketingThrottleRepository,
+  createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { tenants } from './schema.js';
+import { emailOutbox, schedulerRuns, tenants } from './schema.js';
 
 const TEST_DB = 'together_marketing_repositories_test';
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -62,6 +66,69 @@ const campaign = (tenantId: string): Campaign => ({
 });
 
 describe('marketing database repositories', () => {
+  it('lists and summarizes scheduler runs with global and tenant scopes', async () => {
+    const repository = createSchedulerRunRepository(db);
+    const start = async (id: string, kind: 'marketing_tick' | 'outbox_dispatch', startedAt: string) => {
+      await repository.start({
+        id,
+        kind,
+        trigger: 'cron',
+        startedAt,
+        finishedAt: null,
+        durationMs: null,
+        status: 'running',
+        error: null,
+        totals: {
+          campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
+        },
+        createdAt: startedAt,
+      });
+    };
+    await start('run-db-new', 'marketing_tick', '2026-07-22T02:00:00.000Z');
+    await start('run-db-old', 'outbox_dispatch', '2026-07-21T02:00:00.000Z');
+    await repository.finalize('run-db-new', {
+      finishedAt: '2026-07-22T02:00:01.000Z',
+      durationMs: 1000,
+      status: 'completed',
+      error: null,
+      totals: {
+        campaignsTouched: 1, sendsAttempted: 4, sent: 3, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      tenants: [{
+        id: 'run-db-new-tenant-a', runId: 'run-db-new', tenantId: 'tenant-a',
+        campaignsTouched: 1, batchSize: 4, sent: 3, failed: 1, skipped: 0,
+        budgetComputed: 10, budgetUsed: 4, errors: ['rejected'], createdAt: '2026-07-22T02:00:01.000Z',
+      }],
+    });
+    await repository.finalize('run-db-old', {
+      finishedAt: '2026-07-21T02:00:01.000Z',
+      durationMs: 1000,
+      status: 'failed',
+      error: 'dispatch failed',
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 1, sent: 0, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      tenants: [{
+        id: 'run-db-old-tenant-b', runId: 'run-db-old', tenantId: 'tenant-b',
+        campaignsTouched: 0, batchSize: 1, sent: 0, failed: 1, skipped: 0,
+        budgetComputed: 10, budgetUsed: 1, errors: ['dispatch failed'], createdAt: '2026-07-21T02:00:01.000Z',
+      }],
+    });
+
+    expect(await repository.listPage({ kind: 'marketing_tick', status: 'completed', limit: 1 }))
+      .toMatchObject({ runs: [{ id: 'run-db-new', totals: { sent: 3, failed: 1 } }] });
+    expect(await repository.listForTenant('tenant-a', { limit: 25 }))
+      .toMatchObject({ items: [{ run: { id: 'run-db-new' }, tenant: { sent: 3, failed: 1 } }] });
+    expect(await repository.getForTenant('tenant-b', 'run-db-new')).toBeNull();
+    expect(await repository.summarizeForTenant('tenant-a', '2026-07-22T00:00:00.000Z'))
+      .toMatchObject({
+        runsLast24Hours: 1,
+        sentLast24Hours: 3,
+        failedLast24Hours: 1,
+        lastRun: { id: 'run-db-new' },
+      });
+  });
+
   it('tenant-scopes definitions and claims a campaign lease with compare-and-set', async () => {
     const definitions = createConsentDefinitionRepository(db);
     await definitions.create('tenant-a', definition('tenant-a'), version('tenant-a'));
@@ -111,6 +178,62 @@ describe('marketing database repositories', () => {
     })).toBe(false);
   });
 
+  it('appends suppression lifecycle history in the same repository operation', async () => {
+    const repository = createSuppressionRepository(db);
+    const suppression: Suppression = {
+      id: 'suppression-event-a',
+      tenantId: 'tenant-a',
+      email: 'member@example.test',
+      emailHmac: 'email-hmac-a',
+      reason: 'hard_bounce',
+      sourceRef: 'send-event-a',
+      meta: { bounceType: 'Permanent' },
+      createdAt: NOW,
+      liftedAt: null,
+      liftedBy: null,
+    };
+    const event = emailEventSchema.parse({
+      id: 'suppression-written-event-a',
+      tenantId: 'tenant-a',
+      mailKind: 'marketing',
+      refId: 'send-event-a',
+      type: 'suppressed_written',
+      occurredAt: NOW,
+      meta: { reason: 'hard_bounce' },
+      createdAt: NOW,
+    });
+
+    expect(await repository.record('tenant-a', suppression, event)).toBe(true);
+    expect((await createEmailEventRepository(db).listByRef(
+      'tenant-a',
+      'marketing',
+      'send-event-a',
+    )).map((item) => item.type)).toEqual(['suppressed_written']);
+  });
+
+  it('orders same-timestamp email events by append order', async () => {
+    const repository = createEmailEventRepository(db);
+    const event = (id: string, type: 'queued' | 'claimed') => emailEventSchema.parse({
+      id,
+      tenantId: 'tenant-a',
+      mailKind: 'marketing',
+      refId: 'same-timestamp-send',
+      type,
+      occurredAt: NOW,
+      meta: null,
+      createdAt: NOW,
+    });
+
+    await repository.append('tenant-a', event('z-queued-event', 'queued'));
+    await repository.append('tenant-a', event('a-claimed-event', 'claimed'));
+
+    expect((await repository.listByRef(
+      'tenant-a',
+      'marketing',
+      'same-timestamp-send',
+    )).map((item) => item.type)).toEqual(['queued', 'claimed']);
+  });
+
   it('allows distinct API drip steps in one campaign and still deduplicates broadcast recipients', async () => {
     const tenantId = 'tenant-drip';
     await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Drip', createdAt: NOW });
@@ -128,6 +251,7 @@ describe('marketing database repositories', () => {
     const sends = createCampaignSendRepository(db);
     const send = (id: string, source: CampaignSend['source'], idempotencySource: string | null): CampaignSend => ({
       id, tenantId, campaignId: `campaign-${tenantId}`, source, memberId: null, email: consent.email,
+      subject: 'Campaign subject',
       consentRowId: consent.id, unsubscribeTokenId: null, status: 'pending', skipReason: null,
       sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null, idempotencySource,
       renderedBodyPurgedAt: null, createdAt: NOW, sentAt: null,
@@ -137,6 +261,200 @@ describe('marketing database repositories', () => {
     expect(await sends.claimRecipient(tenantId, send('api-3', 'api', 'drip7-order-1'))).toBe(true);
     expect(await sends.claimRecipient(tenantId, send('broadcast-1', 'broadcast', null))).toBe(true);
     expect(await sends.claimRecipient(tenantId, send('broadcast-2', 'broadcast', null))).toBe(false);
+  });
+
+  it('derives unique and total engagement independently of send keyset pages', async () => {
+    const tenantId = 'tenant-engagement';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Engagement', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    await createMarketingConsentRepository(db).record(tenantId, {
+      id: 'consent-engagement', tenantId, memberId: null, email: 'a@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
+      status: 'confirmed', previousId: null, source: 'api',
+      evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
+    });
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, email: string): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast',
+      memberId: null, email, subject: 'Campaign subject',
+      consentRowId: 'consent-engagement', unsubscribeTokenId: null, status: 'sent',
+      skipReason: null, sesMessageId: `ses-${id}`, deliveryStatus: null,
+      deliveryOccurredAt: null, idempotencySource: null, renderedBodyPurgedAt: null,
+      createdAt: NOW, sentAt: NOW,
+    });
+    await sends.claimRecipient(tenantId, send('engagement-a', 'a@example.test'));
+    await sends.claimRecipient(tenantId, send('engagement-b', 'b@example.test'));
+    const events = createEmailEventRepository(db);
+    for (const [id, refId, type] of [
+      ['open-a-1', 'engagement-a', 'opened'],
+      ['open-a-2', 'engagement-a', 'opened'],
+      ['open-b-1', 'engagement-b', 'opened'],
+      ['click-a-1', 'engagement-a', 'clicked'],
+      ['click-a-2', 'engagement-a', 'clicked'],
+    ] as const) {
+      await events.append(tenantId, emailEventSchema.parse({
+        id, tenantId, mailKind: 'marketing', refId, type, occurredAt: NOW,
+        meta: type === 'clicked'
+          ? { linkUrl: 'https://example.test/offer', rawProviderPayload: {} }
+          : { rawProviderPayload: {} },
+        createdAt: NOW,
+      }));
+    }
+    const firstPage = await sends.listPage(tenantId, { campaignId: `campaign-${tenantId}`, limit: 1 });
+    expect(firstPage.nextCursor).not.toBeNull();
+    expect(await sends.engagementStats(tenantId, [`campaign-${tenantId}`])).toEqual(new Map([[
+      `campaign-${tenantId}`,
+      { uniqueOpens: 2, totalOpens: 3, uniqueClicks: 1, totalClicks: 2 },
+    ]]));
+  });
+
+  it('counts reputation from the sent cohort instead of accepted-event fixtures', async () => {
+    const tenantId = 'tenant-reputation';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Reputation', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-reputation', tenantId, memberId: null, email: 'member@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
+      status: 'confirmed', previousId: null, source: 'api',
+      evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, sentAt: string): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source: 'api',
+      memberId: null, email: `${id}@example.test`, subject: 'Reputation',
+      consentRowId: consent.id, unsubscribeTokenId: null, status: 'sent',
+      skipReason: null, sesMessageId: `ses-${id}`, deliveryStatus: null,
+      deliveryOccurredAt: null, idempotencySource: null, renderedBodyPurgedAt: null,
+      createdAt: sentAt, sentAt,
+    });
+    await sends.claimRecipient(tenantId, send('recent-hard', '2026-07-21T00:00:00.000Z'));
+    await sends.claimRecipient(tenantId, send('recent-complaint', '2026-07-20T00:00:00.000Z'));
+    await sends.claimRecipient(tenantId, send('old-hard', '2026-07-10T00:00:00.000Z'));
+    const events = createEmailEventRepository(db);
+    for (const [id, refId, type, occurredAt] of [
+      ['hard-late', 'recent-hard', 'bounced', '2026-07-22T00:00:00.000Z'],
+      ['complaint-recent', 'recent-complaint', 'complained', '2026-07-21T00:00:00.000Z'],
+      ['hard-old-send', 'old-hard', 'bounced', '2026-07-21T00:00:00.000Z'],
+    ] as const) {
+      await events.append(tenantId, emailEventSchema.parse({
+        id, tenantId, mailKind: 'marketing', refId, type, occurredAt,
+        meta: type === 'bounced'
+          ? { classification: 'hard', rawProviderPayload: {} }
+          : { rawProviderPayload: {} },
+        createdAt: occurredAt,
+      }));
+    }
+    await events.append(tenantId, emailEventSchema.parse({
+      id: 'accepted-without-send', tenantId, mailKind: 'marketing',
+      refId: 'missing-send', type: 'accepted', occurredAt: NOW,
+      meta: { sesMessageId: 'missing' }, createdAt: NOW,
+    }));
+
+    expect(await events.reputationCounts(tenantId, {
+      since: '2026-07-15T00:00:00.000Z',
+      until: '2026-07-22T00:00:00.000Z',
+    })).toEqual({ sends: 2, hardBounces: 1, complaints: 1 });
+  });
+
+  it('lists tenant-scoped transactional and marketing sends with one stable keyset', async () => {
+    const tenantId = 'tenant-send-view';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Send view', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-send-view', tenantId, memberId: null, email: 'member@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' }, status: 'confirmed',
+      previousId: null, source: 'api', evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    await db.insert(schedulerRuns).values({
+      id: 'run-send-view',
+      kind: 'marketing_tick',
+      trigger: 'cron',
+      startedAt: NOW,
+      finishedAt: '2026-07-22T00:00:01.000Z',
+      durationMs: 1000,
+      status: 'completed',
+      error: null,
+      totals: {
+        campaignsTouched: 1, sendsAttempted: 2, sent: 2, failed: 0, skipped: 0, reEnqueued: false,
+      },
+      createdAt: NOW,
+    });
+    await createCampaignSendRepository(db).claimRecipient(tenantId, {
+      id: 'marketing-send-view', runId: 'run-send-view', tenantId,
+      campaignId: `campaign-${tenantId}`, source: 'broadcast',
+      memberId: null, email: consent.email, subject: 'Campaign subject', consentRowId: consent.id,
+      unsubscribeTokenId: null, status: 'sent', skipReason: null, sesMessageId: 'ses-marketing-view',
+      deliveryStatus: 'delivered', deliveryOccurredAt: '2026-07-22T02:01:00.000Z',
+      idempotencySource: null, renderedBodyPurgedAt: null, createdAt: '2026-07-22T02:00:00.000Z',
+      sentAt: '2026-07-22T02:00:30.000Z',
+    });
+    await db.insert(emailOutbox).values({
+      id: 'transactional-send-view', tenantId, kind: 'welcome-set-password', to: ' Member@Example.Test ',
+      payload: {
+        kind: 'welcome-set-password', language: 'en', tenantName: 'Send view',
+        actionUrl: 'https://example.test/set-password',
+      },
+      status: 'sent', attempts: 1, nextAttemptAt: '2026-07-22T03:00:00.000Z', lastError: null,
+      createdAt: '2026-07-22T03:00:00.000Z', sentAt: '2026-07-22T03:00:30.000Z',
+      sesMessageId: 'ses-transactional-view', deliveryStatus: null, deliveryOccurredAt: null,
+    });
+    await createEmailEventRepository(db).append(tenantId, emailEventSchema.parse({
+      id: 'transactional-send-view-accepted',
+      tenantId,
+      mailKind: 'transactional',
+      refId: 'transactional-send-view',
+      type: 'accepted',
+      occurredAt: '2026-07-22T03:00:30.000Z',
+      meta: { sesMessageId: 'ses-transactional-view', runId: 'run-send-view' },
+      createdAt: '2026-07-22T03:00:30.000Z',
+    }));
+
+    const repository = createEmailSendRepository(db);
+    const first = await repository.listPage(tenantId, { limit: 1 });
+    expect(first.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
+      { kind: 'transactional', id: 'transactional-send-view' },
+    ]);
+    expect(first.nextCursor).not.toBeNull();
+    if (first.nextCursor === null) throw new Error('Expected another unified send page');
+    const second = await repository.listPage(tenantId, { cursor: first.nextCursor, limit: 1 });
+    expect(second.sends.map(({ kind, id }) => ({ kind, id }))).toEqual([
+      { kind: 'marketing', id: 'marketing-send-view' },
+    ]);
+    expect(await repository.listByEmailAcrossKinds(tenantId, ' MEMBER@example.test ')).toHaveLength(2);
+    expect((await repository.listPage(tenantId, { runId: 'run-send-view', limit: 25 })).sends)
+      .toHaveLength(2);
+    expect((await repository.listPage(tenantId, { runId: 'other-run', limit: 25 })).sends)
+      .toHaveLength(0);
+    expect(await repository.findById('tenant-b', 'marketing', 'marketing-send-view')).toBeNull();
+  });
+
+  it('indexes normalized exact recipient lookups for both send projections', async () => {
+    const client = new pg.Client({ connectionString: testUrl });
+    await client.connect();
+    const result = await client.query<{ indexname: string }>(`
+      select indexname
+      from pg_indexes
+      where schemaname = 'public'
+        and indexname in (
+          'campaign_sends_tenant_email_created_id_idx',
+          'email_outbox_tenant_normalized_to_created_id_idx'
+        )
+      order by indexname
+    `);
+    await client.end();
+
+    expect(result.rows.map((row) => row.indexname)).toEqual([
+      'campaign_sends_tenant_email_created_id_idx',
+      'email_outbox_tenant_normalized_to_created_id_idx',
+    ]);
   });
 
   it('stores only tenant-scoped layouts with one content slot', async () => {
@@ -166,6 +484,11 @@ describe('marketing database repositories', () => {
     };
     await repository.create('tenant-a', document, first);
     expect(await repository.publishDraft('tenant-a', document.id, NOW)).not.toBeNull();
+    expect(await repository.findPublishedVersionById('tenant-a', first.id)).toMatchObject({
+      document: { slug: 'privacy' },
+      version: { id: first.id, version: 1 },
+    });
+    expect(await repository.findPublishedVersionById('tenant-b', first.id)).toBeNull();
     const second: TenantDocumentVersion = {
       ...first, id: 'document-version-a-2', version: 2, content: '# Second', createdAt: '2026-07-22T01:00:00.000Z',
     };

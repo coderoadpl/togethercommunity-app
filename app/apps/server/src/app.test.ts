@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { API_PATHS, TENANT_HEADER } from '@core/contract/index.js';
+import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '@core/contract/index.js';
 import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
   err,
+  emailEventSchema,
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
@@ -28,8 +29,10 @@ import {
   InMemoryConsentConfirmationTokenRepository,
   InMemoryConsentDefinitionRepository,
   InMemoryEmailLayoutRepository,
+  InMemoryEmailEventRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
+  InMemorySchedulerRunRepository,
   InMemoryMarketingThrottleRepository,
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
@@ -64,6 +67,7 @@ const deps = (input: {
   authenticated?: boolean;
   databaseUp?: boolean;
   dispatchEmails?: AppDeps['dispatchEmails'];
+  logger?: AppDeps['logger'];
 } = {}): AppDeps => {
   const tenants = input.tenants ?? [acme, globex];
   const domains = input.domains ?? [];
@@ -74,6 +78,7 @@ const deps = (input: {
   ];
   const memberships: Membership[] = [];
   const members: Member[] = [];
+  let nextId = 0;
   return {
     auth: {
       handler: async () => new Response(null, { status: 404 }),
@@ -195,13 +200,15 @@ const deps = (input: {
       }),
     },
     email: {
-      send: async () => ({ ok: true, value: { messageId: null } }),
+      send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
     },
     emailOutbox: {
       enqueue: async (message) => ok({ id: message.id }),
       claimBatch: async () => ok([]),
       markSent: async () => ok(undefined),
       markFailed: async () => ok(undefined),
+      correlateBySesMessageId: async () => null,
+      markDelivery: async () => ok(undefined),
     },
     enrollmentTransaction: {
       run: async (operation) => operation({
@@ -393,8 +400,9 @@ const deps = (input: {
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
     health: { pingDatabase: async () => input.databaseUp ?? true },
-    ids: { nextId: () => 'id' },
+    ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
+    logger: input.logger ?? { error: () => undefined },
     baseDomain: 'localhost',
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
@@ -406,6 +414,13 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
   app.request(API_PATHS.publicOffer, { headers });
 
 const marketingDeps = (): MarketingAppDeps => ({
+  runs: new InMemorySchedulerRunRepository(),
+  events: new InMemoryEmailEventRepository(),
+  emailSends: {
+    listPage: async () => ({ sends: [], nextCursor: null }),
+    findById: async () => null,
+    listByEmailAcrossKinds: async () => [],
+  },
   definitions: new InMemoryConsentDefinitionRepository(),
   marketingConsents: new InMemoryMarketingConsentRepository(),
   confirmations: new InMemoryConsentConfirmationTokenRepository(),
@@ -416,6 +431,12 @@ const marketingDeps = (): MarketingAppDeps => ({
   suppressions: new InMemorySuppressionRepository(),
   unsubscribes: new InMemoryUnsubscribeTokenRepository(),
   sesSettings: new InMemoryTenantSesSettingsRepository(),
+  platformTransactionalPool: {
+    usage: async () => ({ sent: 0, reserved: 0 }),
+    reserve: async () => true,
+    settle: async () => undefined,
+  },
+  smtpTest: { resolve: async () => null },
   documents: {
     create: async () => undefined,
     findById: async () => null,
@@ -423,6 +444,7 @@ const marketingDeps = (): MarketingAppDeps => ({
     listVersions: async () => [],
     saveDraft: async () => null,
     publishDraft: async () => null,
+    findPublishedVersionById: async () => null,
     findLatestPublished: async (tenantId, slug) => tenantId === 't-acme' && slug === 'terms' ? {
       document: { id: 'document-1', tenantId, slug, title: 'Terms', status: 'published', createdAt: '2026-07-22T00:00:00.000Z', updatedAt: '2026-07-22T00:00:00.000Z' },
       version: { id: 'version-1', tenantId, documentId: 'document-1', version: 1, content: 'Immutable terms', publishedAt: '2026-07-22T00:00:00.000Z', createdAt: '2026-07-22T00:00:00.000Z', createdBy: 'staff' },
@@ -499,9 +521,9 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 describe('marketing HTTP surfaces', () => {
   it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {
     const marketing = marketingDeps();
-    let dispatches = 0;
-    marketing.dispatchScheduledMarketing = async () => {
-      dispatches += 1;
+    const triggers: string[] = [];
+    marketing.dispatchScheduledMarketing = async (trigger) => {
+      triggers.push(trigger);
       return ok({ campaignsDispatched: 2, retentionTenantsProcessed: 3 });
     };
     const app = marketingApp(marketing);
@@ -514,7 +536,7 @@ describe('marketing HTTP surfaces', () => {
       ok: true,
       data: { campaignsDispatched: 2, retentionTenantsProcessed: 3 },
     });
-    expect(dispatches).toBe(1);
+    expect(triggers).toEqual(['cron']);
   });
 
   it('authenticates automation routes with the tenant API key and releases invalid idempotency claims', async () => {
@@ -537,12 +559,78 @@ describe('marketing HTTP surfaces', () => {
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
   });
 
+  it('exposes active consent definitions and ordered message events to API clients', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const now = '2026-07-22T00:00:00.000Z';
+    await marketing.campaignSends.claimRecipient('t-acme', {
+      id: 'send-1',
+      tenantId: 't-acme',
+      campaignId: null,
+      source: 'api',
+      memberId: null,
+      email: 'member@example.test',
+      subject: 'News',
+      consentRowId: 'consent-news',
+      unsubscribeTokenId: null,
+      status: 'sent',
+      skipReason: null,
+      sesMessageId: 'ses-1',
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+      idempotencySource: null,
+      renderedBodyPurgedAt: null,
+      createdAt: now,
+      sentAt: now,
+    });
+    for (const [id, type, meta] of [
+      ['event-1', 'queued', null],
+      ['event-2', 'accepted', { sesMessageId: 'ses-1' }],
+    ] as const) {
+      await marketing.events.append('t-acme', emailEventSchema.parse({
+        id,
+        tenantId: 't-acme',
+        mailKind: 'marketing',
+        refId: 'send-1',
+        type,
+        occurredAt: now,
+        meta,
+        createdAt: now,
+      }));
+    }
+    const headers = { host: 'acme.localhost:48730', 'x-api-key': 'marketing-key' };
+    const definitions = await marketingApp(marketing).request(
+      '/api/m2m/marketing/consent-definitions',
+      { headers },
+    );
+    expect(await definitions.json()).toMatchObject({
+      ok: true,
+      data: {
+        definitions: [{
+          id: 'definition-news',
+          key: 'product-news',
+          kind: 'optional_marketing',
+          label: 'Product news',
+          doubleOptIn: true,
+        }],
+      },
+    });
+    const message = await marketingApp(marketing).request(
+      '/api/m2m/marketing/messages/send-1',
+      { headers },
+    );
+    expect(await message.json()).toMatchObject({
+      ok: true,
+      data: { id: 'send-1', events: [{ type: 'queued' }, { type: 'accepted' }] },
+    });
+  });
+
   it('returns 429 with Retry-After when the tenant SES throttle is under pressure', async () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
-      snsTopicArn: null, webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: 'marketing',
+      snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
+      webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
@@ -629,7 +717,8 @@ describe('marketing HTTP surfaces', () => {
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
-      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', webhookToken: 'webhook-token',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
+      autoPauseOnCritical: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
       broadcastsEnabled: true,
@@ -641,6 +730,139 @@ describe('marketing HTTP surfaces', () => {
       method: 'POST', body: '{}',
     });
     expect(response.status).toBe(200);
+  });
+
+  it('marks the webhook verified when an uncorrelated simulator bounce completes the signed SNS round-trip', async () => {
+    const marketing = marketingDeps();
+    const now = '2026-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const settings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: false,
+    }]);
+    marketing.sesSettings = settings;
+    marketing.sns = new FakeSnsVerifier(ok({
+      type: 'Notification',
+      topicArn,
+      message: JSON.stringify({
+        eventType: 'Bounce',
+        mail: { messageId: 'ses-simulator-message', timestamp: now },
+        bounce: {
+          timestamp: now,
+          bounceType: 'Permanent',
+          bouncedRecipients: [{ emailAddress: 'bounce@simulator.amazonses.com', status: '5.1.1' }],
+        },
+      }),
+      subscribeUrl: null,
+    }));
+
+    const response = await marketingApp(marketing).request('/api/webhooks/ses/webhook-token', {
+      method: 'POST',
+      body: '{}',
+    });
+
+    expect(response.status).toBe(200);
+    expect((await settings.findByTenant('t-acme'))?.webhookVerifiedAt).not.toBeNull();
+  });
+
+  it('ingests SES configuration-set Open and Click records and tolerates unknown messages', async () => {
+    const marketing = marketingDeps();
+    const now = '2026-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
+    await sends.claimRecipient('t-acme', {
+      id: 'send-tracked', runId: null, tenantId: 't-acme', campaignId: 'campaign-1',
+      source: 'broadcast', memberId: 'member-1', email: 'member@example.test',
+      subject: 'Tracked', consentRowId: 'consent-1', unsubscribeTokenId: null,
+      status: 'sent', skipReason: null, sesMessageId: 'ses-tracked',
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: now, sentAt: now,
+    });
+    marketing.events = events;
+    marketing.campaignSends = sends;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true,
+    }]);
+    const app = marketingApp(marketing);
+    for (const message of [
+      {
+        eventType: 'Open', mail: { messageId: 'ses-tracked', timestamp: now },
+        open: { timestamp: now, ipAddress: '192.0.2.1' },
+      },
+      {
+        eventType: 'Click', mail: { messageId: 'ses-tracked', timestamp: now },
+        click: { timestamp: now, link: 'https://acme.test/offer' },
+      },
+      {
+        eventType: 'Open', mail: { messageId: 'ses-unknown', timestamp: now },
+        open: { timestamp: now },
+      },
+    ]) {
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
+      }));
+      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      expect(response.status).toBe(200);
+    }
+    expect((await events.listByRef('t-acme', 'marketing', 'send-tracked'))).toMatchObject([
+      { type: 'opened' },
+      { type: 'clicked', meta: { linkUrl: 'https://acme.test/offer' } },
+    ]);
+  });
+
+  it('ingests configuration-set delivery records and acknowledges unsupported SES event types', async () => {
+    const marketing = marketingDeps();
+    const now = '2026-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
+    await sends.claimRecipient('t-acme', {
+      id: 'send-delivery', runId: null, tenantId: 't-acme', campaignId: 'campaign-1',
+      source: 'broadcast', memberId: 'member-1', email: 'member@example.test',
+      subject: 'Delivery', consentRowId: 'consent-1', unsubscribeTokenId: null,
+      status: 'sent', skipReason: null, sesMessageId: 'ses-delivery',
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: now, sentAt: now,
+    });
+    marketing.events = events;
+    marketing.campaignSends = sends;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true,
+    }]);
+    const app = marketingApp(marketing);
+    for (const message of [
+      {
+        eventType: 'Delivery', mail: { messageId: 'ses-delivery', timestamp: now },
+        delivery: { timestamp: now },
+      },
+      {
+        eventType: 'Send', mail: { messageId: 'ses-delivery', timestamp: now },
+        send: {},
+      },
+    ]) {
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
+      }));
+      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      expect(response.status).toBe(200);
+    }
+    expect(await sends.correlateBySesMessageId('t-acme', 'ses-delivery'))
+      .toMatchObject({ deliveryStatus: 'delivered' });
   });
 });
 
@@ -964,6 +1186,95 @@ describe('checkout consent ordering', () => {
       }),
     ]);
   });
+
+  it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {
+    const definitionId = 'checkout-news';
+    const attached = {
+      ...product({ id: 'checkout-product', tenantId: acme.id, title: 'Checkout Product', published: true }),
+      checkoutConsentDefinitionIds: [definitionId],
+    };
+    const marketing = marketingDeps();
+    await marketing.definitions.create(acme.id, {
+      id: definitionId,
+      tenantId: acme.id,
+      key: 'checkout-news',
+      kind: 'optional_marketing',
+      channel: 'email',
+      doubleOptIn: true,
+      documentRef: { mode: 'url', url: 'https://acme.example/newsletter' },
+      status: 'active',
+      createdAt: '2026-07-12T00:00:00.000Z',
+      updatedAt: '2026-07-12T00:00:00.000Z',
+    }, {
+      id: 'checkout-news-v1',
+      tenantId: acme.id,
+      definitionId,
+      version: 1,
+      label: 'Send me product news',
+      documentVersionRef: { mode: 'url', url: 'https://acme.example/newsletter' },
+      createdAt: '2026-07-12T00:00:00.000Z',
+      createdBy: null,
+    });
+    const logger = { error: vi.fn() };
+    const base = deps({ products: [attached], logger });
+    const queued: string[] = [];
+    let failEnqueue = false;
+    const app = buildApp({
+      ...base,
+      marketing,
+      tenantSecrets: {
+        ...base.tenantSecrets,
+        findByKey: async (tenantId, key) => ({
+          id: `secret-${key}`,
+          tenantId,
+          key,
+          ciphertext: 'ciphertext',
+          iv: 'iv',
+          authTag: 'auth-tag',
+          maskedPreview: '••••text',
+          updatedAt: '2026-07-12T00:00:00.000Z',
+        }),
+      },
+      emailOutbox: {
+        ...base.emailOutbox,
+        enqueue: async (message) => {
+          if (failEnqueue) return err(internal('outbox unavailable'));
+          queued.push(message.to);
+          return ok({ id: message.id });
+        },
+      },
+    });
+    const checkout = (email: string) => app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'acme.localhost:48730',
+        'user-agent': 'Checkout Browser/1.0',
+        'x-forwarded-for': '203.0.113.8, 10.0.0.1',
+      },
+      body: JSON.stringify({
+        email,
+        productId: attached.id,
+        termsAccepted: true,
+        marketingConsentDefinitionIds: [definitionId],
+      }),
+    });
+
+    expect((await checkout('buyer@together.dev')).status).toBe(200);
+    expect((await checkout('buyer@together.dev')).status).toBe(200);
+    expect(queued).toEqual(['buyer@together.dev']);
+    expect(await marketing.marketingConsents.listByEmail(acme.id, 'buyer@together.dev')).toMatchObject([{
+      evidence: {
+        ip: '203.0.113.8',
+        userAgent: 'Checkout Browser/1.0',
+      },
+    }]);
+
+    failEnqueue = true;
+    expect((await checkout('failure@together.dev')).status).toBe(200);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[checkout-consent] tenant=t-acme'));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('outbox unavailable'));
+  });
 });
 
 describe('tenant-host magic links on checkout', () => {
@@ -1038,5 +1349,74 @@ describe('tenant-host magic links on login', () => {
       baseUrl: 'http://localhost:48730',
     });
     expect(captured.context?.context.tenantName).toBeUndefined();
+  });
+});
+
+describe('scheduler operator routes', () => {
+  it('requires the operator secret and returns global totals with the per-tenant detail', async () => {
+    const marketing = marketingDeps();
+    await marketing.runs.start({
+      id: 'run-global',
+      kind: 'outbox_dispatch',
+      trigger: 'cron',
+      startedAt: '2026-07-26T10:00:00.000Z',
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0, reEnqueued: false,
+      },
+      createdAt: '2026-07-26T10:00:00.000Z',
+    });
+    await marketing.runs.finalize('run-global', {
+      finishedAt: '2026-07-26T10:00:01.000Z',
+      durationMs: 1000,
+      status: 'completed',
+      error: null,
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 4, sent: 3, failed: 1, skipped: 0, reEnqueued: false,
+      },
+      tenants: [{
+        id: 'run-global-tenant-acme',
+        runId: 'run-global',
+        tenantId: 't-acme',
+        campaignsTouched: 0,
+        batchSize: 4,
+        sent: 3,
+        failed: 1,
+        skipped: 0,
+        budgetComputed: 25,
+        budgetUsed: 4,
+        errors: ['SES rejected'],
+        createdAt: '2026-07-26T10:00:01.000Z',
+      }],
+    });
+    const app = marketingApp(marketing);
+
+    expect((await app.request(API_PATHS.globalSchedulerRuns)).status).toBe(401);
+    const response = await app.request(`${API_PATHS.globalSchedulerRuns}?kind=outbox_dispatch`, {
+      headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-marketing-cron-secret' },
+    });
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      data: { runs: [{ id: 'run-global', totals: { sent: 3, failed: 1 } }] },
+    });
+
+    const detailResponse = await app.request(
+      API_PATHS.globalSchedulerRun.replace(':id', 'run-global'),
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: 'test-marketing-cron-secret' } },
+    );
+    const detailBody: unknown = await detailResponse.json();
+
+    expect(detailResponse.status).toBe(200);
+    expect(detailBody).toMatchObject({
+      data: {
+        run: { id: 'run-global', totals: { sent: 3, failed: 1 } },
+        tenants: [{ tenantId: 't-acme', budgetUsed: 4, errors: ['SES rejected'] }],
+      },
+    });
   });
 });

@@ -567,6 +567,10 @@ export const updateProductAccessItems = async (
     product.id,
     parsed.data.accessItems,
     snapshot.value,
+    parsed.data.checkoutConsentDefinitionIds,
   );
+  if (updated && parsed.data.checkoutConsentDefinitionIds !== undefined) {
+    await deps.products.bumpContentVersion(tenant.value);
+  }
   return updated ? ok(updated) : err(notFound(`No product "${parsed.data.id}" in this tenant`));
 };

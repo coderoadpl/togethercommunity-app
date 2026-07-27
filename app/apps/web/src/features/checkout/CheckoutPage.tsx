@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
+  Checkbox,
   FormControl,
   FormControlLabel,
   FormLabel,
@@ -51,6 +52,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const paymentConfig = useQuery({ ...actions.publicPaymentConfig, enabled: !statusPage });
   const [email, setEmail] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
   const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
@@ -82,12 +84,20 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
         productId,
         email,
         language,
+        ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
         ...consent,
         ...(priceId === undefined ? {} : { priceId }),
       });
       return;
     }
-    simulatePurchase.mutate({ email, productId, language, ...consent, ...(priceId === undefined ? {} : { priceId }) });
+    simulatePurchase.mutate({
+      email,
+      productId,
+      language,
+      ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
+      ...consent,
+      ...(priceId === undefined ? {} : { priceId }),
+    });
   };
 
   const retry = () => {
@@ -239,6 +249,40 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           {consentRequired ? (
             <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
           ) : null}
+          {product.marketingConsents.length > 0 ? (
+            <FormControl component="fieldset">
+              <FormLabel component="legend">{t.checkout.marketingConsentsLabel}</FormLabel>
+              <Stack useFlexGap spacing="0.5rem">
+                {product.marketingConsents.map((definition) => (
+                  <FormControlLabel
+                    key={definition.definitionId}
+                    control={(
+                      <Checkbox
+                        checked={marketingConsentDefinitionIds.includes(definition.definitionId)}
+                        onChange={(event) => setMarketingConsentDefinitionIds((current) =>
+                          event.target.checked
+                            ? [...current, definition.definitionId]
+                            : current.filter((id) => id !== definition.definitionId))}
+                      />
+                    )}
+                    label={(
+                      <Stack useFlexGap spacing="0.2rem">
+                        <Typography>{definition.label}</Typography>
+                        {definition.documentUrl === null ? null : (
+                          <Link href={definition.documentUrl} target="_blank" rel="noreferrer">
+                            {t.checkout.marketingConsentDocument}
+                          </Link>
+                        )}
+                        {definition.doubleOptIn ? (
+                          <FinePrint component="span" variant="caption">{t.checkout.marketingConsentDoiHint}</FinePrint>
+                        ) : null}
+                      </Stack>
+                    )}
+                  />
+                ))}
+              </Stack>
+            </FormControl>
+          ) : null}
           <Button
             type="submit"
             variant="contained"
@@ -272,6 +316,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 email,
                 productId,
                 language,
+                ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
                 ...consent,
                 ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
               })}

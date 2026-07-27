@@ -218,6 +218,90 @@
       "when": 1784980000003,
       "tag": "0030_great_stone_men",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785077706714,
+      "tag": "0031_chief_vulture",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785080281521,
+      "tag": "0032_true_vulture",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785085231437,
+      "tag": "0033_oval_cargill",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785088117650,
+      "tag": "0034_lush_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1785101977328,
+      "tag": "0035_third_bushwacker",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785104616174,
+      "tag": "0036_yellow_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785136903000,
+      "tag": "0037_tenant_reputation_auto_pause",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1785138800241,
+      "tag": "0038_youthful_thunderbolt_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1785140985299,
+      "tag": "0039_neat_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785141887582,
+      "tag": "0040_flashy_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785147878745,
+      "tag": "0041_smooth_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1785151552802,
+      "tag": "0042_reclaim_transactional_pool_reservations",
+      "breakpoints": true
     }
   ]
 }

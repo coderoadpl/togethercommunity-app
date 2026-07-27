@@ -33,6 +33,7 @@ import {
   marketingConsentDefinitionsOutputSchema,
   marketingAudiencePreviewOutputSchema,
   marketingCampaignOutputSchema,
+  marketingCampaignDetailOutputSchema,
   marketingCampaignsOutputSchema,
   marketingCampaignTestOutputSchema,
   marketingDocumentDetailOutputSchema,
@@ -40,8 +41,23 @@ import {
   marketingLayoutOutputSchema,
   marketingLayoutsOutputSchema,
   marketingSesSettingsOutputSchema,
+  marketingSesIdentityStartOutputSchema,
+  marketingSesOnboardingStatusSchema,
+  marketingSesProvisionOutputSchema,
+  marketingSesSimulatorOutputSchema,
+  marketingSmtpTestOutputSchema,
+  marketingReputationOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
+  emailSendDetailOutputSchema,
+  emailSendsExportOutputSchema,
+  emailSendsOutputSchema,
+  memberEmailSendsOutputSchema,
+  globalSchedulerRunOutputSchema,
+  globalSchedulerRunsOutputSchema,
+  SCHEDULER_OPERATOR_SECRET_HEADER,
+  tenantSchedulerRunOutputSchema,
+  tenantSchedulerRunsOutputSchema,
   meOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
@@ -123,7 +139,11 @@ import {
   type MarketingDocumentUpdateInput,
   type MarketingLayoutSaveInput,
   type MarketingSesSettingsUpdateInput,
+  type MarketingSesIdentityStartInput,
   type MarketingSuppressionCreateInput,
+  type EmailSendsExportQueryInput,
+  type EmailSendsQueryInput,
+  type SchedulerRunsQueryInput,
   type MemberRemoveInput,
   type ModuleAttachInput,
   type ModuleDetachInput,
@@ -207,7 +227,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   outputSchema: S,
   body?: unknown,
   signal?: AbortSignal,
-  raw?: { body: string; headers: Record<string, string> },
+  raw?: { body?: string; headers: Record<string, string> },
 ): Promise<Branded<Result<z.output<S>, AppError>, M>> => {
   const fetchImpl = options.fetchImpl ?? fetch;
   const traceparent = options.traceparent?.();
@@ -216,7 +236,7 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
     response = await fetchImpl(`${options.baseUrl}${path}`, {
       method,
       headers: {
-        ...(body === undefined && raw === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(body === undefined && raw?.body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(traceparent === undefined ? {} : { traceparent }),
         ...options.headers?.(),
         ...raw?.headers,
@@ -268,7 +288,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
   scheduleMarketingCampaign: (input: MarketingCampaignScheduleInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaignSchedule.method, API_ROUTES.marketingCampaignSchedule.path, marketingCampaignOutputSchema, input, signal),
   getMarketingCampaign: (id: string, signal?: AbortSignal) =>
-    request(options, API_ROUTES.marketingCampaign.method, API_ROUTES.marketingCampaign.path.replace(':id', encodeURIComponent(id)), marketingCampaignOutputSchema, undefined, signal),
+    request(options, API_ROUTES.marketingCampaign.method, API_ROUTES.marketingCampaign.path.replace(':id', encodeURIComponent(id)), marketingCampaignDetailOutputSchema, undefined, signal),
   updateMarketingCampaign: (input: MarketingCampaignUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingCampaignUpdate.method, API_ROUTES.marketingCampaignUpdate.path, marketingCampaignOutputSchema, input, signal),
   actOnMarketingCampaign: (input: MarketingCampaignActionInput, signal?: AbortSignal) =>
@@ -293,12 +313,136 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingLayoutsSave.method, API_ROUTES.marketingLayoutsSave.path, marketingLayoutOutputSchema, input, signal),
   getMarketingSesSettings: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
+  pollMarketingSesOnboarding: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesOnboarding.method, API_ROUTES.marketingSesOnboarding.path, marketingSesOnboardingStatusSchema, {}, signal),
+  startMarketingSesIdentity: (input: MarketingSesIdentityStartInput, signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesIdentityStart.method, API_ROUTES.marketingSesIdentityStart.path, marketingSesIdentityStartOutputSchema, input, signal),
+  provisionMarketingSes: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesProvision.method, API_ROUTES.marketingSesProvision.path, marketingSesProvisionOutputSchema, {}, signal),
+  testMarketingSesSimulator: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSesSimulator.method, API_ROUTES.marketingSesSimulator.path, marketingSesSimulatorOutputSchema, {}, signal),
+  getMarketingReputation: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingReputation.method, API_ROUTES.marketingReputation.path, marketingReputationOutputSchema, undefined, signal),
   updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettingsUpdate.method, API_ROUTES.marketingSesSettingsUpdate.path, marketingSesSettingsOutputSchema, input, signal),
+  testMarketingSmtp: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingSmtpTest.method, API_ROUTES.marketingSmtpTest.path, marketingSmtpTestOutputSchema, {}, signal),
   listMarketingSuppressions: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressions.method, API_ROUTES.marketingStaffSuppressions.path, marketingSuppressionsOutputSchema, undefined, signal),
   addMarketingSuppression: (input: MarketingSuppressionCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressionsCreate.method, API_ROUTES.marketingStaffSuppressionsCreate.path, marketingSuppressionOutputSchema, input, signal),
+  listEmailSends: (input: EmailSendsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
+    if (input.transport !== undefined) params.set('transport', input.transport);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.runId !== undefined) params.set('runId', input.runId);
+    if (input.search !== undefined) params.set('search', input.search);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.emailSends.method,
+      suffix.length > 0 ? `${API_ROUTES.emailSends.path}?${suffix}` : API_ROUTES.emailSends.path,
+      emailSendsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  listTenantSchedulerRuns: (input: SchedulerRunsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.since !== undefined) params.set('since', input.since);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.tenantSchedulerRuns.method,
+      suffix.length > 0 ? `${API_ROUTES.tenantSchedulerRuns.path}?${suffix}` : API_ROUTES.tenantSchedulerRuns.path,
+      tenantSchedulerRunsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getTenantSchedulerRun: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tenantSchedulerRun.method,
+      API_ROUTES.tenantSchedulerRun.path.replace(':id', encodeURIComponent(id)),
+      tenantSchedulerRunOutputSchema,
+      undefined,
+      signal,
+    ),
+  listGlobalSchedulerRuns: (input: SchedulerRunsQueryInput, secret: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.since !== undefined) params.set('since', input.since);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.globalSchedulerRuns.method,
+      suffix.length > 0 ? `${API_ROUTES.globalSchedulerRuns.path}?${suffix}` : API_ROUTES.globalSchedulerRuns.path,
+      globalSchedulerRunsOutputSchema,
+      undefined,
+      signal,
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret } },
+    );
+  },
+  getGlobalSchedulerRun: (id: string, secret: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.globalSchedulerRun.method,
+      API_ROUTES.globalSchedulerRun.path.replace(':id', encodeURIComponent(id)),
+      globalSchedulerRunOutputSchema,
+      undefined,
+      signal,
+      { headers: { [SCHEDULER_OPERATOR_SECRET_HEADER]: secret } },
+    ),
+  getEmailSend: (kind: 'transactional' | 'marketing', id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.emailSend.method,
+      API_ROUTES.emailSend.path
+        .replace(':kind', encodeURIComponent(kind))
+        .replace(':id', encodeURIComponent(id)),
+      emailSendDetailOutputSchema,
+      undefined,
+      signal,
+    ),
+  exportEmailSends: (input: EmailSendsExportQueryInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ format: input.format });
+    if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
+    if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
+    if (input.runId !== undefined) params.set('runId', input.runId);
+    if (input.search !== undefined) params.set('search', input.search);
+    return request(
+      options,
+      API_ROUTES.emailSendsExport.method,
+      `${API_ROUTES.emailSendsExport.path}?${params.toString()}`,
+      emailSendsExportOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  listMemberEmailSends: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberEmailSends.method,
+      API_ROUTES.memberEmailSends.path.replace(':id', encodeURIComponent(memberId)),
+      memberEmailSendsOutputSchema,
+      undefined,
+      signal,
+    ),
   dispatchEmail: (secret: string, signal?: AbortSignal) =>
     request(
       options,

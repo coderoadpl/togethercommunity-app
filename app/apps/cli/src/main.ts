@@ -36,6 +36,7 @@ import {
 
 import { loadConfig, saveConfig, type CliConfig } from './config.js';
 import { emit } from './output.js';
+import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 
 const program = new Command('together')
   .description('Reference client for the together API - the agent feedback loop')
@@ -129,6 +130,15 @@ const memberExportOptionsSchema = z.object({
 });
 const noOptionsSchema = z.object({});
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
+const schedulerRunsListOptionsSchema = z.object({
+  secret: z.string().min(1),
+  kind: z.enum(['marketing_tick', 'outbox_dispatch']).optional(),
+  status: z.enum(['running', 'completed', 'failed']).optional(),
+  since: z.string().datetime().optional(),
+  cursor: z.string().min(1).optional(),
+  limit: z.string().regex(/^[1-9]\d*$/).transform((value) => Number.parseInt(value, 10)).optional(),
+});
+const schedulerRunShowOptionsSchema = z.object({ secret: z.string().min(1) });
 const consentDefinitionCreateOptionsSchema = z.object({
   key: z.string().min(1), label: z.string().min(1), documentUrl: z.string().url(), singleOptIn: z.boolean().optional(),
 });
@@ -1758,6 +1768,33 @@ emailCommand
       );
     }),
   );
+
+const schedulerRuns = program.command('scheduler-runs').description('Global scheduler run activity');
+
+schedulerRuns
+  .command('list')
+  .requiredOption('--secret <secret>', 'scheduler operator secret')
+  .option('--kind <kind>', 'marketing_tick or outbox_dispatch')
+  .option('--status <status>', 'running, completed, or failed')
+  .option('--since <iso>', 'only runs started at or after this ISO datetime')
+  .option('--cursor <cursor>', 'keyset pagination cursor')
+  .option('--limit <n>', 'page size')
+  .action(withInput(z.tuple([schedulerRunsListOptionsSchema]), async (ctx, [options]) => {
+    emit(await ctx.api.listGlobalSchedulerRuns({
+      ...(options.kind === undefined ? {} : { kind: options.kind }),
+      ...(options.status === undefined ? {} : { status: options.status }),
+      ...(options.since === undefined ? {} : { since: options.since }),
+      ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+      ...(options.limit === undefined ? {} : { limit: options.limit }),
+    }, options.secret), ctx.json, (data) => formatSchedulerRuns(data.runs));
+  }));
+
+schedulerRuns
+  .command('show <id>')
+  .requiredOption('--secret <secret>', 'scheduler operator secret')
+  .action(withInput(z.tuple([z.string().min(1), schedulerRunShowOptionsSchema]), async (ctx, [id, options]) => {
+    emit(await ctx.api.getGlobalSchedulerRun(id, options.secret), ctx.json, formatSchedulerRun);
+  }));
 
 const dev = program.command('dev').description('Dev-only endpoints');
 

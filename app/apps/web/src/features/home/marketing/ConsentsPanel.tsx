@@ -5,6 +5,7 @@ import {
   Chip,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   FormLabel,
   MenuItem,
   OutlinedInput,
@@ -24,13 +25,14 @@ import { localizeError, useLanguage, useTranslations } from '../../../i18n/index
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingSummaryRow } from './MarketingSummaryRow.js';
 
-const ConsentForm = ({ definition, versions = [] }: { definition?: ConsentDefinition | undefined; versions?: ConsentDefinitionVersion[] | undefined }) => {
+export const ConsentForm = ({ definition, versions = [] }: { definition?: ConsentDefinition | undefined; versions?: ConsentDefinitionVersion[] | undefined }) => {
   const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const documents = useQuery(actions.marketingDocuments);
   const latest = versions.at(-1);
   const [key, setKey] = useState(definition?.key ?? '');
+  const [keyError, setKeyError] = useState(false);
   const [label, setLabel] = useState(latest?.label ?? '');
   const [doubleOptIn, setDoubleOptIn] = useState(definition?.doubleOptIn ?? true);
   const [status, setStatus] = useState<ConsentDefinition['status']>(definition?.status ?? 'active');
@@ -54,6 +56,10 @@ const ConsentForm = ({ definition, versions = [] }: { definition?: ConsentDefini
   });
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (definition === undefined && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key)) {
+      setKeyError(true);
+      return;
+    }
     if (definition === undefined) create.mutate({ key, label, doubleOptIn, documentRef });
     else update.mutate({ definitionId: definition.id, label, doubleOptIn, documentRef, status });
   };
@@ -64,11 +70,21 @@ const ConsentForm = ({ definition, versions = [] }: { definition?: ConsentDefini
     <SectionCard
       title={t.marketing.consentCreator}
       onSubmit={submit}
-      actions={<Button type="submit" variant="contained" disabled={pending}>{pending ? t.marketing.saving : definition === undefined ? t.marketing.create : t.marketing.save}</Button>}
+      actions={<Button type="submit" variant="contained" disabled={pending}>{pending ? t.marketing.saving : definition === undefined ? t.marketing.createConsentAction : t.marketing.saveConsentAction}</Button>}
     >
-      <FormControl fullWidth>
+      <FormControl fullWidth error={keyError}>
         <FormLabel htmlFor="marketing-consent-key">{t.marketing.keyLabel}</FormLabel>
-        <OutlinedInput id="marketing-consent-key" value={key} onChange={(event) => setKey(event.target.value)} disabled={definition !== undefined} required />
+        <OutlinedInput
+          id="marketing-consent-key"
+          value={key}
+          onChange={(event) => {
+            setKey(event.target.value);
+            setKeyError(false);
+          }}
+          disabled={definition !== undefined}
+          required
+        />
+        {definition === undefined ? <FormHelperText>{t.marketing.keyFormatHint}</FormHelperText> : null}
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-consent-wording">{t.marketing.wordingLabel}</FormLabel>

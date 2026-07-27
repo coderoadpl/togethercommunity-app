@@ -448,11 +448,13 @@ export type EmailLayout = z.output<typeof emailLayoutSchema>;
 
 export const campaignSendSchema = z.object({
   id: z.string().min(1),
+  runId: z.string().min(1).nullable().optional(),
   tenantId: z.string().min(1),
   campaignId: z.string().nullable(),
   source: z.enum(['broadcast', 'api']),
   memberId: z.string().nullable(),
   email: z.string().email().transform(normalizeEmail),
+  subject: z.string().min(1),
   consentRowId: z.string().min(1),
   unsubscribeTokenId: z.string().nullable(),
   status: z.enum(['pending', 'sending', 'sent', 'failed', 'skipped']),
@@ -467,6 +469,15 @@ export const campaignSendSchema = z.object({
 });
 
 export type CampaignSend = z.output<typeof campaignSendSchema>;
+
+export const campaignEngagementStatsSchema = z.object({
+  uniqueOpens: z.number().int().nonnegative(),
+  totalOpens: z.number().int().nonnegative(),
+  uniqueClicks: z.number().int().nonnegative(),
+  totalClicks: z.number().int().nonnegative(),
+});
+
+export type CampaignEngagementStats = z.output<typeof campaignEngagementStatsSchema>;
 
 export type BounceClassification = 'soft' | 'hard' | 'complaint';
 
@@ -497,6 +508,8 @@ export const tenantSesSettingsSchema = z.object({
   identityVerifiedAt: isoDateTimeSchema.nullable(),
   configurationSet: z.string().nullable(),
   snsTopicArn: z.string().nullable(),
+  trackingEnabled: z.boolean(),
+  autoPauseOnCritical: z.boolean(),
   webhookToken: z.string().min(22),
   quotaRatePerSec: z.number().nonnegative(),
   quotaDaily: z.number().int().nonnegative(),
@@ -513,6 +526,7 @@ export type TenantSesSettings = z.output<typeof tenantSesSettingsSchema>;
 
 export const tenantSesBroadcastsReady = (settings: TenantSesSettings): boolean =>
   settings.identityVerifiedAt !== null
+  && settings.configurationSet !== null
   && settings.webhookVerifiedAt !== null
   && settings.quotaRefreshedAt !== null
   && settings.footerLegalName.trim() !== ''

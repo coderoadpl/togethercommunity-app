@@ -44,6 +44,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageValidation;
     case 'ses_not_configured':
     case 'broadcasts_disabled':
+    case 'transactional_platform_cap_reached':
       return t.errors.messageIntegrationNotConfigured;
     case 'internal':
       return t.errors.messageInternal;

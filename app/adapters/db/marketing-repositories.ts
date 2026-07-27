@@ -8,6 +8,7 @@ import {
   consentDefinitionSchema,
   consentDefinitionVersionSchema,
   emailLayoutSchema,
+  emailEventSchema,
   marketingConsentSchema,
   normalizeEmail,
   suppressionSchema,
@@ -16,6 +17,7 @@ import {
   tenantSesSettingsSchema,
   unsubscribeTokenSchema,
   type Campaign,
+  type CampaignEngagementStats,
   type CampaignSend,
 } from '@core/domain/index.js';
 import type {
@@ -43,6 +45,7 @@ import {
   consentDefinitions,
   consentDefinitionVersions,
   emailLayouts,
+  emailEvents,
   marketingConsents,
   marketingIdempotencyKeys,
   marketingThrottleBuckets,
@@ -252,6 +255,23 @@ export const createTenantDocumentRepository = (db: Db): TenantDocumentRepository
       )).returning();
       return document === undefined ? null : { document: parseDocument(document), version: parseDocumentVersion(version) };
     }),
+    findPublishedVersionById: async (tenantId, versionId) => {
+      const [row] = await db.select({ document: tenantDocuments, version: tenantDocumentVersions })
+        .from(tenantDocumentVersions)
+        .innerJoin(tenantDocuments, eq(tenantDocuments.id, tenantDocumentVersions.documentId))
+        .where(and(
+          eq(tenantDocumentVersions.tenantId, tenantId),
+          eq(tenantDocumentVersions.id, versionId),
+          eq(tenantDocuments.tenantId, tenantId),
+          eq(tenantDocuments.status, 'published'),
+          sql`${tenantDocumentVersions.publishedAt} is not null`,
+        ))
+        .limit(1);
+      return row === undefined ? null : {
+        document: parseDocument(row.document),
+        version: parseDocumentVersion(row.version),
+      };
+    },
     findLatestPublished: (tenantId, slug) => find(tenantId, slug),
     findPublishedVersion: (tenantId, slug, version) => find(tenantId, slug, version),
   };
@@ -354,9 +374,16 @@ export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepo
 const sendValues = (tenantId: string, send: CampaignSend): CampaignSend => campaignSendSchema.parse({ ...send, tenantId });
 
 export const createCampaignSendRepository = (db: Db): CampaignSendRepository => ({
-  claimRecipient: async (tenantId, send) => {
+  claimRecipient: async (tenantId, send, events = []) => {
     try {
-      await db.insert(campaignSends).values(sendValues(tenantId, send));
+      await db.transaction(async (tx) => {
+        await tx.insert(campaignSends).values(sendValues(tenantId, send));
+        if (events.length > 0) {
+          await tx.insert(emailEvents).values(events.map((event) =>
+            emailEventSchema.parse({ ...event, tenantId })
+          ));
+        }
+      });
       return true;
     } catch (cause) {
       if (uniqueViolation(cause)) return false;
@@ -367,9 +394,16 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
     const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, sendId))).limit(1);
     return row === undefined ? null : parseSend(row);
   },
-  update: async (tenantId, send) => {
-    const [row] = await db.update(campaignSends).set(sendValues(tenantId, send)).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, send.id))).returning();
-    return row === undefined ? null : parseSend(row);
+  update: async (tenantId, send, events = []) => {
+    return db.transaction(async (tx) => {
+      const [row] = await tx.update(campaignSends).set(sendValues(tenantId, send)).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.id, send.id))).returning();
+      if (row !== undefined && events.length > 0) {
+        await tx.insert(emailEvents).values(events.map((event) =>
+          emailEventSchema.parse({ ...event, tenantId })
+        ));
+      }
+      return row === undefined ? null : parseSend(row);
+    });
   },
   correlateBySesMessageId: async (tenantId, messageId) => {
     const [row] = await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.sesMessageId, messageId))).limit(1);
@@ -377,6 +411,32 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
   },
   listByCampaign: async (tenantId, campaignId) => (await db.select().from(campaignSends).where(and(eq(campaignSends.tenantId, tenantId), eq(campaignSends.campaignId, campaignId))).orderBy(asc(campaignSends.id))).map(parseSend),
   listAll: async (tenantId) => (await db.select().from(campaignSends).where(eq(campaignSends.tenantId, tenantId)).orderBy(asc(campaignSends.id))).map(parseSend),
+  engagementStats: async (tenantId, campaignIds) => {
+    if (campaignIds.length === 0) return new Map();
+    const rows = await db.select({
+      campaignId: campaignSends.campaignId,
+      uniqueOpens: sql<number>`count(distinct ${emailEvents.refId}) filter (where ${emailEvents.type} = 'opened')::int`,
+      totalOpens: sql<number>`count(*) filter (where ${emailEvents.type} = 'opened')::int`,
+      uniqueClicks: sql<number>`count(distinct ${emailEvents.refId}) filter (where ${emailEvents.type} = 'clicked')::int`,
+      totalClicks: sql<number>`count(*) filter (where ${emailEvents.type} = 'clicked')::int`,
+    }).from(campaignSends).innerJoin(emailEvents, and(
+      eq(emailEvents.tenantId, campaignSends.tenantId),
+      eq(emailEvents.mailKind, 'marketing'),
+      eq(emailEvents.refId, campaignSends.id),
+      inArray(emailEvents.type, ['opened', 'clicked']),
+    )).where(and(
+      eq(campaignSends.tenantId, tenantId),
+      inArray(campaignSends.campaignId, campaignIds),
+    )).groupBy(campaignSends.campaignId);
+    return new Map(rows.flatMap((row): Array<[string, CampaignEngagementStats]> =>
+      row.campaignId === null ? [] : [[row.campaignId, {
+        uniqueOpens: row.uniqueOpens,
+        totalOpens: row.totalOpens,
+        uniqueClicks: row.uniqueClicks,
+        totalClicks: row.totalClicks,
+      }]]
+    ));
+  },
   listPage: async (tenantId, query) => {
     const filters = [eq(campaignSends.tenantId, tenantId)];
     if (query.campaignId !== undefined) filters.push(eq(campaignSends.campaignId, query.campaignId));
@@ -398,9 +458,14 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
 });
 
 export const createSuppressionRepository = (db: Db): SuppressionRepository => ({
-  record: async (tenantId, suppression) => {
+  record: async (tenantId, suppression, event) => {
     try {
-      await db.insert(suppressions).values(suppressionSchema.parse({ ...suppression, tenantId }));
+      await db.transaction(async (tx) => {
+        await tx.insert(suppressions).values(suppressionSchema.parse({ ...suppression, tenantId }));
+        if (event !== undefined) {
+          await tx.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
+        }
+      });
       return true;
     } catch (cause) {
       if (uniqueViolation(cause)) return false;
@@ -436,8 +501,14 @@ export const createUnsubscribeTokenRepository = (db: Db): UnsubscribeTokenReposi
     const [row] = await db.select().from(unsubscribeTokens).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token))).limit(1);
     return row === undefined ? null : parseUnsubscribe(row);
   },
-  consume: async (tenantId, token, usedAt) => {
-    const [changed] = await db.update(unsubscribeTokens).set({ usedAt }).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token), isNull(unsubscribeTokens.usedAt))).returning();
+  consume: async (tenantId, token, usedAt, event) => {
+    const [changed] = await db.transaction(async (tx) => {
+      const rows = await tx.update(unsubscribeTokens).set({ usedAt }).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token), isNull(unsubscribeTokens.usedAt))).returning();
+      if (rows[0] !== undefined && event !== undefined) {
+        await tx.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
+      }
+      return rows;
+    });
     if (changed !== undefined) return { token: parseUnsubscribe(changed), newlyUsed: true };
     const [existing] = await db.select().from(unsubscribeTokens).where(and(eq(unsubscribeTokens.tenantId, tenantId), eq(unsubscribeTokens.token, token))).limit(1);
     return existing === undefined ? null : { token: parseUnsubscribe(existing), newlyUsed: false };

@@ -1,0 +1,1 @@
+CREATE INDEX "campaign_sends_tenant_run_created_id_idx" ON "campaign_sends" USING btree ("tenant_id","run_id","created_at","id");

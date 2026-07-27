@@ -198,6 +198,11 @@ export const pl: Messages = {
     exportCsv: 'Eksportuj CSV',
     exportJson: 'Eksportuj JSON',
     exporting: 'Eksportowanie…',
+    coupon: 'kupon',
+    discount: 'rabat',
+    orderTitle: ({ id }) => format('Zamówienie {id}', { id }),
+    allOrders: 'Wszystkie zamówienia',
+    provider: 'operator płatności',
   },
   coupons: {
     title: 'Kupony',

@@ -17,6 +17,7 @@ import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 import { SalesPanel } from './sales/SalesPanel.js';
+import { OrderDetailPage } from './sales/OrderDetailPage.js';
 import {
   CouponCreatePage,
   CouponDetailPage,
@@ -150,6 +151,10 @@ export const PanelIntegrationsRoute = () => {
 };
 
 export const PanelSalesRoute = () => <SalesPanel />;
+export const PanelOrderDetailRoute = () => {
+  const params = useParams({ strict: false });
+  return <OrderDetailPage orderId={params.orderId ?? ''} />;
+};
 export const PanelCouponsRoute = () => <CouponsPanel />;
 export const PanelCouponCreateRoute = () => <CouponCreatePage />;
 export const PanelCouponDetailRoute = () => {

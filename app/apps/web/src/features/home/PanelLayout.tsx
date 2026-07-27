@@ -91,7 +91,7 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'lessons', to: '/panel/lessons' },
   { id: 'members', to: '/panel/members' },
   { id: 'spaces', to: '/panel/spaces' },
-  { id: 'sales', to: '/panel/sales', exact: true },
+  { id: 'sales', to: '/panel/sales' },
   { id: 'coupons', to: '/panel/sales/coupons' },
   { id: 'integrations', to: '/panel/integrations' },
   { id: 'marketingActivity', to: '/panel/marketing/activity' },
@@ -110,7 +110,11 @@ const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
   role === 'owner' ? t.tenant.roleOwner : role === 'admin' ? t.tenant.roleAdmin : t.tenant.roleMember;
 
 const isActive = (pathname: string, to: string, exact: boolean): boolean =>
-  exact ? pathname === to || pathname === `${to}/` : pathname === to || pathname.startsWith(`${to}/`);
+  to === '/panel/sales' && pathname.startsWith('/panel/sales/coupons')
+    ? false
+    : exact
+      ? pathname === to || pathname === `${to}/`
+      : pathname === to || pathname.startsWith(`${to}/`);
 
 const SectionIcon = ({ id }: { id: PanelSection }) => {
   switch (id) {

@@ -189,6 +189,11 @@ export interface Messages {
     exportCsv: string;
     exportJson: string;
     exporting: string;
+    coupon: string;
+    discount: string;
+    orderTitle: (params: { id: string }) => string;
+    allOrders: string;
+    provider: string;
   };
   coupons: {
     title: string;

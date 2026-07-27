@@ -192,6 +192,11 @@ export const en: Messages = {
     exportCsv: 'Export CSV',
     exportJson: 'Export JSON',
     exporting: 'Exporting…',
+    coupon: 'coupon',
+    discount: 'discount',
+    orderTitle: ({ id }) => format('Order {id}', { id }),
+    allOrders: 'All orders',
+    provider: 'payment provider',
   },
   coupons: {
     title: 'Coupons',

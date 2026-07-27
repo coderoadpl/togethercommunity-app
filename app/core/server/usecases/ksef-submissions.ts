@@ -414,6 +414,7 @@ export const runKsefSubmission = async (
     if (invoice.ksef?.state !== 'submitting' || invoice.ksef.version !== ksef.version + 1) {
       return { ok: true, value: invoice };
     }
+    ksef = invoice.ksef;
     const submitted = await deps.ksef.submitInvoice({
       environment: ksef.environment,
       credentials,

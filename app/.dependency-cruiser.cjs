@@ -66,6 +66,12 @@ module.exports = {
       to: { path: '^apps' },
     },
     {
+      name: 'marketing-transports-never-use-smtp',
+      severity: 'error',
+      from: { path: '^adapters/email/(marketing-ses|dev-marketing)' },
+      to: { path: '^(adapters/email/(smtp|transactional-resolvers)|node_modules/nodemailer)' },
+    },
+    {
       name: 'web-never-server-side',
       severity: 'error',
       from: { path: '^apps/web' },

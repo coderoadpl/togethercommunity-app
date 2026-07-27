@@ -6,6 +6,7 @@ import { ok, type FiscalArtifact, type Invoice, type KsefInvoiceData } from '@co
 
 import type { KsefSubmissionDeps } from './ksef-submissions.js';
 import { runKsefSubmission } from './ksef-submissions.js';
+import type { KsefStatusResult } from '../ports.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 const xml = '<Faktura>frozen</Faktura>\n';
@@ -85,7 +86,7 @@ const harness = (initial = invoice()) => {
     invoiceHash: string;
     status: { code: number; description: string; details: string[]; extensions: Record<string, unknown> };
   }> = [];
-  let statuses = [{
+  let statuses: KsefStatusResult[] = [{
     code: 200,
     description: 'Sukces',
     details: [],
@@ -106,7 +107,7 @@ const harness = (initial = invoice()) => {
     },
     artifacts: {
       findByKey: async () => artifacts[0] ?? null,
-      store: async (artifact) => {
+      store: async (_tenantId, artifact) => {
         artifacts.push(artifact);
         return true;
       },

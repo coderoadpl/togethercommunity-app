@@ -67,7 +67,7 @@ const requiredFragments = [
 export const validateFa3Structure = (
   xml: string,
 ): { ok: boolean; errors: string[] } => {
-  const errors = requiredFragments
+  const errors: string[] = requiredFragments
     .filter(([, fragment]) => !xml.includes(fragment))
     .map(([name]) => name);
   if (xml.startsWith('\uFEFF')) errors.push('utf8-bom');

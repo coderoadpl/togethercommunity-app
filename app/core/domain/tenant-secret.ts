@@ -17,6 +17,8 @@ export const tenantSecretKeySchema = z.enum([
   'smtp.secure',
   'ifirma.invoiceApiKey',
   'ifirma.username',
+  'ksef.token',
+  'ksef.contextNip',
 ]);
 
 export type TenantSecretKey = z.infer<typeof tenantSecretKeySchema>;

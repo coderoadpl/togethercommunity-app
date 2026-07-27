@@ -4,7 +4,7 @@ import { invoiceSchema } from '@core/domain/index.js';
 import type { InvoiceRepository } from '@core/server/index.js';
 
 import type { Db } from './client.js';
-import { invoiceEvents, invoices } from './app-schema.js';
+import { fiscalArtifacts, invoiceEvents, invoices, ksefSubmissionJobs } from './app-schema.js';
 
 export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
   findById: async (tenantId, id) => {
@@ -73,6 +73,7 @@ export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
             pdfUrl: invoice.pdfUrl,
             error: invoice.error,
             issuedAt: invoice.issuedAt,
+            ksef: invoice.ksef,
           })
           .where(and(eq(invoices.tenantId, tenantId), eq(invoices.id, invoice.id)))
           .returning()
@@ -83,5 +84,41 @@ export const createInvoiceRepository = (db: Db): InvoiceRepository => ({
     }),
   appendEvent: async (tenantId, event) => {
     await db.insert(invoiceEvents).values({ ...event, tenantId });
+  },
+  createFrozenKsef: async (tenantId, invoice, event, artifact, job) =>
+    db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(invoices)
+        .values({ ...invoice, tenantId })
+        .onConflictDoNothing()
+        .returning({ id: invoices.id });
+      if (inserted.length === 0) return false;
+      await tx.insert(fiscalArtifacts).values({ ...artifact, tenantId });
+      await tx.insert(invoiceEvents).values({ ...event, tenantId });
+      await tx.insert(ksefSubmissionJobs).values({ ...job, tenantId });
+      return true;
+    }),
+  checkpointKsef: async (tenantId, invoice) => {
+    const row = (
+      await db
+        .update(invoices)
+        .set({
+          status: invoice.status,
+          providerInvoiceId: invoice.providerInvoiceId,
+          invoiceNumber: invoice.invoiceNumber,
+          error: invoice.error,
+          issuedAt: invoice.issuedAt,
+          ksef: invoice.ksef,
+        })
+        .where(and(
+          eq(invoices.tenantId, tenantId),
+          eq(invoices.id, invoice.id),
+          sql`coalesce((${invoices.ksef}->>'version')::int, -1) = ${invoice.ksef?.version === undefined
+            ? -1
+            : invoice.ksef.version - 1}`,
+        ))
+        .returning()
+    )[0];
+    return row === undefined ? null : invoiceSchema.parse(row);
   },
 });

@@ -201,7 +201,10 @@ export interface Messages {
     refreshingInvoice: string;
     invoiceStatus: string;
     invoiceDownload: string;
-    invoiceStatuses: Record<'requested' | 'issued' | 'delivered' | 'failed', string>;
+    invoiceStatuses: Record<
+      'requested' | 'queued' | 'submitting' | 'processing' | 'issued' | 'delivered' | 'failed' | 'conflict',
+      string
+    >;
   };
   coupons: {
     title: string;

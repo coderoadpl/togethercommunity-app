@@ -20,7 +20,7 @@ describe('KSeF API client', () => {
     const requests: Array<{ path: string; authorization: string | null; body: unknown }> = [];
     let statusCalls = 0;
     const fetcher: typeof fetch = async (input, init) => {
-      const url = new URL(typeof input === 'string' ? input : input.url);
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
       const headers = new Headers(init?.headers);
       const rawBody = typeof init?.body === 'string' ? init.body : '';
       requests.push({

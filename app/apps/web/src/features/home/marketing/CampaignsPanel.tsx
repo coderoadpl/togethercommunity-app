@@ -28,9 +28,8 @@ import { formatDateTime } from '../../../lib/format.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
 import {
-  renderCampaignMarkdown,
+  prepareCampaignHtml,
   renderCampaignPreview,
-  sanitizeCampaignHtml,
 } from './marketing-markdown.js';
 
 const CampaignEngagementTiles = ({
@@ -110,7 +109,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const bodyHtml = bodyMode === 'markdown' ? renderCampaignMarkdown(bodySource) : bodySource;
+    const bodyHtml = prepareCampaignHtml(bodySource, bodyMode);
     const input = {
       name,
       subject,
@@ -196,7 +195,7 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
               dangerouslySetInnerHTML={{
                 __html: bodyMode === 'markdown'
                   ? renderCampaignPreview(bodySource)
-                  : sanitizeCampaignHtml(bodySource),
+                  : renderCampaignPreview(bodySource, 'html'),
               }}
             />
           </Paper>

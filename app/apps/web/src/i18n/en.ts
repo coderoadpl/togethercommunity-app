@@ -1039,7 +1039,7 @@ export const en: Messages = {
     compactClicks: ({ unique, total }) => `Clicks ${unique} unique · ${total} total`,
     subjectLabel: 'email subject', bodyLabel: 'message content', consentScopeLabel: 'consent scope', productFilterLabel: 'optional product filter', allProducts: 'All eligible members',
     editorMode: 'editor mode', markdownMode: 'Markdown', rawHtmlMode: 'Raw HTML',
-    rawHtmlHint: 'Advanced mode. This HTML is inserted directly into the email layout.',
+    rawHtmlHint: 'Advanced mode. Unsupported tags, attributes, styles, and non-HTTPS images are removed before preview and sending.',
     livePreview: 'Live preview',
     layoutLabel: 'email layout', noLayout: 'No layout', audiencePreview: 'Recount audience', audienceCount: ({ count }) => `Eligible recipients: ${count}`,
     create: 'Create campaign', creating: 'Creating…', save: 'Save campaign', saving: 'Saving…', schedule: 'Schedule', scheduling: 'Scheduling…', sendAtLabel: 'send date and time',

@@ -1060,7 +1060,7 @@ export const pl: Messages = {
     campaignDetails: 'Dane kampanii', allCampaigns: '← Wszystkie kampanie', nameLabel: 'nazwa kampanii', subjectLabel: 'temat wiadomości',
     bodyLabel: 'treść wiadomości', consentScopeLabel: 'zakres zgody', productFilterLabel: 'opcjonalny filtr produktów', allProducts: 'Wszyscy uprawnieni',
     editorMode: 'tryb edytora', markdownMode: 'Markdown', rawHtmlMode: 'Surowy HTML',
-    rawHtmlHint: 'Tryb zaawansowany. Podany HTML trafi bezpośrednio do układu wiadomości.',
+    rawHtmlHint: 'Tryb zaawansowany. Nieobsługiwane tagi, atrybuty, style i obrazy spoza HTTPS są usuwane przed podglądem i wysyłką.',
     livePreview: 'Podgląd na żywo',
     layoutLabel: 'układ e-mail', noLayout: 'Bez układu', audiencePreview: 'Przelicz odbiorców', audienceCount: ({ count }) => `Uprawnieni odbiorcy: ${count}`,
     create: 'Utwórz kampanię', creating: 'Tworzenie…', save: 'Zapisz kampanię', saving: 'Zapisywanie…', schedule: 'Zaplanuj', scheduling: 'Planowanie…',

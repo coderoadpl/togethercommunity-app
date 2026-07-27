@@ -728,6 +728,14 @@ const importTenant = async (
   const deletedMemberIds = new Set(
     memberRows.filter((row) => row.deletedAt !== null).map((row) => row.id),
   );
+  const pseudonymizedMemberLegacyIds = new Set(
+    bundle.members
+      .filter((entry) =>
+        deletedMemberIds.has(entry.legacyId) ||
+        deletedMemberIds.has(`${tenantSlug}-${entry.legacyId}`),
+      )
+      .map((entry) => entry.legacyId),
+  );
 
   const takenIn =
     (table: typeof courses | typeof courseModules | typeof courseLessons | typeof products | typeof members | typeof productGrants | typeof memberCourseProgress) =>
@@ -965,6 +973,16 @@ const importTenant = async (
   }
   const seenMemberEmails = new Set<string>();
   for (const entry of bundle.members) {
+    if (pseudonymizedMemberLegacyIds.has(entry.legacyId)) {
+      memberReport.skip += 1;
+      memberReport.anomalies.push({
+        kind: 'pseudonymized-member-skipped',
+        subject: `members/${entry.legacyId}`,
+        detail: `member ${entry.legacyId} was previously pseudonymized; the bundle row was skipped`,
+      });
+      maps.memberIds.delete(entry.legacyId);
+      continue;
+    }
     const email = normalizeEmail(entry.email);
     if (seenMemberEmails.has(email)) {
       memberReport.dropped += 1;
@@ -1293,7 +1311,10 @@ const importTenant = async (
 };
 
 const expectedKindCount = (report: KindReport): number =>
-  report.create + report.update + report.skip;
+  report.create +
+  report.update +
+  report.skip -
+  report.anomalies.filter((anomaly) => anomaly.kind === 'pseudonymized-member-skipped').length;
 
 const verifyTenant = async (
   db: Db,
@@ -1529,7 +1550,13 @@ const runSpotChecks = async (
     .sort();
 
   const memberRowsNow = await db.select().from(members).where(eq(members.tenantId, tenantId));
+  const deletedMemberIds = new Set(
+    memberRowsNow.filter((row) => row.deletedAt !== null).map((row) => row.id),
+  );
   const membersWithGrants = [...new Set(dedupedGrants.map((grant) => grant.memberLegacyId))]
+    .filter((legacyId) =>
+      !deletedMemberIds.has(legacyId) && !deletedMemberIds.has(`${tenantSlug}-${legacyId}`),
+    )
     .sort()
     .slice(0, 3);
   const memberByLegacy = legacyRowsById(memberRowsNow);

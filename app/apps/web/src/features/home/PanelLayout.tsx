@@ -67,6 +67,7 @@ type PanelSection =
   | 'members'
   | 'spaces'
   | 'sales'
+  | 'coupons'
   | 'integrations'
   | 'marketingActivity'
   | 'marketingSends'
@@ -90,7 +91,8 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'lessons', to: '/panel/lessons' },
   { id: 'members', to: '/panel/members' },
   { id: 'spaces', to: '/panel/spaces' },
-  { id: 'sales', to: '/panel/sales' },
+  { id: 'sales', to: '/panel/sales', exact: true },
+  { id: 'coupons', to: '/panel/sales/coupons' },
   { id: 'integrations', to: '/panel/integrations' },
   { id: 'marketingActivity', to: '/panel/marketing/activity' },
   { id: 'marketingSends', to: '/panel/marketing/sends' },
@@ -125,6 +127,7 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
     case 'spaces':
       return <SpacesIcon />;
     case 'sales':
+    case 'coupons':
       return <SalesIcon />;
     case 'integrations':
       return <IntegrationsIcon />;

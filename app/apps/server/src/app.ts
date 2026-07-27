@@ -14,6 +14,10 @@ import {
   courseCreateInputSchema,
   checkoutSessionRequestSchema,
   couponCheckoutValidationRequestSchema,
+  couponArchiveRequestSchema,
+  couponCreateRequestSchema,
+  couponStatsExportQuerySchema,
+  couponStatsQuerySchema,
   emailSendsExportQuerySchema,
   emailSendsQuerySchema,
   schedulerRunsQuerySchema,
@@ -128,6 +132,11 @@ import {
   exportMembers,
   exportEmailSends,
   exportOrders,
+  exportCouponStats,
+  createCoupon,
+  archiveCoupon,
+  getCouponStats,
+  getOrder,
   getEmailSend,
   listTenantApiKeys,
   listCampaignsWithEngagement,
@@ -192,6 +201,7 @@ import {
   listMyCourses,
   listMyProducts,
   listOrders,
+  listCouponStats,
   listProductPrices,
   simulateSubscriptionCycle,
   simulateSubscriptionFailure,
@@ -1106,6 +1116,7 @@ export const buildApp = (deps: AppDeps) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const parsed = schedulerRunsQuerySchema.safeParse({
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
@@ -1751,6 +1762,7 @@ export const buildApp = (deps: AppDeps) => {
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
       ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
       ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
@@ -1765,6 +1777,7 @@ export const buildApp = (deps: AppDeps) => {
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('productId') === undefined ? {} : { productId: c.req.query('productId') }),
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
+      ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
     };
     const parsed = ordersExportQuerySchema.safeParse(query);
@@ -1772,9 +1785,118 @@ export const buildApp = (deps: AppDeps) => {
     return respond(await exportOrders({ identity: c.get('identity') }, parsed.data, deps));
   });
 
+  app.get(API_PATHS.order, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    return respond(
+      await getOrder(
+        { identity: c.get('identity') },
+        c.req.param('orderId'),
+        { orders: deps.orderDetails },
+      ),
+    );
+  });
+
   app.get(API_PATHS.salesSummary, async (c) => {
     const result = await getSalesSummary({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ summary: result.value }) : result);
+  });
+
+  app.get(API_PATHS.couponStatsExport, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon statistics are unavailable')));
+    const parsed = couponStatsExportQuerySchema.safeParse({
+      format: c.req.query('format'),
+      ...(c.req.query('partnerLabel') === undefined
+        ? {}
+        : { partnerLabel: c.req.query('partnerLabel') }),
+      ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
+      ...(c.req.query('through') === undefined ? {} : { through: c.req.query('through') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid coupon export query', parsed.error.flatten())));
+    return respond(
+      await exportCouponStats(
+        { identity: c.get('identity') },
+        {
+          format: parsed.data.format,
+          ...(parsed.data.partnerLabel === undefined
+            ? {}
+            : { partnerLabel: parsed.data.partnerLabel }),
+          ...(parsed.data.since === undefined ? {} : { since: parsed.data.since }),
+          ...(parsed.data.through === undefined ? {} : { through: parsed.data.through }),
+        },
+        { stats: deps.couponStats, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.post(API_PATHS.couponArchive, async (c) => {
+    if (deps.coupons === undefined) return respond(err(internal('Coupon management is unavailable')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = couponArchiveRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid coupon archive payload', parsed.error.flatten())));
+    return respond(
+      await archiveCoupon(
+        { identity: c.get('identity') },
+        parsed.data,
+        { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.couponStats, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon statistics are unavailable')));
+    const parsed = couponStatsQuerySchema.safeParse({
+      ...(c.req.query('partnerLabel') === undefined
+        ? {}
+        : { partnerLabel: c.req.query('partnerLabel') }),
+      ...(c.req.query('cursorCreatedAt') === undefined
+        ? {}
+        : { cursorCreatedAt: c.req.query('cursorCreatedAt') }),
+      ...(c.req.query('cursorId') === undefined ? {} : { cursorId: c.req.query('cursorId') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+      ...(c.req.query('since') === undefined ? {} : { since: c.req.query('since') }),
+      ...(c.req.query('through') === undefined ? {} : { through: c.req.query('through') }),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid coupon statistics query', parsed.error.flatten())));
+    return respond(
+      await listCouponStats(
+        { identity: c.get('identity') },
+        {
+          ...(parsed.data.partnerLabel === undefined ? {} : { partnerLabel: parsed.data.partnerLabel }),
+          ...(parsed.data.cursorCreatedAt === undefined || parsed.data.cursorId === undefined
+            ? {}
+            : { cursor: { createdAt: parsed.data.cursorCreatedAt, id: parsed.data.cursorId } }),
+          ...(parsed.data.limit === undefined ? {} : { limit: parsed.data.limit }),
+          ...(parsed.data.since === undefined ? {} : { since: parsed.data.since }),
+          ...(parsed.data.through === undefined ? {} : { through: parsed.data.through }),
+        },
+        { stats: deps.couponStats, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.post(API_PATHS.couponsCreate, async (c) => {
+    if (deps.coupons === undefined) return respond(err(internal('Coupon management is unavailable')));
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = couponCreateRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid coupon payload', parsed.error.flatten())));
+    return respond(
+      await createCoupon(
+        { identity: c.get('identity') },
+        parsed.data,
+        { coupons: deps.coupons, ids: deps.ids, clock: deps.clock },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.couponStatsDetail, async (c) => {
+    if (deps.couponStats === undefined) return respond(err(internal('Coupon statistics are unavailable')));
+    return respond(
+      await getCouponStats(
+        { identity: c.get('identity') },
+        c.req.param('couponId'),
+        { stats: deps.couponStats, clock: deps.clock },
+      ),
+    );
   });
 
   app.get(API_PATHS.courses, async (c) => {

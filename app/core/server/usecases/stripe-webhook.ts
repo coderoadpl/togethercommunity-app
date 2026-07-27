@@ -132,10 +132,11 @@ const claimDiscountedOrder = async (
     discountCents: session.discountCents,
     createdAt: deps.clock.nowIso(),
   };
+  const redemptionId = deps.ids.nextId();
   const claimed = await deps.couponRedemptions.createOrderAndClaim(tenant.id, {
     order,
     redemption: {
-      id: deps.ids.nextId(),
+      id: redemptionId,
       tenantId: tenant.id,
       couponId: coupon.id,
       orderId: order.id,
@@ -143,6 +144,15 @@ const claimDiscountedOrder = async (
       email: normalizeEmail(session.memberEmail),
       discountCents: session.discountCents,
       createdAt: order.createdAt,
+    },
+    event: {
+      id: deps.ids.nextId(),
+      tenantId: tenant.id,
+      redemptionId,
+      couponId: coupon.id,
+      orderId: order.id,
+      type: 'redeemed',
+      occurredAt: order.createdAt,
     },
     maxRedemptions: coupon.maxRedemptions,
     maxRedemptionsPerMember: coupon.maxRedemptionsPerMember,
@@ -290,10 +300,11 @@ const applyInvoiceEvent = async (
     ) {
       const member = await deps.members.findById(tenant.id, subscription.memberId);
       if (member !== null) {
+        const redemptionId = deps.ids.nextId();
         await deps.couponRedemptions.createOrderAndClaim(tenant.id, {
           order: renewed.order,
           redemption: {
-            id: deps.ids.nextId(),
+            id: redemptionId,
             tenantId: tenant.id,
             couponId: subscription.couponId,
             orderId: renewed.order.id,
@@ -301,6 +312,15 @@ const applyInvoiceEvent = async (
             email: member.email,
             discountCents: renewed.order.discountCents,
             createdAt: renewed.order.createdAt,
+          },
+          event: {
+            id: deps.ids.nextId(),
+            tenantId: tenant.id,
+            redemptionId,
+            couponId: subscription.couponId,
+            orderId: renewed.order.id,
+            type: 'redeemed',
+            occurredAt: renewed.order.createdAt,
           },
           maxRedemptions: null,
           maxRedemptionsPerMember: null,

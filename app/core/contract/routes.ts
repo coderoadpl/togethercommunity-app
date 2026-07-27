@@ -4,6 +4,8 @@ import {
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
   couponCheckoutBreakdownSchema,
+  couponCreateInputSchema,
+  couponStatsItemSchema,
   courseLessonSchema,
   courseModuleSchema,
   courseSchema,
@@ -376,6 +378,8 @@ export const ordersListOutputSchema = z.object({
   pageSize: z.number().int().positive(),
 });
 
+export const orderDetailOutputSchema = z.object({ order: orderListItemSchema });
+
 export const ordersExportQuerySchema = exportOrdersQuerySchema;
 
 export type OrdersExportQueryInput = z.input<typeof ordersExportQuerySchema>;
@@ -384,6 +388,43 @@ export const ordersExportOutputSchema = orderExportFileSchema;
 
 export const salesSummaryOutputSchema = z.object({
   summary: salesSummarySchema,
+});
+
+export const couponStatsQuerySchema = z.object({
+  partnerLabel: z.string().trim().min(1).max(200).optional(),
+  cursorCreatedAt: z.string().datetime().optional(),
+  cursorId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  since: z.string().datetime().optional(),
+  through: z.string().datetime().optional(),
+}).superRefine((value, ctx) => {
+  if ((value.cursorCreatedAt === undefined) !== (value.cursorId === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Both cursor fields are required' });
+  }
+});
+export type CouponStatsQueryInput = z.input<typeof couponStatsQuerySchema>;
+
+export const couponStatsOutputSchema = z.object({
+  items: z.array(couponStatsItemSchema),
+  nextCursor: z.object({ createdAt: z.string().datetime(), id: z.string() }).nullable(),
+});
+export const couponStatsDetailOutputSchema = z.object({ item: couponStatsItemSchema });
+export const couponCreateRequestSchema = couponCreateInputSchema;
+export type CouponCreateRequest = z.input<typeof couponCreateRequestSchema>;
+export const couponOutputSchema = z.object({ coupon: couponStatsItemSchema.shape.coupon });
+export const couponArchiveRequestSchema = z.object({ id: z.string().min(1) });
+export type CouponArchiveRequest = z.input<typeof couponArchiveRequestSchema>;
+export const couponStatsExportQuerySchema = z.object({
+  format: z.enum(['csv', 'json']),
+  partnerLabel: z.string().trim().min(1).max(200).optional(),
+  since: z.string().datetime().optional(),
+  through: z.string().datetime().optional(),
+});
+export type CouponStatsExportQueryInput = z.input<typeof couponStatsExportQuerySchema>;
+export const couponStatsExportOutputSchema = z.object({
+  filename: z.string(),
+  mimeType: z.string(),
+  content: z.string(),
 });
 
 export const subscriptionSimulateInputSchema = z.object({
@@ -984,8 +1025,14 @@ export const API_ROUTES = {
   productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
   orders: { method: 'GET', path: '/api/orders' },
+  order: { method: 'GET', path: '/api/orders/:orderId' },
   ordersExport: { method: 'GET', path: '/api/orders/export' },
   salesSummary: { method: 'GET', path: '/api/sales/summary' },
+  couponStats: { method: 'GET', path: '/api/coupons' },
+  couponStatsDetail: { method: 'GET', path: '/api/coupons/:couponId' },
+  couponsCreate: { method: 'POST', path: '/api/coupons' },
+  couponArchive: { method: 'POST', path: '/api/coupons/archive' },
+  couponStatsExport: { method: 'GET', path: '/api/coupons/export' },
   courses: { method: 'GET', path: '/api/courses' },
   coursesCreate: { method: 'POST', path: '/api/courses' },
   coursesUpdate: { method: 'POST', path: '/api/courses/update' },
@@ -1133,8 +1180,14 @@ export const API_PATHS = {
   productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
   productPrices: API_ROUTES.productPrices.path,
   orders: API_ROUTES.orders.path,
+  order: API_ROUTES.order.path,
   ordersExport: API_ROUTES.ordersExport.path,
   salesSummary: API_ROUTES.salesSummary.path,
+  couponStats: API_ROUTES.couponStats.path,
+  couponStatsDetail: API_ROUTES.couponStatsDetail.path,
+  couponsCreate: API_ROUTES.couponsCreate.path,
+  couponArchive: API_ROUTES.couponArchive.path,
+  couponStatsExport: API_ROUTES.couponStatsExport.path,
   courses: API_ROUTES.courses.path,
   coursesUpdate: API_ROUTES.coursesUpdate.path,
   coursesHistory: API_ROUTES.coursesHistory.path,

@@ -93,6 +93,7 @@ export const orderListItemSchema = orderSchema.extend({
   memberEmail: z.string(),
   memberName: z.string().nullable(),
   productTitle: z.string(),
+  couponCode: z.string().nullable(),
 });
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
@@ -113,6 +114,7 @@ export const listOrdersQuerySchema = z.object({
   status: orderStatusSchema.optional(),
   productId: z.string().min(1).optional(),
   kind: priceKindSchema.optional(),
+  couponId: z.string().min(1).optional(),
   search: z.string().trim().min(1).max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),

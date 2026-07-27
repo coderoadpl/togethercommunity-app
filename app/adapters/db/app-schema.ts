@@ -301,6 +301,30 @@ export const coupons = pgTable(
   ],
 );
 
+export const couponEvents = pgTable(
+  'coupon_events',
+  {
+    id: text('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    couponId: text('coupon_id')
+      .notNull()
+      .references(() => coupons.id, { onDelete: 'restrict' }),
+    type: text('type', { enum: ['created', 'archived'] }).notNull(),
+    occurredAt: text('occurred_at').notNull(),
+  },
+  (table) => [
+    index('coupon_events_tenant_coupon_occurred_idx').on(
+      table.tenantId,
+      table.couponId,
+      table.occurredAt,
+      table.sequence,
+    ),
+  ],
+);
+
 export const orders = pgTable(
   'orders',
   {
@@ -368,6 +392,36 @@ export const couponRedemptions = pgTable(
       table.tenantId,
       table.couponId,
       table.memberId,
+    ),
+  ],
+);
+
+export const couponRedemptionEvents = pgTable(
+  'coupon_redemption_events',
+  {
+    id: text('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    redemptionId: text('redemption_id')
+      .notNull()
+      .references(() => couponRedemptions.id, { onDelete: 'restrict' }),
+    couponId: text('coupon_id')
+      .notNull()
+      .references(() => coupons.id, { onDelete: 'restrict' }),
+    orderId: text('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'restrict' }),
+    type: text('type', { enum: ['redeemed'] }).notNull(),
+    occurredAt: text('occurred_at').notNull(),
+  },
+  (table) => [
+    index('coupon_redemption_events_tenant_redemption_occurred_idx').on(
+      table.tenantId,
+      table.redemptionId,
+      table.occurredAt,
+      table.sequence,
     ),
   ],
 );

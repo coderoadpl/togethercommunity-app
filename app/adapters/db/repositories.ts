@@ -64,6 +64,7 @@ import type {
   MemberSubscriptionRepository,
   NotificationRepository,
   OrderRepository,
+  OrderDetailRepository,
   PaymentRefundRepository,
   ProductPriceRepository,
   PostRepository,
@@ -92,6 +93,7 @@ import {
   consents,
   campaignSends,
   checkoutConsentCaptures,
+  coupons,
   courseLessons,
   courseModules,
   courses,
@@ -1530,12 +1532,13 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
   },
 });
 
-export const createOrderRepository = (db: Db): OrderRepository => {
+export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepository => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
     if (query.productId !== undefined) conditions.push(eq(orders.productId, query.productId));
     if (query.kind !== undefined) conditions.push(eq(orders.kind, query.kind));
+    if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
       const search = or(
@@ -1567,6 +1570,24 @@ export const createOrderRepository = (db: Db): OrderRepository => {
         createdAt: order.createdAt,
       });
     },
+    findById: async (tenantId, id) => {
+      const rows = await db
+        .select({
+          order: orders,
+          memberEmail: members.email,
+          memberName: members.displayName,
+          productTitle: products.title,
+          couponCode: coupons.code,
+        })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.id, id)))
+        .limit(1);
+      const row = rows[0];
+      return row === undefined ? null : orderListItemSchema.parse({ ...row.order, ...row });
+    },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
       const rows = await db
@@ -1575,10 +1596,12 @@ export const createOrderRepository = (db: Db): OrderRepository => {
           memberEmail: members.email,
           memberName: members.displayName,
           productTitle: products.title,
+          couponCode: coupons.code,
         })
         .from(orders)
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(...conditions))
         .orderBy(desc(orders.createdAt), desc(orders.id))
         .limit(query.pageSize)
@@ -1597,6 +1620,7 @@ export const createOrderRepository = (db: Db): OrderRepository => {
               memberEmail: row.memberEmail,
               memberName: row.memberName,
               productTitle: row.productTitle,
+              couponCode: row.couponCode,
             }),
         ),
         total: totals[0]?.value ?? 0,

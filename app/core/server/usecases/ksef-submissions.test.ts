@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type FiscalArtifact, type Invoice, type KsefInvoiceData } from '@core/domain/index.js';
+import {
+  appError,
+  ok,
+  type FiscalArtifact,
+  type Invoice,
+  type KsefInvoiceData,
+} from '@core/domain/index.js';
 
 import type { KsefSubmissionDeps } from './ksef-submissions.js';
 import { runKsefSubmission } from './ksef-submissions.js';
@@ -151,7 +157,10 @@ const harness = (initial = invoice()) => {
         calls.push('verify-duplicate');
         return ok(duplicateMatch);
       },
-      closeSession: async () => ok(undefined),
+      closeSession: async () => {
+        calls.push('close');
+        return ok(undefined);
+      },
       validateCredentials: async () => ok({ diagnostic: 'ok' }),
     },
     hash: {
@@ -223,6 +232,88 @@ describe('KSeF durable submission state machine', () => {
     expect(h.current()).toMatchObject({
       status: 'processing',
       ksef: { invoiceReference: 'recovered-ref', correlationChecks: 1 },
+    });
+  });
+
+  it('closes an exhausted ambiguous session and resumes through a fresh session', async () => {
+    const h = harness(invoice(ksefData({
+      state: 'submitting',
+      sessionReference: 'lost-session',
+      attempt: 1,
+      correlationChecks: 2,
+    })));
+
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.calls).toEqual(['list', 'close']);
+    expect(h.current()).toMatchObject({
+      status: 'queued',
+      providerInvoiceId: null,
+      ksef: {
+        state: 'queued',
+        sessionReference: null,
+        correlationChecks: 3,
+      },
+    });
+
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.calls).toEqual(['list', 'close', 'open', 'submit', 'status', 'upo']);
+    expect(h.current()).toMatchObject({
+      status: 'issued',
+      ksef: { state: 'succeeded' },
+    });
+  });
+
+  it('honors Retry-After when a send is rate limited', async () => {
+    const h = harness(invoice(ksefData({
+      state: 'session_opened',
+      sessionReference: 'session-ref-1',
+    })));
+    h.setSubmitOutcome({
+      ok: false,
+      error: appError('rate_limited', 'slow down', { retryAfterMs: 12_000 }),
+    });
+
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.current()).toMatchObject({
+      status: 'submitting',
+      ksef: {
+        state: 'submitting',
+        retryAt: '2026-07-27T10:00:12.000Z',
+        lastTransportError: 'slow down',
+      },
+    });
+  });
+
+  it('stops on permanent invoice validation failure', async () => {
+    const h = harness(invoice(ksefData({
+      state: 'processing',
+      sessionReference: 'session-ref-1',
+      invoiceReference: 'invoice-ref-1',
+    })));
+    h.setStatuses([{
+      code: 430,
+      description: 'Błąd weryfikacji pliku faktury',
+      details: ['schema'],
+      extensions: {},
+      ksefNumber: null,
+      acquisitionAt: null,
+      invoicingAt: null,
+      permanentStorageAt: null,
+    }]);
+
+    await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(h.current()).toMatchObject({
+      status: 'failed',
+      error: 'ksef_430',
+      ksef: {
+        state: 'rejected',
+        lastStatusDetails: ['schema'],
+        retryAt: null,
+      },
     });
   });
 

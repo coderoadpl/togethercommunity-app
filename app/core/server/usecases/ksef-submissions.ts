@@ -135,7 +135,7 @@ const storeUpo = async (
   if (!downloaded.ok) return retryTransport(tenantId, invoice, ksef, downloaded.error, deps);
   const upoArtifactKey = `invoice/${invoice.id}/upo.xml`;
   const upoSha256 = deps.hash.sha256(downloaded.value);
-  await deps.artifacts.store(tenantId, {
+  const stored = await deps.artifacts.store(tenantId, {
     key: upoArtifactKey,
     tenantId,
     invoiceId: invoice.id,
@@ -145,6 +145,19 @@ const storeUpo = async (
     byteSize: new TextEncoder().encode(downloaded.value).byteLength,
     createdAt: deps.clock.nowIso(),
   });
+  if (!stored) {
+    const existing = await deps.artifacts.findByKey(tenantId, upoArtifactKey);
+    if (existing === null || existing.sha256 !== upoSha256
+      || deps.hash.sha256(existing.content) !== upoSha256) {
+      return retryTransport(
+        tenantId,
+        invoice,
+        ksef,
+        integrationUnavailable('Stored KSeF UPO failed its integrity check'),
+        deps,
+      );
+    }
+  }
   return checkpoint(tenantId, {
     ...invoice,
     status: 'issued',
@@ -339,12 +352,20 @@ export const runKsefSubmission = async (
   }
   const artifact = await deps.artifacts.findByKey(tenantId, invoice.ksef.xmlArtifactKey);
   if (artifact === null || artifact.sha256 !== invoice.ksef.xmlSha256
-    || deps.hash.sha256(artifact.content) !== invoice.ksef.xmlSha256) {
+    || deps.hash.sha256(artifact.content) !== invoice.ksef.xmlSha256
+    || artifact.byteSize !== invoice.ksef.xmlByteSize
+    || new TextEncoder().encode(artifact.content).byteLength !== invoice.ksef.xmlByteSize) {
     return { ok: false, error: integrationUnavailable('Frozen FA(3) artifact integrity check failed') };
   }
   const resolved = await deps.credentials.resolve(tenantId);
   if (!resolved.ok) return resolved;
   const credentials = resolved.value;
+  if (credentials.contextNip !== invoice.ksef.contextNip) {
+    return {
+      ok: false,
+      error: integrationUnavailable('KSeF context NIP changed after the invoice was frozen'),
+    };
+  }
   let ksef = invoice.ksef;
   if (ksef.state === 'queued') {
     const opened = await deps.ksef.openSession({ environment: ksef.environment, credentials });

@@ -317,6 +317,63 @@ describe('KSeF durable submission state machine', () => {
     });
   });
 
+  it('refuses a changed credential context and a tampered frozen artifact', async () => {
+    const changedContext = harness();
+    changedContext.deps.credentials.resolve = async () => ok({
+      tenantId: 'tenant-1',
+      token: 'secret-token',
+      contextNip: '1111111111',
+    });
+
+    expect(await runKsefSubmission('tenant-1', 'invoice-1', changedContext.deps))
+      .toMatchObject({
+        ok: false,
+        error: { code: 'integration_unavailable' },
+      });
+    expect(changedContext.calls).toEqual([]);
+
+    const tampered = harness();
+    const artifact = tampered.artifacts[0];
+    if (artifact !== undefined) artifact.byteSize += 1;
+
+    expect(await runKsefSubmission('tenant-1', 'invoice-1', tampered.deps))
+      .toMatchObject({
+        ok: false,
+        error: { code: 'integration_unavailable' },
+      });
+    expect(tampered.calls).toEqual([]);
+  });
+
+  it('does not send when another worker wins the send-started checkpoint', async () => {
+    const h = harness(invoice(ksefData({
+      state: 'session_opened',
+      sessionReference: 'session-ref-1',
+    })));
+    h.deps.invoices.checkpointKsef = async (_tenantId, next) =>
+      next.ksef?.state === 'submitting'
+        ? invoice(ksefData({
+            state: 'processing',
+            sessionReference: 'other-session',
+            invoiceReference: 'other-invoice',
+            version: next.ksef.version,
+          }))
+        : next;
+
+    const result = await runKsefSubmission('tenant-1', 'invoice-1', h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        ksef: {
+          state: 'processing',
+          sessionReference: 'other-session',
+          invoiceReference: 'other-invoice',
+        },
+      },
+    });
+    expect(h.calls).toEqual([]);
+  });
+
   it('adopts a provably matching 440 original', async () => {
     const h = harness(invoice(ksefData({
       state: 'processing',

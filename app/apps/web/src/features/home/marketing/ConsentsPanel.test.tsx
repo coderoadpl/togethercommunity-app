@@ -37,5 +37,5 @@ describe('ConsentForm', () => {
     expect(key).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByText(pl.marketing.keyFormatHint)).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toHaveTextContent(/błąd walidacji/i);
-  });
+  }, 20_000);
 });

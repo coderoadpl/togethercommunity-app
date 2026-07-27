@@ -212,9 +212,13 @@ export const pl: Messages = {
     invoiceDownload: 'Pobierz fakturę',
     invoiceStatuses: {
       requested: 'zlecona',
+      queued: 'w kolejce',
+      submitting: 'wysyłana',
+      processing: 'przetwarzana',
       issued: 'wystawiona',
       delivered: 'dostarczona',
       failed: 'nieudana',
+      conflict: 'konflikt numeracji',
     },
   },
   coupons: {

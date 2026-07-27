@@ -206,9 +206,13 @@ export const en: Messages = {
     invoiceDownload: 'Download invoice',
     invoiceStatuses: {
       requested: 'requested',
+      queued: 'queued',
+      submitting: 'submitting',
+      processing: 'processing',
       issued: 'issued',
       delivered: 'delivered',
       failed: 'failed',
+      conflict: 'numbering conflict',
     },
   },
   coupons: {

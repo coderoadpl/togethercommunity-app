@@ -2090,6 +2090,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
+        invoicingProvider: tenants.invoicingProvider,
+        invoiceSellerName: tenants.invoiceSellerName,
+        invoiceSellerAddress: tenants.invoiceSellerAddress,
       })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
@@ -2112,6 +2115,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
             row.invoiceVatRatePercent === 23
               ? row.invoiceVatRatePercent
               : null,
+          invoicingProvider: row.invoicingProvider,
+          invoiceSellerName: row.invoiceSellerName,
+          invoiceSellerAddress: row.invoiceSellerAddress,
         }
       : null;
   },
@@ -2129,6 +2135,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
+        invoicingProvider: settings.invoicingProvider,
+        invoiceSellerName: settings.invoiceSellerName,
+        invoiceSellerAddress: settings.invoiceSellerAddress,
       })
       .where(eq(tenants.id, tenantId));
     return {
@@ -2142,6 +2151,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,
+      invoicingProvider: settings.invoicingProvider,
+      invoiceSellerName: settings.invoiceSellerName,
+      invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
   createTenantWithOwnerGrant: async (input) =>

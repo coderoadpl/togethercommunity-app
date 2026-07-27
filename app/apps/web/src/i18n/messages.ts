@@ -1009,6 +1009,11 @@ export interface Messages {
     consentScopeLabel: string;
     productFilterLabel: string;
     allProducts: string;
+    editorMode: string;
+    markdownMode: string;
+    rawHtmlMode: string;
+    rawHtmlHint: string;
+    livePreview: string;
     layoutLabel: string;
     noLayout: string;
     audiencePreview: string;

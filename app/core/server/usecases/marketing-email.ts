@@ -557,6 +557,7 @@ export const createCampaign = async (
     name: string;
     subject: string;
     bodyHtml: string;
+    bodySource?: string | undefined;
     consentDefinitionId: string;
     productIds?: string[];
     layoutId?: string | null;
@@ -577,7 +578,7 @@ export const createCampaign = async (
   const now = deps.clock.nowIso();
   const campaign: Campaign = {
     id: deps.ids.nextId(), tenantId: tenantId.value, name: input.name, subject: input.subject,
-    bodyHtml: input.bodyHtml, bodySource: input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
+    bodyHtml: input.bodyHtml, bodySource: input.bodySource ?? input.bodyHtml, layoutId: input.layoutId ?? null, consentDefinitionId: input.consentDefinitionId,
     audienceFilter: input.productIds === undefined || input.productIds.length === 0 ? null : { productIds: input.productIds }, status: 'draft', sendAt: null, snapshotMaxMemberId: null, cursorMemberId: null,
     toSend: 0, sent: 0, failed: 0, lockedUntil: null, lockedBy: null, errorCount: 0, pausedReason: null,
     audienceNameSnapshot: null, consentLabelSnapshot: null, startedAt: null, finishedAt: null, createdAt: now,

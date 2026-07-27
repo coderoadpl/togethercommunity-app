@@ -235,6 +235,7 @@ export const updateMarketingCampaign = async (
     name: string;
     subject: string;
     bodyHtml: string;
+    bodySource?: string | undefined;
     consentDefinitionId: string;
     productIds: string[];
     layoutId: string | null;
@@ -258,7 +259,7 @@ export const updateMarketingCampaign = async (
     name: input.name,
     subject: input.subject,
     bodyHtml: input.bodyHtml,
-    bodySource: input.bodyHtml,
+    bodySource: input.bodySource ?? input.bodyHtml,
     consentDefinitionId: input.consentDefinitionId,
     audienceFilter: input.productIds.length === 0 ? null : { productIds: input.productIds },
     layoutId: input.layoutId,

@@ -72,6 +72,7 @@
     "dompurify": "^3.4.12",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.8.5",
+    "marked": "^18.0.7",
     "nodemailer": "^9.0.3",
     "pg": "^8.16.3",
     "react": "^19.1.0",

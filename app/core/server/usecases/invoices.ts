@@ -392,6 +392,70 @@ export const downloadInvoice = async (
   return ok({ ...downloaded.value, filename: `${filenameBase}.pdf` });
 };
 
+export const downloadMemberInvoice = async (
+  ctx: Ctx,
+  invoiceId: string,
+  deps: InvoiceDeps,
+): Promise<Result<{ content: Uint8Array; contentType: 'application/pdf'; filename: string }, AppError>> => {
+  if (ctx.identity.tenantId === null) return err(tenantNotFound());
+  if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));
+  if (deps.invoices.findByIdForMember === undefined) {
+    return err(integrationNotConfigured('Member invoice downloads are unavailable'));
+  }
+  const invoice = await deps.invoices.findByIdForMember(
+    ctx.identity.tenantId,
+    ctx.identity.memberId,
+    invoiceId,
+  );
+  if (invoice === null) return err(notFound('Invoice was not found'));
+  if (invoice.status !== 'issued' && invoice.status !== 'delivered') {
+    return err(validation('The invoice has not been issued yet'));
+  }
+  if (invoice.provider !== 'ksef' || invoice.ksef === null || invoice.ksef === undefined
+    || deps.ksef?.pdf === undefined) {
+    return err(validation('The member invoice visualization is unavailable'));
+  }
+  const artifact = await deps.ksef.artifacts.findByKey(
+    ctx.identity.tenantId,
+    invoice.ksef.xmlArtifactKey,
+  );
+  if (artifact === null || deps.ksef.hash.sha256(artifact.content) !== invoice.ksef.xmlSha256) {
+    return err(validation('The frozen KSeF invoice artifact failed its integrity check'));
+  }
+  return ok({
+    content: deps.ksef.pdf.render({ invoice, xml: artifact.content }),
+    contentType: 'application/pdf',
+    filename: `${invoice.ksef.p2.replace(/[^a-zA-Z0-9._-]+/g, '_')}.pdf`,
+  });
+};
+
+export const downloadInvoiceUpo = async (
+  ctx: Ctx,
+  invoiceId: string,
+  deps: Pick<InvoiceDeps, 'invoices' | 'ksef'>,
+): Promise<Result<{ content: Uint8Array; contentType: 'application/xml'; filename: string }, AppError>> => {
+  if (ctx.identity.tenantId === null) return err(tenantNotFound());
+  if (ctx.identity.staffRole === null) return err(forbidden());
+  const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
+  if (invoice?.ksef?.upoArtifactKey == null || invoice.ksef.upoSha256 === null
+    || deps.ksef === undefined) {
+    return err(notFound('KSeF UPO was not found'));
+  }
+  const artifact = await deps.ksef.artifacts.findByKey(
+    ctx.identity.tenantId,
+    invoice.ksef.upoArtifactKey,
+  );
+  if (artifact === null || artifact.sha256 !== invoice.ksef.upoSha256
+    || deps.ksef.hash.sha256(artifact.content) !== invoice.ksef.upoSha256) {
+    return err(validation('The stored KSeF UPO failed its integrity check'));
+  }
+  return ok({
+    content: new TextEncoder().encode(artifact.content),
+    contentType: 'application/xml',
+    filename: `${invoice.ksef.p2.replace(/[^a-zA-Z0-9._-]+/g, '_')}-UPO.xml`,
+  });
+};
+
 export const requestInvoice = async (
   ctx: Ctx,
   orderId: string,

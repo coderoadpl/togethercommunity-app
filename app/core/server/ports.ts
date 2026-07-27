@@ -483,6 +483,7 @@ export interface InvoicingPort {
 
 export interface InvoiceRepository {
   findById(tenantId: string, id: string): Promise<Invoice | null>;
+  findByIdForMember?(tenantId: string, memberId: string, id: string): Promise<Invoice | null>;
   findCurrentByOrder(tenantId: string, orderId: string): Promise<Invoice | null>;
   create(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   claimRetry(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
@@ -773,7 +774,12 @@ export interface OrderRepository {
     page: number,
     pageSize: number,
   ): Promise<{
-    orders: Array<{ id: string; createdAt: string; billing: BillingData }>;
+    orders: Array<{
+      id: string;
+      createdAt: string;
+      billing: BillingData;
+      invoice: Pick<Invoice, 'id' | 'status' | 'provider'> | null;
+    }>;
     total: number;
   }>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;

@@ -36,6 +36,7 @@ describe('listMemberBillingOrders', () => {
               city: 'Warszawa',
               country: 'PL',
             },
+            invoice: null,
           }],
           total: 1,
         };

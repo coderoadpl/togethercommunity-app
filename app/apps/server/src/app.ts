@@ -142,6 +142,8 @@ import {
   requestInvoice,
   refreshInvoiceStatus,
   downloadInvoice,
+  downloadInvoiceUpo,
+  downloadMemberInvoice,
   getEmailSend,
   listTenantApiKeys,
   listCampaignsWithEngagement,
@@ -1961,6 +1963,54 @@ export const buildApp = (deps: AppDeps) => {
   app.get(API_PATHS.invoiceDownload, async (c) => {
     if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
     const result = await downloadInvoice(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        invoicing: deps.invoicing,
+        orderDetails: deps.orderDetails,
+        tenants: deps.tenants,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
+      },
+    );
+    if (!result.ok) return respond(result);
+    const content = Uint8Array.from(result.value.content);
+    return new Response(content.buffer, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `attachment; filename="${result.value.filename}"`,
+        'cache-control': 'private, no-store',
+      },
+    });
+  });
+
+  app.get(API_PATHS.invoiceUpoDownload, async (c) => {
+    const result = await downloadInvoiceUpo(
+      { identity: c.get('identity') },
+      c.req.param('invoiceId'),
+      {
+        invoices: deps.invoices,
+        ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
+      },
+    );
+    if (!result.ok) return respond(result);
+    const content = Uint8Array.from(result.value.content);
+    return new Response(content.buffer, {
+      headers: {
+        'content-type': result.value.contentType,
+        'content-disposition': `attachment; filename="${result.value.filename}"`,
+        'cache-control': 'private, no-store',
+      },
+    });
+  });
+
+  app.get(API_PATHS.memberInvoiceDownload, async (c) => {
+    if (deps.orderDetails === undefined) return respond(err(internal('Order details are unavailable')));
+    const result = await downloadMemberInvoice(
       { identity: c.get('identity') },
       c.req.param('invoiceId'),
       {

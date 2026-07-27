@@ -12,6 +12,8 @@ import {
 import type { InvoiceDeps } from './invoices.js';
 import {
   autoIssueOnPayment,
+  downloadInvoiceUpo,
+  downloadMemberInvoice,
   requestInvoice,
   testIfirmaConnection,
   testKsefConnection,
@@ -408,5 +410,80 @@ describe('testKsefConnection', () => {
       error: { code: 'forbidden' },
     });
     expect(h.testedKsefCredentials()).toBeNull();
+  });
+});
+
+describe('KSeF artifact downloads', () => {
+  it('allows only the owning member to render an issued frozen invoice', async () => {
+    const h = harness({ provider: 'ksef' });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const frozen = h.invoices[0];
+    if (frozen?.ksef === null || frozen?.ksef === undefined || h.deps.ksef === undefined) {
+      throw new Error('Expected a frozen KSeF invoice');
+    }
+    frozen.status = 'issued';
+    frozen.ksef = {
+      ...frozen.ksef,
+      state: 'succeeded',
+      ksefNumber: '5555555555-20260727-ABC-01',
+    };
+    h.deps.invoices.findByIdForMember = async (_tenantId, memberId) =>
+      memberId === 'member-1' ? frozen : null;
+    h.deps.ksef.artifacts.findByKey = async () => ({
+      key: frozen.ksef?.xmlArtifactKey ?? '',
+      tenantId: 'tenant-1',
+      invoiceId: frozen.id,
+      kind: 'fa3',
+      content: '<Faktura/>',
+      sha256: 'a'.repeat(64),
+      byteSize: 11,
+      createdAt: now,
+    });
+    h.deps.ksef.pdf = {
+      render: () => new TextEncoder().encode('%PDF-1.4 own invoice'),
+    };
+
+    const memberCtx = {
+      identity: { ...ctx.identity, staffRole: null, memberId: 'member-1' },
+    };
+    expect(await downloadMemberInvoice(memberCtx, frozen.id, h.deps)).toMatchObject({
+      ok: true,
+      value: { contentType: 'application/pdf', filename: 'FV_2026_000001.pdf' },
+    });
+    expect(await downloadMemberInvoice({
+      identity: { ...memberCtx.identity, memberId: 'member-2' },
+    }, frozen.id, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'not_found' },
+    });
+  });
+
+  it('downloads a hash-verified UPO for tenant staff', async () => {
+    const h = harness({ provider: 'ksef' });
+    await requestInvoice(ctx, 'order-1', h.deps);
+    const frozen = h.invoices[0];
+    if (frozen?.ksef === null || frozen?.ksef === undefined || h.deps.ksef === undefined) {
+      throw new Error('Expected a frozen KSeF invoice');
+    }
+    frozen.ksef = {
+      ...frozen.ksef,
+      upoArtifactKey: `invoice/${frozen.id}/upo.xml`,
+      upoSha256: 'a'.repeat(64),
+    };
+    h.deps.ksef.artifacts.findByKey = async () => ({
+      key: frozen.ksef?.upoArtifactKey ?? '',
+      tenantId: 'tenant-1',
+      invoiceId: frozen.id,
+      kind: 'upo',
+      content: '<UPO>signed</UPO>',
+      sha256: 'a'.repeat(64),
+      byteSize: 17,
+      createdAt: now,
+    });
+
+    expect(await downloadInvoiceUpo(ctx, frozen.id, h.deps)).toMatchObject({
+      ok: true,
+      value: { contentType: 'application/xml', filename: 'FV_2026_000001-UPO.xml' },
+    });
   });
 });

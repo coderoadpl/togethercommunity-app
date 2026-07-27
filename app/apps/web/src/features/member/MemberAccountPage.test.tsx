@@ -94,4 +94,28 @@ describe('MemberAccountPage', () => {
     expect(await screen.findByText('Acme sp. z o.o.')).toBeInTheDocument();
     expect(screen.getByText('5555555555')).toBeInTheDocument();
   });
+
+  it('offers the authenticated own-PDF route for an issued invoice', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders([{
+        id: 'order-1',
+        createdAt: '2026-07-28T10:00:00.000Z',
+        billing: {
+          nip: '5555555555',
+          companyName: 'Acme sp. z o.o.',
+          address: 'Prosta 1',
+          postalCode: '00-001',
+          city: 'Warszawa',
+          country: 'PL',
+        },
+        invoice: { id: 'invoice-1', status: 'issued', provider: 'ksef' },
+      }]),
+    );
+    await renderAccount();
+
+    const link = await screen.findByTestId('account-invoice-download-invoice-1');
+    expect(link).toHaveAttribute('href', '/api/me/invoices/invoice-1/download');
+  });
 });

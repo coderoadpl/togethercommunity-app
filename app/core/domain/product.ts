@@ -74,6 +74,7 @@ export const productSchema = z.object({
   currency: currencySchema,
   published: z.boolean(),
   accessItems: z.array(accessItemSchema),
+  checkoutConsentDefinitionIds: z.array(z.string().min(1)).optional(),
   legacyId: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -94,6 +95,7 @@ export type NewProductInput = z.input<typeof newProductSchema>;
 export const updateProductAccessItemsInputSchema = z.object({
   id: z.string().min(1),
   accessItems: z.array(accessItemSchema),
+  checkoutConsentDefinitionIds: z.array(z.string().min(1)).optional(),
 });
 
 export type UpdateProductAccessItemsInput = z.input<typeof updateProductAccessItemsInputSchema>;

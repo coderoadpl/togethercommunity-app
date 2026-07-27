@@ -567,6 +567,7 @@ export const updateProductAccessItems = async (
     product.id,
     parsed.data.accessItems,
     snapshot.value,
+    parsed.data.checkoutConsentDefinitionIds,
   );
   return updated ? ok(updated) : err(notFound(`No product "${parsed.data.id}" in this tenant`));
 };

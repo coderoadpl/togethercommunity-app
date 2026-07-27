@@ -303,6 +303,12 @@ export interface Messages {
     manage: string;
     pricesHeading: string;
     pricesDescription: string;
+    checkoutConsentsHeading: string;
+    checkoutConsentsDescription: string;
+    checkoutConsentsLabel: string;
+    checkoutConsentsNone: string;
+    checkoutConsentsSave: string;
+    checkoutConsentsSaving: string;
     pricesEmpty: string;
     addPrice: string;
     actionsLabel: string;
@@ -877,6 +883,9 @@ export interface Messages {
     noMagicLinkNote: string;
     openCourse: string;
     emailLabel: string;
+    marketingConsentsLabel: string;
+    marketingConsentDocument: string;
+    marketingConsentDoiHint: string;
     priceChoiceLabel: string;
     buyPrice: (params: { price: string }) => string;
     subscribeMonthlyPrice: (params: { price: string }) => string;

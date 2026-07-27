@@ -109,6 +109,7 @@ export interface ProductRepository {
     id: string,
     accessItems: Product['accessItems'],
     version?: EntityVersionRecord,
+    checkoutConsentDefinitionIds?: string[],
   ): Promise<Product | null>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;

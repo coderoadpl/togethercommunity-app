@@ -188,6 +188,12 @@ export const publicOfferOutputSchema = z.object({
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
+      marketingConsents: z.array(z.object({
+        definitionId: z.string().min(1),
+        label: z.string().min(1),
+        doubleOptIn: z.boolean(),
+        documentUrl: z.string().url().nullable(),
+      })).default([]),
     }),
   ),
 });
@@ -306,6 +312,7 @@ export const simulatePurchaseInputSchema = z.object({
   priceId: z.string().min(1).optional(),
   language: languageSchema.default('pl'),
   termsAccepted: z.boolean().optional(),
+  marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
 });
 
 export type SimulatePurchaseInput = z.input<typeof simulatePurchaseInputSchema>;

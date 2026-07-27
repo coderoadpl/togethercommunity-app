@@ -56,6 +56,7 @@ export const createProduct = async (
     currency: parsed.data.currency,
     published: false,
     accessItems: parsed.data.accessItems,
+    checkoutConsentDefinitionIds: [],
     legacyId: null,
     createdAt: deps.clock.nowIso(),
   };

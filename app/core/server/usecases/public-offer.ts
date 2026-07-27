@@ -13,7 +13,12 @@ import {
   type TenantBranding,
 } from '@core/domain/index.js';
 
-import type { ProductPriceRepository, ProductRepository, TenantRepository } from '../ports.js';
+import type {
+  ConsentDefinitionRepository,
+  ProductPriceRepository,
+  ProductRepository,
+  TenantRepository,
+} from '../ports.js';
 
 export interface PublicOffer {
   tenant: {
@@ -41,12 +46,19 @@ export interface PublicOfferProduct {
   priceCents: number;
   currency: string;
   prices: PublicOfferPrice[];
+  marketingConsents: Array<{
+    definitionId: string;
+    label: string;
+    doubleOptIn: boolean;
+    documentUrl: string | null;
+  }>;
 }
 
 export interface PublicOfferDeps {
   products: ProductRepository;
   prices: ProductPriceRepository;
   tenants: TenantRepository;
+  definitions?: ConsentDefinitionRepository | undefined;
 }
 
 export const getPublicOffer = async (
@@ -79,7 +91,10 @@ export const getPublicOffer = async (
           : { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl },
     },
     contentVersion: tenant.contentVersion,
-    products: products.map((product) => toPublicProduct(product, pricesByProduct.get(product.id) ?? [])),
+    products: await Promise.all(products.map(async (product) => ({
+      ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
+      marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions),
+    }))),
   });
 };
 
@@ -98,4 +113,28 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   priceCents: product.priceCents,
   currency: product.currency,
   prices,
+  marketingConsents: [],
 });
+
+const checkoutConsents = async (
+  tenantId: string,
+  product: Product,
+  definitions: ConsentDefinitionRepository | undefined,
+): Promise<PublicOfferProduct['marketingConsents']> => {
+  if (definitions === undefined) return [];
+  const attached = product.checkoutConsentDefinitionIds ?? [];
+  const result: PublicOfferProduct['marketingConsents'] = [];
+  for (const definitionId of attached) {
+    const definition = await definitions.findById(tenantId, definitionId);
+    if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') continue;
+    const version = (await definitions.listVersions(tenantId, definition.id)).at(-1);
+    if (version === undefined) continue;
+    result.push({
+      definitionId: definition.id,
+      label: version.label,
+      doubleOptIn: definition.doubleOptIn,
+      documentUrl: version.documentVersionRef.mode === 'url' ? version.documentVersionRef.url : null,
+    });
+  }
+  return result;
+};

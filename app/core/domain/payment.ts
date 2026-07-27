@@ -8,6 +8,7 @@ export const checkoutSessionInputSchema = z.object({
   email: z.string().email().optional(),
   language: languageSchema.optional(),
   termsAccepted: z.boolean().optional(),
+  marketingConsentDefinitionIds: z.array(z.string().min(1)).default([]),
 });
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;

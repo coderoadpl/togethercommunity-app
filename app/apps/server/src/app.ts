@@ -214,6 +214,7 @@ import {
   updateTenantSesMarketingSettings,
   pauseCampaign,
   cancelCampaign,
+  recordCheckoutMarketingConsents,
   testSendCampaignToSelf,
   simulatePurchase,
   validateCheckoutSelection,
@@ -338,6 +339,54 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   memberId: null,
 });
 
+const checkoutIdentity = (tenant: { id: string; slug: string; name: string }): Identity => ({
+  userId: 'checkout',
+  email: 'checkout@invalid.test',
+  name: 'Checkout',
+  tenantId: tenant.id,
+  tenantSlug: tenant.slug,
+  tenantName: tenant.name,
+  staffRole: null,
+  memberId: null,
+});
+
+const recordCheckoutConsents = async (
+  deps: AppDeps,
+  input: {
+    tenant: { id: string; slug: string; name: string };
+    email: string | undefined;
+    selectedDefinitionIds: string[];
+    attachedDefinitionIds: string[];
+    proofRef: string;
+    confirmationBaseUrl: string;
+  },
+): Promise<void> => {
+  if (deps.marketing === undefined || input.email === undefined || input.selectedDefinitionIds.length === 0) return;
+  try {
+    await recordCheckoutMarketingConsents(
+      { identity: checkoutIdentity(input.tenant) },
+      {
+        email: input.email,
+        selectedDefinitionIds: input.selectedDefinitionIds,
+        attachedDefinitionIds: input.attachedDefinitionIds,
+        evidence: { collectedAt: deps.clock.nowIso(), proofRef: input.proofRef },
+        confirmationBaseUrl: input.confirmationBaseUrl,
+      },
+      {
+        definitions: deps.marketing.definitions,
+        consents: deps.marketing.marketingConsents,
+        confirmations: deps.marketing.confirmations,
+        outbox: deps.emailOutbox,
+        ids: deps.ids,
+        tokens: { nextToken: () => crypto.randomUUID().replaceAll('-', '') },
+        clock: deps.clock,
+      },
+    );
+  } catch {
+    return;
+  }
+};
+
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
 
@@ -412,7 +461,12 @@ export const buildApp = (deps: AppDeps) => {
       return new Response(null, { status: 304, headers: publicOkHeaders(etag) });
     }
 
-    const result = await getPublicOffer(tenant.value.tenant, deps);
+    const result = await getPublicOffer(tenant.value.tenant, {
+      products: deps.products,
+      prices: deps.prices,
+      tenants: deps.tenants,
+      definitions: deps.marketing?.definitions,
+    });
     if (!result.ok) return respondPublic(result, etag);
     const parsed = publicOfferOutputSchema.safeParse(result.value);
     if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
@@ -462,9 +516,18 @@ export const buildApp = (deps: AppDeps) => {
       tenant.value.source,
       deps.appBaseUrl,
     );
-    return respondPublic(
-      await startCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, selection.value, deps),
-    );
+    const session = await startCheckoutSession(tenant.value.tenant, baseUrl, parsed.data, selection.value, deps);
+    if (session.ok) {
+      await recordCheckoutConsents(deps, {
+        tenant: tenant.value.tenant,
+        email: parsed.data.email,
+        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+        proofRef: `product:${selection.value.product.id}`,
+        confirmationBaseUrl: `${baseUrl}/marketing/confirm`,
+      });
+    }
+    return respondPublic(session);
   });
 
   // Public path (not the authenticated /api/* block): a freshly registered
@@ -619,6 +682,22 @@ export const buildApp = (deps: AppDeps) => {
         deps,
       );
       if (!result.ok) return respond(result);
+
+      await recordCheckoutConsents(deps, {
+        tenant: tenant.value.tenant,
+        email: parsed.data.email,
+        selectedDefinitionIds: parsed.data.marketingConsentDefinitionIds,
+        attachedDefinitionIds: selection.value.product.checkoutConsentDefinitionIds ?? [],
+        proofRef: result.value.orderId === null
+          ? `product:${selection.value.product.id}`
+          : `product:${selection.value.product.id};order:${result.value.orderId}`,
+        confirmationBaseUrl: `${magicLinkBaseUrl(
+          c.req.header('host') ?? '',
+          c.req.header('x-forwarded-proto') ?? null,
+          tenant.value.source,
+          deps.appBaseUrl,
+        )}/marketing/confirm`,
+      });
 
       const baseUrl = magicLinkBaseUrl(
         c.req.header('host') ?? '',

@@ -258,12 +258,8 @@ const applyCheckoutCompleted = async (
           deps,
         );
   const product = await deps.products.findById(tenant.id, metadata.productId);
-  const existingOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
-    checkoutSession: event.objectId,
-  });
   const paidOrder =
     discounted?.order ??
-    existingOrder ??
     (await appendOrder(
       tenant.id,
       {

@@ -612,10 +612,12 @@ export const buildApp = (deps: AppDeps) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = checkoutSessionRequestSchema.safeParse(body);
     if (!parsed.success) return respondPublic(err(validation('Invalid checkout payload', parsed.error.flatten())));
-    const configured = await getPaymentConfig(tenant.value.tenant.id, deps);
-    if (!configured.ok) return respondPublic(configured);
-    if (!configured.value.stripeConfigured) {
-      return respondPublic(err(validation('Stripe is not configured for this tenant')));
+    if (parsed.data.couponCode === undefined) {
+      const configured = await getPaymentConfig(tenant.value.tenant.id, deps);
+      if (!configured.ok) return respondPublic(configured);
+      if (!configured.value.stripeConfigured) {
+        return respondPublic(err(validation('Stripe is not configured for this tenant')));
+      }
     }
     const selection = await validateCheckoutSelection(tenant.value.tenant.id, parsed.data, deps);
     if (!selection.ok) return respondPublic(selection);

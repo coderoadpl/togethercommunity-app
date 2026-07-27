@@ -204,7 +204,7 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
     const ids = visible.map((coupon) => coupon.id);
     if (ids.length === 0) return { items: [], nextCursor: null };
 
-    const [redemptionRows, sessionRows, moneyRows, timeRows] = await Promise.all([
+    const [redemptionRows, sessionRows, conversionRows, moneyRows, timeRows] = await Promise.all([
       db
         .select({
           couponId: couponRedemptions.couponId,
@@ -236,6 +236,23 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
           ),
         )
         .groupBy(couponCheckoutSessions.couponId),
+      db
+        .select({
+          couponId: orders.couponId,
+          count: sql<number>`count(distinct ${orders.providerObjectIds}->>'checkoutSession')::int`,
+        })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.tenantId, tenantId),
+            inArray(orders.couponId, ids),
+            eq(orders.status, 'paid'),
+            sql`${orders.providerObjectIds} ? 'checkoutSession'`,
+            sql`${orders.createdAt}::timestamptz >= ${query.since}::timestamptz`,
+            sql`${orders.createdAt}::timestamptz <= ${query.through}::timestamptz`,
+          ),
+        )
+        .groupBy(orders.couponId),
       db
         .select({
           couponId: orders.couponId,
@@ -281,12 +298,14 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
         redemptionRows.find((candidate) => candidate.couponId === row.id)?.count ?? 0;
       const sessionsWithCode =
         sessionRows.find((candidate) => candidate.couponId === row.id)?.count ?? 0;
+      const convertedSessions =
+        conversionRows.find((candidate) => candidate.couponId === row.id)?.count ?? 0;
       const money = moneyRows.filter((candidate) => candidate.couponId === row.id);
       return couponStatsItemSchema.parse({
         coupon: couponSchema.parse(row),
         redemptions,
         sessionsWithCode,
-        conversionRate: sessionsWithCode === 0 ? 0 : redemptions / sessionsWithCode,
+        conversionRate: sessionsWithCode === 0 ? 0 : convertedSessions / sessionsWithCode,
         grossAttributed: money.map((total) => ({
           currency: total.currency,
           amountCents: total.gross,

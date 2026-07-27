@@ -40,10 +40,14 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
-import { createCouponRedemptionRepository } from './coupon-repositories.js';
+import {
+  createCouponRedemptionRepository,
+  createCouponStatsRepository,
+} from './coupon-repositories.js';
 import {
   consents,
   couponRedemptions,
+  couponCheckoutSessions,
   coupons,
   emailEvents,
   erasedMemberImports,
@@ -309,6 +313,7 @@ describe('coupon redemption repository', () => {
           amountCents: 2450,
           couponId: 'coupon-race',
           discountCents: 2450,
+          providerObjectIds: { checkoutSession: 'provider-race' },
         }),
         redemption: {
           id: `coupon-redemption-${id}`,
@@ -332,6 +337,34 @@ describe('coupon redemption repository', () => {
         .from(couponRedemptions)
         .where(eq(couponRedemptions.couponId, 'coupon-race')),
     ).toHaveLength(1);
+    await db.insert(couponCheckoutSessions).values({
+      id: 'coupon-race-session',
+      tenantId: ACME,
+      couponId: 'coupon-race',
+      providerSessionId: 'provider-race',
+      memberEmail: 'buyer-acme@together.dev',
+      productId: 'prod-acme',
+      priceId: null,
+      originalCents: 4900,
+      discountCents: 2450,
+      finalCents: 2450,
+      currency: 'PLN',
+      startedAt: NOW,
+    });
+    const stats = await createCouponStatsRepository(db).list(ACME, {
+      limit: 10,
+      since: '1998-07-01T00:00:00.000Z',
+      through: '1998-07-31T23:59:59.999Z',
+    });
+    expect(stats.items).toMatchObject([
+      {
+        redemptions: 1,
+        sessionsWithCode: 1,
+        conversionRate: 1,
+        grossAttributed: [{ currency: 'PLN', amountCents: 2450 }],
+        discountGiven: [{ currency: 'PLN', amountCents: 2450 }],
+      },
+    ]);
   });
 });
 

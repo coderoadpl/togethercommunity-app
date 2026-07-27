@@ -57,6 +57,7 @@ describe('fake Stripe webhook verification', () => {
             memberEmail: null,
             language: 'pl',
             checkoutConsentCaptureId: 'capture-opaque-1',
+            couponCheckoutSessionId: null,
           },
         },
         invoice: null,

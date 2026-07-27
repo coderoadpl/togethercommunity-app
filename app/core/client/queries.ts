@@ -14,6 +14,7 @@ import type {
   ApiKeyRevokeInput,
   CourseCreateInput,
   CheckoutSessionRequest,
+  CouponCheckoutValidationRequest,
   CourseUpdateInput,
   GrantCreateInput,
   GrantRevokeInput,
@@ -416,6 +417,12 @@ export const createCheckoutSessionMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: ['checkout-session'] as const,
     call: (input: CheckoutSessionRequest) => api.createCheckoutSession(input),
+  });
+
+export const validateCouponForCheckoutMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['coupon-checkout-validation'] as const,
+    call: (input: CouponCheckoutValidationRequest) => api.validateCouponForCheckout(input),
   });
 
 export const recordTermsConsentMutation = (

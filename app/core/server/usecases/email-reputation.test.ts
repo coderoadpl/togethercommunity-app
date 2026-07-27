@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { emailEventSchema, type EmailEvent, type Identity } from '@core/domain/index.js';
+import { emailEventSchema, type CampaignSend, type EmailEvent, type Identity } from '@core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { InMemoryEmailEventRepository } from '../testing/marketing-fakes.js';
+import { InMemoryCampaignSendRepository, InMemoryEmailEventRepository } from '../testing/marketing-fakes.js';
 import { getEmailReputation } from './email-reputation.js';
 
 const NOW = '2026-07-27T12:00:00.000Z';
@@ -38,14 +38,18 @@ const event = (
 describe('get email reputation', () => {
   it('derives rates from distinct sends and events inside the trailing window', async () => {
     const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
     for (let index = 0; index < 2_000; index += 1) {
-      await events.append('tenant-1', event(
-        `accepted-${String(index)}`,
-        `send-${String(index)}`,
-        'accepted',
-        index === 0 ? '2026-07-20T12:00:00.000Z' : '2026-07-25T12:00:00.000Z',
-        { sesMessageId: `ses-${String(index)}` },
-      ));
+      const sentAt = index === 0 ? '2026-07-20T12:00:00.000Z' : '2026-07-25T12:00:00.000Z';
+      const send: CampaignSend = {
+        id: `send-${String(index)}`, runId: null, tenantId: 'tenant-1', campaignId: null,
+        source: 'api', memberId: null, email: `member-${String(index)}@example.test`,
+        subject: 'Reputation', consentRowId: 'consent-1', unsubscribeTokenId: null,
+        status: 'sent', skipReason: null, sesMessageId: `ses-${String(index)}`,
+        deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+        renderedBodyPurgedAt: null, createdAt: sentAt, sentAt,
+      };
+      await sends.claimRecipient('tenant-1', send);
     }
     for (let index = 0; index < 100; index += 1) {
       await events.append('tenant-1', event(

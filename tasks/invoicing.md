@@ -22,12 +22,12 @@
    | failed, with provider refs in meta). Issuance is tenant-triggered
    (panel action on the order) or auto-on-payment (tenant toggle, default
    off) — never platform-automatic without tenant opt-in.
-3. **wFirma adapter (v1 provider — owner decision 2026-07-27, replaces the
-   earlier Fakturownia pick).** Rationale: the owner uses wFirma personally,
+3. **iFirma adapter (v1 provider — owner decision 2026-07-27, replaces the
+   earlier Fakturownia pick).** Rationale: the owner uses iFirma personally,
    so the integration is verifiable end-to-end on a real account. BYO API
-   credentials per tenant (tenant_secrets `wfirma.*` keys, AES-GCM as
-   Stripe/Bunny/SES). wFirma issues the invoice, handles KSeF submission
-   itself (tenant configures KSeF inside wFirma — certificates never touch
+   credentials per tenant (tenant_secrets `ifirma.*` keys (invoice API key + username), AES-GCM as
+   Stripe/Bunny/SES). iFirma issues the invoice, handles KSeF submission
+   itself (tenant configures KSeF inside iFirma — certificates never touch
    us), returns invoice number + PDF; we store refs and surface status.
 4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
    drugie").** Same InvoicingPort; FA(3) XML generation + KSeF 2.0 API on a

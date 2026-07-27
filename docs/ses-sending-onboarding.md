@@ -1,5 +1,7 @@
 # Konfiguracja wysyłki e-mail / E-mail sending setup
 
+Aktualna instrukcja znajduje się w [SES onboarding for Together](ses-onboarding.md).
+
 ## Wyjście z Amazon SES sandbox
 
 Status sandbox jest osobny dla każdego regionu AWS. Najpierw zweryfikuj domenę

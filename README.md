@@ -13,6 +13,7 @@ Etap założeń projektowych (lipiec 2026). Brak kodu.
 | Plik | Zawartość |
 |---|---|
 | `tasks/prd-together.md` | **Aktualny PRD** — założenia, zasady, fazy, user stories, wymagania |
+| `docs/ses-onboarding.md` | Konfiguracja SES, gotowe odpowiedzi do wniosku AWS i awaryjne opcje SMTP |
 | [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch) | **Architektura normatywna** (osobne repo) — warstwy, porty, CLI, deploy Vercel/Docker |
 | `research/2026-07-02-alternatives.md` | Research konkurencji: open source, płatny SaaS, rynek PL, nisza BYO |
 | `.ai/` | Poprzednia iteracja projektu (VI 2025) — archiwum, zastąpiona przez `tasks/prd-together.md` |

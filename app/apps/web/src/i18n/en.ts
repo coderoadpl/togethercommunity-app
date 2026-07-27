@@ -352,6 +352,9 @@ export const en: Messages = {
     ksefHeading: 'KSeF 2.0',
     ksefDescription:
       'Bring a tenant-generated KSeF token with InvoiceWrite permission and the matching context NIP. Access tokens remain transient.',
+    ksefTokenHelp:
+      'In KSeF, open Tokens, generate a new token with InvoiceWrite permission, and paste it here. KSeF displays the token only once.',
+    ksefSaveFirst: 'Save the context NIP and KSeF token before testing the connection.',
     ksefTokenLabel: 'KSeF token',
     ksefContextNipLabel: 'context NIP',
     bunnyHeading: 'Bunny Stream',

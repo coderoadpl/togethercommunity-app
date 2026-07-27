@@ -10,7 +10,12 @@ import {
 } from '@core/domain/index.js';
 
 import type { InvoiceDeps } from './invoices.js';
-import { autoIssueOnPayment, requestInvoice, testIfirmaConnection } from './invoices.js';
+import {
+  autoIssueOnPayment,
+  requestInvoice,
+  testIfirmaConnection,
+  testKsefConnection,
+} from './invoices.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 const billing = {
@@ -56,6 +61,7 @@ const harness = (options: {
   const events: InvoiceEvent[] = [];
   let calls = 0;
   let testedConfig: { invoiceApiKey: string; username: string } | null = null;
+  let testedKsefCredentials: { tenantId: string; token: string; contextNip: string } | null = null;
   let ids = 0;
   const deps: InvoiceDeps = {
     invoices: {
@@ -194,9 +200,38 @@ const harness = (options: {
       validator: {
         validate: async () => ok(undefined),
       },
+      client: {
+        validateCredentials: async ({ credentials }) => {
+          testedKsefCredentials = credentials;
+          return ok({ diagnostic: 'KSeF accepted the token for this NIP context.' });
+        },
+        openSession: async () => ok({ sessionReference: 'session-1' }),
+        submitInvoice: async () => ok({ invoiceReference: 'invoice-reference-1' }),
+        listSessionInvoices: async () => ok([]),
+        getInvoiceStatus: async () => ok({
+          code: 150,
+          description: 'Processing',
+          details: [],
+          extensions: {},
+          ksefNumber: null,
+          acquisitionAt: null,
+          invoicingAt: null,
+          permanentStorageAt: null,
+        }),
+        downloadUpo: async () => ok('<upo/>'),
+        verifyDuplicateOriginal: async () => ok(false),
+        closeSession: async () => ok(undefined),
+      },
     },
   };
-  return { deps, invoices, events, calls: () => calls, testedConfig: () => testedConfig };
+  return {
+    deps,
+    invoices,
+    events,
+    calls: () => calls,
+    testedConfig: () => testedConfig,
+    testedKsefCredentials: () => testedKsefCredentials,
+  };
 };
 
 const ctx = {
@@ -347,5 +382,31 @@ describe('testIfirmaConnection', () => {
       error: { code: 'forbidden' },
     });
     expect(h.testedConfig()).toBeNull();
+  });
+});
+
+describe('testKsefConnection', () => {
+  it('runs the real token authentication bootstrap with resolved tenant credentials', async () => {
+    const h = harness();
+    expect(await testKsefConnection(ctx, h.deps)).toEqual({
+      ok: true,
+      value: { ok: true, diagnostic: 'KSeF accepted the token for this NIP context.' },
+    });
+    expect(h.testedKsefCredentials()).toEqual({
+      tenantId: 'tenant-1',
+      token: 'ksef-token',
+      contextNip: '5555555555',
+    });
+  });
+
+  it('allows only the tenant owner to test KSeF', async () => {
+    const h = harness();
+    expect(await testKsefConnection({
+      identity: { ...ctx.identity, staffRole: 'admin' },
+    }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(h.testedKsefCredentials()).toBeNull();
   });
 });

@@ -29,6 +29,7 @@ import type {
   InvoicingPort,
   OrderDetailRepository,
   KsefCredentialResolver,
+  KsefClientPort,
   KsefInvoicePdf,
   KsefNumberRepository,
   SecretCrypto,
@@ -53,6 +54,7 @@ export interface InvoiceDeps {
     hash: ContentHash;
     validator: Fa3Validator;
     pdf?: KsefInvoicePdf;
+    client: KsefClientPort;
   };
 }
 
@@ -471,5 +473,25 @@ export const testIfirmaConnection = async (
   const config = await invoicingConfig(ctx.identity.tenantId, deps);
   if (!config.ok) return config;
   const tested = await deps.invoicing.testConnection({ config: config.value });
+  return tested.ok ? ok({ ok: true, diagnostic: tested.value.diagnostic }) : tested;
+};
+
+export const testKsefConnection = async (
+  ctx: Ctx,
+  deps: Pick<InvoiceDeps, 'ksef'>,
+): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
+  if (ctx.identity.tenantId === null) return err(tenantNotFound('Select a tenant to test KSeF'));
+  if (ctx.identity.staffRole !== 'owner') {
+    return err(forbidden('Only the tenant owner can test KSeF'));
+  }
+  if (deps.ksef === undefined) {
+    return err(integrationNotConfigured('KSeF is unavailable in this deployment'));
+  }
+  const credentials = await deps.ksef.credentials.resolve(ctx.identity.tenantId);
+  if (!credentials.ok) return credentials;
+  const tested = await deps.ksef.client.validateCredentials({
+    environment: deps.ksef.environment,
+    credentials: credentials.value,
+  });
   return tested.ok ? ok({ ok: true, diagnostic: tested.value.diagnostic }) : tested;
 };

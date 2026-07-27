@@ -1001,6 +1001,12 @@ export const testIfirmaConnectionMutation = (api: ApiClient) =>
     call: () => api.testIfirmaConnection(),
   });
 
+export const testKsefConnectionMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'ksef-test'],
+    call: () => api.testKsefConnection(),
+  });
+
 export const bunnyVideosQuery = (api: ApiClient, input: { search?: string; page?: number } = {}) =>
   defineQuery({
     queryKey: bunnyScopes.videos(input.search ?? '', input.page ?? 1),

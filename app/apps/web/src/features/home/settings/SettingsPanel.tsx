@@ -16,9 +16,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { accentColorSchema } from '@core/domain/index.js';
+import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { SecretField } from '../../../components/ui/SecretField.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
@@ -87,6 +89,71 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         ) : null}
         {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
+  );
+};
+
+const previewFor = (
+  secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
+  key: TenantSecretKey,
+): string | null => secrets?.find((secret) => secret.key === key)?.maskedPreview ?? null;
+
+const KsefSettings = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const secrets = useQuery(actions.tenantSecrets);
+  const testConnection = useMutation(actions.testKsefConnection);
+  const tokenPreview = previewFor(secrets.data?.secrets, 'ksef.token');
+  const nipPreview = previewFor(secrets.data?.secrets, 'ksef.contextNip');
+  const ready = tokenPreview !== null && nipPreview !== null;
+
+  return (
+    <Stack useFlexGap spacing="1rem">
+      <Typography variant="h6" component="h3">{t.integrations.ksefHeading}</Typography>
+      <Typography color="text.secondary">{t.integrations.ksefDescription}</Typography>
+      <Typography variant="body2">{t.integrations.ksefTokenHelp}</Typography>
+      {secrets.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
+      ) : secrets.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+      ) : canEdit ? (
+        <>
+          <SecretField
+            secretKey="ksef.contextNip"
+            label={t.integrations.ksefContextNipLabel}
+            maskedPreview={nipPreview}
+          />
+          <SecretField
+            secretKey="ksef.token"
+            label={t.integrations.ksefTokenLabel}
+            maskedPreview={tokenPreview}
+          />
+        </>
+      ) : (
+        <Typography variant="body2">
+          {ready ? t.integrations.configured : t.integrations.notConfigured}
+        </Typography>
+      )}
+      <Button
+        type="button"
+        variant="contained"
+        data-testid="ksef-test-connection"
+        disabled={!canEdit || !ready || testConnection.isPending}
+        onClick={() => testConnection.mutate(undefined)}
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
+      </Button>
+      {!ready ? (
+        <Typography variant="caption" component="p">{t.integrations.ksefSaveFirst}</Typography>
+      ) : null}
+      {testConnection.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="ksef-test-result">
+          {testConnection.data.diagnostic}
+        </Typography>
+      ) : null}
+      {testConnection.isError ? (
+        <Alert data-testid="ksef-test-error">{localizeError(testConnection.error, t)}</Alert>
+      ) : null}
+    </Stack>
   );
 };
 
@@ -196,6 +263,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       >
         {t.billing.saveSeller}
       </Button>
+      {provider === 'ksef' ? <KsefSettings canEdit={canEdit} /> : null}
       {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );

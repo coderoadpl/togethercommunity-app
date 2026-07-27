@@ -331,6 +331,8 @@ export interface Messages {
     ifirmaSaveFirst: string;
     ksefHeading: string;
     ksefDescription: string;
+    ksefTokenHelp: string;
+    ksefSaveFirst: string;
     ksefTokenLabel: string;
     ksefContextNipLabel: string;
     bunnyHeading: string;

@@ -358,6 +358,9 @@ export const pl: Messages = {
     ksefHeading: 'KSeF 2.0',
     ksefDescription:
       'Podaj token KSeF wygenerowany przez tenant z uprawnieniem InvoiceWrite oraz pasujący NIP kontekstu. Tokeny dostępowe pozostają ulotne.',
+    ksefTokenHelp:
+      'W KSeF otwórz Tokeny, wygeneruj nowy token z uprawnieniem InvoiceWrite i wklej go tutaj. Token jest wyświetlany w KSeF tylko raz.',
+    ksefSaveFirst: 'Zapisz NIP kontekstu i token KSeF, aby przetestować połączenie.',
     ksefTokenLabel: 'token KSeF',
     ksefContextNipLabel: 'NIP kontekstu',
     bunnyHeading: 'Bunny Stream',

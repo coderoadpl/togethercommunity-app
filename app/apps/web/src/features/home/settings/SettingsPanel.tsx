@@ -20,10 +20,10 @@ import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { SecretField } from '../../../components/ui/SecretField.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
+import { SecretField } from '../integrations/SecretField.js';
 import { usePanelContext } from '../panel-context.js';
 
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {

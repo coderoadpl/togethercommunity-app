@@ -1,6 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import type { FormEvent } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -9,41 +8,44 @@ import {
   OutlinedInput,
   Typography,
 } from '@mui/material';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-
-import type { TenantSecretKey } from '@core/domain/index.js';
-
-import { actions } from '../../api.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
 
 export const SecretField = ({
   secretKey,
   label,
   maskedPreview,
+  value,
+  labels,
+  saving = false,
+  removing = false,
+  saved = false,
+  onValueChange,
+  onSave,
+  onRemove,
 }: {
-  secretKey: TenantSecretKey;
+  secretKey: string;
   label: string;
   maskedPreview: string | null;
-}) => {
-  const t = useTranslations();
-  const queryClient = useQueryClient();
-  const [value, setValue] = useState('');
-
-  const invalidate = async () => {
-    await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
+  value: string;
+  labels: {
+    configured: string;
+    notConfigured: string;
+    placeholder: string;
+    save: string;
+    saving: string;
+    remove: string;
+    removing: string;
+    saved: string;
   };
-
-  const setSecret = useMutation({
-    ...actions.setTenantSecret,
-    onSuccess: async () => {
-      setValue('');
-      await invalidate();
-    },
-  });
-  const removeSecret = useMutation({ ...actions.deleteTenantSecret, onSuccess: invalidate });
+  saving?: boolean;
+  removing?: boolean;
+  saved?: boolean;
+  onValueChange: (value: string) => void;
+  onSave: () => void;
+  onRemove: () => void;
+}) => {
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setSecret.mutate({ key: secretKey, value });
+    onSave();
   };
   const inputId = `secret-${secretKey}`;
 
@@ -57,7 +59,7 @@ export const SecretField = ({
           size="small"
           variant="outlined"
           data-testid={`secret-status-${secretKey}`}
-          label={maskedPreview ? `${t.integrations.configured} · ${maskedPreview}` : t.integrations.notConfigured}
+          label={maskedPreview ? `${labels.configured} · ${maskedPreview}` : labels.notConfigured}
         />
       </Box>
       <FormControl fullWidth>
@@ -65,8 +67,8 @@ export const SecretField = ({
           id={inputId}
           type="password"
           value={value}
-          placeholder={t.integrations.valuePlaceholder}
-          onChange={(event) => setValue(event.target.value)}
+          placeholder={labels.placeholder}
+          onChange={(event) => onValueChange(event.target.value)}
           inputProps={{ 'data-testid': `secret-input-${secretKey}` }}
           autoComplete="off"
         />
@@ -76,9 +78,9 @@ export const SecretField = ({
           type="submit"
           variant="outlined"
           data-testid={`secret-save-${secretKey}`}
-          disabled={setSecret.isPending || value.trim().length === 0}
+          disabled={saving || value.trim().length === 0}
         >
-          {setSecret.isPending ? t.integrations.saving : t.integrations.save}
+          {saving ? labels.saving : labels.save}
         </Button>
         {maskedPreview ? (
           <Button
@@ -86,20 +88,18 @@ export const SecretField = ({
             variant="text"
             color="error"
             data-testid={`secret-remove-${secretKey}`}
-            disabled={removeSecret.isPending}
-            onClick={() => removeSecret.mutate({ key: secretKey })}
+            disabled={removing}
+            onClick={onRemove}
           >
-            {removeSecret.isPending ? t.integrations.removing : t.integrations.remove}
+            {removing ? labels.removing : labels.remove}
           </Button>
         ) : null}
       </Box>
-      {setSecret.isSuccess ? (
+      {saved ? (
         <Typography variant="caption" component="p" data-testid={`secret-saved-${secretKey}`}>
-          {t.integrations.saved}
+          {labels.saved}
         </Typography>
       ) : null}
-      {setSecret.isError ? <Alert>{localizeError(setSecret.error, t)}</Alert> : null}
-      {removeSecret.isError ? <Alert>{localizeError(removeSecret.error, t)}</Alert> : null}
     </Box>
   );
 };

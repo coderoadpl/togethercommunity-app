@@ -15,8 +15,8 @@ import type { TenantSecretKey } from '@core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { SecretField } from '../../../components/ui/SecretField.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { SecretField } from './SecretField.js';
 
 const previewFor = (
   secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,

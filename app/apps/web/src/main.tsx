@@ -89,6 +89,7 @@ import {
   PanelProductCreateRoute,
   PanelProductDetailRoute,
   PanelSalesRoute,
+  PanelOrderDetailRoute,
   PanelCouponsRoute,
   PanelCouponCreateRoute,
   PanelCouponDetailRoute,
@@ -290,6 +291,11 @@ const panelSalesRoute = createRoute({
   path: 'sales',
   component: PanelSalesRoute,
 });
+const panelOrderDetailRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'sales/$orderId',
+  component: PanelOrderDetailRoute,
+});
 const panelCouponsRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'sales/coupons',
@@ -436,6 +442,7 @@ const router = createRouter({
       panelSpaceCreateRoute,
       panelSpaceDetailRoute,
       panelSalesRoute,
+      panelOrderDetailRoute,
       panelCouponsRoute,
       panelCouponCreateRoute,
       panelCouponDetailRoute,

@@ -5,6 +5,7 @@ import {
   Chip,
   FormControl,
   InputLabel,
+  Link as MuiLink,
   MenuItem,
   Select,
   Stack,
@@ -34,10 +35,12 @@ export const SalesPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const products = useQuery(actions.products);
+  const coupons = useQuery(actions.couponStats({ limit: 100 }));
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<OrderStatus | 'all'>('all');
   const [productId, setProductId] = useState('all');
   const [kind, setKind] = useState<PriceKind | 'all'>('all');
+  const [couponId, setCouponId] = useState('all');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState<OrderExportFormat | null>(null);
@@ -48,6 +51,7 @@ export const SalesPanel = () => {
     ...(status === 'all' ? {} : { status }),
     ...(productId === 'all' ? {} : { productId }),
     ...(kind === 'all' ? {} : { kind }),
+    ...(couponId === 'all' ? {} : { couponId }),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
   const orders = useQuery(actions.orders({ ...filters, page: page + 1, pageSize }));
@@ -124,6 +128,26 @@ export const SalesPanel = () => {
                 </Select>
               </FormControl>
               <FormControl size="small" sx={{ minWidth: '9rem' }}>
+                <InputLabel id="sales-coupon-label">{t.sales.coupon}</InputLabel>
+                <Select
+                  labelId="sales-coupon-label"
+                  label={t.sales.coupon}
+                  value={couponId}
+                  onChange={(event) => {
+                    setCouponId(event.target.value);
+                    resetPage();
+                  }}
+                  data-testid="sales-coupon-filter"
+                >
+                  <MenuItem value="all">{t.sales.all}</MenuItem>
+                  {(coupons.data?.items ?? []).map((item) => (
+                    <MenuItem key={item.coupon.id} value={item.coupon.id}>
+                      {item.coupon.code}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: '9rem' }}>
                 <InputLabel id="sales-product-label">{t.sales.product}</InputLabel>
                 <Select
                   labelId="sales-product-label"
@@ -190,7 +214,7 @@ export const SalesPanel = () => {
             />
           ) : undefined
         }
-        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && debouncedSearch.length === 0}
+        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && couponId === 'all' && debouncedSearch.length === 0}
         empty={
           <StatusView
             state={{
@@ -217,17 +241,23 @@ export const SalesPanel = () => {
                   <TableCell>{t.sales.product}</TableCell>
                   <TableCell>{t.sales.kind}</TableCell>
                   <TableCell>{t.sales.amount}</TableCell>
+                  <TableCell>{t.sales.coupon}</TableCell>
                   <TableCell>{t.sales.status}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {orders.data.orders.map((order) => (
                   <TableRow key={order.id} data-testid="sales-row">
-                    <TableCell>{formatDateTime(order.createdAt, language)}</TableCell>
+                    <TableCell>
+                      <MuiLink href={`/panel/sales/${order.id}`}>
+                        {formatDateTime(order.createdAt, language)}
+                      </MuiLink>
+                    </TableCell>
                     <TableCell>{order.memberName ?? order.memberEmail}</TableCell>
                     <TableCell>{order.productTitle}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>
+                    <TableCell>{order.couponCode ?? '—'}</TableCell>
                     <TableCell><Chip size="small" color={statusColors[order.status]} label={statusLabels[order.status]} /></TableCell>
                   </TableRow>
                 ))}

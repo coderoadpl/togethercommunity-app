@@ -33,6 +33,8 @@ export interface KsefSubmissionDeps {
   };
 }
 
+const correlationMissLimit = 3;
+
 const nextRetryAt = (
   now: string,
   attempt: number,
@@ -286,9 +288,30 @@ const correlate = async (
   const expectedHash = Buffer.from(ksef.xmlSha256, 'hex').toString('base64');
   const correlated = listed.value.find((candidate) => candidate.invoiceHash === expectedHash);
   if (correlated === undefined) {
-    return checkpoint(tenantId, invoice, {
+    const ambiguous = {
       ...ksef,
       correlationChecks: ksef.correlationChecks + 1,
+    };
+    if (ambiguous.correlationChecks < correlationMissLimit) {
+      return checkpoint(tenantId, invoice, {
+        ...ambiguous,
+        retryAt: nextRetryAt(deps.clock.nowIso(), ksef.correlationChecks, deps),
+      }, deps);
+    }
+    const closed = await deps.ksef.closeSession({
+      environment: ksef.environment,
+      credentials,
+      sessionReference: ksef.sessionReference,
+    });
+    if (!closed.ok) return retryTransport(tenantId, invoice, ambiguous, closed.error, deps);
+    return checkpoint(tenantId, {
+      ...invoice,
+      status: 'queued',
+      providerInvoiceId: null,
+    }, {
+      ...ambiguous,
+      state: 'queued',
+      sessionReference: null,
       retryAt: nextRetryAt(deps.clock.nowIso(), ksef.correlationChecks, deps),
     }, deps);
   }

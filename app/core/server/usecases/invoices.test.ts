@@ -167,6 +167,17 @@ describe('requestInvoice', () => {
       error: { code: 'validation' },
     });
   });
+
+  it('records missing provider configuration as a failed lifecycle', async () => {
+    const h = harness();
+    h.deps.tenantSecrets.findByKey = async () => null;
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured' },
+    });
+    expect(h.invoices).toMatchObject([{ status: 'failed', error: 'integration_not_configured' }]);
+    expect(h.events.some((event) => event.type === 'failed')).toBe(true);
+  });
 });
 
 describe('autoIssueOnPayment', () => {

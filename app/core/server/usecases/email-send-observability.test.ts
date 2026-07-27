@@ -92,7 +92,12 @@ describe('email send observability use-cases', () => {
 
     const detail = await getEmailSend(identity(), { kind: 'marketing', id: 'marketing-1' }, {
       sends: repository,
-      events: { append: async () => undefined, listByRef: async () => [event], listByEmailAcrossKinds: async () => [event] },
+      events: {
+        append: async () => undefined,
+        listByRef: async () => [event],
+        listByEmailAcrossKinds: async () => [event],
+        reputationCounts: async () => ({ sends: 0, hardBounces: 0, complaints: 0 }),
+      },
     });
     expect(detail).toEqual({ ok: true, value: { send: sends[0], events: [event] } });
     expect(await listEmailSends(identity(null), {}, { sends: repository })).toMatchObject({

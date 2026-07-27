@@ -205,6 +205,22 @@ export class InMemoryEmailEventRepository implements EmailEventRepository {
     ));
   }
 
+  async reputationCounts(tenantId: string, window: { since: string; until: string }) {
+    const rows = this.rows.filter((row) =>
+      row.tenantId === tenantId
+      && row.mailKind === 'marketing'
+      && row.occurredAt >= window.since
+      && row.occurredAt <= window.until
+    );
+    const distinct = (predicate: (row: EmailEvent) => boolean): number =>
+      new Set(rows.filter(predicate).map((row) => row.refId)).size;
+    return {
+      sends: distinct((row) => row.type === 'accepted'),
+      hardBounces: distinct((row) => row.type === 'bounced' && row.meta.classification === 'hard'),
+      complaints: distinct((row) => row.type === 'complained'),
+    };
+  }
+
   private ordered(rows: EmailEvent[]): EmailEvent[] {
     return [...rows].sort((left, right) =>
       left.occurredAt.localeCompare(right.occurredAt)

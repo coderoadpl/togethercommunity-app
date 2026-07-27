@@ -20,9 +20,10 @@ export const emailReputationSchema = z.object({
 });
 
 export type EmailReputation = z.output<typeof emailReputationSchema>;
+export type EmailReputationMetric = z.output<typeof emailReputationMetricSchema>;
 export type EmailReputationStatus = z.output<typeof emailReputationStatusSchema>;
 
-type ReputationCounts = {
+export type EmailReputationCounts = {
   sends: number;
   hardBounces: number;
   complaints: number;
@@ -37,12 +38,13 @@ type Thresholds = {
 const hardBounceThresholds: Thresholds = { absoluteFloor: 5, warn: 0.05, critical: 0.1 };
 const complaintThresholds: Thresholds = { absoluteFloor: 2, warn: 0.00075, critical: 0.0015 };
 
-const deriveMetric = (sends: number, count: number, thresholds: Thresholds) => {
+const deriveMetric = (sends: number, count: number, thresholds: Thresholds): EmailReputationMetric => {
   if (sends < 100 || count < thresholds.absoluteFloor) {
     return { count, sends, rate: null, status: 'insufficient_data' as const };
   }
   const rate = count / sends;
-  const status = rate >= thresholds.critical ? 'critical' : rate >= thresholds.warn ? 'warn' : 'ok';
+  const status: EmailReputationStatus =
+    rate >= thresholds.critical ? 'critical' : rate >= thresholds.warn ? 'warn' : 'ok';
   return { count, sends, rate, status };
 };
 
@@ -53,7 +55,7 @@ const severity: Record<EmailReputationStatus, number> = {
   critical: 3,
 };
 
-export const deriveEmailReputation = (counts: ReputationCounts) => {
+export const deriveEmailReputation = (counts: EmailReputationCounts) => {
   const hardBounce = deriveMetric(counts.sends, counts.hardBounces, hardBounceThresholds);
   const complaint = deriveMetric(counts.sends, counts.complaints, complaintThresholds);
   const overallStatus = severity[hardBounce.status] >= severity[complaint.status]

@@ -41,6 +41,7 @@ import {
   marketingLayoutOutputSchema,
   marketingLayoutsOutputSchema,
   marketingSesSettingsOutputSchema,
+  marketingReputationOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
   emailSendDetailOutputSchema,
@@ -306,6 +307,8 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingLayoutsSave.method, API_ROUTES.marketingLayoutsSave.path, marketingLayoutOutputSchema, input, signal),
   getMarketingSesSettings: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettings.method, API_ROUTES.marketingSesSettings.path, marketingSesSettingsOutputSchema, undefined, signal),
+  getMarketingReputation: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.marketingReputation.method, API_ROUTES.marketingReputation.path, marketingReputationOutputSchema, undefined, signal),
   updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettingsUpdate.method, API_ROUTES.marketingSesSettingsUpdate.path, marketingSesSettingsOutputSchema, input, signal),
   listMarketingSuppressions: (signal?: AbortSignal) =>

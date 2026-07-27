@@ -115,6 +115,7 @@ import {
   getMarketingConsentDefinition,
   getTenantDocument,
   getTenantSesMarketingSettings,
+  getEmailReputation,
   getContentHistory,
   getContentVersion,
   devGrantProduct,
@@ -964,6 +965,14 @@ export const buildApp = (deps: AppDeps) => {
     return respond(await getTenantSesMarketingSettings({ identity: c.get('identity') }, {
       webhookBaseUrl: `${deps.appBaseUrl}/api/webhooks/ses`,
     }, { settings: deps.marketing.sesSettings, secrets: deps.tenantSecrets }));
+  });
+
+  app.get(API_PATHS.marketingReputation, async (c) => {
+    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
+    return respond(await getEmailReputation(
+      { identity: c.get('identity') },
+      { events: deps.marketing.events, clock: deps.clock },
+    ));
   });
 
   app.post(API_PATHS.marketingSesSettings, async (c) => {

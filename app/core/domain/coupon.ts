@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { priceKindSchema } from './commerce.js';
+import type { PriceKind } from './commerce.js';
 
 export const couponKindSchema = z.enum(['percent', 'amount']);
 export type CouponKind = z.infer<typeof couponKindSchema>;
@@ -174,7 +174,7 @@ export const validateCoupon = (
     now: string;
     sessionStartedAt?: string;
     productId: string;
-    priceKind: z.infer<typeof priceKindSchema>;
+    priceKind: PriceKind;
     totalRedemptions: number;
     memberRedemptions: number;
   },

@@ -49,6 +49,8 @@ describe('SalesPanel', () => {
               currency: 'PLN',
               provider: 'simulated',
               providerObjectIds: {},
+              couponId: null,
+              discountCents: 0,
               createdAt: '2026-07-18T10:00:00.000Z',
               memberEmail: 'member@example.com',
               memberName: 'Ada',

@@ -53,6 +53,8 @@ import type {
   CheckoutConsentCapture,
   Coupon,
   CouponCheckoutSession,
+  CouponEvent,
+  CouponRedemptionEvent,
   CouponRedemption,
   CouponStatsCursor,
   CouponStatsItem,
@@ -448,6 +450,11 @@ export interface CouponRepository {
   ): Promise<Coupon | null>;
 }
 
+export interface CouponManagementRepository extends CouponRepository {
+  create(tenantId: string, coupon: Coupon, event: CouponEvent): Promise<Coupon | null>;
+  archive(tenantId: string, id: string, event: CouponEvent): Promise<Coupon | null>;
+}
+
 export interface CouponRedemptionRepository {
   counts(
     tenantId: string,
@@ -459,6 +466,7 @@ export interface CouponRedemptionRepository {
     input: {
       order: Order;
       redemption: CouponRedemption;
+      event: CouponRedemptionEvent;
       maxRedemptions: number | null;
       maxRedemptionsPerMember: number | null;
     },
@@ -489,6 +497,7 @@ export interface CouponStatsRepository {
     tenantId: string,
     query: {
       partnerLabel?: string;
+      couponId?: string;
       cursor?: CouponStatsCursor;
       limit: number;
       since: string;
@@ -551,6 +560,7 @@ export interface OrderListQuery {
   status?: OrderStatus;
   productId?: string;
   kind?: PriceKind;
+  couponId?: string;
   search?: string;
   page: number;
   pageSize: number;
@@ -561,6 +571,10 @@ export interface OrderRepository {
   list(tenantId: string, query: OrderListQuery): Promise<{ orders: OrderListItem[]; total: number }>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;
   countSince(tenantId: string, sinceIso: string): Promise<number>;
+}
+
+export interface OrderDetailRepository {
+  findById(tenantId: string, id: string): Promise<OrderListItem | null>;
 }
 
 export interface PaymentRefundRepository {

@@ -10,7 +10,7 @@ import {
 import type {
   CouponCheckoutSessionRepository,
   CouponRedemptionRepository,
-  CouponRepository,
+  CouponManagementRepository,
   CouponStatsRepository,
   ProductPriceHistoryRepository,
 } from '@core/server/index.js';
@@ -18,13 +18,15 @@ import type {
 import type { Db } from './client.js';
 import {
   couponCheckoutSessions,
+  couponEvents,
+  couponRedemptionEvents,
   couponRedemptions,
   coupons,
   orders,
   productPriceHistory,
 } from './app-schema.js';
 
-export const createCouponRepository = (db: Db): CouponRepository => ({
+export const createCouponRepository = (db: Db): CouponManagementRepository => ({
   findByCode: async (tenantId, normalizedCode) => {
     const rows = await db
       .select()
@@ -46,6 +48,34 @@ export const createCouponRepository = (db: Db): CouponRepository => ({
       .limit(1);
     return rows[0] ? couponSchema.parse(rows[0]) : null;
   },
+  create: async (tenantId, coupon, event) =>
+    db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(coupons)
+        .values({ ...coupon, tenantId })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted[0] === undefined) return null;
+      await tx.insert(couponEvents).values({ ...event, tenantId });
+      return couponSchema.parse(inserted[0]);
+    }),
+  archive: async (tenantId, id, event) =>
+    db.transaction(async (tx) => {
+      const updated = await tx
+        .update(coupons)
+        .set({ status: 'archived' })
+        .where(
+          and(
+            eq(coupons.tenantId, tenantId),
+            eq(coupons.id, id),
+            eq(coupons.status, 'active'),
+          ),
+        )
+        .returning();
+      if (updated[0] === undefined) return null;
+      await tx.insert(couponEvents).values({ ...event, tenantId });
+      return couponSchema.parse(updated[0]);
+    }),
   cacheStripeIds: async (tenantId, id, stripeIds) => {
     const rows = await db
       .update(coupons)
@@ -149,6 +179,9 @@ export const createCouponRedemptionRepository = (db: Db): CouponRedemptionReposi
         .values({ ...input.redemption, tenantId })
         .onConflictDoNothing()
         .returning({ id: couponRedemptions.id });
+      if (inserted.length === 1) {
+        await tx.insert(couponRedemptionEvents).values({ ...input.event, tenantId });
+      }
       return inserted.length === 1;
     }),
 });
@@ -192,6 +225,7 @@ export const createCouponStatsRepository = (db: Db): CouponStatsRepository => ({
       .where(
         and(
           eq(coupons.tenantId, tenantId),
+          query.couponId === undefined ? undefined : eq(coupons.id, query.couponId),
           query.partnerLabel === undefined
             ? undefined
             : ilike(coupons.partnerLabel, `%${query.partnerLabel.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`),

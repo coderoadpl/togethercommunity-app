@@ -12,6 +12,10 @@ import {
   courseOutputSchema,
   checkoutSessionOutputSchema,
   couponCheckoutValidationOutputSchema,
+  couponOutputSchema,
+  couponStatsDetailOutputSchema,
+  couponStatsExportOutputSchema,
+  couponStatsOutputSchema,
   courseStructureOutputSchema,
   coursesListOutputSchema,
   contentHistoryOutputSchema,
@@ -75,6 +79,7 @@ import {
   notificationsReadAllOutputSchema,
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
+  orderDetailOutputSchema,
   ordersExportOutputSchema,
   productPriceCreateOutputSchema,
   productPriceDeactivateOutputSchema,
@@ -118,6 +123,10 @@ import {
   type CourseCreateInput,
   type CheckoutSessionRequest,
   type CouponCheckoutValidationRequest,
+  type CouponArchiveRequest,
+  type CouponCreateRequest,
+  type CouponStatsExportQueryInput,
+  type CouponStatsQueryInput,
   type CourseUpdateInput,
   type GrantCreateInput,
   type GrantRevokeInput,
@@ -584,6 +593,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.status !== undefined) params.set('status', input.status);
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.couponId !== undefined) params.set('couponId', input.couponId);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.page !== undefined) params.set('page', String(input.page));
     if (input.pageSize !== undefined) params.set('pageSize', String(input.pageSize));
@@ -597,11 +607,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  getOrder: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.order.method,
+      API_ROUTES.order.path.replace(':orderId', encodeURIComponent(id)),
+      orderDetailOutputSchema,
+      undefined,
+      signal,
+    ),
   exportOrders: (input: OrdersExportQueryInput, signal?: AbortSignal) => {
     const params = new URLSearchParams({ format: input.format });
     if (input.status !== undefined) params.set('status', input.status);
     if (input.productId !== undefined) params.set('productId', input.productId);
     if (input.kind !== undefined) params.set('kind', input.kind);
+    if (input.couponId !== undefined) params.set('couponId', input.couponId);
     if (input.search !== undefined) params.set('search', input.search);
     return request(
       options,
@@ -621,6 +641,65 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listCouponStats: (input: CouponStatsQueryInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.partnerLabel !== undefined) params.set('partnerLabel', input.partnerLabel);
+    if (input.cursorCreatedAt !== undefined) params.set('cursorCreatedAt', input.cursorCreatedAt);
+    if (input.cursorId !== undefined) params.set('cursorId', input.cursorId);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    if (input.since !== undefined) params.set('since', input.since);
+    if (input.through !== undefined) params.set('through', input.through);
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.couponStats.method,
+      suffix === '' ? API_ROUTES.couponStats.path : `${API_ROUTES.couponStats.path}?${suffix}`,
+      couponStatsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  getCouponStats: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.couponStatsDetail.method,
+      API_ROUTES.couponStatsDetail.path.replace(':couponId', encodeURIComponent(id)),
+      couponStatsDetailOutputSchema,
+      undefined,
+      signal,
+    ),
+  createCoupon: (input: CouponCreateRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.couponsCreate.method,
+      API_ROUTES.couponsCreate.path,
+      couponOutputSchema,
+      input,
+      signal,
+    ),
+  archiveCoupon: (input: CouponArchiveRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.couponArchive.method,
+      API_ROUTES.couponArchive.path,
+      couponOutputSchema,
+      input,
+      signal,
+    ),
+  exportCouponStats: (input: CouponStatsExportQueryInput, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ format: input.format });
+    if (input.partnerLabel !== undefined) params.set('partnerLabel', input.partnerLabel);
+    if (input.since !== undefined) params.set('since', input.since);
+    if (input.through !== undefined) params.set('through', input.through);
+    return request(
+      options,
+      API_ROUTES.couponStatsExport.method,
+      `${API_ROUTES.couponStatsExport.path}?${params.toString()}`,
+      couponStatsExportOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   simulateSubscriptionCycle: (input: SubscriptionSimulateInput, signal?: AbortSignal) =>
     request(
       options,

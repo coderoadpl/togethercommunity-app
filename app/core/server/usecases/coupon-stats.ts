@@ -2,6 +2,7 @@ import {
   err,
   forbidden,
   ok,
+  notFound,
   tenantNotFound,
   type AppError,
   type CouponStatsCursor,
@@ -18,6 +19,7 @@ export interface CouponStatsDeps {
 }
 
 export interface CouponStatsQuery {
+  couponId?: string;
   partnerLabel?: string;
   cursor?: CouponStatsCursor;
   limit?: number;
@@ -55,11 +57,23 @@ export const listCouponStats = async (
   return ok(
     await deps.stats.list(tenant.value, {
       ...(query.partnerLabel === undefined ? {} : { partnerLabel: query.partnerLabel }),
+      ...(query.couponId === undefined ? {} : { couponId: query.couponId }),
       ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
       ...windowFor(query, deps.clock),
       limit,
     }),
   );
+};
+
+export const getCouponStats = async (
+  ctx: Ctx,
+  couponId: string,
+  deps: CouponStatsDeps,
+): Promise<Result<{ item: CouponStatsItem }, AppError>> => {
+  const result = await listCouponStats(ctx, { couponId, limit: 1 }, deps);
+  if (!result.ok) return result;
+  const item = result.value.items[0];
+  return item === undefined ? err(notFound('Coupon was not found')) : ok({ item });
 };
 
 const csvCell = (value: string | number): string => {

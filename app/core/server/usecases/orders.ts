@@ -4,6 +4,7 @@ import {
   exportOrdersQuerySchema,
   forbidden,
   listOrdersQuerySchema,
+  notFound,
   ok,
   tenantNotFound,
   validation,
@@ -15,7 +16,12 @@ import {
 } from '@core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import type { Clock, MemberSubscriptionRepository, OrderRepository } from '../ports.js';
+import type {
+  Clock,
+  MemberSubscriptionRepository,
+  OrderDetailRepository,
+  OrderRepository,
+} from '../ports.js';
 
 export interface OrdersDeps {
   orders: OrderRepository;
@@ -53,9 +59,21 @@ export const listOrders = async (
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
     ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
+    ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
   });
   return ok({ orders, total, page: parsed.data.page, pageSize: parsed.data.pageSize });
+};
+
+export const getOrder = async (
+  ctx: Ctx,
+  id: string,
+  deps: { orders: OrderDetailRepository },
+): Promise<Result<{ order: OrderListItem }, AppError>> => {
+  const tenant = requireStaffTenant(ctx);
+  if (!tenant.ok) return tenant;
+  const order = await deps.orders.findById(tenant.value, id);
+  return order === null ? err(notFound('Order was not found')) : ok({ order });
 };
 
 const neutralizeFormula = (value: string): string =>
@@ -65,7 +83,18 @@ const quoteCsv = (value: string): string => `"${value.replaceAll('"', '""')}"`;
 
 const ordersToCsv = (orders: OrderListItem[]): string =>
   [
-    ['date', 'member', 'email', 'product', 'kind', 'amount_cents', 'currency', 'status'].join(','),
+    [
+      'date',
+      'member',
+      'email',
+      'product',
+      'kind',
+      'amount_cents',
+      'currency',
+      'status',
+      'coupon',
+      'discount_cents',
+    ].join(','),
     ...orders.map((order) =>
       [
         order.createdAt,
@@ -76,6 +105,8 @@ const ordersToCsv = (orders: OrderListItem[]): string =>
         String(order.amountCents),
         order.currency,
         order.status,
+        order.couponCode ?? '',
+        String(order.discountCents),
       ]
         .map((value) => quoteCsv(neutralizeFormula(value)))
         .join(','),
@@ -100,6 +131,7 @@ export const exportOrders = async (
     ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
     ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
     ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
+    ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
     ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
   });
   const pageCount = Math.ceil(first.total / pageSize);
@@ -111,6 +143,7 @@ export const exportOrders = async (
         ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
         ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
         ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
+        ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
         ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
       }),
     ),

@@ -92,7 +92,7 @@ import type {
   CheckoutConsentCaptureRepository,
   CouponCheckoutSessionRepository,
   CouponRedemptionRepository,
-  CouponRepository,
+  CouponManagementRepository,
   CouponStatsRepository,
   PaymentProvider,
   PlatformTransactionalPool,
@@ -133,6 +133,7 @@ import type {
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
+  OrderDetailRepository,
   PaymentRefundRepository,
   PostRepository,
   PurchaseRepository,
@@ -206,6 +207,7 @@ export interface AppDeps {
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
   orders: OrderRepository;
+  orderDetails?: OrderDetailRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
@@ -217,7 +219,7 @@ export interface AppDeps {
   secretResolver: TenantSecretResolver;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
-  coupons?: CouponRepository;
+  coupons?: CouponManagementRepository;
   couponRedemptions?: CouponRedemptionRepository;
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
@@ -550,6 +552,7 @@ export const createDeps = (env: Env): AppDeps => {
     grants: createProductGrantRepository(db),
     prices: createProductPriceRepository(db),
     orders: createOrderRepository(db),
+    orderDetails: createOrderRepository(db),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),

@@ -325,6 +325,15 @@ describe('coupon redemption repository', () => {
           discountCents: 2450,
           createdAt: NOW,
         },
+        event: {
+          id: `coupon-redemption-event-${id}`,
+          tenantId: ACME,
+          redemptionId: `coupon-redemption-${id}`,
+          couponId: 'coupon-race',
+          orderId: `coupon-order-${id}`,
+          type: 'redeemed',
+          occurredAt: NOW,
+        },
         maxRedemptions: 1,
         maxRedemptionsPerMember: null,
       });

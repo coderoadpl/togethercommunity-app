@@ -58,6 +58,47 @@ export const couponSchema = z
   });
 export type Coupon = z.infer<typeof couponSchema>;
 
+export const couponCreateInputSchema = z
+  .object({
+    code: z.string().trim().min(1).max(100),
+    kind: couponKindSchema,
+    value: z.number().int().nonnegative(),
+    scope: couponScopeSchema,
+    appliesTo: couponAppliesToSchema,
+    recurringDuration: couponRecurringDurationSchema.default('first_invoice'),
+    startsAt: z.string().datetime().nullable().default(null),
+    endsAt: z.string().datetime().nullable().default(null),
+    maxRedemptions: z.number().int().positive().nullable().default(null),
+    maxRedemptionsPerMember: z.number().int().positive().nullable().default(null),
+    partnerLabel: z.string().trim().min(1).max(200).nullable().default(null),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === 'percent' && value.value > 100) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['value'],
+        message: 'A percentage discount cannot exceed 100',
+      });
+    }
+    if (value.startsAt !== null && value.endsAt !== null && value.startsAt >= value.endsAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endsAt'],
+        message: 'Coupon end must be after its start',
+      });
+    }
+  });
+export type CouponCreateInput = z.input<typeof couponCreateInputSchema>;
+
+export const couponEventSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  couponId: z.string(),
+  type: z.enum(['created', 'archived']),
+  occurredAt: z.string().datetime(),
+});
+export type CouponEvent = z.infer<typeof couponEventSchema>;
+
 export const couponRedemptionSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
@@ -69,6 +110,17 @@ export const couponRedemptionSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type CouponRedemption = z.infer<typeof couponRedemptionSchema>;
+
+export const couponRedemptionEventSchema = z.object({
+  id: z.string(),
+  tenantId: z.string(),
+  redemptionId: z.string(),
+  couponId: z.string(),
+  orderId: z.string(),
+  type: z.literal('redeemed'),
+  occurredAt: z.string().datetime(),
+});
+export type CouponRedemptionEvent = z.infer<typeof couponRedemptionEventSchema>;
 
 export const couponCheckoutSessionSchema = z.object({
   id: z.string(),

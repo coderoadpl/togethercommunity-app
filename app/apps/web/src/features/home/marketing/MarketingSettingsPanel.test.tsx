@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -81,6 +81,9 @@ describe('SES onboarding wizard', () => {
     );
     const user = userEvent.setup();
     renderWithProviders(<MarketingSettingsPanel />);
+
+    expect(within((await screen.findByText('Zestaw konfiguracji SES')).closest('li') ?? document.body).getByText('gotowe')).toBeInTheDocument();
+    expect(within(screen.getByText('Subskrypcja SNS').closest('li') ?? document.body).getByText('gotowe')).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: 'Sprawdź status w AWS' }));
 

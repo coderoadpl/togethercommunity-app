@@ -18,6 +18,9 @@ import {
   SetTopicAttributesCommand,
   SNSClient,
   SubscribeCommand,
+  type SubscribeCommandInput,
+  type SubscribeCommandOutput,
+  type Subscription,
 } from '@aws-sdk/client-sns';
 
 import { integrationUnavailable, ok, type AppError, type Result } from '@core/domain/index.js';
@@ -62,6 +65,14 @@ const dkimRecords = (identity: string, tokens: readonly string[] | undefined): S
 const isConfigurationSetMissing = (cause: unknown): boolean =>
   errorName(cause) === 'ConfigurationSetDoesNotExistException';
 
+const subscriptionArnState = (arn: string | undefined): { confirmed: boolean; arn: string | null } => {
+  const pending = arn?.replaceAll(' ', '').toLowerCase() === 'pendingconfirmation';
+  return {
+    confirmed: arn !== undefined && !pending,
+    arn: arn === undefined || pending ? null : arn,
+  };
+};
+
 const configurationSetExists = async (
   ses: SESClient,
   name: string,
@@ -92,6 +103,16 @@ const listSubscriptions = async (
   return subscriptions;
 };
 
+interface SnsSubscriptionOperations {
+  list(sns: SNSClient, topicArn: string): Promise<Subscription[]>;
+  subscribe(sns: SNSClient, input: SubscribeCommandInput): Promise<SubscribeCommandOutput>;
+}
+
+const snsSubscriptionOperations: SnsSubscriptionOperations = {
+  list: listSubscriptions,
+  subscribe: async (sns, input) => sns.send(new SubscribeCommand(input)),
+};
+
 const topicPolicy = (topicArn: string): string => {
   const accountId = topicArn.split(':')[4] ?? '';
   return JSON.stringify({
@@ -118,6 +139,7 @@ const topicPolicy = (topicArn: string): string => {
 
 export const createSesOnboardingControlPlane = (
   factory: (credentials: SesMarketingCredentials) => { ses: SESClient; sns: SNSClient } = clientsFor,
+  subscriptions: SnsSubscriptionOperations = snsSubscriptionOperations,
 ): SesOnboardingControlPlane => ({
   startDomainIdentity: async (credentials, identity) => {
     try {
@@ -189,20 +211,17 @@ export const createSesOnboardingControlPlane = (
   ensureSubscription: async (credentials, input) => {
     try {
       const sns = factory(credentials).sns;
-      const existing = (await listSubscriptions(sns, input.topicArn))
+      const existing = (await subscriptions.list(sns, input.topicArn))
         .find((subscription) => subscription.Protocol === 'https' && subscription.Endpoint === input.endpoint);
       if (existing !== undefined) {
-        const arn = existing.SubscriptionArn;
-        return ok({ confirmed: arn !== undefined && arn !== 'PendingConfirmation', arn: arn === 'PendingConfirmation' ? null : arn ?? null });
+        return ok(subscriptionArnState(existing.SubscriptionArn));
       }
-      const created = await sns.send(new SubscribeCommand({
+      const created = await subscriptions.subscribe(sns, {
         TopicArn: input.topicArn,
         Protocol: 'https',
         Endpoint: input.endpoint,
-        ReturnSubscriptionArn: true,
-      }));
-      const arn = created.SubscriptionArn;
-      return ok({ confirmed: arn !== undefined && arn !== 'pending confirmation', arn: arn === 'pending confirmation' ? null : arn ?? null });
+      });
+      return ok(subscriptionArnState(created.SubscriptionArn));
     } catch (cause) {
       return failed('Could not subscribe the Together webhook to SNS', cause);
     }
@@ -225,13 +244,12 @@ export const createSesOnboardingControlPlane = (
       } catch (cause) {
         if (!isConfigurationSetMissing(cause)) throw cause;
       }
-      const subscription = (await listSubscriptions(sns, input.topicArn))
+      const subscription = (await subscriptions.list(sns, input.topicArn))
         .find((item) => item.Protocol === 'https' && item.Endpoint === input.endpoint);
       return ok({
         configurationSetReady,
         eventDestinationReady,
-        subscriptionConfirmed: subscription?.SubscriptionArn !== undefined
-          && subscription.SubscriptionArn !== 'PendingConfirmation',
+        subscriptionConfirmed: subscriptionArnState(subscription?.SubscriptionArn).confirmed,
       });
     } catch (cause) {
       return failed('Could not inspect the SES and SNS onboarding state', cause);

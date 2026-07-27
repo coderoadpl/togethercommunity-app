@@ -72,7 +72,7 @@ import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resol
 import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '@adapters/payment/fake.js';
 import { createFakeInvoicing } from '@adapters/invoicing/fake.js';
-import { createFakturowniaInvoicing } from '@adapters/invoicing/fakturownia.js';
+import { createIfirmaInvoicing } from '@adapters/invoicing/ifirma.js';
 import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
 import { createBunnyEmbedTokenSigner } from '@adapters/crypto/bunny-embed-token-signer.js';
 import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
@@ -341,7 +341,7 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingJobs = createMarketingJobRepository(db);
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
-  const invoicing = production ? createFakturowniaInvoicing() : createFakeInvoicing();
+  const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
   const platformTransactionalPool = createPlatformTransactionalPool(db);
   const tenantSesTransactional = createTenantSesTransactionalResolver(

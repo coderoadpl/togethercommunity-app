@@ -189,6 +189,7 @@ const deps = (input: {
         }),
       getInvoiceStatus: async () => ok('issued'),
       invoiceDownloadUrl: async () => ok('https://example.com/FV-1.pdf'),
+      testConnection: async () => ok({ diagnostic: 'Fake invoicing is available.' }),
     },
     checkoutConsentCaptures: {
       create: async (_tenantId, capture) => {

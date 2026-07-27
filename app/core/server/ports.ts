@@ -452,7 +452,7 @@ export interface InvoicingPort {
     order: Order;
     billing: BillingData | null;
     productName: string;
-    config: { apiKey: string; subdomain: string };
+    config: { invoiceApiKey: string; username: string };
   }): Promise<Result<{
     providerInvoiceId: string;
     invoiceNumber: string;
@@ -461,12 +461,15 @@ export interface InvoicingPort {
   }, AppError>>;
   getInvoiceStatus(input: {
     providerInvoiceId: string;
-    config: { apiKey: string; subdomain: string };
+    config: { invoiceApiKey: string; username: string };
   }): Promise<Result<'issued' | 'delivered' | 'failed', AppError>>;
   invoiceDownloadUrl(input: {
     providerInvoiceId: string;
-    config: { apiKey: string; subdomain: string };
+    config: { invoiceApiKey: string; username: string };
   }): Promise<Result<string, AppError>>;
+  testConnection(input: {
+    config: { invoiceApiKey: string; username: string };
+  }): Promise<Result<{ diagnostic: string }, AppError>>;
 }
 
 export interface InvoiceRepository {

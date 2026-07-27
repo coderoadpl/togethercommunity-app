@@ -60,18 +60,20 @@ const eventFor = (
 const invoicingConfig = async (
   tenantId: string,
   deps: Pick<InvoiceDeps, 'tenantSecrets' | 'secretCrypto'>,
-): Promise<Result<{ apiKey: string; subdomain: string }, AppError>> => {
-  const [apiKeySecret, subdomainSecret] = await Promise.all([
-    deps.tenantSecrets.findByKey(tenantId, 'fakturownia.apiKey'),
-    deps.tenantSecrets.findByKey(tenantId, 'fakturownia.subdomain'),
+): Promise<Result<{ invoiceApiKey: string; username: string }, AppError>> => {
+  const [invoiceApiKeySecret, usernameSecret] = await Promise.all([
+    deps.tenantSecrets.findByKey(tenantId, 'ifirma.invoiceApiKey'),
+    deps.tenantSecrets.findByKey(tenantId, 'ifirma.username'),
   ]);
-  if (apiKeySecret === null || subdomainSecret === null) {
-    return err(integrationNotConfigured('Connect Fakturownia in Integrations before issuing invoices'));
+  if (invoiceApiKeySecret === null || usernameSecret === null) {
+    return err(integrationNotConfigured('Connect iFirma in Integrations before issuing invoices'));
   }
-  const apiKey = deps.secretCrypto.decrypt(apiKeySecret);
-  if (!apiKey.ok) return apiKey;
-  const subdomain = deps.secretCrypto.decrypt(subdomainSecret);
-  return subdomain.ok ? ok({ apiKey: apiKey.value, subdomain: subdomain.value }) : subdomain;
+  const invoiceApiKey = deps.secretCrypto.decrypt(invoiceApiKeySecret);
+  if (!invoiceApiKey.ok) return invoiceApiKey;
+  const username = deps.secretCrypto.decrypt(usernameSecret);
+  return username.ok
+    ? ok({ invoiceApiKey: invoiceApiKey.value, username: username.value })
+    : username;
 };
 
 const issue = async (
@@ -88,7 +90,7 @@ const issue = async (
     tenantId,
     orderId: order.id,
     status: 'requested',
-    provider: 'fakturownia',
+    provider: 'ifirma',
     providerInvoiceId: null,
     invoiceNumber: null,
     pdfUrl: null,
@@ -201,4 +203,18 @@ export const refreshInvoiceStatus = async (
     { status: status.value },
   );
   return ok((await deps.invoices.update(ctx.identity.tenantId, refreshed, refreshedEvent)) ?? refreshed);
+};
+
+export const testIfirmaConnection = async (
+  ctx: Ctx,
+  deps: Pick<InvoiceDeps, 'invoicing' | 'tenantSecrets' | 'secretCrypto'>,
+): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
+  if (ctx.identity.tenantId === null) return err(tenantNotFound('Select a tenant to test iFirma'));
+  if (ctx.identity.staffRole !== 'owner') {
+    return err(forbidden('Only the tenant owner can test iFirma'));
+  }
+  const config = await invoicingConfig(ctx.identity.tenantId, deps);
+  if (!config.ok) return config;
+  const tested = await deps.invoicing.testConnection({ config: config.value });
+  return tested.ok ? ok({ ok: true, diagnostic: tested.value.diagnostic }) : tested;
 };

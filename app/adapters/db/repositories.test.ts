@@ -745,7 +745,7 @@ describe('member erasure repository', () => {
         tenantId: RODO,
         orderId: 'order-rodo-1',
         status: 'issued',
-        provider: 'fakturownia',
+        provider: 'ifirma',
         providerInvoiceId: 'provider-rodo',
         invoiceNumber: 'FV/RODO/1',
         pdfUrl: 'https://example.com/invoice-rodo.pdf',

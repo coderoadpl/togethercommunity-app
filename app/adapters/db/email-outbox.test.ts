@@ -84,6 +84,20 @@ describe('email outbox database adapter', () => {
     expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
   });
 
+  it('reclaims platform reservations abandoned by a crashed dispatcher', async () => {
+    await db.insert(tenantTransactionalEmailPools).values({
+      tenantId: 'tenant-outbox',
+      sent: 999,
+      reserved: 1,
+      reservedAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+    });
+    const pool = createPlatformTransactionalPool(db);
+
+    expect(await pool.usage('tenant-outbox')).toEqual({ sent: 999, reserved: 0 });
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(true);
+    expect(await pool.reserve('tenant-outbox', 1000)).toBe(false);
+  });
+
   it('rolls member, grant, and outbox writes back together', async () => {
     const member: Member = { id: 'member-rollback', tenantId: 'tenant-outbox', userId: 'user-rollback', email: 'rollback@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null };
     const grant: ProductGrant = { id: 'grant-rollback', tenantId: 'tenant-outbox', memberId: member.id, productId: 'product-outbox', source: 'manual', startsAt: NOW, expiresAt: null, legacyId: null, createdAt: NOW };

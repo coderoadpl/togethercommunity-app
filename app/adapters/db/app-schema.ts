@@ -710,6 +710,7 @@ export const tenantTransactionalEmailPools = pgTable('tenant_transactional_email
     .references(() => tenants.id, { onDelete: 'cascade' }),
   sent: integer('sent').notNull().default(0),
   reserved: integer('reserved').notNull().default(0),
+  reservedAt: timestamp('reserved_at', { withTimezone: true, mode: 'string' }),
 });
 
 export const emailEvents = pgTable(

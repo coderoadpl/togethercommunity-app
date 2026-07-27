@@ -116,7 +116,7 @@ export const MemberAccountPage = () => {
             <Stack useFlexGap spacing="1rem">
               {billedOrders.map((order) => (
                 <Stack key={order.id} useFlexGap spacing="0.2rem">
-                  <Typography sx={{ fontWeight: 600 }}>
+                  <Typography variant="subtitle2">
                     {t.account.invoiceOrderLabel({ date: new Date(order.createdAt).toLocaleDateString(language) })}
                   </Typography>
                   <Typography>{order.billing?.companyName}</Typography>

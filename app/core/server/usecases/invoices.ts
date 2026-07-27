@@ -82,8 +82,6 @@ const issue = async (
 ): Promise<Result<Invoice, AppError>> => {
   const existing = await deps.invoices.findCurrentByOrder(tenantId, order.id);
   if (existing !== null && existing.status !== 'failed') return ok(existing);
-  const config = await invoicingConfig(tenantId, deps);
-  if (!config.ok) return config;
   const createdAt = deps.clock.nowIso();
   const invoice: Invoice = {
     id: deps.ids.nextId(),
@@ -103,20 +101,23 @@ const issue = async (
     const winner = await deps.invoices.findCurrentByOrder(tenantId, order.id);
     return winner === null ? err(validation('Invoice request could not be claimed')) : ok(winner);
   }
+  const fail = async (failure: AppError): Promise<Result<Invoice, AppError>> => {
+    const failed: Invoice = { ...invoice, status: 'failed', error: failure.code };
+    const failedEvent = eventFor(deps, tenantId, order.id, invoice.id, 'failed', failure.code, {
+      message: failure.message,
+    });
+    await deps.invoices.update(tenantId, failed, failedEvent);
+    return err(failure);
+  };
+  const config = await invoicingConfig(tenantId, deps);
+  if (!config.ok) return fail(config.error);
   const issued = await deps.invoicing.issueInvoice({
     order,
     billing,
     productName: order.productTitle,
     config: config.value,
   });
-  if (!issued.ok) {
-    const failed: Invoice = { ...invoice, status: 'failed', error: issued.error.code };
-    const failedEvent = eventFor(deps, tenantId, order.id, invoice.id, 'failed', issued.error.code, {
-      message: issued.error.message,
-    });
-    await deps.invoices.update(tenantId, failed, failedEvent);
-    return err(issued.error);
-  }
+  if (!issued.ok) return fail(issued.error);
   const completed: Invoice = {
     ...invoice,
     status: issued.value.status,

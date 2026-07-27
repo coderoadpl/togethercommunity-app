@@ -531,6 +531,7 @@ export interface EmailEventRepository {
   append(tenantId: string, event: EmailEvent): Promise<void>;
   listByRef(tenantId: string, mailKind: EmailEventMailKind, refId: string): Promise<EmailEvent[]>;
   listByEmailAcrossKinds(tenantId: string, email: string): Promise<EmailEvent[]>;
+  purgeEngagement(tenantId: string, olderThan: string): Promise<number>;
   reputationCounts(
     tenantId: string,
     window: { since: string; until: string },

@@ -96,6 +96,7 @@ describe('email send observability use-cases', () => {
         append: async () => undefined,
         listByRef: async () => [event],
         listByEmailAcrossKinds: async () => [event],
+        purgeEngagement: async () => 0,
         reputationCounts: async () => ({ sends: 0, hardBounces: 0, complaints: 0 }),
       },
     });

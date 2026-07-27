@@ -170,7 +170,12 @@ describe('marketing management use-cases', () => {
     const read = await getTenantSesMarketingSettings(ctx, { webhookBaseUrl: 'https://tenant.test/api/webhooks/ses' }, {
       settings: repository, secrets,
     });
-    expect(read.ok && read.value.settings?.broadcastsEnabled).toBe(true);
+    expect(read.ok && read.value.settings?.broadcastsEnabled).toBe(false);
+    await repository.upsert('tenant-1', { ...settings, configurationSet: 'marketing' });
+    const configured = await getTenantSesMarketingSettings(ctx, {
+      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+    }, { settings: repository, secrets });
+    expect(configured.ok && configured.value.settings?.broadcastsEnabled).toBe(true);
 
     const sandboxed = await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,

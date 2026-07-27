@@ -619,7 +619,7 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: 'marketing',
       snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
@@ -772,6 +772,51 @@ describe('marketing HTTP surfaces', () => {
       { type: 'opened' },
       { type: 'clicked', meta: { linkUrl: 'https://acme.test/offer' } },
     ]);
+  });
+
+  it('ingests configuration-set delivery records and acknowledges unsupported SES event types', async () => {
+    const marketing = marketingDeps();
+    const now = '2026-07-22T00:00:00.000Z';
+    const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
+    const events = new InMemoryEmailEventRepository();
+    const sends = new InMemoryCampaignSendRepository(events);
+    await sends.claimRecipient('t-acme', {
+      id: 'send-delivery', runId: null, tenantId: 't-acme', campaignId: 'campaign-1',
+      source: 'broadcast', memberId: 'member-1', email: 'member@example.test',
+      subject: 'Delivery', consentRowId: 'consent-1', unsubscribeTokenId: null,
+      status: 'sent', skipReason: null, sesMessageId: 'ses-delivery',
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null,
+      renderedBodyPurgedAt: null, createdAt: now, sentAt: now,
+    });
+    marketing.events = events;
+    marketing.campaignSends = sends;
+    marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+      tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
+      quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
+      webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+      broadcastsEnabled: true,
+    }]);
+    const app = marketingApp(marketing);
+    for (const message of [
+      {
+        eventType: 'Delivery', mail: { messageId: 'ses-delivery', timestamp: now },
+        delivery: { timestamp: now },
+      },
+      {
+        eventType: 'Send', mail: { messageId: 'ses-delivery', timestamp: now },
+        send: {},
+      },
+    ]) {
+      marketing.sns = new FakeSnsVerifier(ok({
+        type: 'Notification', topicArn, message: JSON.stringify(message), subscribeUrl: null,
+      }));
+      const response = await app.request('/api/webhooks/ses/webhook-token', { method: 'POST', body: '{}' });
+      expect(response.status).toBe(200);
+    }
+    expect(await sends.correlateBySesMessageId('t-acme', 'ses-delivery'))
+      .toMatchObject({ deliveryStatus: 'delivered' });
   });
 });
 

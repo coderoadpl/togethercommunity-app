@@ -310,6 +310,57 @@ describe('marketing database repositories', () => {
     ]]));
   });
 
+  it('counts reputation from the sent cohort instead of accepted-event fixtures', async () => {
+    const tenantId = 'tenant-reputation';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Reputation', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-reputation', tenantId, memberId: null, email: 'member@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
+      status: 'confirmed', previousId: null, source: 'api',
+      evidence: { collectedAt: NOW, proofRef: 'fixture' }, occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    const sends = createCampaignSendRepository(db);
+    const send = (id: string, sentAt: string): CampaignSend => ({
+      id, tenantId, campaignId: `campaign-${tenantId}`, source: 'api',
+      memberId: null, email: `${id}@example.test`, subject: 'Reputation',
+      consentRowId: consent.id, unsubscribeTokenId: null, status: 'sent',
+      skipReason: null, sesMessageId: `ses-${id}`, deliveryStatus: null,
+      deliveryOccurredAt: null, idempotencySource: null, renderedBodyPurgedAt: null,
+      createdAt: sentAt, sentAt,
+    });
+    await sends.claimRecipient(tenantId, send('recent-hard', '2026-07-21T00:00:00.000Z'));
+    await sends.claimRecipient(tenantId, send('recent-complaint', '2026-07-20T00:00:00.000Z'));
+    await sends.claimRecipient(tenantId, send('old-hard', '2026-07-10T00:00:00.000Z'));
+    const events = createEmailEventRepository(db);
+    for (const [id, refId, type, occurredAt] of [
+      ['hard-late', 'recent-hard', 'bounced', '2026-07-22T00:00:00.000Z'],
+      ['complaint-recent', 'recent-complaint', 'complained', '2026-07-21T00:00:00.000Z'],
+      ['hard-old-send', 'old-hard', 'bounced', '2026-07-21T00:00:00.000Z'],
+    ] as const) {
+      await events.append(tenantId, emailEventSchema.parse({
+        id, tenantId, mailKind: 'marketing', refId, type, occurredAt,
+        meta: type === 'bounced'
+          ? { classification: 'hard', rawProviderPayload: {} }
+          : { rawProviderPayload: {} },
+        createdAt: occurredAt,
+      }));
+    }
+    await events.append(tenantId, emailEventSchema.parse({
+      id: 'accepted-without-send', tenantId, mailKind: 'marketing',
+      refId: 'missing-send', type: 'accepted', occurredAt: NOW,
+      meta: { sesMessageId: 'missing' }, createdAt: NOW,
+    }));
+
+    expect(await events.reputationCounts(tenantId, {
+      since: '2026-07-15T00:00:00.000Z',
+      until: '2026-07-22T00:00:00.000Z',
+    })).toEqual({ sends: 2, hardBounces: 1, complaints: 1 });
+  });
+
   it('lists tenant-scoped transactional and marketing sends with one stable keyset', async () => {
     const tenantId = 'tenant-send-view';
     await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Send view', createdAt: NOW });

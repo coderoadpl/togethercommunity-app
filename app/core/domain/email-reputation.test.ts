@@ -22,6 +22,7 @@ describe('email reputation', () => {
   });
 
   it('classifies complaint thresholds at 0.075 and 0.15 percent', () => {
+    expect(deriveEmailReputation({ sends: 1_300, hardBounces: 5, complaints: 2 }).complaint.status).toBe('insufficient_data');
     expect(deriveEmailReputation({ sends: 4_000, hardBounces: 5, complaints: 2 }).complaint.status).toBe('ok');
     expect(deriveEmailReputation({ sends: 4_000, hardBounces: 5, complaints: 3 }).complaint.status).toBe('warn');
     expect(deriveEmailReputation({ sends: 2_000, hardBounces: 5, complaints: 3 }).complaint.status).toBe('critical');

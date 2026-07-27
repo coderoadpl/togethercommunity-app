@@ -380,12 +380,13 @@ export const createDeps = (env: Env): AppDeps => {
       now,
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      engagementOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
     }, {
       jobs: marketingJobs,
       runs: schedulerRuns,
       dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger),
       runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
-        definitions, consents: marketingConsents, sends: campaignSends, idempotency, clock,
+        definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock,
       }),
     });
   };

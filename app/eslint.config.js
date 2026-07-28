@@ -142,6 +142,9 @@ export default tseslint.config(
     ignores: ['node_modules/**', 'dist/**', 'drizzle/**', 'storybook-static/**', 'out/**'],
   },
   {
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
+  },
+  {
     files: ['**/*.js', '**/*.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',

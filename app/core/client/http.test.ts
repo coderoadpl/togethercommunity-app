@@ -18,14 +18,14 @@ describe('createApiClient', () => {
 
       return jsonResponse({
         ok: true,
-        data: { status: 'ok', version: '0.1.0', database: 'up' },
+        data: { status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up' },
       });
     };
     const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
 
     await expect(client.health()).resolves.toEqual({
       ok: true,
-      value: { status: 'ok', version: '0.1.0', database: 'up' },
+      value: { status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up' },
     });
   });
 

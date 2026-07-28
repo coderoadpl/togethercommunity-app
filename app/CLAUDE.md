@@ -5,7 +5,7 @@ architecture spec is normative).
 
 ## The two gates
 
-- `npm run check` = typecheck + ESLint (boundaries) + lock-lint + dependency-cruiser + knip + doc-lint +
+- `npm run check` = typecheck + ESLint (boundaries) + lock-lint + migration-lint + dependency-cruiser + knip + doc-lint +
   vitest — the **static** gate.
 - `npm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `package-lock.json`, drops+recreates an isolated
@@ -58,10 +58,12 @@ Visual verification has zero retries.
 - `adapters/**` implement ports; only `apps/server/src/composition.ts` instantiates them.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.
-- `@vercel/*` / `@neondatabase/*` only inside `adapters/`. A reviewed
-  platform-entry exemption may be added when the Vercel entry lands.
+- `@vercel/*` / `@neondatabase/*` only inside `adapters/` and the reviewed
+  `apps/server/src/entry.vercel.ts` platform boundary.
 - No `any`. No `as` (except `as const`). Parse with zod at every boundary.
-- Use-cases return `Result<T, AppError>`; never throw across a boundary.
+- Expected domain and application failures return `Result<T, AppError>`. Infrastructure
+  promise rejections propagate to the server error seam, which normalizes them to
+  `internal`; do not catch them separately in each use-case.
   New error kinds go into `ERROR_CODES` in `core/domain/errors.ts` and get an
   HTTP status + exit code mapping in `core/contract/http-status.ts` (exhaustive).
 - Every tenant-scoped use-case takes `ctx: { identity }` first; every
@@ -97,9 +99,15 @@ npm run --silent cli -- --tenant acme product list
 port + use-case → adapter repo → server route → `core/client` method →
 CLI command → web page, in that order, with tests at the core layer.
 
+CLI sessions and tenant selections are stored per canonical API origin. Origin
+selection resolves `--api-url` → `TOGETHER_CLI_API_URL` → the repo-local
+`http://localhost:48730` default → the stored current origin; tenant selection
+resolves `--tenant` → `TOGETHER_CLI_TENANT` → the selected profile.
+
 ## Dev notes
 
-- Ports: API 48730, Vite dev 48731, Postgres 48912 (never 3000/8080/5432).
+- Ports: API 48730, Vite dev 48731, Postgres 48912, optional Mailpit SMTP
+  48925 and UI/API 48980 (never 3000/8080/5432).
 - Tenants live on subdomains: `acme.localhost:48730`. Browsers reject
   `Domain=.localhost` cookies → per-subdomain login in dev only.
 - Better Auth CSRF requires an `Origin` header on auth POSTs (CLI sends its API URL).

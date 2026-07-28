@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 
 import {
@@ -55,7 +55,7 @@ import {
   type PublicBrand,
 } from './public-marketing-pages.js';
 
-type Vars = { Variables: { identity: Identity } };
+type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 
 const response = <T>(result: Result<T, AppError>, successStatus = 200, headers?: HeadersInit): Response => {
   const envelope = toEnvelope(result);
@@ -183,6 +183,12 @@ const html = (body: string): Response => new Response(body, {
   headers: { 'content-type': 'text/html; charset=UTF-8', 'cache-control': 'no-store' },
 });
 
+const pageNonce = (context: Context<Vars>): string => {
+  const nonce = context.get('secureHeadersNonce');
+  if (nonce === undefined) throw new Error('Secure headers nonce is unavailable');
+  return nonce;
+};
+
 const unsubscribeDeps = (deps: AppDeps, marketing: MarketingAppDeps) => ({
   definitions: marketing.definitions,
   consents: marketing.marketingConsents,
@@ -194,7 +200,7 @@ const unsubscribeDeps = (deps: AppDeps, marketing: MarketingAppDeps) => ({
   clock: deps.clock,
 });
 
-export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post('/api/m2m/marketing/messages', async (c) => {
     const marketingResult = requireMarketing(deps);
     if (!marketingResult.ok) return response(marketingResult);
@@ -437,6 +443,9 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       : response(err(unauthorized('Invalid marketing tick secret')));
   });
 
+};
+
+export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post('/api/webhooks/ses/:webhookToken', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
@@ -552,6 +561,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     );
     if (!preferences.ok) return response(preferences);
     return html(renderPreferenceResultPage({
+      nonce: pageNonce(c),
       brand: await publicBrand(deps, resolved.value.tenant),
       language: languageFromRequest(c.req.raw),
       token,
@@ -573,6 +583,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     );
     if (!result.ok) return response(result);
     return html(renderPreferenceResultPage({
+      nonce: pageNonce(c),
       brand: await publicBrand(deps, resolved.value.tenant),
       language: languageFromRequest(c.req.raw),
       token,
@@ -606,6 +617,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     });
     if (!result.ok) return response(result);
     return html(renderPreferenceResultPage({
+      nonce: pageNonce(c),
       brand: await publicBrand(deps, resolved.value.tenant),
       language: languageFromRequest(c.req.raw),
       token,
@@ -627,6 +639,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     );
     if (!preferences.ok) return response(preferences);
     return html(renderPreferencesPage({
+      nonce: pageNonce(c),
       brand: await publicBrand(deps, resolved.value.tenant),
       language: languageFromRequest(c.req.raw),
       token: c.req.param('token'),
@@ -648,6 +661,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       : confirmation.usedAt === null ? 'prompt' : 'success';
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     return html(renderConfirmationPage({
+      nonce: pageNonce(c),
       brand: await publicBrand(deps, resolved.value.tenant),
       language: languageFromRequest(c.req.raw),
       path,
@@ -675,6 +689,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     });
     const path = `/marketing/confirm/${encodeURIComponent(token)}`;
     return html(renderConfirmationPage({
+      nonce: pageNonce(c),
       brand: await publicBrand(deps, resolved.value.tenant),
       language: languageFromRequest(c.req.raw),
       path,
@@ -693,6 +708,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     return document === null
       ? response(err(appError('not_found', 'Legal document was not found')))
       : html(renderLegalDocumentPage({
+          nonce: pageNonce(c),
           brand: await publicBrand(deps, resolved.value.tenant),
           language: languageFromRequest(c.req.raw),
           path: `/legal/${encodeURIComponent(c.req.param('slug'))}`,
@@ -711,6 +727,7 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
     return document === null
       ? response(err(appError('not_found', 'Legal document version was not found')))
       : html(renderLegalDocumentPage({
+          nonce: pageNonce(c),
           brand: await publicBrand(deps, resolved.value.tenant),
           language: languageFromRequest(c.req.raw),
           path: `/legal/${encodeURIComponent(c.req.param('slug'))}/v/${String(parsed.data)}`,

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 import { z, type ZodTypeAny } from 'zod';
 
 import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
@@ -34,7 +34,16 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
-import { loadConfig, saveConfig, type CliConfig } from './config.js';
+import {
+  apiOrigin,
+  loadConfig,
+  resolveCliConfig,
+  saveConfig,
+  updateOriginProfile,
+  type CliConfig,
+  type CliOriginSource,
+  type CliProfile,
+} from './config.js';
 import { emit } from './output.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 
@@ -44,11 +53,16 @@ const program = new Command('together')
   .option('--api-url <url>', 'API base URL (overrides config)')
   .option('--tenant <slug>', 'tenant slug for this invocation (overrides config)');
 
+program.exitOverride().configureOutput({ writeErr: () => {} });
+
 interface CliCtx {
   config: CliConfig;
   api: ApiClient;
   auth: CliAuthAdapter;
   apiUrl: string;
+  origin: string;
+  originSource: CliOriginSource;
+  profile: CliProfile;
   tenant: string | null;
   json: boolean;
 }
@@ -58,6 +72,11 @@ const globalOptionsSchema = z.object({
   apiUrl: z.string().url().optional(),
   tenant: z.string().min(1).optional(),
 });
+const cliEnvSchema = z.object({
+  TOGETHER_CLI_API_URL: z.string().url().optional(),
+  TOGETHER_CLI_TENANT: z.string().min(1).optional(),
+});
+const originUseSchema = z.tuple([z.string().url(), z.object({}).passthrough()]);
 
 const centsSchema = z
   .string()
@@ -390,19 +409,43 @@ const cliCtx = (): Result<CliCtx, AppError> => {
   const config = loadConfig();
   const globals = parsedInput(globalOptionsSchema, rawGlobalOptions(), 'Invalid global CLI options');
   if (!globals.ok) return globals;
-  const apiUrl = globals.value.apiUrl ?? config.apiUrl;
-  const tenant = globals.value.tenant ?? config.tenant;
+  const env = parsedInput(cliEnvSchema, process.env, 'Invalid CLI environment');
+  if (!env.ok) return env;
+  const resolved = resolveCliConfig({
+    config,
+    cwd: process.cwd(),
+    env: env.value,
+    ...(globals.value.apiUrl === undefined ? {} : { apiUrl: globals.value.apiUrl }),
+    ...(globals.value.tenant === undefined ? {} : { tenant: globals.value.tenant }),
+  });
+  const { apiUrl, origin, originSource, profile, tenant } = resolved;
   const api = createApiClient({
     baseUrl: apiUrl,
     headers: () => ({
-      ...(config.token ? { authorization: `Bearer ${config.token}` } : {}),
+      ...(profile.token ? { authorization: `Bearer ${profile.token}` } : {}),
       ...(tenant ? { [TENANT_HEADER]: tenant } : {}),
     }),
   });
   const auth = createCliAuthAdapter(apiUrl, (token) => {
-    saveConfig({ ...config, apiUrl, token });
+    saveConfig(updateOriginProfile(config, origin, { token }, originSource !== 'repo'));
+  }, () => profile.token);
+  return ok({
+    config,
+    api,
+    auth,
+    apiUrl,
+    origin,
+    originSource,
+    profile,
+    tenant,
+    json: globals.value.json,
   });
-  return ok({ config, api, auth, apiUrl, tenant, json: globals.value.json });
+};
+
+const saveActiveProfile = (ctx: CliCtx, patch: Partial<CliProfile>): void => {
+  saveConfig(
+    updateOriginProfile(ctx.config, ctx.origin, patch, ctx.originSource !== 'repo'),
+  );
 };
 
 const withCtx =
@@ -438,7 +481,11 @@ const withInput =
 
 program.command('health').description('API and database status').action(
   withCtx(async (ctx) => {
-    emit(await ctx.api.health(), ctx.json, (h) => `status=${h.status} db=${h.database} v${h.version}`);
+    emit(
+      await ctx.api.health(),
+      ctx.json,
+      (h) => `status=${h.status} db=${h.database} v${h.version} sha=${h.sha}`,
+    );
   }),
 );
 
@@ -452,7 +499,7 @@ program
     withInput(z.tuple([registerOptionsSchema]), async (ctx, [options]) => {
       const result = await ctx.auth.signUp(options);
       if (result.ok && result.value.token) {
-        saveConfig({ ...ctx.config, apiUrl: ctx.apiUrl, token: result.value.token });
+        saveActiveProfile(ctx, { token: result.value.token });
       }
       emit(result, ctx.json, () => `registered and signed in as ${options.email}`);
     }),
@@ -471,16 +518,17 @@ program
           emit(err(internal('Server did not return a session token')), ctx.json, () => '');
           return;
         }
-        saveConfig({ ...ctx.config, apiUrl: ctx.apiUrl, token: result.value.token });
+        saveActiveProfile(ctx, { token: result.value.token });
       }
       emit(result, ctx.json, () => `signed in as ${options.email}`);
     }),
   );
 
-program.command('logout').description('Drop the stored session token').action(
-  withCtx((ctx) => {
-    saveConfig({ ...ctx.config, token: null });
-    emit(ok({ loggedOut: true }), ctx.json, () => 'signed out');
+program.command('logout').description('Revoke and drop the stored session token').action(
+  withCtx(async (ctx) => {
+    const result = await ctx.auth.signOut();
+    saveActiveProfile(ctx, { token: null });
+    emit(result.ok ? ok({ loggedOut: true }) : result, ctx.json, () => 'signed out');
   }),
 );
 
@@ -493,6 +541,41 @@ program.command('whoami').description('Current user and active tenant').action(
     );
   }),
 );
+
+const originCommand = program.command('origin').description('API-origin profiles');
+
+originCommand.command('list').description('List configured API origins').action(
+  withCtx((ctx) => {
+    const origins = Object.entries(ctx.config.profiles)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([profileOrigin, profile]) => ({
+        origin: profileOrigin,
+        current: profileOrigin === ctx.config.currentOrigin,
+        hasToken: profile.token !== null,
+        tenant: profile.tenant,
+      }));
+    emit(ok({ origins }), ctx.json, (data) =>
+      data.origins.length === 0
+        ? 'no configured origins'
+        : data.origins
+            .map((entry) =>
+              `${entry.current ? '*' : ' '} ${entry.origin}\ttoken=${entry.hasToken ? 'present' : 'absent'}\ttenant=${entry.tenant ?? '-'}`,
+            )
+            .join('\n'),
+    );
+  }),
+);
+
+originCommand
+  .command('use <url>')
+  .description('Select an API origin without making a network call')
+  .action(
+    withInput(originUseSchema, (ctx, [url]) => {
+      const selectedOrigin = apiOrigin(url);
+      saveConfig(updateOriginProfile(ctx.config, selectedOrigin, {}, true));
+      emit(ok({ origin: selectedOrigin }), ctx.json, (data) => `active origin: ${data.origin}`);
+    }),
+  );
 
 const publicCommand = program.command('public').description('Public read-only API');
 
@@ -590,7 +673,7 @@ tenant
         emit(err(notFound(`You do not administer any tenant with slug "${slug}"`)), ctx.json, () => '');
         return;
       }
-      saveConfig({ ...ctx.config, tenant: slug });
+      saveActiveProfile(ctx, { tenant: slug });
       emit(ok(membership), ctx.json, (m) => `active tenant: ${m.tenant.name} (${m.tenant.slug})`);
     }),
   );
@@ -2035,7 +2118,7 @@ program
         return;
       }
       if (verified.ok && verified.value.token) {
-        saveConfig({ ...ctx.config, apiUrl: ctx.apiUrl, token: verified.value.token });
+        saveActiveProfile(ctx, { token: verified.value.token });
       }
       emit(verified, ctx.json, () => `signed in as ${options.email} via magic link`);
     }),
@@ -2397,4 +2480,17 @@ my.command('products').description('Products you have been granted').action(
   }),
 );
 
-await program.parseAsync(process.argv);
+const wantsJson = process.argv.includes('--json');
+try {
+  await program.parseAsync(process.argv);
+} catch (error) {
+  if (error instanceof CommanderError) {
+    if (error.exitCode !== 0) {
+      emit(err(validation(error.message.replace(/^error:\s*/i, ''))), wantsJson, () => '');
+    }
+  } else if (error instanceof Error && error.message.startsWith('together:')) {
+    emit(err(internal(error.message)), wantsJson, () => '');
+  } else {
+    throw error;
+  }
+}

@@ -34,6 +34,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'integration_auth':
       return t.errors.messageIntegrationAuth;
     case 'integration_unavailable':
+    case 'unavailable':
       return t.errors.messageIntegrationUnavailable;
     case 'rate_limited':
       return t.errors.messageRateLimited;

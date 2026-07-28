@@ -269,15 +269,44 @@ const verifyTotpCli = async (
   return ok({ token });
 };
 
+const postCliSignOut = async (
+  baseUrl: string,
+  token: string,
+): Promise<Result<void, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/sign-out', baseUrl), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        origin: new URL(baseUrl).origin,
+      },
+      body: '{}',
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error calling /api/auth/sign-out: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult(undefined, await readAuthError(response));
+  return ok(undefined);
+};
+
 const notSupportedInCli = validation('This authentication method is not supported in the CLI');
 
-export const createCliAuthAdapter = (baseUrl: string, onToken: (token: string) => void): CliAuthAdapter => ({
+export const createCliAuthAdapter = (
+  baseUrl: string,
+  onToken: (token: string) => void,
+  token: () => string | null = () => null,
+): CliAuthAdapter => ({
   signUp: (input) => postCliAuth(baseUrl, '/api/auth/sign-up/email', input, onToken),
   signIn: (input) => postCliAuth(baseUrl, '/api/auth/sign-in/email', input, onToken),
   requestMagicLink: (input) => postCliMagicLink(baseUrl, input),
   requestPasswordReset: (input) => postCliPasswordReset(baseUrl, input),
   resetPassword: (input) => postCliResetPassword(baseUrl, input),
-  signOut: async () => ok(undefined),
+  signOut: async () => {
+    const currentToken = token();
+    return currentToken === null ? ok(undefined) : postCliSignOut(baseUrl, currentToken);
+  },
   registerPasskey: async () => err(notSupportedInCli),
   signInWithPasskey: async () => err(notSupportedInCli),
   enableTwoFactor: async () => err(notSupportedInCli),

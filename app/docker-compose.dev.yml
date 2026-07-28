@@ -17,5 +17,15 @@ services:
       timeout: 3s
       retries: 15
 
+  mailpit:
+    image: axllent/mailpit:v1.30.0
+    profiles: ['mailpit']
+    ports:
+      - '${MAILPIT_SMTP_PORT:-48925}:1025'
+      - '${MAILPIT_API_PORT:-48980}:8025'
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+
 volumes:
   together-pgdata:

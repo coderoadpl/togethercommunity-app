@@ -1,6 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
+    "api/index.ts",
     "eslint-plugin-together/index.js",
     "eslint-plugin-together/rules/*.test.js",
     "adapters/auth/auth.generate.ts",

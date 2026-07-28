@@ -25,6 +25,7 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'integration_not_configured':
     case 'integration_auth':
     case 'integration_unavailable':
+    case 'unavailable':
     case 'rate_limited':
     case 'not_consented':
     case 'suppressed':

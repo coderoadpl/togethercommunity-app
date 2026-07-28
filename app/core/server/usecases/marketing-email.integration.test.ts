@@ -1149,6 +1149,36 @@ describe('marketing e-mail use-case integration', () => {
       .toEqual(['delivered']);
   });
 
+  it('requires campaign write capability to delete a campaign', async () => {
+    const deps = await setup();
+    const campaign = await createCampaign(
+      ctx,
+      {
+        name: 'Disposable',
+        subject: 'S',
+        bodyHtml: '<p>B</p>',
+        consentDefinitionId: definition.id,
+      },
+      deps,
+    );
+    expect(campaign.ok).toBe(true);
+    if (!campaign.ok) return;
+    expect(
+      await deleteCampaign(
+        { ...ctx, capabilities: ['marketing:campaign:read'] },
+        { campaignId: campaign.value.id },
+        deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(
+      await deleteCampaign(
+        { ...ctx, capabilities: ['marketing:campaign:write'] },
+        { campaignId: campaign.value.id },
+        deps,
+      ),
+    ).toMatchObject({ ok: true });
+  });
+
   it('derives unique and total campaign engagement from events', async () => {
     const deps = await setup(['one@example.test', 'two@example.test']);
     await sendMarketingMessages(ctx, [

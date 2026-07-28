@@ -690,10 +690,10 @@ export const deleteCampaign = async (
 ): Promise<Result<{ deleted: true }, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
-  const campaign = await getCampaign(ctx, input, deps);
-  if (!campaign.ok) return campaign;
-  if (campaign.value.status !== 'draft') return err(validation('Only draft campaigns can be deleted'));
-  return await deps.campaigns.delete(campaign.value.tenantId, campaign.value.id)
+  const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
+  if (campaign === null) return err(notFound('Campaign was not found'));
+  if (campaign.status !== 'draft') return err(validation('Only draft campaigns can be deleted'));
+  return await deps.campaigns.delete(tenantId.value, campaign.id)
     ? ok({ deleted: true })
     : err(notFound('Campaign was not found'));
 };

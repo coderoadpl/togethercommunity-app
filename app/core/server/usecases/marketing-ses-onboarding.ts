@@ -10,6 +10,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   MarketingSesCredentialResolver,
@@ -49,13 +50,8 @@ interface SesOnboardingDeps {
   webhookBaseUrl: string;
 }
 
-const staffTenantIdFrom = (ctx: Ctx): Result<string, AppError> =>
-  ctx.identity.tenantId === null || ctx.identity.staffRole === null
-    ? err(forbidden('Tenant staff access is required'))
-    : ok(ctx.identity.tenantId);
-
 const onboardingContext = async (ctx: Ctx, deps: SesOnboardingDeps) => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = authorizeTenant(ctx, 'marketing:ses:write');
   if (!tenantId.ok) return tenantId;
   const settings = await deps.settings.findByTenant(tenantId.value);
   if (settings === null) return err(notFound('Save sender settings before starting SES onboarding'));

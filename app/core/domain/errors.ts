@@ -18,6 +18,7 @@ export const ERROR_CODES = [
   'ses_not_configured',
   'broadcasts_disabled',
   'transactional_platform_cap_reached',
+  'slug_reserved',
   'internal',
 ] as const;
 
@@ -62,5 +63,7 @@ export const unavailable = (message = 'Service unavailable'): AppError =>
 
 export const rateLimited = (message = 'Too many requests'): AppError =>
   appError('rate_limited', message);
+
+export const slugReserved = (message: string): AppError => appError('slug_reserved', message);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

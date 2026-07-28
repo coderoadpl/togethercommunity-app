@@ -20,6 +20,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   ses_not_configured: 412,
   broadcasts_disabled: 412,
   transactional_platform_cap_reached: 412,
+  slug_reserved: 422,
   internal: 500,
 };
 
@@ -43,5 +44,6 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   ses_not_configured: 17,
   broadcasts_disabled: 18,
   transactional_platform_cap_reached: 19,
+  slug_reserved: 21,
   internal: 10,
 };

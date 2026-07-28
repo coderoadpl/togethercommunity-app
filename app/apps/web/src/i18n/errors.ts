@@ -47,6 +47,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'broadcasts_disabled':
     case 'transactional_platform_cap_reached':
       return t.errors.messageIntegrationNotConfigured;
+    case 'slug_reserved':
+      return t.errors.messageSlugReserved({ slug: '…' });
     case 'internal':
       return t.errors.messageInternal;
   }

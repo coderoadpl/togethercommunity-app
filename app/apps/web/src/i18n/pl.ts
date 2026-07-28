@@ -48,6 +48,7 @@ export const pl: Messages = {
     headingTenantNotFound: 'Nieznana przestrzeń',
     headingValidation: 'Nieprawidłowe żądanie',
     headingConflict: 'Wystąpił konflikt zmian',
+    headingSlugReserved: 'Ten adres jest zarezerwowany',
     detailGeneric: 'Nieoczekiwany błąd przerwał działanie strony.',
     traceId: 'Identyfikator śledzenia:',
     messageUnauthorized: 'Twoja sesja wygasła. Zaloguj się ponownie, aby kontynuować.',
@@ -64,6 +65,8 @@ export const pl: Messages = {
     messageIntegrationUnavailable:
       'Usługa zewnętrzna jest chwilowo niedostępna. Spróbuj ponownie za chwilę.',
     messageRateLimited: 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.',
+    messageSlugReserved: ({ slug }) =>
+      format('Adres `{slug}` jest zarezerwowany dla platformy. Wybierz inny — np. dodaj nazwę marki.', { slug }),
     messageInternal: 'Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.',
     messageUnknown: 'Coś poszło nie tak. Spróbuj ponownie.',
   },

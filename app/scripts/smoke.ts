@@ -403,6 +403,12 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
     ),
     'login',
   );
+  expectError(
+    await cli(['--json', '--api-url', url, 'tenant', 'create', 'Reserved', '--slug', 'api'], authedHome),
+    'tenant create: reserved slug',
+    21,
+    'slug_reserved',
+  );
 
   const before = productsSchema.parse(
     expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'list'], authedHome), 'product list (before)'),

@@ -44,6 +44,7 @@ export default defineConfig({
             'apps/server/**/*.test.ts',
             'apps/server/**/*.test.tsx',
             'eslint-plugin-together/**/*.test.js',
+            'config-regression/**/*.test.ts',
             'scripts/**/*.test.ts',
           ],
         },

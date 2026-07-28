@@ -13,6 +13,19 @@ const env = loadEnv();
 const deps = createDeps(env);
 const app = buildApp(deps);
 
+if (deps.devSinkPurge !== undefined) {
+  void deps.devSinkPurge.purge().then(
+    (purged) => {
+      process.stdout.write(
+        `[dev-sink] purged ${String(purged.magicLinks)} magic links, ${String(purged.emails)} emails\n`,
+      );
+    },
+    (error: unknown) => {
+      process.stderr.write(`[dev-sink] purge failed: ${String(error)}\n`);
+    },
+  );
+}
+
 if (env.NODE_ENV !== 'test') {
   setInterval(() => {
     void deps.dispatchEmails('cron').then((result) => {

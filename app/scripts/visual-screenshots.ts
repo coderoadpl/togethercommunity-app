@@ -612,6 +612,7 @@ const comparePng = (name: string, currentPath: string): ShotFailure | null => {
   const diff = new PNG({ width: golden.width, height: golden.height });
   const mismatched = pixelmatch(golden.data, current.data, diff.data, golden.width, golden.height, {
     threshold: PIXELMATCH_THRESHOLD,
+    includeAA: false,
   });
   const ratio = mismatched / (golden.width * golden.height);
   if (ratio <= MAX_DIFF_RATIO) return null;

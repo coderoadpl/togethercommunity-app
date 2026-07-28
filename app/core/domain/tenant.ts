@@ -11,6 +11,35 @@ export const tenantSchema = z.object({
 
 export type Tenant = z.infer<typeof tenantSchema>;
 
+export const RESERVED_TENANT_SLUGS = [
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'auth',
+  'billing',
+  'blog',
+  'cdn',
+  'dashboard',
+  'dev',
+  'docs',
+  'ftp',
+  'help',
+  'login',
+  'mail',
+  'panel',
+  'prod',
+  'smtp',
+  'staging',
+  'static',
+  'status',
+  'support',
+  'www',
+] as const;
+
+export const isReservedTenantSlug = (slug: string): boolean =>
+  RESERVED_TENANT_SLUGS.some((reserved) => reserved === slug);
+
 /** BYO pointer: an absolute URL or a root-relative path served by the app itself. */
 export const brandingAssetUrlSchema = z.union([z.string().url(), z.string().regex(/^\/\S+$/)]);
 

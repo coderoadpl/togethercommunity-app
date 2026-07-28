@@ -42,6 +42,7 @@ export const en: Messages = {
     headingTenantNotFound: 'Unknown space',
     headingValidation: 'That request was invalid',
     headingConflict: 'A conflicting change happened',
+    headingSlugReserved: 'That address is reserved',
     detailGeneric: 'An unexpected error interrupted the page.',
     traceId: 'Trace ID:',
     messageUnauthorized: 'Your session has ended. Please sign in again to continue.',
@@ -58,6 +59,8 @@ export const en: Messages = {
     messageIntegrationUnavailable:
       'The external service is temporarily unavailable. Please try again in a moment.',
     messageRateLimited: 'Too many attempts. Please wait a moment before trying again.',
+    messageSlugReserved: ({ slug }) =>
+      format('The `{slug}` address is reserved by the platform. Pick another one — adding your brand name usually works.', { slug }),
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',
     messageUnknown: 'Something went wrong. Please try again.',
   },

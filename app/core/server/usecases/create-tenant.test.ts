@@ -137,7 +137,7 @@ describe('createTenant', () => {
 
     expect(result).toMatchObject({
       ok: false,
-      error: { code: 'validation', message: 'Tenant slug must be 3-63 lowercase letters, numbers or hyphens and not reserved' },
+      error: { code: 'validation', message: 'Tenant slug must be 3-63 lowercase letters, numbers or hyphens' },
     });
     expect(store.tenants).toEqual([]);
     expect(store.ownerGrants).toEqual([]);
@@ -151,7 +151,7 @@ describe('createTenant', () => {
       deps(reserved.repo),
     );
 
-    expect(rejected).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(rejected).toMatchObject({ ok: false, error: { code: 'slug_reserved' } });
     expect(reserved.tenants).toEqual([]);
 
     const available = fakeTenants();

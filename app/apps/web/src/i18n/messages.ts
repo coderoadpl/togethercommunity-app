@@ -45,6 +45,7 @@ export interface Messages {
     headingTenantNotFound: string;
     headingValidation: string;
     headingConflict: string;
+    headingSlugReserved: string;
     detailGeneric: string;
     traceId: string;
     messageUnauthorized: string;
@@ -58,6 +59,7 @@ export interface Messages {
     messageIntegrationAuth: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
+    messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
   };

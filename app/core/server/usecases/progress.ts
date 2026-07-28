@@ -7,6 +7,7 @@ import {
   updateLastViewedInputSchema,
   validation,
   type AppError,
+  type Capability,
   type MemberCourseProgress,
   type ProgressView,
   type Result,
@@ -14,6 +15,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   CourseModuleRepository,
@@ -40,10 +42,11 @@ interface MemberScope {
   memberId: string;
 }
 
-const requireMember = (ctx: Ctx): Result<MemberScope, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to track progress'));
+const requireMember = (ctx: Ctx, capability: Capability): Result<MemberScope, AppError> => {
+  const tenant = authorizeTenant(ctx, capability);
+  if (!tenant.ok) return tenant;
   if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));
-  return ok({ tenantId: ctx.identity.tenantId, memberId: ctx.identity.memberId });
+  return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });
 };
 
 export const markLessonCompleted = async (
@@ -51,7 +54,7 @@ export const markLessonCompleted = async (
   lessonId: string,
   deps: ProgressDeps,
 ): Promise<Result<MemberCourseProgress, AppError>> => {
-  const scope = requireMember(ctx);
+  const scope = requireMember(ctx, 'member:progress:self-write');
   if (!scope.ok) return scope;
   if (!lessonId) return err(validation('lessonId is required'));
 
@@ -92,7 +95,7 @@ export const unmarkLessonCompleted = async (
   lessonId: string,
   deps: ProgressDeps,
 ): Promise<Result<MemberCourseProgress, AppError>> => {
-  const scope = requireMember(ctx);
+  const scope = requireMember(ctx, 'member:progress:self-write');
   if (!scope.ok) return scope;
   if (!lessonId) return err(validation('lessonId is required'));
 
@@ -141,18 +144,12 @@ export interface MemberCourseProgressReset {
   clearedLessonCount: number;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage member progress'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can reset member progress'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const resetMemberCourseProgress = async (
   ctx: Ctx,
   input: { memberId: string; courseId: string },
   deps: ResetMemberCourseProgressDeps,
 ): Promise<Result<MemberCourseProgressReset, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:progress:manage');
   if (!tenant.ok) return tenant;
   if (!input.memberId) return err(validation('memberId is required'));
   if (!input.courseId) return err(validation('courseId is required'));
@@ -192,7 +189,7 @@ export const updateLastViewed = async (
   input: UpdateLastViewedInput,
   deps: ProgressDeps,
 ): Promise<Result<MemberCourseProgress, AppError>> => {
-  const scope = requireMember(ctx);
+  const scope = requireMember(ctx, 'member:progress:self-write');
   if (!scope.ok) return scope;
   const parsed = updateLastViewedInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid last-viewed update', parsed.error.flatten()));
@@ -222,7 +219,7 @@ export const getProgress = async (
   courseId: string,
   deps: Pick<ProgressDeps, 'progress'>,
 ): Promise<Result<ProgressView, AppError>> => {
-  const scope = requireMember(ctx);
+  const scope = requireMember(ctx, 'member:progress:read');
   if (!scope.ok) return scope;
   if (!courseId) return err(validation('courseId is required'));
 

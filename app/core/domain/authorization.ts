@@ -126,6 +126,7 @@ const sharedStaffCapabilities = [
   'course:read',
   'course:write',
   'course:history:read',
+  'lesson:play',
   'community:read',
   'community:write',
   'community:moderate',

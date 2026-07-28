@@ -176,7 +176,10 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/my/products' || path.startsWith('/api/student/') || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
+  if (path.startsWith('/api/student/')) {
+    return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
+  }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;
@@ -327,7 +330,10 @@ const beforeForUseCase = (
   if (body.includes('tenantIdFrom(ctx)')) return allHumans;
   if (file === 'create-tenant.ts') return authenticated;
   if (file === 'member-billing-orders.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
-  if (file === 'entitlements.ts' || file === 'lesson-media.ts') return member;
+  if (file === 'entitlements.ts') {
+    return name === 'resolveMemberEntitlements' ? member : tenantActors;
+  }
+  if (file === 'lesson-media.ts') return tenantActors;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
@@ -404,6 +410,10 @@ const suspicious: SuspiciousPermission[] = [
   {
     subject: 'staff with simultaneous membership',
     behavior: 'Identity resolution can carry both staffRole and memberId; staff checks take precedence in some use-cases while member-scoped use-cases accept the same identity through memberId.',
+  },
+  {
+    subject: 'staff lesson access',
+    behavior: 'Staff identities can use the student lesson and course-structure use-cases without a member row or product grant.',
   },
 ];
 

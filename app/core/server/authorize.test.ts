@@ -32,6 +32,14 @@ describe('authorize', () => {
       message: 'product:write is not permitted',
     });
   });
+
+  it('preserves a membership grant on an identity that also carries a staff role', () => {
+    const dualIdentity = { ...identity('tenant-1'), memberId: 'member-1' };
+    expect(authorize({ identity: dualIdentity }, 'member:billing:read')).toBeNull();
+    expect(authorize({ identity: identity('tenant-1') }, 'member:billing:read')).toMatchObject({
+      code: 'forbidden',
+    });
+  });
 });
 
 describe('authorizeTenant', () => {

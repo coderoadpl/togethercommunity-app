@@ -36,6 +36,7 @@ describe('permission inventory', () => {
       'GET /api/tenant/settings',
       'marketing synthetic identities',
       'tenant creation mode',
+      'staff lesson access',
     ]));
   });
 

@@ -1019,6 +1019,10 @@ export const pl: Messages = {
     noMatches: 'Żadna strefa nie pasuje do filtra.',
   },
   account: {
+    dataExportHeading: 'Pobierz swoje dane',
+    dataExportIntro: 'Wyeksportuj profil, zgody, zakupy, dostępy, postępy i wpisy jako JSON.',
+    dataExportButton: 'Pobierz moje dane',
+    dataExportPreparing: 'Przygotowywanie…',
     menuAccount: 'Konto',
     title: 'Konto',
     heading: 'Twoje konto',

@@ -41,6 +41,7 @@ export * from './usecases/invoices.js';
 export * from './usecases/ksef-submissions.js';
 export * from './usecases/dispatch-ksef-job.js';
 export * from './usecases/member-billing-orders.js';
+export * from './usecases/member-data-export.js';
 export * from './usecases/subscription-lifecycle.js';
 export * from './usecases/subscription-simulate.js';
 export * from './usecases/entitlements.js';

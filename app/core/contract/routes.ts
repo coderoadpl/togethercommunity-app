@@ -308,6 +308,7 @@ export const membersListOutputSchema = z.object({
 });
 
 export const membersExportOutputSchema = memberExportFileSchema;
+export const memberDataExportOutputSchema = memberExportFileSchema;
 
 export const memberRemoveInputSchema = z.object({
   memberId: z.string().min(1),
@@ -1104,6 +1105,7 @@ export const API_ROUTES = {
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
+  memberDataExport: { method: 'GET', path: '/api/me/data-export' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
   products: { method: 'GET', path: '/api/products' },
@@ -1276,6 +1278,7 @@ export const API_PATHS = {
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   memberBillingOrders: API_ROUTES.memberBillingOrders.path,
+  memberDataExport: API_ROUTES.memberDataExport.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,

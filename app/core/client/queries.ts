@@ -620,6 +620,14 @@ export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =
     call: ({ signal }) => api.exportMembers(format, signal),
   });
 
+export const myDataExportQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: ['my-data-export'],
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportMyData(signal),
+  });
+
 export const removeMemberMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...membersScopes.all(), 'remove'],

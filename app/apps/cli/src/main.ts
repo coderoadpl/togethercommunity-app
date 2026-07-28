@@ -183,6 +183,9 @@ const memberExportOptionsSchema = z.object({
   format: memberExportFormatSchema,
   out: z.string().min(1).optional(),
 });
+const myDataExportOptionsSchema = z.object({
+  out: z.string().min(1).optional(),
+});
 const noOptionsSchema = z.object({});
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
@@ -2539,6 +2542,21 @@ my.command('products').description('Products you have been granted').action(
     );
   }),
 );
+
+my.command('data-export')
+  .description('Export your personal data as JSON')
+  .option('--out <file>', 'write the export to a file instead of stdout')
+  .action(
+    withInput(z.tuple([myDataExportOptionsSchema]), async (ctx, [options]) => {
+      const result = await ctx.api.exportMyData();
+      if (result.ok && options.out !== undefined) {
+        await writeFile(options.out, result.value.content);
+      }
+      emit(result, ctx.json, (file) =>
+        options.out !== undefined ? `wrote ${file.filename} to ${options.out}` : file.content,
+      );
+    }),
+  );
 
 const wantsJson = process.argv.includes('--json');
 try {

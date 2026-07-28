@@ -13,6 +13,7 @@ import {
   healthOutputSchema,
   looseEnvelopeSchema,
   meOutputSchema,
+  memberDataExportOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
   ordersReconciliationOutputSchema,
@@ -25,6 +26,7 @@ import {
   tenantCreateOutputSchema,
   tenantListOutputSchema,
 } from '#core/contract/index.js';
+import { memberDataExportSchema } from '#core/domain/index.js';
 
 import {
   bootServer,
@@ -368,6 +370,16 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   assert(myProducts.products.length === 1, `member should have one product, got ${myProducts.products.length}`);
   assert(myProducts.products[0]?.id === kursAlfa.id && myProducts.products[0].title === 'Kurs Alfa', 'member grant mismatch');
+  const myDataExport = expectOk(
+    await cli(['--tenant', 'alfa', 'my', 'data-export'], buyerHome),
+    'member data export',
+    memberDataExportOutputSchema,
+  );
+  const exportedMemberData = memberDataExportSchema.parse(JSON.parse(myDataExport.content));
+  assert(
+    exportedMemberData.profile.email === 'kursant@together.dev',
+    'member data export email mismatch',
+  );
   expectError(
     await cli(['--tenant', 'beta', 'my', 'products'], buyerHome),
     'member my products beta',

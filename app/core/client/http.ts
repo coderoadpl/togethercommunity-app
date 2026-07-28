@@ -70,6 +70,7 @@ import {
   tenantSchedulerRunsOutputSchema,
   meOutputSchema,
   memberBillingOrdersOutputSchema,
+  memberDataExportOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
   memberProgressResetOutputSchema,
@@ -796,6 +797,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   myProducts: (signal?: AbortSignal) =>
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
+  exportMyData: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberDataExport.method,
+      API_ROUTES.memberDataExport.path,
+      memberDataExportOutputSchema,
+      undefined,
+      signal,
+    ),
   listMembers: (signal?: AbortSignal) =>
     request(options, API_ROUTES.members.method, API_ROUTES.members.path, membersListOutputSchema, undefined, signal),
   exportMembers: (format: MemberExportFormat, signal?: AbortSignal) =>

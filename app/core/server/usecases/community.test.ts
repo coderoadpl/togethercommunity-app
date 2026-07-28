@@ -247,7 +247,7 @@ class FakePosts implements PostRepository {
   async softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, deletedAt: input.deletedAt };
+    const next = { ...post, deletedAt: input.deletedAt, pinnedAt: null };
     this.replace(next);
     return next;
   }

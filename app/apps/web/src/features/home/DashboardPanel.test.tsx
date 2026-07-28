@@ -94,6 +94,7 @@ describe('DashboardPanel', () => {
     const tile = await screen.findByTestId('dashboard-tile-members');
     expect(tile).toHaveTextContent('2');
     expect(tile).toHaveTextContent(pl.dashboard.membersRemoved({ count: 1 }));
+    expect(tile).toHaveTextContent('+ 1 usunięty');
   });
 
   it('shows counts for products, courses, members and active grants plus recent members', async () => {

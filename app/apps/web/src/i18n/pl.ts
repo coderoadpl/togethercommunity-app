@@ -153,7 +153,7 @@ export const pl: Messages = {
     loading: 'ładowanie przeglądu…',
     publishedDraft: ({ published, draft }) =>
       format('opublikowane: {published} · robocze: {draft}', { published, draft }),
-    membersRemoved: ({ count }) => `+ ${count} usuniętych`,
+    membersRemoved: ({ count }) => `+ ${count} ${plural(count, 'usunięty', 'usunięte', 'usuniętych')}`,
     activeGrants: 'Aktywne dostępy',
     recentMembers: 'Najnowsi uczestnicy',
     viewAllMembers: 'Wszyscy uczestnicy',

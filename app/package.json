@@ -48,6 +48,7 @@
     "shots:themes": "tsx scripts/theme-screenshots.ts",
     "visual": "tsx scripts/visual-screenshots.ts",
     "visual:update": "tsx scripts/visual-screenshots.ts --update",
+    "visual:argos-capture": "tsx scripts/visual-screenshots.ts --argos-capture",
     "legacy:export": "tsx scripts/legacy-export.ts",
     "import": "tsx scripts/import.ts",
     "e2e:auth": "tsx scripts/auth-e2e.ts",
@@ -99,6 +100,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@argos-ci/cli": "^6.5.0",
     "@eslint/js": "^9.39.5",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@storybook/react-vite": "^10.5.2",

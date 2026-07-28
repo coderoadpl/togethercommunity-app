@@ -60,6 +60,7 @@ export interface Messages {
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;
+    messageInvoiceExemptionBasisMissing: string;
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
@@ -973,6 +974,20 @@ export interface Messages {
     allBuyers: string;
     vatRate: string;
     vatRateUnset: string;
+    vatTreatment: string;
+    vatTreatmentRate: string;
+    vatTreatmentExempt: string;
+    exemptionBasisKind: string;
+    exemptionBasisKindArt113_1: string;
+    exemptionBasisKindArt113_9: string;
+    exemptionBasisKindArt43_1: string;
+    exemptionBasisKindOtherStatute: string;
+    exemptionBasisKindOther: string;
+    exemptionBasis: string;
+    exemptionBasisHelp: string;
+    exemptionBasisRequired: string;
+    exemptionBasisArt43Help: string;
+    exemptNote: string;
     invoicingProvider: string;
     providerIfirma: string;
     providerKsef: string;

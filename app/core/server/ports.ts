@@ -23,6 +23,7 @@ import type {
   Membership,
   Order,
   OrderListItem,
+  PaidWithoutGrantRow,
   OrderStatus,
   PriceKind,
   Product,
@@ -784,6 +785,10 @@ export interface OrderRepository {
   }>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;
   countSince(tenantId: string, sinceIso: string): Promise<number>;
+  listPaidWithoutGrant(
+    tenantId: string,
+    query: { paidBefore: string; limit: number },
+  ): Promise<PaidWithoutGrantRow[]>;
 }
 
 export interface OrderDetailRepository {

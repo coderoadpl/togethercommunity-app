@@ -85,6 +85,7 @@ import {
   notificationsReadAllOutputSchema,
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
+  ordersReconciliationOutputSchema,
   orderDetailOutputSchema,
   invoiceOutputSchema,
   ordersExportOutputSchema,
@@ -170,6 +171,7 @@ import {
   type NotificationReadInput,
   type NotificationsListInput,
   type OrdersListQueryInput,
+  type OrdersReconciliationQueryInput,
   type OrdersExportQueryInput,
   type ProductPriceCreateInput,
   type ProductPriceDeactivateInput,
@@ -625,6 +627,27 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.orders.method,
       suffix.length > 0 ? `${API_ROUTES.orders.path}?${suffix}` : API_ROUTES.orders.path,
       ordersListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  listOrderReconciliation: (
+    input: OrdersReconciliationQueryInput = {},
+    signal?: AbortSignal,
+  ) => {
+    const params = new URLSearchParams();
+    if (input.minAgeMinutes !== undefined) {
+      params.set('minAgeMinutes', String(input.minAgeMinutes));
+    }
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.ordersReconciliation.method,
+      suffix.length > 0
+        ? `${API_ROUTES.ordersReconciliation.path}?${suffix}`
+        : API_ROUTES.ordersReconciliation.path,
+      ordersReconciliationOutputSchema,
       undefined,
       signal,
     );

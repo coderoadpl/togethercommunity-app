@@ -213,6 +213,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
       countSince: async () => 0,
+      listPaidWithoutGrant: async () => [],
     },
     paymentRefunds: {
       findOrderByProviderObjectIds: async (tenantId, providerObjectIds) =>

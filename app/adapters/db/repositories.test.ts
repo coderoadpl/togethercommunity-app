@@ -311,6 +311,31 @@ describe('order repository', () => {
     expect(await repo.countSince(ACME, PAST)).toBe(2);
   });
 
+  it('lists only paid orders without a matching tenant member product grant', async () => {
+    const repo = createOrderRepository(db);
+    await repo.create(
+      ACME,
+      order({
+        id: 'order-acme-missing-grant',
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        productId: 'prod-acme-draft',
+        createdAt: NOW,
+      }),
+    );
+
+    const rows = await repo.listPaidWithoutGrant(ACME, { paidBefore: NOW, limit: 10 });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        orderId: 'order-acme-missing-grant',
+        memberEmail: 'buyer-acme@together.dev',
+        productTitle: 'Draft',
+      }),
+    ]);
+    expect(await repo.listPaidWithoutGrant(GLOBEX, { paidBefore: NOW, limit: 10 })).toEqual([]);
+  });
+
   it.each([
     ['checkoutSession', 'cs-idempotent'],
     ['invoice', 'in-idempotent'],

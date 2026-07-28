@@ -193,6 +193,10 @@ export interface Messages {
     exporting: string;
     coupon: string;
     discount: string;
+    reconciliationHeading: string;
+    reconciliationHint: string;
+    reconciliationEmpty: string;
+    reconciliationAge: (params: { date: string }) => string;
     orderTitle: (params: { id: string }) => string;
     allOrders: string;
     provider: string;

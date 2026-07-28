@@ -129,6 +129,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/products/prices` | authenticated | mutating | product prices create |
 | `POST /api/products/prices/deactivate` | authenticated | mutating | product price deactivate |
 | `GET /api/orders` | authenticated | read | orders |
+| `GET /api/orders/reconciliation` | authenticated | read | orders reconciliation |
 | `GET /api/orders/export` | authenticated | read | orders export |
 | `GET /api/orders/:orderId` | authenticated | read | order |
 | `POST /api/orders/:orderId/invoice` | authenticated | mutating | invoice issue |

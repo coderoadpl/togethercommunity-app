@@ -158,6 +158,29 @@ export type ExportOrdersQueryInput = z.input<typeof exportOrdersQuerySchema>;
 export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>;
 export type ListOrdersQueryInput = z.input<typeof listOrdersQuerySchema>;
 
+export const paidWithoutGrantRowSchema = z.object({
+  orderId: z.string(),
+  createdAt: z.string().datetime(),
+  memberId: z.string(),
+  memberEmail: z.string(),
+  productId: z.string(),
+  productTitle: z.string(),
+  kind: priceKindSchema,
+  provider: orderProviderSchema,
+  amountCents: z.number().int().nonnegative(),
+  currency: currencySchema,
+  providerObjectIds: z.record(z.string()),
+});
+
+export type PaidWithoutGrantRow = z.infer<typeof paidWithoutGrantRowSchema>;
+
+export const orderReconciliationQuerySchema = z.object({
+  minAgeMinutes: z.coerce.number().int().min(0).max(1440).default(15),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export type OrderReconciliationQuery = z.infer<typeof orderReconciliationQuerySchema>;
+
 export const subscriptionStatusSchema = z.enum(['active', 'past_due', 'canceled']);
 
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;

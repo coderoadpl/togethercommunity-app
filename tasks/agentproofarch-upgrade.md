@@ -80,3 +80,25 @@ Deployment target confirmation (vercel.json exists, no entry file — entry is
 already on the owner's waiting list), mutating public endpoints for stage 2,
 member-aggregate parity details (A2), sx-rule fallout size (known after E3
 lands).
+
+
+## Executed (2026-07-28)
+
+All three stages merged the same day, each through implement -> Opus review ->
+fixes -> Fable convergence audit -> independent gate verification -> CI watch:
+
+- Stage 1 (PR #13 + CI fix #14): provenance, codemod, enforcement hardening,
+  new enforcers, GitHub Actions CI from scratch.
+- Stage 2 (PR #15): server edge split + security baseline, fail-closed route
+  manifests (owner decision), envelopes/CLI/health, atomicity guards, Vercel
+  topology (ADR-0003/0007/0008).
+- Stage 3 (PR #16): default-deny capability authorization with a code-proven
+  zero-permission-change contract (docs/permission-table.md).
+- Stage 3 finale (PR #17): island cores inert + checkout pilot island,
+  AppShell PageState doctrine, visual determinism knobs with an audited
+  one-time golden regeneration.
+
+Deferred by plan: pnpm migration (own PR, after CI bake-in); authz follow-ups
+(probe shapes, matrix rows at synthetic edges) and the coupon-UI browser e2e
+gap are in the Todoist backlog. Final gates at merge: check 1345 tests /
+smoke / visual 210 / e2e subs+marketing+auth+poc, CI green on every merge.

@@ -293,7 +293,7 @@ Architecture is enforced by configuration and executable probes:
 | `npm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
 | `npm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
 | `npm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
-| `npm run e2e:poc` | The creator and member proof-of-concept journeys through the real browser stack. |
+| `npm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` is the browser-driven suite). |
 | `npm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
 | `npm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
 | `npm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |

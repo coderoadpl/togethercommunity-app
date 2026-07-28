@@ -82,6 +82,7 @@ describe('getPublicOffer', () => {
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
           legal: { termsUrl: null, privacyUrl: null },
+          support: { url: null },
         },
         contentVersion: 7,
         products: [

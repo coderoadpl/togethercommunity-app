@@ -7,6 +7,7 @@ import {
   spacePost,
   subscriptionEnded,
   subscriptionPaymentFailed,
+  supportMessage,
   threadReply,
   welcomeSetPassword,
 } from './transactional-email.js';
@@ -37,6 +38,22 @@ describe('subscription lifecycle emails', () => {
     const offerUrl = 'https://acme.example.com/';
     expect(subscriptionEnded('pl', { ...input, offerUrl }).html).toContain('Zobacz ofertę');
     expect(subscriptionEnded('en', { ...input, offerUrl }).html).toContain('View the offer');
+  });
+});
+
+describe('support message email', () => {
+  it('renders PL and EN while escaping sender-controlled content', () => {
+    const input = {
+      tenantName: 'Acme <Studio>',
+      memberEmail: 'member@example.com',
+      memberDisplay: 'Marta & Jan',
+      subject: 'Help <now>',
+      body: 'Please <script>alert(1)</script>',
+    };
+    const pl = supportMessage('pl', input);
+    expect(pl.html).toContain('Acme &lt;Studio&gt;');
+    expect(pl.html).not.toContain('<script>');
+    expect(supportMessage('en', input).html).toContain('Reply to: member@example.com');
   });
 });
 

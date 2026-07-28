@@ -295,3 +295,34 @@ export const subscriptionEnded = (
     text: `Cześć!\n\nTwoja subskrypcja ${input.productTitle} na platformie ${input.tenantName} zakończyła się.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.\n\nZobacz ofertę: ${input.offerUrl}`,
   });
 };
+
+export const supportMessage = (
+  language: string,
+  input: {
+    tenantName: string;
+    memberEmail: string;
+    memberDisplay: string;
+    subject: string;
+    body: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const memberEmail = escapeHtml(input.memberEmail);
+  const memberDisplay = escapeHtml(input.memberDisplay);
+  const subject = escapeHtml(input.subject);
+  const body = escapeHtml(input.body);
+  const header = brandHeader(input.branding);
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `[${input.tenantName}] ${input.subject}`,
+      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `[${input.tenantName}] ${input.subject}`,
+    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+  });
+};

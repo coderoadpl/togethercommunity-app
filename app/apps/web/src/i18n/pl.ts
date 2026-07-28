@@ -1054,6 +1054,20 @@ export const pl: Messages = {
     successBody: 'Możesz teraz zalogować się nowym hasłem.',
     goToLogin: 'Przejdź do logowania',
   },
+  support: {
+    heading: 'Skontaktuj się z twórcą',
+    intro: 'Wyślij prywatną wiadomość do zespołu prowadzącego tę przestrzeń.',
+    subjectLabel: 'temat',
+    bodyLabel: 'wiadomość',
+    send: 'Wyślij wiadomość',
+    sending: 'Wysyłanie…',
+    sent: 'Twoja wiadomość została wysłana.',
+    notConfigured: 'Twórca nie skonfigurował adresu wsparcia.',
+    externalLink: 'Otwórz zewnętrzne wsparcie',
+    emailLabel: 'e-mail wsparcia',
+    urlLabel: 'zewnętrzny adres URL wsparcia',
+    save: 'Zapisz ustawienia wsparcia',
+  },
   billing: {
     heading: 'Portal płatności',
     intro:

@@ -11,6 +11,7 @@ import {
   type Result,
   type Tenant,
   type TenantBranding,
+  type TenantSupportPublic,
 } from '#core/domain/index.js';
 
 import type {
@@ -27,6 +28,7 @@ export interface PublicOffer {
     name: string;
     branding: TenantBranding;
     legal: LegalUrls;
+    support: TenantSupportPublic;
   };
   contentVersion: number;
   products: PublicOfferProduct[];
@@ -91,6 +93,7 @@ export const getPublicOffer = async (
         settings === null
           ? EMPTY_LEGAL_URLS
           : { termsUrl: settings.termsUrl, privacyUrl: settings.privacyUrl },
+      support: { url: settings?.supportUrl ?? null },
     },
     contentVersion: tenant.contentVersion,
     products: await Promise.all(products.map(async (product) => ({

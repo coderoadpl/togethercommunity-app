@@ -64,6 +64,7 @@ import type {
   SpaceFeedGetInput,
   SpaceFollowInput,
   SpaceUpdateInput,
+  SupportMessageInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
   ProductPriceCreateInput,
@@ -1053,6 +1054,12 @@ export const updateTenantSettingsMutation = (api: ApiClient) =>
   });
 
 export const tenantSettingsInvalidates = () => ({ queryKey: tenantSettingsScopes.all() });
+
+export const sendSupportMessageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['support', 'message'],
+    call: (input: SupportMessageInput) => api.sendSupportMessage(input),
+  });
 
 export const onboardingQuery = (api: ApiClient) =>
   defineQuery({

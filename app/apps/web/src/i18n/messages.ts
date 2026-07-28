@@ -937,6 +937,20 @@ export interface Messages {
     successBody: string;
     goToLogin: string;
   };
+  support: {
+    heading: string;
+    intro: string;
+    subjectLabel: string;
+    bodyLabel: string;
+    send: string;
+    sending: string;
+    sent: string;
+    notConfigured: string;
+    externalLink: string;
+    emailLabel: string;
+    urlLabel: string;
+    save: string;
+  };
   billing: {
     heading: string;
     intro: string;

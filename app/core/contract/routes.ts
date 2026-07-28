@@ -77,6 +77,7 @@ import {
   productSchema,
   progressViewSchema,
   searchPostsInputSchema,
+  sendSupportMessageInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
   streamVideoPageSchema,
@@ -87,6 +88,7 @@ import {
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
+  tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
   consentDefinitionVersionSchema,
@@ -220,6 +222,7 @@ export const publicOfferOutputSchema = z.object({
     name: z.string(),
     branding: tenantBrandingSchema.default({}),
     legal: publicLegalUrlsSchema.default({}),
+    support: tenantSupportPublicSchema.default({ url: null }),
   }),
   contentVersion: z.number().int().positive(),
   products: z.array(
@@ -863,6 +866,12 @@ export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
 
+export const supportMessageInputSchema = sendSupportMessageInputSchema;
+
+export type SupportMessageInput = z.input<typeof supportMessageInputSchema>;
+
+export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
+
 export const stripeTestConnectionOutputSchema = z.object({
   ok: z.literal(true),
   diagnostic: z.string(),
@@ -1244,6 +1253,7 @@ export const API_ROUTES = {
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
+  supportMessage: { method: 'POST', path: '/api/support/message' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
   onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
 } as const;
@@ -1403,6 +1413,7 @@ export const API_PATHS = {
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
+  supportMessage: API_ROUTES.supportMessage.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
 } as const;

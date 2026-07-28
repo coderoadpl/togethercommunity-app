@@ -65,6 +65,8 @@ export const tenantSettingsSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
+  supportEmail: z.string().email().nullable().optional(),
+  supportUrl: z.string().url().nullable().optional(),
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
   autoIssueInvoices: z.boolean().optional(),
@@ -89,6 +91,12 @@ const clearableUrl = z
   .transform((value) => (value === '' || value === null ? null : value))
   .optional();
 
+const clearableEmail = z
+  .union([z.string().email(), z.literal('')])
+  .nullable()
+  .transform((value) => (value === '' || value === null ? null : value))
+  .optional();
+
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
   billingPortalUrl: clearableUrl,
@@ -105,6 +113,8 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
+  supportEmail: clearableEmail,
+  supportUrl: clearableUrl,
   termsUrl: clearableUrl,
   privacyUrl: clearableUrl,
   autoIssueInvoices: z.boolean().optional(),
@@ -116,6 +126,12 @@ export const updateTenantSettingsInputSchema = z.object({
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+export const tenantSupportPublicSchema = z.object({
+  url: z.string().url().nullable(),
+});
+
+export type TenantSupportPublic = z.infer<typeof tenantSupportPublicSchema>;
 
 export const membershipSchema = z.object({
   tenant: tenantSchema,

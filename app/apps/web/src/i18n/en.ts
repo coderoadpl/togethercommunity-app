@@ -1034,6 +1034,20 @@ export const en: Messages = {
     successBody: 'You can now sign in with your new password.',
     goToLogin: 'Go to sign in',
   },
+  support: {
+    heading: 'Contact the creator',
+    intro: 'Send a private support message to the team behind this space.',
+    subjectLabel: 'subject',
+    bodyLabel: 'message',
+    send: 'Send message',
+    sending: 'Sending…',
+    sent: 'Your message has been sent.',
+    notConfigured: 'The creator has not configured a support address.',
+    externalLink: 'Open external support',
+    emailLabel: 'support email',
+    urlLabel: 'external support URL',
+    save: 'Save support settings',
+  },
   billing: {
     heading: 'Billing portal',
     intro:

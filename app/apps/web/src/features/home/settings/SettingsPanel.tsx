@@ -92,6 +92,62 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
+const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [email, setEmail] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const update = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+  const emailValue = email ?? settings.data?.settings.supportEmail ?? '';
+  const urlValue = url ?? settings.data?.settings.supportUrl ?? '';
+  return (
+    <SectionCard
+      title={t.support.heading}
+      description={t.support.intro}
+      onSubmit={(event) => {
+        event.preventDefault();
+        update.mutate({
+          supportEmail: emailValue.trim() === '' ? null : emailValue.trim(),
+          supportUrl: urlValue.trim() === '' ? null : urlValue.trim(),
+        });
+      }}
+    >
+      <FormControl fullWidth>
+        <FormLabel htmlFor="support-email">{t.support.emailLabel}</FormLabel>
+        <OutlinedInput
+          id="support-email"
+          type="email"
+          value={emailValue}
+          disabled={!canEdit}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="support-url">{t.support.urlLabel}</FormLabel>
+        <OutlinedInput
+          id="support-url"
+          type="url"
+          value={urlValue}
+          disabled={!canEdit}
+          onChange={(event) => setUrl(event.target.value)}
+        />
+      </FormControl>
+      {canEdit ? (
+        <Button type="submit" variant="outlined" disabled={update.isPending}>
+          {t.support.save}
+        </Button>
+      ) : null}
+      {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 const previewFor = (
   secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
   key: TenantSecretKey,
@@ -601,6 +657,7 @@ export const SettingsPanel = () => {
   return (
     <PanelPage title={t.sections.settings}>
       <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+      <SupportSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <InvoiceSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />

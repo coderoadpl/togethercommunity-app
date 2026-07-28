@@ -1,7 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   Box,
   Button,
+  FormControl,
+  FormLabel,
+  OutlinedInput,
   Stack,
   Typography,
 } from '@mui/material';
@@ -28,6 +31,9 @@ export const MemberAccountPage = () => {
   const me = useQuery(actions.me);
   const billingOrders = useQuery(actions.memberBillingOrders);
   const tenantSettings = useQuery(actions.tenantSettings);
+  const [supportSubject, setSupportSubject] = useState('');
+  const [supportBody, setSupportBody] = useState('');
+  const support = useMutation(actions.sendSupportMessage);
 
   const unauthorized = isUnauthorized(me.error);
 
@@ -110,6 +116,57 @@ export const MemberAccountPage = () => {
                 </Button>
               </Box>
           </SectionCard>
+        ) : null}
+
+        {tenantSettings.data?.settings.supportEmail !== null &&
+        tenantSettings.data?.settings.supportEmail !== undefined ? (
+          <SectionCard
+            title={t.support.heading}
+            description={t.support.intro}
+            onSubmit={(event: FormEvent) => {
+              event.preventDefault();
+              support.mutate({ subject: supportSubject, body: supportBody });
+            }}
+          >
+            <FormControl fullWidth>
+              <FormLabel htmlFor="support-subject">{t.support.subjectLabel}</FormLabel>
+              <OutlinedInput
+                id="support-subject"
+                value={supportSubject}
+                onChange={(event) => setSupportSubject(event.target.value)}
+                required
+              />
+            </FormControl>
+            <FormControl fullWidth>
+              <FormLabel htmlFor="support-body">{t.support.bodyLabel}</FormLabel>
+              <OutlinedInput
+                id="support-body"
+                multiline
+                minRows={5}
+                value={supportBody}
+                onChange={(event) => setSupportBody(event.target.value)}
+                required
+              />
+            </FormControl>
+            <Button type="submit" variant="contained" disabled={support.isPending}>
+              {support.isPending ? t.support.sending : t.support.send}
+            </Button>
+            {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}
+            {support.isError ? (
+              <StatusView state={{ kind: 'error', message: localizeError(support.error, t) }} />
+            ) : null}
+          </SectionCard>
+        ) : null}
+
+        {tenantSettings.data?.settings.supportUrl ? (
+          <Button
+            component="a"
+            href={tenantSettings.data.settings.supportUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t.support.externalLink}
+          </Button>
         ) : null}
 
         {billedOrders.length > 0 ? (

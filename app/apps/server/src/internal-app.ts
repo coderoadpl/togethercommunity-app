@@ -71,6 +71,7 @@ import {
   spaceFollowInputSchema,
   spaceUpdateInputSchema,
   subscriptionSimulateInputSchema,
+  supportMessageInputSchema,
   TENANT_HEADER,
   tenantCreateInputSchema,
   tenantSecretDeleteInputSchema,
@@ -219,6 +220,7 @@ import {
   sendTransactionalSmtpTest,
   setSpaceArchived,
   setPostPinned,
+  sendSupportMessage,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -1902,6 +1904,15 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid post payload', parsed.error.flatten())));
     const result = await createPost({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.post(API_PATHS.supportMessage, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = supportMessageInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid support message', parsed.error.flatten())));
+    }
+    return respond(await sendSupportMessage({ identity: c.get('identity') }, parsed.data, deps));
   });
 
   app.post(API_PATHS.postsPin, async (c) => {

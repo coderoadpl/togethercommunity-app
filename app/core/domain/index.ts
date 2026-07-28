@@ -19,6 +19,7 @@ export * from './course.js';
 export * from './community.js';
 export * from './space.js';
 export * from './tenant.js';
+export * from './support.js';
 export * from './consent.js';
 export * from './tenant-secret.js';
 export * from './onboarding.js';

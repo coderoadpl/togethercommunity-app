@@ -152,6 +152,10 @@ const ordersReconciliationOptionsSchema = z.object({
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
 });
+const supportMessageOptionsSchema = z.object({
+  subject: z.string().trim().min(1),
+  body: z.string().trim().min(1),
+});
 const couponCreateOptionsSchema = z.object({
   code: z.string().trim().min(1),
   kind: z.enum(['percent', 'amount']),
@@ -1060,6 +1064,22 @@ ordersCommand.command('summary').description('Dashboard sales summary (last 30 d
     });
   }),
 );
+
+program
+  .command('support')
+  .description('Contact the active tenant creator')
+  .command('send')
+  .requiredOption('--subject <subject>')
+  .requiredOption('--body <body>')
+  .action(
+    withInput(z.tuple([supportMessageOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.sendSupportMessage(options),
+        ctx.json,
+        () => 'support message queued',
+      );
+    }),
+  );
 
 const couponsCommand = program.command('coupons').description('Coupons and attributed sales');
 

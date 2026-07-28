@@ -131,6 +131,7 @@ export interface Messages {
     sales: string;
     coupons: string;
     members: string;
+    reports: string;
     integrations: string;
     settings: string;
     marketingActivity: string;
@@ -142,6 +143,24 @@ export interface Messages {
     marketingSettings: string;
     aria: string;
     comingSoon: string;
+  };
+  reports: {
+    heading: string;
+    loading: string;
+    empty: string;
+    statusOpen: string;
+    statusDismissed: string;
+    statusResolved: string;
+    sourceMember: string;
+    sourceHeuristic: string;
+    signalLinkFlood: string;
+    signalDuplicateBody: string;
+    reportedBy: (params: { name: string }) => string;
+    otherReports: (params: { count: number }) => string;
+    dismiss: string;
+    dismissConfirm: string;
+    deletePost: string;
+    deletePostConfirm: string;
   };
   dashboard: {
     heading: string;
@@ -859,6 +878,18 @@ export interface Messages {
     pinLimitReached: string;
     threadTitle: string;
     threadEyebrow: string;
+    report: string;
+    reportTitle: string;
+    reportReasonLabel: string;
+    reportReasonSpam: string;
+    reportReasonHarassment: string;
+    reportReasonOffTopic: string;
+    reportReasonIllegal: string;
+    reportReasonOther: string;
+    reportNoteLabel: string;
+    reportSubmit: string;
+    reportSent: string;
+    reportAlready: string;
   };
   spacesPanel: {
     loading: string;

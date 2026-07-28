@@ -21,6 +21,7 @@ import {
 import { EmptyFeedIcon } from './community-icons.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PostComposer } from './ThreadDiscussion.js';
+import { ReportPostButton } from './ReportPostButton.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -139,6 +140,7 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </Button>
           ) : null}
+          {!item.isOwn && !deleted ? <ReportPostButton postId={item.id} /> : null}
         </Stack>
       </Stack>
     </DiscussionThread>

@@ -117,6 +117,15 @@ const deps = (input: {
     memberErasure: {
       pseudonymize: async () => null,
     },
+    reports: {
+      open: async () => null,
+      findById: async () => null,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpenByPost: async () => new Map(),
+      countOpen: async () => 0,
+      resolve: async () => null,
+      resolveAllForPost: async () => 0,
+    },
     grants: {
       findById: async () => null,
       findGrant: async () => null,

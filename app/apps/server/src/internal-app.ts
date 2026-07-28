@@ -53,8 +53,11 @@ import {
   postCreateInputSchema,
   postDeleteInputSchema,
   postPinInputSchema,
+  postReportInputSchema,
   postReactInputSchema,
   postsSearchInputSchema,
+  reportResolveInputSchema,
+  reportsListInputSchema,
   postUpdateInputSchema,
   productPriceCreateInputSchema,
   productPriceDeactivateInputSchema,
@@ -185,6 +188,7 @@ import {
   listPaidOrdersWithoutGrant,
   listProductAccessIssues,
   listProductPrices,
+  listReports,
   listProducts,
   listSchedulerRunsForTenant,
   listSpacesForMember,
@@ -206,9 +210,11 @@ import {
   recordCheckoutMarketingConsents,
   refreshInvoiceStatus,
   removeMember,
+  reportPost,
   requestInvoice,
   resetMemberCourseProgress,
   resolveIdentity,
+  resolveReport,
   resolveTenant,
   revokeGrant,
   revokeTenantApiKey,
@@ -1927,6 +1933,33 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         ? ok({ post: toPublicPost(result.value, c.get('identity').userId) })
         : result,
     );
+  });
+
+  app.post(API_PATHS.postsReport, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postReportInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid report payload', parsed.error.flatten())));
+    const result = await reportPost({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ report: result.value }) : result);
+  });
+
+  app.get(API_PATHS.reports, async (c) => {
+    const parsed = reportsListInputSchema.safeParse({
+      status: c.req.query('status'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit') === undefined ? undefined : Number(c.req.query('limit')),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid reports query', parsed.error.flatten())));
+    const result = await listReports({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok(result.value) : result);
+  });
+
+  app.post(API_PATHS.reportResolve, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = reportResolveInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid report resolution', parsed.error.flatten())));
+    const result = await resolveReport({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ report: result.value }) : result);
   });
 
   app.post(API_PATHS.postsUpdate, async (c) => {

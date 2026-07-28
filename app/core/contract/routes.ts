@@ -30,6 +30,7 @@ import {
   discussionSchema,
   lessonReferencesSchema,
   listDiscussionInputSchema,
+  listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
   courseHistoryEntrySchema,
@@ -69,6 +70,10 @@ import {
   notificationMarkReadInputSchema,
   notificationSchema,
   pinPostInputSchema,
+  postReportSchema,
+  reportPostInputSchema,
+  reportQueueSchema,
+  resolveReportInputSchema,
   newProductSchema,
   nextLessonSchema,
   publicPostSchema,
@@ -769,6 +774,18 @@ export const postPinOutputSchema = z.object({
   post: publicPostSchema,
 });
 
+export const postReportInputSchema = reportPostInputSchema;
+export type PostReportInput = z.input<typeof postReportInputSchema>;
+export const postReportOutputSchema = z.object({ report: postReportSchema });
+
+export const reportsListInputSchema = listReportsInputSchema;
+export type ReportsListInput = z.input<typeof reportsListInputSchema>;
+export const reportsListOutputSchema = reportQueueSchema;
+
+export const reportResolveInputSchema = resolveReportInputSchema;
+export type ReportResolveInput = z.input<typeof reportResolveInputSchema>;
+export const reportResolveOutputSchema = z.object({ report: postReportSchema });
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -1155,6 +1172,7 @@ export const API_ROUTES = {
   studentProgress: { method: 'GET', path: '/api/student/progress' },
   postsCreate: { method: 'POST', path: '/api/posts' },
   postsPin: { method: 'POST', path: '/api/posts/pin' },
+  postsReport: { method: 'POST', path: '/api/posts/report' },
   postsUpdate: { method: 'POST', path: '/api/posts/update' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
@@ -1163,6 +1181,8 @@ export const API_ROUTES = {
   postsSearch: { method: 'GET', path: '/api/posts/search' },
   postsReact: { method: 'POST', path: '/api/posts/react' },
   postsUnreact: { method: 'POST', path: '/api/posts/unreact' },
+  reports: { method: 'GET', path: '/api/reports' },
+  reportResolve: { method: 'POST', path: '/api/reports/resolve' },
   spaces: { method: 'GET', path: '/api/spaces' },
   spacesStaff: { method: 'GET', path: '/api/spaces/staff' },
   spacesCreate: { method: 'POST', path: '/api/spaces' },
@@ -1324,6 +1344,7 @@ export const API_PATHS = {
   studentProgress: API_ROUTES.studentProgress.path,
   postsCreate: API_ROUTES.postsCreate.path,
   postsPin: API_ROUTES.postsPin.path,
+  postsReport: API_ROUTES.postsReport.path,
   postsUpdate: API_ROUTES.postsUpdate.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,
@@ -1332,6 +1353,8 @@ export const API_PATHS = {
   postsSearch: API_ROUTES.postsSearch.path,
   postsReact: API_ROUTES.postsReact.path,
   postsUnreact: API_ROUTES.postsUnreact.path,
+  reports: API_ROUTES.reports.path,
+  reportResolve: API_ROUTES.reportResolve.path,
   spaces: API_ROUTES.spaces.path,
   spacesStaff: API_ROUTES.spacesStaff.path,
   spacesUpdate: API_ROUTES.spacesUpdate.path,

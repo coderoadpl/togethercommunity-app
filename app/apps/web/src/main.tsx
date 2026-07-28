@@ -85,6 +85,7 @@ import {
   PanelLessonEditRoute,
   PanelMemberDetailRoute,
   PanelMembersRoute,
+  PanelReportsRoute,
   PanelProductsRoute,
   PanelProductCreateRoute,
   PanelProductDetailRoute,
@@ -266,6 +267,11 @@ const panelMembersRoute = createRoute({
   path: 'members',
   component: PanelMembersRoute,
 });
+const panelReportsRoute = createRoute({
+  getParentRoute: () => panelLayoutRoute,
+  path: 'reports',
+  component: PanelReportsRoute,
+});
 const panelMemberDetailRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'members/$memberId',
@@ -437,6 +443,7 @@ const router = createRouter({
       panelLessonCreateRoute,
       panelLessonEditRoute,
       panelMembersRoute,
+      panelReportsRoute,
       panelMemberDetailRoute,
       panelSpacesRoute,
       panelSpaceCreateRoute,

@@ -170,6 +170,9 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/posts` | authenticated | mutating | posts create |
 | `POST /api/support/message` | authenticated | mutating | support message |
 | `POST /api/posts/pin` | authenticated | mutating | posts pin |
+| `POST /api/posts/report` | authenticated | mutating | posts report |
+| `GET /api/reports` | authenticated | read | reports |
+| `POST /api/reports/resolve` | authenticated | mutating | report resolve |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |

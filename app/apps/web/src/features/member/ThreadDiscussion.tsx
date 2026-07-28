@@ -22,6 +22,7 @@ import {
   PostMetaText,
   ReplyIndent,
 } from '../../theme.js';
+import { ReportPostButton } from './ReportPostButton.js';
 
 const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
@@ -216,7 +217,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
         </PostBody>
       )}
 
-      {(canReply || canEdit || canDelete) && (
+      {(canReply || canEdit || canDelete || (!own && !deleted)) && (
         <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', mt: '0.25rem' }}>
           {canReply && (
             <Button
@@ -254,6 +255,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               {t.discussion.delete}
             </Button>
           )}
+          {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
         </Stack>
       )}
 

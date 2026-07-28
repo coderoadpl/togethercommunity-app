@@ -36,6 +36,9 @@ import type {
   Notification,
   Post,
   PostContextKind,
+  PostReport,
+  PostReportEvent,
+  PostReportStatus,
   ReactionEmoji,
   ReactionSummary,
   Space,
@@ -195,6 +198,32 @@ export interface PostRepository {
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
   ): Promise<PostSearchRow[]>;
+}
+
+export interface PostReportRepository {
+  open(tenantId: string, report: PostReport, event: PostReportEvent): Promise<PostReport | null>;
+  findById(tenantId: string, id: string): Promise<PostReport | null>;
+  listByStatus(
+    tenantId: string,
+    query: { status: PostReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: PostReport[]; nextCursor: string | null }>;
+  countOpenByPost(tenantId: string, postIds: string[]): Promise<Map<string, number>>;
+  countOpen(tenantId: string): Promise<number>;
+  resolve(
+    tenantId: string,
+    input: {
+      id: string;
+      status: 'dismissed' | 'resolved';
+      resolvedAt: string;
+      resolvedByUserId: string;
+    },
+    event: PostReportEvent,
+  ): Promise<PostReport | null>;
+  resolveAllForPost(
+    tenantId: string,
+    input: { postId: string; resolvedAt: string; resolvedByUserId: string },
+    event: (reportId: string) => PostReportEvent,
+  ): Promise<number>;
 }
 
 export interface SpaceRepository {

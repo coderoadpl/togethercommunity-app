@@ -16,6 +16,7 @@ import type {
   EmailEventType,
   EmailEventMailKind,
   LessonBlock,
+  HeuristicSignal,
   SchedulerRunKind,
   SchedulerRunStatus,
   SchedulerRunTotals,
@@ -942,6 +943,52 @@ export const posts = pgTable(
     index('posts_tenant_context_pinned_idx')
       .on(table.tenantId, table.contextKind, table.contextId, table.pinnedAt.desc())
       .where(sql`${table.pinnedAt} is not null`),
+  ],
+);
+
+export const postReports = pgTable(
+  'post_reports',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    postId: text('post_id').notNull().references(() => posts.id, { onDelete: 'cascade' }),
+    reporterUserId: text('reporter_user_id'),
+    reporterDisplay: text('reporter_display'),
+    source: text('source', { enum: ['member', 'heuristic'] }).notNull(),
+    reason: text('reason', { enum: ['spam', 'harassment', 'off-topic', 'illegal', 'other'] }).notNull(),
+    note: text('note'),
+    signals: jsonb('signals').$type<HeuristicSignal[]>(),
+    status: text('status', { enum: ['open', 'dismissed', 'resolved'] }).notNull(),
+    createdAt: text('created_at').notNull(),
+    resolvedAt: text('resolved_at'),
+    resolvedByUserId: text('resolved_by_user_id'),
+  },
+  (table) => [
+    uniqueIndex('post_reports_tenant_post_reporter_uidx')
+      .on(table.tenantId, table.postId, table.reporterUserId)
+      .where(sql`${table.reporterUserId} is not null`),
+    uniqueIndex('post_reports_tenant_post_heuristic_uidx')
+      .on(table.tenantId, table.postId)
+      .where(sql`${table.source} = 'heuristic'`),
+    index('post_reports_tenant_status_created_idx')
+      .on(table.tenantId, table.status, table.createdAt.desc(), table.id),
+  ],
+);
+
+export const postReportEvents = pgTable(
+  'post_report_events',
+  {
+    id: text('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    reportId: text('report_id').notNull().references(() => postReports.id, { onDelete: 'restrict' }),
+    postId: text('post_id').notNull(),
+    type: text('type', { enum: ['opened', 'dismissed', 'post_removed'] }).notNull(),
+    occurredAt: text('occurred_at').notNull(),
+  },
+  (table) => [
+    index('post_report_events_tenant_report_occurred_idx')
+      .on(table.tenantId, table.reportId, table.occurredAt, table.sequence),
   ],
 );
 

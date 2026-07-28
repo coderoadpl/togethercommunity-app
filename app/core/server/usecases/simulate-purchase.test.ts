@@ -140,6 +140,7 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
       countSince: async () => 0,
+      listPaidWithoutGrant: async () => [],
     },
     subscriptions: {
       findById: async (_tenantId, id) => subscriptions.get(id) ?? null,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MAX_PINNED_POSTS_PER_SPACE,
   type Identity,
   type Member,
   type Notification,
@@ -32,7 +33,7 @@ import type {
   ThreadSubscription,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { createPost, type CommunityDeps } from './community.js';
+import { createPost, deletePost, type CommunityDeps } from './community.js';
 import {
   createSpace,
   deleteSpace,
@@ -42,6 +43,7 @@ import {
   listSpacesForStaff,
   reactToPost,
   setSpaceArchived,
+  setPostPinned,
   unfollowSpace,
   unreactToPost,
   updateSpace,
@@ -234,10 +236,42 @@ class FakePosts implements PostRepository {
   async softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, deletedAt: input.deletedAt };
+    const next = { ...post, deletedAt: input.deletedAt, pinnedAt: null };
     const index = this.rows.findIndex((item) => item.id === post.id);
     this.rows[index] = next;
     return next;
+  }
+
+  async setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null> {
+    const post = await this.findById(tenantId, input.id);
+    if (post === null) return null;
+    const next = { ...post, pinnedAt: input.pinnedAt };
+    const index = this.rows.findIndex((row) => row.id === post.id);
+    this.rows[index] = next;
+    return next;
+  }
+
+  async listPinnedForContext(
+    tenantId: string,
+    query: { contextKind: PostContextKind; contextId: string; limit: number },
+  ): Promise<Post[]> {
+    return this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.contextKind === query.contextKind &&
+          post.contextId === query.contextId &&
+          post.pinnedAt !== null,
+      )
+      .sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? ''))
+      .slice(0, query.limit);
+  }
+
+  async countPinnedForContext(
+    tenantId: string,
+    query: { contextKind: PostContextKind; contextId: string },
+  ): Promise<number> {
+    return (await this.listPinnedForContext(tenantId, { ...query, limit: this.rows.length })).length;
   }
 
   async search(): Promise<[]> {
@@ -674,6 +708,120 @@ describe('space stats for staff', () => {
 });
 
 describe('space feed', () => {
+  it('pins for staff, denies members, and removes pinned posts from chronological items', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const created = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'ważne' },
+      f.deps,
+    );
+    if (!created.ok) throw new Error('post was not created');
+
+    expect(
+      await setPostPinned(ctx(), { postId: created.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    const staff = ctx({ staffRole: 'admin', memberId: null });
+    expect(
+      await setPostPinned(staff, { postId: created.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: true, value: { pinnedAt: expect.any(String) } });
+
+    const feed = await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps);
+    expect(feed).toMatchObject({
+      ok: true,
+      value: { pinned: [{ id: created.value.id }], items: [] },
+    });
+
+    expect(
+      await setPostPinned(staff, { postId: created.value.id, pinned: false }, f.deps),
+    ).toMatchObject({ ok: true, value: { pinnedAt: null } });
+  });
+
+  it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const created = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'do usunięcia' },
+      f.deps,
+    );
+    if (!created.ok) throw new Error('post was not created');
+    const staff = ctx({ staffRole: 'admin', memberId: null });
+    expect(
+      await setPostPinned(staff, { postId: created.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: true });
+
+    expect(await deletePost(ctx(), { id: created.value.id }, f.deps)).toMatchObject({
+      ok: true,
+      value: { deletedAt: expect.any(String), pinnedAt: null },
+    });
+    expect(
+      await f.posts.countPinnedForContext('t1', {
+        contextKind: 'space',
+        contextId: 's-open',
+      }),
+    ).toBe(0);
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: true,
+      value: {
+        pinned: [],
+        items: [{ id: created.value.id, deletedAt: expect.any(String), pinnedAt: null }],
+      },
+    });
+  });
+
+  it('enforces the pin limit and rejects lesson posts and replies', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const staff = ctx({ staffRole: 'admin', memberId: null });
+    for (let index = 0; index < MAX_PINNED_POSTS_PER_SPACE; index += 1) {
+      const created = await createPost(
+        ctx(),
+        { contextKind: 'space', contextId: 's-open', body: `pin ${String(index)}` },
+        f.deps,
+      );
+      if (!created.ok) throw new Error('post was not created');
+      expect(
+        await setPostPinned(staff, { postId: created.value.id, pinned: true }, f.deps),
+      ).toMatchObject({ ok: true });
+    }
+    const overflow = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'overflow' },
+      f.deps,
+    );
+    if (!overflow.ok) throw new Error('post was not created');
+    expect(
+      await setPostPinned(staff, { postId: overflow.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    const storedOverflow = await f.posts.findById('t1', overflow.value.id);
+    if (storedOverflow === null) throw new Error('stored post was not found');
+    const lessonPost: Post = {
+      ...storedOverflow,
+      id: 'lesson-post',
+      rootPostId: 'lesson-post',
+      contextKind: 'lesson' as const,
+      contextId: 'lesson-1',
+    };
+    f.posts.rows.push(lessonPost);
+    expect(
+      await setPostPinned(staff, { postId: lessonPost.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+
+    const reply = await createPost(
+      ctx(),
+      {
+        contextKind: 'space',
+        contextId: 's-open',
+        parentPostId: overflow.value.id,
+        body: 'reply',
+      },
+      f.deps,
+    );
+    if (!reply.ok) throw new Error('reply was not created');
+    expect(
+      await setPostPinned(staff, { postId: reply.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
   it('paginates newest-first with reply counts and reaction summaries', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const bodies = ['pierwszy', 'drugi', 'trzeci'];

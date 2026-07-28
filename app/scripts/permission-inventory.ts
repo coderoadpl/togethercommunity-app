@@ -67,6 +67,7 @@ const effectiveAfter = (
 };
 
 const capabilityForRoute = (method: string, path: string): Capability | null => {
+  if (path === '*' || path === '/*') return 'offer:read';
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer') return 'offer:read';
@@ -120,6 +121,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
+  if (path === '/api/support/message') return 'support:request';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
@@ -128,6 +130,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.endsWith('/access-items')) return 'product:access:write';
   if (path.endsWith('/access-issues')) return 'product:access:read';
   if (path.includes('/prices')) return method === 'GET' ? 'product:price:read' : 'product:price:write';
+  if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/export') return 'order:export';
   if (path === '/api/sales/summary') return 'sales:read';
@@ -147,6 +150,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     }
     return 'lesson:play';
   }
+  if (path === '/api/posts/pin') return 'community:pin';
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }
@@ -183,6 +187,8 @@ const beforeForRoute = (
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
+  if (path === '/api/support/message') return tenantActors;
+  if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;
   if (path.includes('/follow') || path.includes('/react')) return tenantActors;
@@ -409,7 +415,12 @@ const beforeForUseCase = (
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
-  if (file === 'spaces.ts') return name === 'listSpacesForStaff' || capability === 'space:write' ? staff : tenantActors;
+  if (file === 'support.ts') return tenantActors;
+  if (file === 'spaces.ts') {
+    return name === 'listSpacesForStaff' || capability === 'space:write' || capability === 'community:pin'
+      ? staff
+      : tenantActors;
+  }
   if (capability === 'tenant:list-own') return allHumans;
   return staff;
 };

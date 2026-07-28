@@ -8,7 +8,7 @@ Equivalence here compares principal **sets**, not capability identity. A capabil
 
 The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.
 
-Closed capability count: 83. Route rows: 184. Exported `Ctx` use-case rows: 159.
+Closed capability count: 86. Route rows: 188. Exported `Ctx` use-case rows: 162.
 
 ## Human-readable diff
 
@@ -142,6 +142,7 @@ no changes
 | `POST /api/products/prices` | product:price:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/products/prices/deactivate` | product:price:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/orders/reconciliation` | order:reconcile | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/export` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/:orderId` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/invoice` | invoice:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -180,6 +181,8 @@ no changes
 | `GET /api/student/progress` | member:progress:read | member | member | yes | identity middleware + use-case guard |
 | `GET /api/student/lessons/:lessonId` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/posts` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/support/message` | support:request | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `POST /api/posts/pin` | community:pin | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/posts/update` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `DELETE /api/posts/:postId` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/discussion` | community:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -202,6 +205,7 @@ no changes
 | `POST /api/notifications/read-all` | notification:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/notifications/unread-count` | notification:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/notifications/stream` | notification:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /*` | offer:read | public | public | yes | public route manifest |
 
 ## Use-cases
 
@@ -330,6 +334,7 @@ no changes
 | `my-products.ts#listMyProducts` | member:product:read | member | member | yes | core/server/usecases/my-products.ts authorization call |
 | `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
 | `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts authorization call |
+| `order-reconciliation.ts#listPaidOrdersWithoutGrant` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/order-reconciliation.ts authorization call |
 | `orders.ts#listOrders` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
@@ -356,10 +361,12 @@ no changes
 | `spaces.ts#listSpacesForStaff` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#listSpacesForMember` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#getSpaceFeed` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
+| `spaces.ts#setPostPinned` | community:pin | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#followSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#unfollowSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#reactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
+| `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
 | `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
@@ -374,11 +381,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:99` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:731` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:733` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1175` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1175` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:103` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:738` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:740` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1182` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1182` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

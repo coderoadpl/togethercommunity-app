@@ -22,6 +22,7 @@ import {
   type Member,
   type Membership,
   type Order,
+  type Post,
   type Product,
   type Tenant,
   type TenantDomain,
@@ -138,6 +139,7 @@ const deps = (input: {
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
       countSince: async () => 0,
+      listPaidWithoutGrant: async () => [],
     },
     paymentRefunds: {
       findOrderByProviderObjectIds: async () => null,
@@ -350,6 +352,9 @@ const deps = (input: {
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
+      setPinned: async () => null,
+      listPinnedForContext: async () => [],
+      countPinnedForContext: async () => 0,
       search: async () => [],
     },
     spaces: {
@@ -416,7 +421,12 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null, termsUrl: null, privacyUrl: null } : null,
+        tenants.some((tenant) => tenant.id === tenantId) ? {
+          billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
+          accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+          privacyUrl: null,
+        } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
@@ -456,6 +466,83 @@ const deps = (input: {
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
+
+const scopedApp = (scope: 'none' | 'member' | 'staff') => {
+  const base = deps();
+  const member: Member = {
+    id: 'member-1',
+    tenantId: acme.id,
+    userId: 'user-1',
+    email: 'user@acme.test',
+    displayName: 'User',
+    tags: [],
+    marketingConsents: {},
+    externalCustomerIds: {},
+    createdAt: '2026-07-12T00:00:00.000Z',
+    deletedAt: null,
+  };
+  const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
+  const post: Post = {
+    id: 'post-1',
+    tenantId: acme.id,
+    contextKind: 'space',
+    contextId: 'space-1',
+    rootPostId: 'post-1',
+    parentPostId: null,
+    authorUserId: 'user-2',
+    authorDisplay: 'Author',
+    authorIsStaff: false,
+    body: 'Pinned',
+    createdAt: '2026-07-12T00:00:00.000Z',
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+  };
+  return buildApp({
+    ...base,
+    authPort: {
+      ...base.authPort,
+      getAuthenticatedUser: async () => ({
+        userId: 'user-1',
+        email: 'user@acme.test',
+        name: 'User',
+      }),
+    },
+    tenantAccess: {
+      ...base.tenantAccess,
+      findStaffGrant: async () => (scope === 'staff' ? staffGrant : null),
+      findMember: async () => (scope === 'member' ? member : null),
+    },
+    members: {
+      ...base.members,
+      findById: async () => (scope === 'member' ? member : null),
+    },
+    tenants: {
+      ...base.tenants,
+      findSettings: async (tenantId) => {
+        const settings = await base.tenants.findSettings(tenantId);
+        return settings === null ? null : { ...settings, supportEmail: 'support@acme.test' };
+      },
+    },
+    emailOutbox: {
+      ...base.emailOutbox,
+      enqueue: async (message) => ok({ id: message.id }),
+    },
+    posts: {
+      ...base.posts,
+      findById: async () => post,
+      countPinnedForContext: async () => 0,
+      setPinned: async (_tenantId, input) => ({
+        ...post,
+        pinnedAt: input.pinnedAt,
+      }),
+    },
+    orders: {
+      ...base.orders,
+      listPaidWithoutGrant: async () => [],
+    },
+  });
+};
 
 const marketingDeps = (): MarketingAppDeps => ({
   runs: new InMemorySchedulerRunRepository(),
@@ -1185,6 +1272,53 @@ describe('server edge security baseline', () => {
   });
 });
 
+describe('new route authorization', () => {
+  const headers = {
+    host: 'acme.localhost:48730',
+    'content-type': 'application/json',
+  };
+
+  it('denies members and permits staff on post pinning', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId: 'post-1', pinned: true }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.postsPin, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.postsPin, request)).status).toBe(200);
+  });
+
+  it('denies support messages from a session without member or staff scope', async () => {
+    const response = await scopedApp('none').request(API_PATHS.supportMessage, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ subject: 'Help', body: 'Body' }),
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('permits members to send support messages', async () => {
+    const response = await scopedApp('member').request(API_PATHS.supportMessage, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ subject: 'Help', body: 'Body' }),
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('denies members and permits staff on order reconciliation', async () => {
+    expect(
+      (await scopedApp('member').request(API_PATHS.ordersReconciliation, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await scopedApp('staff').request(API_PATHS.ordersReconciliation, { headers })).status,
+    ).toBe(200);
+  });
+});
+
 describe('public route manifest', () => {
   it('records the six approved mutating surfaces', () => {
     const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
@@ -1199,6 +1333,30 @@ describe('public route manifest', () => {
       'Checkout session start',
       'Login, recovery, and magic-link authentication surface',
     ]));
+  });
+});
+
+describe('social preview route', () => {
+  it('renders tenant metadata for a crawler', async () => {
+    const response = await buildApp(deps()).request('/', {
+      headers: { host: 'acme.localhost:48730', 'user-agent': 'Twitterbot/1.0' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(await response.text()).toContain('property="og:title" content="Acme"');
+  });
+
+  it.each([
+    ['browser', '/', 'Mozilla/5.0', 'acme.localhost:48730'],
+    ['asset', '/assets/app.js', 'Twitterbot/1.0', 'acme.localhost:48730'],
+    ['unknown tenant', '/', 'Twitterbot/1.0', 'unknown.localhost:48730'],
+  ])('falls through for a %s request', async (_name, path, userAgent, host) => {
+    const response = await buildApp(deps()).request(path, {
+      headers: { host, 'user-agent': userAgent },
+    });
+
+    expect(response.status).toBe(404);
   });
 });
 
@@ -1418,6 +1576,11 @@ const consentApp = (simulatedPayments: boolean) => {
               logoUrl: null,
               accentColor: null,
               faviconUrl: null,
+              ogTitle: null,
+              ogDescription: null,
+              ogImageUrl: null,
+              supportEmail: null,
+              supportUrl: null,
               termsUrl: 'https://acme.example/terms-v2',
               privacyUrl: 'https://acme.example/privacy-v3',
             }
@@ -1616,6 +1779,11 @@ describe('checkout consent ordering', () => {
                 logoUrl: null,
                 accentColor: null,
                 faviconUrl: null,
+                ogTitle: null,
+                ogDescription: null,
+                ogImageUrl: null,
+                supportEmail: null,
+                supportUrl: null,
                 termsUrl: 'https://acme.example/terms-v2',
                 privacyUrl: 'https://acme.example/privacy-v3',
               }

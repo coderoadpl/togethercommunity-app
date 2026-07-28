@@ -45,6 +45,7 @@ export interface Messages {
     headingTenantNotFound: string;
     headingValidation: string;
     headingConflict: string;
+    headingSlugReserved: string;
     detailGeneric: string;
     traceId: string;
     messageUnauthorized: string;
@@ -58,6 +59,8 @@ export interface Messages {
     messageIntegrationAuth: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
+    messageSlugReservedGeneric: string;
+    messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
   };
@@ -192,6 +195,10 @@ export interface Messages {
     exporting: string;
     coupon: string;
     discount: string;
+    reconciliationHeading: string;
+    reconciliationHint: string;
+    reconciliationEmpty: string;
+    reconciliationAge: (params: { date: string }) => string;
     orderTitle: (params: { id: string }) => string;
     allOrders: string;
     provider: string;
@@ -844,6 +851,12 @@ export interface Messages {
     spaceNotFoundBody: string;
     backToSpaces: string;
     backToFeed: string;
+    pinnedHeading: string;
+    pinnedChip: string;
+    announcementChip: string;
+    pin: string;
+    unpin: string;
+    pinLimitReached: string;
     threadTitle: string;
     threadEyebrow: string;
   };
@@ -927,6 +940,20 @@ export interface Messages {
     successBody: string;
     goToLogin: string;
   };
+  support: {
+    heading: string;
+    intro: string;
+    subjectLabel: string;
+    bodyLabel: string;
+    send: string;
+    sending: string;
+    sent: string;
+    notConfigured: string;
+    externalLink: string;
+    emailLabel: string;
+    urlLabel: string;
+    save: string;
+  };
   billing: {
     heading: string;
     intro: string;
@@ -975,6 +1002,13 @@ export interface Messages {
     previewHint: string;
     faviconLabel: string;
     faviconPlaceholder: string;
+    socialHeading: string;
+    ogTitleLabel: string;
+    ogTitleHint: string;
+    ogDescriptionLabel: string;
+    ogDescriptionHint: string;
+    ogImageLabel: string;
+    ogImageHint: string;
     save: string;
     saving: string;
     saved: string;

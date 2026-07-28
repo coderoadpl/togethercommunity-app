@@ -49,8 +49,10 @@ import {
   notificationReadInputSchema,
   notificationsListInputSchema,
   ordersExportQuerySchema,
+  ordersReconciliationQuerySchema,
   postCreateInputSchema,
   postDeleteInputSchema,
+  postPinInputSchema,
   postReactInputSchema,
   postsSearchInputSchema,
   postUpdateInputSchema,
@@ -69,6 +71,7 @@ import {
   spaceFollowInputSchema,
   spaceUpdateInputSchema,
   subscriptionSimulateInputSchema,
+  supportMessageInputSchema,
   TENANT_HEADER,
   tenantCreateInputSchema,
   tenantSecretDeleteInputSchema,
@@ -83,6 +86,7 @@ import {
   memberExportFormatSchema,
   ok,
   tenantNotFound,
+  toPublicPost,
   unauthorized,
   validation,
   type EmailBranding,
@@ -178,6 +182,7 @@ import {
   listMyTenants,
   listNotifications,
   listOrders,
+  listPaidOrdersWithoutGrant,
   listProductAccessIssues,
   listProductPrices,
   listProducts,
@@ -214,6 +219,8 @@ import {
   sendSesSimulatorTest,
   sendTransactionalSmtpTest,
   setSpaceArchived,
+  setPostPinned,
+  sendSupportMessage,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -1454,6 +1461,22 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result);
   });
 
+  app.get(API_PATHS.ordersReconciliation, async (c) => {
+    const query = {
+      ...(c.req.query('minAgeMinutes') === undefined
+        ? {}
+        : { minAgeMinutes: c.req.query('minAgeMinutes') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    };
+    const parsed = ordersReconciliationQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid order reconciliation query', parsed.error.flatten())));
+    }
+    return respond(
+      await listPaidOrdersWithoutGrant({ identity: c.get('identity') }, parsed.data, deps),
+    );
+  });
+
   app.get(API_PATHS.ordersExport, async (c) => {
     const query = {
       format: c.req.query('format'),
@@ -1881,6 +1904,29 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid post payload', parsed.error.flatten())));
     const result = await createPost({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.post(API_PATHS.supportMessage, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = supportMessageInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid support message', parsed.error.flatten())));
+    }
+    return respond(await sendSupportMessage({ identity: c.get('identity') }, parsed.data, deps));
+  });
+
+  app.post(API_PATHS.postsPin, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postPinInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid post pin payload', parsed.error.flatten())));
+    }
+    const result = await setPostPinned({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(
+      result.ok
+        ? ok({ post: toPublicPost(result.value, c.get('identity').userId) })
+        : result,
+    );
   });
 
   app.post(API_PATHS.postsUpdate, async (c) => {

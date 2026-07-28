@@ -19,6 +19,7 @@ export const postSchema = z.object({
   createdAt: z.string().datetime(),
   editedAt: z.string().datetime().nullable(),
   deletedAt: z.string().datetime().nullable(),
+  pinnedAt: z.string().datetime().nullable().default(null),
 });
 
 export type Post = z.output<typeof postSchema>;
@@ -54,6 +55,15 @@ export const deletePostInputSchema = z.object({
 });
 
 export type DeletePostInput = z.input<typeof deletePostInputSchema>;
+
+export const pinPostInputSchema = z.object({
+  postId: z.string().min(1),
+  pinned: z.boolean(),
+});
+
+export type PinPostInput = z.input<typeof pinPostInputSchema>;
+
+export const MAX_PINNED_POSTS_PER_SPACE = 5;
 
 export const listDiscussionInputSchema = z.object({
   contextKind: postContextKindSchema,
@@ -191,6 +201,7 @@ export const toPublicPost = (post: Post, viewerUserId: string): PublicPost => ({
   createdAt: post.createdAt,
   editedAt: post.editedAt,
   deletedAt: post.deletedAt,
+  pinnedAt: post.pinnedAt,
   isOwn: post.authorUserId === viewerUserId,
 });
 

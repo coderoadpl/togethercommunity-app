@@ -63,6 +63,7 @@ const post = (id: string, lessonId: string, body: string): PublicPost => ({
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
+  pinnedAt: null,
 });
 
 describe('CourseDiscussionSearch', () => {

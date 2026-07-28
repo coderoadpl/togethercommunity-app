@@ -159,6 +159,7 @@ const harness = (options: {
         list: async () => ({ orders: [], total: 0 }),
         revenueSince: async () => [],
         countSince: async () => 0,
+        listPaidWithoutGrant: async () => [],
       },
       ids: { nextId: () => `grant-${(seq += 1)}` },
       clock: { nowIso: () => NOW },

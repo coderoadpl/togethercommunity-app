@@ -12,6 +12,7 @@ import type {
   Member,
   MemberSubscription,
   Order,
+  Post,
   ProcessedPaymentEvent,
   Product,
   ProductGrant,
@@ -26,11 +27,13 @@ import {
   createCourseModuleRepository,
   createCourseRepository,
   createCheckoutConsentCaptureRepository,
+  createDevSinkPurge,
   createHealthPort,
   createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
   createOrderRepository,
+  createPostRepository,
   createProcessedPaymentEventRepository,
   createProductGrantRepository,
   createProductPriceRepository,
@@ -51,6 +54,8 @@ import {
   couponRedemptions,
   couponCheckoutSessions,
   coupons,
+  devEmails,
+  devMagicLinks,
   emailEvents,
   invoices,
   erasedMemberImports,
@@ -209,6 +214,28 @@ beforeAll(async () => {
   await subs.create(ACME, subscription({ id: 'sub-acme', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', priceId: 'price-acme', providerSubscriptionId: 'psub-acme' }));
 });
 
+describe('dev sink purge', () => {
+  it('reports deleted rows and leaves both sinks empty', async () => {
+    await db.insert(devMagicLinks).values({
+      email: 'purge@together.dev',
+      url: 'http://localhost/magic',
+      token: 'purge-token',
+      createdAt: NOW,
+    });
+    await db.insert(devEmails).values({
+      to: 'purge@together.dev',
+      subject: 'Subject',
+      html: '<p>Body</p>',
+      text: 'Body',
+      createdAt: NOW,
+    });
+
+    await expect(createDevSinkPurge(db).purge()).resolves.toEqual({ magicLinks: 1, emails: 1 });
+    await expect(db.select().from(devMagicLinks)).resolves.toEqual([]);
+    await expect(db.select().from(devEmails)).resolves.toEqual([]);
+  });
+});
+
 describe('product repository', () => {
   it('lists only the calling tenant products and honours the published filter', async () => {
     const repo = createProductRepository(db);
@@ -284,6 +311,31 @@ describe('order repository', () => {
     const revenue = await repo.revenueSince(ACME, PAST);
     expect(revenue).toEqual([{ currency: 'PLN', amountCents: 4900 }]);
     expect(await repo.countSince(ACME, PAST)).toBe(2);
+  });
+
+  it('lists only paid orders without a matching tenant member product grant', async () => {
+    const repo = createOrderRepository(db);
+    await repo.create(
+      ACME,
+      order({
+        id: 'order-acme-missing-grant',
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        productId: 'prod-acme-draft',
+        createdAt: NOW,
+      }),
+    );
+
+    const rows = await repo.listPaidWithoutGrant(ACME, { paidBefore: NOW, limit: 10 });
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        orderId: 'order-acme-missing-grant',
+        memberEmail: 'buyer-acme@together.dev',
+        productTitle: 'Draft',
+      }),
+    ]);
+    expect(await repo.listPaidWithoutGrant(GLOBEX, { paidBefore: NOW, limit: 10 })).toEqual([]);
   });
 
   it.each([
@@ -555,6 +607,11 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+      supportEmail: null,
+      supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
     });
@@ -663,6 +720,47 @@ describe('course/module/lesson repositories', () => {
     expect(await courses.list(GLOBEX)).toEqual([]);
     expect(await modules.findById(ACME, 'module-acme')).toMatchObject({ courseIds: ['course-acme'] });
     expect(await lessons.findById(GLOBEX, 'lesson-acme')).toBeNull();
+  });
+});
+
+describe('post repository', () => {
+  it('clears a pin when soft-deleting a post', async () => {
+    const repo = createPostRepository(db);
+    const post: Post = {
+      id: 'post-pinned-delete',
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId: 'space-pinned-delete',
+      parentPostId: null,
+      rootPostId: 'post-pinned-delete',
+      authorUserId: 'user-acme-member',
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: 'Pinned post',
+      createdAt: NOW,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+    };
+
+    await repo.createPost(ACME, post);
+    await repo.setPinned(ACME, { id: post.id, pinnedAt: NOW });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE });
+
+    const rows = await db
+      .select({ pinnedAt: posts.pinnedAt })
+      .from(posts)
+      .where(and(eq(posts.tenantId, ACME), eq(posts.id, post.id)));
+    expect(rows).toEqual([{ pinnedAt: null }]);
+    await expect(repo.listPinnedForContext(ACME, {
+      contextKind: post.contextKind,
+      contextId: post.contextId,
+      limit: 10,
+    })).resolves.toEqual([]);
+    await expect(repo.countPinnedForContext(ACME, {
+      contextKind: post.contextKind,
+      contextId: post.contextId,
+    })).resolves.toBe(0);
   });
 });
 

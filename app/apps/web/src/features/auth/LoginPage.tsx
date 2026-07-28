@@ -30,6 +30,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   const authConfig = useQuery(actions.authConfig);
+  const publicOffer = useQuery(actions.publicOffer);
 
   const signIn = useMutation({
     ...actions.signIn,
@@ -83,6 +84,11 @@ export const LoginPage = () => {
       <FinePrint variant="caption" component="p">
         {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
       </FinePrint>
+      {publicOffer.data?.tenant.support.url ? (
+        <FinePrint variant="caption" component="p">
+          <Link href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</Link>
+        </FinePrint>
+      ) : null}
     </>
   );
 

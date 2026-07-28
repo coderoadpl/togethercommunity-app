@@ -299,6 +299,7 @@ Architecture is enforced by configuration and executable probes:
 | `npm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
 | `npm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
 | `npm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
+| `npm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
 
 CI runs `check`, `smoke`, the quickstart probe, and the auth, coupon, PoC,
 subscription, and marketing e2e suites on pushes and pull requests to

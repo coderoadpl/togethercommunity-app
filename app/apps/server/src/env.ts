@@ -48,7 +48,7 @@ export const envSchema = z
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
     EMAIL_FROM: optionalNonEmptyString,
     SMTP_HOST: z.string().min(1).default('localhost'),
-    SMTP_PORT: z.coerce.number().int().positive().default(47925),
+    SMTP_PORT: z.coerce.number().int().positive().default(48925),
     SMTP_SECURE: z
       .enum(['true', 'false'])
       .default('false')

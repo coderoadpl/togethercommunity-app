@@ -750,7 +750,6 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     SELF_AUTHENTICATING_ROUTE_MANIFEST,
   );
 
-  // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     const identity = await resolveIdentity(

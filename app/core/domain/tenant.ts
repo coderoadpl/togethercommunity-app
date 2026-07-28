@@ -59,14 +59,31 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
   faviconUrl: null,
 };
 
+export const tenantSocialSchema = z.object({
+  ogTitle: z.string().max(70).nullable().default(null),
+  ogDescription: z.string().max(200).nullable().default(null),
+  ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
+});
+
+export type TenantSocial = z.output<typeof tenantSocialSchema>;
+
+export const EMPTY_TENANT_SOCIAL: TenantSocial = {
+  ogTitle: null,
+  ogDescription: null,
+  ogImageUrl: null,
+};
+
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
-  supportEmail: z.string().email().nullable().optional(),
-  supportUrl: z.string().url().nullable().optional(),
+  ogTitle: z.string().max(70).nullable().default(null),
+  ogDescription: z.string().max(200).nullable().default(null),
+  ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
+  supportEmail: z.string().email().nullable().default(null),
+  supportUrl: z.string().url().nullable().default(null),
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
   autoIssueInvoices: z.boolean().optional(),
@@ -97,6 +114,12 @@ const clearableEmail = z
   .transform((value) => (value === '' || value === null ? null : value))
   .optional();
 
+const clearableText = (max: number) => z
+  .union([z.string().trim().max(max), z.literal('')])
+  .nullable()
+  .transform((value) => (value === '' || value === null ? null : value))
+  .optional();
+
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
   billingPortalUrl: clearableUrl,
@@ -113,6 +136,9 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
+  ogTitle: clearableText(70),
+  ogDescription: clearableText(200),
+  ogImageUrl: clearableBrandingAssetUrl,
   supportEmail: clearableEmail,
   supportUrl: clearableUrl,
   termsUrl: clearableUrl,
@@ -126,6 +152,15 @@ export const updateTenantSettingsInputSchema = z.object({
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+export const resolveTenantSocial = (
+  tenant: Tenant,
+  settings: TenantSettings | null,
+): { title: string; description: string | null; imageUrl: string | null } => ({
+  title: settings?.ogTitle ?? tenant.name,
+  description: settings?.ogDescription ?? null,
+  imageUrl: settings?.ogImageUrl ?? settings?.logoUrl ?? null,
+});
 
 export const tenantSupportPublicSchema = z.object({
   url: z.string().url().nullable(),

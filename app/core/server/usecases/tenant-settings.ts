@@ -51,6 +51,11 @@ export const updateTenantSettings = async (
       logoUrl: parsed.data.logoUrl === undefined ? current.logoUrl : parsed.data.logoUrl,
       accentColor: parsed.data.accentColor === undefined ? current.accentColor : parsed.data.accentColor,
       faviconUrl: parsed.data.faviconUrl === undefined ? current.faviconUrl : parsed.data.faviconUrl,
+      ogTitle: parsed.data.ogTitle === undefined ? current.ogTitle : parsed.data.ogTitle,
+      ogDescription:
+        parsed.data.ogDescription === undefined ? current.ogDescription : parsed.data.ogDescription,
+      ogImageUrl:
+        parsed.data.ogImageUrl === undefined ? current.ogImageUrl : parsed.data.ogImageUrl,
       supportEmail:
         parsed.data.supportEmail === undefined ? current.supportEmail : parsed.data.supportEmail,
       supportUrl: parsed.data.supportUrl === undefined ? current.supportUrl : parsed.data.supportUrl,

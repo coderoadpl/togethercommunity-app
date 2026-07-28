@@ -414,7 +414,12 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSettings: async (tenantId) =>
-        tenants.some((tenant) => tenant.id === tenantId) ? { billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null, termsUrl: null, privacyUrl: null } : null,
+        tenants.some((tenant) => tenant.id === tenantId) ? {
+          billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
+          accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+          privacyUrl: null,
+        } : null,
       updateSettings: async (_tenantId, settings) => settings,
       createTenantWithOwnerGrant: async (tenant) => ({
         id: tenant.tenant.id,
@@ -1179,6 +1184,30 @@ describe('public route manifest', () => {
   });
 });
 
+describe('social preview route', () => {
+  it('renders tenant metadata for a crawler', async () => {
+    const response = await buildApp(deps()).request('/', {
+      headers: { host: 'acme.localhost:48730', 'user-agent': 'Twitterbot/1.0' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(await response.text()).toContain('property="og:title" content="Acme"');
+  });
+
+  it.each([
+    ['browser', '/', 'Mozilla/5.0', 'acme.localhost:48730'],
+    ['asset', '/assets/app.js', 'Twitterbot/1.0', 'acme.localhost:48730'],
+    ['unknown tenant', '/', 'Twitterbot/1.0', 'unknown.localhost:48730'],
+  ])('falls through for a %s request', async (_name, path, userAgent, host) => {
+    const response = await buildApp(deps()).request(path, {
+      headers: { host, 'user-agent': userAgent },
+    });
+
+    expect(response.status).toBe(404);
+  });
+});
+
 describe('public payment-config route', () => {
   it('exposes the simulated-payments flag for a resolved tenant', async () => {
     const response = await buildApp(deps()).request(API_PATHS.publicPaymentConfig, {
@@ -1395,6 +1424,11 @@ const consentApp = (simulatedPayments: boolean) => {
               logoUrl: null,
               accentColor: null,
               faviconUrl: null,
+              ogTitle: null,
+              ogDescription: null,
+              ogImageUrl: null,
+              supportEmail: null,
+              supportUrl: null,
               termsUrl: 'https://acme.example/terms-v2',
               privacyUrl: 'https://acme.example/privacy-v3',
             }
@@ -1593,6 +1627,11 @@ describe('checkout consent ordering', () => {
                 logoUrl: null,
                 accentColor: null,
                 faviconUrl: null,
+                ogTitle: null,
+                ogDescription: null,
+                ogImageUrl: null,
+                supportEmail: null,
+                supportUrl: null,
                 termsUrl: 'https://acme.example/terms-v2',
                 privacyUrl: 'https://acme.example/privacy-v3',
               }

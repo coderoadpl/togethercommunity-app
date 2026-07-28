@@ -44,5 +44,10 @@ describe('Vercel platform entry boundary', () => {
         .flatMap(({ headers }) => headers)
         .find(({ key }) => key === 'Content-Security-Policy')?.value,
     ).toContain("default-src 'self'");
+    expect(
+      vercel.headers
+        .flatMap(({ headers }) => headers)
+        .find(({ key }) => key === 'Content-Security-Policy')?.value,
+    ).toContain('https://*.sentry.io');
   });
 });

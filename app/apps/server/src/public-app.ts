@@ -48,9 +48,37 @@ import {
 import type { AppDeps } from './composition.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
-import { respond, respondNotModified } from './respond.js';
+import {
+  PUBLIC_REVALIDATED_CACHE_CONTROL,
+  respond,
+  respondNotModified,
+} from './respond.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
+
+const registerOpenCors = (
+  app: Hono<Vars>,
+  path: string,
+  method: 'GET' | 'POST',
+): void => {
+  app.options(path, () =>
+    new Response(null, {
+      status: 204,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': `${method}, OPTIONS`,
+        'access-control-allow-headers': `${TENANT_HEADER}, content-type, if-none-match`,
+        'access-control-max-age': '60',
+      },
+    }),
+  );
+  app.use(path, cors({
+    origin: '*',
+    allowMethods: [method],
+    allowHeaders: [TENANT_HEADER, 'content-type', 'if-none-match'],
+    maxAge: 60,
+  }));
+};
 
 const publicHeaders = (etag?: string): Headers => {
   const headers = new Headers({
@@ -62,11 +90,16 @@ const publicHeaders = (etag?: string): Headers => {
 
 const respondPublic = <T>(result: Result<T, AppError>, etag?: string): Response => {
   return respond(result, {
-    cacheControl: etag === undefined ? 'no-store' : 'public, no-cache',
+    cacheControl: etag === undefined ? 'no-store' : PUBLIC_REVALIDATED_CACHE_CONTROL,
     headers: publicHeaders(etag),
   });
 };
 
+/**
+ * Sessions live in per-domain cookie worlds, so tenant-host requests must
+ * verify on the same host. Only X-Tenant and hostless internal flows use the
+ * configured base URL.
+ */
 const magicLinkBaseUrl = (
   hostHeader: string,
   forwardedProto: string | null,
@@ -261,19 +294,11 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     ),
   );
 
-  app.options(API_PATHS.publicOffer, () =>
-    new Response(null, {
-      status: 204,
-      headers: {
-        'access-control-allow-origin': '*',
-        'access-control-allow-methods': 'GET, OPTIONS',
-        'access-control-allow-headers': `${TENANT_HEADER}, if-none-match`,
-        'access-control-max-age': '60',
-      },
-    }),
-  );
-
-  app.use(API_PATHS.publicOffer, cors({ origin: '*', allowMethods: ['GET'] }));
+  registerOpenCors(app, API_PATHS.publicOffer, 'GET');
+  registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
+  registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
+  registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
+  registerOpenCors(app, API_PATHS.authConfig, 'GET');
 
   app.get(API_PATHS.publicOffer, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);

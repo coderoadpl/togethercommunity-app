@@ -5,6 +5,7 @@ import { API_ROUTES } from '#core/contract/index.js';
 
 import { buildApp } from '../apps/server/src/app.js';
 import { publicRouteManifestEntry } from '../apps/server/src/public-route-manifest.js';
+import { selfAuthenticatingRouteManifestEntry } from '../apps/server/src/self-authenticating-route-manifest.js';
 
 const dependency = new Proxy(
   () => undefined,
@@ -36,11 +37,14 @@ const rows = buildApp(dependency).routes
   .filter((route) => route.method !== 'ALL')
   .map((route) => {
     const publicEntry = publicRouteManifestEntry(route);
+    const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
     const access = publicEntry !== undefined
       ? 'public'
       : route.path.startsWith('/api/dev/')
         ? 'development-only'
-        : 'authenticated';
+        : selfAuthenticatingEntry !== undefined
+          ? 'self-authenticating'
+          : 'authenticated';
     const mutating = publicEntry?.mutating
       ?? !['GET', 'HEAD', 'OPTIONS'].includes(route.method);
     return `| \`${route.method} ${route.path}\` | ${access} | ${mutating ? 'mutating' : 'read'} | ${purposeFor(route)} |`;
@@ -50,7 +54,7 @@ const document = [
   '# Server route table',
   '',
   'Generated from the Hono route table by `npx tsx scripts/generate-route-table.mjs`.',
-  'Authenticated includes session, API-key, webhook-secret, and operator-secret surfaces.',
+  'Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.',
   '',
   '| Route | Access | Operation | Purpose |',
   '|---|---|---|---|',

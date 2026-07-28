@@ -1,7 +1,7 @@
 # Server route table
 
 Generated from the Hono route table by `npx tsx scripts/generate-route-table.mjs`.
-Authenticated includes session, API-key, webhook-secret, and operator-secret surfaces.
+Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
@@ -9,6 +9,10 @@ Authenticated includes session, API-key, webhook-secret, and operator-secret sur
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
+| `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
+| `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
+| `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
+| `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
 | `GET /api/public/offer` | public | read | Public offer discovery |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
@@ -29,31 +33,31 @@ Authenticated includes session, API-key, webhook-secret, and operator-secret sur
 | `GET /legal/:slug` | public | read | Latest public legal document |
 | `GET /legal/:slug/v/:version` | public | read | Versioned public legal document |
 | `POST /api/webhooks/stripe/:tenantId` | public | mutating | Stripe payment webhook |
-| `POST /api/internal/dispatch-email` | authenticated | mutating | email dispatch |
-| `POST /api/internal/dispatch-ksef` | authenticated | mutating | ksef dispatch |
-| `GET /api/internal/dispatch-ksef` | authenticated | read | api internal dispatch-ksef |
-| `GET /api/internal/scheduler-runs` | authenticated | read | global scheduler runs |
-| `GET /api/internal/scheduler-runs/:id` | authenticated | read | global scheduler run |
-| `POST /api/public/terms-consent` | authenticated | mutating | terms consent |
-| `POST /api/tenants` | authenticated | mutating | tenants create |
+| `POST /api/internal/dispatch-email` | self-authenticating | mutating | email dispatch |
+| `POST /api/internal/dispatch-ksef` | self-authenticating | mutating | ksef dispatch |
+| `GET /api/internal/dispatch-ksef` | self-authenticating | read | api internal dispatch-ksef |
+| `GET /api/internal/scheduler-runs` | self-authenticating | read | global scheduler runs |
+| `GET /api/internal/scheduler-runs/:id` | self-authenticating | read | global scheduler run |
+| `POST /api/public/terms-consent` | self-authenticating | mutating | terms consent |
+| `POST /api/tenants` | self-authenticating | mutating | tenants create |
 | `POST /api/dev/simulate-purchase` | development-only | mutating | dev simulate purchase |
 | `GET /api/dev/magic-link` | development-only | read | dev magic link |
 | `GET /api/dev/email` | development-only | read | dev email |
 | `POST /api/dev/grant` | development-only | mutating | dev grant |
 | `POST /api/dev/subscriptions/simulate-cycle` | development-only | mutating | dev subscription simulate cycle |
 | `POST /api/dev/subscriptions/simulate-failure` | development-only | mutating | dev subscription simulate failure |
-| `POST /api/m2m/enroll` | authenticated | mutating | m2m enroll |
-| `POST /api/m2m/marketing/messages` | authenticated | mutating | marketing messages create |
-| `GET /api/m2m/marketing/eligibility` | authenticated | read | marketing eligibility |
-| `POST /api/m2m/marketing/consents` | authenticated | mutating | marketing consents |
-| `GET /api/m2m/marketing/suppressions` | authenticated | read | marketing suppressions |
-| `POST /api/m2m/marketing/suppressions` | authenticated | mutating | marketing suppressions create |
-| `GET /api/m2m/marketing/messages` | authenticated | read | marketing messages |
-| `GET /api/m2m/marketing/messages/:id` | authenticated | read | marketing message |
-| `GET /api/m2m/marketing/consent-definitions` | authenticated | read | api m2m marketing consent-definitions |
-| `GET /api/m2m/marketing/templates` | authenticated | read | marketing templates |
-| `POST /api/internal/marketing/tick` | authenticated | mutating | marketing tick |
-| `GET /api/internal/marketing/tick` | authenticated | read | api internal marketing tick |
+| `POST /api/m2m/enroll` | self-authenticating | mutating | m2m enroll |
+| `POST /api/m2m/marketing/messages` | self-authenticating | mutating | marketing messages create |
+| `GET /api/m2m/marketing/eligibility` | self-authenticating | read | marketing eligibility |
+| `POST /api/m2m/marketing/consents` | self-authenticating | mutating | marketing consents |
+| `GET /api/m2m/marketing/suppressions` | self-authenticating | read | marketing suppressions |
+| `POST /api/m2m/marketing/suppressions` | self-authenticating | mutating | marketing suppressions create |
+| `GET /api/m2m/marketing/messages` | self-authenticating | read | marketing messages |
+| `GET /api/m2m/marketing/messages/:id` | self-authenticating | read | marketing message |
+| `GET /api/m2m/marketing/consent-definitions` | self-authenticating | read | api m2m marketing consent-definitions |
+| `GET /api/m2m/marketing/templates` | self-authenticating | read | marketing templates |
+| `POST /api/internal/marketing/tick` | self-authenticating | mutating | marketing tick |
+| `GET /api/internal/marketing/tick` | self-authenticating | read | api internal marketing tick |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

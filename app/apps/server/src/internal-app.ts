@@ -252,6 +252,10 @@ import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { respond } from './respond.js';
+import {
+  assertSelfAuthenticatingRouteManifest,
+  SELF_AUTHENTICATING_ROUTE_MANIFEST,
+} from './self-authenticating-route-manifest.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
@@ -377,6 +381,7 @@ const recordCheckoutConsents = async (
 };
 
 export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+  const selfAuthenticatingRouteStart = app.routes.length;
   app.post(API_PATHS.emailDispatch, async (c) => {
     if (c.req.header(EMAIL_DISPATCH_SECRET_HEADER) !== deps.emailDispatchSecret) {
       return respond(err(unauthorized('Invalid email dispatch secret')));
@@ -425,6 +430,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await getGlobalSchedulerRun({ runId: c.req.param('id') }, { runs: deps.marketing.runs }));
   });
 
+  // A freshly registered user has no member or staff grant, so tenant identity resolution would reject this session-authenticated route.
   app.post(API_PATHS.termsConsent, async (c) => {
     const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!tenant.ok) return respond(tenant);
@@ -739,6 +745,12 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   registerAuthenticatedMarketingRoutes(app, deps);
 
+  assertSelfAuthenticatingRouteManifest(
+    app.routes.slice(selfAuthenticatingRouteStart),
+    SELF_AUTHENTICATING_ROUTE_MANIFEST,
+  );
+
+  // Everything below is tenant-aware: authenticate, resolve tenant, inject identity.
   app.use('/api/*', async (c, next) => {
     const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
     const identity = await resolveIdentity(

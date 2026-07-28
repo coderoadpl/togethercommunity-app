@@ -1086,6 +1086,7 @@ describe('server edge security baseline', () => {
     const result = await app.request(API_PATHS.health);
 
     expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(result.headers.get('content-security-policy')).toContain('https://*.sentry.io');
     expect(result.headers.get('x-content-type-options')).toBe('nosniff');
     expect(result.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
     expect(result.headers.get('cache-control')).toBe('no-store');
@@ -1106,6 +1107,44 @@ describe('server edge security baseline', () => {
     expect(await response.json()).toMatchObject({
       ok: false,
       error: { code: 'validation' },
+    });
+  });
+
+  it('caps public form posts outside the API prefix', async () => {
+    const response = await buildApp(deps()).request('/u/token/preferences', {
+      method: 'POST',
+      headers: {
+        'content-length': String(16 * 1024 + 1),
+        host: 'acme.localhost',
+      },
+      body: 'definitionIds=product-news',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: `Request body exceeds the ${16 * 1024} byte limit`,
+      },
+    });
+  });
+
+  it('allows content authoring requests above 100KB to reach authentication', async () => {
+    const body = JSON.stringify({ bodyHtml: 'x'.repeat(100 * 1024) });
+    const response = await buildApp(deps({ authenticated: true })).request(API_PATHS.marketingLayouts, {
+      method: 'POST',
+      headers: {
+        'content-length': String(Buffer.byteLength(body)),
+        host: 'acme.localhost',
+      },
+      body,
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'unauthorized' },
     });
   });
 
@@ -1237,14 +1276,14 @@ describe('public offer route', () => {
 });
 
 describe('public auth-config route', () => {
-  it('reports Google disabled with public CORS headers when no credentials are configured', async () => {
+  it('reports public capabilities with CORS headers when no credentials are configured', async () => {
     const app = buildApp(deps());
 
     const response = await app.request(API_PATHS.authConfig);
     const body: unknown = await response.json();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
     expect(body).toMatchObject({
       ok: true,
       data: {
@@ -1252,8 +1291,23 @@ describe('public auth-config route', () => {
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: false,
+        tenantCreationEnabled: true,
       },
     });
+  });
+
+  it('handles auth-config preflight before auth middleware', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.authConfig, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://creator.example',
+        'access-control-request-method': 'GET',
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-methods')).toContain('GET');
   });
 
   it('reports Google enabled when the composition provides credentials', async () => {

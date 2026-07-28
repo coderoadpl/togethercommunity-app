@@ -865,6 +865,20 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/web/src/features/*/core/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message:
+            '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['web-island-core'], allow: ['vitest'] }],
+        },
+      ],
+    },
+  },
+  {
     // Scoped exception: the SSE wrapper is the single EventSource owner in apps/web.
     files: ['apps/web/src/notifications-stream.ts'],
     rules: {

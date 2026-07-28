@@ -147,6 +147,7 @@ export const en: Messages = {
     loading: 'loading overview…',
     publishedDraft: ({ published, draft }) =>
       format('published: {published} · drafts: {draft}', { published, draft }),
+    membersRemoved: ({ count }) => `+ ${count} removed`,
     activeGrants: 'Active grants',
     recentMembers: 'Recent members',
     viewAllMembers: 'All members',
@@ -697,6 +698,7 @@ export const en: Messages = {
         },
       ),
     deletedBadge: 'Account removed',
+    tombstoneNotice: 'Account removed — granting and renewing access is unavailable.',
     exportFailed: 'Export failed',
     allMembersBack: '← All members',
     joined: 'Joined',

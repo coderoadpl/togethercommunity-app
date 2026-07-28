@@ -194,7 +194,7 @@ const unsubscribeDeps = (deps: AppDeps, marketing: MarketingAppDeps) => ({
   clock: deps.clock,
 });
 
-export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post('/api/m2m/marketing/messages', async (c) => {
     const marketingResult = requireMarketing(deps);
     if (!marketingResult.ok) return response(marketingResult);
@@ -437,6 +437,9 @@ export const registerMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       : response(err(unauthorized('Invalid marketing tick secret')));
   });
 
+};
+
+export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   app.post('/api/webhooks/ses/:webhookToken', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);

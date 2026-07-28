@@ -1056,14 +1056,15 @@ describe('public route manifest', () => {
       .filter((route) => route.mutating)
       .map((route) => route.path);
 
-    expect(mutating).toEqual([
+    expect(mutating).toHaveLength(6);
+    expect(mutating).toEqual(expect.arrayContaining([
       '/u/:token*',
       '/marketing/confirm/:token',
       '/api/webhooks/ses/:webhookToken',
       '/api/webhooks/stripe/:tenantId',
       API_PATHS.checkoutSession,
       BETTER_AUTH_API_PATH_PATTERN,
-    ]);
+    ]));
   });
 });
 
@@ -1175,7 +1176,7 @@ describe('public auth-config route', () => {
     const body: unknown = await response.json();
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
     expect(body).toMatchObject({
       ok: true,
       data: {

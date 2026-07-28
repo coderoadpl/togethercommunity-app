@@ -11,7 +11,7 @@
  * a flat placeholder), so a golden only changes when the UI changes.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,8 +31,10 @@ const webDistDir = join(rootDir, 'dist/web');
 const goldenDir = join(rootDir, 'tasks/visual-goldens');
 const currentDir = join(rootDir, 'out/visual/current');
 const diffDir = join(rootDir, 'out/visual/diff');
+const argosDir = join(rootDir, 'out/visual/argos');
 
 const updateMode = process.argv.includes('--update');
+const argosCaptureMode = process.argv.includes('--argos-capture');
 const goldenAuthoringPlatform = 'darwin';
 
 const themeStorageKey = 'together-theme-mode';
@@ -629,15 +631,24 @@ let server: ChildProcess | null = null;
 let browser: Browser | null = null;
 
 try {
+  if (updateMode && argosCaptureMode) {
+    fail('Golden authoring and Argos capture modes cannot run together.');
+  }
+
   if (updateMode && process.platform !== goldenAuthoringPlatform) {
     fail(
       `Baseline authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
     );
   }
 
-  mkdirSync(goldenDir, { recursive: true });
-  mkdirSync(currentDir, { recursive: true });
-  mkdirSync(diffDir, { recursive: true });
+  if (argosCaptureMode) {
+    rmSync(argosDir, { recursive: true, force: true });
+    mkdirSync(argosDir, { recursive: true });
+  } else {
+    mkdirSync(goldenDir, { recursive: true });
+    mkdirSync(currentDir, { recursive: true });
+    mkdirSync(diffDir, { recursive: true });
+  }
 
   console.log(`visual: preparing the dev database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
   await prepareDatabase();
@@ -690,7 +701,10 @@ try {
           await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
           await screen.ready(page);
           await settlePage(page);
-          const shotPath = updateMode ? join(goldenDir, file) : join(currentDir, file);
+          const shotPath = join(
+            argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
+            file,
+          );
           await page.screenshot({
             path: shotPath,
             animations: 'disabled',
@@ -700,7 +714,7 @@ try {
           const { size } = statSync(shotPath);
           assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);
           captured += 1;
-          if (!updateMode) {
+          if (!updateMode && !argosCaptureMode) {
             const failure = comparePng(file, shotPath);
             if (failure !== null) failures.push(failure);
           }
@@ -713,7 +727,11 @@ try {
   }
 
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  if (updateMode) {
+  if (argosCaptureMode) {
+    console.log(
+      `\nvisual:argos-capture: DONE (${seconds}s) — ${captured} screenshots written to ${argosDir}`,
+    );
+  } else if (updateMode) {
     console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} baseline images written to ${goldenDir}`);
     console.log('Review the baseline diffs and commit them with the change that caused them.');
   } else if (failures.length > 0) {

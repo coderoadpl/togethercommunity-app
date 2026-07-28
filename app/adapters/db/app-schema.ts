@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, check, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
   AccessItem,
@@ -57,7 +57,10 @@ export const tenants = pgTable(
     invoiceSellerName: text('invoice_seller_name'),
     invoiceSellerAddress: text('invoice_seller_address'),
   },
-  (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
+  (table) => [
+    uniqueIndex('tenants_slug_uidx').on(table.slug),
+    check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
+  ],
 );
 
 export const consents = pgTable(

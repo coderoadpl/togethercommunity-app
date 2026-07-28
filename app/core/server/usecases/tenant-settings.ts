@@ -2,6 +2,7 @@ import {
   appError,
   err,
   ok,
+  resolveInvoiceVat,
   tenantNotFound,
   updateTenantSettingsInputSchema,
   validation,
@@ -52,61 +53,22 @@ export const updateTenantSettings = async (
   }
   const current = await deps.tenants.findSettings(tenant.value);
   if (!current) return err(tenantNotFound());
-  return ok(
-    await deps.tenants.updateSettings(tenant.value, {
-      billingPortalUrl:
-        parsed.data.billingPortalUrl === undefined ? current.billingPortalUrl : parsed.data.billingPortalUrl,
-      bunnyStreamLibraryId:
-        parsed.data.bunnyStreamLibraryId === undefined
-          ? current.bunnyStreamLibraryId
-          : parsed.data.bunnyStreamLibraryId,
-      logoUrl: parsed.data.logoUrl === undefined ? current.logoUrl : parsed.data.logoUrl,
-      accentColor: parsed.data.accentColor === undefined ? current.accentColor : parsed.data.accentColor,
-      faviconUrl: parsed.data.faviconUrl === undefined ? current.faviconUrl : parsed.data.faviconUrl,
-      ogTitle: parsed.data.ogTitle === undefined ? current.ogTitle : parsed.data.ogTitle,
-      ogDescription:
-        parsed.data.ogDescription === undefined ? current.ogDescription : parsed.data.ogDescription,
-      ogImageUrl:
-        parsed.data.ogImageUrl === undefined ? current.ogImageUrl : parsed.data.ogImageUrl,
-      supportEmail:
-        parsed.data.supportEmail === undefined ? current.supportEmail : parsed.data.supportEmail,
-      supportUrl: parsed.data.supportUrl === undefined ? current.supportUrl : parsed.data.supportUrl,
-      termsUrl: parsed.data.termsUrl === undefined ? current.termsUrl : parsed.data.termsUrl,
-      privacyUrl: parsed.data.privacyUrl === undefined ? current.privacyUrl : parsed.data.privacyUrl,
-      autoIssueInvoices:
-        parsed.data.autoIssueInvoices === undefined
-          ? current.autoIssueInvoices
-          : parsed.data.autoIssueInvoices,
-      autoIssueInvoiceScope:
-        parsed.data.autoIssueInvoiceScope === undefined
-          ? current.autoIssueInvoiceScope
-          : parsed.data.autoIssueInvoiceScope,
-      invoiceVatRatePercent:
-        parsed.data.invoiceVatRatePercent === undefined
-          ? current.invoiceVatRatePercent
-          : parsed.data.invoiceVatRatePercent,
-      invoiceVatMode:
-        parsed.data.invoiceVatMode === undefined ? current.invoiceVatMode : parsed.data.invoiceVatMode,
-      invoiceExemptionBasisKind:
-        parsed.data.invoiceExemptionBasisKind === undefined
-          ? current.invoiceExemptionBasisKind
-          : parsed.data.invoiceExemptionBasisKind,
-      invoiceExemptionBasis:
-        parsed.data.invoiceExemptionBasis === undefined
-          ? current.invoiceExemptionBasis
-          : parsed.data.invoiceExemptionBasis,
-      invoicingProvider:
-        parsed.data.invoicingProvider === undefined
-          ? current.invoicingProvider
-          : parsed.data.invoicingProvider,
-      invoiceSellerName:
-        parsed.data.invoiceSellerName === undefined
-          ? current.invoiceSellerName
-          : parsed.data.invoiceSellerName,
-      invoiceSellerAddress:
-        parsed.data.invoiceSellerAddress === undefined
-          ? current.invoiceSellerAddress
-          : parsed.data.invoiceSellerAddress,
-    }),
-  );
+  const merged: TenantSettings = { ...current };
+  for (const [key, value] of Object.entries(parsed.data)) {
+    if (value !== undefined) Object.assign(merged, { [key]: value });
+  }
+  if (merged.invoiceVatMode === null) {
+    return err(validation('Select a supported VAT treatment before updating settings'));
+  }
+  const coherent: TenantSettings = merged.invoiceVatMode === 'exempt'
+    ? { ...merged, invoiceVatRatePercent: null }
+    : { ...merged, invoiceExemptionBasisKind: null, invoiceExemptionBasis: null };
+  const vatResolution = resolveInvoiceVat(coherent);
+  if (coherent.invoiceVatMode === 'exempt' && !vatResolution.ok) {
+    return err(appError(
+      'invoice_exemption_basis_missing',
+      'VAT exemption is selected but the legal basis is missing.',
+    ));
+  }
+  return ok(await deps.tenants.updateSettings(tenant.value, coherent));
 };

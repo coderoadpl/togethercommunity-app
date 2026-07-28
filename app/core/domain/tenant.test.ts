@@ -43,13 +43,8 @@ describe('updateTenantSettingsInputSchema', () => {
     expect(updateTenantSettingsInputSchema.safeParse({ invoiceVatRatePercent: 12 }).success).toBe(false);
   });
 
-  it('requires a complete basis for exempt settings', () => {
-    expect(updateTenantSettingsInputSchema.safeParse({ invoiceVatMode: 'exempt' }).success).toBe(false);
-    expect(updateTenantSettingsInputSchema.safeParse({
-      invoiceVatMode: 'exempt',
-      invoiceExemptionBasisKind: 'art_43_1',
-      invoiceExemptionBasis: 'art. 43 ust. 1',
-    }).success).toBe(false);
+  it('accepts partial exemption updates and validates individual field bounds', () => {
+    expect(updateTenantSettingsInputSchema.safeParse({ invoiceVatMode: 'exempt' }).success).toBe(true);
     expect(updateTenantSettingsInputSchema.safeParse({
       invoiceVatMode: 'exempt',
       invoiceExemptionBasisKind: 'art_43_1',
@@ -72,6 +67,10 @@ describe('resolveInvoiceVat', () => {
       treatment: { kind: 'rate', percent: 23 },
     });
     expect(resolveInvoiceVat(base)).toEqual({ ok: false, reason: 'unset' });
+    expect(resolveInvoiceVat({ ...base, invoiceVatMode: null, invoiceVatRatePercent: 23 })).toEqual({
+      ok: false,
+      reason: 'unset',
+    });
     expect(resolveInvoiceVat({ ...base, invoiceVatMode: 'exempt' })).toEqual({
       ok: false,
       reason: 'exempt_basis_missing',

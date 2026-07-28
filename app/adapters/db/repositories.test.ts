@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, err, memberTombstone, validation } from '#core/domain/index.js';
 import type {
   CourseLesson,
   CourseModule,
@@ -49,6 +49,7 @@ import {
   createProductPriceHistoryRepository,
 } from './coupon-repositories.js';
 import { createInvoiceRepository } from './invoice-repositories.js';
+import { createPaymentTransactionPort } from './payment-transaction.js';
 import {
   consents,
   couponRedemptions,
@@ -702,6 +703,28 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
     await repo.release(ACME, releasable.id);
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
+  });
+
+  it('rolls back payment repository writes when the branch fails', async () => {
+    const transaction = createPaymentTransactionPort(db);
+    const rolledBackOrder = order({
+      id: 'order-payment-rollback',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+
+    const result = await transaction.run(async (transactionDeps) => {
+      await transactionDeps.orders.create(ACME, rolledBackOrder);
+      return err(validation('reject payment branch'));
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    const rows = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.tenantId, ACME), eq(orders.id, rolledBackOrder.id)));
+    expect(rows).toEqual([]);
   });
 });
 

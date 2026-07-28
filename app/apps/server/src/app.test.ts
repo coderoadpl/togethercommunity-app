@@ -111,6 +111,13 @@ const deps = (input: {
     memberErasure: {
       pseudonymize: async () => null,
     },
+    erasureRequests: {
+      create: async () => 'created',
+      findOpenForMember: async () => null,
+      findLatestForMember: async () => null,
+      list: async () => [],
+      resolve: async () => null,
+    },
     grants: {
       findById: async () => null,
       findGrant: async () => null,
@@ -1308,6 +1315,68 @@ describe('new route authorization', () => {
     ).toBe(403);
     expect(
       (await scopedApp('none').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(403);
+  });
+
+  it('enforces member and staff erasure-request scopes', async () => {
+    const memberApp = scopedApp('member');
+    const staffApp = scopedApp('staff');
+    const noneApp = scopedApp('none');
+    expect(
+      (await memberApp.request(API_PATHS.memberErasureRequest, { headers })).status,
+    ).toBe(200);
+    expect(
+      (
+        await memberApp.request(API_PATHS.memberErasureRequest, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ confirmEmail: 'user@acme.test' }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await memberApp.request(API_PATHS.memberErasureRequest, {
+          method: 'DELETE',
+          headers,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await staffApp.request(API_PATHS.memberErasureRequest, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await noneApp.request(API_PATHS.memberErasureRequest, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await staffApp.request(API_PATHS.memberErasureRequests, { headers })).status,
+    ).toBe(200);
+    expect(
+      (await memberApp.request(API_PATHS.memberErasureRequests, { headers })).status,
+    ).toBe(403);
+    expect(
+      (
+        await staffApp.request(
+          API_PATHS.memberErasureReject.replace(':requestId', 'request-1'),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ note: 'Accounting retention' }),
+          },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await memberApp.request(
+          API_PATHS.memberErasureReject.replace(':requestId', 'request-1'),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ note: 'No' }),
+          },
+        )
+      ).status,
     ).toBe(403);
   });
 

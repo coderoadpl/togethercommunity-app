@@ -808,6 +808,61 @@ export const processedPaymentEvents = pgTable(
   ],
 );
 
+export const memberErasureRequests = pgTable(
+  'member_erasure_requests',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['open', 'cancelled', 'completed', 'rejected'] }).notNull(),
+    reason: text('reason'),
+    requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'string' }).notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true, mode: 'string' }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'string' }),
+    resolvedByUserId: text('resolved_by_user_id'),
+    resolutionNote: text('resolution_note'),
+  },
+  (table) => [
+    uniqueIndex('member_erasure_requests_open_uidx')
+      .on(table.tenantId, table.memberId)
+      .where(sql`${table.status} = 'open'`),
+    index('member_erasure_requests_tenant_status_idx').on(
+      table.tenantId,
+      table.status,
+      table.requestedAt,
+    ),
+  ],
+);
+
+export const memberErasureRequestEvents = pgTable(
+  'member_erasure_request_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => memberErasureRequests.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['requested', 'cancelled', 'completed', 'rejected'] }).notNull(),
+    actorUserId: text('actor_user_id'),
+    meta: jsonb('meta'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('member_erasure_request_events_request_idx').on(
+      table.tenantId,
+      table.requestId,
+      table.occurredAt,
+    ),
+  ],
+);
+
 export const checkoutConsentCaptures = pgTable(
   'checkout_consent_captures',
   {

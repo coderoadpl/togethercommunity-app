@@ -22,7 +22,9 @@ at all.
   `CourseRepository.update`, `CourseModuleRepository.update`, and
   `CourseLessonRepository.update` write the previous version with the mutation.
 - Privacy and identity: `MemberErasurePort.pseudonymize` erases all member
-  identifiers as one unit.
+  identifiers as one unit; `MemberErasureRequestRepository.create` and
+  `MemberErasureRequestRepository.resolve` keep request projections and events
+  together.
 - Enrollment and tenant creation: `PurchaseRepository.createMemberGrant`,
   `EnrollmentTransactionPort.run`, and
   `TenantRepository.createTenantWithOwnerGrant` prevent partial grants,

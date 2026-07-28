@@ -4,6 +4,7 @@ import { createDb } from '#adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
+import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -150,6 +151,7 @@ import type {
   KsefInvoicePdf,
   KsefSubmissionJobRepository,
   MemberCourseProgressRepository,
+  MemberErasureRequestRepository,
   MemberErasurePort,
   MemberRepository,
   MemberSubscriptionRepository,
@@ -239,6 +241,7 @@ export interface AppDeps {
   userDisplays: UserDisplayReader;
   members: MemberRepository;
   memberErasure: MemberErasurePort;
+  erasureRequests: MemberErasureRequestRepository;
   emailHmac?: EmailHmac;
   posts: PostRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
@@ -637,6 +640,7 @@ export const createDeps = (env: Env): AppDeps => {
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
+    erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,
     posts: createPostRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),

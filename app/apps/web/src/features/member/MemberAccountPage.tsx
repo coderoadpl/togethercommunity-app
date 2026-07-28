@@ -32,6 +32,20 @@ export const MemberAccountPage = () => {
   const billingOrders = useQuery(actions.memberBillingOrders);
   const tenantSettings = useQuery(actions.tenantSettings);
   const dataExport = useQuery({ ...actions.myDataExport, enabled: false });
+  const erasureRequest = useQuery(actions.myErasureRequest);
+  const [erasureConfirmEmail, setErasureConfirmEmail] = useState('');
+  const createErasureRequest = useMutation({
+    ...actions.requestMyErasure,
+    onSuccess: () => {
+      void erasureRequest.refetch();
+    },
+  });
+  const cancelErasureRequest = useMutation({
+    ...actions.cancelMyErasureRequest,
+    onSuccess: () => {
+      void erasureRequest.refetch();
+    },
+  });
   const [supportSubject, setSupportSubject] = useState('');
   const [supportBody, setSupportBody] = useState('');
   const support = useMutation(actions.sendSupportMessage);
@@ -107,6 +121,80 @@ export const MemberAccountPage = () => {
           {dataExport.isError ? (
             <StatusView
               state={{ kind: 'error', message: localizeError(dataExport.error, t) }}
+            />
+          ) : null}
+        </SectionCard>
+
+        <SectionCard
+          title={t.account.erasureHeading}
+          description={t.account.erasureIntro}
+        >
+          {erasureRequest.data?.request === null ? (
+            <>
+              <FormControl fullWidth>
+                <FormLabel htmlFor="erasure-confirm-email">
+                  {t.account.erasureConfirmLabel}
+                </FormLabel>
+                <OutlinedInput
+                  id="erasure-confirm-email"
+                  value={erasureConfirmEmail}
+                  onChange={(event) => setErasureConfirmEmail(event.target.value)}
+                />
+              </FormControl>
+              <Button
+                color="error"
+                variant="contained"
+                data-testid="account-erasure-create"
+                disabled={
+                  createErasureRequest.isPending ||
+                  erasureConfirmEmail.trim().toLowerCase() !== email.toLowerCase()
+                }
+                onClick={() =>
+                  createErasureRequest.mutate({ confirmEmail: erasureConfirmEmail })
+                }
+              >
+                {t.account.erasureRequestButton}
+              </Button>
+            </>
+          ) : erasureRequest.data?.request.status === 'open' ? (
+            <>
+              <Typography>
+                {t.account.erasureOpen({
+                  dueAt: new Date(erasureRequest.data.request.dueAt).toLocaleDateString(
+                    language,
+                  ),
+                })}
+              </Typography>
+              <Button
+                variant="outlined"
+                data-testid="account-erasure-cancel"
+                disabled={cancelErasureRequest.isPending}
+                onClick={() => cancelErasureRequest.mutate(undefined)}
+              >
+                {t.account.erasureCancelButton}
+              </Button>
+            </>
+          ) : erasureRequest.data?.request === undefined ? (
+            <Typography>{t.common.loading}</Typography>
+          ) : (
+            <Typography>
+              {t.account.erasureResolved({
+                status: erasureRequest.data.request.status,
+                resolvedAt:
+                  erasureRequest.data.request.resolvedAt === null
+                    ? '—'
+                    : new Date(
+                        erasureRequest.data.request.resolvedAt,
+                      ).toLocaleDateString(language),
+              })}
+            </Typography>
+          )}
+          {createErasureRequest.isError ? (
+            <StatusView
+              state={{
+                kind: 'error',
+                message: localizeError(createErasureRequest.error, t),
+              }}
             />
           ) : null}
         </SectionCard>

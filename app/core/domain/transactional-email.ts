@@ -326,3 +326,29 @@ export const supportMessage = (
     text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
   });
 };
+
+export const memberErasureRequestEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    memberEmail: string;
+    requestedAt: string;
+    dueAt: string;
+    panelUrl: string;
+  },
+): EmailMessage => {
+  const memberEmail = escapeHtml(input.memberEmail);
+  const panelUrl = escapeHtml(input.panelUrl);
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `[${input.tenantName}] Member erasure request`,
+      html: `<p>${memberEmail} requested account erasure.</p><p>Requested: ${input.requestedAt}<br>Due: ${input.dueAt}</p><p><a href="${panelUrl}">Review request</a></p>`,
+      text: `${input.memberEmail} requested account erasure.\nRequested: ${input.requestedAt}\nDue: ${input.dueAt}\n${input.panelUrl}`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `[${input.tenantName}] Wniosek o usunięcie danych`,
+    html: `<p>${memberEmail} wysłał(a) wniosek o usunięcie danych.</p><p>Złożono: ${input.requestedAt}<br>Termin: ${input.dueAt}</p><p><a href="${panelUrl}">Sprawdź wniosek</a></p>`,
+    text: `${input.memberEmail} wysłał(a) wniosek o usunięcie danych.\nZłożono: ${input.requestedAt}\nTermin: ${input.dueAt}\n${input.panelUrl}`,
+  });
+};

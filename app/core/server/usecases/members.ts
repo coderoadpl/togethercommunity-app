@@ -2,18 +2,28 @@ import {
   DELETED_MEMBER_DISPLAY,
   err,
   memberTombstone,
+  appError,
   notFound,
   ok,
   type AppError,
   type MemberExportFile,
   type MemberExportFormat,
   type MemberWithProductIds,
+  type MemberErasureRequest,
+  type MemberErasureRequestStatus,
+  type MemberErasureRequestWithMember,
   type Result,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { Clock, MemberErasurePort, MemberRepository } from '../ports.js';
+import type {
+  Clock,
+  IdGenerator,
+  MemberErasurePort,
+  MemberErasureRequestRepository,
+  MemberRepository,
+} from '../ports.js';
 
 export interface MembersDeps {
   members: MemberRepository;
@@ -92,7 +102,7 @@ export const removeMember = async (
   ctx: Ctx,
   input: { memberId: string },
   deps: MembersDeps,
-): Promise<Result<{ memberId: string }, AppError>> => {
+): Promise<Result<{ memberId: string; erasureRequestId: string | null }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:remove');
   if (!tenant.ok) return tenant;
 
@@ -105,5 +115,55 @@ export const removeMember = async (
     postAuthorDisplay: DELETED_MEMBER_DISPLAY,
   });
   if (result === null) return err(notFound(`No member "${input.memberId}" in this tenant`));
-  return ok({ memberId: input.memberId });
+  return ok({
+    memberId: input.memberId,
+    erasureRequestId: result.erasureRequestId,
+  });
+};
+
+export const listErasureRequests = async (
+  ctx: Ctx,
+  input: { status?: MemberErasureRequestStatus },
+  deps: { erasureRequests: MemberErasureRequestRepository },
+): Promise<Result<MemberErasureRequestWithMember[], AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:erasure:read');
+  if (!tenant.ok) return tenant;
+  return ok(await deps.erasureRequests.list(tenant.value, input));
+};
+
+export const rejectErasureRequest = async (
+  ctx: Ctx,
+  input: { requestId: string; note: string },
+  deps: {
+    erasureRequests: MemberErasureRequestRepository;
+    ids: IdGenerator;
+    clock: Clock;
+  },
+): Promise<Result<MemberErasureRequest, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:remove');
+  if (!tenant.ok) return tenant;
+  const resolvedAt = deps.clock.nowIso();
+  const resolved = await deps.erasureRequests.resolve(
+    tenant.value,
+    {
+      id: input.requestId,
+      status: 'rejected',
+      resolvedAt,
+      resolvedByUserId: ctx.identity.userId,
+      resolutionNote: input.note,
+    },
+    {
+      id: deps.ids.nextId(),
+      tenantId: tenant.value,
+      requestId: input.requestId,
+      type: 'rejected',
+      actorUserId: ctx.identity.userId,
+      meta: { note: input.note },
+      occurredAt: resolvedAt,
+      createdAt: resolvedAt,
+    },
+  );
+  return resolved === null
+    ? err(appError('conflict', 'The erasure request is no longer open'))
+    : ok(resolved);
 };

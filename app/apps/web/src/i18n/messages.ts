@@ -631,6 +631,10 @@ export interface Messages {
     removeImpact: (params: { grants: number; completedLessons: number }) => string;
     deletedBadge: string;
     exportFailed: string;
+    erasureRequestsHeading: string;
+    erasureRequestsEmpty: string;
+    erasureRejectNote: string;
+    erasureReject: string;
     allMembersBack: string;
     joined: string;
     grantProduct: string;
@@ -925,6 +929,13 @@ export interface Messages {
     dataExportIntro: string;
     dataExportButton: string;
     dataExportPreparing: string;
+    erasureHeading: string;
+    erasureIntro: string;
+    erasureConfirmLabel: string;
+    erasureRequestButton: string;
+    erasureOpen: (input: { dueAt: string }) => string;
+    erasureCancelButton: string;
+    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
   resetPassword: {
     title: string;

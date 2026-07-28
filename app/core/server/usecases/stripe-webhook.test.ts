@@ -133,6 +133,7 @@ const subscriptionEvent = (input: {
   subscriptionId: string;
   cancelAtPeriodEnd?: boolean;
   status?: string;
+  currentPeriodEnd?: string | null;
 }): PaymentWebhookEvent => ({
   id: input.id,
   type: input.type,
@@ -142,7 +143,7 @@ const subscriptionEvent = (input: {
     id: input.subscriptionId,
     status: input.status ?? null,
     cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
-    currentPeriodEnd: null,
+    currentPeriodEnd: input.currentPeriodEnd ?? null,
   },
 });
 
@@ -938,7 +939,12 @@ describe('fulfillStripeWebhook', () => {
     const expiresBefore = Array.from(h.grants.values())[0]?.expiresAt;
     await fulfillStripeWebhook(
       tenantA,
-      subscriptionEvent({ id: 'evt-5', type: 'customer.subscription.deleted', subscriptionId: 'sub-1' }),
+      subscriptionEvent({
+        id: 'evt-5',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        currentPeriodEnd: '2026-08-20T10:00:00.000Z',
+      }),
       h.deps,
     );
     expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
@@ -949,7 +955,7 @@ describe('fulfillStripeWebhook', () => {
         to: 'buyer@example.com',
         payload: expect.objectContaining({
           kind: 'subscription-ended',
-          accessEndsAt: '2026-08-14T10:00:00.000Z',
+          accessEndsAt: '2026-08-23T10:00:00.000Z',
         }),
       },
     ]);

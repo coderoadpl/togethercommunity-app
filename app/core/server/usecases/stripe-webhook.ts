@@ -1,4 +1,5 @@
 import {
+  DEFAULT_LANGUAGE,
   err,
   graceExpiresAt,
   internal,
@@ -71,7 +72,7 @@ const enqueueSubscriptionNotice = async (
     kind === 'subscription-payment-failed'
       ? {
           kind,
-          language: 'pl',
+          language: DEFAULT_LANGUAGE,
           tenantName: tenant.name,
           productTitle: product.title,
           accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
@@ -80,10 +81,10 @@ const enqueueSubscriptionNotice = async (
         }
       : {
           kind,
-          language: 'pl',
+          language: DEFAULT_LANGUAGE,
           tenantName: tenant.name,
           productTitle: product.title,
-          accessEndsAt: subscription.currentPeriodEnd,
+          accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
           offerUrl: tenantBaseUrl.toString(),
           ...(branding === undefined ? {} : { branding }),
         };
@@ -573,7 +574,7 @@ const applySubscriptionEvent = async (
 
   const canceled =
     event.type === 'customer.subscription.deleted' || event.subscription?.status === 'canceled';
-  await updateSubscriptionFromProvider(
+  const updated = await updateSubscriptionFromProvider(
     tenant.id,
     {
       subscription,
@@ -584,7 +585,7 @@ const applySubscriptionEvent = async (
     deps,
   );
   if (event.type === 'customer.subscription.deleted') {
-    const notified = await enqueueSubscriptionNotice(tenant, subscription, 'subscription-ended', deps);
+    const notified = await enqueueSubscriptionNotice(tenant, updated, 'subscription-ended', deps);
     if (!notified.ok) return notified;
   }
   return ok({ processed: true });

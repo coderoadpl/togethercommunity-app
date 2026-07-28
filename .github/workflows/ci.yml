@@ -15,6 +15,22 @@ jobs:
     defaults:
       run:
         working-directory: app
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: together
+          POSTGRES_PASSWORD: together
+          POSTGRES_DB: together
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U together"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -23,6 +39,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - run: npm run db:migrate
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high
         continue-on-error: true

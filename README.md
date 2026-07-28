@@ -1,6 +1,6 @@
 # Together
 
-Open-source'owa platforma dla twórców: sprzedaż produktów cyfrowych + marketing + delivery kursów + społeczność w jednym. Darmowy self-host, bardzo tania wersja hostowana (1-5 USD/mies.), content zawsze należy do użytkownika (BYO storage: S3 / YouTube / Vimeo / Bunny; BYO Stripe).
+Platforma source-available dla twórców: sprzedaż produktów cyfrowych + marketing + delivery kursów + społeczność w jednym. Darmowy self-host, bardzo tania wersja hostowana (1-5 USD/mies.), content zawsze należy do użytkownika (BYO storage: S3 / YouTube / Vimeo / Bunny; BYO Stripe).
 
 **Wartości produktu: niezawodność, uniwersalność, cena.**
 
@@ -21,3 +21,11 @@ Etap założeń projektowych (lipiec 2026). Brak kodu.
 ## Nazwa i domena
 
 Nazwa: **Together** (zdecydowana). Domena: otwarta kwestia — `together.*` zajęte, do sprawdzenia warianty (`example-domain-a.*` itp.).
+
+## Licencja
+
+Together jest udostępniany jako Fair Source na licencji
+[FSL-1.1-ALv2](LICENSE.md). Możesz go hostować samodzielnie, ale nie możesz
+oferować konkurencyjnego hostingu. Każde wydanie automatycznie przechodzi na
+Apache-2.0 po dwóch latach. Więcej informacji:
+[fsl.software](https://fsl.software/) i [fair.io](https://fair.io/).

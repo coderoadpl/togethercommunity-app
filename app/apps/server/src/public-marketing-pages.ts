@@ -258,6 +258,7 @@ const publicStyles = `
 `;
 
 const renderPage = (input: {
+  nonce: string;
   brand: PublicBrand;
   language: Language;
   path: string;
@@ -276,10 +277,11 @@ const renderPage = (input: {
   const favicon = faviconUrl === null || faviconUrl === undefined
     ? ''
     : `<link rel="icon" href="${escapeHtml(faviconUrl)}">`;
-  return `<!doctype html><html lang="${input.language}" style="--accent:${escapeHtml(accent)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${favicon}<title>${escapeHtml(input.title)} · ${escapeHtml(input.brand.tenant.name)}</title><script>try{const theme=localStorage.getItem('together-theme-mode');if(theme)document.documentElement.dataset.theme=theme}catch{}</script><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><div class="brand-mark">${brandMark}</div><nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav></header><section class="page"><p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section></main></body></html>`;
+  return `<!doctype html><html lang="${input.language}" style="--accent:${escapeHtml(accent)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${favicon}<title>${escapeHtml(input.title)} · ${escapeHtml(input.brand.tenant.name)}</title><script nonce="${escapeHtml(input.nonce)}">try{const theme=localStorage.getItem('together-theme-mode');if(theme)document.documentElement.dataset.theme=theme}catch{}</script><style>${publicStyles}</style></head><body><main class="shell" data-testid="${escapeHtml(input.testId)}"><header class="brand"><div class="brand-mark">${brandMark}</div><nav class="languages" aria-label="${escapeHtml(t.language)}"><a href="${escapeHtml(input.path)}?lang=pl"${input.language === 'pl' ? ' aria-current="page"' : ''}>${escapeHtml(t.polish)}</a><a href="${escapeHtml(input.path)}?lang=en"${input.language === 'en' ? ' aria-current="page"' : ''}>${escapeHtml(t.english)}</a></nav></header><section class="page"><p class="eyebrow">${escapeHtml(input.eyebrow)}</p><h1>${escapeHtml(input.title)}</h1>${input.body}</section></main></body></html>`;
 };
 
 export const renderPreferencesPage = (input: {
+  nonce: string;
   brand: PublicBrand;
   language: Language;
   token: string;
@@ -302,10 +304,11 @@ export const renderPreferencesPage = (input: {
     ? `<p class="notice">${escapeHtml(t.globallyUnsubscribed({ tenant: input.brand.tenant.name }))}</p>`
     : `<form method="post" action="${path}/preferences${formSuffix}">${choices}<div class="actions"><button type="submit">${escapeHtml(t.savePreferences)}</button></div></form>`;
   const body = `<p class="lede">${escapeHtml(t.preferencesFor({ email: input.email }))}</p><p class="notice">${escapeHtml(t.scopeIntro({ scope }))}</p><section class="card danger-zone"><h2>${escapeHtml(t.unsubscribeScope)}</h2><p class="fine">${escapeHtml(t.unsubscribeWarning)}</p><div class="actions"><form method="post" action="${path}/confirm${formSuffix}"><button class="danger" type="submit">${escapeHtml(t.unsubscribeScope)}</button></form><form method="post" action="${path}/all${formSuffix}"><button class="secondary" type="submit">${escapeHtml(t.unsubscribeEverything({ tenant: input.brand.tenant.name }))}</button></form></div></section><section class="card"><h2>${escapeHtml(t.consentsTitle)}</h2><p class="fine">${escapeHtml(t.consentsIntro)}</p>${preferenceForm}</section>`;
-  return renderPage({ brand: input.brand, language: input.language, path, title: t.preferencesTitle, eyebrow: t.preferencesEyebrow, body, testId: 'marketing-preferences' });
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title: t.preferencesTitle, eyebrow: t.preferencesEyebrow, body, testId: 'marketing-preferences' });
 };
 
 export const renderPreferenceResultPage = (input: {
+  nonce: string;
   brand: PublicBrand;
   language: Language;
   token: string;
@@ -326,10 +329,11 @@ export const renderPreferenceResultPage = (input: {
     ? `<p class="fine">${escapeHtml(t.resubscribeHint)}</p>`
     : '';
   const body = `<div class="status"><p class="lede">${escapeHtml(summary)}</p>${hint}<div class="actions"><a href="${path}?lang=${input.language}">${escapeHtml(t.backToPreferences)}</a></div></div>`;
-  return renderPage({ brand: input.brand, language: input.language, path, title, eyebrow: t.preferencesEyebrow, body, testId: 'marketing-preference-result' });
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path, title, eyebrow: t.preferencesEyebrow, body, testId: 'marketing-preference-result' });
 };
 
 export const renderLegalDocumentPage = (input: {
+  nonce: string;
   brand: PublicBrand;
   language: Language;
   path: string;
@@ -346,10 +350,11 @@ export const renderLegalDocumentPage = (input: {
         date: new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(new Date(input.immutableVersion.publishedAt)),
       }))}</p>`;
   const body = `${notice}<article class="prose">${renderHostedMarkdown(input.content)}</article>`;
-  return renderPage({ brand: input.brand, language: input.language, path: input.path, title: input.title, eyebrow: t.legalEyebrow, body, testId: 'hosted-legal-document' });
+  return renderPage({ nonce: input.nonce, brand: input.brand, language: input.language, path: input.path, title: input.title, eyebrow: t.legalEyebrow, body, testId: 'hosted-legal-document' });
 };
 
 export const renderConfirmationPage = (input: {
+  nonce: string;
   brand: PublicBrand;
   language: Language;
   path: string;
@@ -368,6 +373,7 @@ export const renderConfirmationPage = (input: {
     ? `<form class="actions" method="post" action="${input.path}?lang=${input.language}"><button type="submit">${escapeHtml(t.confirmationSubmit)}</button></form>`
     : '';
   return renderPage({
+    nonce: input.nonce,
     brand: input.brand,
     language: input.language,
     path: input.path,

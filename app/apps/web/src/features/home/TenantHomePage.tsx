@@ -64,6 +64,7 @@ export const TenantHomePage = () => {
 const PickTenant = () => {
   const t = useTranslations();
   const tenants = useQuery(actions.tenants);
+  const authConfig = useQuery(actions.authConfig);
   const [name, setName] = useState('');
   const [slugInput, setSlugInput] = useState('');
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
@@ -107,7 +108,8 @@ const PickTenant = () => {
             </ListItem>
           ))}
         </List>
-        <Box component="form" onSubmit={submit} sx={{ mt: '1.5rem', display: 'grid', gap: '1rem' }}>
+        {authConfig.data?.tenantCreationEnabled ? (
+          <Box component="form" onSubmit={submit} sx={{ mt: '1.5rem', display: 'grid', gap: '1rem' }}>
           <Typography variant="h2" component="h2">
             {t.tenant.create}
           </Typography>
@@ -141,7 +143,8 @@ const PickTenant = () => {
           {createdSlug ? (
             <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>
           ) : null}
-        </Box>
+          </Box>
+        ) : null}
     </FocusCard>
   );
 };

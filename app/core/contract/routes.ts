@@ -122,9 +122,22 @@ import {
  * or response types anywhere else.
  */
 
-export const healthOutputSchema = z.object({
-  status: z.literal('ok'),
+export const attestationSchema = z.object({
   version: z.string(),
+  sha: z.string(),
+});
+
+export const healthLiveOutputSchema = attestationSchema.extend({
+  status: z.literal('ok'),
+});
+
+export const healthReadyOutputSchema = attestationSchema.extend({
+  status: z.literal('ok'),
+  database: z.literal('up'),
+});
+
+export const healthOutputSchema = attestationSchema.extend({
+  status: z.literal('ok'),
   database: z.enum(['up', 'down']),
 });
 
@@ -141,6 +154,7 @@ export const authConfigOutputSchema = z.object({
   passkeysEnabled: z.boolean(),
   totpEnabled: z.boolean(),
   exposeMagicLinks: z.boolean(),
+  tenantCreationEnabled: z.boolean(),
 });
 
 export const meOutputSchema = z.object({
@@ -1049,6 +1063,8 @@ export type SchedulerRunsQueryInput = z.input<typeof schedulerRunsQuerySchema>;
  */
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health' },
+  healthLive: { method: 'GET', path: '/api/health/live' },
+  healthReady: { method: 'GET', path: '/api/health/ready' },
   emailDispatch: { method: 'POST', path: '/api/internal/dispatch-email' },
   ksefDispatch: { method: 'POST', path: '/api/internal/dispatch-ksef' },
   publicOffer: { method: 'GET', path: '/api/public/offer' },
@@ -1216,6 +1232,8 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
   health: API_ROUTES.health.path,
+  healthLive: API_ROUTES.healthLive.path,
+  healthReady: API_ROUTES.healthReady.path,
   emailDispatch: API_ROUTES.emailDispatch.path,
   ksefDispatch: API_ROUTES.ksefDispatch.path,
   publicOffer: API_ROUTES.publicOffer.path,

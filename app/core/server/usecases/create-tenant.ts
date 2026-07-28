@@ -1,6 +1,7 @@
 import {
   appError,
   err,
+  forbidden,
   ok,
   validation,
   type AppError,
@@ -42,6 +43,7 @@ export interface CreateTenantDeps {
   tenants: TenantRepository;
   ids: IdGenerator;
   clock: Clock;
+  tenantCreationMode: 'open' | 'closed';
 }
 
 export const createTenant = async (
@@ -49,6 +51,10 @@ export const createTenant = async (
   input: { slug: string; name: string },
   deps: CreateTenantDeps,
 ): Promise<Result<Tenant, AppError>> => {
+  if (deps.tenantCreationMode === 'closed') {
+    return err(forbidden('Tenant creation is closed on this instance'));
+  }
+
   const slug = input.slug.trim().toLowerCase();
   const name = input.name.trim();
 

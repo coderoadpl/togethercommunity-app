@@ -14,7 +14,13 @@ const stubAuthConfig = (exposeMagicLinks = false) =>
     http.get('*/api/public/auth-config', () =>
       HttpResponse.json({
         ok: true,
-        data: { googleEnabled: false, passkeysEnabled: true, totpEnabled: true, exposeMagicLinks },
+        data: {
+          googleEnabled: false,
+          passkeysEnabled: true,
+          totpEnabled: true,
+          exposeMagicLinks,
+          tenantCreationEnabled: true,
+        },
       }),
     ),
   );

@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '#core/contract/index.js';
-import { BETTER_AUTH_MAGIC_LINK_PATH } from '#adapters/auth/create-auth.js';
+import {
+  BETTER_AUTH_MAGIC_LINK_PATH,
+} from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
+import { PUBLIC_ROUTE_MANIFEST } from './public-route-manifest.js';
 import {
   err,
   emailEventSchema,
@@ -432,6 +435,9 @@ const deps = (input: {
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
     health: { pingDatabase: async () => input.databaseUp ?? true },
+    appVersion: '0.1.0-test',
+    commitSha: 'test-sha',
+    tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
@@ -736,7 +742,12 @@ describe('marketing HTTP surfaces', () => {
   it('serves the latest published hosted document on the tenant domain', async () => {
     const response = await marketingApp().request('/legal/terms', { headers: { host: 'acme.localhost:48730' } });
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('Immutable terms');
+    const contentSecurityPolicy = response.headers.get('content-security-policy');
+    const nonce = /(?:^|; )script-src [^;]*'nonce-([^']+)'/.exec(contentSecurityPolicy ?? '')?.[1];
+    const body = await response.text();
+    expect(body).toContain('Immutable terms');
+    expect(nonce).toBeDefined();
+    expect(body).toContain(`<script nonce="${nonce}">`);
   });
 
   it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {
@@ -997,12 +1008,170 @@ describe('email dispatch route', () => {
 });
 
 describe('health route', () => {
-  it('reports the database status from the health port', async () => {
+  it('keeps the compatibility endpoint and exposes deploy attestation', async () => {
     const up = await buildApp(deps()).request(API_PATHS.health);
-    expect(await up.json()).toMatchObject({ ok: true, data: { status: 'ok', database: 'up' } });
+    expect(await up.json()).toMatchObject({
+      ok: true,
+      data: {
+        status: 'ok',
+        database: 'up',
+        version: '0.1.0-test',
+        sha: 'test-sha',
+      },
+    });
 
     const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.health);
     expect(await down.json()).toMatchObject({ ok: true, data: { database: 'down' } });
+  });
+
+  it('serves liveness without touching the database', async () => {
+    let databasePings = 0;
+    const configured = deps();
+    configured.health = {
+      pingDatabase: async () => {
+        databasePings += 1;
+        return false;
+      },
+    };
+
+    const response = await buildApp(configured).request(API_PATHS.healthLive);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { status: 'ok', version: '0.1.0-test', sha: 'test-sha' },
+    });
+    expect(databasePings).toBe(0);
+  });
+
+  it('returns unavailable from readiness when the database is down', async () => {
+    const up = await buildApp(deps()).request(API_PATHS.healthReady);
+    expect(up.status).toBe(200);
+    expect(await up.json()).toMatchObject({
+      ok: true,
+      data: { status: 'ok', database: 'up', sha: 'test-sha' },
+    });
+
+    const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.healthReady);
+    expect(down.status).toBe(503);
+    expect(down.headers.get('cache-control')).toBe('no-store');
+    expect(await down.json()).toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'Database is not reachable' },
+    });
+  });
+});
+
+describe('API envelope totality', () => {
+  it.each([
+    ['unknown route', '/api/does-not-exist', 'GET'],
+    ['wrong method', API_PATHS.health, 'POST'],
+  ])('returns a not_found envelope for an %s', async (_label, path, method) => {
+    const response = await buildApp(deps({ authenticated: true })).request(path, { method });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: { code: 'not_found', message: `No API route for ${method} ${path}` },
+    });
+  });
+});
+
+describe('server edge security baseline', () => {
+  it('sets secure headers and keeps authenticated responses out of shared caches', async () => {
+    const response = await deps({ authenticated: true });
+    const app = buildApp(response);
+    const result = await app.request(API_PATHS.health);
+
+    expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(result.headers.get('content-security-policy')).toContain('https://*.sentry.io');
+    expect(result.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(result.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    expect(result.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
+    const app = buildApp(deps());
+    const response = await app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: {
+        'content-length': String(100 * 1024 + 1),
+        host: 'acme.localhost',
+      },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  });
+
+  it('caps public form posts outside the API prefix', async () => {
+    const response = await buildApp(deps()).request('/u/token/preferences', {
+      method: 'POST',
+      headers: {
+        'content-length': String(16 * 1024 + 1),
+        host: 'acme.localhost',
+      },
+      body: 'definitionIds=product-news',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: `Request body exceeds the ${16 * 1024} byte limit`,
+      },
+    });
+  });
+
+  it('allows content authoring requests above 100KB to reach authentication', async () => {
+    const body = JSON.stringify({ bodyHtml: 'x'.repeat(100 * 1024) });
+    const response = await buildApp(deps({ authenticated: true })).request(API_PATHS.marketingLayouts, {
+      method: 'POST',
+      headers: {
+        'content-length': String(Buffer.byteLength(body)),
+        host: 'acme.localhost',
+      },
+      body,
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'unauthorized' },
+    });
+  });
+
+  it('does not open CORS on an authenticated route', async () => {
+    const app = buildApp(deps({ authenticated: true }));
+    const response = await app.request(API_PATHS.me, {
+      headers: { origin: 'https://example.test' },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('public route manifest', () => {
+  it('records the six approved mutating surfaces', () => {
+    const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
+      .filter((route) => route.mutating)
+      .map((route) => route.why));
+
+    expect(mutatingSurfaces).toEqual(new Set([
+      'Unsubscribe preference changes',
+      'Double opt-in confirmation',
+      'Amazon SNS delivery webhook',
+      'Stripe payment webhook',
+      'Checkout session start',
+      'Login, recovery, and magic-link authentication surface',
+    ]));
   });
 });
 
@@ -1107,7 +1276,7 @@ describe('public offer route', () => {
 });
 
 describe('public auth-config route', () => {
-  it('reports Google disabled with public CORS headers when no credentials are configured', async () => {
+  it('reports public capabilities with CORS headers when no credentials are configured', async () => {
     const app = buildApp(deps());
 
     const response = await app.request(API_PATHS.authConfig);
@@ -1122,8 +1291,23 @@ describe('public auth-config route', () => {
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: false,
+        tenantCreationEnabled: true,
       },
     });
+  });
+
+  it('handles auth-config preflight before auth middleware', async () => {
+    const response = await buildApp(deps()).request(API_PATHS.authConfig, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://creator.example',
+        'access-control-request-method': 'GET',
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-methods')).toContain('GET');
   });
 
   it('reports Google enabled when the composition provides credentials', async () => {

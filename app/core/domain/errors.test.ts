@@ -12,6 +12,7 @@ import {
   notFound,
   tenantNotFound,
   unauthorized,
+  unavailable,
   validation,
 } from './errors.js';
 
@@ -43,6 +44,7 @@ describe('error constructors', () => {
       [integrationNotConfigured(), 'integration_not_configured'],
       [integrationAuth(), 'integration_auth'],
       [integrationUnavailable(), 'integration_unavailable'],
+      [unavailable(), 'unavailable'],
       [internal(), 'internal'],
     ] as const;
     for (const [error, code] of cases) {
@@ -67,6 +69,7 @@ describe('error constructors', () => {
       integrationNotConfigured(),
       integrationAuth(),
       integrationUnavailable(),
+      unavailable(),
       internal(),
     ];
     for (const error of constructed) {

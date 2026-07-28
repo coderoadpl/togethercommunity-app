@@ -27,6 +27,8 @@ import {
   grantCreateOutputSchema,
   grantRevokeOutputSchema,
   healthOutputSchema,
+  healthLiveOutputSchema,
+  healthReadyOutputSchema,
   ifirmaTestConnectionOutputSchema,
   ksefTestConnectionOutputSchema,
   emailDispatchOutputSchema,
@@ -289,6 +291,10 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  healthLive: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.healthLive.method, API_ROUTES.healthLive.path, healthLiveOutputSchema, undefined, signal),
+  healthReady: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.healthReady.method, API_ROUTES.healthReady.path, healthReadyOutputSchema, undefined, signal),
   listMarketingConsentDefinitions: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingConsentDefinitions.method, API_ROUTES.marketingConsentDefinitions.path, marketingConsentDefinitionsOutputSchema, undefined, signal),
   createMarketingConsentDefinition: (input: MarketingConsentDefinitionCreateInput, signal?: AbortSignal) =>

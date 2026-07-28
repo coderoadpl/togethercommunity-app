@@ -27,6 +27,8 @@ at all.
   `EnrollmentTransactionPort.run`, and
   `TenantRepository.createTenantWithOwnerGrant` prevent partial grants,
   members, outbox messages, or ownerless tenants.
+- Payments and webhooks: `PaymentTransactionPort.run` keeps every payment
+  projection write and webhook finalization in one commit.
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,
   `InvoiceRepository.createFrozenKsef`, `InvoiceRepository.checkpointKsef`,

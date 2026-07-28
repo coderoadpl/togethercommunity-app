@@ -666,7 +666,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findByKey(ACME, 'stripe.restrictedKey')).toBeNull();
   });
 
-  it('claims a payment event once and rejects duplicate deliveries', async () => {
+  it('leases, reclaims, finalizes, and releases payment event claims', async () => {
     const repo = createProcessedPaymentEventRepository(db);
     const event: ProcessedPaymentEvent = {
       id: 'evt-1',
@@ -675,11 +675,33 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       objectId: 'in-1',
       processedAt: NOW,
     };
-    expect(await repo.claim(ACME, event)).toBe(true);
-    expect(await repo.claim(ACME, event)).toBe(false);
-    expect(await repo.claim(ACME, { ...event, id: 'evt-2' })).toBe(false);
-    await repo.release(ACME, 'evt-1');
-    expect(await repo.claim(ACME, { ...event, id: 'evt-3' })).toBe(true);
+    const lease = {
+      workerId: 'worker-1',
+      now: NOW,
+      leaseExpiresAt: '2026-07-14T10:05:00.000Z',
+    };
+    expect(await repo.claim(ACME, event, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, event, lease)).toBe('duplicate');
+    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, lease)).toBe('duplicate');
+    const reclaimed = {
+      workerId: 'worker-2',
+      now: '2026-07-14T10:06:00.000Z',
+      leaseExpiresAt: '2026-07-14T10:11:00.000Z',
+    };
+    expect(await repo.claim(ACME, event, reclaimed)).toBe('claimed');
+    await repo.finalize(ACME, event.id, reclaimed.now);
+    expect(
+      await repo.claim(ACME, event, {
+        ...reclaimed,
+        now: '2026-07-14T10:12:00.000Z',
+        leaseExpiresAt: '2026-07-14T10:17:00.000Z',
+      }),
+    ).toBe('duplicate');
+
+    const releasable = { ...event, id: 'evt-3', objectId: 'in-3' };
+    expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
+    await repo.release(ACME, releasable.id);
+    expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
   });
 });
 

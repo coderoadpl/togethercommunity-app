@@ -86,7 +86,7 @@ const deps = (input: {
   const members: Member[] = [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
-  return {
+  const appDeps: AppDeps = {
     auth: {
       handler: async () => new Response(null, { status: 404 }),
       setMagicLinkDeliveryContext: () => undefined,
@@ -216,7 +216,8 @@ const deps = (input: {
       presignGet: (input) => ok(input.url),
     },
     processedPaymentEvents: {
-      claim: async () => true,
+      claim: async () => 'claimed',
+      finalize: async () => undefined,
       release: async () => undefined,
     },
     purchases: {
@@ -273,6 +274,23 @@ const deps = (input: {
           markFailed: async () => ok(undefined),
         },
       }),
+    },
+    paymentTransaction: {
+      run: async (operation) =>
+        operation({
+          members: appDeps.members,
+          grants: appDeps.grants,
+          orders: appDeps.orders,
+          subscriptions: appDeps.subscriptions,
+          paymentRefunds: appDeps.paymentRefunds,
+          couponRedemptions: appDeps.couponRedemptions ?? {
+            counts: async () => ({ total: 0, member: 0 }),
+            createOrderAndClaim: async () => false,
+          },
+          emailOutbox: appDeps.emailOutbox,
+          processedPaymentEvents: appDeps.processedPaymentEvents,
+          enrollmentTransaction: appDeps.enrollmentTransaction,
+        }),
     },
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
     dispatchEmail: () => undefined,
@@ -456,6 +474,7 @@ const deps = (input: {
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
   };
+  return appDeps;
 };
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
@@ -1789,10 +1808,11 @@ describe('checkout consent ordering', () => {
       },
       processedPaymentEvents: {
         claim: async (_tenantId, paymentEvent) => {
-          if (claimedEvents.has(paymentEvent.id)) return false;
+          if (claimedEvents.has(paymentEvent.id)) return 'duplicate';
           claimedEvents.add(paymentEvent.id);
-          return true;
+          return 'claimed';
         },
+        finalize: async () => undefined,
         release: async () => undefined,
       },
       paymentRefunds: {

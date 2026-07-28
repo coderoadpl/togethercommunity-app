@@ -28,6 +28,7 @@ import type {
   ProductPriceHistoryRepository,
   CheckoutConsentCaptureRepository,
   EmailOutboxRepository,
+  PaymentTransactionPort,
 } from '../ports.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
@@ -49,7 +50,10 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
   checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
+  paymentTransaction: PaymentTransactionPort;
 }
+
+const WEBHOOK_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 const enqueueSubscriptionNotice = async (
   tenant: Tenant,
@@ -607,19 +611,36 @@ export const fulfillStripeWebhook = async (
     objectId: event.objectId,
     processedAt: deps.clock.nowIso(),
   };
-  const claimed = await deps.processedPaymentEvents.claim(tenant.id, processedEvent);
-  if (!claimed) return ok({ processed: false });
+  const workerId = deps.ids.nextId();
+  const claimedAt = deps.clock.nowIso();
+  const claimed = await deps.processedPaymentEvents.claim(tenant.id, processedEvent, {
+    workerId,
+    now: claimedAt,
+    leaseExpiresAt: new Date(Date.parse(claimedAt) + WEBHOOK_CLAIM_LEASE_MS).toISOString(),
+  });
+  if (claimed === 'duplicate') return ok({ processed: false });
 
   let applied: Result<{ processed: boolean }, AppError>;
   try {
-    applied =
-      event.type === 'checkout.session.completed'
-        ? await applyCheckoutCompleted(tenant, event, provider, deps)
-        : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
-          ? await applyInvoiceEvent(tenant, event, deps)
-          : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
-            ? await applyPaymentAdjustment(tenant, event, deps)
-            : await applySubscriptionEvent(tenant, event, deps);
+    applied = await deps.paymentTransaction.run(async (transactionDeps) => {
+      const branchDeps = { ...deps, ...transactionDeps };
+      const result =
+        event.type === 'checkout.session.completed'
+          ? await applyCheckoutCompleted(tenant, event, provider, branchDeps)
+          : event.type === 'invoice.paid' || event.type === 'invoice.payment_failed'
+            ? await applyInvoiceEvent(tenant, event, branchDeps)
+            : event.type === 'charge.refunded' || event.type === 'charge.dispute.created'
+              ? await applyPaymentAdjustment(tenant, event, branchDeps)
+              : await applySubscriptionEvent(tenant, event, branchDeps);
+      if (result.ok && result.value.processed) {
+        await transactionDeps.processedPaymentEvents.finalize(
+          tenant.id,
+          event.id,
+          deps.clock.nowIso(),
+        );
+      }
+      return result;
+    });
   } catch {
     await deps.processedPaymentEvents.release(tenant.id, event.id);
     return err(internal('Payment fulfillment failed'));

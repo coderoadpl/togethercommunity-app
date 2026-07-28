@@ -796,10 +796,15 @@ export const processedPaymentEvents = pgTable(
     type: text('type').notNull(),
     objectId: text('object_id').notNull(),
     processedAt: text('processed_at').notNull(),
+    status: text('status').notNull().default('processed'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'string' }),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true, mode: 'string' }),
+    workerId: text('worker_id'),
   },
   (table) => [
     index('processed_events_tenantId_idx').on(table.tenantId),
     uniqueIndex('processed_events_object_type_uidx').on(table.objectId, table.type),
+    index('processed_events_lease_idx').on(table.status, table.leaseExpiresAt),
   ],
 );
 

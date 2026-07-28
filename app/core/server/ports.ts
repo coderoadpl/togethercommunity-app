@@ -829,11 +829,16 @@ export interface MemberSubscriptionRepository {
 
 export interface ProcessedPaymentEventRepository {
   /**
-   * Records the event before its effects run and returns whether this call won the insert.
-   * The event-id primary key and the object+type unique index make the write atomic, so a
-   * duplicate delivery racing the original loses here instead of double-applying the effects.
+   * Wins the event for this worker, or reports a duplicate. An expired processing lease can be
+   * reclaimed so a worker that dies mid-effect does not strand the event.
    */
-  claim(tenantId: string, event: ProcessedPaymentEvent): Promise<boolean>;
+  claim(
+    tenantId: string,
+    event: ProcessedPaymentEvent,
+    lease: { workerId: string; now: string; leaseExpiresAt: string },
+  ): Promise<'claimed' | 'duplicate'>;
+  /** Marks the claim terminal after its effects committed. */
+  finalize(tenantId: string, eventId: string, processedAt: string): Promise<void>;
   /** Undoes a claim whose effects did not apply, so a later redelivery can reprocess it. */
   release(tenantId: string, eventId: string): Promise<void>;
 }
@@ -933,6 +938,23 @@ export interface EmailOutboxRepository {
 
 export interface EnrollmentTransactionPort {
   run<T>(operation: (deps: { members: MemberRepository; grants: ProductGrantRepository; emailOutbox: EmailOutboxRepository }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+export interface PaymentTransactionPort {
+  /** Every payment projection write of one webhook branch commits together or not at all. */
+  run<T>(
+    operation: (deps: {
+      members: MemberRepository;
+      grants: ProductGrantRepository;
+      orders: OrderRepository;
+      subscriptions: MemberSubscriptionRepository;
+      paymentRefunds: PaymentRefundRepository;
+      couponRedemptions: CouponRedemptionRepository;
+      emailOutbox: EmailOutboxRepository;
+      processedPaymentEvents: ProcessedPaymentEventRepository;
+      enrollmentTransaction: EnrollmentTransactionPort;
+    }) => Promise<Result<T, AppError>>,
+  ): Promise<Result<T, AppError>>;
 }
 
 /** Dev-only sink so tests and the CLI can read magic links without a mailer. */

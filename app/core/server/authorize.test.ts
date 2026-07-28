@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Identity } from '#core/domain/index.js';
 
-import { authorize, authorizeTenant } from './authorize.js';
+import { authorize, authorizeRequiredTenant, authorizeTenant } from './authorize.js';
 
 const identity = (tenantId: string | null): Identity => ({
   userId: 'user-1',
@@ -65,5 +65,22 @@ describe('authorizeTenant', () => {
       ok: false,
       error: { code: 'tenant_not_found' },
     });
+  });
+});
+
+describe('authorizeRequiredTenant', () => {
+  it('preserves forbidden for a tenantless caller denied the capability', () => {
+    expect(
+      authorizeRequiredTenant({ identity: identity(null) }, 'marketing:delivery:read'),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('preserves forbidden for a capable tenantless caller', () => {
+    expect(
+      authorizeRequiredTenant(
+        { identity: identity(null), capabilities: ['marketing:consent:write'] },
+        'marketing:consent:write',
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

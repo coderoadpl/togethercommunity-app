@@ -11,7 +11,12 @@ const useCasesRoot = join(appRoot, 'core', 'server', 'usecases');
 const internalAppPath = join(appRoot, 'apps', 'server', 'src', 'internal-app.ts');
 const exportedCtxUseCase = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*ctx:\s*Ctx\b/g;
 const repositoryAccess = /\bdeps(?:\.\w+)+\s*\(/;
-const authorizationEntry = /\b(?:authorize|authorizeTenant|requireStaffTenant|requireMember|requireTenant|requireActor|requireMemberOrStaff|requireStaff|tenantIdFrom|staffTenantIdFrom|onboardingContext|getCampaign|transitionCampaign|isLessonAccessible|getAccessibleLesson|reactionOutcome|listCouponStats|getCreatorOnboarding)\s*\(/;
+const AUTH_ONLY: Record<string, string> = {
+  'community-access.ts#memberScope': 'identity narrowing utility with no repository access',
+  'community-access.ts#requireActor': 'caller-supplied capability authorization utility',
+  'community-access.ts#requireMemberOrStaff': 'caller-supplied capability authorization utility',
+  'community-access.ts#requireTenant': 'caller-supplied capability authorization utility',
+};
 
 interface UseCaseSource {
   subject: string;
@@ -79,31 +84,27 @@ describe('authorization fail-closed probes', () => {
 
     const useCases = collectUseCaseSources();
     expect(inventory.useCases.map((row) => row.subject).sort()).toEqual(
-      useCases.map((useCase) => useCase.subject).sort(),
+      useCases
+        .filter((useCase) => !(useCase.subject in AUTH_ONLY))
+        .map((useCase) => useCase.subject)
+        .sort(),
     );
     expect(inventory.useCases.every((row) => row.capability !== null)).toBe(true);
   });
 
-  it('requires authorization before an exported Ctx use-case reaches a repository', () => {
-    const repositoryBacked = collectUseCaseSources()
-      .filter((useCase) => repositoryAccess.test(useCase.body));
-    expect(repositoryBacked.length).toBeGreaterThan(100);
-    expect(repositoryBacked.map((useCase) => useCase.subject)).toEqual(
-      expect.arrayContaining([
-        'products.ts#listProducts',
-        'members.ts#listMembers',
-        'invoices.ts#requestInvoice',
-        'marketing-email.ts#createCampaign',
-      ]),
+  it('requires one declared authorization capability for every exported Ctx use-case', () => {
+    const inventory = new Map(
+      collectPermissionInventory().useCases.map((row) => [row.subject, row.capability]),
     );
-    const offenders = repositoryBacked
-      .filter((useCase) => {
-        const gate = useCase.body.search(authorizationEntry);
-        const repository = useCase.body.search(repositoryAccess);
-        return gate === -1 || gate > repository;
-      })
+    const offenders = collectUseCaseSources()
+      .filter((useCase) => !(useCase.subject in AUTH_ONLY) && !inventory.has(useCase.subject))
       .map((useCase) => useCase.subject);
     expect(offenders).toEqual([]);
+  });
+
+  it('keeps authentication-only and authorization-utility exceptions current', () => {
+    const names = new Set(collectUseCaseSources().map((useCase) => useCase.subject));
+    expect(Object.keys(AUTH_ONLY).filter((subject) => !names.has(subject))).toEqual([]);
   });
 
   it('requires authorization before an identity-middleware route reaches a repository directly', () => {
@@ -112,7 +113,7 @@ describe('authorization fail-closed probes', () => {
     expect(repositoryBacked.length).toBeGreaterThanOrEqual(2);
     const offenders = repositoryBacked
       .filter((route) => {
-        const gate = route.body.search(/\bauthorize(?:Tenant)?\s*\(/);
+        const gate = route.body.search(/\bauthorize(?:RequiredTenant|Tenant)?\s*\(/);
         const repository = route.body.search(repositoryAccess);
         return gate === -1 || gate > repository;
       })

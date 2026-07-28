@@ -9,7 +9,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { authorizeTenant } from '../authorize.js';
+import { authorizeRequiredTenant } from '../authorize.js';
 import type {
   Clock,
   MarketingSesCredentialResolver,
@@ -50,7 +50,7 @@ interface SesOnboardingDeps {
 }
 
 const onboardingContext = async (ctx: Ctx, deps: SesOnboardingDeps) => {
-  const tenantId = authorizeTenant(ctx, 'marketing:ses:write');
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:ses:write');
   if (!tenantId.ok) return tenantId;
   const settings = await deps.settings.findByTenant(tenantId.value);
   if (settings === null) return err(notFound('Save sender settings before starting SES onboarding'));
@@ -102,6 +102,8 @@ export const startSesIdentityVerification = async (
   input: { kind: 'domain' | 'email' },
   deps: SesOnboardingDeps,
 ) => {
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:ses:write');
+  if (!tenantId.ok) return tenantId;
   const context = await onboardingContext(ctx, deps);
   if (!context.ok) return context;
   const started = input.kind === 'domain'
@@ -120,6 +122,8 @@ export const provisionSesInfrastructure = async (
   ctx: Ctx,
   deps: SesOnboardingDeps,
 ) => {
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:ses:write');
+  if (!tenantId.ok) return tenantId;
   const context = await onboardingContext(ctx, deps);
   if (!context.ok) return context;
   const name = resourceName(context.value.tenantId);
@@ -174,6 +178,8 @@ export const pollSesOnboarding = async (
   ctx: Ctx,
   deps: SesOnboardingDeps,
 ): Promise<Result<SesOnboardingStatus, AppError>> => {
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:ses:write');
+  if (!tenantId.ok) return tenantId;
   const context = await onboardingContext(ctx, deps);
   if (!context.ok) return context;
   const identity = await deps.controlPlane.readIdentity(context.value.credentials, context.value.settings.identity);
@@ -243,6 +249,8 @@ export const sendSesSimulatorTest = async (
   ctx: Ctx,
   deps: SesOnboardingDeps,
 ) => {
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:ses:write');
+  if (!tenantId.ok) return tenantId;
   const context = await onboardingContext(ctx, deps);
   if (!context.ok) return context;
   if (context.value.settings.configurationSet === null) {

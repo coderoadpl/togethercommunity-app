@@ -37,7 +37,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { authorizeTenant } from '../authorize.js';
+import { authorizeRequiredTenant } from '../authorize.js';
 import type {
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -67,7 +67,7 @@ import type {
 } from '../ports.js';
 
 const tenantIdFrom = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
-  authorizeTenant(ctx, capability);
+  authorizeRequiredTenant(ctx, capability);
 
 const staffTenantIdFrom = tenantIdFrom;
 
@@ -661,6 +661,8 @@ export const getCampaignWithEngagement = async (
   input: { campaignId: string },
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
 ): Promise<Result<Campaign & { engagement: CampaignEngagementStats }, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
+  if (!tenantId.ok) return tenantId;
   const campaign = await getCampaign(ctx, input, deps);
   if (!campaign.ok) return campaign;
   const stats = await deps.sends.engagementStats(campaign.value.tenantId, [campaign.value.id]);
@@ -686,6 +688,8 @@ export const deleteCampaign = async (
   input: { campaignId: string },
   deps: Pick<CampaignDeps, 'campaigns'>,
 ): Promise<Result<{ deleted: true }, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
+  if (!tenantId.ok) return tenantId;
   const campaign = await getCampaign(ctx, input, deps);
   if (!campaign.ok) return campaign;
   if (campaign.value.status !== 'draft') return err(validation('Only draft campaigns can be deleted'));
@@ -753,15 +757,23 @@ export const pauseCampaign = async (
   ctx: Ctx,
   input: { campaignId: string; resume?: boolean },
   deps: CampaignDeps,
-): Promise<Result<Campaign, AppError>> => transitionCampaign(ctx, input.campaignId, input.resume === true ? 'running' : 'paused', deps, {
-  pausedReason: input.resume === true ? null : 'Paused by staff', lockedUntil: null, lockedBy: null,
-});
+): Promise<Result<Campaign, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
+  if (!tenantId.ok) return tenantId;
+  return transitionCampaign(ctx, input.campaignId, input.resume === true ? 'running' : 'paused', deps, {
+    pausedReason: input.resume === true ? null : 'Paused by staff', lockedUntil: null, lockedBy: null,
+  });
+};
 
-export const cancelCampaign = (
+export const cancelCampaign = async (
   ctx: Ctx,
   input: { campaignId: string },
   deps: CampaignDeps,
-): Promise<Result<Campaign, AppError>> => transitionCampaign(ctx, input.campaignId, 'cancelled', deps);
+): Promise<Result<Campaign, AppError>> => {
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
+  if (!tenantId.ok) return tenantId;
+  return transitionCampaign(ctx, input.campaignId, 'cancelled', deps);
+};
 
 export const updateCampaignContent = async (
   ctx: Ctx,

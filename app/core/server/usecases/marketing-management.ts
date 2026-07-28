@@ -22,7 +22,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { authorizeTenant } from '../authorize.js';
+import { authorizeRequiredTenant } from '../authorize.js';
 import type {
   CampaignRepository,
   Clock,
@@ -39,7 +39,7 @@ import type {
 } from '../ports.js';
 
 const staffTenantIdFrom = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
-  authorizeTenant(ctx, capability);
+  authorizeRequiredTenant(ctx, capability);
 
 const documentVersionRef = async (
   tenantId: string,

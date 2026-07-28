@@ -43,3 +43,14 @@ export const authorizeTenant = (
   if (denial !== null) return err(denial);
   return ok(ctx.identity.tenantId);
 };
+
+export const authorizeRequiredTenant = (
+  ctx: Ctx,
+  capability: Capability,
+): Result<string, AppError> => {
+  const denial = authorize(ctx, capability);
+  if (denial !== null) return err(denial);
+  return ctx.identity.tenantId === null
+    ? err(forbidden('Tenant context is required'))
+    : ok(ctx.identity.tenantId);
+};

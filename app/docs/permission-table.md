@@ -409,18 +409,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:179` | `} else if (ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:213` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:239` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| staff-role | `core/server/usecases/invoices.ts:372` | `if (ctx.identity.staffRole === null) return err(forbidden());` |
-| member-scope | `core/server/usecases/invoices.ts:411` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
-| staff-role | `core/server/usecases/invoices.ts:448` | `if (ctx.identity.staffRole === null) return err(forbidden());` |
-| staff-role | `core/server/usecases/invoices.ts:475` | `if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can issue invoices'));` |
-| staff-role | `core/server/usecases/invoices.ts:510` | `if (ctx.identity.staffRole === null) return err(forbidden());` |
-| staff-role | `core/server/usecases/invoices.ts:544` | `if (ctx.identity.staffRole !== 'owner') {` |
-| staff-role | `core/server/usecases/invoices.ts:558` | `if (ctx.identity.staffRole !== 'owner') {` |
+| member-scope | `core/server/usecases/invoices.ts:412` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:28` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | staff-role | `core/server/usecases/onboarding.ts:38` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));` |
-| staff-role | `core/server/usecases/payment-integrations.ts:12` | `if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Stripe'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:76` | `staffRole: staffGrant?.staffRole ?? null,` |

@@ -107,6 +107,18 @@ module.exports = {
       to: { path: 'node_modules/(hono|react|react-dom|drizzle-orm|better-auth|pg|commander)(/|$)' },
     },
     {
+      name: 'auth-provider-sdk-only-in-adapters-auth',
+      severity: 'error',
+      from: { pathNot: '^adapters/auth' },
+      to: { path: 'node_modules/(better-auth|@better-auth)(/|$)' },
+    },
+    {
+      name: 'smtp-sdk-only-in-adapters-email',
+      severity: 'error',
+      from: { pathNot: '^adapters/email' },
+      to: { path: 'node_modules/(nodemailer|@aws-sdk)(/|$)' },
+    },
+    {
       name: 'core-domain-external-allowlist',
       severity: 'error',
       from: { path: '^core/domain', pathNot: '\\.test\\.tsx?$' },

@@ -3,7 +3,6 @@ import {
   forbidden,
   notFound,
   ok,
-  tenantNotFound,
   validation,
   type AccessItem,
   type AppError,
@@ -16,6 +15,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   CourseLessonRepository,
@@ -55,14 +55,13 @@ interface MemberScope {
 }
 
 const requireTenant = (ctx: Ctx): Result<string, AppError> =>
-  ctx.identity.tenantId
-    ? ok(ctx.identity.tenantId)
-    : err(tenantNotFound('Select a tenant to view courses'));
+  authorizeTenant(ctx, 'lesson:play');
 
 const requireMember = (ctx: Ctx): Result<MemberScope, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to view courses'));
+  const tenant = authorizeTenant(ctx, 'lesson:play');
+  if (!tenant.ok) return tenant;
   if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));
-  return ok({ tenantId: ctx.identity.tenantId, memberId: ctx.identity.memberId });
+  return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });
 };
 
 const isStaff = (ctx: Ctx): boolean => ctx.identity.staffRole !== null;

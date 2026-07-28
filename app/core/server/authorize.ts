@@ -19,7 +19,16 @@ const principalFor = (ctx: Ctx) => {
 };
 
 export const authorize = (ctx: Ctx, capability: Capability): AppError | null =>
-  (ctx.capabilities ?? capabilitiesForPrincipal(principalFor(ctx))).includes(capability)
+  (
+    ctx.capabilities?.includes(capability)
+    ?? (
+      capabilitiesForPrincipal(principalFor(ctx)).includes(capability)
+      || (
+        ctx.identity.memberId !== null
+        && capabilitiesForPrincipal('member').includes(capability)
+      )
+    )
+  )
     ? null
     : forbidden(`${capability} is not permitted`);
 

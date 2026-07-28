@@ -167,14 +167,14 @@ no changes
 | `POST /api/lessons/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/lessons/references` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/lessons/:lessonId` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `GET /api/student/courses` | lesson:play | member | member | yes | identity middleware + use-case guard |
-| `GET /api/student/courses/:courseId/structure` | lesson:play | member | member | yes | identity middleware + use-case guard |
+| `GET /api/student/courses` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/student/courses/:courseId/structure` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/complete` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
-| `POST /api/student/lessons/uncomplete` | lesson:play | member | member | yes | identity middleware + use-case guard |
+| `POST /api/student/lessons/uncomplete` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/progress/last-viewed` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
-| `GET /api/student/lessons/next` | lesson:play | member | member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/next` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/progress` | member:progress:read | member | member | yes | identity middleware + use-case guard |
-| `GET /api/student/lessons/:lessonId` | lesson:play | member | member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/:lessonId` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/posts` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/posts/update` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `DELETE /api/posts/:postId` | community:write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -256,11 +256,11 @@ no changes
 | `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
 | `email-send-observability.ts#exportEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
 | `entitlements.ts#resolveMemberEntitlements` | member:product:read | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#isLessonAccessible` | lesson:play | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#getAccessibleLesson` | lesson:play | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#getCourseStructureWithAccess` | lesson:play | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#listMyCourses` | lesson:play | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#getNextLesson` | lesson:play | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
+| `entitlements.ts#isLessonAccessible` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
+| `entitlements.ts#getAccessibleLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
+| `entitlements.ts#getCourseStructureWithAccess` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
+| `entitlements.ts#listMyCourses` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
+| `entitlements.ts#getNextLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
 | `grants.ts#listMemberGrants` | member:grant:read | owner, admin | owner, admin | yes | core/server/usecases/grants.ts inline guard or same-file guard helper |
 | `grants.ts#grantProductToMember` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts inline guard or same-file guard helper |
 | `grants.ts#revokeGrant` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts inline guard or same-file guard helper |
@@ -271,7 +271,7 @@ no changes
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
 | `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
 | `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `lesson-media.ts#getPlayableLesson` | lesson:play | member | member | yes | core/server/usecases/lesson-media.ts inline guard or same-file guard helper |
+| `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts inline guard or same-file guard helper |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
@@ -393,8 +393,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:603` | `const result = await saveMarketingConsentPreferences({ identity: apiIdentity(resolved.value.tenant) }, {` |
 | api-key | `apps/server/src/marketing-routes.ts:636` | `{ identity: apiIdentity(resolved.value.tenant) },` |
 | api-key | `apps/server/src/marketing-routes.ts:678` | `const result = await confirmMarketingConsent({ identity: apiIdentity(resolved.value.tenant) }, {` |
-| staff-role | `core/server/usecases/api-keys.ts:34` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage API keys'));` |
-| staff-role | `core/server/usecases/api-keys.ts:40` | `if (ctx.identity.staffRole !== 'owner') {` |
 | staff-role | `core/server/usecases/community-access.ts:51` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:51` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:58` | `ctx.identity.tenantId && ctx.identity.memberId` |
@@ -409,14 +407,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/coupon-stats.ts:33` | `if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can view coupon sales'));` |
 | staff-role | `core/server/usecases/email-reputation.ts:17` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | staff-role | `core/server/usecases/email-send-observability.ts:18` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
-| member-scope | `core/server/usecases/entitlements.ts:64` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:65` | `return ok({ tenantId: ctx.identity.tenantId, memberId: ctx.identity.memberId });` |
-| member-scope | `core/server/usecases/entitlements.ts:119` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
-| member-scope | `core/server/usecases/entitlements.ts:163` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:180` | `} else if (ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/entitlements.ts:214` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
-| member-scope | `core/server/usecases/entitlements.ts:240` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
-| staff-role | `core/server/usecases/grants.ts:50` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage grants'));` |
+| member-scope | `core/server/usecases/entitlements.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
+| member-scope | `core/server/usecases/entitlements.ts:64` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
+| member-scope | `core/server/usecases/entitlements.ts:118` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
+| member-scope | `core/server/usecases/entitlements.ts:162` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:179` | `} else if (ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/entitlements.ts:213` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
+| member-scope | `core/server/usecases/entitlements.ts:239` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/invoices.ts:372` | `if (ctx.identity.staffRole === null) return err(forbidden());` |
 | member-scope | `core/server/usecases/invoices.ts:411` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | staff-role | `core/server/usecases/invoices.ts:448` | `if (ctx.identity.staffRole === null) return err(forbidden());` |
@@ -428,16 +425,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/marketing-email.ts:73` | `return ctx.identity.staffRole === null ? err(forbidden('Tenant staff access is required')) : tenantId;` |
 | staff-role | `core/server/usecases/marketing-management.ts:41` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | staff-role | `core/server/usecases/marketing-ses-onboarding.ts:53` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
-| member-scope | `core/server/usecases/member-billing-orders.ts:31` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
-| staff-role | `core/server/usecases/member-learning.ts:39` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can view member learning'));` |
-| staff-role | `core/server/usecases/members.ts:27` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage members'));` |
-| member-scope | `core/server/usecases/my-products.ts:52` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
+| member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | staff-role | `core/server/usecases/onboarding.ts:38` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));` |
 | staff-role | `core/server/usecases/orders.ts:35` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see sales'));` |
 | staff-role | `core/server/usecases/payment-integrations.ts:12` | `if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Stripe'));` |
-| member-scope | `core/server/usecases/progress.ts:45` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
-| member-scope | `core/server/usecases/progress.ts:46` | `return ok({ tenantId: ctx.identity.tenantId, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/progress.ts:146` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can reset member progress'));` |
+| member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
+| member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:76` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/scheduler-activity.ts:15` | `if (ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null) {` |
 | staff-role | `core/server/usecases/spaces.ts:77` | `if (!ctx.identity.staffRole) return err(forbidden('Only staff can manage spaces'));` |
@@ -465,3 +459,7 @@ The route accepts any authenticated session, while the use-case separately denie
 ### staff with simultaneous membership
 
 Identity resolution can carry both staffRole and memberId; staff checks take precedence in some use-cases while member-scoped use-cases accept the same identity through memberId.
+
+### staff lesson access
+
+Staff identities can use the student lesson and course-structure use-cases without a member row or product grant.

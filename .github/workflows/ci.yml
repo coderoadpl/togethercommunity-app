@@ -109,4 +109,6 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - if: matrix.suite == 'auth'
+        run: google-chrome --version
       - run: npm run e2e:${{ matrix.suite }}

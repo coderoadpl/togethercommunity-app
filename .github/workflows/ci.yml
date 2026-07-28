@@ -64,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [subs, marketing]
+        suite: [auth, poc, subs, marketing]
     defaults:
       run:
         working-directory: app

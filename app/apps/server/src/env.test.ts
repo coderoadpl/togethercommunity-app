@@ -24,3 +24,29 @@ describe('database driver policy', () => {
     }
   });
 });
+
+describe('local SMTP policy', () => {
+  it('accepts Mailpit without SMTP credentials when a sender is configured', () => {
+    const parsed = envSchema.safeParse({
+      EMAIL_PROVIDER: 'smtp',
+      EMAIL_FROM: 'Together <dev@together.local>',
+      SMTP_HOST: 'localhost',
+      SMTP_PORT: '47925',
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects incomplete SMTP credential pairs', () => {
+    const parsed = envSchema.safeParse({
+      SMTP_USER: 'user',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.SMTP_PASSWORD).toContain(
+        'SMTP_USER and SMTP_PASSWORD must be set together',
+      );
+    }
+  });
+});

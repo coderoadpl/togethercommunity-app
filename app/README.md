@@ -9,7 +9,7 @@ auth, organizations (tenants), tenant resolution by domain, one demo resource
 
 ```bash
 npm install
-npm run db:up        # Postgres 16 in Docker on port 48912
+npm run db:up        # Postgres 16 and optional Mailpit tooling
 npm run db:migrate
 npm run db:seed      # creators, tenants, courses, tiered products, members with varied grants
 npm run build:web
@@ -20,6 +20,11 @@ The dev server serves the built SPA from `dist/web`, not directly from
 `apps/web/src`. `npm run dev:server` and `npm run db:reseed` compare mtimes and
 rebuild a stale bundle automatically. After pulling changes, run
 `npm run build:web` before starting the server if you use another entry point.
+
+Transactional mail uses the database-backed development sink by default.
+To exercise the real SMTP adapter, select `EMAIL_PROVIDER=smtp` as described in
+[ADR-0007](docs/decisions/0007-local-mailpit.md), then inspect captured messages
+at `http://localhost:47980`.
 
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
 sign in as `creator@together.dev` / `demo1234` on studio, or

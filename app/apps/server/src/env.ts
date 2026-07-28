@@ -40,8 +40,16 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
-    EMAIL_PROVIDER: z.enum(['ses', 'dev']).default('dev'),
+    EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
     EMAIL_FROM: z.string().min(1).optional(),
+    SMTP_HOST: z.string().min(1).default('localhost'),
+    SMTP_PORT: z.coerce.number().int().positive().default(47925),
+    SMTP_SECURE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    SMTP_USER: z.string().min(1).optional(),
+    SMTP_PASSWORD: z.string().min(1).optional(),
     EMAIL_DISPATCH_SECRET: z.string().min(16).default('dev-email-dispatch-secret'),
     MARKETING_TICK_SECRET: z.string().min(16).default('dev-marketing-tick-secret'),
     CRON_SECRET: z.string().min(16).optional(),
@@ -61,6 +69,20 @@ export const envSchema = z
     WEB_DIST_DIR: z.string().default('dist/web'),
   })
   .superRefine((env, ctx) => {
+    if ((env.SMTP_USER === undefined) !== (env.SMTP_PASSWORD === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [env.SMTP_USER === undefined ? 'SMTP_USER' : 'SMTP_PASSWORD'],
+        message: 'SMTP_USER and SMTP_PASSWORD must be set together',
+      });
+    }
+    if (env.EMAIL_PROVIDER === 'smtp' && !env.EMAIL_FROM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['EMAIL_FROM'],
+        message: 'EMAIL_FROM must be set when EMAIL_PROVIDER=smtp',
+      });
+    }
     const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
     if (!production) return;
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {

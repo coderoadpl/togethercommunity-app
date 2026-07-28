@@ -389,10 +389,20 @@ export const createDeps = (env: Env): AppDeps => {
     env.PAYMENT_PROVIDER === 'stripe'
       ? createStripePaymentProvider({ resolver: secretResolver })
       : createFakePaymentProvider(secretResolver);
+  const devEmail = createDevEmailPort(db);
   const email =
     env.EMAIL_PROVIDER === 'ses'
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })
-      : createDevEmailPort(db);
+      : env.EMAIL_PROVIDER === 'smtp'
+        ? createSmtpEmailPort({
+            host: env.SMTP_HOST,
+            port: env.SMTP_PORT,
+            secure: env.SMTP_SECURE,
+            from: env.EMAIL_FROM ?? '',
+            ...(env.SMTP_USER === undefined ? {} : { user: env.SMTP_USER }),
+            ...(env.SMTP_PASSWORD === undefined ? {} : { password: env.SMTP_PASSWORD }),
+          })
+        : devEmail;
   const emailOutbox = createEmailOutboxRepository(db, env.EMAIL_DISPATCH_ATTEMPTS_CAP);
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
@@ -438,7 +448,7 @@ export const createDeps = (env: Env): AppDeps => {
     : { resolve: async () => ok({ accessKeyId: 'dev', secretAccessKey: 'dev', region: 'eu-central-1' }) };
   const marketingSes = production
     ? createSesMarketingSender()
-    : createDevMarketingSender(email);
+    : createDevMarketingSender(devEmail);
   const snsTestCert = env.SNS_TEST_CERT_PEM_BASE64 === undefined
     ? null
     : Buffer.from(env.SNS_TEST_CERT_PEM_BASE64, 'base64').toString('utf8');

@@ -225,7 +225,13 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:suppression:write',
     'enrollment:create',
   ],
-  'operator-secret': ['scheduler:read', 'scheduler:dispatch', 'marketing:campaign:send'],
+  'operator-secret': [
+    'scheduler:read',
+    'scheduler:dispatch',
+    'marketing:campaign:send',
+    'marketing:campaign:dispatch',
+    'marketing:message:send',
+  ],
   webhook: ['webhook:process'],
   token: ['marketing:consent:read', 'marketing:consent:write'],
   public: [

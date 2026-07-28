@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import {
+  API_PATHS,
+  capabilitiesForPrincipal,
+  SCHEDULER_OPERATOR_SECRET_HEADER,
+  TENANT_HEADER,
+} from '#core/contract/index.js';
 import {
   BETTER_AUTH_MAGIC_LINK_PATH,
 } from '#adapters/auth/create-auth.js';
@@ -22,7 +27,7 @@ import {
   type TenantDomain,
   type TermsConsent,
 } from '#core/domain/index.js';
-import type { PaymentWebhookEvent } from '#core/server/index.js';
+import { authorize, type PaymentWebhookEvent } from '#core/server/index.js';
 import {
   FakeEmailHmac,
   FakeScheduler,
@@ -610,6 +615,22 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 };
 
 describe('marketing HTTP surfaces', () => {
+  it('denies staff-only capabilities to an API-key context', () => {
+    expect(authorize({
+      identity: {
+        userId: 'api-key',
+        email: 'api-key@together.invalid',
+        name: 'Automation API',
+        tenantId: acme.id,
+        tenantSlug: acme.slug,
+        tenantName: acme.name,
+        staffRole: null,
+        memberId: null,
+      },
+      capabilities: capabilitiesForPrincipal('api-key'),
+    }, 'marketing:campaign:write')).toMatchObject({ code: 'forbidden' });
+  });
+
   it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {
     const marketing = marketingDeps();
     const triggers: string[] = [];

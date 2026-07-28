@@ -107,7 +107,7 @@ resolves `--tenant` → `TOGETHER_CLI_TENANT` → the selected profile.
 ## Dev notes
 
 - Ports: API 48730, Vite dev 48731, Postgres 48912, optional Mailpit SMTP
-  47925 and UI/API 47980 (never 3000/8080/5432).
+  48925 and UI/API 48980 (never 3000/8080/5432).
 - Tenants live on subdomains: `acme.localhost:48730`. Browsers reject
   `Domain=.localhost` cookies → per-subdomain login in dev only.
 - Better Auth CSRF requires an `Origin` header on auth POSTs (CLI sends its API URL).

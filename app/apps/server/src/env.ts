@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalNonEmptyString = z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.string().min(1).optional(),
+);
+
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
 export const envSchema = z
   .object({
@@ -19,8 +24,8 @@ export const envSchema = z
       .default('node-postgres'),
     APP_BASE_DOMAIN: z.string().default('localhost'),
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
-    APP_COMMIT_SHA: z.string().min(1).optional(),
-    TENANT_CREATION: z.enum(['open', 'closed']).default('closed'),
+    APP_COMMIT_SHA: optionalNonEmptyString,
+    TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
     BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
     // 32-byte AES-256-GCM key, base64. Generate: openssl rand -base64 32
     SECRETS_MASTER_KEY: z.string().min(1).default('dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE='),
@@ -41,19 +46,19 @@ export const envSchema = z
       .default('false')
       .transform((value) => value === 'true'),
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
-    EMAIL_FROM: z.string().min(1).optional(),
+    EMAIL_FROM: optionalNonEmptyString,
     SMTP_HOST: z.string().min(1).default('localhost'),
     SMTP_PORT: z.coerce.number().int().positive().default(47925),
     SMTP_SECURE: z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
-    SMTP_USER: z.string().min(1).optional(),
-    SMTP_PASSWORD: z.string().min(1).optional(),
+    SMTP_USER: optionalNonEmptyString,
+    SMTP_PASSWORD: optionalNonEmptyString,
     EMAIL_DISPATCH_SECRET: z.string().min(16).default('dev-email-dispatch-secret'),
     MARKETING_TICK_SECRET: z.string().min(16).default('dev-marketing-tick-secret'),
     CRON_SECRET: z.string().min(16).optional(),
-    SNS_TEST_CERT_PEM_BASE64: z.string().min(1).optional(),
+    SNS_TEST_CERT_PEM_BASE64: optionalNonEmptyString,
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
     KSEF_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
@@ -85,6 +90,13 @@ export const envSchema = z
     }
     const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
     if (!production) return;
+    if (env.TENANT_CREATION !== 'closed') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TENANT_CREATION'],
+        message: 'TENANT_CREATION must be closed in production',
+      });
+    }
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

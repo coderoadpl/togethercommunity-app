@@ -457,6 +457,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
+        tenantCreationEnabled: deps.tenantCreationMode === 'open',
       }),
     ),
   );

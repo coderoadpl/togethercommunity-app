@@ -13,9 +13,10 @@ flows, but it does not exercise a real SMTP connection.
 
 The database-backed sink remains the default with `EMAIL_PROVIDER=dev`.
 Mailpit is an optional local SMTP target for auth and transactional delivery.
-It runs in `docker-compose.dev.yml`, captures messages without external
-delivery, exposes SMTP on port `47925`, and provides its inbox and HTTP API on
-`http://localhost:47980`.
+It runs under the opt-in `mailpit` Compose profile, captures messages without
+external delivery, exposes SMTP on port `48925`, and provides its inbox and
+HTTP API on `http://localhost:48980`. These ports differ from the foundation
+repository so both development stacks can run at once.
 
 To exercise the real SMTP path locally:
 
@@ -23,7 +24,7 @@ To exercise the real SMTP path locally:
 EMAIL_PROVIDER=smtp
 EMAIL_FROM=Together <dev@together.local>
 SMTP_HOST=localhost
-SMTP_PORT=47925
+SMTP_PORT=48925
 SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASSWORD=
@@ -32,7 +33,7 @@ SMTP_PASSWORD=
 Then start the local services and server:
 
 ```bash
-npm run db:up
+docker compose -f docker-compose.dev.yml --profile mailpit up -d
 npm run dev:server
 ```
 

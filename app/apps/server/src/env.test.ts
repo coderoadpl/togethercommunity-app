@@ -3,12 +3,26 @@ import { describe, expect, it } from 'vitest';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
-  it('defaults closed and accepts only declared modes', () => {
+  it('defaults open outside production and accepts only declared modes', () => {
     const defaults = envSchema.parse({});
 
-    expect(defaults.TENANT_CREATION).toBe('closed');
+    expect(defaults.TENANT_CREATION).toBe('open');
     expect(envSchema.safeParse({ TENANT_CREATION: 'open' }).success).toBe(true);
     expect(envSchema.safeParse({ TENANT_CREATION: 'staff' }).success).toBe(false);
+  });
+
+  it('requires closed tenant creation in production', () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: 'production',
+      TENANT_CREATION: 'open',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.TENANT_CREATION).toContain(
+        'TENANT_CREATION must be closed in production',
+      );
+    }
   });
 });
 
@@ -26,6 +40,25 @@ describe('database driver policy', () => {
 });
 
 describe('local SMTP policy', () => {
+  it('treats empty optional settings as unset', () => {
+    const parsed = envSchema.safeParse({
+      APP_COMMIT_SHA: '',
+      EMAIL_FROM: '',
+      SMTP_USER: '',
+      SMTP_PASSWORD: '',
+      SNS_TEST_CERT_PEM_BASE64: '',
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.APP_COMMIT_SHA).toBeUndefined();
+      expect(parsed.data.EMAIL_FROM).toBeUndefined();
+      expect(parsed.data.SMTP_USER).toBeUndefined();
+      expect(parsed.data.SMTP_PASSWORD).toBeUndefined();
+      expect(parsed.data.SNS_TEST_CERT_PEM_BASE64).toBeUndefined();
+    }
+  });
+
   it('accepts Mailpit without SMTP credentials when a sender is configured', () => {
     const parsed = envSchema.safeParse({
       EMAIL_PROVIDER: 'smtp',

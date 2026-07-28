@@ -24,7 +24,7 @@ rebuild a stale bundle automatically. After pulling changes, run
 Transactional mail uses the database-backed development sink by default.
 To exercise the real SMTP adapter, select `EMAIL_PROVIDER=smtp` as described in
 [ADR-0007](docs/decisions/0007-local-mailpit.md), then inspect captured messages
-at `http://localhost:47980`.
+at `http://localhost:48980`.
 
 Open **http://studio.localhost:48730** and **http://acme.localhost:48730** —
 sign in as `creator@together.dev` / `demo1234` on studio, or

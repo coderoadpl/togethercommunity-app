@@ -5,7 +5,7 @@ architecture spec is normative).
 
 ## The two gates
 
-- `npm run check` = typecheck + ESLint (boundaries) + lock-lint + dependency-cruiser + knip + doc-lint +
+- `npm run check` = typecheck + ESLint (boundaries) + lock-lint + migration-lint + dependency-cruiser + knip + doc-lint +
   vitest — the **static** gate.
 - `npm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `package-lock.json`, drops+recreates an isolated

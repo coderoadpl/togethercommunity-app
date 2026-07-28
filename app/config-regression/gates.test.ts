@@ -13,6 +13,7 @@ const coreDomainDir = join('core', 'domain', token);
 const coreServerDir = join('core', 'server', token);
 const featureDir = join('apps', 'web', 'src', 'features', token);
 const islandCoreDir = join(featureDir, 'core');
+const islandDomFixture = join(islandCoreDir, 'dom.tsx');
 const layoutDir = join('apps', 'web', 'src', 'components', 'layout', token);
 
 const sweepRoots = [
@@ -123,10 +124,7 @@ beforeAll(() => {
   const fixtures = Object.values(eslintFixtures);
   const eslintTargets = fixtures.map((fixture) => writeFixture(fixture.rel, fixture.content));
   for (const fixture of depcruiseFixtures) writeFixture(fixture.rel, fixture.content);
-  const islandDomFixture = writeFixture(
-    join(islandCoreDir, 'dom.tsx'),
-    'export const forbidden = document;\n',
-  );
+  writeFixture(islandDomFixture, 'export const forbidden = document;\n');
 
   const eslintRun = spawnSync(
     join(appRoot, 'node_modules', '.bin', 'eslint'),
@@ -161,7 +159,6 @@ beforeAll(() => {
   );
   islandTypecheckStatus = islandTypecheckRun.status;
   islandTypecheckOutput = `${islandTypecheckRun.stdout}${islandTypecheckRun.stderr}`;
-  expect(islandTypecheckOutput).toContain(islandDomFixture.slice(appRoot.length + 1));
 }, 60_000);
 
 afterAll(() => {
@@ -268,6 +265,7 @@ describe('Dependency Cruiser gate', () => {
 describe('Island typecheck gate', () => {
   it('rejects DOM references from TypeScript JSX island cores', () => {
     expect(islandTypecheckStatus).not.toBe(0);
+    expect(islandTypecheckOutput).toContain(islandDomFixture);
     expect(islandTypecheckOutput).toContain("Cannot find name 'document'");
   });
 });

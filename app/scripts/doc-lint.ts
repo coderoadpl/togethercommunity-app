@@ -48,24 +48,24 @@ const trackedMarkdown = execFileSync(
 
 const vitestFiles = execFileSync(
   process.execPath,
-  [join(appRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'list', '--filesOnly'],
+  [require.resolve('vitest/vitest.mjs'), 'list', '--filesOnly'],
   {
     cwd: appRoot,
     encoding: 'utf8',
   },
 )
   .split('\n')
+  .map((entry) => entry.replace(/^\[[^\]]+\]\s+/, '').trim())
   .filter((entry) => entry.length > 0);
 const countValues: Readonly<Record<string, number>> = {
-  'test-files': vitestFiles.length,
+  'test-files': new Set(vitestFiles).size,
 };
 const countTokenPattern = /<!--count:([a-z0-9-]+)-->(\d+)<!--\/count-->/g;
 const numericTestCountPatterns = [
-  /\b(?:current(?:ly)?|total|vitest|test suite|discovers?)\b[^\n]{0,60}\b\d+\s+test files?\b/i,
-  /\b\d+\s+test files?\b[^\n]{0,40}\b(?:currently|in total|across (?:all|the)|discovered)\b/i,
-  /\b(?:obecnie|łącznie|vitest|zestaw testów|wykrywa)\b[^\n]{0,60}\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b/i,
-  /\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b[^\n]{0,40}\b(?:obecnie|łącznie|we wszystkich)\b/i,
+  /\b\d+\s+test files?\b/i,
+  /\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b/i,
 ];
+const numericTestCountAllowlist = ['tasks/', 'app/tasks/'];
 const requiredCountTokens: Readonly<Record<string, readonly string[]>> = {
   'app/README.md': ['test-files'],
 };
@@ -100,10 +100,12 @@ for (const rel of trackedMarkdown) {
       );
     }
   }
-  const withoutTokens = text.replace(countTokenPattern, '');
-  for (const pattern of numericTestCountPatterns) {
-    if (pattern.test(withoutTokens)) {
-      problems.push(`[count] ${rel} states a numeric test count without a count token`);
+  if (!numericTestCountAllowlist.some((prefix) => rel.startsWith(prefix))) {
+    const withoutTokens = text.replace(countTokenPattern, '');
+    for (const pattern of numericTestCountPatterns) {
+      if (pattern.test(withoutTokens)) {
+        problems.push(`[count] ${rel} states a numeric test count without a count token`);
+      }
     }
   }
 }

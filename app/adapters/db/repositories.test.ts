@@ -12,6 +12,7 @@ import type {
   Member,
   MemberSubscription,
   Order,
+  Post,
   ProcessedPaymentEvent,
   Product,
   ProductGrant,
@@ -32,6 +33,7 @@ import {
   createMemberRepository,
   createMemberSubscriptionRepository,
   createOrderRepository,
+  createPostRepository,
   createProcessedPaymentEventRepository,
   createProductGrantRepository,
   createProductPriceRepository,
@@ -718,6 +720,47 @@ describe('course/module/lesson repositories', () => {
     expect(await courses.list(GLOBEX)).toEqual([]);
     expect(await modules.findById(ACME, 'module-acme')).toMatchObject({ courseIds: ['course-acme'] });
     expect(await lessons.findById(GLOBEX, 'lesson-acme')).toBeNull();
+  });
+});
+
+describe('post repository', () => {
+  it('clears a pin when soft-deleting a post', async () => {
+    const repo = createPostRepository(db);
+    const post: Post = {
+      id: 'post-pinned-delete',
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId: 'space-pinned-delete',
+      parentPostId: null,
+      rootPostId: 'post-pinned-delete',
+      authorUserId: 'user-acme-member',
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: 'Pinned post',
+      createdAt: NOW,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+    };
+
+    await repo.createPost(ACME, post);
+    await repo.setPinned(ACME, { id: post.id, pinnedAt: NOW });
+    await repo.softDelete(ACME, { id: post.id, deletedAt: FUTURE });
+
+    const rows = await db
+      .select({ pinnedAt: posts.pinnedAt })
+      .from(posts)
+      .where(and(eq(posts.tenantId, ACME), eq(posts.id, post.id)));
+    expect(rows).toEqual([{ pinnedAt: null }]);
+    await expect(repo.listPinnedForContext(ACME, {
+      contextKind: post.contextKind,
+      contextId: post.contextId,
+      limit: 10,
+    })).resolves.toEqual([]);
+    await expect(repo.countPinnedForContext(ACME, {
+      contextKind: post.contextKind,
+      contextId: post.contextId,
+    })).resolves.toBe(0);
   });
 });
 

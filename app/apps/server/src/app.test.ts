@@ -511,6 +511,17 @@ const scopedApp = (scope: 'none' | 'member' | 'staff') => {
       ...base.members,
       findById: async () => (scope === 'member' ? member : null),
     },
+    tenants: {
+      ...base.tenants,
+      findSettings: async (tenantId) => {
+        const settings = await base.tenants.findSettings(tenantId);
+        return settings === null ? null : { ...settings, supportEmail: 'support@acme.test' };
+      },
+    },
+    emailOutbox: {
+      ...base.emailOutbox,
+      enqueue: async (message) => ok({ id: message.id }),
+    },
     posts: {
       ...base.posts,
       findById: async () => post,
@@ -1259,6 +1270,16 @@ describe('new route authorization', () => {
     });
 
     expect(response.status).toBe(403);
+  });
+
+  it('permits members to send support messages', async () => {
+    const response = await scopedApp('member').request(API_PATHS.supportMessage, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ subject: 'Help', body: 'Body' }),
+    });
+
+    expect(response.status).toBe(200);
   });
 
   it('denies members and permits staff on order reconciliation', async () => {

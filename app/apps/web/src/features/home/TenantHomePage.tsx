@@ -10,20 +10,19 @@ import {
   List,
   ListItem,
   ListItemButton,
-  ListItemText,
   OutlinedInput,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { tenantUrl } from '../../lib/tenant.js';
-import { CardTitle } from '../../theme.js';
+import { CardTitle, TenantListItemText } from '../../theme.js';
 
 export const TenantHomePage = () => {
   const navigate = useNavigate();
@@ -99,10 +98,10 @@ const PickTenant = () => {
           {tenants.data?.tenants.map((m) => (
             <ListItem key={m.tenant.id} disablePadding>
               <ListItemButton component="a" href={tenantUrl(m.tenant.slug)} sx={{ px: '0.3rem' }}>
-                <ListItemText
+                <TenantListItemText
                   primary={m.tenant.name}
                   secondary={tenantUrl(m.tenant.slug)}
-                  slotProps={{ primary: { sx: { fontWeight: 700 } }, secondary: { variant: 'caption' } }}
+                  slotProps={{ secondary: { variant: 'caption' } }}
                 />
               </ListItemButton>
             </ListItem>

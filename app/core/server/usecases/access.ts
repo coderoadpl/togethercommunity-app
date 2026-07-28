@@ -7,7 +7,7 @@ import type {
   CourseModule,
   CourseStructureWithAccess,
   Product,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 /**
  * Access resolution + course-tree computation, kept as pure functions so the

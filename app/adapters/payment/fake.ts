@@ -5,8 +5,8 @@ import {
   ok,
   stripeWebhookPayloadSchema,
   validation,
-} from '@core/domain/index.js';
-import type { PaymentProvider, TenantSecretResolver } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { PaymentProvider, TenantSecretResolver } from '#core/server/index.js';
 
 const signatureIsValid = (payload: string, header: string, secret: string): boolean => {
   const fields = header.split(',').map((field) => field.split('='));

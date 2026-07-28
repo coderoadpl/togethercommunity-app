@@ -11,7 +11,7 @@ import {
   type DiscussionPost,
   type MemberSpace,
   type SpaceFeedItem,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';

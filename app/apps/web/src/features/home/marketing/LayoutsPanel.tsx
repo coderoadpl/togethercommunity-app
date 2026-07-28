@@ -3,7 +3,7 @@ import { Alert, Button, FormControl, FormLabel, OutlinedInput, Stack } from '@mu
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
-import type { EmailLayout } from '@core/domain/index.js';
+import type { EmailLayout } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';

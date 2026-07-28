@@ -3,7 +3,7 @@ import { createAuthClient } from 'better-auth/client';
 import { magicLinkClient, twoFactorClient } from 'better-auth/client/plugins';
 import { z } from 'zod';
 
-import type { AuthClientPort, AuthSessionResult, TwoFactorEnrollment } from '@core/client/index.js';
+import type { AuthClientPort, AuthSessionResult, TwoFactorEnrollment } from '#core/client/index.js';
 import {
   appError,
   err,
@@ -12,7 +12,7 @@ import {
   validation,
   type AppError,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 /** CLI-only extension of the client auth port: it can verify a magic-link token headlessly. */
 export interface CliAuthAdapter extends AuthClientPort {

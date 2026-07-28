@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type EmailOutboxPayload, type Notification } from '@core/domain/index.js';
-import type { EmailOutboxRepository, NotificationDeliveryContext } from '@core/server/index.js';
+import { ok, type EmailOutboxPayload, type Notification } from '#core/domain/index.js';
+import type { EmailOutboxRepository, NotificationDeliveryContext } from '#core/server/index.js';
 
 import { createEmailNotificationChannel } from './email.js';
 

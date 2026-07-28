@@ -1,4 +1,4 @@
-import { emailEventSchema, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '@core/domain/index.js';
+import { emailEventSchema, err, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 
 import type {
   Clock,

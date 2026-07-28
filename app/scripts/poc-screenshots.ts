@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
-import { API_PATHS, TENANT_HEADER, looseEnvelopeSchema, publicOfferOutputSchema } from '@core/contract/index.js';
+import { API_PATHS, TENANT_HEADER, looseEnvelopeSchema, publicOfferOutputSchema } from '#core/contract/index.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');

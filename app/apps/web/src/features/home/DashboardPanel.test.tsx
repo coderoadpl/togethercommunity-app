@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { MemberWithProductIds } from '@core/domain/index.js';
+import type { MemberWithProductIds } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';

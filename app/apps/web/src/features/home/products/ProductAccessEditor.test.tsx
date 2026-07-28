@@ -9,7 +9,7 @@ import {
   type CourseLesson,
   type CourseModule,
   type Product,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';

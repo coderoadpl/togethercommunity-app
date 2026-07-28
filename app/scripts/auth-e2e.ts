@@ -1,24 +1,29 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
-import { createServer } from 'node:net';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import { generate } from 'otplib';
 import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
-import { createAuthE2eClient } from '@adapters/auth/e2e-http.js';
+import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 
-const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
+import {
+  bootServer,
+  ephemeralPort,
+  killServer,
+  rootDir,
+  run,
+  tsxBin,
+} from './server-harness.js';
+import { resolveAuthE2eDatabaseUrl } from './auth-e2e-config.js';
+
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 
 const E2E_DB = 'together_auth_e2e';
-const baseDatabaseUrl =
-  process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+const baseDatabaseUrl = resolveAuthE2eDatabaseUrl(process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
@@ -27,43 +32,6 @@ class E2eFailure extends Error {}
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new E2eFailure(message);
 }
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface Run {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-const run = (cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<Run> =>
-  new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: rootDir, env: { ...process.env, ...env } });
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.on('data', (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on('error', (cause) => resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }));
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
-  });
-
-const ephemeralPort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, () => {
-      const address = probe.address();
-      if (address === null || typeof address === 'string') {
-        probe.close(() => reject(new Error('Could not allocate an ephemeral port')));
-        return;
-      }
-      const { port } = address;
-      probe.close(() => resolve(port));
-    });
-  });
-
 const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });
   try {
@@ -89,69 +57,6 @@ const migrateAndSeed = async (databaseUrl: string): Promise<void> => {
 const buildWeb = async (): Promise<void> => {
   const build = await run(viteBin, ['build', '--config', 'apps/web/vite.config.ts'], {});
   assert(build.code === 0, `Web build failed:\n${build.stdout}${build.stderr}`);
-};
-
-const bootServer = async (
-  port: number,
-  databaseUrl: string,
-  appBaseUrl: string,
-  connectUrl: string,
-): Promise<ChildProcess> => {
-  const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
-    cwd: rootDir,
-    detached: true,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      DATABASE_URL: databaseUrl,
-      APP_BASE_URL: appBaseUrl,
-      APP_BASE_DOMAIN: 'localhost',
-      WEB_DIST_DIR: 'dist/web',
-    },
-  });
-  let logs = '';
-  child.stdout?.on('data', (chunk) => {
-    logs += String(chunk);
-  });
-  child.stderr?.on('data', (chunk) => {
-    logs += String(chunk);
-  });
-  let exitInfo: string | null = null;
-  child.on('exit', (code, signal) => {
-    exitInfo = `code=${String(code)} signal=${String(signal)}`;
-  });
-
-  const healthUrl = `${connectUrl}/api/health`;
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    if (exitInfo !== null) {
-      throw new E2eFailure(`Server exited before becoming ready (${exitInfo}).\n--- server output ---\n${logs}`);
-    }
-    try {
-      const response = await fetch(healthUrl);
-      if (response.ok) return child;
-    } catch {
-      // not accepting connections yet
-    }
-    await delay(300);
-  }
-  throw new E2eFailure(`Server did not become ready within 20s.\n--- server output ---\n${logs}`);
-};
-
-const killServer = async (child: ChildProcess): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const { pid } = child;
-  const signalGroup = (signal: NodeJS.Signals): void => {
-    try {
-      if (pid !== undefined) process.kill(-pid, signal);
-    } catch {
-      child.kill(signal);
-    }
-  };
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  signalGroup('SIGTERM');
-  await Promise.race([exited, delay(3000)]);
-  if (child.exitCode === null && child.signalCode === null) signalGroup('SIGKILL');
 };
 
 const enrollmentSchema = z.object({
@@ -265,7 +170,16 @@ try {
   const connectUrl = `http://127.0.0.1:${port}`;
   const webBaseUrl = `http://acme.localhost:${port}`;
   console.log(`auth-e2e: booting server on port ${port}...`);
-  server = await bootServer(port, e2eDatabaseUrl, webBaseUrl, connectUrl);
+  server = await bootServer({
+    port,
+    healthUrl: `${connectUrl}/api/health`,
+    env: {
+      DATABASE_URL: e2eDatabaseUrl,
+      APP_BASE_URL: webBaseUrl,
+      APP_BASE_DOMAIN: 'localhost',
+      WEB_DIST_DIR: 'dist/web',
+    },
+  });
   await runTotpPath({ connectUrl, origin: webBaseUrl });
   await runPasskeyPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

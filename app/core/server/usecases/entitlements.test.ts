@@ -9,7 +9,7 @@ import {
   type MemberCourseProgress,
   type Product,
   type ProductGrant,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {
@@ -31,7 +31,7 @@ import {
   type CourseAccessDeps,
 } from './entitlements.js';
 
-const NOW = '2026-06-01T00:00:00.000Z';
+const NOW = '1998-06-01T00:00:00.000Z';
 
 const nn = <T>(value: T | undefined): T => {
   if (value === undefined) throw new Error('unexpected undefined');
@@ -58,7 +58,7 @@ const lesson = (id: string): CourseLesson => ({
   name: `Lesson ${id}`,
   contents: [],
   legacyId: null,
-  createdAt: '2026-01-01T00:00:00.000Z',
+  createdAt: '1998-01-01T00:00:00.000Z',
 });
 
 const module = (
@@ -86,7 +86,7 @@ const course = (id: string, moduleOrder: string[] = []): Course => ({
   imageUrl: null,
   moduleOrder,
   legacyId: null,
-  createdAt: '2026-01-01T00:00:00.000Z',
+  createdAt: '1998-01-01T00:00:00.000Z',
 });
 
 const product = (id: string, accessItems: Product['accessItems']): Product => ({
@@ -99,7 +99,7 @@ const product = (id: string, accessItems: Product['accessItems']): Product => ({
   published: true,
   accessItems,
   legacyId: null,
-  createdAt: '2026-01-01T00:00:00.000Z',
+  createdAt: '1998-01-01T00:00:00.000Z',
 });
 
 const grant = (
@@ -116,13 +116,13 @@ const grant = (
   startsAt,
   expiresAt,
   legacyId: null,
-  createdAt: '2026-01-01T00:00:00.000Z',
+  createdAt: '1998-01-01T00:00:00.000Z',
 });
 
 // Course c1: module m1 (ch1:[l1,l2], ch2:[l3]) then module m2 (ch3:[l4,l5], ch4:[l6]).
 const m1 = module(
   'm1',
-  '2026-01-01T00:00:00.000Z',
+  '1998-01-01T00:00:00.000Z',
   [
     { id: 'ch1', name: 'Chapter 1', contents: [
       { id: 'c-l1', name: 'C L1', lessonId: 'l1' },
@@ -134,7 +134,7 @@ const m1 = module(
 );
 const m2 = module(
   'm2',
-  '2026-02-01T00:00:00.000Z',
+  '1998-02-01T00:00:00.000Z',
   [
     { id: 'ch3', name: 'Chapter 3', contents: [
       { id: 'c-l4', name: 'C L4', lessonId: 'l4' },
@@ -264,7 +264,7 @@ describe('resolveMemberEntitlements', () => {
   it('aggregates access items from active grants', async () => {
     const result = await resolveMemberEntitlements(
       ctx({}),
-      deps([grant('g1', 'p-course', '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z')], [pCourse]),
+      deps([grant('g1', 'p-course', '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z')], [pCourse]),
     );
     expect(result).toEqual({
       ok: true,
@@ -275,7 +275,7 @@ describe('resolveMemberEntitlements', () => {
   it('ignores expired grants', async () => {
     const result = await resolveMemberEntitlements(
       ctx({}),
-      deps([grant('g1', 'p-course', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')], [pCourse]),
+      deps([grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', '1998-02-01T00:00:00.000Z')], [pCourse]),
     );
     expect(result).toEqual({ ok: true, value: [] });
   });
@@ -283,7 +283,7 @@ describe('resolveMemberEntitlements', () => {
   it('ignores future-dated grants', async () => {
     const result = await resolveMemberEntitlements(
       ctx({}),
-      deps([grant('g1', 'p-course', '2026-12-01T00:00:00.000Z', null)], [pCourse]),
+      deps([grant('g1', 'p-course', '1998-12-01T00:00:00.000Z', null)], [pCourse]),
     );
     expect(result).toEqual({ ok: true, value: [] });
   });
@@ -291,7 +291,7 @@ describe('resolveMemberEntitlements', () => {
   it('honours perpetual grants (null expiresAt)', async () => {
     const result = await resolveMemberEntitlements(
       ctx({}),
-      deps([grant('g1', 'p-module', '2026-01-01T00:00:00.000Z', null)], [pModule]),
+      deps([grant('g1', 'p-module', '1998-01-01T00:00:00.000Z', null)], [pModule]),
     );
     expect(result).toMatchObject({ ok: true, value: [{ moduleIds: ['m1'] }] });
   });
@@ -312,7 +312,7 @@ describe('resolveMemberEntitlements', () => {
 
 describe('isLessonAccessible — 3-tier semantics', () => {
   const active = (productId: string): ProductGrant[] => [
-    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+    grant('g1', productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z'),
   ];
 
   it('course-level grant unlocks every lesson', async () => {
@@ -356,10 +356,10 @@ describe('isLessonAccessible — 3-tier semantics', () => {
 
   it('expired and future grants do not grant access', async () => {
     const expired = deps(
-      [grant('g1', 'p-course', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')],
+      [grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', '1998-02-01T00:00:00.000Z')],
       [pCourse],
     );
-    const future = deps([grant('g1', 'p-course', '2026-12-01T00:00:00.000Z', null)], [pCourse]);
+    const future = deps([grant('g1', 'p-course', '1998-12-01T00:00:00.000Z', null)], [pCourse]);
     expect(await isLessonAccessible(ctx({}), 'l1', expired)).toMatchObject({ ok: false });
     expect(await isLessonAccessible(ctx({}), 'l1', future)).toMatchObject({ ok: false });
   });
@@ -383,7 +383,7 @@ describe('isLessonAccessible — 3-tier semantics', () => {
 
 describe('isLessonAccessible — course-level exclusions', () => {
   const active = (productId: string, id = 'g1'): ProductGrant =>
-    grant(id, productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z');
+    grant(id, productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z');
 
   it('a course grant with an excluded module locks that module but not the rest', async () => {
     const d = deps([active('p-course-except-m2')], [pCourseExceptM2]);
@@ -419,7 +419,7 @@ describe('isLessonAccessible — course-level exclusions', () => {
 
 describe('getCourseStructureWithAccess — course-level exclusions', () => {
   const active = (productId: string): ProductGrant[] => [
-    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+    grant('g1', productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z'),
   ];
 
   it('renders an excluded module as not-accessible and the course as partially-accessible', async () => {
@@ -439,7 +439,7 @@ describe('getCourseStructureWithAccess — course-level exclusions', () => {
 
 describe('getCourseStructureWithAccess', () => {
   const active = (productId: string): ProductGrant[] => [
-    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+    grant('g1', productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z'),
   ];
 
   it('always returns the full syllabus regardless of access', async () => {
@@ -558,7 +558,7 @@ describe('getCourseStructureWithAccess — durations and upsell', () => {
   const catalogue = [
     priced('p-full', 10000, [{ level: 'course', courseId: 'c1' }]),
     priced('p-m2', 5000, [{ level: 'modules', courseId: 'c1', moduleIds: ['m2'] }]),
-    priced('p-l4', 2000, [{ level: 'lessons', courseId: 'c1', lessonIds: ['l4'] }]),
+    priced('p-l4', 1972, [{ level: 'lessons', courseId: 'c1', lessonIds: ['l4'] }]),
     priced('p-draft', 100, [{ level: 'course', courseId: 'c1' }], false),
   ];
 
@@ -603,7 +603,7 @@ describe('getCourseStructureWithAccess — durations and upsell', () => {
     const covered = await getCourseStructureWithAccess(
       ctx({}),
       'c1',
-      deps([grant('g1', 'p-full', '2026-05-01T00:00:00.000Z', null)], catalogue),
+      deps([grant('g1', 'p-full', '1998-05-01T00:00:00.000Z', null)], catalogue),
     );
     expect(lessonsAt(covered).every((l) => l.unlockProductId === undefined)).toBe(true);
 
@@ -626,7 +626,7 @@ describe('getCourseStructureWithAccess — durations and upsell', () => {
 
 describe('listMyCourses', () => {
   const active = (productId: string): ProductGrant[] => [
-    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+    grant('g1', productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z'),
   ];
 
   it('returns courses with at least partial access', async () => {
@@ -653,7 +653,7 @@ describe('listMyCourses', () => {
 
 describe('getAccessibleLesson', () => {
   const active = (productId: string): ProductGrant[] => [
-    grant('g1', productId, '2026-05-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z'),
+    grant('g1', productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z'),
   ];
 
   it('returns the lesson with its contents when accessible', async () => {
@@ -668,7 +668,7 @@ describe('getAccessibleLesson', () => {
 
   it('is forbidden once the only grant has expired', async () => {
     const expired = deps(
-      [grant('g1', 'p-course', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')],
+      [grant('g1', 'p-course', '1998-01-01T00:00:00.000Z', '1998-02-01T00:00:00.000Z')],
       [pCourse],
     );
     expect(await getAccessibleLesson(ctx({}), 'l1', expired)).toMatchObject({

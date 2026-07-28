@@ -81,7 +81,7 @@ import {
   tenantSettingsUpdateInputSchema,
   termsConsentRequestSchema,
   toEnvelope,
-} from '@core/contract/index.js';
+} from '#core/contract/index.js';
 import {
   devGrantInputSchema,
   err,
@@ -100,7 +100,7 @@ import {
   type MemberCourseProgress,
   type ProgressView,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 import {
   addManualSuppression,
   attachModuleToCourse,
@@ -256,12 +256,12 @@ import {
   type PaymentWebhookEvent,
   type SimulatePurchaseResult,
   type TenantSource,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 import {
   BETTER_AUTH_API_PATH_PATTERN,
   BETTER_AUTH_MAGIC_LINK_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
-} from '@adapters/auth/create-auth.js';
+} from '#adapters/auth/create-auth.js';
 
 import type { AppDeps } from './composition.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';

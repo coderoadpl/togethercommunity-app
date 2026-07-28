@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ERROR_CODES, type AppError, type Result } from '@core/domain/index.js';
+import { ERROR_CODES, type AppError, type Result } from '#core/domain/index.js';
 
 export const apiErrorSchema = z.object({
   code: z.enum(ERROR_CODES),

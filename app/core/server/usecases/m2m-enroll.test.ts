@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type EmailOutboxPayload, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '@core/domain/index.js';
+import { ok, type EmailOutboxPayload, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '#core/domain/index.js';
 
 import type {
   ApiKeyCrypto,
@@ -14,10 +14,10 @@ import type {
 } from '../ports.js';
 import { authenticateApiKey, m2mEnroll, type M2mEnrollDeps } from './m2m-enroll.js';
 
-const NOW = '2026-06-01T00:00:00.000Z';
-const FUTURE = '2026-12-01T00:00:00.000Z';
-const PAST = '2026-01-01T00:00:00.000Z';
-const NEW_EXPIRY = '2027-06-01T00:00:00.000Z';
+const NOW = '1998-06-01T00:00:00.000Z';
+const FUTURE = '1998-12-01T00:00:00.000Z';
+const PAST = '1998-01-01T00:00:00.000Z';
+const NEW_EXPIRY = '1999-06-01T00:00:00.000Z';
 const TENANT = { id: 't1', name: 'Tenant One', slug: 'tenant-one' };
 
 const product = (id: string, published: boolean): Product => ({

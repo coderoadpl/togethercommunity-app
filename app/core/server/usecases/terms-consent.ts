@@ -8,7 +8,7 @@ import {
   type LegalUrls,
   type Result,
   type TenantSettings,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Clock, IdGenerator, TenantRepository, TermsConsentRepository } from '../ports.js';
 

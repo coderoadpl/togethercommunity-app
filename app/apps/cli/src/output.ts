@@ -1,5 +1,5 @@
-import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
-import type { AppError, Result } from '@core/domain/index.js';
+import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
+import type { AppError, Result } from '#core/domain/index.js';
 
 /**
  * Single output funnel for every command:

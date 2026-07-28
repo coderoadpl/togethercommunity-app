@@ -8,7 +8,7 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { Hono } from 'hono';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { err, internal, type Identity } from '@core/domain/index.js';
+import { err, internal, type Identity } from '#core/domain/index.js';
 
 import { recordException, telemetryMiddleware } from './telemetry.js';
 

@@ -1,7 +1,7 @@
 import { SendEmailCommand, SESClient, type SendEmailCommandOutput } from '@aws-sdk/client-ses';
 
-import { internal, ok, type AppError, type Result } from '@core/domain/index.js';
-import type { EmailPort } from '@core/server/index.js';
+import { internal, ok, type AppError, type Result } from '#core/domain/index.js';
+import type { EmailPort } from '#core/server/index.js';
 
 export interface SesEmailSettings {
   from: string;

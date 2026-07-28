@@ -40,8 +40,24 @@ it('sx-layout-only', () => {
         filename,
         options: withBaseline(2),
       },
+      {
+        code: "const C = () => <div slotProps={{ primary: { sx: { mt: 1, display: 'flex' } } }} />;",
+        filename,
+      },
     ],
     invalid: [
+      {
+        code:
+          "const C = () => <div slotProps={{ primary: { sx: { fontWeight: 700 } }, " +
+          "secondary: { variant: 'caption' } }} />;",
+        filename,
+        errors: [{ messageId: 'reserved' }],
+      },
+      {
+        code: "const C = () => <div slotProps={{ primary: { 'sx': { fontWeight: 700 } } }} />;",
+        filename,
+        errors: [{ messageId: 'reserved' }],
+      },
       {
         code: "const C = () => <div sx={{ color: 'red' }} />;",
         filename,

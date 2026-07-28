@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone, type Identity, type Member, type MemberWithProductIds } from '@core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone, type Identity, type Member, type MemberWithProductIds } from '#core/domain/index.js';
 
 import type { MemberErasurePort, MemberPseudonymization, MemberRepository } from '../ports.js';
 import { exportMembers, listMembers, removeMember } from './members.js';

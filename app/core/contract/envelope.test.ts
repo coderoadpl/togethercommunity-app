@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { err, ok } from '@core/domain/index.js';
+import { err, ok } from '#core/domain/index.js';
 
 import { envelopeSchema, looseEnvelopeSchema, toEnvelope } from './envelope.js';
 

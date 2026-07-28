@@ -9,8 +9,8 @@ import {
   ok,
   validation,
   type AppError,
-} from '@core/domain/index.js';
-import type { InvoicingPort } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { InvoicingPort } from '#core/server/index.js';
 
 const IFIRMA_BASE_URL = 'https://www.ifirma.pl/iapi';
 const IFIRMA_KEY_NAME = 'faktura';

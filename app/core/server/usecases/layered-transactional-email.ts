@@ -1,4 +1,4 @@
-import { appError, ok, type TransactionalEmailTransport } from '@core/domain/index.js';
+import { appError, ok, type TransactionalEmailTransport } from '#core/domain/index.js';
 
 import type {
   EmailPort,

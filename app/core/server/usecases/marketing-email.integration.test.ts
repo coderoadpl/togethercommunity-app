@@ -10,7 +10,7 @@ import {
   type ConsentDefinitionVersion,
   type MarketingConsent,
   type TenantSesSettings,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 import {
   FakeEmailHmac,
   FakeSesMarketingSender,

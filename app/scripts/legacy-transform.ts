@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
-import { toLegacyPasswordHash } from '@adapters/auth/legacy-password.js';
+import { toLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 import {
   migrateLegacyAccessItem,
   type LegacyAccessItem,
-} from '@adapters/db/access-items-migration.js';
-import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
+} from '#adapters/db/access-items-migration.js';
+import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
 
 export interface Anomaly {
   kind: string;

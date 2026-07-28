@@ -194,7 +194,7 @@ import {
   type TenantSettingsUpdateInput,
   type TermsConsentRequest,
   type WriteMethod,
-} from '@core/contract/index.js';
+} from '#core/contract/index.js';
 import {
   err,
   internal,
@@ -204,7 +204,7 @@ import {
   type MemberExportFormat,
   type NewProductInput,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, integrationUnavailable, ok, type AppError, type EmailMessage, type Result } from '@core/domain/index.js';
+import { err, integrationUnavailable, ok, type AppError, type EmailMessage, type Result } from '#core/domain/index.js';
 import type {
   EmailPort,
   PlatformTransactionalPool,

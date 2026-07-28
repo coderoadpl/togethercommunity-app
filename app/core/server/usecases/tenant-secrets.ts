@@ -12,7 +12,7 @@ import {
   type TenantSecret,
   type TenantSecretKey,
   type TenantSecretMasked,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, SecretCrypto, TenantSecretRepository } from '../ports.js';

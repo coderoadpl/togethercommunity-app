@@ -28,7 +28,7 @@ import {
   type TenantDocumentVersion,
   type UnsubscribeToken,
   type EmailOutboxPayload,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   AutomationIdempotencyRepository,

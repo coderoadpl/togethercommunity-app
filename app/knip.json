@@ -1,0 +1,36 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "eslint-plugin-together/index.js",
+    "eslint-plugin-together/rules/*.test.js",
+    "adapters/auth/auth.generate.ts",
+    "core/domain/snapshots/*/v*.ts",
+    "scripts/*.{ts,mjs}",
+    ".storybook/**/*.{ts,tsx}",
+    "**/*.stories.tsx",
+    "**/*.test.{ts,tsx}"
+  ],
+  "project": [
+    "core/**/*.ts",
+    "adapters/**/*.ts",
+    "apps/**/*.{ts,tsx}",
+    "scripts/**/*.{ts,mjs}",
+    "eslint-plugin-together/**/*.js",
+    "config-regression/**/*.ts",
+    ".storybook/**/*.{ts,tsx}"
+  ],
+  "ignoreBinaries": ["openssl"],
+  "rules": {
+    "files": "error",
+    "dependencies": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+    "binaries": "error",
+    "duplicates": "error",
+    "exports": "warn",
+    "types": "warn",
+    "nsExports": "warn",
+    "nsTypes": "warn",
+    "enumMembers": "warn"
+  }
+}

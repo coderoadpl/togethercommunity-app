@@ -10,7 +10,7 @@ import {
   type CourseModule,
   type Result,
   type Space,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {

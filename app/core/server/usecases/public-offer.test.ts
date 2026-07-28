@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Product, Tenant } from '@core/domain/index.js';
+import type { Product, Tenant } from '#core/domain/index.js';
 
 import type { ConsentDefinitionRepository, ProductRepository, TenantRepository } from '../ports.js';
 import { getPublicOffer } from './public-offer.js';

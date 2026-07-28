@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
-import type { SpaceVisibility } from '@core/domain/index.js';
+import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard } from '../../../components/layout/index.js';

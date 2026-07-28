@@ -1,14 +1,14 @@
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
-import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
-import { normalizeEmail } from '@core/domain/index.js';
-import { isLessonAccessible } from '@core/server/index.js';
-import type { EmailHmac } from '@core/server/index.js';
+import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
+import { normalizeEmail } from '#core/domain/index.js';
+import { isLessonAccessible } from '#core/server/index.js';
+import type { EmailHmac } from '#core/server/index.js';
 import type {
   ImportAuthGateway,
   ImportedUserOutcome,
   ImportedUserState,
-} from '@adapters/auth/import-credential.js';
+} from '#adapters/auth/import-credential.js';
 
 import type { Db } from './client.js';
 import {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { magicLink, normalizeEmail } from '@core/domain/index.js';
-import { createDb } from '@adapters/db/client.js';
-import { createDevEmailReader } from '@adapters/db/repositories.js';
+import { magicLink, normalizeEmail } from '#core/domain/index.js';
+import { createDb } from '#adapters/db/client.js';
+import { createDevEmailReader } from '#adapters/db/repositories.js';
 
 import { createDevEmailPort } from './dev.js';
 

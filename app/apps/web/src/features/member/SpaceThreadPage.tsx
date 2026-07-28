@@ -3,7 +3,7 @@ import { Link } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { useTranslations } from '../../i18n/index.js';

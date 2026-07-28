@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Course, CourseModule } from '@core/domain/index.js';
+import type { Course, CourseModule } from '#core/domain/index.js';
 
 import { modulesForCourse } from './access.js';
 

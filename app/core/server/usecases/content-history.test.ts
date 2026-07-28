@@ -7,7 +7,7 @@ import {
   type EntityHistoryEntry,
   type Identity,
   type StaffRole,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   CourseModuleRepository,

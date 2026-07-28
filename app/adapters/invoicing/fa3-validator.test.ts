@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderFa3Invoice } from '@core/domain/index.js';
+import { renderFa3Invoice } from '#core/domain/index.js';
 
 import { createFa3XsdValidator } from './fa3-validator.js';
 

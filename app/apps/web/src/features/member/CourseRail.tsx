@@ -1,6 +1,6 @@
 import { Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
 
-import type { CourseStructureLesson, CourseStructureWithAccess } from '@core/domain/index.js';
+import type { CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
 
 import { useTranslations, type Messages } from '../../i18n/index.js';
 import { CourseCompletedNote, Eyebrow, RailProgressBar, StatTileValue } from '../../theme.js';

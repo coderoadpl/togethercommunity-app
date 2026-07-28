@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 
-import { emailEventSchema, normalizeEmail, type EmailEvent } from '@core/domain/index.js';
-import type { EmailEventRepository } from '@core/server/index.js';
+import { emailEventSchema, normalizeEmail, type EmailEvent } from '#core/domain/index.js';
+import type { EmailEventRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { campaignSends, emailEvents, emailOutbox } from './schema.js';

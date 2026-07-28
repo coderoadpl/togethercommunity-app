@@ -14,7 +14,7 @@ import {
   type CouponCheckoutSession,
   type Order,
   type ProductPrice,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   PaymentRefundRepository,

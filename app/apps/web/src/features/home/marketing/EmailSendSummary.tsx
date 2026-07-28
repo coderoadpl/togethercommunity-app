@@ -4,7 +4,7 @@ import type {
   EmailDeliveryStatus,
   EmailSendProjection,
   EmailSendStatus,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';

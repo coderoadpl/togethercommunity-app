@@ -4,8 +4,8 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { err, internal, ok, type Member, type ProductGrant } from '@core/domain/index.js';
-import { dispatchEmailBatch } from '@core/server/index.js';
+import { err, internal, ok, type Member, type ProductGrant } from '#core/domain/index.js';
+import { dispatchEmailBatch } from '#core/server/index.js';
 
 import { createDb, type Db } from './client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';

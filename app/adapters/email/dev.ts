@@ -1,7 +1,7 @@
-import { internal, normalizeEmail, ok, type AppError, type Result } from '@core/domain/index.js';
-import type { EmailPort } from '@core/server/index.js';
-import type { Db } from '@adapters/db/client.js';
-import { devEmails } from '@adapters/db/schema.js';
+import { internal, normalizeEmail, ok, type AppError, type Result } from '#core/domain/index.js';
+import type { EmailPort } from '#core/server/index.js';
+import type { Db } from '#adapters/db/client.js';
+import { devEmails } from '#adapters/db/schema.js';
 
 export const createDevEmailPort = (db: Db): EmailPort => ({
   send: async (message): Promise<Result<{ messageId: string }, AppError>> => {

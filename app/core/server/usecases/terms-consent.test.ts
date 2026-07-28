@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TenantSettings, TermsConsent } from '@core/domain/index.js';
+import type { TenantSettings, TermsConsent } from '#core/domain/index.js';
 import type { TenantRepository, TermsConsentRepository } from '../ports.js';
 
 import { enforceTermsConsent, tenantLegalUrls, validateTermsConsent } from './terms-consent.js';

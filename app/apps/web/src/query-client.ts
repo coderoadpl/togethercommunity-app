@@ -1,6 +1,6 @@
 import { QueryCache, QueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
 import { reportError } from './observability.js';
 import { refreshToastStore } from './refresh-toast.js';

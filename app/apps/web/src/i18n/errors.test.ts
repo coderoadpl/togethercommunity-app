@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ERROR_CODES } from '@core/domain/index.js';
+import { ERROR_CODES } from '#core/domain/index.js';
 
 import { en } from './en.js';
 import { localizeError, localizeErrorCode } from './errors.js';

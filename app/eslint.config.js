@@ -95,13 +95,13 @@ const HTTP_IMPORT_BANS = ['axios', 'ky', 'got'].map((name) => ({ name, message: 
 
 const CLIENT_CONSTRUCTION_BANS = [
   {
-    name: '@core/client/index.js',
+    name: '#core/client/index.js',
     importNames: ['createApiClient'],
     message:
       'createApiClient is bound once in apps/web/src/api.ts: import bound actions from api.ts, never construct a client.',
   },
   {
-    name: '@adapters/auth/client-adapter.js',
+    name: '#adapters/auth/client-adapter.js',
     message:
       'The auth client adapter is instantiated only in apps/web/src/api.ts: import bound actions from api.ts.',
   },
@@ -140,6 +140,9 @@ const QUERY_CLIENT_SINGLETON_PATTERN = {
 export default tseslint.config(
   {
     ignores: ['node_modules/**', 'dist/**', 'drizzle/**', 'storybook-static/**', 'out/**'],
+  },
+  {
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
     files: ['**/*.js', '**/*.mjs'],

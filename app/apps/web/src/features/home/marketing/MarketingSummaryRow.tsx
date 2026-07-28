@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Box, Chip, Paper, Stack, Typography } from '@mui/material';
 
-import type { CampaignStatus } from '@core/domain/index.js';
+import type { CampaignStatus } from '#core/domain/index.js';
 
 import { EntryDate } from '../../../theme.js';
 

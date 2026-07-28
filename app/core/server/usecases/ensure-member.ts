@@ -1,4 +1,4 @@
-import { normalizeEmail, ok, type AppError, type Member, type Result } from '@core/domain/index.js';
+import { normalizeEmail, ok, type AppError, type Member, type Result } from '#core/domain/index.js';
 
 import type { AuthPort, Clock, IdGenerator, MemberRepository } from '../ports.js';
 

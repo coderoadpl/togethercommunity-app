@@ -1,4 +1,4 @@
-import { err, forbidden, ok, tenantNotFound, type AppError, type Result } from '@core/domain/index.js';
+import { err, forbidden, ok, tenantNotFound, type AppError, type Result } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';

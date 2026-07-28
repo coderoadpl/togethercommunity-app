@@ -1,22 +1,29 @@
 import { createSign } from 'node:crypto';
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import pg from 'pg';
 import { z } from 'zod';
 
-import { createAuthE2eClient } from '@adapters/auth/e2e-http.js';
-import { TENANT_HEADER } from '@core/contract/index.js';
+import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
+import { TENANT_HEADER } from '#core/contract/index.js';
 
-const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
+import {
+  bootServer,
+  delay,
+  ephemeralPort,
+  killServer,
+  run,
+  tsxBin,
+} from './server-harness.js';
+
 const verifyContainer = 'together-marketing-verify-pg';
 const verifyPort = 49219;
-const verifyDatabaseUrl = `postgres://together:together@localhost:${verifyPort}/together`;
+const managedDatabaseUrl = `postgres://together:together@localhost:${verifyPort}/together`;
+const verifyDatabaseUrl = process.env['E2E_DATABASE_URL'] ?? managedDatabaseUrl;
+const managesPostgres = process.env['E2E_DATABASE_URL'] === undefined;
 const tenantSlug = 'marketing-verify';
 const tickSecret = 'marketing-e2e-tick-secret';
 const topicArn = 'arn:aws:sns:eu-central-1:123456789012:marketing-e2e';
@@ -38,39 +45,8 @@ const assert: (condition: boolean, message: string) => asserts condition = (cond
   if (!condition) throw new MarketingE2eFailure(message);
 };
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface Run {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-const run = (cmd: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<Run> =>
-  new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: rootDir, env: { ...process.env, ...env } });
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.on('data', (chunk) => { stdout += String(chunk); });
-    child.stderr?.on('data', (chunk) => { stderr += String(chunk); });
-    child.on('error', (cause) => resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }));
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
-  });
-
-const ephemeralPort = (): Promise<number> => new Promise((resolve, reject) => {
-  const probe = createServer();
-  probe.once('error', reject);
-  probe.listen(0, () => {
-    const address = probe.address();
-    if (address === null || typeof address === 'string') {
-      probe.close(() => reject(new MarketingE2eFailure('Could not allocate an ephemeral port')));
-      return;
-    }
-    probe.close(() => resolve(address.port));
-  });
-});
-
 const startPostgres = async (): Promise<void> => {
+  if (!managesPostgres) return;
   await run('docker', ['rm', '-f', verifyContainer]);
   const result = await run('docker', [
     'run', '--rm', '-d', '--name', verifyContainer,
@@ -81,6 +57,7 @@ const startPostgres = async (): Promise<void> => {
 };
 
 const stopPostgres = async (): Promise<void> => {
+  if (!managesPostgres) return;
   await run('docker', ['rm', '-f', verifyContainer]);
 };
 
@@ -100,7 +77,9 @@ const waitForPostgres = async (): Promise<void> => {
     }
     await delay(250);
   }
-  throw new MarketingE2eFailure(`Verification Postgres did not become ready.\n${lastError}`);
+  throw new MarketingE2eFailure(
+    `Verification Postgres did not become ready at ${verifyDatabaseUrl}.\n${lastError}`,
+  );
 };
 
 const migrate = async (): Promise<void> => {
@@ -120,58 +99,6 @@ const generateCertificate = async (directory: string): Promise<{ certificate: st
     certificate: readFileSync(certificatePath, 'utf8'),
     privateKey: readFileSync(privateKeyPath, 'utf8'),
   };
-};
-
-const bootServer = async (port: number, webDistDir: string, certificate: string): Promise<ChildProcess> => {
-  const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
-    cwd: rootDir,
-    detached: true,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      DATABASE_URL: verifyDatabaseUrl,
-      APP_BASE_URL: `http://${tenantSlug}.localhost:${port}`,
-      APP_BASE_DOMAIN: 'localhost',
-      WEB_DIST_DIR: webDistDir,
-      SIMULATED_PAYMENTS: 'true',
-      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
-      EMAIL_DISPATCH_INTERVAL_MS: '100',
-      EMAIL_DISPATCH_RATE_PER_SECOND: '50',
-      MARKETING_TICK_SECRET: tickSecret,
-      SNS_TEST_CERT_PEM_BASE64: Buffer.from(certificate).toString('base64'),
-    },
-  });
-  let logs = '';
-  let exitInfo: string | null = null;
-  child.stdout?.on('data', (chunk) => { logs += String(chunk); });
-  child.stderr?.on('data', (chunk) => { logs += String(chunk); });
-  child.on('exit', (code, signal) => { exitInfo = `code=${String(code)} signal=${String(signal)}`; });
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (exitInfo !== null) throw new MarketingE2eFailure(`Server exited before ready (${exitInfo}).\n${logs}`);
-    try {
-      const response = await fetch(`http://localhost:${port}/api/health`);
-      if (response.ok) return child;
-    } catch {
-    }
-    await delay(250);
-  }
-  throw new MarketingE2eFailure(`Server did not become ready.\n${logs}`);
-};
-
-const killServer = async (child: ChildProcess): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  const signal = (value: NodeJS.Signals): void => {
-    try {
-      if (child.pid !== undefined) process.kill(-child.pid, value);
-    } catch {
-      child.kill(value);
-    }
-  };
-  signal('SIGTERM');
-  await Promise.race([exited, delay(3000)]);
-  if (child.exitCode === null && child.signalCode === null) signal('SIGKILL');
 };
 
 const envelopeSchema = z.discriminatedUnion('ok', [
@@ -719,7 +646,22 @@ try {
   const certificate = await generateCertificate(runtimeDir);
   const port = await ephemeralPort();
   console.log(`marketing-e2e: booting server on port ${port}...`);
-  server = await bootServer(port, webDistDir, certificate.certificate);
+  server = await bootServer({
+    port,
+    healthUrl: `http://localhost:${String(port)}/api/health`,
+    env: {
+      DATABASE_URL: verifyDatabaseUrl,
+      APP_BASE_URL: `http://${tenantSlug}.localhost:${String(port)}`,
+      APP_BASE_DOMAIN: 'localhost',
+      WEB_DIST_DIR: webDistDir,
+      SIMULATED_PAYMENTS: 'true',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+      EMAIL_DISPATCH_INTERVAL_MS: '100',
+      EMAIL_DISPATCH_RATE_PER_SECOND: '50',
+      MARKETING_TICK_SECRET: tickSecret,
+      SNS_TEST_CERT_PEM_BASE64: Buffer.from(certificate.certificate).toString('base64'),
+    },
+  });
   console.log('marketing-e2e: driving E1-E4...');
   const steps = await driveScenario(port, certificate.privateKey);
   console.log(`\nmarketing-e2e: PASS (${steps} steps, ${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

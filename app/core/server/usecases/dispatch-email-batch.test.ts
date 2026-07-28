@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, internal, ok } from '@core/domain/index.js';
+import { err, internal, ok } from '#core/domain/index.js';
 import {
   InMemoryEmailEventRepository,
   InMemoryEmailOutboxRepository,

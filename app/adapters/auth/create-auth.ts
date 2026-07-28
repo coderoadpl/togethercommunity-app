@@ -11,11 +11,11 @@ import {
   type AppError,
   type EmailBranding,
   type Result,
-} from '@core/domain/index.js';
-import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '@core/server/index.js';
-import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
-import type { Db } from '@adapters/db/client.js';
-import { devMagicLinks } from '@adapters/db/schema.js';
+} from '#core/domain/index.js';
+import type { AuthPort, Clock, EmailOutboxRepository, IdGenerator } from '#core/server/index.js';
+import { verifyPasswordWithLegacyFallback } from '#adapters/auth/legacy-password.js';
+import type { Db } from '#adapters/db/client.js';
+import { devMagicLinks } from '#adapters/db/schema.js';
 
 export interface AuthSettings {
   secret: string;

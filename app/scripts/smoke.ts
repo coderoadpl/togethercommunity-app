@@ -1,20 +1,23 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import pg from 'pg';
 import { z } from 'zod';
 
-import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 
+import {
+  bootServer,
+  ephemeralPort,
+  killServer,
+  rootDir,
+  run,
+  tsxBin,
+} from './server-harness.js';
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
-
-const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 
 const SMOKE_DB = 'together_smoke';
 const baseDatabaseUrl =
@@ -31,27 +34,7 @@ const fail = (message: string): never => {
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new SmokeFailure(message);
 }
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface Run {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-const run = (cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<Run> =>
-  new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: rootDir, env: { ...process.env, ...env } });
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.on('data', (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on('error', (cause) => resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }));
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
-  });
+type Run = Awaited<ReturnType<typeof run>>;
 
 interface LockPackage {
   version?: string;
@@ -100,21 +83,6 @@ const checkLockfileDrift = (): void => {
     fail(`Installed dependency tree does not match package-lock.json. Run: npm install\n  ${shown}${rest}`);
   }
 };
-
-const ephemeralPort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, () => {
-      const address = probe.address();
-      if (address === null || typeof address === 'string') {
-        probe.close(() => reject(new Error('Could not allocate an ephemeral port')));
-        return;
-      }
-      const { port } = address;
-      probe.close(() => resolve(port));
-    });
-  });
 
 const setupDatabase = async (adminUrl: string): Promise<void> => {
   const client = new pg.Client({ connectionString: adminUrl });
@@ -243,74 +211,6 @@ const verifyReseedRestoresCanonicalState = async (databaseUrl: string): Promise<
   } finally {
     await client.end();
   }
-};
-
-const bootServer = async (
-  port: number,
-  databaseUrl: string,
-  webDistDir: string,
-): Promise<ChildProcess> => {
-  const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
-    cwd: rootDir,
-    detached: true,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      DATABASE_URL: databaseUrl,
-      APP_BASE_URL: `http://localhost:${port}`,
-      APP_BASE_DOMAIN: 'localhost',
-      WEB_DIST_DIR: webDistDir,
-      SIMULATED_PAYMENTS: 'true',
-      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
-      PAYMENT_PROVIDER: 'fake',
-      EMAIL_PROVIDER: 'dev',
-    },
-  });
-  let logs = '';
-  child.stdout?.on('data', (chunk) => {
-    logs += String(chunk);
-  });
-  child.stderr?.on('data', (chunk) => {
-    logs += String(chunk);
-  });
-  let exitInfo: string | null = null;
-  child.on('exit', (code, signal) => {
-    exitInfo = `code=${String(code)} signal=${String(signal)}`;
-  });
-
-  const healthUrl = `http://localhost:${port}/api/health`;
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    if (exitInfo !== null) {
-      fail(`Server exited before becoming ready (${exitInfo}).\n--- server output ---\n${logs}`);
-    }
-    try {
-      const response = await fetch(healthUrl);
-      if (response.ok) return child;
-    } catch {
-      // not accepting connections yet
-    }
-    await delay(300);
-  }
-  throw new SmokeFailure(
-    `Server did not become ready within 20s on port ${port}.\n--- server output ---\n${logs}`,
-  );
-};
-
-const killServer = async (child: ChildProcess): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const { pid } = child;
-  const signalGroup = (signal: NodeJS.Signals): void => {
-    try {
-      if (pid !== undefined) process.kill(-pid, signal);
-    } catch {
-      child.kill(signal);
-    }
-  };
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  signalGroup('SIGTERM');
-  await Promise.race([exited, delay(3000)]);
-  if (child.exitCode === null && child.signalCode === null) signalGroup('SIGKILL');
 };
 
 const okEnvelope = z.object({ ok: z.literal(true), data: z.unknown() });
@@ -1234,7 +1134,20 @@ try {
   console.log(`smoke: booting server on port ${port}...`);
   const webDistDir = mkdtempSync(join(tmpdir(), 'smoke-web-'));
   homes.push(webDistDir);
-  server = await bootServer(port, smokeDatabaseUrl, webDistDir);
+  server = await bootServer({
+    port,
+    healthUrl: `http://localhost:${String(port)}/api/health`,
+    env: {
+      DATABASE_URL: smokeDatabaseUrl,
+      APP_BASE_URL: `http://localhost:${String(port)}`,
+      APP_BASE_DOMAIN: 'localhost',
+      WEB_DIST_DIR: webDistDir,
+      SIMULATED_PAYMENTS: 'true',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+      PAYMENT_PROVIDER: 'fake',
+      EMAIL_PROVIDER: 'dev',
+    },
+  });
   console.log('smoke: driving the CLI...');
   await driveCli(port, homes);
   console.log('smoke: driving the student surface...');

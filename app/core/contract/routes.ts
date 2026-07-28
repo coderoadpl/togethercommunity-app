@@ -113,7 +113,7 @@ import {
   updatePostInputSchema,
   updateProductAccessItemsInputSchema,
   billingDataSchema,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 /**
  * Single source of truth for the HTTP API shared by server and all clients.
@@ -620,7 +620,9 @@ export const lessonCompleteInputSchema = z.object({
 
 export type LessonCompleteInput = z.input<typeof lessonCompleteInputSchema>;
 
-export const lessonUncompleteInputSchema = lessonCompleteInputSchema;
+export const lessonUncompleteInputSchema = z.object({
+  lessonId: z.string().min(1),
+});
 
 export type LessonUncompleteInput = z.input<typeof lessonUncompleteInputSchema>;
 

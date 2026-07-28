@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { DEFAULT_LANGUAGE, LANGUAGES, type Language } from '@core/domain/index.js';
+import { DEFAULT_LANGUAGE, LANGUAGES, type Language } from '#core/domain/index.js';
 
 import { languagePreference } from '../theme-mode.js';
 import { en } from './en.js';

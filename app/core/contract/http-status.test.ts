@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ERROR_CODES } from '@core/domain/index.js';
+import { ERROR_CODES } from '#core/domain/index.js';
 
 import { EXIT_CODE_BY_ERROR_CODE, HTTP_STATUS_BY_ERROR_CODE } from './http-status.js';
 

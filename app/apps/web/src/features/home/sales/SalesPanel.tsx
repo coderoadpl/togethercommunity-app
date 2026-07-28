@@ -20,7 +20,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { OrderExportFormat, OrderStatus, PriceKind } from '@core/domain/index.js';
+import type { OrderExportFormat, OrderStatus, PriceKind } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';

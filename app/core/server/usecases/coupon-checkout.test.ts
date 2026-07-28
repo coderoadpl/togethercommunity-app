@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { couponCheckoutBreakdownSchema, type Coupon } from '@core/domain/index.js';
+import { couponCheckoutBreakdownSchema, type Coupon } from '#core/domain/index.js';
 
 import { validateCouponForCheckout, type CouponCheckoutDeps } from './coupon-checkout.js';
 

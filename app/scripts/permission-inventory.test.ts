@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collectPermissionInventory,
+  collectUseCasesInSource,
   renderPermissionTable,
 } from './permission-inventory.js';
 
@@ -81,5 +82,53 @@ describe('permission inventory', () => {
     expect(readFileSync(join(root, 'docs', 'permission-table.md'), 'utf8')).toBe(
       renderPermissionTable(collectPermissionInventory()),
     );
+  });
+});
+
+describe('use-case shape probe', () => {
+  it('rejects exported function declarations', () => {
+    const source = `
+      export function getThing(ctx: Ctx) {
+        return staffTenantIdFrom(ctx, 'product:read');
+      }
+    `;
+    expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(
+      /function declarations are not classified/,
+    );
+  });
+
+  it('rejects inline ctx types', () => {
+    const source = `
+      export const getThing = async (ctx: { identity: Identity }) =>
+        staffTenantIdFrom(ctx, 'product:read');
+    `;
+    expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(
+      /inline ctx types are not classified/,
+    );
+  });
+
+  it('rejects intersection ctx types', () => {
+    const source = `
+      export const getThing = async (
+        ctx: Ctx & { capabilities: readonly Capability[] },
+      ) => staffTenantIdFrom(ctx, 'product:read');
+    `;
+    expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(
+      /inline ctx types are not classified/,
+    );
+  });
+
+  it('classifies canonical exported const arrow functions', () => {
+    const source = `
+      export const getThing = async (ctx: Ctx) =>
+        staffTenantIdFrom(ctx, 'product:read');
+    `;
+    expect(collectUseCasesInSource('probe.ts', source)).toEqual([
+      {
+        name: 'getThing',
+        file: 'probe.ts',
+        capability: 'product:read',
+      },
+    ]);
   });
 });

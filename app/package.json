@@ -36,6 +36,7 @@
     "db:reseed": "tsx scripts/ensure-web-bundle.ts && tsx adapters/db/reseed.ts",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "tsx scripts/smoke.ts",
+    "quickstart:probe": "tsx scripts/quickstart-probe.ts",
     "a11y": "tsx scripts/a11y-scan.ts",
     "shots:poc": "tsx scripts/poc-screenshots.ts",
     "shots:parity": "tsx scripts/parity-screenshots.ts",

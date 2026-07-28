@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, Link, ListItemButton, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ButtonBase, LinearProgress, Link, ListItemButton, ListItemText, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -2479,6 +2479,10 @@ export const AppBarWordmark = styled(Typography)<AsElement>({
   letterSpacing: '0.16em',
   textTransform: 'uppercase',
   opacity: 0.62,
+});
+
+export const TenantListItemText = styled(ListItemText)({
+  '& .MuiListItemText-primary': { fontWeight: 700 },
 });
 
 export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });

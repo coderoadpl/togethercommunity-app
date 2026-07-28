@@ -29,6 +29,8 @@
     "depcruise": "depcruise core adapters apps scripts",
     "knip": "knip",
     "doc-lint": "tsx scripts/doc-lint.ts",
+    "permissions:generate": "tsx scripts/permission-inventory.ts",
+    "permissions:check": "tsx scripts/permission-inventory.ts --check",
     "check": "npm run typecheck && npm run lint && npm run lock-lint && npm run migration-lint && npm run depcruise && npm run knip && npm run doc-lint && npm run test",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:generate": "drizzle-kit generate",

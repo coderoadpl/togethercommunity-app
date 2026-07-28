@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 
 import { API_ROUTES } from '#core/contract/index.js';
 
@@ -33,8 +33,10 @@ const purposeFor = (route) => {
       .join(' ');
 };
 
-const rows = buildApp(dependency).routes
-  .filter((route) => route.method !== 'ALL')
+export const collectRuntimeRoutes = () => buildApp(dependency).routes
+  .filter((route) => route.method !== 'ALL');
+
+const rows = () => collectRuntimeRoutes()
   .map((route) => {
     const publicEntry = publicRouteManifestEntry(route);
     const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
@@ -50,7 +52,7 @@ const rows = buildApp(dependency).routes
     return `| \`${route.method} ${route.path}\` | ${access} | ${mutating ? 'mutating' : 'read'} | ${purposeFor(route)} |`;
   });
 
-const document = [
+const document = () => [
   '# Server route table',
   '',
   'Generated from the Hono route table by `npx tsx scripts/generate-route-table.mjs`.',
@@ -58,15 +60,18 @@ const document = [
   '',
   '| Route | Access | Operation | Purpose |',
   '|---|---|---|---|',
-  ...rows,
+  ...rows(),
   '',
 ].join('\n');
 
 const output = new URL('../docs/route-table.md', import.meta.url);
-if (process.argv.includes('--check')) {
-  if (readFileSync(output, 'utf8') !== document) {
-    throw new Error('docs/route-table.md is stale; run npx tsx scripts/generate-route-table.mjs');
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const rendered = document();
+  if (process.argv.includes('--check')) {
+    if (readFileSync(output, 'utf8') !== rendered) {
+      throw new Error('docs/route-table.md is stale; run npx tsx scripts/generate-route-table.mjs');
+    }
+  } else {
+    writeFileSync(output, rendered);
   }
-} else {
-  writeFileSync(output, document);
 }

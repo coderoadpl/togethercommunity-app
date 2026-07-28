@@ -296,11 +296,11 @@ Architecture is enforced by configuration and executable probes:
 | `npm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
 | `npm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
 
-CI runs `check`, `smoke`, the quickstart probe, and the subscription and
-marketing e2e suites on pushes and pull requests to `poc-together`. KSeF e2e is
-excluded because it targets an external shared test network. Visual comparison
-is a separate job and uploads current and diff artifacts when it fails.
-Third-party GitHub Actions are pinned to full commit SHAs.
+CI runs `check`, `smoke`, the quickstart probe, and behavioral e2e suites on
+pushes and pull requests to `poc-together`. KSeF e2e is excluded because it
+targets an external shared test network. Visual comparison remains local until
+platform-scoped CI baselines and a platform guard land. Third-party GitHub
+Actions are pinned to full commit SHAs.
 
 Gates are deterministic. Rerun-to-green is prohibited; a flake is a P1 defect.
 Visual has zero retries.

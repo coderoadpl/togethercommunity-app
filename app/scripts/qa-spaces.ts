@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type Page } from 'playwright-core';
 import pg from 'pg';
+import { z } from 'zod';
 
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -78,17 +79,23 @@ interface CliSession {
   token: () => string;
 }
 
+const cliConfigSchema = z.object({
+  profiles: z.record(
+    z.string(),
+    z.object({ token: z.string().nullable() }),
+  ),
+});
+
 const cliSession = (): CliSession => {
   const home = mkdtempSync(join(tmpdir(), 'qa-spaces-'));
   return {
     home,
     token: () => {
-      const parsed: unknown = JSON.parse(
-        readFileSync(join(home, '.config/together/config.json'), 'utf8'),
+      const config = cliConfigSchema.parse(
+        JSON.parse(readFileSync(join(home, '.config/together/config.json'), 'utf8')),
       );
-      if (typeof parsed === 'object' && parsed !== null && 'token' in parsed && typeof parsed.token === 'string') {
-        return parsed.token;
-      }
+      const token = Object.values(config.profiles).find((profile) => profile.token !== null)?.token;
+      if (token !== undefined && token !== null) return token;
       throw new Error('no CLI token');
     },
   };

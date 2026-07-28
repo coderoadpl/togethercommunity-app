@@ -99,6 +99,11 @@ npm run --silent cli -- --tenant acme product list
 port + use-case → adapter repo → server route → `core/client` method →
 CLI command → web page, in that order, with tests at the core layer.
 
+CLI sessions and tenant selections are stored per canonical API origin. Origin
+selection resolves `--api-url` → `TOGETHER_CLI_API_URL` → the repo-local
+`http://localhost:48730` default → the stored current origin; tenant selection
+resolves `--tenant` → `TOGETHER_CLI_TENANT` → the selected profile.
+
 ## Dev notes
 
 - Ports: API 48730, Vite dev 48731, Postgres 48912 (never 3000/8080/5432).

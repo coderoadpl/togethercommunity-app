@@ -76,6 +76,8 @@ export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) 
     (sum, member) => sum + member.activeProductIds.length,
     0,
   );
+  const activeMembers = members.data.members.filter((member) => member.deletedAt === null);
+  const removedMembers = members.data.members.length - activeMembers.length;
   const recentMembers = members.data.members
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, RECENT_MEMBERS_LIMIT);
@@ -114,7 +116,8 @@ export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) 
         <DashboardTile
           iconPath={MEMBERS_ICON_PATH}
           label={t.sections.members}
-          value={members.data.members.length}
+          value={activeMembers.length}
+          detail={removedMembers === 0 ? undefined : t.dashboard.membersRemoved({ count: removedMembers })}
           to="/panel/members"
           testId="dashboard-tile-members"
         />

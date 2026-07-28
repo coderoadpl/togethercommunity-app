@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveAuthE2eDatabaseUrl } from './auth-e2e-config.js';
+import { resolveE2eDatabaseUrl } from './e2e-config.js';
 
-describe('resolveAuthE2eDatabaseUrl', () => {
+describe('resolveE2eDatabaseUrl', () => {
   it('prefers the CI e2e database URL', () => {
     expect(
-      resolveAuthE2eDatabaseUrl({
+      resolveE2eDatabaseUrl({
         E2E_DATABASE_URL: 'postgres://ci/e2e',
         DATABASE_URL: 'postgres://ci/check',
       }),
@@ -13,13 +13,13 @@ describe('resolveAuthE2eDatabaseUrl', () => {
   });
 
   it('uses DATABASE_URL outside the e2e matrix', () => {
-    expect(resolveAuthE2eDatabaseUrl({ DATABASE_URL: 'postgres://local/database' })).toBe(
+    expect(resolveE2eDatabaseUrl({ DATABASE_URL: 'postgres://local/database' })).toBe(
       'postgres://local/database',
     );
   });
 
   it('uses the development Postgres default when no URL is configured', () => {
-    expect(resolveAuthE2eDatabaseUrl({})).toBe(
+    expect(resolveE2eDatabaseUrl({})).toBe(
       'postgres://together:together@localhost:48912/together',
     );
   });

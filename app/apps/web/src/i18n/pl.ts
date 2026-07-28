@@ -157,6 +157,7 @@ export const pl: Messages = {
     loading: 'ładowanie przeglądu…',
     publishedDraft: ({ published, draft }) =>
       format('opublikowane: {published} · robocze: {draft}', { published, draft }),
+    membersRemoved: ({ count }) => `+ ${count} ${plural(count, 'usunięty', 'usunięte', 'usuniętych')}`,
     activeGrants: 'Aktywne dostępy',
     recentMembers: 'Najnowsi uczestnicy',
     viewAllMembers: 'Wszyscy uczestnicy',
@@ -724,6 +725,7 @@ export const pl: Messages = {
         },
       ),
     deletedBadge: 'Konto usunięte',
+    tombstoneNotice: 'Konto usunięte — akcje przyznawania i odnawiania dostępu są niedostępne.',
     exportFailed: 'Eksport nie powiódł się',
     allMembersBack: '← Wszyscy uczestnicy',
     joined: 'Data dołączenia',

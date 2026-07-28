@@ -253,7 +253,7 @@ import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { respond } from './respond.js';
 
-type Vars = { Variables: { identity: Identity; }; };
+type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
 const magicLinkBaseUrl = (
   hostHeader: string,

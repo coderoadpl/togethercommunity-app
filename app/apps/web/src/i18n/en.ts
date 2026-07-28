@@ -1070,7 +1070,6 @@ export const en: Messages = {
     autoIssueScope: 'Automation scope',
     b2bOnly: 'Orders with a tax ID only',
     allBuyers: 'All orders',
-    vatRate: 'VAT rate for invoices',
     vatRateUnset: 'Select a VAT rate or exemption before issuing',
     vatTreatment: 'VAT treatment',
     vatTreatmentRate: 'VAT rate',

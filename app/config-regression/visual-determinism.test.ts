@@ -19,6 +19,7 @@ describe('visual regression determinism', () => {
   });
 
   it('settles the page before every capture', () => {
+    expect(harness).toContain("Object.defineProperty(window, 'EventSource'");
     expect(harness).toContain("page.waitForLoadState('networkidle')");
     expect(harness).toContain('document.fonts.ready');
     expect(harness).toContain('animation: none !important');

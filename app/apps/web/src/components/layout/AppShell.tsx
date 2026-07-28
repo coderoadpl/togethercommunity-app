@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
-import { AppBar, Box, Drawer, Toolbar } from '@mui/material';
+import { AppBar, Box, Container, Drawer, Toolbar } from '@mui/material';
+
+import { StatusView, type PageState } from './StatusView.js';
 
 const DRAWER_WIDTH = 248;
+const APP_CONTENT_WIDTH = '44rem';
 
 interface AppShellProps {
   isDesktop: boolean;
@@ -9,7 +12,8 @@ interface AppShellProps {
   onMobileNavigationClose: () => void;
   header: ReactNode;
   navigation: ReactNode;
-  children: ReactNode;
+  state?: PageState;
+  children?: ReactNode;
 }
 
 export const AppShell = ({
@@ -18,6 +22,7 @@ export const AppShell = ({
   onMobileNavigationClose,
   header,
   navigation,
+  state,
   children,
 }: AppShellProps) => (
   <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -56,7 +61,15 @@ export const AppShell = ({
 
     <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
       <Toolbar />
-      <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>{children}</Box>
+      <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
+        {state === undefined ? (
+          children
+        ) : (
+          <Container data-testid="app-shell-status" sx={{ maxWidth: APP_CONTENT_WIDTH }}>
+            <StatusView state={state} />
+          </Container>
+        )}
+      </Box>
     </Box>
   </Box>
 );

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   Box,
   Chip,
-  Container,
   Divider,
   IconButton,
   List,
@@ -26,7 +25,7 @@ import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { AppShell, StatusView } from '../../components/layout/index.js';
+import { AppShell, type PageState } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
@@ -311,6 +310,45 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   );
 };
 
+const PanelBootstrapShell = ({ state }: { state: PageState }) => {
+  const t = useTranslations();
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useSuppressGlobalChrome();
+
+  return (
+    <AppShell
+      isDesktop={isDesktop}
+      mobileNavigationOpen={mobileOpen}
+      onMobileNavigationClose={() => setMobileOpen(false)}
+      state={state}
+      navigation={<List component="nav" aria-label={t.sections.aria} />}
+      header={
+        <>
+          {isDesktop ? null : (
+            <Tooltip title={t.panel.openNavigation}>
+              <IconButton
+                edge="start"
+                color="inherit"
+                data-testid="open-navigation"
+                aria-label={t.panel.openNavigation}
+                onClick={() => setMobileOpen(true)}
+                sx={{ minHeight: '44px', minWidth: '44px' }}
+              >
+                <MenuIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
+          <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+        </>
+      }
+    />
+  );
+};
+
 export const PanelLayout = () => {
   const navigate = useNavigate();
   const t = useTranslations();
@@ -336,17 +374,17 @@ export const PanelLayout = () => {
 
   if (me.isPending) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <StatusView state={{ kind: 'loading', label: t.tenant.openingWorkspace }} />
-      </Container>
+      <ThemeProvider theme={theme}>
+        <PanelBootstrapShell state={{ kind: 'loading', label: t.tenant.openingWorkspace }} />
+      </ThemeProvider>
     );
   }
   if (unauthorized || noTenant || memberOnly) return null;
   if (me.isError) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <StatusView state={{ kind: 'error', message: localizeError(me.error, t) }} />
-      </Container>
+      <ThemeProvider theme={theme}>
+        <PanelBootstrapShell state={{ kind: 'error', message: localizeError(me.error, t) }} />
+      </ThemeProvider>
     );
   }
   if (!tenant || !tenant.staffRole) return null;

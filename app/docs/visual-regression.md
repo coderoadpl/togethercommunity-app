@@ -40,10 +40,10 @@ lost-pixel or committed-golden workflows, and no existing visual command changes
 meaning. The evaluation exists only so the owner can compare both workflows in
 practice.
 
-The `argos` job is not a gate. Its upload step tolerates Argos service failures,
-and it is skipped when `ARGOS_TOKEN` is absent. Argos may post commit statuses
-such as `argos`, `argos/<build-name>`, and `argos/summary`; branch protection must
-never mark any of them as required.
+The `argos-advisory` job is not a gate. Its upload step tolerates Argos service
+failures, and it is skipped when `ARGOS_TOKEN` is absent. Argos may post commit
+statuses such as `argos`, `argos/<build-name>`, and `argos/summary`; branch
+protection must never mark any of them as required.
 
 Owner setup checklist:
 
@@ -52,12 +52,13 @@ Owner setup checklist:
    integration.
 3. Copy the project token into the repository Actions secret named
    `ARGOS_TOKEN`.
-4. Re-run the `ci` workflow or push a commit to produce the first build.
-5. In Argos, open the project, select the build from the Builds list, review its
+4. In the Argos project settings, set the reference branch to `poc-together`.
+5. Re-run the `ci` workflow or push a commit to produce the first build.
+6. In Argos, open the project, select the build from the Builds list, review its
    screenshot changes, and open the review control in the build header to choose
    **Approve** if that control is available on the Hobby plan.
 
-Before relying on the Hobby plan, verify these two unresolved product details
+Before relying on the Hobby plan, verify these three unresolved product details
 empirically:
 
 - Whether the build-header **Approve** action is actually available. Argos's
@@ -65,3 +66,6 @@ empirically:
   its review-workflow documentation does not state a plan restriction.
 - The actual screenshot and build retention period. Argos did not document this
   period when this evaluation track was added.
+- The Hobby plan's screenshot quota. Each build captures 210 screenshots (35
+  scenarios times three themes times two viewports), and every push to every open
+  pull request can consume another build's allocation.

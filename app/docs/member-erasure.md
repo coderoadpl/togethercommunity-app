@@ -26,20 +26,20 @@ Revoke as a reducing corrective action. This is deliberately a UI-only guard:
 the server mutations are unchanged, and a tombstoned identity cannot
 authenticate because its user identifier has been severed.
 
-## Consent evidence is retained
+## Consent-evidence retention policy is backlog work
 
-Consent evidence rows deliberately retain their original `userId` and
-plaintext e-mail after member erasure. This behavior is pinned in
+Consent evidence rows currently retain their original `userId` and plaintext
+e-mail after member erasure. This implementation behavior is pinned in
 `adapters/db/repositories.test.ts`. It supports the controller's obligation
 under GDPR Article 7(1) to demonstrate that consent was given, read with
 Article 17(3)(b), which permits processing necessary for compliance with a
 legal obligation.
 
-**OWNER DECISION PENDING — do not merge without confirming retention period.**
-The retention period must follow the limitation period for claims applicable
-to the underlying obligation and align with the accounting retention that
-already governs order records. No number of years is asserted until the owner
-confirms the legal policy.
+Defining and approving a retention period remains part of backlog item B1. It
+must follow the limitation period for claims applicable to the underlying
+obligation and align with the accounting retention that already governs order
+records. Until that work is complete, this section records implementation
+behavior and legal context rather than a committed retention policy.
 
 The marketing suppression path degrades the address to an HMAC, as pinned in
 `adapters/db/repositories.test.ts`; retained plaintext is confined to the

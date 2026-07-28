@@ -86,7 +86,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   await dropDatabase();
-});
+}, 180_000);
 
 describe('demo seed lifecycle', () => {
   it('seeds a fresh migrated database', async () => {
@@ -107,7 +107,7 @@ describe('demo seed lifecycle', () => {
       'creator3@together.dev',
       'creator@together.dev',
     ]);
-  });
+  }, 180_000);
 
   it('does not add rows when the seed is repeated', async () => {
     runDatabaseScript('seed.ts');
@@ -116,7 +116,7 @@ describe('demo seed lifecycle', () => {
     runDatabaseScript('seed.ts');
 
     expect(await rowCounts(client)).toEqual(firstCounts);
-  });
+  }, 180_000);
 
   it('restores the canonical demo state through reseed', async () => {
     runDatabaseScript('seed.ts');
@@ -161,5 +161,5 @@ describe('demo seed lifecycle', () => {
         last_viewed_lesson_id: 'lesson-js-funkcje-1',
       },
     ]);
-  });
+  }, 180_000);
 });

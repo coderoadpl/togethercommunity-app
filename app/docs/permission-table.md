@@ -274,18 +274,18 @@ no changes
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts inline guard or same-file guard helper |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#recordCheckoutMarketingConsents` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#confirmMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#withdrawMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#purgeStalePendingConsents` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#getMarketingEligibility` | marketing:consent:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#recordCheckoutMarketingConsents` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#confirmMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#withdrawMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#purgeStalePendingConsents` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#getMarketingEligibility` | marketing:consent:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#addManualSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#liftMarketingSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#getUnsubscribePreferences` | marketing:consent:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#saveMarketingConsentPreferences` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#unsubscribeOneClick` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#unsubscribeAllMarketing` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#getUnsubscribePreferences` | marketing:consent:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#saveMarketingConsentPreferences` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#unsubscribeOneClick` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#unsubscribeAllMarketing` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#createCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#getCampaign` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#listCampaigns` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
@@ -296,14 +296,14 @@ no changes
 | `marketing-email.ts#pauseCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#cancelCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#updateCampaignContent` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-email.ts#testSendCampaignToSelf` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#claimIdempotencyKey` | marketing:message:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#completeIdempotentRequest` | marketing:message:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#claimIdempotencyKey` | marketing:message:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#completeIdempotentRequest` | marketing:message:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
+| `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
 | `marketing-management.ts#getMarketingConsentDefinition` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
 | `marketing-management.ts#updateMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
 | `marketing-management.ts#listTenantDocuments` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
@@ -375,11 +375,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:100` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:730` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:732` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1089` | `if (tenantId === null \|\| identity.staffRole === null) return respond(err(forbidden('Tenant staff access is required')));` |
-| staff-role | `apps/server/src/internal-app.ts:1174` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1174` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:731` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:733` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1175` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1175` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:34` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:72` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -403,8 +402,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:190` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:312` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:457` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
-| staff-role | `core/server/usecases/email-reputation.ts:17` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
-| staff-role | `core/server/usecases/email-send-observability.ts:18` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | member-scope | `core/server/usecases/entitlements.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
 | member-scope | `core/server/usecases/entitlements.ts:64` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | member-scope | `core/server/usecases/entitlements.ts:118` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
@@ -420,9 +417,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/invoices.ts:544` | `if (ctx.identity.staffRole !== 'owner') {` |
 | staff-role | `core/server/usecases/invoices.ts:558` | `if (ctx.identity.staffRole !== 'owner') {` |
 | api-key | `core/server/usecases/m2m-enroll.ts:28` | `export const authenticateApiKey = async (` |
-| staff-role | `core/server/usecases/marketing-email.ts:73` | `return ctx.identity.staffRole === null ? err(forbidden('Tenant staff access is required')) : tenantId;` |
-| staff-role | `core/server/usecases/marketing-management.ts:41` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
-| staff-role | `core/server/usecases/marketing-ses-onboarding.ts:53` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | staff-role | `core/server/usecases/onboarding.ts:38` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));` |

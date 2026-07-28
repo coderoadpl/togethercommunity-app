@@ -77,6 +77,19 @@ const secretRepository = (keys: TenantSecretKey[]): TenantSecretRepository => {
 };
 
 describe('marketing management use-cases', () => {
+  it('requires the declared marketing document write capability', async () => {
+    const documents = new InMemoryTenantDocumentRepository();
+    const readOnlyCtx: Ctx = {
+      ...ctx,
+      capabilities: ['marketing:document:read'],
+    };
+    expect(await createTenantDocument(
+      readOnlyCtx,
+      { slug: 'privacy', title: 'Privacy', content: '# Policy' },
+      { documents, ids: sequence(), clock },
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('publishes immutable hosted document versions while reusing only the active draft', async () => {
     const documents = new InMemoryTenantDocumentRepository();
     const ids = sequence();

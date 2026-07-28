@@ -99,6 +99,7 @@ import {
   attachModuleToCourse,
   authenticateApiKey,
   autoIssueOnPayment,
+  authorizeTenant,
   cancelCampaign,
   createCampaign,
   createCoupon,
@@ -1085,9 +1086,9 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.marketingStaffSuppressions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const identity = c.get('identity');
-    const tenantId = identity.tenantId;
-    if (tenantId === null || identity.staffRole === null) return respond(err(forbidden('Tenant staff access is required')));
-    return respond(ok(await deps.marketing.suppressions.list(tenantId, { limit: 100 })));
+    const tenant = authorizeTenant({ identity }, 'marketing:suppression:read');
+    if (!tenant.ok) return respond(tenant);
+    return respond(ok(await deps.marketing.suppressions.list(tenant.value, { limit: 100 })));
   });
 
   app.get(API_PATHS.emailSendsExport, async (c) => {

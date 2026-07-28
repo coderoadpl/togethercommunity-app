@@ -21,6 +21,7 @@ import {
   validateRenderedMarketingOutput,
   validation,
   type AppError,
+  type Capability,
   type Campaign,
   type CampaignEngagementStats,
   type CampaignSend,
@@ -36,6 +37,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -64,14 +66,10 @@ import type {
   SchedulerRunRepository,
 } from '../ports.js';
 
-const tenantIdFrom = (ctx: Ctx): Result<string, AppError> =>
-  ctx.identity.tenantId === null ? err(forbidden('Tenant context is required')) : ok(ctx.identity.tenantId);
+const tenantIdFrom = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
+  authorizeTenant(ctx, capability);
 
-const staffTenantIdFrom = (ctx: Ctx): Result<string, AppError> => {
-  const tenantId = tenantIdFrom(ctx);
-  if (!tenantId.ok) return tenantId;
-  return ctx.identity.staffRole === null ? err(forbidden('Tenant staff access is required')) : tenantId;
-};
+const staffTenantIdFrom = tenantIdFrom;
 
 interface ConsentDeps {
   definitions: ConsentDefinitionRepository;
@@ -94,7 +92,7 @@ export const createMarketingConsentDefinition = async (
   },
   deps: Pick<ConsentDeps, 'definitions' | 'ids' | 'clock'> & { documents?: TenantDocumentRepository },
 ): Promise<Result<{ definition: Awaited<ReturnType<ConsentDefinitionRepository['findById']>> }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:consent-definition:write');
   if (!tenantId.ok) return tenantId;
   const documentRef: ConsentDocumentRef | null = input.documentRef
     ?? (input.documentUrl === undefined ? null : { mode: 'url', url: input.documentUrl });
@@ -129,7 +127,7 @@ export const listMarketingConsentDefinitions = async (
   ctx: Ctx,
   deps: Pick<ConsentDeps, 'definitions'>,
 ): Promise<Result<{ definitions: Awaited<ReturnType<ConsentDefinitionRepository['list']>> }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:consent-definition:read');
   return tenantId.ok ? ok({ definitions: await deps.definitions.list(tenantId.value) }) : tenantId;
 };
 
@@ -147,7 +145,7 @@ export const recordMarketingConsent = async (
   },
   deps: ConsentDeps,
 ): Promise<Result<{ consent: MarketingConsent; state: 'active' | 'pending_confirmation' }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   if (input.evidence.collectedAt.trim() === '' || (input.evidence.proofRef?.trim() ?? '') === '') {
     return err(validation('Explicit consent evidence is required'));
@@ -197,7 +195,7 @@ export const recordCheckoutMarketingConsents = async (
   },
   deps: ConsentDeps,
 ): Promise<Result<{ recorded: number; pendingConfirmations: number }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const attached = new Set(input.attachedDefinitionIds);
   const selected = [...new Set(input.selectedDefinitionIds)].filter((definitionId) => attached.has(definitionId));
@@ -233,7 +231,7 @@ export const confirmMarketingConsent = async (
   input: { token: string; evidence: ConsentEvidence },
   deps: Pick<ConsentDeps, 'confirmations' | 'consents' | 'ids' | 'clock'>,
 ): Promise<Result<{ consent: MarketingConsent }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const token = await deps.confirmations.findByToken(tenantId.value, input.token);
   if (token === null) return err(notFound('Consent confirmation token was not found'));
@@ -262,7 +260,7 @@ export const withdrawMarketingConsent = async (
   input: { email: string; definitionId: string; evidence: ConsentEvidence },
   deps: Pick<ConsentDeps, 'consents' | 'ids' | 'clock'>,
 ): Promise<Result<{ consent: MarketingConsent }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const latest = await deps.consents.latestByEmail(tenantId.value, input.email, input.definitionId);
   if (latest === null) return err(notFound('Marketing consent was not found'));
@@ -280,7 +278,7 @@ export const purgeStalePendingConsents = async (
   input: { olderThan: string },
   deps: Pick<ConsentDeps, 'consents' | 'definitions'>,
 ): Promise<Result<{ purged: number }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const definitions = await deps.definitions.list(tenantId.value);
   const doubleOptInDefinitionIds = definitions.filter((definition) => definition.doubleOptIn).map((definition) => definition.id);
@@ -299,7 +297,7 @@ export const getMarketingEligibility = async (
   input: { email: string; definitionId: string },
   deps: EligibilityDeps,
 ): Promise<Result<{ eligible: boolean; reasons: MarketingIneligibilityReason[]; consent: { definitionId: string; status: string; since: string } | null }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:read');
   if (!tenantId.ok) return tenantId;
   const definition = await deps.definitions.findById(tenantId.value, input.definitionId);
   if (definition === null) return err(notFound('Consent definition was not found'));
@@ -326,7 +324,7 @@ export const addManualSuppression = async (
   input: { email: string; sourceRef: string | null },
   deps: SuppressionDeps,
 ): Promise<Result<Suppression, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:suppression:write');
   if (!tenantId.ok) return tenantId;
   const email = normalizeEmail(input.email);
   const existing = await deps.suppressions.findActive(tenantId.value, deps.hmac.compute(tenantId.value, email));
@@ -345,7 +343,7 @@ export const liftMarketingSuppression = async (
   input: { suppressionId: string; actorId: string },
   deps: Pick<SuppressionDeps, 'suppressions' | 'clock'>,
 ): Promise<Result<Suppression, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:suppression:write');
   if (!tenantId.ok) return tenantId;
   const suppression = await deps.suppressions.findById(tenantId.value, input.suppressionId);
   if (suppression === null) return err(notFound('Suppression was not found'));
@@ -373,7 +371,7 @@ export const getUnsubscribePreferences = async (
   globallySuppressed: boolean;
   definitions: Array<{ id: string; label: string; active: boolean; pendingConfirmation: boolean }>;
 }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:read');
   if (!tenantId.ok) return tenantId;
   const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
   if (token === null) return err(notFound('Unsubscribe token was not found'));
@@ -418,7 +416,7 @@ export const saveMarketingConsentPreferences = async (
   },
   deps: UnsubscribeDeps & Pick<ConsentDeps, 'confirmations' | 'outbox' | 'tokens'>,
 ): Promise<Result<{ pendingConfirmations: number }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
   if (token === null) return err(notFound('Unsubscribe token was not found'));
@@ -471,7 +469,7 @@ export const unsubscribeOneClick = async (
   input: { token: string },
   deps: UnsubscribeDeps,
 ): Promise<Result<{ unsubscribed: true }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const existing = await deps.unsubscribes.findByToken(tenantId.value, input.token);
   if (existing === null) return err(notFound('Unsubscribe token was not found'));
@@ -529,7 +527,7 @@ export const unsubscribeAllMarketing = async (
   input: { token: string },
   deps: UnsubscribeDeps,
 ): Promise<Result<{ unsubscribed: true }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const existing = await deps.unsubscribes.findByToken(tenantId.value, input.token);
   if (existing === null) return err(notFound('Unsubscribe token was not found'));
@@ -608,7 +606,7 @@ export const createCampaign = async (
   },
   deps: CampaignDeps,
 ): Promise<Result<Campaign, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
   const definition = await deps.definitions.findById(tenantId.value, input.consentDefinitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
@@ -636,7 +634,7 @@ export const getCampaign = async (
   input: { campaignId: string },
   deps: Pick<CampaignDeps, 'campaigns'>,
 ): Promise<Result<Campaign, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   return campaign === null ? err(notFound('Campaign was not found')) : ok(campaign);
@@ -646,7 +644,7 @@ export const listCampaigns = async (
   ctx: Ctx,
   deps: Pick<CampaignDeps, 'campaigns'>,
 ): Promise<Result<Campaign[], AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   return ok(await deps.campaigns.list(tenantId.value));
 };
@@ -673,7 +671,7 @@ export const listCampaignsWithEngagement = async (
   ctx: Ctx,
   deps: { campaigns: CampaignRepository; sends: CampaignSendRepository },
 ): Promise<Result<Array<Campaign & { engagement: CampaignEngagementStats }>, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const campaigns = await deps.campaigns.list(tenantId.value);
   const stats = await deps.sends.engagementStats(tenantId.value, campaigns.map((campaign) => campaign.id));
@@ -703,7 +701,7 @@ const transitionCampaign = async (
   deps: CampaignDeps,
   changes: Partial<Campaign> = {},
 ): Promise<Result<Campaign, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
   const campaign = await deps.campaigns.findById(tenantId.value, campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
@@ -717,7 +715,7 @@ export const scheduleCampaign = async (
   input: { campaignId: string; sendAt: string },
   deps: CampaignDeps,
 ): Promise<Result<Campaign, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:send');
   if (!tenantId.ok) return tenantId;
   const sendAt = Date.parse(input.sendAt);
   if (!Number.isFinite(sendAt) || new Date(sendAt).toISOString() !== input.sendAt) {
@@ -770,7 +768,7 @@ export const updateCampaignContent = async (
   input: { campaignId: string; subject: string; bodyHtml: string },
   deps: CampaignDeps,
 ): Promise<Result<Campaign, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
@@ -886,7 +884,7 @@ export const sendMarketingMessages = async (
   inputs: MarketingMessageInput[],
   deps: SendDeps,
 ): Promise<Result<MarketingSendResult[], AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:message:send');
   if (!tenantId.ok) return tenantId;
   let settings = await deps.sesSettings.findByTenant(tenantId.value);
   if (settings === null) return err(appError('ses_not_configured', 'Tenant SES is not configured'));
@@ -1127,7 +1125,7 @@ const campaignTickExecution = async (
   deps: TickDeps,
   metrics: CampaignTickMetrics,
 ): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:campaign:dispatch');
   if (!tenantId.ok) return tenantId;
   let campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
@@ -1260,7 +1258,7 @@ export const campaignTick = async (
   input: { campaignId: string; workerId: string; tickSeconds: number; errorThreshold?: number; trigger?: 'cron' | 'dev' | 'manual' },
   deps: TickDeps,
 ): Promise<Result<{ leased: boolean; yieldedToTransactional: boolean; sent: number; failed: number; skipped: number }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:campaign:dispatch');
   if (!tenantId.ok) return tenantId;
   const startedAt = deps.clock.nowIso();
   const runId = deps.ids.nextId();
@@ -1346,7 +1344,7 @@ export const testSendCampaignToSelf = async (
   input: { campaignId: string },
   deps: TickDeps,
 ): Promise<Result<{ messageId: string }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:send');
   if (!tenantId.ok) return tenantId;
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   const settings = await deps.sesSettings.findByTenant(tenantId.value);
@@ -1407,7 +1405,7 @@ export const claimIdempotencyKey = async (
   input: { key: string; method: string; path: string; requestHash: string; ttlSeconds: number },
   deps: { repository: AutomationIdempotencyRepository; ids: IdGenerator; clock: Clock },
 ): Promise<Result<{ claimed: true }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:message:read');
   if (!tenantId.ok) return tenantId;
   const now = deps.clock.nowIso();
   const existing = await deps.repository.claim(tenantId.value, {
@@ -1428,7 +1426,7 @@ export const completeIdempotentRequest = async (
   input: { key: string; status: number },
   deps: { repository: AutomationIdempotencyRepository },
 ): Promise<Result<void, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'marketing:message:read');
   if (!tenantId.ok) return tenantId;
   if (input.status >= 400 && input.status < 500) await deps.repository.release(tenantId.value, input.key);
   return ok(undefined);
@@ -1453,7 +1451,7 @@ export const applyVerifiedSesEvent = async (
   deps: Pick<SendDeps, 'sesSettings' | 'sends' | 'events' | 'suppressions' | 'hmac' | 'ids' | 'clock'>
     & { outbox: EmailOutboxRepository },
 ): Promise<Result<{ processed: boolean }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'webhook:process');
   if (!tenantId.ok) return tenantId;
   let settings: TenantSesSettings | null;
   try {
@@ -1599,7 +1597,7 @@ export const runMarketingRetentionJobs = async (
   engagementEventsPurged: number;
   idempotencyKeysPurged: number;
 }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'scheduler:dispatch');
   if (!tenantId.ok) return tenantId;
   const definitions = await deps.definitions.list(tenantId.value);
   const doubleOptInDefinitionIds = definitions.filter((definition) => definition.doubleOptIn).map((definition) => definition.id);
@@ -1614,7 +1612,7 @@ export const scheduleMarketingRetentionJobs = async (
   ctx: Ctx,
   deps: { scheduler: SchedulerPort },
 ): Promise<Result<void, AppError>> => {
-  const tenantId = tenantIdFrom(ctx);
+  const tenantId = tenantIdFrom(ctx, 'scheduler:dispatch');
   if (!tenantId.ok) return tenantId;
   return deps.scheduler.enqueueRetentionJobs(tenantId.value);
 };

@@ -10,6 +10,7 @@ import {
   tenantSesBroadcastsReady,
   validation,
   type AppError,
+  type Capability,
   type Campaign,
   type ConsentDefinition,
   type ConsentDocumentRef,
@@ -22,6 +23,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   CampaignRepository,
   Clock,
@@ -37,10 +39,8 @@ import type {
   TokenGenerator,
 } from '../ports.js';
 
-const staffTenantIdFrom = (ctx: Ctx): Result<string, AppError> =>
-  ctx.identity.tenantId === null || ctx.identity.staffRole === null
-    ? err(forbidden('Tenant staff access is required'))
-    : ok(ctx.identity.tenantId);
+const staffTenantIdFrom = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
+  authorizeTenant(ctx, capability);
 
 const documentVersionRef = async (
   tenantId: string,
@@ -60,7 +60,7 @@ export const getMarketingConsentDefinition = async (
   input: { definitionId: string },
   deps: { definitions: ConsentDefinitionRepository },
 ): Promise<Result<{ definition: ConsentDefinition; versions: Awaited<ReturnType<ConsentDefinitionRepository['listVersions']>> }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:consent-definition:read');
   if (!tenantId.ok) return tenantId;
   const definition = await deps.definitions.findById(tenantId.value, input.definitionId);
   return definition === null
@@ -73,7 +73,7 @@ export const updateMarketingConsentDefinition = async (
   input: { definitionId: string; label: string; doubleOptIn: boolean; documentRef: ConsentDocumentRef; status: ConsentDefinition['status'] },
   deps: { definitions: ConsentDefinitionRepository; documents: TenantDocumentRepository; ids: IdGenerator; clock: Clock },
 ): Promise<Result<{ definition: ConsentDefinition; versions: Awaited<ReturnType<ConsentDefinitionRepository['listVersions']>> }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:consent-definition:write');
   if (!tenantId.ok) return tenantId;
   const definition = await deps.definitions.findById(tenantId.value, input.definitionId);
   if (definition === null) return err(notFound('Consent definition was not found'));
@@ -110,7 +110,7 @@ export const listTenantDocuments = async (
   ctx: Ctx,
   deps: { documents: TenantDocumentRepository },
 ): Promise<Result<{ documents: TenantDocument[] }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:document:read');
   return tenantId.ok ? ok({ documents: await deps.documents.list(tenantId.value) }) : tenantId;
 };
 
@@ -119,7 +119,7 @@ export const getTenantDocument = async (
   input: { documentId: string },
   deps: { documents: TenantDocumentRepository },
 ): Promise<Result<{ document: TenantDocument; versions: TenantDocumentVersion[] }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:document:read');
   if (!tenantId.ok) return tenantId;
   const document = await deps.documents.findById(tenantId.value, input.documentId);
   return document === null
@@ -132,7 +132,7 @@ export const createTenantDocument = async (
   input: { slug: string; title: string; content: string },
   deps: { documents: TenantDocumentRepository; ids: IdGenerator; clock: Clock },
 ): Promise<Result<{ document: TenantDocument; versions: TenantDocumentVersion[] }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:document:write');
   if (!tenantId.ok) return tenantId;
   const now = deps.clock.nowIso();
   const document: TenantDocument = {
@@ -152,7 +152,7 @@ export const saveTenantDocumentDraft = async (
   input: { documentId: string; title: string; content: string },
   deps: { documents: TenantDocumentRepository; ids: IdGenerator; clock: Clock },
 ): Promise<Result<{ document: TenantDocument; versions: TenantDocumentVersion[] }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:document:write');
   if (!tenantId.ok) return tenantId;
   const document = await deps.documents.findById(tenantId.value, input.documentId);
   if (document === null) return err(notFound('Hosted document was not found'));
@@ -175,7 +175,7 @@ export const publishTenantDocument = async (
   input: { documentId: string },
   deps: { documents: TenantDocumentRepository; clock: Clock },
 ): Promise<Result<{ document: TenantDocument; versions: TenantDocumentVersion[] }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:document:write');
   if (!tenantId.ok) return tenantId;
   const published = await deps.documents.publishDraft(tenantId.value, input.documentId, deps.clock.nowIso());
   return published === null
@@ -187,7 +187,7 @@ export const listEmailLayouts = async (
   ctx: Ctx,
   deps: { layouts: EmailLayoutRepository },
 ): Promise<Result<{ layouts: EmailLayout[] }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:layout:read');
   return tenantId.ok ? ok({ layouts: await deps.layouts.list(tenantId.value) }) : tenantId;
 };
 
@@ -196,7 +196,7 @@ export const saveEmailLayout = async (
   input: { layoutId?: string | undefined; name: string; bodyHtml: string },
   deps: { layouts: EmailLayoutRepository; ids: IdGenerator; clock: Clock },
 ): Promise<Result<{ layout: EmailLayout }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:layout:write');
   if (!tenantId.ok) return tenantId;
   const now = deps.clock.nowIso();
   const current = input.layoutId === undefined ? null : await deps.layouts.findById(tenantId.value, input.layoutId);
@@ -216,7 +216,7 @@ export const previewMarketingAudience = async (
   input: { consentDefinitionId: string; productIds: string[] },
   deps: { definitions: ConsentDefinitionRepository; audience: MarketingAudienceRepository },
 ): Promise<Result<{ count: number }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:read');
   if (!tenantId.ok) return tenantId;
   const definition = await deps.definitions.findById(tenantId.value, input.consentDefinitionId);
   if (definition === null || definition.status !== 'active' || definition.kind !== 'optional_marketing') {
@@ -242,7 +242,7 @@ export const updateMarketingCampaign = async (
   },
   deps: { campaigns: CampaignRepository; definitions: ConsentDefinitionRepository; layouts: EmailLayoutRepository },
 ): Promise<Result<{ campaign: Campaign }, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
   const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
   if (campaign === null) return err(notFound('Campaign was not found'));
@@ -300,7 +300,7 @@ export const getTenantSesMarketingSettings = async (
     pool: PlatformTransactionalPool;
   },
 ): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:read');
   if (!tenantId.ok) return tenantId;
   const settings = await deps.settings.findByTenant(tenantId.value);
   const [hasCredentials, hasSmtp, usage] = await Promise.all([
@@ -345,7 +345,7 @@ export const updateTenantSesMarketingSettings = async (
     pool: PlatformTransactionalPool;
   },
 ): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:write');
   if (!tenantId.ok) return tenantId;
   if (input.trackingEnabled && input.configurationSet === null) {
     return err(validation('Open and click tracking requires an SES configuration set'));
@@ -391,7 +391,7 @@ export const sendTransactionalSmtpTest = async (
   ctx: Ctx,
   deps: { smtp: TransactionalEmailTransportResolver },
 ) => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:write');
   if (!tenantId.ok) return tenantId;
   const smtp = await deps.smtp.resolve(tenantId.value);
   if (smtp === null) return err(integrationNotConfigured('SMTP is not fully configured'));

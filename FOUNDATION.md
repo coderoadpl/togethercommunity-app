@@ -49,9 +49,20 @@ kept synchronized by reviewing upstream changes to these paths:
 - The Vercel platform-entry exemptions apply only to
   `apps/server/src/entry.vercel.ts`; all other app and core paths remain under
   vendor containment.
-- Together temporarily uses `legacy-peer-deps=true` because
+- Together temporarily uses `strict-peer-dependencies=false` because
   `better-call@1.3.7` and `@better-auth/core@1.6.23` peer-require zod 4 while
-  the product remains on zod 3. The setting keeps `npm ci` and `lock-lint`
-  reproducible; it does not approve new peer conflicts. Remove it when Together
-  migrates to zod 4 or the auth dependency graph no longer requires it, and
-  review peer warnings on every dependency change until then.
+  the product remains on zod 3. pnpm may resolve peers automatically, but it
+  must not fail this known conflict while the lockfile pins zod 3 for those
+  packages. The setting does not approve new peer conflicts. Remove it when
+  Together migrates to zod 4 or the auth dependency graph no longer requires
+  it, and review peer warnings on every dependency change until then.
+- pnpm does not run dependency build scripts. The empty
+  `onlyBuiltDependencies` allow-list is intentional; `esbuild`, `msw`,
+  `unrs-resolver`, and `odiff-bin` are recorded in `ignoredBuiltDependencies`
+  so changes to the blocked set require review. The visual suite uses
+  `pixelmatch`; selecting lost-pixel's odiff engine also requires explicitly
+  approving and rebuilding `odiff-bin`.
+- pnpm rejects releases younger than three days. The override versions excluded
+  from that delay preserve the reviewed npm resolution set during migration.
+  Remove an exclusion together with its override once the direct or transitive
+  constraint resolves to an equally reviewed safe version.

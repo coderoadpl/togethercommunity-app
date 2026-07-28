@@ -5,3 +5,8 @@ minimumReleaseAgeExclude:
   - unbash@4.0.4
   - yoctocolors@2.2.0
 onlyBuiltDependencies: []
+ignoredBuiltDependencies:
+  - esbuild
+  - msw
+  - odiff-bin
+  - unrs-resolver

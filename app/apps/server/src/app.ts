@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { secureHeaders } from 'hono/secure-headers';
+import { NONCE, secureHeaders } from 'hono/secure-headers';
 
 import { err, internal, validation, type Identity } from '#core/domain/index.js';
 
@@ -14,7 +14,7 @@ import { registerPublicRoutes } from './public-app.js';
 import { respond } from './respond.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
-type Vars = { Variables: { identity: Identity } };
+type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
@@ -24,7 +24,7 @@ export const buildApp = (deps: AppDeps) => {
     secureHeaders({
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
         connectSrc: ["'self'"],
         fontSrc: ["'self'", 'data:'],

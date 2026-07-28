@@ -49,7 +49,7 @@ import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
 import { respond, respondNotModified } from './respond.js';
 
-type Vars = { Variables: { identity: Identity; }; };
+type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string; }; };
 
 const publicHeaders = (etag?: string): Headers => {
   const headers = new Headers({

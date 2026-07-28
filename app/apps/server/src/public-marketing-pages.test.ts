@@ -18,6 +18,7 @@ const brand = {
 describe('public marketing pages', () => {
   it('renders a branded, localized preference form with scoped and global actions', () => {
     const html = renderPreferencesPage({
+      nonce: 'test-nonce',
       brand, language: 'en', token: 'token_1234567890123456789012', email: 'member@example.test',
       scope: 'consent:newsletter', scopeLabel: 'Product news', globallySuppressed: false,
       definitions: [{ id: 'newsletter', label: 'Product news', active: true, pendingConfirmation: false }],
@@ -29,6 +30,7 @@ describe('public marketing pages', () => {
     expect(html).toContain('name="consent" value="newsletter" checked');
     expect(html).toContain('.languages a{display:inline-flex');
     expect(html).toContain('min-height:44px');
+    expect(html).toContain('<script nonce="test-nonce">');
   });
 
   it('renders hosted markdown as prose while escaping markup and unsafe links', () => {
@@ -59,6 +61,7 @@ describe('public marketing pages', () => {
 
   it('adds a locale-aware immutable version notice only to versioned legal pages', () => {
     const html = renderLegalDocumentPage({
+      nonce: 'test-nonce',
       brand, language: 'pl', path: '/legal/privacy/v/2', title: 'Prywatność', content: 'Treść',
       immutableVersion: { version: 2, publishedAt: '2026-07-22T10:00:00.000Z' },
     });

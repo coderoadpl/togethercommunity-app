@@ -739,7 +739,12 @@ describe('marketing HTTP surfaces', () => {
   it('serves the latest published hosted document on the tenant domain', async () => {
     const response = await marketingApp().request('/legal/terms', { headers: { host: 'acme.localhost:48730' } });
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('Immutable terms');
+    const contentSecurityPolicy = response.headers.get('content-security-policy');
+    const nonce = /(?:^|; )script-src [^;]*'nonce-([^']+)'/.exec(contentSecurityPolicy ?? '')?.[1];
+    const body = await response.text();
+    expect(body).toContain('Immutable terms');
+    expect(nonce).toBeDefined();
+    expect(body).toContain(`<script nonce="${nonce}">`);
   });
 
   it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {

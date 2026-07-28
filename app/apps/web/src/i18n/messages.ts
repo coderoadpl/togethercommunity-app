@@ -1300,7 +1300,7 @@ export interface Messages {
     smtpUserLabel: string;
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
-    smtpTrackingNote: string;
+    smtpNoFeedback: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;

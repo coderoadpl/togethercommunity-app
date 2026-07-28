@@ -1481,7 +1481,12 @@ export const applyVerifiedSesEvent = async (
       }
       const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
       if (outbox === null) return ok({ processed: false });
-      const classification = event.kind === 'bounce' ? classifySesEvent(event) : null;
+      const classification =
+        event.kind === 'bounce'
+          ? classifySesEvent(event)
+          : event.kind === 'complaint'
+            ? 'complaint'
+            : null;
       const status = event.kind === 'delivery'
         ? 'delivered'
         : event.kind === 'complaint'
@@ -1505,7 +1510,36 @@ export const applyVerifiedSesEvent = async (
           event.occurredAt,
         ),
       });
-      return marked.ok ? ok({ processed: true }) : ok({ processed: false });
+      if (!marked.ok) return ok({ processed: false });
+      if (classification === 'hard' || classification === 'complaint') {
+        const reason =
+          classification === 'complaint' ? 'complaint' : 'hard_bounce';
+        await deps.suppressions.record(
+          tenantId.value,
+          {
+            id: deps.ids.nextId(),
+            tenantId: tenantId.value,
+            email: outbox.to,
+            emailHmac: deps.hmac.compute(tenantId.value, outbox.to),
+            reason,
+            sourceRef: outbox.id,
+            meta: event.raw,
+            createdAt: deps.clock.nowIso(),
+            liftedAt: null,
+            liftedBy: null,
+          },
+          lifecycleEvent(
+            deps,
+            tenantId.value,
+            'transactional',
+            outbox.id,
+            'suppressed_written',
+            { reason },
+            event.occurredAt,
+          ),
+        );
+      }
+      return ok({ processed: true });
     }
     if (event.kind === 'open' || event.kind === 'click') {
       if (!settings.trackingEnabled) return ok({ processed: false });

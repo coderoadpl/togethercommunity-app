@@ -243,7 +243,7 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
       )}
     >
       <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
-      <Alert severity="info">{t.marketing.smtpTrackingNote}</Alert>
+      <Alert severity="info">{t.marketing.smtpNoFeedback}</Alert>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-smtp-host">{t.marketing.smtpHostLabel}</FormLabel>
         <OutlinedInput id="marketing-smtp-host" value={host} onChange={(event) => setHost(event.target.value)} />

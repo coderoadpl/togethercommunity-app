@@ -1299,7 +1299,7 @@ export const pl: Messages = {
     smtpHint: 'SMTP jest używane tylko do powiadomień transakcyjnych. Kampanie zawsze wymagają własnego SES.',
     smtpHostLabel: 'host SMTP', smtpPortLabel: 'port', smtpUserLabel: 'użytkownik',
     smtpPasswordLabel: 'hasło', smtpSecureLabel: 'bezpieczne połączenie TLS',
-    smtpTrackingNote: 'Ograniczone śledzenie: zapisujemy przyjęcie przez serwer SMTP, bez dostarczeń, odbić i skarg.',
+    smtpNoFeedback: 'SMTP zapisuje tylko przyjęcie przez serwer. Dostarczenia, odbicia i skargi nie są śledzone, więc statystyki reputacji zaniżają liczbę problemów.',
     platformPool: ({ used, limit }) => `Pula startowa: ${used}/${limit}`,
     platformPoolChecklist: 'Pula startowa wiadomości transakcyjnych',
     platformPoolNudge: 'Pula startowa zbliża się do końca. Skonfiguruj własny SES lub SMTP.',

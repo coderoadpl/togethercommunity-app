@@ -5,7 +5,7 @@ import { ok } from '#core/domain/index.js';
 import { createTenantSesTransactionalResolver } from './transactional-resolvers.js';
 
 describe('transactional e-mail transport resolvers', () => {
-  it('never attaches the marketing configuration set to tenant SES', async () => {
+  it('attaches the tenant configuration set to transactional SES', async () => {
     const tenantSettings = {
       tenantId: 'tenant-1',
       fromAddress: 'mail@example.test',
@@ -49,7 +49,56 @@ describe('transactional e-mail transport resolvers', () => {
 
     await expect(resolver.resolve('tenant-1')).resolves.not.toBeNull();
     expect(emailFor).toHaveBeenCalledWith(expect.objectContaining({
-      configurationSet: null,
+      configurationSet: 'marketing',
     }));
+  });
+
+  it('keeps the configuration set empty when the tenant has none', async () => {
+    const tenantSettings = {
+      tenantId: 'tenant-1',
+      fromAddress: 'mail@example.test',
+      fromName: 'Example',
+      identity: 'example.test',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z',
+      configurationSet: null,
+      snsTopicArn: null,
+      trackingEnabled: false,
+      autoPauseOnCritical: false,
+      webhookToken: 'token-token-token-token-token',
+      quotaRatePerSec: 0,
+      quotaDaily: 0,
+      quotaSentLast24Hours: 0,
+      quotaRefreshedAt: null,
+      inSandbox: true,
+      webhookVerifiedAt: null,
+      footerLegalName: 'Example sp. z o.o.',
+      footerAddress: 'Example Street 1',
+      broadcastsEnabled: false,
+    };
+    const emailFor = vi.fn(() => ({
+      send: async () =>
+        ok({ messageId: 'message-1', transport: 'tenant-ses' as const }),
+    }));
+    const resolver = createTenantSesTransactionalResolver(
+      {
+        findByTenant: async () => tenantSettings,
+        findByWebhookToken: async () => tenantSettings,
+        upsert: async () => tenantSettings,
+      },
+      {
+        resolve: async () =>
+          ok({
+            accessKeyId: 'access-key',
+            secretAccessKey: 'secret-key',
+            region: 'eu-central-1',
+          }),
+      },
+      emailFor,
+    );
+
+    await expect(resolver.resolve('tenant-1')).resolves.not.toBeNull();
+    expect(emailFor).toHaveBeenCalledWith(
+      expect.objectContaining({ configurationSet: null }),
+    );
   });
 });

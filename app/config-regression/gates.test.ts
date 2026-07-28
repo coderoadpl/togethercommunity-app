@@ -12,6 +12,7 @@ const token = `__together_probe_${String(process.pid)}_${String(Date.now())}__`;
 const coreDomainDir = join('core', 'domain', token);
 const coreServerDir = join('core', 'server', token);
 const featureDir = join('apps', 'web', 'src', 'features', token);
+const islandCoreDir = join(featureDir, 'core');
 const layoutDir = join('apps', 'web', 'src', 'components', 'layout', token);
 
 const sweepRoots = [
@@ -61,6 +62,18 @@ const eslintFixtures = {
       "import { ListItemText } from '@mui/material';\n" +
       "export const Probe = () => <ListItemText slotProps={{ primary: { 'sx': { fontWeight: 700 } } }} />;\n",
   },
+  islandEvent: {
+    rel: join(islandCoreDir, 'events.ts'),
+    content: "export type ProbeEvent = { type: 'deleteItem' } | { type: 'itemRemoved' };\n",
+  },
+  islandReact: {
+    rel: join(islandCoreDir, 'react.ts'),
+    content: "import 'react';\nexport const probe = 1;\n",
+  },
+  islandApi: {
+    rel: join(islandCoreDir, 'api.ts'),
+    content: "import { actions } from '../../../api.js';\nexport const probe = actions;\n",
+  },
 } satisfies Record<string, { rel: string; content: string }>;
 
 const depcruiseFixtures = [
@@ -72,6 +85,7 @@ const depcruiseFixtures = [
     rel: join(layoutDir, 'feature.ts'),
     content: "import '../../../features/auth/LoginPage.js';\n",
   },
+  { rel: join(islandCoreDir, 'react-depcruise.ts'), content: "import 'react';\n" },
 ] satisfies Array<{ rel: string; content: string }>;
 
 interface EslintMessage {
@@ -124,7 +138,7 @@ beforeAll(() => {
 
   const depcruiseRun = spawnSync(
     join(appRoot, 'node_modules', '.bin', 'depcruise'),
-    ['--output-type', 'json', coreDomainDir, coreServerDir, layoutDir],
+    ['--output-type', 'json', coreDomainDir, coreServerDir, islandCoreDir, layoutDir],
     { cwd: appRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   const report: { summary: { violations: Array<{ rule: { name: string } }> } } = JSON.parse(
@@ -167,6 +181,18 @@ describe('ESLint gate', () => {
   it('rejects reserved styling in quoted nested sx objects', () => {
     expect(findMessage('nestedSx', 'together/sx-layout-only')).toBeDefined();
   });
+
+  it('rejects imperative island event names', () => {
+    expect(findMessage('islandEvent', 'together/event-suffix-taxonomy')).toBeDefined();
+  });
+
+  it('rejects React imports from island cores', () => {
+    expect(findMessage('islandReact', 'no-restricted-imports')).toBeDefined();
+  });
+
+  it('rejects parent-relative imports from island cores', () => {
+    expect(findMessage('islandApi', 'no-restricted-imports')).toBeDefined();
+  });
 });
 
 describe('Dependency Cruiser gate', () => {
@@ -190,6 +216,10 @@ describe('Dependency Cruiser gate', () => {
     expect(depcruiseRules.has('web-layout-structure-only')).toBe(true);
   });
 
+  it('keeps island cores framework-agnostic', () => {
+    expect(depcruiseRules.has('island-core-is-framework-agnostic')).toBe(true);
+  });
+
   it('keeps guarded rules at error severity', () => {
     const config: { forbidden: Array<{ name: string; severity: string }> } = require(
       join(appRoot, '.dependency-cruiser.cjs'),
@@ -204,6 +234,8 @@ describe('Dependency Cruiser gate', () => {
       'adapters-never-import-apps',
       'web-never-server-side',
       'web-layout-structure-only',
+      'island-core-is-framework-agnostic',
+      'island-core-is-portable',
       'vercel-and-neon-only-in-adapters',
       'no-frameworks-in-core',
       'auth-provider-sdk-only-in-adapters-auth',

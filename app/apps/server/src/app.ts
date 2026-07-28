@@ -6,6 +6,7 @@ import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 import { err, internal, notFound, validation, type Identity } from '#core/domain/index.js';
 
 import type { AppDeps } from './composition.js';
+import { requestBodyLimit } from './body-limits.js';
 import { registerInternalRoutes } from './internal-app.js';
 import {
   assertPublicRouteManifest,
@@ -42,7 +43,7 @@ export const buildApp = (deps: AppDeps) => {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", 'https://*.sentry.io'],
         fontSrc: ["'self'", 'data:'],
         imgSrc: ["'self'", 'data:', 'https:'],
         frameSrc: ['https:'],
@@ -53,13 +54,17 @@ export const buildApp = (deps: AppDeps) => {
       referrerPolicy: 'strict-origin-when-cross-origin',
     }),
   );
-  app.use(
-    '/api/*',
-    bodyLimit({
-      maxSize: 100 * 1024,
-      onError: () => respond(err(validation('Request body exceeds the 100KB limit'))),
-    }),
-  );
+  app.use('*', async (c, next) => {
+    const maxSize = requestBodyLimit(c.req.method, c.req.path);
+    if (maxSize === undefined) {
+      await next();
+      return;
+    }
+    return bodyLimit({
+      maxSize,
+      onError: () => respond(err(validation(`Request body exceeds the ${maxSize} byte limit`))),
+    })(c, next);
+  });
   app.use('*', telemetryMiddleware);
   app.use('/api/*', async (c, next) => {
     if (c.req.path.startsWith(betterAuthPathPrefix)) {

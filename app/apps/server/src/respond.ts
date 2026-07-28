@@ -9,6 +9,8 @@ type ResponseOptions = {
   successStatus?: number;
 };
 
+export const PUBLIC_REVALIDATED_CACHE_CONTROL = 'public, no-cache';
+
 export const respond = <T>(
   result: Result<T, AppError>,
   options: ResponseOptions = {},
@@ -28,6 +30,6 @@ export const respond = <T>(
 
 export const respondNotModified = (headers: HeadersInit = {}): Response => {
   const responseHeaders = new Headers(headers);
-  responseHeaders.set('cache-control', 'public, no-cache');
+  responseHeaders.set('cache-control', PUBLIC_REVALIDATED_CACHE_CONTROL);
   return new Response(null, { status: 304, headers: responseHeaders });
 };

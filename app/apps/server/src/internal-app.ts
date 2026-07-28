@@ -2039,13 +2039,13 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.get(API_PATHS.notificationsStream, (c) => {
     const identity = c.get('identity');
-    const tenantId = identity.tenantId;
-    if (tenantId === null) return respond(err(tenantNotFound('Select a tenant')));
+    const tenant = authorizeTenant({ identity }, 'notification:read');
+    if (!tenant.ok) return respond(tenant);
     const stream = createNotificationEventStream({
-      tenantId,
+      tenantId: tenant.value,
       recipientUserId: identity.userId,
       bus: deps.realtimeBus,
-      unreadCount: () => deps.notifications.unreadCount(tenantId, identity.userId),
+      unreadCount: () => deps.notifications.unreadCount(tenant.value, identity.userId),
     });
     return new Response(stream, { headers: SSE_HEADERS });
   });

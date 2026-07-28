@@ -41,6 +41,7 @@ import {
   createCheckoutConsentCaptureRepository,
   createDevEmailReader,
   createDevMagicLinkReader,
+  createDevSinkPurge,
   createEntityVersionRepository,
   createHealthPort,
   createMemberCourseProgressRepository,
@@ -131,6 +132,7 @@ import type {
   ConsentDefinitionRepository,
   EnrollmentTransactionPort,
   DevMagicLinkReader,
+  DevSinkPurge,
   FileUrlSigner,
   BunnyEmbedTokenSigner,
   HealthPort,
@@ -280,6 +282,7 @@ export interface AppDeps {
   emailDispatchSecret: string;
   devEmails: DevEmailReader;
   devMagicLinks: DevMagicLinkReader;
+  devSinkPurge?: DevSinkPurge;
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
   consents: TermsConsentRepository;
@@ -684,6 +687,7 @@ export const createDeps = (env: Env): AppDeps => {
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
+    ...(production ? {} : { devSinkPurge: createDevSinkPurge(db) }),
     tenantDomains,
     tenants,
     consents,

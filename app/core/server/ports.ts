@@ -945,6 +945,11 @@ export interface DevEmailReader {
   findByRecipient(to: string): Promise<DevEmail | null>;
 }
 
+/** Dev-only: the sinks are scratch space, so a fresh boot starts from an empty one. */
+export interface DevSinkPurge {
+  purge(): Promise<{ magicLinks: number; emails: number }>;
+}
+
 export interface TenantDomainRepository {
   findByDomain(domain: string): Promise<TenantDomain | null>;
   listVerifiedDomains(): Promise<TenantDomain[]>;

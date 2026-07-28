@@ -55,6 +55,7 @@ import type {
   CheckoutConsentCaptureRepository,
   DevEmailReader,
   DevMagicLinkReader,
+  DevSinkPurge,
   EntityVersionRecord,
   EntityVersionRepository,
   HealthPort,
@@ -2070,6 +2071,16 @@ export const createDevEmailReader = (db: Db): DevEmailReader => ({
   findByRecipient: async (to) => {
     const rows = await db.select().from(devEmails).where(eq(devEmails.to, to)).limit(1);
     return rows[0] ?? null;
+  },
+});
+
+export const createDevSinkPurge = (db: Db): DevSinkPurge => ({
+  purge: async () => {
+    const [magicLinks, emails] = await Promise.all([
+      db.delete(devMagicLinks).returning({ email: devMagicLinks.email }),
+      db.delete(devEmails).returning({ to: devEmails.to }),
+    ]);
+    return { magicLinks: magicLinks.length, emails: emails.length };
   },
 });
 

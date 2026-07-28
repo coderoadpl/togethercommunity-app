@@ -26,6 +26,7 @@ import {
   createCourseModuleRepository,
   createCourseRepository,
   createCheckoutConsentCaptureRepository,
+  createDevSinkPurge,
   createHealthPort,
   createMemberErasureRepository,
   createMemberRepository,
@@ -51,6 +52,8 @@ import {
   couponRedemptions,
   couponCheckoutSessions,
   coupons,
+  devEmails,
+  devMagicLinks,
   emailEvents,
   invoices,
   erasedMemberImports,
@@ -207,6 +210,28 @@ beforeAll(async () => {
 
   const subs = createMemberSubscriptionRepository(db);
   await subs.create(ACME, subscription({ id: 'sub-acme', tenantId: ACME, memberId: 'mem-acme', productId: 'prod-acme', priceId: 'price-acme', providerSubscriptionId: 'psub-acme' }));
+});
+
+describe('dev sink purge', () => {
+  it('reports deleted rows and leaves both sinks empty', async () => {
+    await db.insert(devMagicLinks).values({
+      email: 'purge@together.dev',
+      url: 'http://localhost/magic',
+      token: 'purge-token',
+      createdAt: NOW,
+    });
+    await db.insert(devEmails).values({
+      to: 'purge@together.dev',
+      subject: 'Subject',
+      html: '<p>Body</p>',
+      text: 'Body',
+      createdAt: NOW,
+    });
+
+    await expect(createDevSinkPurge(db).purge()).resolves.toEqual({ magicLinks: 1, emails: 1 });
+    await expect(db.select().from(devMagicLinks)).resolves.toEqual([]);
+    await expect(db.select().from(devEmails)).resolves.toEqual([]);
+  });
 });
 
 describe('product repository', () => {

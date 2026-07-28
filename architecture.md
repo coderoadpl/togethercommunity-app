@@ -292,15 +292,17 @@ Architecture is enforced by configuration and executable probes:
 | `npm run check` | Type safety, ESLint boundaries, lockfile consistency, dependency graph, dead-code/dependency drift, documentation cross-checks, and tests. |
 | `npm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
 | `npm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
+| `npm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
+| `npm run e2e:poc` | The creator and member proof-of-concept journeys through the real browser stack. |
 | `npm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
 | `npm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
 | `npm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
 
-CI runs `check`, `smoke`, the quickstart probe, and behavioral e2e suites on
-pushes and pull requests to `poc-together`. KSeF e2e is excluded because it
-targets an external shared test network. Visual comparison remains local until
-platform-scoped CI baselines and a platform guard land. Third-party GitHub
-Actions are pinned to full commit SHAs.
+CI runs `check`, `smoke`, the quickstart probe, and the auth, PoC, subscription,
+and marketing e2e suites on pushes and pull requests to `poc-together`. KSeF
+e2e is excluded because it targets an external shared test network. Visual
+comparison remains local until platform-scoped CI baselines and a platform
+guard land. Third-party GitHub Actions are pinned to full commit SHAs.
 
 Gates are deterministic. Rerun-to-green is prohibited; a flake is a P1 defect.
 Visual has zero retries.

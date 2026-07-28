@@ -1,9 +1,7 @@
 import {
   err,
-  forbidden,
   ok,
   notFound,
-  tenantNotFound,
   type AppError,
   type CouponStatsCursor,
   type CouponStatsItem,
@@ -12,6 +10,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { Clock, CouponStatsRepository } from '../ports.js';
 
 export interface CouponStatsDeps {
@@ -28,12 +27,6 @@ export interface CouponStatsQuery {
   through?: string;
 }
 
-const tenantFor = (ctx: Ctx): Result<string, AppError> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound('Select a tenant to view coupon sales'));
-  if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can view coupon sales'));
-  return ok(ctx.identity.tenantId);
-};
-
 const windowFor = (
   query: CouponStatsQuery,
   clock: Clock,
@@ -49,7 +42,7 @@ export const listCouponOptions = async (
   ctx: Ctx,
   deps: Pick<CouponStatsDeps, 'stats'>,
 ): Promise<Result<{ coupons: CouponOption[] }, AppError>> => {
-  const tenant = tenantFor(ctx);
+  const tenant = authorizeTenant(ctx, 'coupon:read');
   if (!tenant.ok) return tenant;
   return ok({ coupons: await deps.stats.listOptions(tenant.value) });
 };
@@ -59,7 +52,7 @@ export const listCouponStats = async (
   query: CouponStatsQuery,
   deps: CouponStatsDeps,
 ): Promise<Result<{ items: CouponStatsItem[]; nextCursor: CouponStatsCursor | null }, AppError>> => {
-  const tenant = tenantFor(ctx);
+  const tenant = authorizeTenant(ctx, 'coupon:report');
   if (!tenant.ok) return tenant;
   const limit = Math.min(100, Math.max(1, query.limit ?? 25));
   return ok(

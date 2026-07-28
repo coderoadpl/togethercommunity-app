@@ -403,8 +403,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:190` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:312` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:457` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
-| staff-role | `core/server/usecases/coupon-management.ts:29` | `if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can manage coupons'));` |
-| staff-role | `core/server/usecases/coupon-stats.ts:33` | `if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can view coupon sales'));` |
 | staff-role | `core/server/usecases/email-reputation.ts:17` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | staff-role | `core/server/usecases/email-send-observability.ts:18` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | member-scope | `core/server/usecases/entitlements.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
@@ -428,7 +426,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | staff-role | `core/server/usecases/onboarding.ts:38` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));` |
-| staff-role | `core/server/usecases/orders.ts:35` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see sales'));` |
 | staff-role | `core/server/usecases/payment-integrations.ts:12` | `if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Stripe'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |

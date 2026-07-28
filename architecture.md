@@ -182,7 +182,8 @@ rows are written during finalization and are not mutated afterward.
 Erasure is policy-aware rather than a blind cascade. Product data that may be
 removed or pseudonymized follows the relevant retention flow. Fiscal records
 and immutable compliance evidence remain when their legal retention basis
-requires it.
+requires it. The retained-data policies and operational removal path are
+documented in [app/docs/member-erasure.md](app/docs/member-erasure.md).
 
 ## Transactions and external effects
 

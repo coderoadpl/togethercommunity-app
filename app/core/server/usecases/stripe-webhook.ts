@@ -14,6 +14,7 @@ import {
   type CouponCheckoutSession,
   type Order,
   type ProductPrice,
+  type MemberSubscription,
 } from '#core/domain/index.js';
 
 import type {
@@ -25,6 +26,7 @@ import type {
   CouponRepository,
   ProductPriceHistoryRepository,
   CheckoutConsentCaptureRepository,
+  EmailOutboxRepository,
 } from '../ports.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
@@ -38,6 +40,7 @@ import {
 } from './subscription-lifecycle.js';
 
 export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLifecycleDeps {
+  emailOutbox: EmailOutboxRepository;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   paymentRefunds: PaymentRefundRepository;
   coupons?: CouponRepository;
@@ -46,6 +49,55 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   priceHistory?: ProductPriceHistoryRepository;
   checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
 }
+
+const enqueueSubscriptionNotice = async (
+  tenant: Tenant,
+  subscription: MemberSubscription | null,
+  kind: 'subscription-payment-failed' | 'subscription-ended',
+  deps: StripeWebhookDeps,
+): Promise<Result<void, AppError>> => {
+  if (subscription === null) return ok(undefined);
+  const [member, product, settings] = await Promise.all([
+    deps.members.findById(tenant.id, subscription.memberId),
+    deps.products.findById(tenant.id, subscription.productId),
+    deps.tenants.findSettings(tenant.id),
+  ]);
+  if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
+  const tenantBaseUrl = new URL(deps.appBaseUrl);
+  tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
+  const branding =
+    settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+  const payload =
+    kind === 'subscription-payment-failed'
+      ? {
+          kind,
+          language: 'pl',
+          tenantName: tenant.name,
+          productTitle: product.title,
+          accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
+          billingPortalUrl: settings?.billingPortalUrl ?? null,
+          ...(branding === undefined ? {} : { branding }),
+        }
+      : {
+          kind,
+          language: 'pl',
+          tenantName: tenant.name,
+          productTitle: product.title,
+          accessEndsAt: subscription.currentPeriodEnd,
+          offerUrl: tenantBaseUrl.toString(),
+          ...(branding === undefined ? {} : { branding }),
+        };
+  const queued = await deps.emailOutbox.enqueue({
+    id: deps.ids.nextId(),
+    tenantId: tenant.id,
+    to: member.email,
+    payload,
+    now: deps.clock.nowIso(),
+  });
+  if (!queued.ok) return queued;
+  deps.dispatchEmail();
+  return ok(undefined);
+};
 
 const HANDLED_EVENT_TYPES = new Set([
   'checkout.session.completed',
@@ -424,6 +476,13 @@ const applyInvoiceEvent = async (
     }
   } else {
     await failSubscriptionPayment(tenant.id, cycle, deps);
+    const notified = await enqueueSubscriptionNotice(
+      tenant,
+      subscription,
+      'subscription-payment-failed',
+      deps,
+    );
+    if (!notified.ok) return notified;
   }
   return ok({ processed: true });
 };
@@ -524,6 +583,10 @@ const applySubscriptionEvent = async (
     },
     deps,
   );
+  if (event.type === 'customer.subscription.deleted') {
+    const notified = await enqueueSubscriptionNotice(tenant, subscription, 'subscription-ended', deps);
+    if (!notified.ok) return notified;
+  }
   return ok({ processed: true });
 };
 

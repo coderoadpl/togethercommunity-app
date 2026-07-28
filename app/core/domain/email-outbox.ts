@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { emailMessageSchema, magicLink, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost } from './transactional-email.js';
+import { emailMessageSchema, magicLink, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed } from './transactional-email.js';
 
 const brandingSchema = z.object({ logoUrl: z.string().url().nullable(), accentColor: z.string().nullable() });
 
@@ -12,6 +12,8 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('thread-reply'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('lesson-question'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('space-post'), language: z.string(), tenantName: z.string(), spaceName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
+  z.object({ kind: z.literal('subscription-payment-failed'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), billingPortalUrl: z.string().url().nullable(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('subscription-ended'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), offerUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('marketing-consent-confirmation'), wording: z.string().min(1), confirmationUrl: z.string().url() }),
 ]);
 
@@ -33,6 +35,22 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
             ? lessonQuestion(value.language, value)
             : value.kind === 'space-post'
               ? spacePost(value.language, value)
-              : marketingConsentConfirmation(value);
+              : value.kind === 'subscription-payment-failed'
+                ? subscriptionPaymentFailed(value.language, {
+                    tenantName: value.tenantName,
+                    productTitle: value.productTitle,
+                    accessEndsAt: value.accessEndsAt,
+                    billingPortalUrl: value.billingPortalUrl,
+                    ...(value.branding === undefined ? {} : { branding: value.branding }),
+                  })
+                : value.kind === 'subscription-ended'
+                  ? subscriptionEnded(value.language, {
+                      tenantName: value.tenantName,
+                      productTitle: value.productTitle,
+                      accessEndsAt: value.accessEndsAt,
+                      offerUrl: value.offerUrl,
+                      ...(value.branding === undefined ? {} : { branding: value.branding }),
+                    })
+                  : marketingConsentConfirmation(value);
   return { success: true as const, data: emailMessageSchema.parse(message) };
 };

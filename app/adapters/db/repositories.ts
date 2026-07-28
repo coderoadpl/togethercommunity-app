@@ -794,6 +794,45 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const row = rows[0];
     return row ? parsePost(row) : null;
   },
+  setPinned: async (tenantId, input) => {
+    const rows = await db
+      .update(posts)
+      .set({ pinnedAt: input.pinnedAt })
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parsePost(row) : null;
+  },
+  listPinnedForContext: async (tenantId, query) =>
+    (
+      await db
+        .select()
+        .from(posts)
+        .where(
+          and(
+            eq(posts.tenantId, tenantId),
+            eq(posts.contextKind, query.contextKind),
+            eq(posts.contextId, query.contextId),
+            isNotNull(posts.pinnedAt),
+          ),
+        )
+        .orderBy(desc(posts.pinnedAt), desc(posts.id))
+        .limit(query.limit)
+    ).map(parsePost),
+  countPinnedForContext: async (tenantId, query) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, query.contextKind),
+          eq(posts.contextId, query.contextId),
+          isNotNull(posts.pinnedAt),
+        ),
+      );
+    return rows[0]?.value ?? 0;
+  },
   search: async (tenantId, query) => {
     const contextFilters: SQL[] = [];
     if (query.lessonIds.length > 0) {

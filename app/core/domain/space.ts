@@ -112,6 +112,7 @@ export type SpaceFeedItem = z.output<typeof spaceFeedItemSchema>;
 export const spaceFeedSchema = z.object({
   spaceId: z.string().min(1),
   items: z.array(spaceFeedItemSchema),
+  pinned: z.array(spaceFeedItemSchema).default([]),
   nextCursor: z.string().nullable(),
   isFollowing: z.boolean(),
 });

@@ -848,6 +848,12 @@ export interface Messages {
     spaceNotFoundBody: string;
     backToSpaces: string;
     backToFeed: string;
+    pinnedHeading: string;
+    pinnedChip: string;
+    announcementChip: string;
+    pin: string;
+    unpin: string;
+    pinLimitReached: string;
     threadTitle: string;
     threadEyebrow: string;
   };

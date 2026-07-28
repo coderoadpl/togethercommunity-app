@@ -168,6 +168,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/student/progress` | authenticated | read | student progress |
 | `GET /api/student/lessons/:lessonId` | authenticated | read | student lesson |
 | `POST /api/posts` | authenticated | mutating | posts create |
+| `POST /api/posts/pin` | authenticated | mutating | posts pin |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |

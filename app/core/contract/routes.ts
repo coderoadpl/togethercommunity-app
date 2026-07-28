@@ -68,6 +68,7 @@ import {
   notificationListInputSchema,
   notificationMarkReadInputSchema,
   notificationSchema,
+  pinPostInputSchema,
   newProductSchema,
   nextLessonSchema,
   publicPostSchema,
@@ -757,6 +758,14 @@ export const postReactOutputSchema = z.object({
   reactions: z.array(reactionSummarySchema),
 });
 
+export const postPinInputSchema = pinPostInputSchema;
+
+export type PostPinInput = z.input<typeof postPinInputSchema>;
+
+export const postPinOutputSchema = z.object({
+  post: publicPostSchema,
+});
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -1136,6 +1145,7 @@ export const API_ROUTES = {
   studentLastViewed: { method: 'POST', path: '/api/student/progress/last-viewed' },
   studentProgress: { method: 'GET', path: '/api/student/progress' },
   postsCreate: { method: 'POST', path: '/api/posts' },
+  postsPin: { method: 'POST', path: '/api/posts/pin' },
   postsUpdate: { method: 'POST', path: '/api/posts/update' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
@@ -1303,6 +1313,7 @@ export const API_PATHS = {
   studentLastViewed: API_ROUTES.studentLastViewed.path,
   studentProgress: API_ROUTES.studentProgress.path,
   postsCreate: API_ROUTES.postsCreate.path,
+  postsPin: API_ROUTES.postsPin.path,
   postsUpdate: API_ROUTES.postsUpdate.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,

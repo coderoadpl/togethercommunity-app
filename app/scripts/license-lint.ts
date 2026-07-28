@@ -7,6 +7,7 @@ const lockedPackageSchema = z
   .object({
     dev: z.boolean().optional(),
     license: z.string().optional(),
+    optional: z.boolean().optional(),
     version: z.string().optional(),
   })
   .passthrough();
@@ -128,6 +129,7 @@ const packageNameFromPath = (path: string): string | undefined => {
 };
 
 const hasAllowedAlternative = (license: string): boolean => {
+  if (/\s+(?:AND|WITH)\s+/.test(license)) return false;
   const alternatives = license
     .replaceAll('(', '')
     .replaceAll(')', '')
@@ -144,6 +146,7 @@ const matchingException = (
     if (!exception.packagePattern.test(packageName)) continue;
     if (!exception.versionPattern.test(version)) continue;
     if (exception.license !== undefined && exception.license !== lockedPackage.license) continue;
+    if (exception.license === undefined && lockedPackage.license !== undefined) continue;
     if (exception.devOnly === true && lockedPackage.dev !== true) continue;
     return key;
   }
@@ -151,9 +154,27 @@ const matchingException = (
 };
 
 const lockPath = join(import.meta.dirname, '..', 'package-lock.json');
+const thirdPartyPath = join(import.meta.dirname, '..', '..', 'THIRD-PARTY-LICENSES.md');
+const licensePath = join(import.meta.dirname, '..', '..', 'LICENSE.md');
 const parsed: unknown = JSON.parse(readFileSync(lockPath, 'utf8'));
 const lock = packageLockSchema.parse(parsed);
+const thirdPartyLicenses = readFileSync(thirdPartyPath, 'utf8');
+const licenseDocument = readFileSync(licensePath, 'utf8');
 const problems: string[] = [];
+const matchedExceptions = new Set<string>();
+const thirdPartyPackages = new Set(
+  [...thirdPartyLicenses.matchAll(/^- \[([^\]]+@[^\]]+)\]/gm)].map((match) => match[1]),
+);
+const licenseAbbreviation = /^## Abbreviation\s+(\S+)/m.exec(licenseDocument)?.[1];
+const rootLicense = lock.packages['']?.license;
+
+if (licenseAbbreviation === undefined) {
+  problems.push('LICENSE.md: missing abbreviation');
+} else if (rootLicense !== licenseAbbreviation) {
+  problems.push(
+    `package-lock.json root license: ${rootLicense ?? 'missing'} (expected ${licenseAbbreviation})`,
+  );
+}
 
 for (const [path, lockedPackage] of Object.entries(lock.packages)) {
   if (path === '') continue;
@@ -164,10 +185,30 @@ for (const [path, lockedPackage] of Object.entries(lock.packages)) {
   }
   const license = lockedPackage.license;
   if (license !== undefined && hasAllowedAlternative(license)) continue;
-  if (matchingException(packageName, lockedPackage) !== undefined) continue;
+  const exceptionKey = matchingException(packageName, lockedPackage);
+  if (exceptionKey !== undefined) {
+    matchedExceptions.add(exceptionKey);
+    continue;
+  }
   problems.push(
     `${packageName}@${lockedPackage.version ?? 'unknown'}: ${license ?? 'missing license metadata'}`,
   );
+}
+
+for (const [path, lockedPackage] of Object.entries(lock.packages)) {
+  if (path === '' || lockedPackage.dev === true || lockedPackage.optional === true) continue;
+  const packageName = packageNameFromPath(path);
+  if (packageName === undefined) continue;
+  const packageIdentifier = `${packageName}@${lockedPackage.version ?? 'unknown'}`;
+  if (!thirdPartyPackages.has(packageIdentifier)) {
+    problems.push(`${packageIdentifier}: missing from THIRD-PARTY-LICENSES.md`);
+  }
+}
+
+for (const exceptionKey of exceptions.keys()) {
+  if (!matchedExceptions.has(exceptionKey)) {
+    problems.push(`${exceptionKey}: documented exception does not match any locked package`);
+  }
 }
 
 if (problems.length > 0) {

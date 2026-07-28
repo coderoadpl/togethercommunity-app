@@ -68,14 +68,30 @@ party.
 You agree to notify the Licensor if you learn of circumstances that make these
 representations inaccurate.
 
-## 5. Support and warranty
+## 5. Moral rights
+
+To the extent permitted by applicable law, you waive and agree not to assert
+any moral rights in your Contributions against the Licensor or recipients of
+the Work. Where those rights cannot be waived, you agree not to exercise them
+in a way that interferes with the rights granted by this agreement and
+authorize the Licensor and recipients of the Work to use, modify, license, and
+distribute your Contributions without further consent.
+
+## 6. Support and warranty
 
 You are not required to provide support for your Contributions. Unless required
 by applicable law or agreed in writing, you provide your Contributions on an
 "AS IS" basis, without warranties or conditions of any kind, including title,
 non-infringement, merchantability, or fitness for a particular purpose.
 
-## 6. Acceptance
+## 7. Governing law and jurisdiction
+
+This agreement is governed by the laws of the Republic of Poland, without
+regard to conflict-of-law rules. Any dispute arising from this agreement is
+subject to the exclusive jurisdiction of the courts having jurisdiction over
+the Licensor's domicile, except where applicable law requires otherwise.
+
+## 8. Acceptance
 
 Acceptance through the repository's CLA signing service constitutes your
 electronic signature and creates a legally binding agreement. You need to

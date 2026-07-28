@@ -242,7 +242,7 @@ deferred under FR-33.
 ## License
 
 Together is Fair Source software available under
-[FSL-1.1-Apache-2.0](../LICENSE.md). Self-hosting for your own organization or
+[FSL-1.1-ALv2](../LICENSE.md). Self-hosting for your own organization or
 community is allowed. Offering Together, or substantially similar
 functionality based on it, as a competing commercial hosted service is not.
 Each release automatically becomes available under Apache-2.0 two years after

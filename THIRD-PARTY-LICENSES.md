@@ -1,3 +1,15 @@
+# Third-party licenses
+
+This list covers both production and development dependencies installed for the
+application. From `app/`, regenerate the dependency list with
+`npx --yes license-checker@25.0.1 --markdown --excludePrivatePackages`; replace
+the list below while retaining this header.
+
+Apache-2.0 §4(d) requires distributors of derivative works to preserve
+applicable attribution notices from dependency `NOTICE` files. When
+distributing Together, review installed Apache-2.0 dependencies and reproduce
+their applicable notices in the distribution.
+
 - [@adobe/css-tools@4.5.0](https://github.com/adobe/css-tools) - MIT
 - [@ampproject/remapping@2.3.0](https://github.com/ampproject/remapping) - Apache-2.0
 - [@asamuzakjp/css-color@5.1.11](https://github.com/asamuzaK/cssColor) - MIT

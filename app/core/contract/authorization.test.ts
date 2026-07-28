@@ -4,8 +4,8 @@ import type { Identity } from '#core/domain/index.js';
 
 import {
   CAPABILITIES,
-  CAPABILITY_MATRIX,
   PRINCIPALS,
+  ROLE_CAPABILITIES,
   capabilitiesForIdentity,
   capabilitiesForPrincipal,
   capabilityMatrixSchema,
@@ -35,8 +35,9 @@ describe('authorization contract', () => {
   });
 
   it('parses an exhaustive matrix row for every capability', () => {
-    expect(capabilityMatrixSchema.parse(CAPABILITY_MATRIX)).toEqual(CAPABILITY_MATRIX);
-    expect(Object.keys(CAPABILITY_MATRIX).sort()).toEqual([...CAPABILITIES].sort());
+    expect(capabilityMatrixSchema.parse(ROLE_CAPABILITIES)).toEqual(ROLE_CAPABILITIES);
+    expect(Object.keys(ROLE_CAPABILITIES).sort()).toEqual([...PRINCIPALS].sort());
+    expect(new Set(Object.values(ROLE_CAPABILITIES).flat())).toEqual(new Set(CAPABILITIES));
   });
 
   it('expands owner and admin roles without collapsing their owner-only difference', () => {

@@ -614,9 +614,19 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
     expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
-    expect(await repo.findSettings(ACME)).toMatchObject({ bunnyStreamLibraryId: 'lib-1' });
+    expect(await repo.findSettings(ACME)).toMatchObject({
+      bunnyStreamLibraryId: 'lib-1',
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
+    });
   });
 
   it('exposes staff memberships and members through the access reader', async () => {

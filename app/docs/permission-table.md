@@ -203,169 +203,169 @@ no changes
 
 | Use-case | Required capability | BEFORE | AFTER | Machine-equivalent | Evidence |
 |---|---|---|---|---|---|
-| `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts inline guard or same-file guard helper |
-| `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts inline guard or same-file guard helper |
-| `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts inline guard or same-file guard helper |
-| `bunny-videos.ts#listBunnyVideos` | course:read | owner, admin | owner, admin | yes | core/server/usecases/bunny-videos.ts inline guard or same-file guard helper |
-| `bunny-videos.ts#testBunnyConnection` | integration:test | owner | owner | yes | core/server/usecases/bunny-videos.ts inline guard or same-file guard helper |
-| `community-access.ts#requireTenant` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#requireActor` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#requireMemberOrStaff` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#memberScope` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#lessonContextAccess` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#accessibleLessonIds` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#spaceContextAccess` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community-access.ts#listAccessibleSpaces` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts inline guard or same-file guard helper |
-| `community.ts#createPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#listDiscussion` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#editPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#deletePost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#subscribeThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#muteThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#searchPosts` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#listNotifications` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#markNotificationRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#markAllNotificationsRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `community.ts#unreadNotificationCount` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts inline guard or same-file guard helper |
-| `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts inline guard or same-file guard helper |
-| `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts inline guard or same-file guard helper |
-| `coupon-management.ts#createCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts inline guard or same-file guard helper |
-| `coupon-management.ts#archiveCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts inline guard or same-file guard helper |
-| `coupon-stats.ts#listCouponOptions` | coupon:read | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts inline guard or same-file guard helper |
-| `coupon-stats.ts#listCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts inline guard or same-file guard helper |
-| `coupon-stats.ts#getCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts inline guard or same-file guard helper |
-| `coupon-stats.ts#exportCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts inline guard or same-file guard helper |
-| `course-management.ts#listCourses` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#listModules` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#listLessons` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#createCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#updateCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#createModule` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#updateModule` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#createLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#updateLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#attachModuleToCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#detachModuleFromCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#listLessonReferences` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#deleteLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `course-management.ts#updateProductAccessItems` | product:access:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `create-tenant.ts#createTenant` | tenant:create | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/create-tenant.ts inline guard or same-file guard helper |
-| `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts inline guard or same-file guard helper |
-| `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
-| `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
-| `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
-| `email-send-observability.ts#exportEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
-| `entitlements.ts#resolveMemberEntitlements` | member:product:read | member | member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#isLessonAccessible` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#getAccessibleLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#getCourseStructureWithAccess` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#listMyCourses` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `entitlements.ts#getNextLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts inline guard or same-file guard helper |
-| `grants.ts#listMemberGrants` | member:grant:read | owner, admin | owner, admin | yes | core/server/usecases/grants.ts inline guard or same-file guard helper |
-| `grants.ts#grantProductToMember` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts inline guard or same-file guard helper |
-| `grants.ts#revokeGrant` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts inline guard or same-file guard helper |
-| `invoices.ts#downloadInvoice` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `invoices.ts#downloadMemberInvoice` | invoice:member-read | member | member | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `invoices.ts#downloadInvoiceUpo` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `invoices.ts#requestInvoice` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts inline guard or same-file guard helper |
-| `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts inline guard or same-file guard helper |
-| `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#recordCheckoutMarketingConsents` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#confirmMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#withdrawMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#purgeStalePendingConsents` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#getMarketingEligibility` | marketing:consent:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#addManualSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#liftMarketingSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#getUnsubscribePreferences` | marketing:consent:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#saveMarketingConsentPreferences` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#unsubscribeOneClick` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#unsubscribeAllMarketing` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#createCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#getCampaign` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#listCampaigns` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#getCampaignWithEngagement` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#listCampaignsWithEngagement` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#deleteCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#scheduleCampaign` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#pauseCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#cancelCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#updateCampaignContent` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#testSendCampaignToSelf` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#claimIdempotencyKey` | marketing:message:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#completeIdempotentRequest` | marketing:message:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts inline guard or same-file guard helper |
-| `marketing-management.ts#getMarketingConsentDefinition` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#updateMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#listTenantDocuments` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#getTenantDocument` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#createTenantDocument` | marketing:document:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#saveTenantDocumentDraft` | marketing:document:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#publishTenantDocument` | marketing:document:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#listEmailLayouts` | marketing:layout:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#saveEmailLayout` | marketing:layout:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#previewMarketingAudience` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#updateMarketingCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#getTenantSesMarketingSettings` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#updateTenantSesMarketingSettings` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-management.ts#sendTransactionalSmtpTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts inline guard or same-file guard helper |
-| `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts inline guard or same-file guard helper |
-| `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts inline guard or same-file guard helper |
-| `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts inline guard or same-file guard helper |
-| `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts inline guard or same-file guard helper |
-| `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts inline guard or same-file guard helper |
-| `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts inline guard or same-file guard helper |
-| `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts inline guard or same-file guard helper |
-| `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts inline guard or same-file guard helper |
-| `members.ts#removeMember` | member:remove | owner, admin | owner, admin | yes | core/server/usecases/members.ts inline guard or same-file guard helper |
-| `my-products.ts#listMyProducts` | member:product:read | member | member | yes | core/server/usecases/my-products.ts inline guard or same-file guard helper |
-| `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts inline guard or same-file guard helper |
-| `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts inline guard or same-file guard helper |
-| `orders.ts#listOrders` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts inline guard or same-file guard helper |
-| `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts inline guard or same-file guard helper |
-| `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts inline guard or same-file guard helper |
-| `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts inline guard or same-file guard helper |
-| `payment-integrations.ts#testStripeConnection` | integration:test | owner | owner | yes | core/server/usecases/payment-integrations.ts inline guard or same-file guard helper |
-| `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts inline guard or same-file guard helper |
-| `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts inline guard or same-file guard helper |
-| `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts inline guard or same-file guard helper |
-| `product-prices.ts#deactivateProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts inline guard or same-file guard helper |
-| `products.ts#listProducts` | product:read | owner, admin | owner, admin | yes | core/server/usecases/products.ts inline guard or same-file guard helper |
-| `products.ts#createProduct` | product:write | owner, admin | owner, admin | yes | core/server/usecases/products.ts inline guard or same-file guard helper |
-| `products.ts#publishProduct` | product:publish | owner, admin | owner, admin | yes | core/server/usecases/products.ts inline guard or same-file guard helper |
-| `progress.ts#markLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts inline guard or same-file guard helper |
-| `progress.ts#unmarkLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts inline guard or same-file guard helper |
-| `progress.ts#resetMemberCourseProgress` | member:progress:manage | owner, admin | owner, admin | yes | core/server/usecases/progress.ts inline guard or same-file guard helper |
-| `progress.ts#updateLastViewed` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts inline guard or same-file guard helper |
-| `progress.ts#getProgress` | member:progress:read | member | member | yes | core/server/usecases/progress.ts inline guard or same-file guard helper |
-| `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts inline guard or same-file guard helper |
-| `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts inline guard or same-file guard helper |
-| `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#updateSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#deleteSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#setSpaceArchived` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#listSpacesForStaff` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#listSpacesForMember` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#getSpaceFeed` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#followSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#unfollowSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#reactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts inline guard or same-file guard helper |
-| `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts inline guard or same-file guard helper |
-| `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts inline guard or same-file guard helper |
-| `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts inline guard or same-file guard helper |
-| `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts inline guard or same-file guard helper |
-| `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts inline guard or same-file guard helper |
-| `tenants.ts#listMyTenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/tenants.ts inline guard or same-file guard helper |
+| `api-keys.ts#createTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts declared authorization entry |
+| `api-keys.ts#listTenantApiKeys` | api-key:read | owner, admin | owner, admin | yes | core/server/usecases/api-keys.ts declared authorization entry |
+| `api-keys.ts#revokeTenantApiKey` | api-key:write | owner | owner | yes | core/server/usecases/api-keys.ts declared authorization entry |
+| `bunny-videos.ts#listBunnyVideos` | course:read | owner, admin | owner, admin | yes | core/server/usecases/bunny-videos.ts declared authorization entry |
+| `bunny-videos.ts#testBunnyConnection` | integration:test | owner | owner | yes | core/server/usecases/bunny-videos.ts declared authorization entry |
+| `community-access.ts#requireTenant` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#requireActor` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#requireMemberOrStaff` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#memberScope` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#lessonContextAccess` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#accessibleLessonIds` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#spaceContextAccess` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community-access.ts#listAccessibleSpaces` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community-access.ts declared authorization entry |
+| `community.ts#createPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#listDiscussion` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#editPost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#deletePost` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#subscribeThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#muteThread` | community:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#searchPosts` | community:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#listNotifications` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#markNotificationRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#markAllNotificationsRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `community.ts#unreadNotificationCount` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts declared authorization entry |
+| `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts declared authorization entry |
+| `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts declared authorization entry |
+| `coupon-management.ts#createCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts declared authorization entry |
+| `coupon-management.ts#archiveCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts declared authorization entry |
+| `coupon-stats.ts#listCouponOptions` | coupon:read | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts declared authorization entry |
+| `coupon-stats.ts#listCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts declared authorization entry |
+| `coupon-stats.ts#getCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts declared authorization entry |
+| `coupon-stats.ts#exportCouponStats` | coupon:report | owner, admin | owner, admin | yes | core/server/usecases/coupon-stats.ts declared authorization entry |
+| `course-management.ts#listCourses` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#listModules` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#listLessons` | course:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#createCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#updateCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#createModule` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#updateModule` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#createLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#updateLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#attachModuleToCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#detachModuleFromCourse` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#listLessonReferences` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#deleteLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `course-management.ts#updateProductAccessItems` | product:access:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts declared authorization entry |
+| `create-tenant.ts#createTenant` | tenant:create | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/create-tenant.ts declared authorization entry |
+| `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts declared authorization entry |
+| `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts declared authorization entry |
+| `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts declared authorization entry |
+| `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts declared authorization entry |
+| `email-send-observability.ts#exportEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts declared authorization entry |
+| `entitlements.ts#resolveMemberEntitlements` | member:product:read | member | member | yes | core/server/usecases/entitlements.ts declared authorization entry |
+| `entitlements.ts#isLessonAccessible` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts declared authorization entry |
+| `entitlements.ts#getAccessibleLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts declared authorization entry |
+| `entitlements.ts#getCourseStructureWithAccess` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts declared authorization entry |
+| `entitlements.ts#listMyCourses` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts declared authorization entry |
+| `entitlements.ts#getNextLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/entitlements.ts declared authorization entry |
+| `grants.ts#listMemberGrants` | member:grant:read | owner, admin | owner, admin | yes | core/server/usecases/grants.ts declared authorization entry |
+| `grants.ts#grantProductToMember` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts declared authorization entry |
+| `grants.ts#revokeGrant` | member:grant:write | owner, admin | owner, admin | yes | core/server/usecases/grants.ts declared authorization entry |
+| `invoices.ts#downloadInvoice` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `invoices.ts#downloadMemberInvoice` | invoice:member-read | member | member | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `invoices.ts#downloadInvoiceUpo` | invoice:read | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `invoices.ts#requestInvoice` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts declared authorization entry |
+| `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts declared authorization entry |
+| `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#recordMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#recordCheckoutMarketingConsents` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#confirmMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#withdrawMarketingConsent` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#purgeStalePendingConsents` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#getMarketingEligibility` | marketing:consent:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#addManualSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#liftMarketingSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#getUnsubscribePreferences` | marketing:consent:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#saveMarketingConsentPreferences` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#unsubscribeOneClick` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#unsubscribeAllMarketing` | marketing:consent:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#createCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#getCampaign` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#listCampaigns` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#getCampaignWithEngagement` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#listCampaignsWithEngagement` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#deleteCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#scheduleCampaign` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#pauseCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#cancelCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#updateCampaignContent` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#testSendCampaignToSelf` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#claimIdempotencyKey` | marketing:message:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#completeIdempotentRequest` | marketing:message:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts declared authorization entry |
+| `marketing-management.ts#getMarketingConsentDefinition` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#updateMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#listTenantDocuments` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#getTenantDocument` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#createTenantDocument` | marketing:document:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#saveTenantDocumentDraft` | marketing:document:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#publishTenantDocument` | marketing:document:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#listEmailLayouts` | marketing:layout:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#saveEmailLayout` | marketing:layout:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#previewMarketingAudience` | marketing:campaign:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#updateMarketingCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#getTenantSesMarketingSettings` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#updateTenantSesMarketingSettings` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-management.ts#sendTransactionalSmtpTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts declared authorization entry |
+| `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts declared authorization entry |
+| `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts declared authorization entry |
+| `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts declared authorization entry |
+| `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts declared authorization entry |
+| `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts declared authorization entry |
+| `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts declared authorization entry |
+| `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts declared authorization entry |
+| `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts declared authorization entry |
+| `members.ts#removeMember` | member:remove | owner, admin | owner, admin | yes | core/server/usecases/members.ts declared authorization entry |
+| `my-products.ts#listMyProducts` | member:product:read | member | member | yes | core/server/usecases/my-products.ts declared authorization entry |
+| `onboarding.ts#getCreatorOnboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts declared authorization entry |
+| `onboarding.ts#dismissCreatorOnboarding` | tenant:onboarding:write | owner, admin | owner, admin | yes | core/server/usecases/onboarding.ts declared authorization entry |
+| `orders.ts#listOrders` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts declared authorization entry |
+| `orders.ts#getOrder` | order:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts declared authorization entry |
+| `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts declared authorization entry |
+| `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts declared authorization entry |
+| `payment-integrations.ts#testStripeConnection` | integration:test | owner | owner | yes | core/server/usecases/payment-integrations.ts declared authorization entry |
+| `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts declared authorization entry |
+| `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts declared authorization entry |
+| `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts declared authorization entry |
+| `product-prices.ts#deactivateProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts declared authorization entry |
+| `products.ts#listProducts` | product:read | owner, admin | owner, admin | yes | core/server/usecases/products.ts declared authorization entry |
+| `products.ts#createProduct` | product:write | owner, admin | owner, admin | yes | core/server/usecases/products.ts declared authorization entry |
+| `products.ts#publishProduct` | product:publish | owner, admin | owner, admin | yes | core/server/usecases/products.ts declared authorization entry |
+| `progress.ts#markLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts declared authorization entry |
+| `progress.ts#unmarkLessonCompleted` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts declared authorization entry |
+| `progress.ts#resetMemberCourseProgress` | member:progress:manage | owner, admin | owner, admin | yes | core/server/usecases/progress.ts declared authorization entry |
+| `progress.ts#updateLastViewed` | member:progress:self-write | member | member | yes | core/server/usecases/progress.ts declared authorization entry |
+| `progress.ts#getProgress` | member:progress:read | member | member | yes | core/server/usecases/progress.ts declared authorization entry |
+| `scheduler-activity.ts#listSchedulerRunsForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts declared authorization entry |
+| `scheduler-activity.ts#getSchedulerRunForTenant` | scheduler:read | owner, admin | owner, admin | yes | core/server/usecases/scheduler-activity.ts declared authorization entry |
+| `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#updateSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#deleteSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#setSpaceArchived` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#listSpacesForStaff` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#listSpacesForMember` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#getSpaceFeed` | space:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#followSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#unfollowSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#reactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts declared authorization entry |
+| `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts declared authorization entry |
+| `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts declared authorization entry |
+| `tenant-secrets.ts#deleteTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts declared authorization entry |
+| `tenant-settings.ts#getTenantSettings` | tenant:settings:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/tenant-settings.ts declared authorization entry |
+| `tenant-settings.ts#updateTenantSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/tenant-settings.ts declared authorization entry |
+| `tenants.ts#listMyTenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/tenants.ts declared authorization entry |
 
 ## Authorization source evidence
 
@@ -421,24 +421,24 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 
 ### development-only routes
 
-When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control.
+When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control (`apps/server/src/internal-app.ts`).
 
 ### GET /api/tenant/settings
 
-The use-case checks only tenantId, so a member can read tenant settings while updates remain owner-only.
+A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).
 
 ### marketing synthetic identities
 
-API-key, worker, checkout, unsubscribe, and webhook handlers synthesize Identity values; several marketing use-cases check only tenant context rather than the originating credential type.
+API-key, worker, checkout, unsubscribe, and webhook handlers synthesize Identity values; several marketing use-cases check only tenant context rather than the originating credential type (`apps/server/src/marketing-routes.ts`, `apps/server/src/internal-app.ts`, `core/server/usecases/marketing-email.ts`).
 
 ### tenant creation mode
 
-The route supplies a tenantless authenticated identity, while direct use-case callers may also carry a staff or member grant; the deployment mode separately denies all creation when closed.
+The route supplies a tenantless authenticated identity, while direct use-case callers may also carry a staff or member grant; the deployment mode separately denies all creation when closed (`apps/server/src/internal-app.ts`, `core/server/usecases/create-tenant.ts`).
 
 ### staff with simultaneous membership
 
-Identity resolution can carry both staffRole and memberId; staff checks take precedence in some use-cases while member-scoped use-cases accept the same identity through memberId.
+Identity resolution can carry both staffRole and memberId; staff checks take precedence in some use-cases while member-scoped use-cases accept the same identity through memberId (`core/server/usecases/resolve-identity.ts`, `core/server/authorize.ts`, `core/server/usecases/member-billing-orders.ts`).
 
 ### staff lesson access
 
-Staff identities can use the student lesson and course-structure use-cases without a member row or product grant.
+Staff identities can use the student lesson and course-structure use-cases without a member row or product grant (`core/server/usecases/entitlements.ts`, `core/server/usecases/lesson-media.ts`).

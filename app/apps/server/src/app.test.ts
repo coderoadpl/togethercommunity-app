@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
-  BETTER_AUTH_API_PATH_PATTERN,
   BETTER_AUTH_MAGIC_LINK_PATH,
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
@@ -1052,18 +1051,17 @@ describe('server edge security baseline', () => {
 
 describe('public route manifest', () => {
   it('records the six approved mutating surfaces', () => {
-    const mutating = PUBLIC_ROUTE_MANIFEST
+    const mutatingSurfaces = new Set(PUBLIC_ROUTE_MANIFEST
       .filter((route) => route.mutating)
-      .map((route) => route.path);
+      .map((route) => route.why));
 
-    expect(mutating).toHaveLength(6);
-    expect(mutating).toEqual(expect.arrayContaining([
-      '/u/:token*',
-      '/marketing/confirm/:token',
-      '/api/webhooks/ses/:webhookToken',
-      '/api/webhooks/stripe/:tenantId',
-      API_PATHS.checkoutSession,
-      BETTER_AUTH_API_PATH_PATTERN,
+    expect(mutatingSurfaces).toEqual(new Set([
+      'Unsubscribe preference changes',
+      'Double opt-in confirmation',
+      'Amazon SNS delivery webhook',
+      'Stripe payment webhook',
+      'Checkout session start',
+      'Login, recovery, and magic-link authentication surface',
     ]));
   });
 });

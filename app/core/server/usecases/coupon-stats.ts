@@ -71,6 +71,8 @@ export const getCouponStats = async (
   couponId: string,
   deps: CouponStatsDeps,
 ): Promise<Result<{ item: CouponStatsItem }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'coupon:report');
+  if (!tenant.ok) return tenant;
   const result = await listCouponStats(ctx, { couponId, limit: 1 }, deps);
   if (!result.ok) return result;
   const item = result.value.items[0];
@@ -108,6 +110,8 @@ export const exportCouponStats = async (
   input: Omit<CouponStatsQuery, 'cursor' | 'limit'> & { format: 'csv' | 'json' },
   deps: CouponStatsDeps,
 ): Promise<Result<{ filename: string; mimeType: string; content: string }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'coupon:report');
+  if (!tenant.ok) return tenant;
   const all: CouponStatsItem[] = [];
   let cursor: CouponStatsCursor | undefined;
   do {

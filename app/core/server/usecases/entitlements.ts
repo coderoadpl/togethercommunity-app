@@ -54,11 +54,8 @@ interface MemberScope {
   memberId: string;
 }
 
-const requireTenant = (ctx: Ctx): Result<string, AppError> =>
-  authorizeTenant(ctx, 'lesson:play');
-
-const requireMember = (ctx: Ctx): Result<MemberScope, AppError> => {
-  const tenant = authorizeTenant(ctx, 'lesson:play');
+const requireMember = (ctx: Ctx, capability: 'member:product:read'): Result<MemberScope, AppError> => {
+  const tenant = authorizeTenant(ctx, capability);
   if (!tenant.ok) return tenant;
   if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));
   return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });
@@ -70,7 +67,7 @@ export const resolveMemberEntitlements = async (
   ctx: Ctx,
   deps: EntitlementsDeps,
 ): Promise<Result<AccessItem[], AppError>> => {
-  const scope = requireMember(ctx);
+  const scope = requireMember(ctx, 'member:product:read');
   if (!scope.ok) return scope;
 
   const now = deps.clock.nowIso();
@@ -111,7 +108,7 @@ export const isLessonAccessible = async (
   lessonId: string,
   deps: CourseAccessDeps,
 ): Promise<Result<void, AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   if (!lessonId) return err(validation('lessonId is required'));
   if (isStaff(ctx)) return ok(undefined);
@@ -141,11 +138,10 @@ export const getAccessibleLesson = async (
   lessonId: string,
   deps: CourseAccessDeps,
 ): Promise<Result<CourseLesson, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'lesson:play');
+  if (!tenant.ok) return tenant;
   const access = await isLessonAccessible(ctx, lessonId, deps);
   if (!access.ok) return access;
-
-  const tenant = requireTenant(ctx);
-  if (!tenant.ok) return tenant;
   const lesson = await deps.lessons.findById(tenant.value, lessonId);
   if (!lesson) return err(notFound(`No lesson "${lessonId}" in this tenant`));
   return ok(lesson);
@@ -156,7 +152,7 @@ export const getCourseStructureWithAccess = async (
   courseId: string,
   deps: CourseAccessDeps,
 ): Promise<Result<CourseStructureWithAccess, AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   if (!courseId) return err(validation('courseId is required'));
   if (!isStaff(ctx) && !ctx.identity.memberId) {
@@ -205,7 +201,7 @@ export const listMyCourses = async (
   ctx: Ctx,
   deps: CourseAccessDeps,
 ): Promise<Result<Course[], AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
 
   const courses = await deps.courses.list(tenant.value);
@@ -233,7 +229,7 @@ export const getNextLesson = async (
   lessonId: string,
   deps: CourseAccessDeps,
 ): Promise<Result<NextLesson, AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
   if (!lessonId) return err(validation('lessonId is required'));
   if (!isStaff(ctx) && !ctx.identity.memberId) {

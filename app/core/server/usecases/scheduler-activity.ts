@@ -6,7 +6,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { authorizeTenant } from '../authorize.js';
+import { authorizeRequiredTenant } from '../authorize.js';
 import type { Clock, SchedulerRunRepository } from '../ports.js';
 
 export const listSchedulerRunsForTenant = async (
@@ -14,7 +14,7 @@ export const listSchedulerRunsForTenant = async (
   input: SchedulerRunListQuery,
   deps: { runs: SchedulerRunRepository; clock: Clock },
 ) => {
-  const tenantId = authorizeTenant(ctx, 'scheduler:read');
+  const tenantId = authorizeRequiredTenant(ctx, 'scheduler:read');
   if (!tenantId.ok) return tenantId;
   const since = new Date(Date.parse(deps.clock.nowIso()) - 24 * 60 * 60 * 1000).toISOString();
   const [page, summary] = await Promise.all([
@@ -29,7 +29,7 @@ export const getSchedulerRunForTenant = async (
   input: { runId: string },
   deps: { runs: SchedulerRunRepository },
 ) => {
-  const tenantId = authorizeTenant(ctx, 'scheduler:read');
+  const tenantId = authorizeRequiredTenant(ctx, 'scheduler:read');
   if (!tenantId.ok) return tenantId;
   const item = await deps.runs.getForTenant(tenantId.value, input.runId);
   return item === null ? err(notFound('Scheduler run was not found')) : ok(item);

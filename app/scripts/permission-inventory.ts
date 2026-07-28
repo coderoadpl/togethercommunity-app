@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 import {
   CAPABILITIES,
@@ -120,6 +121,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/tenant-secrets/')) return 'tenant:secret:write';
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
+  if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
   if (path.endsWith('/publish')) return 'product:publish';
@@ -134,7 +136,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     return method === 'GET' ? 'invoice:read' : 'invoice:write';
   }
   if (path.startsWith('/api/coupons')) {
-    if (path.includes('/stats')) return 'coupon:report';
+    if (method === 'GET' && (path === '/api/coupons' || path === '/api/coupons/export' || path.includes('/stats'))) return 'coupon:report';
     return method === 'GET' ? 'coupon:read' : 'coupon:write';
   }
   if (path === '/api/courses' || path.startsWith('/api/courses/')) return method === 'GET' ? 'course:read' : 'course:write';
@@ -188,7 +190,7 @@ const beforeForRoute = (
     (path === '/api/tenant/settings' && method !== 'GET')
     || (path.startsWith('/api/tenant-secrets') && method !== 'GET')
     || (path.startsWith('/api/api-keys') && method !== 'GET')
-    || path.startsWith('/api/integrations/')
+    || (path.startsWith('/api/integrations/') && path !== '/api/integrations/bunny/videos')
     || path === '/api/bunny/test'
   ) return owner;
   return staff;
@@ -228,106 +230,113 @@ const routeRows = (): PermissionRow[] =>
 interface CollectedUseCase {
   name: string;
   file: string;
-  body: string;
+  capability: Capability;
 }
+
+const AUTHORIZATION_UTILITIES = new Set([
+  'community-access.ts#memberScope',
+  'community-access.ts#requireActor',
+  'community-access.ts#requireMemberOrStaff',
+  'community-access.ts#requireTenant',
+]);
+
+const authorizationCallNames = new Set([
+  'authorize',
+  'authorizeRequiredTenant',
+  'authorizeTenant',
+  'requireActor',
+  'requireMember',
+  'requireMemberOrStaff',
+  'requireStaff',
+  'requireStaffTenant',
+  'requireTenant',
+  'staffTenantIdFrom',
+  'tenantIdFrom',
+]);
+
+const capabilityFromBody = (
+  body: ts.ConciseBody,
+  subject: string,
+): Capability => {
+  const capabilities: Capability[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && authorizationCallNames.has(node.expression.text)) {
+      const argument = node.arguments[1];
+      if (argument !== undefined && ts.isStringLiteral(argument)) {
+        const capability = CAPABILITIES.find((candidate) => candidate === argument.text);
+        if (capability === undefined) {
+          throw new Error(`${subject} declares unknown capability ${argument.text}`);
+        }
+        capabilities.push(capability);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(body);
+  if (capabilities.length !== 1) {
+    throw new Error(
+      `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
+    );
+  }
+  const capability = capabilities[0];
+  if (capability === undefined) throw new Error(`${subject} has no authorization capability`);
+  return capability;
+};
 
 const collectCtxUseCases = (): CollectedUseCase[] => {
   const found: CollectedUseCase[] = [];
-  const pattern = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*ctx:\s*Ctx\b/g;
   for (const file of readdirSync(useCasesRoot).filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts')).sort()) {
     const source = readFileSync(join(useCasesRoot, file), 'utf8');
-    const matches = [...source.matchAll(pattern)];
-    matches.forEach((match, index) => {
-      const name = match[1];
-      const start = match.index ?? 0;
-      const end = matches[index + 1]?.index ?? source.length;
-      if (name !== undefined) found.push({ name, file, body: source.slice(start, end) });
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    sourceFile.statements.forEach((statement) => {
+      if (!ts.isVariableStatement(statement) || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return;
+      statement.declarationList.declarations.forEach((declaration) => {
+        if (!ts.isIdentifier(declaration.name)) return;
+        const initializer = declaration.initializer;
+        if (initializer === undefined || (!ts.isArrowFunction(initializer) && !ts.isFunctionExpression(initializer))) return;
+        const firstParameter = initializer.parameters[0];
+        if (firstParameter?.type?.getText(sourceFile) !== 'Ctx') return;
+        const subject = `${file}#${declaration.name.text}`;
+        if (AUTHORIZATION_UTILITIES.has(subject)) return;
+        found.push({
+          name: declaration.name.text,
+          file,
+          capability: capabilityFromBody(initializer.body, subject),
+        });
+      });
     });
   }
   return found;
 };
 
-const capabilityForUseCase = (file: string, name: string): Capability | null => {
-  if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? 'api-key:read' : 'api-key:write';
-  if (file === 'bunny-videos.ts') return name === 'listBunnyVideos' ? 'course:read' : 'integration:test';
-  if (file === 'community-access.ts') return name.includes('space') || name.includes('Space') ? 'space:read' : 'community:read';
-  if (file === 'community.ts') {
-    if (name.includes('Notification')) return name.startsWith('list') || name.startsWith('unread') ? 'notification:read' : 'notification:write';
-    return name === 'listDiscussion' || name === 'searchPosts' ? 'community:read' : 'community:write';
-  }
-  if (file === 'content-history.ts') return 'course:history:read';
-  if (file === 'coupon-management.ts') return 'coupon:write';
-  if (file === 'coupon-stats.ts') return name === 'listCouponOptions' ? 'coupon:read' : 'coupon:report';
-  if (file === 'course-management.ts') {
-    if (name.startsWith('list')) return name === 'listLessonReferences' ? 'product:access:read' : 'course:read';
-    return name === 'updateProductAccessItems' ? 'product:access:write' : 'course:write';
-  }
-  if (file === 'create-tenant.ts') return 'tenant:create';
-  if (file === 'email-reputation.ts') return 'marketing:reputation:read';
-  if (file === 'email-send-observability.ts') return 'marketing:delivery:read';
-  if (file === 'entitlements.ts') return name === 'resolveMemberEntitlements' ? 'member:product:read' : 'lesson:play';
-  if (file === 'grants.ts') return name === 'listMemberGrants' ? 'member:grant:read' : 'member:grant:write';
-  if (file === 'invoices.ts') {
-    if (name === 'downloadMemberInvoice') return 'invoice:member-read';
-    if (name.startsWith('test')) return 'integration:test';
-    return name.startsWith('download') ? 'invoice:read' : 'invoice:write';
-  }
-  if (file === 'lesson-media.ts') return 'lesson:play';
-  if (file === 'marketing-email.ts') {
-    if (name === 'createMarketingConsentDefinition') return 'marketing:consent-definition:write';
-    if (name === 'listMarketingConsentDefinitions') return 'marketing:consent-definition:read';
-    if (name.includes('Campaign') || name.includes('campaign')) {
-      if (name.startsWith('get') || name.startsWith('list')) return 'marketing:campaign:read';
-      if (name === 'campaignTick') return 'marketing:campaign:dispatch';
-      if (name.startsWith('schedule') || name.startsWith('send') || name.startsWith('test')) return 'marketing:campaign:send';
-      return 'marketing:campaign:write';
-    }
-    if (name.includes('Suppression')) return name.startsWith('get') || name.startsWith('list') ? 'marketing:suppression:read' : 'marketing:suppression:write';
-    if (name.includes('Message') || name.includes('Idempot')) return name.startsWith('send') ? 'marketing:message:send' : 'marketing:message:read';
-    if (name.includes('Retention') || name.includes('Scheduled')) return 'scheduler:dispatch';
-    if (name === 'applyVerifiedSesEvent') return 'webhook:process';
-    return name.startsWith('get') || name.startsWith('list') ? 'marketing:consent:read' : 'marketing:consent:write';
-  }
-  if (file === 'marketing-management.ts') {
-    if (name.includes('Document')) return name.startsWith('get') || name.startsWith('list') ? 'marketing:document:read' : 'marketing:document:write';
-    if (name.includes('Layout')) return name.startsWith('list') ? 'marketing:layout:read' : 'marketing:layout:write';
-    if (name.includes('Campaign') || name.includes('Audience')) return name.startsWith('preview') ? 'marketing:campaign:read' : 'marketing:campaign:write';
-    if (name.includes('Ses')) return name.startsWith('get') ? 'marketing:ses:read' : 'marketing:ses:write';
-    if (name.includes('Smtp')) return 'marketing:ses:write';
-    return name.startsWith('get') ? 'marketing:consent-definition:read' : 'marketing:consent-definition:write';
-  }
-  if (file === 'marketing-ses-onboarding.ts') return 'marketing:ses:write';
-  if (file === 'member-billing-orders.ts') return 'member:billing:read';
-  if (file === 'member-learning.ts') return 'member:learning:read';
-  if (file === 'members.ts') return name === 'listMembers' ? 'member:read' : name === 'exportMembers' ? 'member:export' : 'member:remove';
-  if (file === 'my-products.ts') return 'member:product:read';
-  if (file === 'onboarding.ts') return name.startsWith('get') ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
-  if (file === 'orders.ts') return name === 'exportOrders' ? 'order:export' : name === 'getSalesSummary' ? 'sales:read' : 'order:read';
-  if (file === 'payment-integrations.ts') return 'integration:test';
-  if (file === 'product-access-issues.ts') return 'product:access:read';
-  if (file === 'product-prices.ts') return name.startsWith('list') ? 'product:price:read' : 'product:price:write';
-  if (file === 'products.ts') return name === 'listProducts' ? 'product:read' : name === 'publishProduct' ? 'product:publish' : 'product:write';
-  if (file === 'progress.ts') return name === 'getProgress' ? 'member:progress:read' : name === 'resetMemberCourseProgress' ? 'member:progress:manage' : 'member:progress:self-write';
-  if (file === 'scheduler-activity.ts') return 'scheduler:read';
-  if (file === 'spaces.ts') {
-    if (name.includes('follow') || name.includes('Follow') || name.includes('react') || name.includes('React')) return 'space:interact';
-    return name.startsWith('create') || name.startsWith('update') || name.startsWith('delete') || name.startsWith('set') || name === 'listSpacesForStaff' ? 'space:write' : 'space:read';
-  }
-  if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? 'tenant:secret:read' : 'tenant:secret:write';
-  if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? 'tenant:settings:read' : 'tenant:settings:write';
-  if (file === 'tenants.ts') return 'tenant:list-own';
-  return null;
-};
+const marketingTenantContextUseCases = new Set([
+  'applyVerifiedSesEvent',
+  'campaignTick',
+  'claimIdempotencyKey',
+  'completeIdempotentRequest',
+  'confirmMarketingConsent',
+  'getMarketingEligibility',
+  'getUnsubscribePreferences',
+  'purgeStalePendingConsents',
+  'recordCheckoutMarketingConsents',
+  'recordMarketingConsent',
+  'runMarketingRetentionJobs',
+  'saveMarketingConsentPreferences',
+  'scheduleMarketingRetentionJobs',
+  'sendMarketingMessages',
+  'unsubscribeAllMarketing',
+  'unsubscribeOneClick',
+  'withdrawMarketingConsent',
+]);
 
 const beforeForUseCase = (
   file: string,
   name: string,
-  body: string,
-  capability: Capability | null,
+  capability: Capability,
 ): readonly Principal[] => {
-  if (capability === null) return [];
-  if (body.includes('staffTenantIdFrom(ctx)')) return staff;
-  if (body.includes('tenantIdFrom(ctx)')) return allHumans;
+  if (file === 'marketing-email.ts') {
+    return marketingTenantContextUseCases.has(name) ? allHumans : staff;
+  }
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'member-billing-orders.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
@@ -346,16 +355,16 @@ const beforeForUseCase = (
 };
 
 const useCaseRows = (): PermissionRow[] =>
-  collectCtxUseCases().map(({ file, name, body }) => {
-    const capability = capabilityForUseCase(file, name);
-    const before = beforeForUseCase(file, name, body, capability);
+  collectCtxUseCases().map(({ file, name, capability }) => {
+    const before = beforeForUseCase(file, name, capability);
+    const reachable = before === allHumans ? allHumans : tenantActors;
     return {
       subject: `${file}#${name}`,
       capability,
       before,
-      after: capability === null ? [] : effectiveAfter(before, capability),
-      derivable: capability !== null,
-      evidence: `${relative(appRoot, join(useCasesRoot, file))} declared authorization entry`,
+      after: effectiveAfter(reachable, capability),
+      derivable: true,
+      evidence: `${relative(appRoot, join(useCasesRoot, file))} authorization call`,
     };
   });
 

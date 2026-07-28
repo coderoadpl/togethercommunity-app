@@ -10,14 +10,14 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
-import { authorizeTenant } from '../authorize.js';
+import { authorizeRequiredTenant } from '../authorize.js';
 import type { Clock, EmailEventRepository } from '../ports.js';
 
 export const getEmailReputation = async (
   ctx: Ctx,
   deps: { events: EmailEventRepository; clock: Clock },
 ): Promise<Result<EmailReputation, AppError>> => {
-  const tenantId = authorizeTenant(ctx, 'marketing:reputation:read');
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:reputation:read');
   if (!tenantId.ok) return err(tenantId.error);
   const window = reputationWindow(deps.clock.nowIso());
   const counts = await deps.events.reputationCounts(tenantId.value, window);

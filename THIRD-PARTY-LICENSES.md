@@ -364,7 +364,7 @@ their applicable notices in the distribution.
 - [bson@7.3.1](https://github.com/mongodb/js-bson) - Apache-2.0
 - [buffer-from@1.1.2](https://github.com/LinusU/buffer-from) - MIT
 - [bundle-name@4.1.0](https://github.com/sindresorhus/bundle-name) - MIT
-- [bundle-require@4.0.2](undefined) - MIT
+- [bundle-require@4.0.2](https://www.npmjs.com/package/bundle-require) - MIT
 - [bytes@3.0.0](https://github.com/visionmedia/bytes.js) - MIT
 - [cac@6.7.14](https://github.com/egoist/cac) - MIT
 - [call-bind-apply-helpers@1.0.2](https://github.com/ljharb/call-bind-apply-helpers) - MIT
@@ -644,7 +644,7 @@ their applicable notices in the distribution.
 - [latest-version@9.0.0](https://github.com/sindresorhus/latest-version) - MIT
 - [levn@0.4.1](https://github.com/gkz/levn) - MIT
 - [lines-and-columns@1.2.4](https://github.com/eventualbuddha/lines-and-columns) - MIT
-- [load-tsconfig@0.2.5](undefined) - MIT
+- [load-tsconfig@0.2.5](https://www.npmjs.com/package/load-tsconfig) - MIT
 - [locate-path@6.0.0](https://github.com/sindresorhus/locate-path) - MIT
 - [lodash.clonedeep@4.5.0](https://github.com/lodash/lodash) - MIT
 - [lodash.get@4.4.2](https://github.com/lodash/lodash) - MIT

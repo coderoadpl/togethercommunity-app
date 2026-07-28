@@ -46,11 +46,80 @@ const trackedMarkdown = execFileSync(
   .split('\0')
   .filter((entry) => entry.length > 0);
 
+const vitestFiles = execFileSync(
+  process.execPath,
+  [join(appRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'list', '--filesOnly'],
+  {
+    cwd: appRoot,
+    encoding: 'utf8',
+  },
+)
+  .split('\n')
+  .filter((entry) => entry.length > 0);
+const countValues: Readonly<Record<string, number>> = {
+  'test-files': vitestFiles.length,
+};
+const countTokenPattern = /<!--count:([a-z0-9-]+)-->(\d+)<!--\/count-->/g;
+const numericTestCountPatterns = [
+  /\b(?:current(?:ly)?|total|vitest|test suite|discovers?)\b[^\n]{0,60}\b\d+\s+test files?\b/i,
+  /\b\d+\s+test files?\b[^\n]{0,40}\b(?:currently|in total|across (?:all|the)|discovered)\b/i,
+  /\b(?:obecnie|łącznie|vitest|zestaw testów|wykrywa)\b[^\n]{0,60}\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b/i,
+  /\b\d+\s+plik(?:i|ów)? testow(?:e|y|ych)\b[^\n]{0,40}\b(?:obecnie|łącznie|we wszystkich)\b/i,
+];
+const requiredCountTokens: Readonly<Record<string, readonly string[]>> = {
+  'app/README.md': ['test-files'],
+};
+
 const prose = trackedMarkdown.map((rel) => readFileSync(join(repoRoot, rel), 'utf8')).join('\n');
 const eslintSource = readFileSync(eslintConfigPath, 'utf8');
 const depcruiseModule: { forbidden: ReadonlyArray<{ name: string }> } = require(depcruiseConfigPath);
 const depcruiseRuleNames = new Set(depcruiseModule.forbidden.map((rule) => rule.name));
 const problems: string[] = [];
+const countTokensByFile = new Map<string, Set<string>>();
+let countTokensSeen = 0;
+
+for (const rel of trackedMarkdown) {
+  const text = readFileSync(join(repoRoot, rel), 'utf8');
+  const seen = new Set<string>();
+  countTokensByFile.set(rel, seen);
+  for (const match of text.matchAll(countTokenPattern)) {
+    countTokensSeen += 1;
+    const name = match[1] ?? '';
+    const claimed = Number(match[2]);
+    const actual = countValues[name];
+    if (actual === undefined) {
+      problems.push(
+        `[count] unknown counter "${name}" in ${rel}; valid counters: ${Object.keys(countValues).join(', ')}`,
+      );
+      continue;
+    }
+    seen.add(name);
+    if (actual !== claimed) {
+      problems.push(
+        `[count] ${rel}: count:${name} claims ${String(claimed)} but Vitest discovers ${String(actual)}`,
+      );
+    }
+  }
+  const withoutTokens = text.replace(countTokenPattern, '');
+  for (const pattern of numericTestCountPatterns) {
+    if (pattern.test(withoutTokens)) {
+      problems.push(`[count] ${rel} states a numeric test count without a count token`);
+    }
+  }
+}
+
+for (const [rel, required] of Object.entries(requiredCountTokens)) {
+  const seen = countTokensByFile.get(rel);
+  if (seen === undefined) {
+    problems.push(`[count] required token surface ${rel} is not tracked markdown`);
+    continue;
+  }
+  for (const name of required) {
+    if (!seen.has(name)) {
+      problems.push(`[count] ${rel} must carry count:${name}`);
+    }
+  }
+}
 
 const configHas = (enforcer: Enforcer): boolean =>
   enforcer.config === 'eslint'
@@ -124,5 +193,5 @@ if (problems.length > 0) {
 }
 
 process.stdout.write(
-  `doc-lint: OK — ${String(promisedEnforcers.length)} promised enforcers, ${String(ruleFiles.length)} custom rules, ${String(envKeys.length)} env keys, ${String(trackedMarkdown.length)} markdown files\n`,
+  `doc-lint: OK — ${String(promisedEnforcers.length)} promised enforcers, ${String(ruleFiles.length)} custom rules, ${String(countTokensSeen)} count tokens, ${String(envKeys.length)} env keys, ${String(trackedMarkdown.length)} markdown files\n`,
 );

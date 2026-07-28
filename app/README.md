@@ -1,15 +1,15 @@
 # Together PoC
 
 A proof of concept for **Together**, built on the agent-first, strictly layered
-full-stack TypeScript foundation. It currently contains the **walking skeleton**:
-auth, organizations (tenants), tenant resolution by domain, one demo resource
-(todos) flowing through every layer, a full CLI and a web SPA.
+full-stack TypeScript foundation. The implemented PoC includes auth, tenant
+resolution, course delivery, products and grants, checkout, community,
+marketing and integration surfaces across the web SPA, API and CLI.
 
 ## Quickstart (local demo)
 
 ```bash
-npm install
-npm run db:up        # Postgres 16 and optional Mailpit tooling
+npm ci               # Node.js 24
+npm run db:up        # Postgres 16
 npm run db:migrate
 npm run db:seed      # creators, tenants, courses, tiered products, members with varied grants
 npm run build:web
@@ -140,6 +140,9 @@ type assertions (`as`, except `as const`) are lint errors.
 npm run check   # typecheck + lint + dependency graph + tests — the static gate
 npm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
+
+The Vitest projects currently discover <!--count:test-files-->200<!--/count-->
+test files across the Node and browser suites.
 
 ## Tenant resolution
 

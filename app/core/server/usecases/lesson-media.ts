@@ -18,7 +18,7 @@ export interface PlayableLessonDeps extends CourseAccessDeps {
 }
 
 export const PDF_URL_TTL_SECONDS = 3600;
-export const BUNNY_EMBED_URL_TTL_SECONDS = PDF_URL_TTL_SECONDS;
+export const BUNNY_EMBED_URL_TTL_SECONDS = 3600;
 
 const S3_HOST_PATTERN = /^[a-z0-9][a-z0-9.-]*\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/;
 

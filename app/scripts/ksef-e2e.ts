@@ -349,6 +349,7 @@ const executeAdapterE2e = async (
   const now = new Date();
   const year = now.getUTCFullYear();
   const sequence = 100000 + (now.getTime() % 800000);
+  const exempt = process.env.KSEF_E2E_VAT_MODE === 'exempt';
   await raw.query(
     `insert into orders
        (id, tenant_id, member_id, product_id, price_id, kind, status, amount_cents,
@@ -367,11 +368,20 @@ const executeAdapterE2e = async (
   await raw.query(
     `update tenants
      set invoicing_provider = 'ksef',
-         invoice_vat_rate_percent = 23,
+         invoice_vat_mode = $2,
+         invoice_vat_rate_percent = $3,
+         invoice_exemption_basis_kind = $4,
+         invoice_exemption_basis = $5,
          invoice_seller_name = 'Together KSeF E2E Seller',
          invoice_seller_address = 'Testowa 1, 00-001 Warszawa'
      where id = $1`,
-    [tenantId],
+    [
+      tenantId,
+      exempt ? 'exempt' : 'rate',
+      exempt ? null : 23,
+      exempt ? 'art_113_1' : null,
+      exempt ? 'art. 113 ust. 1 ustawy o podatku od towarów i usług' : null,
+    ],
   );
   await raw.query(
     `insert into ksef_number_sequences
@@ -507,6 +517,10 @@ const executeAdapterE2e = async (
   const upo = artifactRows.find((artifact) => artifact.kind === 'upo');
   assert(fa3 !== undefined && fa3.content.includes(`<NIP>${buyerNip}</NIP>`), 'Frozen FA(3) did not use the seeded order buyer');
   assert(fa3.content.includes(`<P_2>${completed.ksef.p2}</P_2>`), 'Frozen FA(3) did not use the allocated P_2');
+  assert(
+    exempt ? fa3.content.includes('<P_12>zw</P_12>') : fa3.content.includes('<P_12>23</P_12>'),
+    'Frozen FA(3) did not use the selected VAT treatment',
+  );
   assert(upo !== undefined && upo.content.includes(completed.ksef.ksefNumber), 'Stored UPO does not identify the issued invoice');
   assert(hash.sha256(upo.content) === upo.sha256, 'Stored UPO hash is invalid');
   if (completed.ksef.sessionReference !== null) {

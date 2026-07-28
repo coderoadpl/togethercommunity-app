@@ -375,12 +375,18 @@ const ephemeralPort = (): Promise<number> =>
     });
   });
 
+const managedDatabaseUrl = 'postgres://together:together@localhost:48912/together';
 const devDatabaseUrl =
-  process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
+  process.env['E2E_DATABASE_URL'] ??
+  process.env['DATABASE_URL'] ??
+  managedDatabaseUrl;
+const managesPostgres = process.env['E2E_DATABASE_URL'] === undefined;
 
 const prepareDatabase = async (): Promise<void> => {
-  const up = await run('docker', ['compose', '-f', 'docker-compose.dev.yml', 'up', '-d']);
-  assert(up.code === 0, `docker compose up failed:\n${up.stdout}${up.stderr}`);
+  if (managesPostgres) {
+    const up = await run('docker', ['compose', '-f', 'docker-compose.dev.yml', 'up', '-d']);
+    assert(up.code === 0, `docker compose up failed:\n${up.stdout}${up.stderr}`);
+  }
   const migrate = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: devDatabaseUrl });
   assert(migrate.code === 0, `Migration failed:\n${migrate.stdout}${migrate.stderr}`);
   const seed = await run(tsxBin, ['adapters/db/seed.ts'], {

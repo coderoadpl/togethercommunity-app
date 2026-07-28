@@ -3,7 +3,6 @@ import {
   forbidden,
   notFound,
   ok,
-  tenantNotFound,
   type AppError,
   type Capability,
   type Course,

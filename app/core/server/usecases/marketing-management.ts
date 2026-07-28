@@ -2,7 +2,6 @@ import {
   campaignCanEditContent,
   emailLayoutSchema,
   err,
-  forbidden,
   integrationNotConfigured,
   notFound,
   ok,

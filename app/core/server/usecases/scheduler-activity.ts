@@ -2,8 +2,6 @@ import {
   err,
   notFound,
   ok,
-  type AppError,
-  type Result,
   type SchedulerRunListQuery,
 } from '#core/domain/index.js';
 

@@ -3,7 +3,6 @@ import {
   forbidden,
   notFound,
   ok,
-  tenantNotFound,
   updateLastViewedInputSchema,
   validation,
   type AppError,

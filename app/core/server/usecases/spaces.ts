@@ -5,7 +5,6 @@ import {
   deleteSpaceInputSchema,
   err,
   followSpaceInputSchema,
-  forbidden,
   listSpaceFeedInputSchema,
   notFound,
   ok,

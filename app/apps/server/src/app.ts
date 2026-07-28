@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { NONCE, secureHeaders } from 'hono/secure-headers';
 
+import { BETTER_AUTH_API_PATH_PATTERN } from '#adapters/auth/create-auth.js';
 import { err, internal, notFound, validation, type Identity } from '#core/domain/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -15,6 +16,7 @@ import { respond } from './respond.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
+const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
 
 const routePathMatches = (routePath: string, requestPath: string): boolean => {
   const routeSegments = routePath.split('/');
@@ -60,7 +62,7 @@ export const buildApp = (deps: AppDeps) => {
   );
   app.use('*', telemetryMiddleware);
   app.use('/api/*', async (c, next) => {
-    if (c.req.path.startsWith('/api/auth/')) {
+    if (c.req.path.startsWith(betterAuthPathPrefix)) {
       await next();
       return;
     }
@@ -84,7 +86,7 @@ export const buildApp = (deps: AppDeps) => {
   assertPublicRouteManifest(app.routes.slice(publicRouteStart), PUBLIC_ROUTE_MANIFEST);
   registerInternalRoutes(app, deps);
   app.all('/api/*', (c) =>
-    c.req.path.startsWith('/api/auth/')
+    c.req.path.startsWith(betterAuthPathPrefix)
       ? deps.auth.handler(c.req.raw)
       : respond(err(notFound(`No API route for ${c.req.method} ${c.req.path}`))),
   );

@@ -1418,6 +1418,8 @@ export const tenantSesSettings = pgTable(
     fromName: text('from_name').notNull(),
     identity: text('identity').notNull(),
     identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true, mode: 'string' }),
+    identityCheckedAt: timestamp('identity_checked_at', { withTimezone: true, mode: 'string' }),
+    identityCheckError: text('identity_check_error'),
     configurationSet: text('configuration_set'),
     snsTopicArn: text('sns_topic_arn'),
     trackingEnabled: boolean('tracking_enabled').notNull().default(false),
@@ -1432,6 +1434,13 @@ export const tenantSesSettings = pgTable(
     footerLegalName: text('footer_legal_name').notNull().default(''),
     footerAddress: text('footer_address').notNull().default(''),
     broadcastsEnabled: boolean('broadcasts_enabled').notNull().default(false),
+    reputationAlertStatus: text('reputation_alert_status', {
+      enum: ['insufficient_data', 'ok', 'warn', 'critical'],
+    }),
+    reputationAlertedAt: timestamp('reputation_alerted_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
   },
   (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
 );

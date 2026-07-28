@@ -1018,7 +1018,6 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
   identity: z.string().trim().min(1),
-  identityVerified: z.boolean(),
   configurationSet: z.string().trim().min(1).nullable(),
   snsTopicArn: z.string().trim().min(1).nullable(),
   trackingEnabled: z.boolean(),

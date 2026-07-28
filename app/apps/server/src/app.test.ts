@@ -619,7 +619,11 @@ const marketingDeps = (): MarketingAppDeps => ({
   tickSecret: 'test-marketing-tick-secret',
   cronSecret: 'test-marketing-cron-secret',
   dispatchCampaign: async () => ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 }),
-  dispatchScheduledMarketing: async () => ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }),
+  dispatchScheduledMarketing: async () => ok({
+    campaignsDispatched: 0,
+    retentionTenantsProcessed: 0,
+    identityChecksPerformed: 0,
+  }),
 });
 
 const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
@@ -734,7 +738,11 @@ describe('marketing HTTP surfaces', () => {
     const triggers: string[] = [];
     marketing.dispatchScheduledMarketing = async (trigger) => {
       triggers.push(trigger);
-      return ok({ campaignsDispatched: 2, retentionTenantsProcessed: 3 });
+      return ok({
+        campaignsDispatched: 2,
+        retentionTenantsProcessed: 3,
+        identityChecksPerformed: 4,
+      });
     };
     const app = marketingApp(marketing);
     expect((await app.request('/api/internal/marketing/tick')).status).toBe(401);
@@ -744,7 +752,11 @@ describe('marketing HTTP surfaces', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
-      data: { campaignsDispatched: 2, retentionTenantsProcessed: 3 },
+      data: {
+        campaignsDispatched: 2,
+        retentionTenantsProcessed: 3,
+        identityChecksPerformed: 4,
+      },
     });
     expect(triggers).toEqual(['cron']);
   });
@@ -838,12 +850,14 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: 'marketing',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: 'marketing',
       snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
+      reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
       method: 'POST',
@@ -931,12 +945,13 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: null,
       snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
       autoPauseOnCritical: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: true,
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     marketing.sns = new FakeSnsVerifier(ok({
       type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:other', message: '{}', subscribeUrl: null,
@@ -953,11 +968,12 @@ describe('marketing HTTP surfaces', () => {
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
     const settings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: false,
+      broadcastsEnabled: false, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     marketing.sesSettings = settings;
     marketing.sns = new FakeSnsVerifier(ok({
@@ -1002,11 +1018,12 @@ describe('marketing HTTP surfaces', () => {
     marketing.campaignSends = sends;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
       trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: true,
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     const app = marketingApp(marketing);
     for (const message of [
@@ -1053,11 +1070,12 @@ describe('marketing HTTP surfaces', () => {
     marketing.campaignSends = sends;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: true,
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     const app = marketingApp(marketing);
     for (const message of [

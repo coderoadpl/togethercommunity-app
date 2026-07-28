@@ -245,6 +245,60 @@ export const pollSesOnboarding = async (
   });
 };
 
+export const refreshSesIdentity = async (
+  ctx: Ctx,
+  deps: SesOnboardingDeps,
+): Promise<Result<TenantSesSettings, AppError>> => {
+  const tenantId = authorizeRequiredTenant(ctx, 'scheduler:dispatch');
+  if (!tenantId.ok) return tenantId;
+  const settings = await deps.settings.findByTenant(tenantId.value);
+  if (settings === null) return err(notFound('SES sender settings do not exist'));
+  const checkedAt = deps.clock.nowIso();
+  const failed = (message: string) =>
+    store(deps, tenantId.value, settings, {
+      identityCheckedAt: checkedAt,
+      identityCheckError: message,
+    });
+  const credentials = await deps.credentials.resolve(tenantId.value);
+  if (!credentials.ok) return ok(await failed(credentials.error.message));
+  const identity = await deps.controlPlane.readIdentity(
+    credentials.value,
+    settings.identity,
+  );
+  if (!identity.ok) return ok(await failed(identity.error.message));
+  const identityReady = identity.value.verified && identity.value.dkimVerified;
+  const patch: Partial<TenantSesSettings> = {
+    identityVerifiedAt: identityReady
+      ? settings.identityVerifiedAt ?? checkedAt
+      : null,
+    identityCheckedAt: checkedAt,
+    identityCheckError: null,
+  };
+  if (settings.configurationSet !== null && settings.snsTopicArn !== null) {
+    const infrastructure = await deps.controlPlane.readInfrastructure(
+      credentials.value,
+      {
+        configurationSet: settings.configurationSet,
+        topicArn: settings.snsTopicArn,
+        endpoint: `${deps.webhookBaseUrl}/${settings.webhookToken}`,
+      },
+    );
+    if (!infrastructure.ok) {
+      return ok(
+        await store(deps, tenantId.value, settings, {
+          ...patch,
+          identityCheckError: infrastructure.error.message,
+        }),
+      );
+    }
+    if (!infrastructure.value.configurationSetReady) {
+      patch.configurationSet = null;
+      patch.webhookVerifiedAt = null;
+    }
+  }
+  return ok(await store(deps, tenantId.value, settings, patch));
+};
+
 export const sendSesSimulatorTest = async (
   ctx: Ctx,
   deps: SesOnboardingDeps,

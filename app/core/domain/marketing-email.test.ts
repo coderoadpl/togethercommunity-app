@@ -16,7 +16,9 @@ import {
   marketingConsentCreatorSchema,
   renderMarketingTemplate,
   requiresConsentVersionBump,
+  sesIdentityFreshness,
   suppressionMatchesEmail,
+  tenantSesSettingsSchema,
   throttleBudget,
   unsubscribeTokenSchema,
   validateRenderedMarketingOutput,
@@ -266,5 +268,50 @@ describe('U10 throttle math', () => {
       .toBe(0);
     expect(throttleBudget({ ratePerSecond: 100, tickSeconds: 60, dailyQuota: 1_000, sentLast24Hours: 0, inSandbox: true }))
       .toBe(0);
+  });
+});
+
+describe('SES identity freshness', () => {
+  const settings = tenantSesSettingsSchema.parse({
+    tenantId: 'tenant-1',
+    fromAddress: 'news@tenant.test',
+    fromName: 'Tenant',
+    identity: 'tenant.test',
+    identityVerifiedAt: null,
+    identityCheckedAt: null,
+    identityCheckError: null,
+    configurationSet: null,
+    snsTopicArn: null,
+    trackingEnabled: false,
+    autoPauseOnCritical: false,
+    webhookToken: 'webhook_token_123456789012345',
+    quotaRatePerSec: 0,
+    quotaDaily: 0,
+    quotaSentLast24Hours: 0,
+    quotaRefreshedAt: null,
+    inSandbox: true,
+    webhookVerifiedAt: null,
+    footerLegalName: '',
+    footerAddress: '',
+    broadcastsEnabled: false,
+    reputationAlertStatus: null,
+    reputationAlertedAt: null,
+  });
+
+  it('distinguishes never checked, boundary-fresh, and stale identities', () => {
+    const now = '2026-07-29T12:00:00.000Z';
+    expect(sesIdentityFreshness(settings, now)).toBe('never-checked');
+    expect(
+      sesIdentityFreshness(
+        { ...settings, identityCheckedAt: '2026-07-28T12:00:00.000Z' },
+        now,
+      ),
+    ).toBe('fresh');
+    expect(
+      sesIdentityFreshness(
+        { ...settings, identityCheckedAt: '2026-07-28T11:59:59.999Z' },
+        now,
+      ),
+    ).toBe('stale');
   });
 });

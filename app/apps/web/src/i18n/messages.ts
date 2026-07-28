@@ -1367,6 +1367,10 @@ export interface Messages {
     blocked: string;
     credentialsConfigured: string;
     identityVerified: string;
+    identityNeverChecked: string;
+    identityLastChecked: (input: { checkedAt: string }) => string;
+    identityCheckStale: (input: { checkedAt: string }) => string;
+    identityCheckFailed: (input: { message: string }) => string;
     configurationSetConfigured: string;
     webhookVerified: string;
     footerConfigured: string;

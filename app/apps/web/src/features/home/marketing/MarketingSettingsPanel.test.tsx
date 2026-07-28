@@ -25,6 +25,8 @@ describe('SES onboarding wizard', () => {
             fromName: 'Tenant',
             identity: 'tenant.test',
             identityVerifiedAt: now,
+            identityCheckedAt: '2026-07-20T10:00:00.000Z',
+            identityCheckError: null,
             configurationSet: 'together-tenant-1',
             snsTopicArn: 'arn:aws:sns:eu-central-1:123:together-tenant-1',
             trackingEnabled: false,
@@ -39,6 +41,8 @@ describe('SES onboarding wizard', () => {
             footerLegalName: 'Tenant Ltd',
             footerAddress: 'Street 1, Warsaw',
             broadcastsEnabled: false,
+            reputationAlertStatus: null,
+            reputationAlertedAt: null,
           },
         },
       })),
@@ -84,6 +88,7 @@ describe('SES onboarding wizard', () => {
 
     expect(within((await screen.findByText('Zestaw konfiguracji SES')).closest('li') ?? document.body).getByText('gotowe')).toBeInTheDocument();
     expect(within(screen.getByText('Subskrypcja SNS').closest('li') ?? document.body).getByText('gotowe')).toBeInTheDocument();
+    expect(screen.getByText(/Weryfikacja nieaktualna/)).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: 'Sprawdź status w AWS' }));
 

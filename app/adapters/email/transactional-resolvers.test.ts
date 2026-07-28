@@ -12,6 +12,8 @@ describe('transactional e-mail transport resolvers', () => {
       fromName: 'Example',
       identity: 'example.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z',
+      identityCheckedAt: null,
+      identityCheckError: null,
       configurationSet: 'marketing',
       snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:tenant-1',
       trackingEnabled: true,
@@ -26,6 +28,8 @@ describe('transactional e-mail transport resolvers', () => {
       footerLegalName: 'Example sp. z o.o.',
       footerAddress: 'Example Street 1',
       broadcastsEnabled: true,
+      reputationAlertStatus: null,
+      reputationAlertedAt: null,
     };
     const settings = {
       findByTenant: async () => tenantSettings,
@@ -60,6 +64,8 @@ describe('transactional e-mail transport resolvers', () => {
       fromName: 'Example',
       identity: 'example.test',
       identityVerifiedAt: '2026-07-22T00:00:00.000Z',
+      identityCheckedAt: null,
+      identityCheckError: null,
       configurationSet: null,
       snsTopicArn: null,
       trackingEnabled: false,
@@ -74,6 +80,8 @@ describe('transactional e-mail transport resolvers', () => {
       footerLegalName: 'Example sp. z o.o.',
       footerAddress: 'Example Street 1',
       broadcastsEnabled: false,
+      reputationAlertStatus: null,
+      reputationAlertedAt: null,
     };
     const emailFor = vi.fn(() => ({
       send: async () =>

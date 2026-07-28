@@ -34,7 +34,7 @@ Then start the local services and server:
 
 ```bash
 docker compose -f docker-compose.dev.yml --profile mailpit up -d
-npm run dev:server
+pnpm run dev:server
 ```
 
 Magic links and other platform transactional messages pass through the outbox

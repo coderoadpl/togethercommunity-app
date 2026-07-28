@@ -40,7 +40,7 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     await client.query(`CREATE DATABASE ${E2E_DB}`);
   } catch (cause) {
     throw new E2eFailure(
-      `Could not prepare the auth-e2e database "${E2E_DB}". Is the dev Postgres up (npm run db:up)?\n${String(cause)}`,
+      `Could not prepare the auth-e2e database "${E2E_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
   } finally {
     await client.end();

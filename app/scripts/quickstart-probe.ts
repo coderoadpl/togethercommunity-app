@@ -36,7 +36,7 @@ const recreateDatabase = async (): Promise<void> => {
     await client.query(`CREATE DATABASE ${PROBE_DB}`);
   } catch (cause) {
     throw new QuickstartFailure(
-      `Could not prepare "${PROBE_DB}". Is Postgres running (npm run db:up)?\n${String(cause)}`,
+      `Could not prepare "${PROBE_DB}". Is Postgres running (pnpm run db:up)?\n${String(cause)}`,
     );
   } finally {
     await client.end();

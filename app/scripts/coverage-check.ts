@@ -14,7 +14,7 @@ const baselineSchema = z.object({ floors: z.record(z.string(), floorSchema) });
 
 const main = (): void => {
   if (!existsSync(summaryPath)) {
-    console.error(`Coverage summary not found at ${summaryPath}. Run \`npm run coverage\` first.`);
+    console.error(`Coverage summary not found at ${summaryPath}. Run \`pnpm run coverage\` first.`);
     process.exitCode = 1;
     return;
   }

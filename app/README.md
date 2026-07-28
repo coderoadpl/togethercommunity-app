@@ -1,15 +1,15 @@
 # Together PoC
 
 A proof of concept for **Together**, built on the agent-first, strictly layered
-full-stack TypeScript foundation. It currently contains the **walking skeleton**:
-auth, organizations (tenants), tenant resolution by domain, one demo resource
-(todos) flowing through every layer, a full CLI and a web SPA.
+full-stack TypeScript foundation. The implemented PoC includes auth, tenant
+resolution, course delivery, products and grants, checkout, community,
+marketing and integration surfaces across the web SPA, API and CLI.
 
 ## Quickstart (local demo)
 
 ```bash
-npm install
-npm run db:up        # Postgres 16 and optional Mailpit tooling
+npm ci               # Node.js 24
+npm run db:up        # Postgres 16
 npm run db:migrate
 npm run db:seed      # creators, tenants, courses, tiered products, members with varied grants
 npm run build:web
@@ -94,10 +94,10 @@ entirely, while `student structure <courseId>` still resolves it as
 
 ```bash
 npm run --silent cli -- login --email creator2@together.dev --password demo1234
-npm run --silent cli -- org list
-npm run --silent cli -- org switch acme
-npm run --silent cli -- todo list
-npm run --silent cli -- --tenant acme todo add "Something for Acme"
+npm run --silent cli -- tenant list
+npm run --silent cli -- tenant switch acme
+npm run --silent cli -- product list
+npm run --silent cli -- --tenant acme course list
 npm run --silent cli -- --json whoami        # single JSON document on stdout
 ```
 
@@ -140,6 +140,9 @@ type assertions (`as`, except `as const`) are lint errors.
 npm run check   # typecheck + lint + dependency graph + tests — the static gate
 npm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
+
+The Vitest projects currently discover <!--count:test-files-->200<!--/count-->
+test files across the Node and browser suites.
 
 ## Tenant resolution
 
@@ -238,3 +241,15 @@ deferred under FR-33.
 | API + SPA | 48730 |
 | Vite dev | 48731 |
 | Postgres (Docker) | 48912 |
+
+## License
+
+Together is Fair Source software available under
+[FSL-1.1-ALv2](../LICENSE.md). Self-hosting for your own organization or
+community is allowed. Offering Together, or substantially similar
+functionality based on it, as a competing commercial hosted service is not.
+Each release automatically becomes available under Apache-2.0 two years after
+that release is made available.
+
+Learn more at [fsl.software](https://fsl.software/) and
+[fair.io](https://fair.io/).

@@ -3,11 +3,9 @@ import {
   couponEventSchema,
   couponSchema,
   err,
-  forbidden,
   normalizeCouponCode,
   notFound,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type Coupon,
@@ -16,6 +14,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { Clock, CouponManagementRepository, IdGenerator } from '../ports.js';
 
 interface CouponManagementDeps {
@@ -24,18 +23,12 @@ interface CouponManagementDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound('Select a tenant to manage coupons'));
-  if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can manage coupons'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const createCoupon = async (
   ctx: Ctx,
   input: CouponCreateInput,
   deps: CouponManagementDeps,
 ): Promise<Result<{ coupon: Coupon }, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'coupon:write');
   if (!tenant.ok) return tenant;
   const parsed = couponCreateInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid coupon payload', parsed.error.flatten()));
@@ -68,7 +61,7 @@ export const archiveCoupon = async (
   input: { id: string },
   deps: CouponManagementDeps,
 ): Promise<Result<{ coupon: Coupon }, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'coupon:write');
   if (!tenant.ok) return tenant;
   const occurredAt = deps.clock.nowIso();
   const archived = await deps.coupons.archive(

@@ -1,11 +1,9 @@
 import {
   err,
-  forbidden,
   grantProductToMemberInputSchema,
   notFound,
   ok,
   revokeGrantInputSchema,
-  tenantNotFound,
   validation,
   type AppError,
   type GrantProductToMemberInput,
@@ -15,6 +13,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { Clock, IdGenerator, MemberRepository, ProductGrantRepository, ProductRepository } from '../ports.js';
 import { createOrRenewGrant } from './grant-window.js';
 
@@ -45,18 +44,12 @@ export interface RevokeGrantResult {
   expiresAt: string;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage grants'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage grants'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const listMemberGrants = async (
   ctx: Ctx,
   memberId: string,
   deps: MemberGrantsDeps,
 ): Promise<Result<MemberGrant[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:grant:read');
   if (!tenant.ok) return tenant;
   if (!memberId) return err(validation('memberId is required'));
 
@@ -71,7 +64,7 @@ export const grantProductToMember = async (
   input: GrantProductToMemberInput,
   deps: GrantProductToMemberDeps,
 ): Promise<Result<GrantMutationResult, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:grant:write');
   if (!tenant.ok) return tenant;
 
   const parsed = grantProductToMemberInputSchema.safeParse(input);
@@ -96,7 +89,7 @@ export const revokeGrant = async (
   input: RevokeGrantInput,
   deps: RevokeGrantDeps,
 ): Promise<Result<RevokeGrantResult, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:grant:write');
   if (!tenant.ok) return tenant;
 
   const parsed = revokeGrantInputSchema.safeParse(input);

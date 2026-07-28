@@ -2,7 +2,6 @@ import {
   emailSendExportQuerySchema,
   emailSendListQuerySchema,
   err,
-  forbidden,
   notFound,
   ok,
   validation,
@@ -12,19 +11,15 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeRequiredTenant } from '../authorize.js';
 import type { EmailEventRepository, EmailSendRepository, MemberRepository } from '../ports.js';
-
-const staffTenantIdFrom = (ctx: Ctx): Result<string, AppError> =>
-  ctx.identity.tenantId === null || ctx.identity.staffRole === null
-    ? err(forbidden('Tenant staff access is required'))
-    : ok(ctx.identity.tenantId);
 
 export const listEmailSends = async (
   ctx: Ctx,
   query: unknown,
   deps: { sends: EmailSendRepository },
 ) => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:delivery:read');
   if (!tenantId.ok) return tenantId;
   const parsed = emailSendListQuerySchema.safeParse(query);
   if (!parsed.success) return err(validation('Invalid e-mail sends query', parsed.error.flatten()));
@@ -36,7 +31,7 @@ export const getEmailSend = async (
   input: { kind: 'transactional' | 'marketing'; id: string },
   deps: { sends: EmailSendRepository; events: EmailEventRepository },
 ) => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:delivery:read');
   if (!tenantId.ok) return tenantId;
   const send = await deps.sends.findById(tenantId.value, input.kind, input.id);
   if (send === null) return err(notFound('E-mail send was not found'));
@@ -49,7 +44,7 @@ export const listMemberEmailSends = async (
   input: { memberId: string },
   deps: { sends: EmailSendRepository; members: MemberRepository },
 ) => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:delivery:read');
   if (!tenantId.ok) return tenantId;
   const member = await deps.members.findById(tenantId.value, input.memberId);
   if (member === null) return err(notFound('Member was not found'));
@@ -82,7 +77,7 @@ export const exportEmailSends = async (
   query: unknown,
   deps: { sends: EmailSendRepository },
 ): Promise<Result<EmailSendExportFile, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx);
+  const tenantId = authorizeRequiredTenant(ctx, 'marketing:delivery:read');
   if (!tenantId.ok) return tenantId;
   const parsed = emailSendExportQuerySchema.safeParse(query);
   if (!parsed.success) return err(validation('Invalid e-mail sends export query', parsed.error.flatten()));

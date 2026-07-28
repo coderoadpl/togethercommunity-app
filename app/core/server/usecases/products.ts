@@ -1,10 +1,8 @@
 import {
   err,
-  forbidden,
   newProductSchema,
   notFound,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type NewProductInput,
@@ -14,6 +12,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, ProductRepository } from '../ports.js';
+import { authorizeTenant } from '../authorize.js';
 
 export interface ProductDeps {
   products: ProductRepository;
@@ -21,17 +20,11 @@ export interface ProductDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage products'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage products'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const listProducts = async (
   ctx: Ctx,
   deps: ProductDeps,
 ): Promise<Result<Product[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:read');
   if (!tenant.ok) return tenant;
   return ok(await deps.products.listByTenant(tenant.value));
 };
@@ -41,7 +34,7 @@ export const createProduct = async (
   input: NewProductInput,
   deps: ProductDeps,
 ): Promise<Result<Product, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
 
   const parsed = newProductSchema.safeParse(input);
@@ -69,7 +62,7 @@ export const publishProduct = async (
   input: { id: string },
   deps: ProductDeps,
 ): Promise<Result<Product, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:publish');
   if (!tenant.ok) return tenant;
 
   const existing = await deps.products.findById(tenant.value, input.id);

@@ -75,6 +75,15 @@ const row = (key: TenantSecretKey): TenantSecret => ({
 });
 
 describe('setTenantSecret', () => {
+  it('requires the declared tenant secret write capability', async () => {
+    const h = harness();
+    expect(await setTenantSecret(
+      { ...ctx('owner'), capabilities: ['tenant:secret:read'] },
+      { key: 'stripe.restrictedKey', value: 'rk_live_abcd12345' },
+      h.deps,
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('lets the owner store a secret and returns only a masked view', async () => {
     const h = harness();
     const result = await setTenantSecret(

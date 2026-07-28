@@ -1,15 +1,13 @@
 import {
   computeCreatorOnboarding,
-  err,
-  forbidden,
   ok,
-  tenantNotFound,
   type AppError,
   type CreatorOnboarding,
   type Result,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   CourseLessonRepository,
@@ -33,17 +31,11 @@ export interface OnboardingDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to see onboarding'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const getCreatorOnboarding = async (
   ctx: Ctx,
   deps: OnboardingDeps,
 ): Promise<Result<CreatorOnboarding, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'tenant:onboarding:read');
   if (!tenant.ok) return tenant;
   const tenantId = tenant.value;
 
@@ -81,7 +73,7 @@ export const dismissCreatorOnboarding = async (
   ctx: Ctx,
   deps: OnboardingDeps,
 ): Promise<Result<CreatorOnboarding, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'tenant:onboarding:write');
   if (!tenant.ok) return tenant;
   await deps.onboardingState.dismiss(tenant.value, deps.clock.nowIso());
   return getCreatorOnboarding(ctx, deps);

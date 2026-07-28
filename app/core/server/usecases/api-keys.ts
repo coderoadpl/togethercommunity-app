@@ -1,10 +1,8 @@
 import {
   createApiKeyInputSchema,
   err,
-  forbidden,
   notFound,
   ok,
-  tenantNotFound,
   toTenantApiKeyPublic,
   validation,
   type AppError,
@@ -15,6 +13,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { ApiKeyCrypto, Clock, IdGenerator, TenantApiKeyRepository } from '../ports.js';
 
 export interface ApiKeyDeps {
@@ -29,26 +28,12 @@ export interface CreatedApiKey {
   secret: string;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage API keys'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage API keys'));
-  return ok(ctx.identity.tenantId);
-};
-
-const requireOwnerTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage API keys'));
-  if (ctx.identity.staffRole !== 'owner') {
-    return err(forbidden('Only the tenant owner can manage API keys'));
-  }
-  return ok(ctx.identity.tenantId);
-};
-
 export const createTenantApiKey = async (
   ctx: Ctx,
   input: CreateApiKeyInput,
   deps: ApiKeyDeps,
 ): Promise<Result<CreatedApiKey, AppError>> => {
-  const tenant = requireOwnerTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'api-key:write');
   if (!tenant.ok) return tenant;
 
   const parsed = createApiKeyInputSchema.safeParse(input);
@@ -71,7 +56,7 @@ export const listTenantApiKeys = async (
   ctx: Ctx,
   deps: ApiKeyDeps,
 ): Promise<Result<TenantApiKeyPublic[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'api-key:read');
   if (!tenant.ok) return tenant;
   const keys = await deps.tenantApiKeys.listByTenant(tenant.value);
   return ok(keys.map(toTenantApiKeyPublic));
@@ -82,7 +67,7 @@ export const revokeTenantApiKey = async (
   input: { id: string },
   deps: ApiKeyDeps,
 ): Promise<Result<TenantApiKeyPublic, AppError>> => {
-  const tenant = requireOwnerTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'api-key:write');
   if (!tenant.ok) return tenant;
 
   const revoked = await deps.tenantApiKeys.revoke(tenant.value, input.id, deps.clock.nowIso());

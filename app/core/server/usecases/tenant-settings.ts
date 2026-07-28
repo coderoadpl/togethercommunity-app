@@ -1,4 +1,5 @@
 import {
+  appError,
   err,
   ok,
   tenantNotFound,
@@ -42,7 +43,13 @@ export const updateTenantSettings = async (
   const tenant = authorizeTenant(ctx, 'tenant:settings:write');
   if (!tenant.ok) return tenant;
   const parsed = updateTenantSettingsInputSchema.safeParse(input);
-  if (!parsed.success) return err(validation('Invalid tenant settings', parsed.error.flatten()));
+  if (!parsed.success) {
+    const exemptionError = input.invoiceVatMode === 'exempt' &&
+      parsed.error.issues.some((issue) => issue.path[0] === 'invoiceExemptionBasis');
+    return err(exemptionError
+      ? appError('invoice_exemption_basis_missing', 'VAT exemption is selected but the legal basis is missing.')
+      : validation('Invalid tenant settings', parsed.error.flatten()));
+  }
   const current = await deps.tenants.findSettings(tenant.value);
   if (!current) return err(tenantNotFound());
   return ok(
@@ -78,6 +85,16 @@ export const updateTenantSettings = async (
         parsed.data.invoiceVatRatePercent === undefined
           ? current.invoiceVatRatePercent
           : parsed.data.invoiceVatRatePercent,
+      invoiceVatMode:
+        parsed.data.invoiceVatMode === undefined ? current.invoiceVatMode : parsed.data.invoiceVatMode,
+      invoiceExemptionBasisKind:
+        parsed.data.invoiceExemptionBasisKind === undefined
+          ? current.invoiceExemptionBasisKind
+          : parsed.data.invoiceExemptionBasisKind,
+      invoiceExemptionBasis:
+        parsed.data.invoiceExemptionBasis === undefined
+          ? current.invoiceExemptionBasis
+          : parsed.data.invoiceExemptionBasis,
       invoicingProvider:
         parsed.data.invoicingProvider === undefined
           ? current.invoicingProvider

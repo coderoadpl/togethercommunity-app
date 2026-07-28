@@ -1,16 +1,19 @@
 import {
+  appError,
   err,
   forbidden,
   integrationNotConfigured,
   notFound,
   ok,
   renderFa3Invoice,
+  resolveInvoiceVat,
   validateFa3Structure,
   validation,
   type AppError,
   type BillingData,
   type Invoice,
   type InvoiceEvent,
+  type InvoiceVatResolution,
   type KsefEnvironment,
   type Order,
   type OrderListItem,
@@ -121,6 +124,20 @@ const issueIfirma = async (
     return err(validation('iFirma may already have created this invoice. Verify it in iFirma before retrying.'));
   }
   const createdAt = deps.clock.nowIso();
+  const settings = await deps.tenants.findSettings(tenantId);
+  const vatResolution: InvoiceVatResolution = settings === null
+    ? { ok: false, reason: 'unset' as const }
+    : resolveInvoiceVat(settings);
+  if (existing !== null && vatResolution.ok) {
+    const previous = await deps.invoices.findLatestRequestedEvent(tenantId, existing.id);
+    if (previous?.meta.vat !== undefined &&
+        JSON.stringify(previous.meta.vat) !== JSON.stringify(vatResolution.treatment)) {
+      return err(appError(
+        'conflict',
+        'The VAT treatment changed since this invoice was requested. Cancel it and issue a new one.',
+      ));
+    }
+  }
   let invoice: Invoice = existing === null
     ? {
         id: deps.ids.nextId(),
@@ -136,7 +153,15 @@ const issueIfirma = async (
         createdAt,
       }
     : { ...existing, status: 'requested', error: null };
-  const requested = eventFor(deps, tenantId, order.id, invoice.id, 'requested');
+  const requested = eventFor(
+    deps,
+    tenantId,
+    order.id,
+    invoice.id,
+    'requested',
+    null,
+    vatResolution.ok ? { vat: vatResolution.treatment } : {},
+  );
   const claimed = existing === null
     ? await deps.invoices.create(tenantId, invoice, requested)
     : await deps.invoices.claimRetry(tenantId, invoice, requested);
@@ -158,15 +183,16 @@ const issueIfirma = async (
   };
   const config = await invoicingConfig(tenantId, deps);
   if (!config.ok) return fail(config.error);
-  const settings = await deps.tenants.findSettings(tenantId);
-  if (settings?.invoiceVatRatePercent == null) {
-    return fail(validation('Set the tenant VAT rate in Settings before issuing invoices'));
+  if (!vatResolution.ok) {
+    return fail(vatResolution.reason === 'exempt_basis_missing'
+      ? appError('invoice_exemption_basis_missing', 'VAT exemption is selected but the legal basis is missing.')
+      : validation('Select a VAT rate or the VAT-exempt option in Settings before issuing invoices.'));
   }
   const issued = await deps.invoicing.issueInvoice({
     order,
     billing,
     productName: order.productTitle,
-    vatRatePercent: settings.invoiceVatRatePercent,
+    vat: vatResolution.treatment,
     providerInvoiceId: invoice.providerInvoiceId,
     onProviderInvoiceCreateUncertain: async () => {
       providerCreateUncertain = true;
@@ -221,8 +247,14 @@ const issueKsef = async (
     return err(validation('KSeF domestic invoices require a Polish billing address'));
   }
   const settings = await deps.tenants.findSettings(tenantId);
-  if (settings?.invoiceVatRatePercent == null) {
-    return err(validation('Set the tenant VAT rate in Settings before issuing invoices'));
+  if (settings === null) {
+    return err(validation('Select a VAT rate or the VAT-exempt option in Settings before issuing invoices.'));
+  }
+  const vatResolution = resolveInvoiceVat(settings);
+  if (!vatResolution.ok) {
+    return err(vatResolution.reason === 'exempt_basis_missing'
+      ? appError('invoice_exemption_basis_missing', 'VAT exemption is selected but the legal basis is missing.')
+      : validation('Select a VAT rate or the VAT-exempt option in Settings before issuing invoices.'));
   }
   if (settings.invoiceSellerName == null || settings.invoiceSellerAddress == null) {
     return err(validation('Set the invoice seller name and address before issuing through KSeF'));
@@ -257,7 +289,7 @@ const issueKsef = async (
     productName: order.productTitle,
     grossAmountCents: order.amountCents,
     discountCents: order.discountCents,
-    vatRatePercent: settings.invoiceVatRatePercent,
+    vat: vatResolution.treatment,
   });
   const structural = validateFa3Structure(xml);
   if (!structural.ok) return err(validation('Generated FA(3) failed local validation', structural.errors));
@@ -318,6 +350,7 @@ const issueKsef = async (
   const frozen = eventFor(deps, tenantId, order.id, invoice.id, 'frozen', null, {
     p2: allocated.p2,
     xmlSha256,
+    vat: vatResolution.treatment,
   });
   const stored = await deps.invoices.createFrozenKsef(
     tenantId,

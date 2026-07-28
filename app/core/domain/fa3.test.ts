@@ -19,7 +19,7 @@ const input = {
   productName: 'Kurs & konsultacje',
   grossAmountCents: 7900,
   discountCents: 2000,
-  vat: { kind: 'rate', percent: 23 as const },
+  vat: { kind: 'rate' as const, percent: 23 as const },
 };
 
 describe('FA(3) renderer', () => {

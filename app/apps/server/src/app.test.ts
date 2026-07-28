@@ -623,6 +623,7 @@ const marketingDeps = (): MarketingAppDeps => ({
     campaignsDispatched: 0,
     retentionTenantsProcessed: 0,
     identityChecksPerformed: 0,
+    reputationAlertsSent: 0,
   }),
 });
 
@@ -742,6 +743,7 @@ describe('marketing HTTP surfaces', () => {
         campaignsDispatched: 2,
         retentionTenantsProcessed: 3,
         identityChecksPerformed: 4,
+        reputationAlertsSent: 5,
       });
     };
     const app = marketingApp(marketing);
@@ -756,6 +758,7 @@ describe('marketing HTTP surfaces', () => {
         campaignsDispatched: 2,
         retentionTenantsProcessed: 3,
         identityChecksPerformed: 4,
+        reputationAlertsSent: 5,
       },
     });
     expect(triggers).toEqual(['cron']);

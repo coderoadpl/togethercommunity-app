@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { deriveEmailReputation, reputationWindow } from './email-reputation.js';
+import {
+  deriveEmailReputation,
+  reputationAlertDecision,
+  reputationWindow,
+} from './email-reputation.js';
 
 describe('email reputation', () => {
   it('requires both the send and absolute-event floors', () => {
@@ -39,5 +43,55 @@ describe('email reputation', () => {
       since: '2026-07-20T12:00:00.000Z',
       until: '2026-07-27T12:00:00.000Z',
     });
+  });
+
+  it('alerts on degradation, throttles repeats, and clears the cursor on recovery', () => {
+    const now = '2026-07-27T12:00:00.000Z';
+    const day = 24 * 60 * 60 * 1000;
+    expect(reputationAlertDecision({
+      current: 'warn',
+      lastAlerted: null,
+      lastAlertedAt: null,
+      now,
+      repeatAfterMs: day,
+    })).toEqual({ notify: true, nextStatus: 'warn', nextAlertedAt: now });
+    expect(reputationAlertDecision({
+      current: 'critical',
+      lastAlerted: 'warn',
+      lastAlertedAt: now,
+      now,
+      repeatAfterMs: day,
+    })).toEqual({ notify: true, nextStatus: 'critical', nextAlertedAt: now });
+    expect(reputationAlertDecision({
+      current: 'critical',
+      lastAlerted: 'critical',
+      lastAlertedAt: now,
+      now: '2026-07-28T11:59:59.999Z',
+      repeatAfterMs: day,
+    })).toEqual({
+      notify: false,
+      nextStatus: 'critical',
+      nextAlertedAt: now,
+    });
+    expect(reputationAlertDecision({
+      current: 'critical',
+      lastAlerted: 'critical',
+      lastAlertedAt: now,
+      now: '2026-07-28T12:00:00.000Z',
+      repeatAfterMs: day,
+    })).toEqual({
+      notify: true,
+      nextStatus: 'critical',
+      nextAlertedAt: '2026-07-28T12:00:00.000Z',
+    });
+    for (const current of ['ok', 'insufficient_data'] as const) {
+      expect(reputationAlertDecision({
+        current,
+        lastAlerted: 'warn',
+        lastAlertedAt: now,
+        now,
+        repeatAfterMs: day,
+      })).toEqual({ notify: false, nextStatus: null, nextAlertedAt: null });
+    }
   });
 });

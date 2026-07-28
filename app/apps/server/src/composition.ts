@@ -196,7 +196,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -346,7 +346,7 @@ export interface MarketingAppDeps {
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number }, AppError>>;
 }
 
 export const selectDevSinkPurge = (
@@ -363,6 +363,7 @@ export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const tenants = createTenantRepository(db);
+  const tenantAccess = createTenantAccessReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
   const ids = { nextId: () => randomUUID() };
@@ -535,6 +536,12 @@ export const createDeps = (env: Env): AppDeps => {
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
   });
+  const reputationDashboardUrl = (tenantSlug: string): string => {
+    const url = new URL(env.APP_BASE_URL);
+    url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
+    url.pathname = '/panel/marketing';
+    return url.toString();
+  };
   const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
     return runScheduledMarketingJobs({
@@ -559,6 +566,21 @@ export const createDeps = (env: Env): AppDeps => {
             controlPlane: sesOnboardingControlPlane,
             clock,
             webhookBaseUrl: `${env.APP_BASE_URL}/api/webhooks/ses`,
+          },
+        ),
+      runReputationAlerts: (tenantId) =>
+        runReputationAlerts(
+          { identity: workerIdentity(tenantId) },
+          {
+            events: emailEvents,
+            settings: sesSettings,
+            tenants,
+            tenantAccess,
+            emailOutbox,
+            ids,
+            clock,
+            dashboardUrl: reputationDashboardUrl,
+            dispatchEmail,
           },
         ),
     });
@@ -720,7 +742,7 @@ export const createDeps = (env: Env): AppDeps => {
     tenants,
     consents,
     onboardingState: createOnboardingStateRepository(db),
-    tenantAccess: createTenantAccessReader(db),
+    tenantAccess,
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',

@@ -11,3 +11,16 @@ describe('tenant creation policy', () => {
     expect(envSchema.safeParse({ TENANT_CREATION: 'staff' }).success).toBe(false);
   });
 });
+
+describe('database driver policy', () => {
+  it('rejects neon-http while runtime adapters require interactive transactions', () => {
+    const parsed = envSchema.safeParse({ DB_DRIVER: 'neon-http' });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.DB_DRIVER).toContain(
+        'DB_DRIVER must be node-postgres because runtime adapters require interactive transactions',
+      );
+    }
+  });
+});

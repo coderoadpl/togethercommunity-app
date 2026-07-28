@@ -28,7 +28,7 @@
     "depcruise": "depcruise core adapters apps scripts",
     "knip": "knip",
     "doc-lint": "tsx scripts/doc-lint.ts",
-    "check": "npm run typecheck && npm run lint && npm run lock-lint && npm run depcruise && npm run knip && npm run doc-lint && npm run test",
+    "check": "npm run typecheck && npm run lint && npm run lock-lint && npm run migration-lint && npm run depcruise && npm run knip && npm run doc-lint && npm run test",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx adapters/db/migrate.ts",
@@ -54,7 +54,8 @@
     "storybook:build": "storybook build -o storybook-static",
     "visual:stories": "npm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel",
     "visual:stories:update": "npm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel update",
-    "lock-lint": "tsx scripts/lock-lint.ts"
+    "lock-lint": "tsx scripts/lock-lint.ts",
+    "migration-lint": "tsx scripts/migration-lint.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1085.0",

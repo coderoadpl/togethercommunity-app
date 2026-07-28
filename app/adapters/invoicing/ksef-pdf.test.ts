@@ -72,7 +72,7 @@ const xml = renderFa3Invoice({
   productName: 'Kurs specjalistyczny',
   grossAmountCents: 12300,
   discountCents: 0,
-  vatRatePercent: 23,
+  vat: { kind: 'rate', percent: 23 },
 });
 
 describe('KSeF invoice PDF', () => {
@@ -89,5 +89,25 @@ describe('KSeF invoice PDF', () => {
     expect(source).toContain('Kurs specjalistyczny');
     expect(source).toContain('23%');
     expect(source).toContain('Wizualizacja');
+  });
+
+  it('renders the exempt rate, summary, and legal basis', () => {
+    const exemptXml = renderFa3Invoice({
+      invoiceNumber: 'FV/2026/000002',
+      issueDate: '2026-07-29',
+      generatedAt: '2026-07-29T09:00:00.000Z',
+      seller: { nip: '5555555555', name: 'Seller', addressLine: 'Prosta 1' },
+      buyer: null,
+      productName: 'Kurs',
+      grossAmountCents: 12345,
+      discountCents: 0,
+      vat: { kind: 'exempt', basisKind: 'art_113_1', basis: 'art. 113 ust. 1 ustawy' },
+    });
+    const source = Buffer.from(createKsefInvoicePdf().render({ invoice, xml: exemptXml })).toString('latin1');
+    expect(source).toContain('(zw)');
+    expect(source).toContain('Wartosc sprzedazy zwolnionej: 123.45 PLN');
+    expect(source).toContain('VAT: 0.00 PLN');
+    expect(source).toContain('Zwolnienie z VAT: art. 113 ust. 1 ustawy');
+    expect(source).not.toContain('VAT zw%');
   });
 });

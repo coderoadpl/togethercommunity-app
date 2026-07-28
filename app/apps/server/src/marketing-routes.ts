@@ -82,7 +82,10 @@ const tokenCtx = (tenant: Tenant): Ctx => ({
   capabilities: capabilitiesForPrincipal('token'),
 });
 
-const authenticate = async (headers: Headers, deps: AppDeps): Promise<Result<{ tenant: Tenant; ctx: Ctx }, AppError>> => {
+export const authenticateMarketingApiKey = async (
+  headers: Headers,
+  deps: AppDeps,
+): Promise<Result<{ tenant: Tenant; ctx: Ctx }, AppError>> => {
   const resolved = await resolveTenant(headers.get('host') ?? '', headers.get(TENANT_HEADER), deps);
   if (!resolved.ok) return resolved;
   if (resolved.value === null) return err(tenantNotFound());
@@ -217,7 +220,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/m2m/marketing/messages', async (c) => {
     const marketingResult = requireMarketing(deps);
     if (!marketingResult.ok) return response(marketingResult);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const rawBody = await c.req.text();
     const idempotencyKey = c.req.header('Idempotency-Key');
@@ -296,7 +299,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/eligibility', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingEligibilityQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid eligibility query', parsed.error.flatten())));
@@ -314,7 +317,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/m2m/marketing/consents', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingConsentApiSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) return response(err(validation('Invalid marketing consent payload', parsed.error.flatten())));
@@ -334,7 +337,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/suppressions', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingSuppressionQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid suppression query', parsed.error.flatten())));
@@ -349,7 +352,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/m2m/marketing/suppressions', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingSuppressionApiSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) return response(err(validation('Invalid suppression payload', parsed.error.flatten())));
@@ -361,7 +364,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/messages', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingMessagesQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid message query', parsed.error.flatten())));
@@ -383,7 +386,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/messages/:id', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const send = await marketing.value.campaignSends.findById(authenticated.value.tenant.id, c.req.param('id'));
     if (send === null) return response(err(appError('not_found', 'Marketing message was not found')));
@@ -398,7 +401,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/consent-definitions', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const definitions = await marketing.value.definitions.list(authenticated.value.tenant.id, 'active');
     const discovered = await Promise.all(definitions.map(async (definition) => {
@@ -422,7 +425,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/templates', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const campaigns = await marketing.value.campaigns.list(authenticated.value.tenant.id);
     return response(ok({

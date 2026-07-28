@@ -28,6 +28,7 @@ import {
   type TermsConsent,
 } from '#core/domain/index.js';
 import { authorize, type PaymentWebhookEvent } from '#core/server/index.js';
+import { authenticateMarketingApiKey } from './marketing-routes.js';
 import {
   FakeEmailHmac,
   FakeScheduler,
@@ -615,20 +616,25 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 };
 
 describe('marketing HTTP surfaces', () => {
-  it('denies staff-only capabilities to an API-key context', () => {
-    expect(authorize({
-      identity: {
-        userId: 'api-key',
-        email: 'api-key@together.invalid',
-        name: 'Automation API',
-        tenantId: acme.id,
-        tenantSlug: acme.slug,
-        tenantName: acme.name,
-        staffRole: null,
-        memberId: null,
-      },
-      capabilities: capabilitiesForPrincipal('api-key'),
-    }, 'marketing:campaign:write')).toMatchObject({ code: 'forbidden' });
+  it('denies staff-only capabilities to an authenticated API-key context', async () => {
+    const configured = deps();
+    configured.tenantApiKeys = {
+      listByTenant: async () => [],
+      create: async () => undefined,
+      findActiveByHash: async (tenantId, hash) => tenantId === acme.id && hash === 'hash:marketing-key' ? {
+        id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+        createdAt: '2026-07-22T00:00:00.000Z', revokedAt: null,
+      } : null,
+      revoke: async () => null,
+    };
+    const authenticated = await authenticateMarketingApiKey(new Headers({
+      host: 'acme.localhost:48730',
+      'x-api-key': 'marketing-key',
+    }), configured);
+    expect(authenticated.ok).toBe(true);
+    if (!authenticated.ok) return;
+    expect(authenticated.value.ctx.capabilities).toEqual(capabilitiesForPrincipal('api-key'));
+    expect(authorize(authenticated.value.ctx, 'marketing:campaign:write')).toMatchObject({ code: 'forbidden' });
   });
 
   it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {

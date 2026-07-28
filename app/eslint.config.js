@@ -195,6 +195,11 @@ export default tseslint.config(
         { type: 'adapter-payment', pattern: 'adapters/payment/**', mode: 'full' },
         { type: 'adapter-video', pattern: 'adapters/video/**', mode: 'full' },
         { type: 'adapter-storage', pattern: 'adapters/storage/**', mode: 'full' },
+        {
+          type: 'platform-entry',
+          pattern: 'apps/server/src/entry.vercel.ts',
+          mode: 'full',
+        },
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
@@ -270,6 +275,10 @@ export default tseslint.config(
                 'adapter-video',
                 'adapter-storage',
               ],
+            },
+            {
+              from: ['platform-entry'],
+              allow: ['app-server'],
             },
             {
               from: ['app-server'],
@@ -442,6 +451,10 @@ export default tseslint.config(
             {
               from: ['adapter-storage'],
               allow: ['node:crypto'],
+            },
+            {
+              from: ['platform-entry'],
+              allow: ['@hono/node-server', 'node:http'],
             },
             {
               from: ['app-server'],

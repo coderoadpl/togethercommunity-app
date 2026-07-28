@@ -58,8 +58,8 @@ Visual verification has zero retries.
 - `adapters/**` implement ports; only `apps/server/src/composition.ts` instantiates them.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.
-- `@vercel/*` / `@neondatabase/*` only inside `adapters/`. A reviewed
-  platform-entry exemption may be added when the Vercel entry lands.
+- `@vercel/*` / `@neondatabase/*` only inside `adapters/` and the reviewed
+  `apps/server/src/entry.vercel.ts` platform boundary.
 - No `any`. No `as` (except `as const`). Parse with zod at every boundary.
 - Expected domain and application failures return `Result<T, AppError>`. Infrastructure
   promise rejections propagate to the server error seam, which normalizes them to

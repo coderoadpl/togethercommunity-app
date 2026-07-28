@@ -17,6 +17,7 @@ import {
   type Member,
   type Membership,
   type Order,
+  type Post,
   type Product,
   type Tenant,
   type TenantDomain,
@@ -459,6 +460,72 @@ const deps = (input: {
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
+
+const scopedApp = (scope: 'none' | 'member' | 'staff') => {
+  const base = deps();
+  const member: Member = {
+    id: 'member-1',
+    tenantId: acme.id,
+    userId: 'user-1',
+    email: 'user@acme.test',
+    displayName: 'User',
+    tags: [],
+    marketingConsents: {},
+    externalCustomerIds: {},
+    createdAt: '2026-07-12T00:00:00.000Z',
+    deletedAt: null,
+  };
+  const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
+  const post: Post = {
+    id: 'post-1',
+    tenantId: acme.id,
+    contextKind: 'space',
+    contextId: 'space-1',
+    rootPostId: 'post-1',
+    parentPostId: null,
+    authorUserId: 'user-2',
+    authorDisplay: 'Author',
+    authorIsStaff: false,
+    body: 'Pinned',
+    createdAt: '2026-07-12T00:00:00.000Z',
+    editedAt: null,
+    deletedAt: null,
+    pinnedAt: null,
+  };
+  return buildApp({
+    ...base,
+    authPort: {
+      ...base.authPort,
+      getAuthenticatedUser: async () => ({
+        userId: 'user-1',
+        email: 'user@acme.test',
+        name: 'User',
+      }),
+    },
+    tenantAccess: {
+      ...base.tenantAccess,
+      findStaffGrant: async () => (scope === 'staff' ? staffGrant : null),
+      findMember: async () => (scope === 'member' ? member : null),
+    },
+    members: {
+      ...base.members,
+      findById: async () => (scope === 'member' ? member : null),
+    },
+    posts: {
+      ...base.posts,
+      findById: async () => post,
+      countPinnedForContext: async () => 0,
+      setPinned: async (_tenantId, input) => ({
+        ...post,
+        pinnedAt: input.pinnedAt,
+      }),
+    },
+    orders: {
+      ...base.orders,
+      listPaidWithoutGrant: async () => [],
+    },
+  });
+};
 
 const marketingDeps = (): MarketingAppDeps => ({
   runs: new InMemorySchedulerRunRepository(),
@@ -1164,6 +1231,43 @@ describe('server edge security baseline', () => {
     });
 
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('new route authorization', () => {
+  const headers = {
+    host: 'acme.localhost:48730',
+    'content-type': 'application/json',
+  };
+
+  it('denies members and permits staff on post pinning', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId: 'post-1', pinned: true }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.postsPin, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.postsPin, request)).status).toBe(200);
+  });
+
+  it('denies support messages from a session without member or staff scope', async () => {
+    const response = await scopedApp('none').request(API_PATHS.supportMessage, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ subject: 'Help', body: 'Body' }),
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('denies members and permits staff on order reconciliation', async () => {
+    expect(
+      (await scopedApp('member').request(API_PATHS.ordersReconciliation, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await scopedApp('staff').request(API_PATHS.ordersReconciliation, { headers })).status,
+    ).toBe(200);
   });
 });
 

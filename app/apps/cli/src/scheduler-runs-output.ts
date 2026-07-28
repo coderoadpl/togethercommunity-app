@@ -1,4 +1,4 @@
-import type { SchedulerRun, SchedulerRunTenant } from '@core/domain/index.js';
+import type { SchedulerRun, SchedulerRunTenant } from '#core/domain/index.js';
 
 const row = (values: Array<string | number | boolean>): string => values.map(String).join('\t');
 

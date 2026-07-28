@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ImportFailure } from '@adapters/db/importer.js';
+import { ImportFailure } from '#adapters/db/importer.js';
 
 import { assertSafeBundleSlug } from './import-bundle-slug.js';
 

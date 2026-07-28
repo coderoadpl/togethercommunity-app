@@ -7,8 +7,8 @@ import {
   schedulerRunTenantSchema,
   type SchedulerRun,
   type SchedulerRunListQuery,
-} from '@core/domain/index.js';
-import type { SchedulerRunRepository } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { SchedulerRunRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { schedulerRuns, schedulerRunTenants } from './schema.js';

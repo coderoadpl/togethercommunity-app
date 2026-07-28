@@ -26,8 +26,8 @@ import {
   subscriptionSimulateOutputSchema,
   tenantCreateOutputSchema,
   tenantSecretSetOutputSchema,
-} from '@core/contract/index.js';
-import { SUBSCRIPTION_GRACE_DAYS, orderListItemSchema } from '@core/domain/index.js';
+} from '#core/contract/index.js';
+import { SUBSCRIPTION_GRACE_DAYS, orderListItemSchema } from '#core/domain/index.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');

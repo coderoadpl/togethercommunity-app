@@ -1,16 +1,16 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import { createDb } from '@adapters/db/client.js';
-import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '@adapters/db/email-outbox.js';
-import { createEmailEventRepository } from '@adapters/db/email-events.js';
-import { createEmailSendRepository } from '@adapters/db/email-sends.js';
-import { createInvoiceRepository } from '@adapters/db/invoice-repositories.js';
+import { createDb } from '#adapters/db/client.js';
+import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
+import { createEmailEventRepository } from '#adapters/db/email-events.js';
+import { createEmailSendRepository } from '#adapters/db/email-sends.js';
+import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
   createFiscalArtifactRepository,
   createKsefNumberRepository,
   createKsefSubmissionJobRepository,
-} from '@adapters/db/ksef-repositories.js';
-import { createSchedulerRunRepository } from '@adapters/db/scheduler-runs.js';
+} from '#adapters/db/ksef-repositories.js';
+import { createSchedulerRunRepository } from '#adapters/db/scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -26,14 +26,14 @@ import {
   createTenantDocumentRepository,
   createTenantSesSettingsRepository,
   createUnsubscribeTokenRepository,
-} from '@adapters/db/marketing-repositories.js';
+} from '#adapters/db/marketing-repositories.js';
 import {
   createCouponCheckoutSessionRepository,
   createCouponRedemptionRepository,
   createCouponRepository,
   createCouponStatsRepository,
   createProductPriceHistoryRepository,
-} from '@adapters/db/coupon-repositories.js';
+} from '#adapters/db/coupon-repositories.js';
 import {
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -68,36 +68,36 @@ import {
   createTermsConsentRepository,
   createThreadSubscriptionRepository,
   createUserDisplayReader,
-} from '@adapters/db/repositories.js';
-import { createAuth, createAuthPort, type Auth } from '@adapters/auth/create-auth.js';
-import { createApiKeyCrypto } from '@adapters/auth/api-key-crypto.js';
-import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
-import { createContentHash } from '@adapters/crypto/content-hash.js';
-import { createKsefCredentialResolver } from '@adapters/crypto/ksef-credential-resolver.js';
-import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
-import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
-import { createStripePaymentProvider } from '@adapters/payment/stripe.js';
-import { createFakePaymentProvider } from '@adapters/payment/fake.js';
-import { createFakeInvoicing } from '@adapters/invoicing/fake.js';
-import { createIfirmaInvoicing } from '@adapters/invoicing/ifirma.js';
-import { createKsefClient } from '@adapters/invoicing/ksef.js';
-import { createKsefInvoicePdf } from '@adapters/invoicing/ksef-pdf.js';
-import { createFa3XsdValidator } from '@adapters/invoicing/fa3-validator.js';
-import { createBunnyVideoLibrary } from '@adapters/video/bunny.js';
-import { createBunnyEmbedTokenSigner } from '@adapters/crypto/bunny-embed-token-signer.js';
-import { createS3UrlSigner } from '@adapters/storage/s3-url-signer.js';
-import { createDevEmailPort } from '@adapters/email/dev.js';
-import { createEmailNotificationChannel } from '@adapters/notifications/email.js';
-import { createInAppNotificationChannel, createRealtimeBus } from '@adapters/notifications/in-app.js';
-import { createSesEmailPort } from '@adapters/email/ses.js';
-import { createSmtpEmailPort } from '@adapters/email/smtp.js';
-import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver } from '@adapters/email/transactional-resolvers.js';
-import { createSesMarketingSender, readSesQuota } from '@adapters/email/marketing-ses.js';
-import { createDevMarketingSender } from '@adapters/email/dev-marketing.js';
-import { createMarketingSesCredentialResolver } from '@adapters/email/marketing-credentials.js';
-import { createSesOnboardingControlPlane } from '@adapters/email/ses-onboarding.js';
-import { createSnsVerifier } from '@adapters/crypto/sns.js';
-import { createCronMarketingScheduler, createDevMarketingScheduler } from '@adapters/scheduler/marketing.js';
+} from '#adapters/db/repositories.js';
+import { createAuth, createAuthPort, type Auth } from '#adapters/auth/create-auth.js';
+import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createContentHash } from '#adapters/crypto/content-hash.js';
+import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
+import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
+import { createFakePaymentProvider } from '#adapters/payment/fake.js';
+import { createFakeInvoicing } from '#adapters/invoicing/fake.js';
+import { createIfirmaInvoicing } from '#adapters/invoicing/ifirma.js';
+import { createKsefClient } from '#adapters/invoicing/ksef.js';
+import { createKsefInvoicePdf } from '#adapters/invoicing/ksef-pdf.js';
+import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
+import { createBunnyVideoLibrary } from '#adapters/video/bunny.js';
+import { createBunnyEmbedTokenSigner } from '#adapters/crypto/bunny-embed-token-signer.js';
+import { createS3UrlSigner } from '#adapters/storage/s3-url-signer.js';
+import { createDevEmailPort } from '#adapters/email/dev.js';
+import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
+import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
+import { createSesEmailPort } from '#adapters/email/ses.js';
+import { createSmtpEmailPort } from '#adapters/email/smtp.js';
+import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver } from '#adapters/email/transactional-resolvers.js';
+import { createSesMarketingSender, readSesQuota } from '#adapters/email/marketing-ses.js';
+import { createDevMarketingSender } from '#adapters/email/dev-marketing.js';
+import { createMarketingSesCredentialResolver } from '#adapters/email/marketing-credentials.js';
+import { createSesOnboardingControlPlane } from '#adapters/email/ses-onboarding.js';
+import { createSnsVerifier } from '#adapters/crypto/sns.js';
+import { createCronMarketingScheduler, createDevMarketingScheduler } from '#adapters/scheduler/marketing.js';
 import type {
   ApiKeyCrypto,
   AuthPort,
@@ -189,10 +189,10 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
-} from '@core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '@core/server/index.js';
-import { ok, type AppError, type KsefEnvironment, type Result } from '@core/domain/index.js';
-import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '@core/contract/index.js';
+} from '#core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
+import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import type { Env } from './env.js';
 

@@ -10,7 +10,7 @@ import type {
   ProductPrice,
   StaffRole,
   TenantSecret,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { dismissCreatorOnboarding, getCreatorOnboarding, type OnboardingDeps } from './onboarding.js';

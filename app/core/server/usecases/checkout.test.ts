@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type Coupon, type Product, type ProductPrice, type TenantSecret } from '@core/domain/index.js';
-import type { CheckoutDeps, PaymentProvider } from '@core/server/index.js';
+import { ok, type Coupon, type Product, type ProductPrice, type TenantSecret } from '#core/domain/index.js';
+import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
 const product: Product = {
   id: 'product-1',

@@ -1,5 +1,5 @@
-import { err, notFound, type AppError, type Result } from '@core/domain/index.js';
-import type { SecretCrypto, TenantSecretRepository, TenantSecretResolver } from '@core/server/index.js';
+import { err, notFound, type AppError, type Result } from '#core/domain/index.js';
+import type { SecretCrypto, TenantSecretRepository, TenantSecretResolver } from '#core/server/index.js';
 
 /**
  * Reads a tenant's encrypted secret and decrypts it on demand — the seam a

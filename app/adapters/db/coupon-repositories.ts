@@ -7,14 +7,14 @@ import {
   couponStatsItemSchema,
   normalizeCouponCode,
   type CouponCheckoutSession,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 import type {
   CouponCheckoutSessionRepository,
   CouponRedemptionRepository,
   CouponManagementRepository,
   CouponStatsRepository,
   ProductPriceHistoryRepository,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import {

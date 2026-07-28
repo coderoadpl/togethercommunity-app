@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { InvoicingPort } from '@core/server/index.js';
+import type { InvoicingPort } from '#core/server/index.js';
 
 import {
   createIfirmaInvoicing,

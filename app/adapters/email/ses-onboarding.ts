@@ -23,12 +23,12 @@ import {
   type Subscription,
 } from '@aws-sdk/client-sns';
 
-import { integrationUnavailable, ok, type AppError, type Result } from '@core/domain/index.js';
+import { integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
 import type {
   SesDkimRecord,
   SesMarketingCredentials,
   SesOnboardingControlPlane,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 const destinationName = 'together-events';
 const eventTypes = ['send', 'delivery', 'bounce', 'complaint', 'open', 'click'] as const;

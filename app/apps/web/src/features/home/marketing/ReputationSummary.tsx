@@ -1,6 +1,6 @@
 import { Alert, Box, Chip, Stack, Typography } from '@mui/material';
 
-import type { EmailReputation, EmailReputationMetric, EmailReputationStatus } from '@core/domain/index.js';
+import type { EmailReputation, EmailReputationMetric, EmailReputationStatus } from '#core/domain/index.js';
 
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';

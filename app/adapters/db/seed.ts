@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 
-import { createAuth } from '@adapters/auth/create-auth.js';
-import type { AccessItem, Chapter, LessonBlock } from '@core/domain/index.js';
+import { createAuth } from '#adapters/auth/create-auth.js';
+import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
 
 import { createDb } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';

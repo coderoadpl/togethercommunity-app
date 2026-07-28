@@ -12,7 +12,7 @@ import {
   type MemberGrant,
   type Result,
   type RevokeGrantInput,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, MemberRepository, ProductGrantRepository, ProductRepository } from '../ports.js';

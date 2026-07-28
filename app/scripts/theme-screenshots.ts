@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
-import { API_PATHS } from '@core/contract/index.js';
+import { API_PATHS } from '#core/contract/index.js';
 
 import { MODES, type ThemeMode } from '../apps/web/src/theme.js';
 

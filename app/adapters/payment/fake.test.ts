@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { ok } from '@core/domain/index.js';
+import { ok } from '#core/domain/index.js';
 
 import { createFakePaymentProvider } from './fake.js';
 

@@ -6,7 +6,7 @@ import {
   type AppError,
   type Result,
   type Tenant,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, TenantRepository } from '../ports.js';

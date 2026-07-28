@@ -1,4 +1,4 @@
-import type { RealtimeBusPort } from '@core/server/index.js';
+import type { RealtimeBusPort } from '#core/server/index.js';
 
 export const SSE_HEARTBEAT_MS = 25_000;
 

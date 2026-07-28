@@ -19,7 +19,7 @@ import type {
   CourseStructureLesson,
   CourseStructureModule,
   CourseStructureWithAccess,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
 import { LessonDurationText, TreeChapterTitle, TreeModuleTitle } from '../../theme.js';

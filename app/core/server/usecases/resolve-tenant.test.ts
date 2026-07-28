@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Tenant, TenantDomain } from '@core/domain/index.js';
+import type { Tenant, TenantDomain } from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
 import { resolveTenant } from './resolve-tenant.js';

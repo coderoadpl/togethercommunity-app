@@ -18,7 +18,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { Product, ProductAccessIssues } from '@core/domain/index.js';
+import type { Product, ProductAccessIssues } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';

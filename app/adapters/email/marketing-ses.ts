@@ -1,7 +1,7 @@
 import { GetSendQuotaCommand, SendRawEmailCommand, SESClient } from '@aws-sdk/client-ses';
 
-import { integrationUnavailable, ok, validation, type AppError, type Result } from '@core/domain/index.js';
-import type { SesMarketingCredentials, SesMarketingSender } from '@core/server/index.js';
+import { integrationUnavailable, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import type { SesMarketingCredentials, SesMarketingSender } from '#core/server/index.js';
 
 export interface RawSesClient {
   sendRaw(input: { raw: Uint8Array; configurationSet: string | null }): Promise<{ messageId: string | null }>;

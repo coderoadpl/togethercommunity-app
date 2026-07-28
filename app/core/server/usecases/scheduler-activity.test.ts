@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity } from '@core/domain/index.js';
+import type { Identity } from '#core/domain/index.js';
 import { InMemorySchedulerRunRepository } from '../testing/marketing-fakes.js';
 
 import {

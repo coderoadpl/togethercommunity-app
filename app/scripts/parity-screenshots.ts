@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { z } from 'zod';
 
-import { API_PATHS, looseEnvelopeSchema } from '@core/contract/index.js';
+import { API_PATHS, looseEnvelopeSchema } from '#core/contract/index.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
@@ -339,9 +339,9 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
         '--product',
         mixedProduct.product.id,
         '--starts-at',
-        '2026-06-01T00:00:00.000Z',
+        '1998-06-01T00:00:00.000Z',
         '--expires-at',
-        '2027-06-01T00:00:00.000Z',
+        '1999-06-01T00:00:00.000Z',
       ],
       creatorHome,
     ),
@@ -357,9 +357,9 @@ const buildStudentFixture = async (studioBaseUrl: string, homes: string[]): Prom
         '--product',
         product.product.id,
         '--starts-at',
-        '2025-01-01T00:00:00.000Z',
+        '1997-01-01T00:00:00.000Z',
         '--expires-at',
-        '2025-04-01T00:00:00.000Z',
+        '1997-04-01T00:00:00.000Z',
       ],
       creatorHome,
     ),

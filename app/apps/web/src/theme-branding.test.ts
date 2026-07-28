@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TenantBranding } from '@core/domain/index.js';
+import type { TenantBranding } from '#core/domain/index.js';
 
 import { applyBranding, contrastRatio, deriveBrandPalette } from './theme-branding.js';
 import { createThemeForMode, MODES } from './theme.js';

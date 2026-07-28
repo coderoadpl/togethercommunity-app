@@ -24,7 +24,7 @@ import {
   simulatePurchaseOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
-} from '@core/contract/index.js';
+} from '#core/contract/index.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');

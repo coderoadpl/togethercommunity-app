@@ -7,7 +7,7 @@ import {
   type AppError,
   type Result,
   type TenantSesSettings,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {

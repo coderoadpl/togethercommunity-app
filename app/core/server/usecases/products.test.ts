@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, Product, StaffRole } from '@core/domain/index.js';
+import type { Identity, Product, StaffRole } from '#core/domain/index.js';
 
 import type { ProductRepository } from '../ports.js';
 import { createProduct, listProducts, publishProduct } from './products.js';

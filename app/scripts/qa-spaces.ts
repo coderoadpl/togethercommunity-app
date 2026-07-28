@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import pg from 'pg';
 
-import { API_PATHS } from '@core/contract/index.js';
+import { API_PATHS } from '#core/contract/index.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');

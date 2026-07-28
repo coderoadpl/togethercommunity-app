@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EmailEvent, EmailSendProjection, Identity } from '@core/domain/index.js';
+import type { EmailEvent, EmailSendProjection, Identity } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { EmailSendRepository } from '../ports.js';

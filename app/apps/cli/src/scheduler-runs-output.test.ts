@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { SchedulerRun, SchedulerRunTenant } from '@core/domain/index.js';
+import type { SchedulerRun, SchedulerRunTenant } from '#core/domain/index.js';
 
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 

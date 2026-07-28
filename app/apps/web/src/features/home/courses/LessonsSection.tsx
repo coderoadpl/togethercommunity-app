@@ -24,7 +24,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
-import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '@core/domain/index.js';
+import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';

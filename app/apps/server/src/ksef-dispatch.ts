@@ -1,4 +1,4 @@
-import type { AppError, Result } from '@core/domain/index.js';
+import type { AppError, Result } from '#core/domain/index.js';
 
 interface KsefDispatcher {
   dispatch(): Promise<Result<unknown, AppError>>;

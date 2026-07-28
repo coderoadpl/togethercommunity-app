@@ -1,5 +1,5 @@
-import { ok } from '@core/domain/index.js';
-import type { SchedulerPort } from '@core/server/index.js';
+import { ok } from '#core/domain/index.js';
+import type { SchedulerPort } from '#core/server/index.js';
 
 export interface DevMarketingScheduler extends SchedulerPort {
   setCampaignHandler(handler: (tenantId: string, campaignId: string) => Promise<void>): void;

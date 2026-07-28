@@ -1,7 +1,7 @@
 import { createVerify } from 'node:crypto';
 
-import { forbidden, integrationUnavailable, ok, validation, type AppError, type Result } from '@core/domain/index.js';
-import type { SnsVerifier, VerifiedSnsEnvelope } from '@core/server/index.js';
+import { forbidden, integrationUnavailable, ok, validation, type AppError, type Result } from '#core/domain/index.js';
+import type { SnsVerifier, VerifiedSnsEnvelope } from '#core/server/index.js';
 
 interface SnsEnvelope {
   Type: 'SubscriptionConfirmation' | 'Notification';

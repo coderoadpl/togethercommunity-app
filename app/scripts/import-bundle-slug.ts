@@ -1,4 +1,4 @@
-import { ImportFailure } from '@adapters/db/importer.js';
+import { ImportFailure } from '#adapters/db/importer.js';
 
 const SAFE_BUNDLE_SLUG = /^[a-z0-9-]+$/;
 

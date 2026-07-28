@@ -7,7 +7,7 @@ import {
   type MemberSubscription,
   type Result,
   type Tenant,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { PaymentWebhookEvent } from '../ports.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';

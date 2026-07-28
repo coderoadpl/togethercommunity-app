@@ -9,7 +9,7 @@ import {
   type CouponStatsItem,
   type CouponOption,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { Clock, CouponStatsRepository } from '../ports.js';

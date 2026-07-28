@@ -14,8 +14,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
-import { ApiError } from '@core/client/index.js';
-import type { CourseStructureWithAccess, LessonBlock, PlayableLessonBlock } from '@core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import type { CourseStructureWithAccess, LessonBlock, PlayableLessonBlock } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';

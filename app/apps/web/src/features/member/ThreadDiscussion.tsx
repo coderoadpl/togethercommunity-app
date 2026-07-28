@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { Alert, Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
-import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '@core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { ConfirmDialog } from '../../components/layout/index.js';

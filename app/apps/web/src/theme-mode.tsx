@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ThemeProvider } from '@mui/material';
 
-import { DEFAULT_LANGUAGE, languageSchema, type Language } from '@core/domain/index.js';
+import { DEFAULT_LANGUAGE, languageSchema, type Language } from '#core/domain/index.js';
 
 import { createThemeForMode, MODES, type ThemeMode } from './theme.js';
 

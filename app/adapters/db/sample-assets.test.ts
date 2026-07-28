@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { lessonBlockSchema } from '@core/domain/index.js';
+import { lessonBlockSchema } from '#core/domain/index.js';
 
 import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
 

@@ -1,4 +1,4 @@
-import { ERROR_CODES, type ErrorCode } from '@core/domain/index.js';
+import { ERROR_CODES, type ErrorCode } from '#core/domain/index.js';
 
 import type { Messages } from './messages.js';
 

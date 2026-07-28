@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { err, internal } from '@core/domain/index.js';
+import { err, internal } from '#core/domain/index.js';
 
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 

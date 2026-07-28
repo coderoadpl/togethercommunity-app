@@ -9,7 +9,7 @@ import {
   type AppError,
   type EmailSendExportFile,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { EmailEventRepository, EmailSendRepository, MemberRepository } from '../ports.js';

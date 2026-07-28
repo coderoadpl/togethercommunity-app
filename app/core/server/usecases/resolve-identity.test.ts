@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Member, Membership, Tenant, TenantDomain } from '@core/domain/index.js';
+import type { Member, Membership, Tenant, TenantDomain } from '#core/domain/index.js';
 
 import type { TenantAccessReader, TenantDomainRepository, TenantRepository } from '../ports.js';
 import { resolveIdentity } from './resolve-identity.js';

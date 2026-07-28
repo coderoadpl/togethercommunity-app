@@ -3,9 +3,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { Command } from 'commander';
 import { z, type ZodTypeAny } from 'zod';
 
-import { createCliAuthAdapter, type CliAuthAdapter } from '@adapters/auth/client-adapter.js';
-import { createApiClient, type ApiClient } from '@core/client/index.js';
-import { API_KEY_HEADER, TENANT_HEADER } from '@core/contract/index.js';
+import { createCliAuthAdapter, type CliAuthAdapter } from '#adapters/auth/client-adapter.js';
+import { createApiClient, type ApiClient } from '#core/client/index.js';
+import { API_KEY_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
   accessItemSchema,
   currencySchema,
@@ -32,7 +32,7 @@ import {
   type AppError,
   type LessonReferences,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { loadConfig, saveConfig, type CliConfig } from './config.js';
 import { emit } from './output.js';

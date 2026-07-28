@@ -6,7 +6,7 @@ import {
   type DevGrantInput,
   type ProductGrant,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { ProductGrantRepository, ProductRepository } from '../ports.js';
 import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';

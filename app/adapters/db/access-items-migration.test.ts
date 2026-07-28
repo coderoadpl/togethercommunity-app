@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { accessItemSchema } from '@core/domain/index.js';
+import { accessItemSchema } from '#core/domain/index.js';
 
 import {
   migrateLegacyAccessItem,

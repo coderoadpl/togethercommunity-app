@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, notFound, ok } from '@core/domain/index.js';
-import type { TenantSecretResolver } from '@core/server/index.js';
+import { err, notFound, ok } from '#core/domain/index.js';
+import type { TenantSecretResolver } from '#core/server/index.js';
 
 import { createKsefCredentialResolver } from './ksef-credential-resolver.js';
 

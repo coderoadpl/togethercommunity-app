@@ -8,7 +8,7 @@ import type {
   TenantSecret,
   TenantSecretKey,
   TenantSesSettings,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { TenantSecretRepository } from '../ports.js';

@@ -3,7 +3,7 @@ import { Box } from '@mui/material';
 import { ThemeProvider, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
-import type { TenantBranding } from '@core/domain/index.js';
+import type { TenantBranding } from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { hostHasTenantSubdomain } from './lib/tenant.js';

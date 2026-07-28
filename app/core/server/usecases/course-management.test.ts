@@ -8,7 +8,7 @@ import type {
   MemberCourseProgress,
   Product,
   StaffRole,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   CourseLessonRepository,

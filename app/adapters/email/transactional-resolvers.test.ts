@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ok } from '@core/domain/index.js';
+import { ok } from '#core/domain/index.js';
 
 import { createTenantSesTransactionalResolver } from './transactional-resolvers.js';
 

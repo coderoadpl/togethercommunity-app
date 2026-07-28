@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, MemberGrant, Product } from '@core/domain/index.js';
+import type { Identity, MemberGrant, Product } from '#core/domain/index.js';
 
 import type { Clock } from '../ports.js';
 import type { ProductGrantRepository } from '../ports.js';

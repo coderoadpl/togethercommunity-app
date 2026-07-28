@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { z } from 'zod';
 
-import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
 

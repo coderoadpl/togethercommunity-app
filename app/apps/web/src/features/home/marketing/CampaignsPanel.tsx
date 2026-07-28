@@ -19,7 +19,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 
-import type { Campaign, CampaignEngagementStats } from '@core/domain/index.js';
+import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';

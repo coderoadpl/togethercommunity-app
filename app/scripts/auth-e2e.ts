@@ -9,7 +9,7 @@ import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
-import { createAuthE2eClient } from '@adapters/auth/e2e-http.js';
+import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');

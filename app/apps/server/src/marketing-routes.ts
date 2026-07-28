@@ -8,7 +8,7 @@ import {
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
   toEnvelope,
-} from '@core/contract/index.js';
+} from '#core/contract/index.js';
 import {
   appError,
   err,
@@ -27,7 +27,7 @@ import {
   type Identity,
   type Result,
   type Tenant,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 import {
   addManualSuppression,
   applyVerifiedSesEvent,
@@ -43,7 +43,7 @@ import {
   sendMarketingMessages,
   unsubscribeAllMarketing,
   unsubscribeOneClick,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import {

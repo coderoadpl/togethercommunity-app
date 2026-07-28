@@ -7,7 +7,7 @@ import type {
   Product,
   ProductGrant,
   ProductPrice,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { AuthPort, ProductRepository, PurchaseRepository } from '../ports.js';
 import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';
@@ -22,7 +22,7 @@ const product = (id: string, tenantId: string, published: boolean): Product => (
   published,
   accessItems: [],
   legacyId: null,
-  createdAt: '2026-07-12T00:00:00.000Z',
+  createdAt: '1998-07-12T00:00:00.000Z',
 });
 
 const monthlyPrice = (id: string, tenantId: string, productId: string): ProductPrice => ({
@@ -34,7 +34,7 @@ const monthlyPrice = (id: string, tenantId: string, productId: string): ProductP
   amountCents: 2900,
   currency: 'PLN',
   active: true,
-  createdAt: '2026-07-12T00:00:00.000Z',
+  createdAt: '1998-07-12T00:00:00.000Z',
 });
 
 const fakeProducts = (initial: Product[]): ProductRepository => ({
@@ -178,7 +178,7 @@ const harness = (input: { products: Product[]; prices?: ProductPrice[] }) => {
       listGrantedProducts: async () => [],
     },
     ids: { nextId: () => `id-${++sequence}` },
-    clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
+    clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
   };
 
   return { deps, purchases, orders, subscriptions, grants };
@@ -227,12 +227,12 @@ describe('simulatePurchase', () => {
       status: 'active',
       priceId: 'price-1',
       provider: 'simulated',
-      currentPeriodEnd: '2026-08-12T00:00:00.000Z',
+      currentPeriodEnd: '1998-08-12T00:00:00.000Z',
     });
     expect(h.orders).toHaveLength(1);
     expect(h.orders[0]).toMatchObject({ kind: 'recurring', status: 'paid', amountCents: 2900 });
     const grant = Array.from(h.grants.values())[0];
-    expect(grant?.expiresAt).toBe('2026-08-15T00:00:00.000Z');
+    expect(grant?.expiresAt).toBe('1998-08-15T00:00:00.000Z');
 
     const repeat = await simulatePurchase(
       't-acme',

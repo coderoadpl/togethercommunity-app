@@ -20,7 +20,7 @@ import type {
   SchedulerRunStatus,
   SchedulerRunTotals,
   SchedulerRunTrigger,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 export const tenants = pgTable(
   'tenants',

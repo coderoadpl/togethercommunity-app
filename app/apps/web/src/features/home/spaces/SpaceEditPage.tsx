@@ -2,7 +2,7 @@ import { Alert, Button, Stack } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { StaffSpace } from '@core/domain/index.js';
+import type { StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';

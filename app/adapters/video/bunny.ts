@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { err, integrationAuth, integrationUnavailable, ok } from '@core/domain/index.js';
-import type { VideoLibraryPort } from '@core/server/index.js';
+import { err, integrationAuth, integrationUnavailable, ok } from '#core/domain/index.js';
+import type { VideoLibraryPort } from '#core/server/index.js';
 
 const BUNNY_STREAM_BASE_URL = 'https://video.bunnycdn.com';
 

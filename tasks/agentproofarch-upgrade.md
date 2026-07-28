@@ -47,7 +47,17 @@ architecture-doc extraction in parallel.
 swap interacts with every worktree's node_modules symlink and is safest as
 its own PR validated by the CI this stage creates.
 
-## Stage 2 — server edge (needs one owner answer)
+## Stage 2 — server edge (owner answers recorded 2026-07-28)
+
+Owner decisions: (1) the six public mutating surfaces (unsubscribe /u/*, DOI
+confirm, SNS webhook, Stripe webhook, checkout session start, login/magic
+link) are confirmed "wyglada okej" with stated uncertainty — therefore stage
+2 MUST ship an explicit public-route manifest + a fail-closed
+config-regression test (any new public mutating route breaks the gates until
+consciously listed) and produce a full route table for owner review.
+(2) Deployment target: Vercel CONFIRMED — stage 2 builds the full topology
+(entry.vercel.ts with its enforcement carve-outs restored, environments,
+remote smoke); platform login + first deploy stay with the owner.
 
 A6+S2+S5 app.ts split into internal/public + secure headers/CSP/body-limit/
 CORS + cache seam — **owner question first: confirm the list of mutating

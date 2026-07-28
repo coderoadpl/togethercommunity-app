@@ -72,10 +72,7 @@ export interface SpacesDeps {
 }
 
 const requireStaff = (ctx: Ctx): Result<ActorScope, AppError> => {
-  const actor = requireActor(ctx);
-  if (!actor.ok) return actor;
-  if (!ctx.identity.staffRole) return err(forbidden('Only staff can manage spaces'));
-  return actor;
+  return requireActor(ctx, 'space:write');
 };
 
 export const createSpace = async (
@@ -187,7 +184,7 @@ export const listSpacesForMember = async (
   ctx: Ctx,
   deps: SpacesDeps,
 ): Promise<Result<MemberSpace[], AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:read');
   if (!actor.ok) return actor;
   const visible = await listAccessibleSpaces(ctx, deps);
   if (!visible.ok) return visible;
@@ -206,7 +203,7 @@ export const getSpaceFeed = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<SpaceFeed, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:read');
   if (!actor.ok) return actor;
   const parsed = listSpaceFeedInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space feed query', parsed.error.flatten()));
@@ -244,7 +241,7 @@ export const followSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string; isFollowing: boolean }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = followSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space follow payload', parsed.error.flatten()));
@@ -263,7 +260,7 @@ export const unfollowSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string; isFollowing: boolean }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = followSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space follow payload', parsed.error.flatten()));
@@ -289,7 +286,7 @@ const reactionOutcome = async (
     reaction: { postId: string; userId: string; emoji: ReactionEmoji },
   ) => Promise<unknown>,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = reactToPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid reaction payload', parsed.error.flatten()));

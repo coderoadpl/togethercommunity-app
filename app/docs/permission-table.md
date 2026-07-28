@@ -392,14 +392,14 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:603` | `const result = await saveMarketingConsentPreferences({ identity: apiIdentity(resolved.value.tenant) }, {` |
 | api-key | `apps/server/src/marketing-routes.ts:636` | `{ identity: apiIdentity(resolved.value.tenant) },` |
 | api-key | `apps/server/src/marketing-routes.ts:678` | `const result = await confirmMarketingConsent({ identity: apiIdentity(resolved.value.tenant) }, {` |
-| staff-role | `core/server/usecases/community-access.ts:51` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/community-access.ts:51` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
-| member-scope | `core/server/usecases/community-access.ts:58` | `ctx.identity.tenantId && ctx.identity.memberId` |
-| member-scope | `core/server/usecases/community-access.ts:59` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
-| staff-role | `core/server/usecases/community-access.ts:76` | `if (ctx.identity.staffRole) return ok(undefined);` |
-| staff-role | `core/server/usecases/community-access.ts:110` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:174` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:190` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| staff-role | `core/server/usecases/community-access.ts:61` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/community-access.ts:61` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
+| member-scope | `core/server/usecases/community-access.ts:68` | `ctx.identity.tenantId && ctx.identity.memberId` |
+| member-scope | `core/server/usecases/community-access.ts:69` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
+| staff-role | `core/server/usecases/community-access.ts:86` | `if (ctx.identity.staffRole) return ok(undefined);` |
+| staff-role | `core/server/usecases/community-access.ts:120` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
+| staff-role | `core/server/usecases/community-access.ts:184` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:200` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:312` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:457` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
 | member-scope | `core/server/usecases/entitlements.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
@@ -418,7 +418,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:76` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/scheduler-activity.ts:15` | `if (ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null) {` |
-| staff-role | `core/server/usecases/spaces.ts:77` | `if (!ctx.identity.staffRole) return err(forbidden('Only staff can manage spaces'));` |
 | staff-role | `core/server/usecases/tenant-secrets.ts:29` | `if (!ctx.identity.staffRole \|\| !roles.includes(ctx.identity.staffRole)) {` |
 | staff-role | `core/server/usecases/tenant-settings.ts:37` | `if (ctx.identity.staffRole !== 'owner') {` |
 

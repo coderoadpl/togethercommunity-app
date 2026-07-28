@@ -395,8 +395,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:678` | `const result = await confirmMarketingConsent({ identity: apiIdentity(resolved.value.tenant) }, {` |
 | staff-role | `core/server/usecases/api-keys.ts:34` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage API keys'));` |
 | staff-role | `core/server/usecases/api-keys.ts:40` | `if (ctx.identity.staffRole !== 'owner') {` |
-| staff-role | `core/server/usecases/bunny-videos.ts:28` | `if (!ctx.identity.staffRole \|\| !roles.includes(ctx.identity.staffRole)) {` |
-| staff-role | `core/server/usecases/bunny-videos.ts:86` | `if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Bunny Stream'));` |
 | staff-role | `core/server/usecases/community-access.ts:51` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:51` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:58` | `ctx.identity.tenantId && ctx.identity.memberId` |
@@ -407,10 +405,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:190` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:312` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:457` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |
-| staff-role | `core/server/usecases/content-history.ts:33` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can read content history'));` |
 | staff-role | `core/server/usecases/coupon-management.ts:29` | `if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can manage coupons'));` |
 | staff-role | `core/server/usecases/coupon-stats.ts:33` | `if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can view coupon sales'));` |
-| staff-role | `core/server/usecases/course-management.ts:59` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage courses'));` |
 | staff-role | `core/server/usecases/email-reputation.ts:17` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | staff-role | `core/server/usecases/email-send-observability.ts:18` | `ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null` |
 | member-scope | `core/server/usecases/entitlements.ts:64` | `if (!ctx.identity.memberId) return err(forbidden('Only members have entitlements'));` |
@@ -439,9 +435,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/onboarding.ts:38` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));` |
 | staff-role | `core/server/usecases/orders.ts:35` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see sales'));` |
 | staff-role | `core/server/usecases/payment-integrations.ts:12` | `if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Stripe'));` |
-| staff-role | `core/server/usecases/product-access-issues.ts:28` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can inspect products'));` |
-| staff-role | `core/server/usecases/product-prices.ts:27` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage prices'));` |
-| staff-role | `core/server/usecases/products.ts:26` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage products'));` |
 | member-scope | `core/server/usecases/progress.ts:45` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:46` | `return ok({ tenantId: ctx.identity.tenantId, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/progress.ts:146` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can reset member progress'));` |

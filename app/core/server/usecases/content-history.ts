@@ -1,10 +1,8 @@
 import {
   err,
-  forbidden,
   notFound,
   ok,
   readSnapshot,
-  tenantNotFound,
   validation,
   type AppError,
   courseHistoryQuerySchema,
@@ -14,6 +12,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   CourseModuleRepository,
   CourseRepository,
@@ -28,19 +27,13 @@ export interface ContentHistoryDeps {
   userDisplays: UserDisplayReader;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to read content history'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can read content history'));
-  return ok(ctx.identity.tenantId);
-};
-
 /** Lists course and attached-module snapshots newest first, capped by `limit`. */
 export const getContentHistory = async (
   ctx: Ctx,
   input: unknown,
   deps: ContentHistoryDeps,
 ): Promise<Result<CourseHistoryEntry[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'course:history:read');
   if (!tenant.ok) return tenant;
   const parsed = courseHistoryQuerySchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid history query', parsed.error.flatten()));
@@ -94,7 +87,7 @@ export const getContentVersion = async (
   versionId: string,
   deps: ContentHistoryDeps,
 ): Promise<Result<EntityVersionDetail, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'course:history:read');
   if (!tenant.ok) return tenant;
   if (versionId.length === 0) return err(validation('Missing version id'));
 

@@ -96,6 +96,19 @@ describe('products use-cases', () => {
     expect(created).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
+  it('enforces the declared product capability independently for reads and writes', async () => {
+    const { repo } = fakeRepo([draft('1', 't-acme')]);
+    const ctx = {
+      identity: identity('t-acme', 'owner'),
+      capabilities: ['product:read'] as const,
+    };
+    expect(await listProducts(ctx, deps(repo))).toMatchObject({ ok: true });
+    expect(await createProduct(ctx, { title: 'Course', priceCents: 100 }, deps(repo))).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
   it('validates input and stamps tenant + defaults on draft create', async () => {
     const { repo, store, versions } = fakeRepo();
 

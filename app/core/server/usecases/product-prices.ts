@@ -1,10 +1,8 @@
 import {
   err,
-  forbidden,
   newProductPriceSchema,
   notFound,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type NewProductPriceInput,
@@ -14,6 +12,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import type { Clock, IdGenerator, ProductPriceRepository, ProductRepository } from '../ports.js';
+import { authorizeTenant } from '../authorize.js';
 
 export interface ProductPriceDeps {
   products: ProductRepository;
@@ -22,18 +21,12 @@ export interface ProductPriceDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage prices'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage prices'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const listProductPrices = async (
   ctx: Ctx,
   productId: string,
   deps: ProductPriceDeps,
 ): Promise<Result<ProductPrice[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:price:read');
   if (!tenant.ok) return tenant;
   const product = await deps.products.findById(tenant.value, productId);
   if (!product) return err(notFound(`No product "${productId}" in this tenant`));
@@ -45,7 +38,7 @@ export const createProductPrice = async (
   input: NewProductPriceInput,
   deps: ProductPriceDeps,
 ): Promise<Result<ProductPrice, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:price:write');
   if (!tenant.ok) return tenant;
 
   const parsed = newProductPriceSchema.safeParse(input);
@@ -74,7 +67,7 @@ export const deactivateProductPrice = async (
   input: { id: string },
   deps: ProductPriceDeps,
 ): Promise<Result<ProductPrice, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:price:write');
   if (!tenant.ok) return tenant;
   const updated = await deps.prices.setActive(tenant.value, input.id, false);
   if (!updated) return err(notFound(`No price "${input.id}" in this tenant`));

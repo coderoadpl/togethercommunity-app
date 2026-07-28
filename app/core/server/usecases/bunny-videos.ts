@@ -1,10 +1,8 @@
 import {
   err,
-  forbidden,
   integrationNotConfigured,
   listStreamVideosInputSchema,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type ListStreamVideosInput,
@@ -13,6 +11,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { TenantRepository, TenantSecretResolver, VideoLibraryPort } from '../ports.js';
 
 export interface BunnyVideosDeps {
@@ -22,14 +21,6 @@ export interface BunnyVideosDeps {
 }
 
 export const BUNNY_VIDEOS_PER_PAGE = 24;
-
-const requireTenant = (ctx: Ctx, roles: ReadonlyArray<'owner' | 'admin'>): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to browse its video library'));
-  if (!ctx.identity.staffRole || !roles.includes(ctx.identity.staffRole)) {
-    return err(forbidden('You cannot browse this tenant’s video library'));
-  }
-  return ok(ctx.identity.tenantId);
-};
 
 const resolveBunnyConfig = async (
   tenantId: string,
@@ -55,7 +46,7 @@ export const listBunnyVideos = async (
   input: ListStreamVideosInput,
   deps: BunnyVideosDeps,
 ): Promise<Result<StreamVideoPage, AppError>> => {
-  const tenant = requireTenant(ctx, ['owner', 'admin']);
+  const tenant = authorizeTenant(ctx, 'course:read');
   if (!tenant.ok) return tenant;
   const parsed = listStreamVideosInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid video listing query', parsed.error.flatten()));
@@ -82,9 +73,9 @@ export const testBunnyConnection = async (
   ctx: Ctx,
   deps: BunnyVideosDeps,
 ): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to test Bunny Stream'));
-  if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Bunny Stream'));
-  const config = await resolveBunnyConfig(ctx.identity.tenantId, deps);
+  const tenant = authorizeTenant(ctx, 'integration:test');
+  if (!tenant.ok) return tenant;
+  const config = await resolveBunnyConfig(tenant.value, deps);
   if (!config.ok) return config;
   const listed = await deps.videoLibrary.listVideos({
     apiKey: config.value.apiKey,

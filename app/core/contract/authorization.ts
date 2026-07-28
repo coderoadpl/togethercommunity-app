@@ -6,7 +6,6 @@ import {
   ROLE_CAPABILITIES,
   capabilitiesForPrincipal,
   type Capability,
-  type CapabilityMatrix,
   type Identity,
   type Principal,
 } from '#core/domain/index.js';

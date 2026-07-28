@@ -382,7 +382,7 @@ try {
   must('pin lifecycle: staff can pin a space post', staffPin === '200', `HTTP ${staffPin}`);
   const feedSchema = z.object({
     ok: z.literal(true),
-    data: z.object({ pinned: z.array(z.object({ id: z.string() })) }),
+    data: z.object({ feed: z.object({ pinned: z.array(z.object({ id: z.string() })) }) }),
   });
   const pinnedFeed = feedSchema.parse(JSON.parse(curlBody([
     '-H', `authorization: Bearer ${memberToken}`,
@@ -391,7 +391,7 @@ try {
   ])));
   must(
     'pin lifecycle: the pinned post appears in the member feed projection',
-    pinnedFeed.data.pinned.some((post) => post.id === 'post-spolecznosc-hello'),
+    pinnedFeed.data.feed.pinned.some((post) => post.id === 'post-spolecznosc-hello'),
   );
   const staffUnpin = curl([
     '-H', `authorization: Bearer ${staffToken}`,
@@ -409,7 +409,7 @@ try {
   ])));
   must(
     'pin lifecycle: the unpinned post leaves the pinned projection',
-    unpinnedFeed.data.pinned.every((post) => post.id !== 'post-spolecznosc-hello'),
+    unpinnedFeed.data.feed.pinned.every((post) => post.id !== 'post-spolecznosc-hello'),
   );
   cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'delete', '--space', qaSpaceId]);
   const deleteProbe = cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'stats']);

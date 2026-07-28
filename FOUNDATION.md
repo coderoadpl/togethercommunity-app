@@ -48,3 +48,9 @@ kept synchronized by reviewing upstream changes to these paths:
   exit-code numbering.
 - The Vercel platform-entry exemptions stay absent until a real platform entry
   is introduced and reviewed.
+- Together temporarily uses `legacy-peer-deps=true` because
+  `better-call@1.3.7` and `@better-auth/core@1.6.23` peer-require zod 4 while
+  the product remains on zod 3. The setting keeps `npm ci` and `lock-lint`
+  reproducible; it does not approve new peer conflicts. Remove it when Together
+  migrates to zod 4 or the auth dependency graph no longer requires it, and
+  review peer warnings on every dependency change until then.

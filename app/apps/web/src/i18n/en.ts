@@ -59,6 +59,7 @@ export const en: Messages = {
     messageIntegrationUnavailable:
       'The external service is temporarily unavailable. Please try again in a moment.',
     messageRateLimited: 'Too many attempts. Please wait a moment before trying again.',
+    messageSlugReservedGeneric: 'That address is reserved by the platform. Pick another one.',
     messageSlugReserved: ({ slug }) =>
       format('The `{slug}` address is reserved by the platform. Pick another one — adding your brand name usually works.', { slug }),
     messageInternal: 'Something went wrong on our end. Please try again in a moment.',

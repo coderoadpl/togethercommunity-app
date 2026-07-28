@@ -59,6 +59,7 @@ export interface Messages {
     messageIntegrationAuth: string;
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
+    messageSlugReservedGeneric: string;
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;

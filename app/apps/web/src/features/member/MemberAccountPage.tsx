@@ -118,8 +118,7 @@ export const MemberAccountPage = () => {
           </SectionCard>
         ) : null}
 
-        {tenantSettings.data?.settings.supportEmail !== null &&
-        tenantSettings.data?.settings.supportEmail !== undefined ? (
+        {tenantSettings.data?.settings.supportConfigured === true ? (
           <SectionCard
             title={t.support.heading}
             description={t.support.intro}

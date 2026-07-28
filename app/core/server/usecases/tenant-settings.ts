@@ -26,7 +26,12 @@ export const getTenantSettings = async (
   if (!tenant.ok) return tenant;
   const settings = await deps.tenants.findSettings(tenant.value);
   if (!settings) return err(tenantNotFound());
-  return ok(settings);
+  const supportConfigured = settings.supportEmail !== null && settings.supportEmail !== undefined;
+  return ok(
+    ctx.identity.staffRole === null
+      ? { ...settings, supportEmail: null, supportConfigured }
+      : { ...settings, supportConfigured },
+  );
 };
 
 export const updateTenantSettings = async (

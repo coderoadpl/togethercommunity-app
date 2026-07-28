@@ -70,4 +70,41 @@ describe('listPaidOrdersWithoutGrant', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+
+  it('applies default query values', async () => {
+    const result = await listPaidOrdersWithoutGrant(
+      { identity: identity('owner') },
+      {},
+      {
+        orders: orders([row]),
+        clock: { nowIso: () => '2026-07-14T10:00:00.000Z' },
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { rows: [row], checkedThrough: '2026-07-14T09:45:00.000Z' },
+    });
+  });
+
+  it('rejects out-of-range ages and limits', async () => {
+    const deps = {
+      orders: orders([row]),
+      clock: { nowIso: () => '2026-07-14T10:00:00.000Z' },
+    };
+    expect(
+      await listPaidOrdersWithoutGrant(
+        { identity: identity('admin') },
+        { minAgeMinutes: -1 },
+        deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(
+      await listPaidOrdersWithoutGrant(
+        { identity: identity('admin') },
+        { limit: 201 },
+        deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });

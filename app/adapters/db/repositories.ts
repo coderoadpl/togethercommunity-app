@@ -788,7 +788,7 @@ export const createPostRepository = (db: Db): PostRepository => ({
   softDelete: async (tenantId, input) => {
     const rows = await db
       .update(posts)
-      .set({ deletedAt: input.deletedAt })
+      .set({ deletedAt: input.deletedAt, pinnedAt: null })
       .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
       .returning();
     const row = rows[0];

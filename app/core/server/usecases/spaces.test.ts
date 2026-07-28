@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MAX_PINNED_POSTS_PER_SPACE,
   type Identity,
   type Member,
   type Notification,
@@ -32,7 +33,7 @@ import type {
   ThreadSubscription,
   ThreadSubscriptionRepository,
 } from '../ports.js';
-import { createPost, type CommunityDeps } from './community.js';
+import { createPost, deletePost, type CommunityDeps } from './community.js';
 import {
   createSpace,
   deleteSpace,
@@ -235,7 +236,7 @@ class FakePosts implements PostRepository {
   async softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null> {
     const post = await this.findById(tenantId, input.id);
     if (!post) return null;
-    const next = { ...post, deletedAt: input.deletedAt };
+    const next = { ...post, deletedAt: input.deletedAt, pinnedAt: null };
     const index = this.rows.findIndex((item) => item.id === post.id);
     this.rows[index] = next;
     return next;
@@ -733,6 +734,92 @@ describe('space feed', () => {
     expect(
       await setPostPinned(staff, { postId: created.value.id, pinned: false }, f.deps),
     ).toMatchObject({ ok: true, value: { pinnedAt: null } });
+  });
+
+  it('frees the pin slot and removes a pinned post from the feed when its author deletes it', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const created = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'do usunięcia' },
+      f.deps,
+    );
+    if (!created.ok) throw new Error('post was not created');
+    const staff = ctx({ staffRole: 'admin', memberId: null });
+    expect(
+      await setPostPinned(staff, { postId: created.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: true });
+
+    expect(await deletePost(ctx(), { id: created.value.id }, f.deps)).toMatchObject({
+      ok: true,
+      value: { deletedAt: expect.any(String), pinnedAt: null },
+    });
+    expect(
+      await f.posts.countPinnedForContext('t1', {
+        contextKind: 'space',
+        contextId: 's-open',
+      }),
+    ).toBe(0);
+    expect(await getSpaceFeed(ctx(), { spaceId: 's-open' }, f.deps)).toMatchObject({
+      ok: true,
+      value: {
+        pinned: [],
+        items: [{ id: created.value.id, deletedAt: expect.any(String), pinnedAt: null }],
+      },
+    });
+  });
+
+  it('enforces the pin limit and rejects lesson posts and replies', async () => {
+    const f = fixture({ spaces: [space({ ...membersSpace })] });
+    const staff = ctx({ staffRole: 'admin', memberId: null });
+    for (let index = 0; index < MAX_PINNED_POSTS_PER_SPACE; index += 1) {
+      const created = await createPost(
+        ctx(),
+        { contextKind: 'space', contextId: 's-open', body: `pin ${String(index)}` },
+        f.deps,
+      );
+      if (!created.ok) throw new Error('post was not created');
+      expect(
+        await setPostPinned(staff, { postId: created.value.id, pinned: true }, f.deps),
+      ).toMatchObject({ ok: true });
+    }
+    const overflow = await createPost(
+      ctx(),
+      { contextKind: 'space', contextId: 's-open', body: 'overflow' },
+      f.deps,
+    );
+    if (!overflow.ok) throw new Error('post was not created');
+    expect(
+      await setPostPinned(staff, { postId: overflow.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    const storedOverflow = await f.posts.findById('t1', overflow.value.id);
+    if (storedOverflow === null) throw new Error('stored post was not found');
+    const lessonPost: Post = {
+      ...storedOverflow,
+      id: 'lesson-post',
+      rootPostId: 'lesson-post',
+      contextKind: 'lesson' as const,
+      contextId: 'lesson-1',
+    };
+    f.posts.rows.push(lessonPost);
+    expect(
+      await setPostPinned(staff, { postId: lessonPost.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
+
+    const reply = await createPost(
+      ctx(),
+      {
+        contextKind: 'space',
+        contextId: 's-open',
+        parentPostId: overflow.value.id,
+        body: 'reply',
+      },
+      f.deps,
+    );
+    if (!reply.ok) throw new Error('reply was not created');
+    expect(
+      await setPostPinned(staff, { postId: reply.value.id, pinned: true }, f.deps),
+    ).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('paginates newest-first with reply counts and reaction summaries', async () => {

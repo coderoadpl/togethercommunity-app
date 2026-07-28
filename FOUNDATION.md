@@ -46,8 +46,9 @@ kept synchronized by reviewing upstream changes to these paths:
   dependency.
 - Together keeps its larger `ERROR_CODES` union and existing exhaustive CLI
   exit-code numbering.
-- The Vercel platform-entry exemptions stay absent until a real platform entry
-  is introduced and reviewed.
+- The Vercel platform-entry exemptions apply only to
+  `apps/server/src/entry.vercel.ts`; all other app and core paths remain under
+  vendor containment.
 - Together temporarily uses `legacy-peer-deps=true` because
   `better-call@1.3.7` and `@better-auth/core@1.6.23` peer-require zod 4 while
   the product remains on zod 3. The setting keeps `npm ci` and `lock-lint`

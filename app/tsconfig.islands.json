@@ -4,6 +4,14 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["apps/web/src/features/*/core/**/*.ts"],
-  "exclude": ["node_modules", "dist", "apps/web/src/features/*/core/**/*.test.ts"]
+  "include": [
+    "apps/web/src/features/*/core/**/*.ts",
+    "apps/web/src/features/*/core/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "apps/web/src/features/*/core/**/*.test.ts",
+    "apps/web/src/features/*/core/**/*.test.tsx"
+  ]
 }

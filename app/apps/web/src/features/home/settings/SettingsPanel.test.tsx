@@ -15,6 +15,9 @@ interface StoredSettings {
   logoUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  ogImageUrl?: string | null;
   termsUrl: string | null;
   privacyUrl: string | null;
   invoicingProvider?: 'ifirma' | 'ksef';
@@ -145,6 +148,31 @@ describe('SettingsPanel branding', () => {
       logoUrl: 'https://cdn.example.com/logo.svg',
       accentColor: '#0E7490',
       faviconUrl: 'https://cdn.example.com/favicon.svg',
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+    });
+  });
+
+  it('saves and reloads social metadata through the settings endpoint', async () => {
+    const { updates } = renderPanel();
+
+    await userEvent.type(await screen.findByTestId('branding-og-title'), 'Akademia Acme');
+    await userEvent.type(screen.getByTestId('branding-og-description'), 'Praktyczna nauka');
+    await userEvent.type(
+      screen.getByTestId('branding-og-image-url'),
+      'https://cdn.example.com/social.png',
+    );
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual({
+      logoUrl: null,
+      accentColor: null,
+      faviconUrl: null,
+      ogTitle: 'Akademia Acme',
+      ogDescription: 'Praktyczna nauka',
+      ogImageUrl: 'https://cdn.example.com/social.png',
     });
   });
 
@@ -185,6 +213,13 @@ describe('SettingsPanel branding', () => {
     await userEvent.click(screen.getByTestId('branding-save'));
 
     expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
-    expect(updates).toContainEqual({ logoUrl: null, accentColor: null, faviconUrl: null });
+    expect(updates).toContainEqual({
+      logoUrl: null,
+      accentColor: null,
+      faviconUrl: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+    });
   });
 });

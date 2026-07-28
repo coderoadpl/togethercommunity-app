@@ -85,6 +85,7 @@ import {
   notificationsReadAllOutputSchema,
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
+  ordersReconciliationOutputSchema,
   orderDetailOutputSchema,
   invoiceOutputSchema,
   ordersExportOutputSchema,
@@ -95,6 +96,7 @@ import {
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
   postOutputSchema,
+  postPinOutputSchema,
   postReactOutputSchema,
   postsSearchOutputSchema,
   spaceDeleteOutputSchema,
@@ -116,6 +118,7 @@ import {
   stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
+  supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
   tenantSecretsListOutputSchema,
@@ -170,6 +173,7 @@ import {
   type NotificationReadInput,
   type NotificationsListInput,
   type OrdersListQueryInput,
+  type OrdersReconciliationQueryInput,
   type OrdersExportQueryInput,
   type ProductPriceCreateInput,
   type ProductPriceDeactivateInput,
@@ -177,6 +181,7 @@ import {
   type DiscussionGetInput,
   type PostCreateInput,
   type PostDeleteInput,
+  type PostPinInput,
   type PostReactInput,
   type PostUpdateInput,
   type PostsSearchInput,
@@ -186,6 +191,7 @@ import {
   type SpaceFeedGetInput,
   type SpaceFollowInput,
   type SpaceUpdateInput,
+  type SupportMessageInput,
   type ProductsAccessItemsInput,
   type ProductsPublishInput,
   type ReadMethod,
@@ -629,6 +635,27 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  listOrderReconciliation: (
+    input: OrdersReconciliationQueryInput = {},
+    signal?: AbortSignal,
+  ) => {
+    const params = new URLSearchParams();
+    if (input.minAgeMinutes !== undefined) {
+      params.set('minAgeMinutes', String(input.minAgeMinutes));
+    }
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    return request(
+      options,
+      API_ROUTES.ordersReconciliation.method,
+      suffix.length > 0
+        ? `${API_ROUTES.ordersReconciliation.path}?${suffix}`
+        : API_ROUTES.ordersReconciliation.path,
+      ordersReconciliationOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   getOrder: (id: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1017,6 +1044,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   createPost: (input: PostCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsCreate.method, API_ROUTES.postsCreate.path, postOutputSchema, input, signal),
+  pinPost: (input: PostPinInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsPin.method,
+      API_ROUTES.postsPin.path,
+      postPinOutputSchema,
+      input,
+      signal,
+    ),
   updatePost: (input: PostUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsUpdate.method, API_ROUTES.postsUpdate.path, postOutputSchema, input, signal),
   deletePost: (input: PostDeleteInput, signal?: AbortSignal) =>
@@ -1285,6 +1321,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.tenantSettingsUpdate.method,
       API_ROUTES.tenantSettingsUpdate.path,
       tenantSettingsOutputSchema,
+      input,
+      signal,
+    ),
+  sendSupportMessage: (input: SupportMessageInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.supportMessage.method,
+      API_ROUTES.supportMessage.path,
+      supportMessageOutputSchema,
       input,
       signal,
     ),

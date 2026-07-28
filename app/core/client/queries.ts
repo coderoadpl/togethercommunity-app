@@ -54,6 +54,7 @@ import type {
   DiscussionGetInput,
   PostCreateInput,
   PostDeleteInput,
+  PostPinInput,
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
@@ -63,11 +64,13 @@ import type {
   SpaceFeedGetInput,
   SpaceFollowInput,
   SpaceUpdateInput,
+  SupportMessageInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
   ProductPriceCreateInput,
   ProductPriceDeactivateInput,
   OrdersListQueryInput,
+  OrdersReconciliationQueryInput,
   OrdersExportQueryInput,
   SimulatePurchaseInput,
   TenantCreateInput,
@@ -174,6 +177,8 @@ export const salesScopes = {
   order: (id: string) => ['sales', 'order', id] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
   summary: () => ['sales', 'summary'] as const,
+  reconciliation: (input: OrdersReconciliationQueryInput) =>
+    ['sales', 'reconciliation', input] as const,
 };
 
 export const couponScopes = {
@@ -518,6 +523,15 @@ export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
   defineQuery({
     queryKey: salesScopes.orders(input),
     call: ({ signal }) => api.listOrders(input, signal),
+  });
+
+export const orderReconciliationQuery = (
+  api: ApiClient,
+  input: OrdersReconciliationQueryInput = {},
+) =>
+  defineQuery({
+    queryKey: salesScopes.reconciliation(input),
+    call: ({ signal }) => api.listOrderReconciliation(input, signal),
   });
 
 export const memberBillingOrdersQuery = (api: ApiClient) =>
@@ -911,6 +925,12 @@ export const reactToPostMutation = (api: ApiClient) =>
     call: (input: PostReactInput) => api.reactToPost(input),
   });
 
+export const pinPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'pin'],
+    call: (input: PostPinInput) => api.pinPost(input),
+  });
+
 export const unreactToPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unreact'],
@@ -1034,6 +1054,12 @@ export const updateTenantSettingsMutation = (api: ApiClient) =>
   });
 
 export const tenantSettingsInvalidates = () => ({ queryKey: tenantSettingsScopes.all() });
+
+export const sendSupportMessageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['support', 'message'],
+    call: (input: SupportMessageInput) => api.sendSupportMessage(input),
+  });
 
 export const onboardingQuery = (api: ApiClient) =>
   defineQuery({

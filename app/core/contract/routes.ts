@@ -45,6 +45,8 @@ import {
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
+  orderReconciliationQuerySchema,
+  paidWithoutGrantRowSchema,
   invoiceSchema,
   priceIntervalSchema,
   priceKindSchema,
@@ -66,6 +68,7 @@ import {
   notificationListInputSchema,
   notificationMarkReadInputSchema,
   notificationSchema,
+  pinPostInputSchema,
   newProductSchema,
   nextLessonSchema,
   publicPostSchema,
@@ -74,6 +77,7 @@ import {
   productSchema,
   progressViewSchema,
   searchPostsInputSchema,
+  sendSupportMessageInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
   streamVideoPageSchema,
@@ -84,6 +88,7 @@ import {
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
+  tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
   consentDefinitionVersionSchema,
@@ -217,6 +222,7 @@ export const publicOfferOutputSchema = z.object({
     name: z.string(),
     branding: tenantBrandingSchema.default({}),
     legal: publicLegalUrlsSchema.default({}),
+    support: tenantSupportPublicSchema.default({ url: null }),
   }),
   contentVersion: z.number().int().positive(),
   products: z.array(
@@ -427,6 +433,15 @@ export const ordersExportQuerySchema = exportOrdersQuerySchema;
 export type OrdersExportQueryInput = z.input<typeof ordersExportQuerySchema>;
 
 export const ordersExportOutputSchema = orderExportFileSchema;
+
+export const ordersReconciliationQuerySchema = orderReconciliationQuerySchema;
+
+export type OrdersReconciliationQueryInput = z.input<typeof ordersReconciliationQuerySchema>;
+
+export const ordersReconciliationOutputSchema = z.object({
+  rows: z.array(paidWithoutGrantRowSchema),
+  checkedThrough: z.string().datetime(),
+});
 
 export const salesSummaryOutputSchema = z.object({
   summary: salesSummarySchema,
@@ -746,6 +761,14 @@ export const postReactOutputSchema = z.object({
   reactions: z.array(reactionSummarySchema),
 });
 
+export const postPinInputSchema = pinPostInputSchema;
+
+export type PostPinInput = z.input<typeof postPinInputSchema>;
+
+export const postPinOutputSchema = z.object({
+  post: publicPostSchema,
+});
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -842,6 +865,12 @@ export const onboardingOutputSchema = z.object({
 export const tenantSettingsUpdateInputSchema = updateTenantSettingsInputSchema;
 
 export type TenantSettingsUpdateInput = z.input<typeof tenantSettingsUpdateInputSchema>;
+
+export const supportMessageInputSchema = sendSupportMessageInputSchema;
+
+export type SupportMessageInput = z.input<typeof supportMessageInputSchema>;
+
+export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 
 export const stripeTestConnectionOutputSchema = z.object({
   ok: z.literal(true),
@@ -1086,6 +1115,7 @@ export const API_ROUTES = {
   productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
   orders: { method: 'GET', path: '/api/orders' },
+  ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
   invoiceRefresh: { method: 'POST', path: '/api/invoices/:invoiceId/refresh' },
@@ -1124,6 +1154,7 @@ export const API_ROUTES = {
   studentLastViewed: { method: 'POST', path: '/api/student/progress/last-viewed' },
   studentProgress: { method: 'GET', path: '/api/student/progress' },
   postsCreate: { method: 'POST', path: '/api/posts' },
+  postsPin: { method: 'POST', path: '/api/posts/pin' },
   postsUpdate: { method: 'POST', path: '/api/posts/update' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
@@ -1222,6 +1253,7 @@ export const API_ROUTES = {
   memberEmailSends: { method: 'GET', path: '/api/members/:id/emails' },
   tenantSettings: { method: 'GET', path: '/api/tenant/settings' },
   tenantSettingsUpdate: { method: 'POST', path: '/api/tenant/settings' },
+  supportMessage: { method: 'POST', path: '/api/support/message' },
   onboarding: { method: 'GET', path: '/api/onboarding' },
   onboardingDismiss: { method: 'POST', path: '/api/onboarding/dismiss' },
 } as const;
@@ -1253,6 +1285,7 @@ export const API_PATHS = {
   productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
   productPrices: API_ROUTES.productPrices.path,
   orders: API_ROUTES.orders.path,
+  ordersReconciliation: API_ROUTES.ordersReconciliation.path,
   order: API_ROUTES.order.path,
   invoiceIssue: API_ROUTES.invoiceIssue.path,
   invoiceRefresh: API_ROUTES.invoiceRefresh.path,
@@ -1290,6 +1323,7 @@ export const API_PATHS = {
   studentLastViewed: API_ROUTES.studentLastViewed.path,
   studentProgress: API_ROUTES.studentProgress.path,
   postsCreate: API_ROUTES.postsCreate.path,
+  postsPin: API_ROUTES.postsPin.path,
   postsUpdate: API_ROUTES.postsUpdate.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,
@@ -1379,6 +1413,7 @@ export const API_PATHS = {
   globalSchedulerRun: API_ROUTES.globalSchedulerRun.path,
   tenantSettings: API_ROUTES.tenantSettings.path,
   tenantSettingsUpdate: API_ROUTES.tenantSettingsUpdate.path,
+  supportMessage: API_ROUTES.supportMessage.path,
   onboarding: API_ROUTES.onboarding.path,
   onboardingDismiss: API_ROUTES.onboardingDismiss.path,
 } as const;

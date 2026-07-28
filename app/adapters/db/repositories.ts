@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -14,6 +14,7 @@ import {
   notificationSchema,
   orderSchema,
   orderListItemSchema,
+  paidWithoutGrantRowSchema,
   productPriceSchema,
   postSchema,
   REACTION_EMOJIS,
@@ -55,6 +56,7 @@ import type {
   CheckoutConsentCaptureRepository,
   DevEmailReader,
   DevMagicLinkReader,
+  DevSinkPurge,
   EntityVersionRecord,
   EntityVersionRepository,
   HealthPort,
@@ -786,11 +788,50 @@ export const createPostRepository = (db: Db): PostRepository => ({
   softDelete: async (tenantId, input) => {
     const rows = await db
       .update(posts)
-      .set({ deletedAt: input.deletedAt })
+      .set({ deletedAt: input.deletedAt, pinnedAt: null })
       .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
       .returning();
     const row = rows[0];
     return row ? parsePost(row) : null;
+  },
+  setPinned: async (tenantId, input) => {
+    const rows = await db
+      .update(posts)
+      .set({ pinnedAt: input.pinnedAt })
+      .where(and(eq(posts.tenantId, tenantId), eq(posts.id, input.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parsePost(row) : null;
+  },
+  listPinnedForContext: async (tenantId, query) =>
+    (
+      await db
+        .select()
+        .from(posts)
+        .where(
+          and(
+            eq(posts.tenantId, tenantId),
+            eq(posts.contextKind, query.contextKind),
+            eq(posts.contextId, query.contextId),
+            isNotNull(posts.pinnedAt),
+          ),
+        )
+        .orderBy(desc(posts.pinnedAt), desc(posts.id))
+        .limit(query.limit)
+    ).map(parsePost),
+  countPinnedForContext: async (tenantId, query) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(
+        and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.contextKind, query.contextKind),
+          eq(posts.contextId, query.contextId),
+          isNotNull(posts.pinnedAt),
+        ),
+      );
+    return rows[0]?.value ?? 0;
   },
   search: async (tenantId, query) => {
     const contextFilters: SQL[] = [];
@@ -1732,6 +1773,47 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
         );
       return rows[0]?.value ?? 0;
     },
+    listPaidWithoutGrant: async (tenantId, query) =>
+      (
+        await db
+          .select({
+            orderId: orders.id,
+            createdAt: orders.createdAt,
+            memberId: orders.memberId,
+            memberEmail: members.email,
+            productId: orders.productId,
+            productTitle: products.title,
+            kind: orders.kind,
+            provider: orders.provider,
+            amountCents: orders.amountCents,
+            currency: orders.currency,
+            providerObjectIds: orders.providerObjectIds,
+          })
+          .from(orders)
+          .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+          .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+          .where(
+            and(
+              eq(orders.tenantId, tenantId),
+              eq(orders.status, 'paid'),
+              sql`${orders.createdAt} <= ${query.paidBefore}`,
+              notExists(
+                db
+                  .select({ id: productGrants.id })
+                  .from(productGrants)
+                  .where(
+                    and(
+                      eq(productGrants.tenantId, orders.tenantId),
+                      eq(productGrants.memberId, orders.memberId),
+                      eq(productGrants.productId, orders.productId),
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .orderBy(desc(orders.createdAt), desc(orders.id))
+          .limit(query.limit)
+      ).map((row) => paidWithoutGrantRowSchema.parse(row)),
   };
 };
 
@@ -2073,6 +2155,16 @@ export const createDevEmailReader = (db: Db): DevEmailReader => ({
   },
 });
 
+export const createDevSinkPurge = (db: Db): DevSinkPurge => ({
+  purge: async () => {
+    const [magicLinks, emails] = await Promise.all([
+      db.delete(devMagicLinks).returning({ email: devMagicLinks.email }),
+      db.delete(devEmails).returning({ to: devEmails.to }),
+    ]);
+    return { magicLinks: magicLinks.length, emails: emails.length };
+  },
+});
+
 export const createTenantDomainRepository = (db: Db): TenantDomainRepository => ({
   findByDomain: async (domain) => {
     const rows = await db
@@ -2103,6 +2195,11 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         logoUrl: tenants.logoUrl,
         accentColor: tenants.accentColor,
         faviconUrl: tenants.faviconUrl,
+        ogTitle: tenants.ogTitle,
+        ogDescription: tenants.ogDescription,
+        ogImageUrl: tenants.ogImageUrl,
+        supportEmail: tenants.supportEmail,
+        supportUrl: tenants.supportUrl,
         termsUrl: tenants.termsUrl,
         privacyUrl: tenants.privacyUrl,
         autoIssueInvoices: tenants.autoIssueInvoices,
@@ -2123,6 +2220,11 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
           logoUrl: row.logoUrl,
           accentColor: row.accentColor,
           faviconUrl: row.faviconUrl,
+          ogTitle: row.ogTitle,
+          ogDescription: row.ogDescription,
+          ogImageUrl: row.ogImageUrl,
+          supportEmail: row.supportEmail,
+          supportUrl: row.supportUrl,
           termsUrl: row.termsUrl,
           privacyUrl: row.privacyUrl,
           autoIssueInvoices: row.autoIssueInvoices,
@@ -2148,6 +2250,11 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         logoUrl: settings.logoUrl,
         accentColor: settings.accentColor,
         faviconUrl: settings.faviconUrl,
+        ogTitle: settings.ogTitle,
+        ogDescription: settings.ogDescription,
+        ogImageUrl: settings.ogImageUrl,
+        supportEmail: settings.supportEmail,
+        supportUrl: settings.supportUrl,
         termsUrl: settings.termsUrl,
         privacyUrl: settings.privacyUrl,
         autoIssueInvoices: settings.autoIssueInvoices,
@@ -2164,6 +2271,11 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       logoUrl: settings.logoUrl,
       accentColor: settings.accentColor,
       faviconUrl: settings.faviconUrl,
+      ogTitle: settings.ogTitle,
+      ogDescription: settings.ogDescription,
+      ogImageUrl: settings.ogImageUrl,
+      supportEmail: settings.supportEmail,
+      supportUrl: settings.supportUrl,
       termsUrl: settings.termsUrl,
       privacyUrl: settings.privacyUrl,
       autoIssueInvoices: settings.autoIssueInvoices,

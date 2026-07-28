@@ -61,6 +61,7 @@ const harness = (rows: OrderListItem[] = []) => {
       },
       revenueSince: async () => [{ currency: 'PLN', amountCents: 14700 }],
       countSince: async () => 3,
+      listPaidWithoutGrant: async () => [],
     },
     subscriptions: {
       findById: async () => null,

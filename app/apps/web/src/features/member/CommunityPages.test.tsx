@@ -63,6 +63,7 @@ const feedItem = (input: Partial<SpaceFeedItem> & { id: string }): SpaceFeedItem
   createdAt: '2026-07-20T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
+  pinnedAt: null,
   replyCount: 0,
   reactions: [],
   ...input,

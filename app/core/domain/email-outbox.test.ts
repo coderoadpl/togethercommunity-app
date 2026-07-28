@@ -103,6 +103,28 @@ describe('renderEmailOutboxPayload', () => {
     if (rendered.success) expect(rendered.data.html).toContain('Społeczność');
   });
 
+  it('renders subscription lifecycle payloads', () => {
+    const failed = renderEmailOutboxPayload({
+      kind: 'subscription-payment-failed',
+      language: 'pl',
+      tenantName: 'Kamperowo',
+      productTitle: 'Kurs',
+      accessEndsAt: '2026-08-17T10:00:00.000Z',
+      billingPortalUrl: null,
+    });
+    expect(failed.success).toBe(true);
+
+    const ended = renderEmailOutboxPayload({
+      kind: 'subscription-ended',
+      language: 'en',
+      tenantName: 'Kamperowo',
+      productTitle: 'Course',
+      accessEndsAt: '2026-08-14T10:00:00.000Z',
+      offerUrl: 'https://kamperowo.test/',
+    });
+    expect(ended.success).toBe(true);
+  });
+
   it('fails on an unknown payload kind', () => {
     const rendered = renderEmailOutboxPayload({ kind: 'nonsense', language: 'pl' });
     expect(rendered.success).toBe(false);

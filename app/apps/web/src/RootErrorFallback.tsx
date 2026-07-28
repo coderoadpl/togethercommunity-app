@@ -22,6 +22,8 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingValidation;
     case 'conflict':
       return t.errors.headingConflict;
+    case 'slug_reserved':
+      return t.errors.headingSlugReserved;
     case 'integration_not_configured':
     case 'integration_auth':
     case 'integration_unavailable':

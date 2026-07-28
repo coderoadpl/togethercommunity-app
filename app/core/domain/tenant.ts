@@ -11,6 +11,35 @@ export const tenantSchema = z.object({
 
 export type Tenant = z.infer<typeof tenantSchema>;
 
+export const RESERVED_TENANT_SLUGS = [
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'auth',
+  'billing',
+  'blog',
+  'cdn',
+  'dashboard',
+  'dev',
+  'docs',
+  'ftp',
+  'help',
+  'login',
+  'mail',
+  'panel',
+  'prod',
+  'smtp',
+  'staging',
+  'static',
+  'status',
+  'support',
+  'www',
+] as const;
+
+export const isReservedTenantSlug = (slug: string): boolean =>
+  RESERVED_TENANT_SLUGS.some((reserved) => reserved === slug);
+
 /** BYO pointer: an absolute URL or a root-relative path served by the app itself. */
 export const brandingAssetUrlSchema = z.union([z.string().url(), z.string().regex(/^\/\S+$/)]);
 
@@ -30,12 +59,24 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
   faviconUrl: null,
 };
 
+const OG_TITLE_MAX_LENGTH = 70;
+const OG_DESCRIPTION_MAX_LENGTH = 200;
+
+const tenantSocialSchema = z.object({
+  ogTitle: z.string().max(OG_TITLE_MAX_LENGTH).nullable().default(null),
+  ogDescription: z.string().max(OG_DESCRIPTION_MAX_LENGTH).nullable().default(null),
+  ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
+});
+
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
+  supportEmail: z.string().email().nullable().default(null),
+  supportConfigured: z.boolean().optional(),
+  supportUrl: z.string().url().nullable().default(null),
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
   autoIssueInvoices: z.boolean().optional(),
@@ -44,7 +85,7 @@ export const tenantSettingsSchema = z.object({
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
-});
+}).extend(tenantSocialSchema.shape);
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
 
@@ -56,6 +97,18 @@ const clearableBrandingAssetUrl = z
 
 const clearableUrl = z
   .union([z.string().url(), z.literal('')])
+  .nullable()
+  .transform((value) => (value === '' || value === null ? null : value))
+  .optional();
+
+const clearableEmail = z
+  .union([z.string().email(), z.literal('')])
+  .nullable()
+  .transform((value) => (value === '' || value === null ? null : value))
+  .optional();
+
+const clearableText = (max: number) => z
+  .union([z.string().trim().max(max), z.literal('')])
   .nullable()
   .transform((value) => (value === '' || value === null ? null : value))
   .optional();
@@ -76,6 +129,11 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
+  ogTitle: clearableText(OG_TITLE_MAX_LENGTH),
+  ogDescription: clearableText(OG_DESCRIPTION_MAX_LENGTH),
+  ogImageUrl: clearableBrandingAssetUrl,
+  supportEmail: clearableEmail,
+  supportUrl: clearableUrl,
   termsUrl: clearableUrl,
   privacyUrl: clearableUrl,
   autoIssueInvoices: z.boolean().optional(),
@@ -87,6 +145,21 @@ export const updateTenantSettingsInputSchema = z.object({
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+export const resolveTenantSocial = (
+  tenant: Tenant,
+  settings: TenantSettings | null,
+): { title: string; description: string | null; imageUrl: string | null } => ({
+  title: settings?.ogTitle ?? tenant.name,
+  description: settings?.ogDescription ?? null,
+  imageUrl: settings?.ogImageUrl ?? settings?.logoUrl ?? null,
+});
+
+export const tenantSupportPublicSchema = z.object({
+  url: z.string().url().nullable(),
+});
+
+export type TenantSupportPublic = z.infer<typeof tenantSupportPublicSchema>;
 
 export const membershipSchema = z.object({
   tenant: tenantSchema,

@@ -566,6 +566,16 @@ describe('space visibility', () => {
 });
 
 describe('space CRUD', () => {
+  it('requires the declared space write capability', async () => {
+    const f = fixture({ spaces: [] });
+    const identity = ctx({ staffRole: 'owner', memberId: null }).identity;
+    expect(await createSpace(
+      { identity, capabilities: ['space:read'] },
+      { slug: 'x', name: 'X', visibility: 'members' },
+      f.deps,
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('is staff-only and rejects duplicate slugs', async () => {
     const f = fixture({ spaces: [space({ ...membersSpace })] });
     const denied = await createSpace(ctx(), { slug: 'x', name: 'X', visibility: 'members' }, f.deps);

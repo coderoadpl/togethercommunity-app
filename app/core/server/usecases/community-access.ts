@@ -5,6 +5,7 @@ import {
   ok,
   tenantNotFound,
   type AppError,
+  type Capability,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -13,6 +14,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   CourseLessonRepository,
@@ -36,17 +38,25 @@ export interface MemberScope extends ActorScope {
   memberId: string;
 }
 
-export const requireTenant = (ctx: Ctx): Result<TenantScope, AppError> =>
-  ctx.identity.tenantId ? ok({ tenantId: ctx.identity.tenantId }) : err(tenantNotFound('Select a tenant'));
+export const requireTenant = (
+  ctx: Ctx,
+  capability: Capability,
+): Result<TenantScope, AppError> => {
+  const tenant = authorizeTenant(ctx, capability);
+  return tenant.ok ? ok({ tenantId: tenant.value }) : tenant;
+};
 
-export const requireActor = (ctx: Ctx): Result<ActorScope, AppError> => {
-  const tenant = requireTenant(ctx);
+export const requireActor = (ctx: Ctx, capability: Capability): Result<ActorScope, AppError> => {
+  const tenant = requireTenant(ctx, capability);
   if (!tenant.ok) return tenant;
   return ok({ tenantId: tenant.value.tenantId, userId: ctx.identity.userId });
 };
 
-export const requireMemberOrStaff = (ctx: Ctx): Result<ActorScope, AppError> => {
-  const actor = requireActor(ctx);
+export const requireMemberOrStaff = (
+  ctx: Ctx,
+  capability: Capability,
+): Result<ActorScope, AppError> => {
+  const actor = requireActor(ctx, capability);
   if (!actor.ok) return actor;
   if (!ctx.identity.staffRole && !ctx.identity.memberId) {
     return err(forbidden('Only members or staff can use the community'));
@@ -71,7 +81,7 @@ export const lessonContextAccess = async (
   lessonId: string,
   deps: LessonAccessDeps,
 ): Promise<Result<void, AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = requireTenant(ctx, 'community:read');
   if (!tenant.ok) return tenant;
   if (ctx.identity.staffRole) return ok(undefined);
   const member = memberScope(ctx);
@@ -100,7 +110,7 @@ export const accessibleLessonIds = async (
   ctx: Ctx,
   deps: AccessibleLessonsDeps,
 ): Promise<Result<Set<string>, AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = requireTenant(ctx, 'community:read');
   if (!tenant.ok) return tenant;
   const [courses, modules, lessons] = await Promise.all([
     deps.courses.list(tenant.value.tenantId),
@@ -167,7 +177,7 @@ export const spaceContextAccess = async (
   spaceId: string,
   deps: SpaceAccessDeps,
 ): Promise<Result<Space, AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = requireTenant(ctx, 'space:read');
   if (!tenant.ok) return tenant;
   const space = await deps.spaces.findById(tenant.value.tenantId, spaceId);
   if (!space) return err(notFound('Space not found'));
@@ -184,7 +194,7 @@ export const listAccessibleSpaces = async (
   ctx: Ctx,
   deps: SpaceAccessDeps,
 ): Promise<Result<Space[], AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = requireTenant(ctx, 'space:read');
   if (!tenant.ok) return tenant;
   const spaces = await deps.spaces.list(tenant.value.tenantId);
   if (ctx.identity.staffRole) return ok(spaces);

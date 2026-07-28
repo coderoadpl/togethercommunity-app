@@ -132,6 +132,18 @@ const QUERY_CLIENT_SINGLETON_PATTERN = {
     'Do not import the QueryClient singleton: reach it via useQueryClient(). Only main.tsx wires it.',
 };
 
+const ISLAND_CORE_PURITY =
+  'Island cores are pure TypeScript: React and TanStack React Query stay outside the core seam.';
+const ISLAND_CORE_IMPORT_BANS = ['react', 'react-dom', '@tanstack/react-query'].map((name) => ({
+  name,
+  message: ISLAND_CORE_PURITY,
+}));
+const ISLAND_CORE_PORTABILITY_PATTERN = {
+  group: ['../*', '../**'],
+  message:
+    'Island cores are portable and DOM-free: inject web dependencies outside core instead of using parent-relative imports.',
+};
+
 /**
  * Layer boundaries (PRD §3.2). `boundaries/element-types` denies everything by
  * default; each rule below is an explicit permission. dependency-cruiser
@@ -204,6 +216,12 @@ export default tseslint.config(
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
+        {
+          type: 'web-island-core',
+          pattern: 'apps/web/src/features/(*)/core/**',
+          mode: 'full',
+          capture: ['feature'],
+        },
         {
           type: 'web-features',
           pattern: 'apps/web/src/features/(*)/**',
@@ -331,9 +349,19 @@ export default tseslint.config(
               allow: ['web-routes', 'web-features', 'web-layout', 'web-ui', 'web-lib'],
             },
             {
+              from: ['web-island-core'],
+              allow: [
+                ['web-island-core', { feature: '${from.feature}' }],
+                'core-domain',
+                'core-contract',
+                'core-client',
+              ],
+            },
+            {
               from: ['web-features'],
               allow: [
                 ['web-features', { feature: '${from.feature}' }],
+                ['web-island-core', { feature: '${from.feature}' }],
                 'web-api',
                 'web-layout',
                 'web-ui',
@@ -495,6 +523,10 @@ export default tseslint.config(
             {
               from: ['web-routes'],
               allow: ['@tanstack/react-router'],
+            },
+            {
+              from: ['web-island-core'],
+              allow: [],
             },
             {
               from: ['web-features'],
@@ -806,6 +838,44 @@ export default tseslint.config(
     files: ['apps/web/src/theme-mode.tsx'],
     rules: {
       'no-restricted-globals': ['error', ...HTTP_GLOBALS],
+    },
+  },
+  {
+    files: ['apps/web/src/features/*/core/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            ...HTTP_IMPORT_BANS,
+            ...STATE_LIB_BANS,
+            ...CLIENT_CONSTRUCTION_BANS,
+            ...DEVTOOLS_BAN,
+            ...ISLAND_CORE_IMPORT_BANS,
+          ],
+          patterns: [QUERY_CLIENT_SINGLETON_PATTERN, ISLAND_CORE_PORTABILITY_PATTERN],
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/web/src/features/*/core/events.ts'],
+    rules: {
+      'together/event-suffix-taxonomy': 'error',
+    },
+  },
+  {
+    files: ['apps/web/src/features/*/core/**/*.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message:
+            '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [{ from: ['web-island-core'], allow: ['vitest'] }],
+        },
+      ],
     },
   },
   {

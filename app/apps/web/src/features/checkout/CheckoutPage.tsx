@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
   Button,
@@ -26,6 +26,7 @@ import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
 import { CardTitle, DataValue, FinePrint } from '../../theme.js';
+import { createCheckoutState, reduceCheckoutState } from './index.web.js';
 
 type OfferPrice = {
   id: string;
@@ -94,11 +95,14 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('PL');
   const initialCouponCode = new URLSearchParams(window.location.search).get('code') ?? '';
-  const [couponVisible, setCouponVisible] = useState(initialCouponCode !== '');
-  const [couponCode, setCouponCode] = useState(initialCouponCode);
+  const [checkoutState, dispatchCheckout] = useReducer(
+    reduceCheckoutState,
+    initialCouponCode,
+    createCheckoutState,
+  );
+  const { couponVisible, couponCode, selectedPriceId } = checkoutState;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [marketingConsentDefinitionIds, setMarketingConsentDefinitionIds] = useState<string[]>([]);
-  const [selectedPriceId, setSelectedPriceId] = useState<string | null>(null);
   const [purchaseComplete, setPurchaseComplete] = useState(false);
   const [magicLinkUrl, setMagicLinkUrl] = useState<string | null>(null);
   const product = offer.data?.products.find((candidate) => candidate.id === productId);
@@ -304,7 +308,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 aria-labelledby="checkout-price-choice"
                 value={selectedPrice?.id ?? ''}
                 onChange={(event) => {
-                  setSelectedPriceId(event.target.value);
+                  dispatchCheckout({ type: 'priceSelected', priceId: event.target.value });
                   couponValidation.reset();
                 }}
               >
@@ -373,7 +377,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             </Stack>
           ) : null}
           {!couponVisible ? (
-            <Button type="button" variant="text" onClick={() => setCouponVisible(true)}>
+            <Button
+              type="button"
+              variant="text"
+              onClick={() => dispatchCheckout({ type: 'couponOpened' })}
+            >
               {t.checkout.couponReveal}
             </Button>
           ) : (
@@ -384,7 +392,10 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                   id="checkout-coupon"
                   value={couponCode}
                   onChange={(event) => {
-                    setCouponCode(event.target.value);
+                    dispatchCheckout({
+                      type: 'couponCodeChanged',
+                      couponCode: event.target.value,
+                    });
                     couponValidation.reset();
                   }}
                 />

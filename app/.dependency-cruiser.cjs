@@ -88,6 +88,20 @@ module.exports = {
       },
     },
     {
+      name: 'island-core-is-framework-agnostic',
+      severity: 'error',
+      from: { path: '^apps/web/src/features/[^/]+/core/' },
+      to: {
+        path: 'node_modules/(react|react-dom|@tanstack/react-query)(/|$)',
+      },
+    },
+    {
+      name: 'island-core-is-portable',
+      severity: 'error',
+      from: { path: '^apps/web/src/features/([^/]+)/core/' },
+      to: { path: '^apps/web/src/', pathNot: '^apps/web/src/features/$1/core/' },
+    },
+    {
       name: 'cli-is-a-pure-api-client',
       severity: 'error',
       from: { path: '^apps/cli' },

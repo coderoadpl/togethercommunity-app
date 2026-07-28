@@ -5,7 +5,6 @@ import {
   notFound,
   ok,
   renderFa3Invoice,
-  tenantNotFound,
   validateFa3Structure,
   validation,
   type AppError,
@@ -19,6 +18,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   ContentHash,
@@ -368,16 +368,16 @@ export const downloadInvoice = async (
   invoiceId: string,
   deps: InvoiceDeps,
 ): Promise<Result<{ content: Uint8Array; contentType: 'application/pdf'; filename: string }, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound());
-  if (ctx.identity.staffRole === null) return err(forbidden());
-  const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
+  const tenant = authorizeTenant(ctx, 'invoice:read');
+  if (!tenant.ok) return tenant;
+  const invoice = await deps.invoices.findById(tenant.value, invoiceId);
   if (invoice === null) return err(notFound('Invoice was not found'));
   if (invoice.provider === 'ksef') {
     if (invoice.ksef === null || invoice.ksef === undefined || deps.ksef?.pdf === undefined) {
       return err(validation('The KSeF invoice visualization is unavailable'));
     }
     const artifact = await deps.ksef.artifacts.findByKey(
-      ctx.identity.tenantId,
+      tenant.value,
       invoice.ksef.xmlArtifactKey,
     );
     if (artifact === null || deps.ksef.hash.sha256(artifact.content) !== invoice.ksef.xmlSha256) {
@@ -391,7 +391,7 @@ export const downloadInvoice = async (
     });
   }
   if (invoice.providerInvoiceId === null) return err(validation('The provider has not created this invoice yet'));
-  const config = await invoicingConfig(ctx.identity.tenantId, deps);
+  const config = await invoicingConfig(tenant.value, deps);
   if (!config.ok) return config;
   const downloaded = await deps.invoicing.downloadInvoice({
     providerInvoiceId: invoice.providerInvoiceId,
@@ -407,13 +407,14 @@ export const downloadMemberInvoice = async (
   invoiceId: string,
   deps: InvoiceDeps,
 ): Promise<Result<{ content: Uint8Array; contentType: 'application/pdf'; filename: string }, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound());
+  const tenant = authorizeTenant(ctx, 'invoice:member-read');
+  if (!tenant.ok) return tenant;
   if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));
   if (deps.invoices.findByIdForMember === undefined) {
     return err(integrationNotConfigured('Member invoice downloads are unavailable'));
   }
   const invoice = await deps.invoices.findByIdForMember(
-    ctx.identity.tenantId,
+    tenant.value,
     ctx.identity.memberId,
     invoiceId,
   );
@@ -426,7 +427,7 @@ export const downloadMemberInvoice = async (
     return err(validation('The member invoice visualization is unavailable'));
   }
   const artifact = await deps.ksef.artifacts.findByKey(
-    ctx.identity.tenantId,
+    tenant.value,
     invoice.ksef.xmlArtifactKey,
   );
   if (artifact === null || deps.ksef.hash.sha256(artifact.content) !== invoice.ksef.xmlSha256) {
@@ -444,15 +445,15 @@ export const downloadInvoiceUpo = async (
   invoiceId: string,
   deps: Pick<InvoiceDeps, 'invoices' | 'ksef'>,
 ): Promise<Result<{ content: Uint8Array; contentType: 'application/xml'; filename: string }, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound());
-  if (ctx.identity.staffRole === null) return err(forbidden());
-  const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
+  const tenant = authorizeTenant(ctx, 'invoice:read');
+  if (!tenant.ok) return tenant;
+  const invoice = await deps.invoices.findById(tenant.value, invoiceId);
   if (invoice?.ksef?.upoArtifactKey == null || invoice.ksef.upoSha256 === null
     || deps.ksef === undefined) {
     return err(notFound('KSeF UPO was not found'));
   }
   const artifact = await deps.ksef.artifacts.findByKey(
-    ctx.identity.tenantId,
+    tenant.value,
     invoice.ksef.upoArtifactKey,
   );
   if (artifact === null || artifact.sha256 !== invoice.ksef.upoSha256
@@ -471,11 +472,11 @@ export const requestInvoice = async (
   orderId: string,
   deps: InvoiceDeps,
 ): Promise<Result<Invoice, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound());
-  if (ctx.identity.staffRole === null) return err(forbidden('Only tenant staff can issue invoices'));
-  const order = await deps.orderDetails.findById(ctx.identity.tenantId, orderId);
+  const tenant = authorizeTenant(ctx, 'invoice:write');
+  if (!tenant.ok) return tenant;
+  const order = await deps.orderDetails.findById(tenant.value, orderId);
   if (order === null) return err(notFound('Order was not found'));
-  return issue(ctx.identity.tenantId, order, order.billing ?? null, deps);
+  return issue(tenant.value, order, order.billing ?? null, deps);
 };
 
 export const autoIssueOnPayment = async (
@@ -506,13 +507,13 @@ export const refreshInvoiceStatus = async (
   invoiceId: string,
   deps: InvoiceDeps,
 ): Promise<Result<Invoice, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound());
-  if (ctx.identity.staffRole === null) return err(forbidden());
-  const invoice = await deps.invoices.findById(ctx.identity.tenantId, invoiceId);
+  const tenant = authorizeTenant(ctx, 'invoice:write');
+  if (!tenant.ok) return tenant;
+  const invoice = await deps.invoices.findById(tenant.value, invoiceId);
   if (invoice === null) return err(notFound('Invoice was not found'));
   if (invoice.provider === 'ksef') return ok(invoice);
   if (invoice.providerInvoiceId === null) return ok(invoice);
-  const config = await invoicingConfig(ctx.identity.tenantId, deps);
+  const config = await invoicingConfig(tenant.value, deps);
   if (!config.ok) return config;
   const status = await deps.invoicing.getInvoiceStatus({
     providerInvoiceId: invoice.providerInvoiceId,
@@ -526,25 +527,23 @@ export const refreshInvoiceStatus = async (
   };
   const refreshedEvent = eventFor(
     deps,
-    ctx.identity.tenantId,
+    tenant.value,
     invoice.orderId,
     invoice.id,
     'refreshed',
     refreshed.error,
     { status: status.value },
   );
-  return ok((await deps.invoices.update(ctx.identity.tenantId, refreshed, refreshedEvent)) ?? refreshed);
+  return ok((await deps.invoices.update(tenant.value, refreshed, refreshedEvent)) ?? refreshed);
 };
 
 export const testIfirmaConnection = async (
   ctx: Ctx,
   deps: Pick<InvoiceDeps, 'invoicing' | 'tenantSecrets' | 'secretCrypto'>,
 ): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound('Select a tenant to test iFirma'));
-  if (ctx.identity.staffRole !== 'owner') {
-    return err(forbidden('Only the tenant owner can test iFirma'));
-  }
-  const config = await invoicingConfig(ctx.identity.tenantId, deps);
+  const tenant = authorizeTenant(ctx, 'integration:test');
+  if (!tenant.ok) return tenant;
+  const config = await invoicingConfig(tenant.value, deps);
   if (!config.ok) return config;
   const tested = await deps.invoicing.testConnection({ config: config.value });
   return tested.ok ? ok({ ok: true, diagnostic: tested.value.diagnostic }) : tested;
@@ -554,14 +553,12 @@ export const testKsefConnection = async (
   ctx: Ctx,
   deps: Pick<InvoiceDeps, 'ksef'>,
 ): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
-  if (ctx.identity.tenantId === null) return err(tenantNotFound('Select a tenant to test KSeF'));
-  if (ctx.identity.staffRole !== 'owner') {
-    return err(forbidden('Only the tenant owner can test KSeF'));
-  }
+  const tenant = authorizeTenant(ctx, 'integration:test');
+  if (!tenant.ok) return tenant;
   if (deps.ksef === undefined) {
     return err(integrationNotConfigured('KSeF is unavailable in this deployment'));
   }
-  const credentials = await deps.ksef.credentials.resolve(ctx.identity.tenantId);
+  const credentials = await deps.ksef.credentials.resolve(tenant.value);
   if (!credentials.ok) return credentials;
   const tested = await deps.ksef.client.validateCredentials({
     environment: deps.ksef.environment,

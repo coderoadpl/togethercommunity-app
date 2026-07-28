@@ -5,6 +5,8 @@ Authenticated includes session, API-key, webhook-secret, and operator-secret sur
 
 | Route | Access | Operation | Purpose |
 |---|---|---|---|
+| `GET /api/health/live` | public | read | Process liveness check |
+| `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
 | `GET /api/public/offer` | public | read | Public offer discovery |

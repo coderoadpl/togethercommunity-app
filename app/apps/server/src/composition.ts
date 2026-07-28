@@ -195,6 +195,7 @@ import { ok, type AppError, type KsefEnvironment, type Result } from '#core/doma
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import type { Env } from './env.js';
+import { APP_VERSION } from './version.js';
 
 export interface DevEndpoints {
   simulatedPayments: boolean;
@@ -285,6 +286,9 @@ export interface AppDeps {
   onboardingState: OnboardingStateRepository;
   tenantAccess: TenantAccessReader;
   health: HealthPort;
+  appVersion: string;
+  commitSha: string;
+  tenantCreationMode: Env['TENANT_CREATION'];
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void };
@@ -676,6 +680,9 @@ export const createDeps = (env: Env): AppDeps => {
     onboardingState: createOnboardingStateRepository(db),
     tenantAccess: createTenantAccessReader(db),
     health: createHealthPort(db),
+    appVersion: APP_VERSION,
+    commitSha: env.APP_COMMIT_SHA ?? 'unknown',
+    tenantCreationMode: env.TENANT_CREATION,
     ids,
     clock,
     logger,

@@ -61,7 +61,9 @@ Visual verification has zero retries.
 - `@vercel/*` / `@neondatabase/*` only inside `adapters/`. A reviewed
   platform-entry exemption may be added when the Vercel entry lands.
 - No `any`. No `as` (except `as const`). Parse with zod at every boundary.
-- Use-cases return `Result<T, AppError>`; never throw across a boundary.
+- Expected domain and application failures return `Result<T, AppError>`. Infrastructure
+  promise rejections propagate to the server error seam, which normalizes them to
+  `internal`; do not catch them separately in each use-case.
   New error kinds go into `ERROR_CODES` in `core/domain/errors.ts` and get an
   HTTP status + exit code mapping in `core/contract/http-status.ts` (exhaustive).
 - Every tenant-scoped use-case takes `ctx: { identity }` first; every

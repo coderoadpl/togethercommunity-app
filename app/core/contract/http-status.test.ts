@@ -33,6 +33,7 @@ describe('error taxonomy mappings', () => {
     expect(HTTP_STATUS_BY_ERROR_CODE.integration_not_configured).toBe(412);
     expect(HTTP_STATUS_BY_ERROR_CODE.integration_auth).toBe(502);
     expect(HTTP_STATUS_BY_ERROR_CODE.integration_unavailable).toBe(503);
+    expect(HTTP_STATUS_BY_ERROR_CODE.unavailable).toBe(503);
     expect(HTTP_STATUS_BY_ERROR_CODE.internal).toBe(500);
   });
 
@@ -42,6 +43,7 @@ describe('error taxonomy mappings', () => {
     expect(EXIT_CODE_BY_ERROR_CODE.unauthorized).toBe(3);
     expect(EXIT_CODE_BY_ERROR_CODE.invalid_credentials).toBe(3);
     expect(EXIT_CODE_BY_ERROR_CODE.validation).toBe(2);
+    expect(EXIT_CODE_BY_ERROR_CODE.unavailable).toBe(20);
     const withoutAuthAlias = codes.filter((_, index) => index !== codes.indexOf(3, codes.indexOf(3) + 1));
     expect(new Set(withoutAuthAlias).size).toBe(withoutAuthAlias.length);
   });

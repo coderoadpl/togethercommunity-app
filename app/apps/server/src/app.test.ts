@@ -435,6 +435,9 @@ const deps = (input: {
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
     health: { pingDatabase: async () => input.databaseUp ?? true },
+    appVersion: '0.1.0-test',
+    commitSha: 'test-sha',
+    tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
@@ -1005,12 +1008,74 @@ describe('email dispatch route', () => {
 });
 
 describe('health route', () => {
-  it('reports the database status from the health port', async () => {
+  it('keeps the compatibility endpoint and exposes deploy attestation', async () => {
     const up = await buildApp(deps()).request(API_PATHS.health);
-    expect(await up.json()).toMatchObject({ ok: true, data: { status: 'ok', database: 'up' } });
+    expect(await up.json()).toMatchObject({
+      ok: true,
+      data: {
+        status: 'ok',
+        database: 'up',
+        version: '0.1.0-test',
+        sha: 'test-sha',
+      },
+    });
 
     const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.health);
     expect(await down.json()).toMatchObject({ ok: true, data: { database: 'down' } });
+  });
+
+  it('serves liveness without touching the database', async () => {
+    let databasePings = 0;
+    const configured = deps();
+    configured.health = {
+      pingDatabase: async () => {
+        databasePings += 1;
+        return false;
+      },
+    };
+
+    const response = await buildApp(configured).request(API_PATHS.healthLive);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: { status: 'ok', version: '0.1.0-test', sha: 'test-sha' },
+    });
+    expect(databasePings).toBe(0);
+  });
+
+  it('returns unavailable from readiness when the database is down', async () => {
+    const up = await buildApp(deps()).request(API_PATHS.healthReady);
+    expect(up.status).toBe(200);
+    expect(await up.json()).toMatchObject({
+      ok: true,
+      data: { status: 'ok', database: 'up', sha: 'test-sha' },
+    });
+
+    const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.healthReady);
+    expect(down.status).toBe(503);
+    expect(down.headers.get('cache-control')).toBe('no-store');
+    expect(await down.json()).toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'Database is not reachable' },
+    });
+  });
+});
+
+describe('API envelope totality', () => {
+  it.each([
+    ['unknown route', '/api/does-not-exist', 'GET'],
+    ['wrong method', API_PATHS.health, 'POST'],
+  ])('returns a not_found envelope for an %s', async (_label, path, method) => {
+    const response = await buildApp(deps({ authenticated: true })).request(path, { method });
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: { code: 'not_found', message: `No API route for ${method} ${path}` },
+    });
   });
 });
 

@@ -380,6 +380,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             <Button
               type="button"
               variant="text"
+              data-testid="checkout-coupon-reveal"
               onClick={() => dispatchCheckout({ type: 'couponOpened' })}
             >
               {t.checkout.couponReveal}
@@ -390,6 +391,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
                 <OutlinedInput
                   id="checkout-coupon"
+                  inputProps={{ 'data-testid': 'checkout-coupon-input' }}
                   value={couponCode}
                   onChange={(event) => {
                     dispatchCheckout({
@@ -403,6 +405,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               <Button
                 type="button"
                 variant="outlined"
+                data-testid="checkout-coupon-apply"
                 disabled={couponValidation.isPending || couponCode.trim() === ''}
                 onClick={() => couponValidation.mutate({
                   productId,
@@ -414,7 +417,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 {couponValidation.isPending ? t.checkout.couponApplying : t.checkout.couponApply}
               </Button>
               {couponValidation.data === undefined ? null : (
-                <Paper variant="outlined" sx={{ p: '0.75rem' }}>
+                <Paper variant="outlined" sx={{ p: '0.75rem' }} data-testid="checkout-coupon-breakdown">
                   <Stack useFlexGap spacing="0.25rem">
                     <Typography>{t.checkout.couponOriginal({
                       price: formatPrice(couponValidation.data.breakdown.originalCents, selectedCurrency, language),
@@ -422,9 +425,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                     <Typography>{t.checkout.couponDiscount({
                       price: formatPrice(couponValidation.data.breakdown.discountCents, selectedCurrency, language),
                     })}</Typography>
-                    <Typography>{t.checkout.couponFinal({
-                      price: formatPrice(couponValidation.data.breakdown.finalCents, selectedCurrency, language),
-                    })}</Typography>
+                    <Typography data-testid="checkout-coupon-final">
+                      {t.checkout.couponFinal({
+                        price: formatPrice(couponValidation.data.breakdown.finalCents, selectedCurrency, language),
+                      })}
+                    </Typography>
                     {selectedPrice?.kind !== 'recurring' ? null : (
                       <Typography>
                         {couponValidation.data.recurringDuration === 'forever'
@@ -445,7 +450,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 </Paper>
               )}
               {couponValidation.isError ? (
-                <Alert>{couponError(couponValidation.error, t)}</Alert>
+                <Alert data-testid="checkout-coupon-error">
+                  {couponError(couponValidation.error, t)}
+                </Alert>
               ) : null}
             </Stack>
           )}

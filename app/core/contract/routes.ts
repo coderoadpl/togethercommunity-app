@@ -154,6 +154,7 @@ export const authConfigOutputSchema = z.object({
   passkeysEnabled: z.boolean(),
   totpEnabled: z.boolean(),
   exposeMagicLinks: z.boolean(),
+  tenantCreationEnabled: z.boolean(),
 });
 
 export const meOutputSchema = z.object({

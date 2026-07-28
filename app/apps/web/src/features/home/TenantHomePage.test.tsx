@@ -82,10 +82,42 @@ describe('TenantHomePage dispatcher', () => {
     server.use(
       http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
       http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
+      http.get('/api/public/auth-config', () => HttpResponse.json({
+        ok: true,
+        data: {
+          googleEnabled: false,
+          passkeysEnabled: true,
+          totpEnabled: true,
+          exposeMagicLinks: false,
+          tenantCreationEnabled: true,
+        },
+      })),
     );
     await renderHome();
     expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
     expect(screen.getByText(pl.tenant.welcome)).toBeInTheDocument();
-    expect(screen.getByLabelText(pl.tenant.slugLabel)).toBeInTheDocument();
+    expect(await screen.findByLabelText(pl.tenant.slugLabel)).toBeInTheDocument();
+  });
+
+  it('hides tenant creation when the instance policy is closed', async () => {
+    server.use(
+      http.get('/api/me', () => HttpResponse.json({ ok: true, data: meWithoutTenant })),
+      http.get('/api/tenants', () => HttpResponse.json({ ok: true, data: tenantsBody })),
+      http.get('/api/public/auth-config', () => HttpResponse.json({
+        ok: true,
+        data: {
+          googleEnabled: false,
+          passkeysEnabled: true,
+          totpEnabled: true,
+          exposeMagicLinks: false,
+          tenantCreationEnabled: false,
+        },
+      })),
+    );
+    await renderHome();
+
+    expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
+    expect(screen.queryByLabelText(pl.tenant.nameLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(pl.tenant.slugLabel)).not.toBeInTheDocument();
   });
 });

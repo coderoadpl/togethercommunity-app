@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -113,3 +117,45 @@ jobs:
       - if: matrix.suite == 'auth'
         run: google-chrome --version
       - run: npm run e2e:${{ matrix.suite }}
+
+  argos-advisory:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: together
+          POSTGRES_PASSWORD: together
+          POSTGRES_DB: together
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U together"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      E2E_DATABASE_URL: postgres://together:together@localhost:5432/together
+      HAS_ARGOS: ${{ secrets.ARGOS_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: google-chrome --version
+      - run: npm run visual:argos-capture
+      - if: env.HAS_ARGOS == 'true'
+        run: npx --no-install @argos-ci/cli upload out/visual/argos
+        env:
+          ARGOS_TOKEN: ${{ secrets.ARGOS_TOKEN }}
+        continue-on-error: true

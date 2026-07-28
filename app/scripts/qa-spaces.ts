@@ -362,6 +362,55 @@ try {
 
   const studioStaff = cliSession();
   cli(studioStaff, apiUrl, ['login', '--email', 'creator@together.dev', '--password', 'demo1234']);
+  const staffToken = studioStaff.token();
+  const pinArgs = [
+    '-X', 'POST',
+    '-H', 'content-type: application/json',
+    '-H', 'x-tenant: studio',
+    '-d', JSON.stringify({ postId: 'post-spolecznosc-hello', pinned: true }),
+    `${apiUrl}${API_PATHS.postsPin}`,
+  ];
+  const memberPin = curl([
+    '-H', `authorization: Bearer ${memberToken}`,
+    ...pinArgs,
+  ]);
+  record('pin authorization: members cannot pin a space post', memberPin === '403', `HTTP ${memberPin}`);
+  const staffPin = curl([
+    '-H', `authorization: Bearer ${staffToken}`,
+    ...pinArgs,
+  ]);
+  must('pin lifecycle: staff can pin a space post', staffPin === '200', `HTTP ${staffPin}`);
+  const feedSchema = z.object({
+    ok: z.literal(true),
+    data: z.object({ pinned: z.array(z.object({ id: z.string() })) }),
+  });
+  const pinnedFeed = feedSchema.parse(JSON.parse(curlBody([
+    '-H', `authorization: Bearer ${memberToken}`,
+    '-H', 'x-tenant: studio',
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+  ])));
+  must(
+    'pin lifecycle: the pinned post appears in the member feed projection',
+    pinnedFeed.data.pinned.some((post) => post.id === 'post-spolecznosc-hello'),
+  );
+  const staffUnpin = curl([
+    '-H', `authorization: Bearer ${staffToken}`,
+    '-X', 'POST',
+    '-H', 'content-type: application/json',
+    '-H', 'x-tenant: studio',
+    '-d', JSON.stringify({ postId: 'post-spolecznosc-hello', pinned: false }),
+    `${apiUrl}${API_PATHS.postsPin}`,
+  ]);
+  must('pin lifecycle: staff can unpin a space post', staffUnpin === '200', `HTTP ${staffUnpin}`);
+  const unpinnedFeed = feedSchema.parse(JSON.parse(curlBody([
+    '-H', `authorization: Bearer ${memberToken}`,
+    '-H', 'x-tenant: studio',
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+  ])));
+  must(
+    'pin lifecycle: the unpinned post leaves the pinned projection',
+    unpinnedFeed.data.pinned.every((post) => post.id !== 'post-spolecznosc-hello'),
+  );
   cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'delete', '--space', qaSpaceId]);
   const deleteProbe = cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'stats']);
   record('panel CRUD: delete removes the space (staff stats no longer list it)', !deleteProbe.includes(qaSpaceId));

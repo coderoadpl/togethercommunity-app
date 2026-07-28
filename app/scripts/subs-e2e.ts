@@ -10,6 +10,8 @@ import {
   API_PATHS,
   EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
+  emailSendDetailOutputSchema,
+  emailSendsOutputSchema,
   looseEnvelopeSchema,
   myProductsOutputSchema,
   ordersExportOutputSchema,
@@ -483,6 +485,26 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
       subscriptionSimulateOutputSchema,
     );
     assert(finalCycle.subscription.status === 'canceled', 'cycling a cancelling subscription should cancel it');
+    const sendsResponse = await fetch(`${url}${API_PATHS.emailSends}?kind=transactional`, {
+      headers: { [TENANT_HEADER]: 'subs', authorization: `Bearer ${token}` },
+    });
+    assert(sendsResponse.status === 200, `transactional sends expected 200, got ${sendsResponse.status}`);
+    const sendsEnvelope = looseEnvelopeSchema.parse(await sendsResponse.json());
+    assert(sendsEnvelope.ok, 'transactional sends should return an ok envelope');
+    const sends = emailSendsOutputSchema.parse(sendsEnvelope.data).sends;
+    const lapseSend = sends.find((send) => send.source === 'subscription-ended');
+    assert(lapseSend !== undefined, 'subscription lapse should appear in transactional sends');
+    const detailPath = API_PATHS.emailSend
+      .replace(':kind', 'transactional')
+      .replace(':id', lapseSend.id);
+    const detailResponse = await fetch(`${url}${detailPath}`, {
+      headers: { [TENANT_HEADER]: 'subs', authorization: `Bearer ${token}` },
+    });
+    assert(detailResponse.status === 200, `transactional send detail expected 200, got ${detailResponse.status}`);
+    const detailEnvelope = looseEnvelopeSchema.parse(await detailResponse.json());
+    assert(detailEnvelope.ok, 'transactional send detail should return an ok envelope');
+    const detail = emailSendDetailOutputSchema.parse(detailEnvelope.data);
+    assert(detail.events[0]?.type === 'queued', 'subscription lapse timeline should start at queued');
     const afterCancel = expectOk(await staff(['orders', 'list']), 'orders after cancel', ordersListOutputSchema);
     assert(afterCancel.total === 5, `cancel must not append orders, got ${afterCancel.total}`);
     expectError(

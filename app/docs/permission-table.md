@@ -416,7 +416,6 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:76` | `staffRole: staffGrant?.staffRole ?? null,` |
-| staff-role | `core/server/usecases/scheduler-activity.ts:15` | `if (ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null) {` |
 
 ## Suspicious but preserved
 

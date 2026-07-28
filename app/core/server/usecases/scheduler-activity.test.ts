@@ -80,6 +80,15 @@ const seedRun = async (
 };
 
 describe('scheduler activity', () => {
+  it('requires the declared scheduler read capability', async () => {
+    const runs = new InMemorySchedulerRunRepository();
+    expect(await listSchedulerRunsForTenant(
+      { identity: identity(), capabilities: ['scheduler:dispatch'] },
+      { limit: 25 },
+      { runs, clock: { nowIso: () => '2026-07-26T10:00:00.000Z' } },
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('returns only runs that touched the active tenant with tenant counts and a 24 hour summary', async () => {
     const runs = new InMemorySchedulerRunRepository();
     await seedRun(runs, {

@@ -33,13 +33,14 @@ const currentDir = join(rootDir, 'out/visual/current');
 const diffDir = join(rootDir, 'out/visual/diff');
 
 const updateMode = process.argv.includes('--update');
+const goldenAuthoringPlatform = 'darwin';
 
 const themeStorageKey = 'together-theme-mode';
 const languageStorageKey = 'together-language';
 
 const SEED_BASE_TIME = '2026-07-01T12:00:00.000Z';
-const PIXELMATCH_THRESHOLD = 0.1;
-const MAX_DIFF_RATIO = 0.001;
+const PIXELMATCH_THRESHOLD = 0;
+const MAX_DIFF_RATIO = 0;
 const minPngBytes = 10 * 1024;
 
 const THEMES: ThemeMode[] = ['shadcn', 'material', 'scoreboard'];
@@ -509,6 +510,28 @@ const applyChrome = async (context: BrowserContext, mode: ThemeMode): Promise<vo
   );
 };
 
+const settlePage = async (page: Page): Promise<void> => {
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await page.addStyleTag({
+    content: `
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        caret-color: transparent !important;
+      }
+    `,
+  });
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+};
+
 const signInCreator = async (page: Page, studioBaseUrl: string): Promise<void> => {
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
   await page.getByTestId('login-email').waitFor(visible);
@@ -604,6 +627,12 @@ let server: ChildProcess | null = null;
 let browser: Browser | null = null;
 
 try {
+  if (updateMode && process.platform !== goldenAuthoringPlatform) {
+    fail(
+      `Golden authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
+    );
+  }
+
   mkdirSync(goldenDir, { recursive: true });
   mkdirSync(currentDir, { recursive: true });
   mkdirSync(diffDir, { recursive: true });
@@ -643,6 +672,10 @@ try {
         const context = await browser.newContext({
           viewport: { width: viewport.width, height: viewport.height },
           deviceScaleFactor: 1,
+          colorScheme: 'light',
+          locale: 'pl-PL',
+          timezoneId: 'UTC',
+          reducedMotion: 'reduce',
           ...(storageState === undefined ? {} : { storageState }),
         });
         await applyChrome(context, theme);
@@ -654,9 +687,14 @@ try {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;
           await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
           await screen.ready(page);
-          await delay(600);
+          await settlePage(page);
           const shotPath = updateMode ? join(goldenDir, file) : join(currentDir, file);
-          await page.screenshot({ path: shotPath, animations: 'disabled' });
+          await page.screenshot({
+            path: shotPath,
+            animations: 'disabled',
+            caret: 'hide',
+            scale: 'css',
+          });
           const { size } = statSync(shotPath);
           assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);
           captured += 1;

@@ -1,10 +1,8 @@
 import {
   err,
-  forbidden,
   notFound,
   ok,
   setTenantSecretInputSchema,
-  tenantNotFound,
   validation,
   type AppError,
   type Result,
@@ -15,6 +13,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { Clock, IdGenerator, SecretCrypto, TenantSecretRepository } from '../ports.js';
 
 export interface TenantSecretDeps {
@@ -23,14 +22,6 @@ export interface TenantSecretDeps {
   ids: IdGenerator;
   clock: Clock;
 }
-
-const requireTenant = (ctx: Ctx, roles: ReadonlyArray<'owner' | 'admin'>): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage secrets'));
-  if (!ctx.identity.staffRole || !roles.includes(ctx.identity.staffRole)) {
-    return err(forbidden('You cannot manage secrets for this tenant'));
-  }
-  return ok(ctx.identity.tenantId);
-};
 
 const masked = (secret: TenantSecret): TenantSecretMasked => ({
   key: secret.key,
@@ -48,7 +39,7 @@ export const setTenantSecret = async (
   input: SetTenantSecretInput,
   deps: TenantSecretDeps,
 ): Promise<Result<TenantSecretMasked, AppError>> => {
-  const tenant = requireTenant(ctx, ['owner']);
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
   if (!tenant.ok) return tenant;
   const parsed = setTenantSecretInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid tenant secret', parsed.error.flatten()));
@@ -68,7 +59,7 @@ export const getTenantSecretsMasked = async (
   ctx: Ctx,
   deps: TenantSecretDeps,
 ): Promise<Result<TenantSecretMasked[], AppError>> => {
-  const tenant = requireTenant(ctx, ['owner', 'admin']);
+  const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
   return ok((await deps.tenantSecrets.listByTenant(tenant.value)).map(masked));
 };
@@ -78,7 +69,7 @@ export const deleteTenantSecret = async (
   key: TenantSecretKey,
   deps: TenantSecretDeps,
 ): Promise<Result<{ key: TenantSecretKey }, AppError>> => {
-  const tenant = requireTenant(ctx, ['owner']);
+  const tenant = authorizeTenant(ctx, 'tenant:secret:write');
   if (!tenant.ok) return tenant;
   if (!(await deps.tenantSecrets.delete(tenant.value, key))) {
     return err(notFound(`No secret "${key}" in this tenant`));

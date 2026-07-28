@@ -249,7 +249,7 @@ no changes
 | `course-management.ts#listLessonReferences` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
 | `course-management.ts#deleteLesson` | course:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
 | `course-management.ts#updateProductAccessItems` | product:access:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts inline guard or same-file guard helper |
-| `create-tenant.ts#createTenant` | tenant:create | authenticated | authenticated | yes | core/server/usecases/create-tenant.ts inline guard or same-file guard helper |
+| `create-tenant.ts#createTenant` | tenant:create | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/create-tenant.ts inline guard or same-file guard helper |
 | `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts inline guard or same-file guard helper |
 | `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
 | `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts inline guard or same-file guard helper |
@@ -413,13 +413,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `core/server/usecases/m2m-enroll.ts:28` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
-| staff-role | `core/server/usecases/onboarding.ts:38` | `if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see onboarding'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:76` | `staffRole: staffGrant?.staffRole ?? null,` |
 | staff-role | `core/server/usecases/scheduler-activity.ts:15` | `if (ctx.identity.tenantId === null \|\| ctx.identity.staffRole === null) {` |
-| staff-role | `core/server/usecases/tenant-secrets.ts:29` | `if (!ctx.identity.staffRole \|\| !roles.includes(ctx.identity.staffRole)) {` |
-| staff-role | `core/server/usecases/tenant-settings.ts:37` | `if (ctx.identity.staffRole !== 'owner') {` |
 
 ## Suspicious but preserved
 
@@ -437,7 +434,7 @@ API-key, worker, checkout, unsubscribe, and webhook handlers synthesize Identity
 
 ### tenant creation mode
 
-The route accepts any authenticated session, while the use-case separately denies all creation when the deployment mode is closed.
+The route supplies a tenantless authenticated identity, while direct use-case callers may also carry a staff or member grant; the deployment mode separately denies all creation when closed.
 
 ### staff with simultaneous membership
 

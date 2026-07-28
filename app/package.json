@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS",
+  "engines": {
+    "node": "24.x"
+  },
   "bin": {
     "together": "./apps/cli/bin.js"
   },

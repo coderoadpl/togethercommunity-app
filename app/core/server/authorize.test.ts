@@ -16,10 +16,11 @@ const identity = (tenantId: string | null): Identity => ({
 });
 
 describe('authorize', () => {
-  it('denies when the context declares no capabilities', () => {
-    expect(authorize({ identity: identity('tenant-1') }, 'product:read')).toEqual({
+  it('derives capabilities from the caller identity', () => {
+    expect(authorize({ identity: identity('tenant-1') }, 'product:read')).toBeNull();
+    expect(authorize({ identity: { ...identity('tenant-1'), staffRole: 'admin' } }, 'integration:test')).toEqual({
       code: 'forbidden',
-      message: 'product:read is not permitted',
+      message: 'integration:test is not permitted',
     });
   });
 
@@ -41,10 +42,10 @@ describe('authorizeTenant', () => {
     )).toEqual({ ok: true, value: 'tenant-1' });
   });
 
-  it('denies before tenant scoping when the capability is absent', () => {
-    expect(authorizeTenant({ identity: identity(null) }, 'product:read')).toMatchObject({
+  it('preserves tenant scoping before capability denial', () => {
+    expect(authorizeTenant({ identity: identity(null), capabilities: [] }, 'product:read')).toMatchObject({
       ok: false,
-      error: { code: 'forbidden' },
+      error: { code: 'tenant_not_found' },
     });
   });
 

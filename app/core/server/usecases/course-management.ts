@@ -5,13 +5,11 @@ import {
   deleteCourseLessonInputSchema,
   detachModuleFromCourseInputSchema,
   err,
-  forbidden,
   newCourseLessonSchema,
   newCourseModuleSchema,
   newCourseSchema,
   notFound,
   ok,
-  tenantNotFound,
   updateCourseInputSchema,
   updateCourseLessonInputSchema,
   updateCourseModuleInputSchema,
@@ -20,6 +18,7 @@ import {
   type AccessItem,
   type AppError,
   type Chapter,
+  type Capability,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -33,6 +32,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   CourseLessonRepository,
@@ -54,11 +54,8 @@ export interface CourseManagementDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage courses'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage courses'));
-  return ok(ctx.identity.tenantId);
-};
+const requireStaffTenant = (ctx: Ctx, capability: Capability): Result<string, AppError> =>
+  authorizeTenant(ctx, capability);
 
 /**
  * Builds the previous-state snapshot the write-through path persists in the
@@ -121,7 +118,7 @@ export const listCourses = async (
   ctx: Ctx,
   deps: CourseManagementDeps,
 ): Promise<Result<Course[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:read');
   if (!tenant.ok) return tenant;
   return ok(await deps.courses.list(tenant.value));
 };
@@ -130,7 +127,7 @@ export const listModules = async (
   ctx: Ctx,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseModule[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:read');
   if (!tenant.ok) return tenant;
   return ok(await deps.modules.list(tenant.value));
 };
@@ -139,7 +136,7 @@ export const listLessons = async (
   ctx: Ctx,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseLesson[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:read');
   if (!tenant.ok) return tenant;
   return ok(await deps.lessons.list(tenant.value));
 };
@@ -149,7 +146,7 @@ export const createCourse = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<Course, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = newCourseSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid course', parsed.error.flatten()));
@@ -173,7 +170,7 @@ export const updateCourse = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<Course, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = updateCourseInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid course update', parsed.error.flatten()));
@@ -218,7 +215,7 @@ export const createModule = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseModule, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = newCourseModuleSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid module', parsed.error.flatten()));
@@ -248,7 +245,7 @@ export const updateModule = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseModule, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = updateCourseModuleInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid module update', parsed.error.flatten()));
@@ -282,7 +279,7 @@ export const createLesson = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseLesson, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = newCourseLessonSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid lesson', parsed.error.flatten()));
@@ -307,7 +304,7 @@ export const updateLesson = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseLesson, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = updateCourseLessonInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid lesson update', parsed.error.flatten()));
@@ -338,7 +335,7 @@ export const attachModuleToCourse = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseModule, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = attachModuleToCourseInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid module attachment', parsed.error.flatten()));
@@ -370,7 +367,7 @@ export const detachModuleFromCourse = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<CourseModule, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = detachModuleFromCourseInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid module detachment', parsed.error.flatten()));
@@ -442,7 +439,7 @@ export const listLessonReferences = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<LessonReferences, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:read');
   if (!tenant.ok) return tenant;
   const parsed = deleteCourseLessonInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid lesson reference query', parsed.error.flatten()));
@@ -465,7 +462,7 @@ export const deleteLesson = async (
   input: unknown,
   deps: CourseManagementDeps,
 ): Promise<Result<LessonReferences, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'course:write');
   if (!tenant.ok) return tenant;
   const parsed = deleteCourseLessonInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid lesson deletion', parsed.error.flatten()));
@@ -515,7 +512,7 @@ export const updateProductAccessItems = async (
   input: UpdateProductAccessItemsInput,
   deps: CourseManagementDeps,
 ): Promise<Result<Product, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = requireStaffTenant(ctx, 'product:access:write');
   if (!tenant.ok) return tenant;
   const parsed = updateProductAccessItemsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid product access items', parsed.error.flatten()));

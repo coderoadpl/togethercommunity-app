@@ -37,4 +37,24 @@ describe('AppShell', () => {
 
     expect(screen.getByRole('navigation')).toHaveTextContent('Products');
   });
+
+  it('renders page state inside the stable shell', () => {
+    render(
+      <AppShell
+        isDesktop
+        mobileNavigationOpen={false}
+        onMobileNavigationClose={vi.fn()}
+        header={<span>Acme header</span>}
+        navigation={<nav><a href="/panel/products">Products</a></nav>}
+        state={{ kind: 'loading', label: 'Opening workspace' }}
+      >
+        <p>Panel content</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole('banner')).toHaveTextContent('Acme header');
+    expect(screen.getByRole('navigation')).toHaveTextContent('Products');
+    expect(screen.getByRole('main')).toHaveTextContent('Opening workspace');
+    expect(screen.getByRole('main')).not.toHaveTextContent('Panel content');
+  });
 });

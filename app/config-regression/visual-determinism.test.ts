@@ -32,6 +32,7 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("scale: 'css'");
     expect(harness).toContain('const PIXELMATCH_THRESHOLD = 0;');
     expect(harness).toContain('const MAX_DIFF_RATIO = 0;');
+    expect(harness).toContain('includeAA: false');
   });
 
   it('restricts golden authoring to the declared platform', () => {

@@ -100,6 +100,8 @@ interface EslintResult {
 
 const messagesByFixture = new Map<string, EslintMessage[]>();
 const depcruiseRules = new Set<string>();
+let islandTypecheckOutput = '';
+let islandTypecheckStatus: number | null = null;
 
 const writeFixture = (rel: string, content: string): string => {
   const absolute = join(appRoot, rel);
@@ -121,6 +123,10 @@ beforeAll(() => {
   const fixtures = Object.values(eslintFixtures);
   const eslintTargets = fixtures.map((fixture) => writeFixture(fixture.rel, fixture.content));
   for (const fixture of depcruiseFixtures) writeFixture(fixture.rel, fixture.content);
+  const islandDomFixture = writeFixture(
+    join(islandCoreDir, 'dom.tsx'),
+    'export const forbidden = document;\n',
+  );
 
   const eslintRun = spawnSync(
     join(appRoot, 'node_modules', '.bin', 'eslint'),
@@ -147,6 +153,15 @@ beforeAll(() => {
   for (const violation of report.summary.violations) {
     depcruiseRules.add(violation.rule.name);
   }
+
+  const islandTypecheckRun = spawnSync(
+    join(appRoot, 'node_modules', '.bin', 'tsc'),
+    ['--noEmit', '-p', 'tsconfig.islands.json'],
+    { cwd: appRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
+  );
+  islandTypecheckStatus = islandTypecheckRun.status;
+  islandTypecheckOutput = `${islandTypecheckRun.stdout}${islandTypecheckRun.stderr}`;
+  expect(islandTypecheckOutput).toContain(islandDomFixture.slice(appRoot.length + 1));
 }, 60_000);
 
 afterAll(() => {
@@ -220,6 +235,10 @@ describe('Dependency Cruiser gate', () => {
     expect(depcruiseRules.has('island-core-is-framework-agnostic')).toBe(true);
   });
 
+  it('keeps island cores portable', () => {
+    expect(depcruiseRules.has('island-core-is-portable')).toBe(true);
+  });
+
   it('keeps guarded rules at error severity', () => {
     const config: { forbidden: Array<{ name: string; severity: string }> } = require(
       join(appRoot, '.dependency-cruiser.cjs'),
@@ -243,6 +262,13 @@ describe('Dependency Cruiser gate', () => {
     ]) {
       expect(severity.get(name)).toBe('error');
     }
+  });
+});
+
+describe('Island typecheck gate', () => {
+  it('rejects DOM references from TypeScript JSX island cores', () => {
+    expect(islandTypecheckStatus).not.toBe(0);
+    expect(islandTypecheckOutput).toContain("Cannot find name 'document'");
   });
 });
 

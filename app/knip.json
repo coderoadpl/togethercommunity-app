@@ -19,7 +19,6 @@
     "config-regression/**/*.ts",
     ".storybook/**/*.{ts,tsx}"
   ],
-  "ignoreDependencies": ["@opentelemetry/core"],
   "ignoreBinaries": ["openssl"],
   "rules": {
     "files": "error",

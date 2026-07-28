@@ -12,6 +12,8 @@ export const envSchema = z
     DB_DRIVER: z.enum(['node-postgres', 'neon-http']).default('node-postgres'),
     APP_BASE_DOMAIN: z.string().default('localhost'),
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
+    APP_COMMIT_SHA: z.string().min(1).optional(),
+    TENANT_CREATION: z.enum(['open', 'closed']).default('closed'),
     BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
     // 32-byte AES-256-GCM key, base64. Generate: openssl rand -base64 32
     SECRETS_MASTER_KEY: z.string().min(1).default('dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE='),

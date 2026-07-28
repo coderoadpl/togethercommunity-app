@@ -15,6 +15,8 @@ export type PublicRouteManifestEntry = {
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
+  { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
+  { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },
   { path: '/api/public/offer', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public offer discovery' },
   { path: '/api/public/payment-config', methods: ['GET'], mutating: false, why: 'Checkout capability discovery' },
   { path: '/api/public/checkout/coupon', methods: ['POST'], mutating: false, why: 'Read-only coupon validation' },

@@ -65,6 +65,7 @@ const deps = (repo: TenantRepository, ids: string[] = ['t-new', 'grant-new']) =>
   tenants: repo,
   ids: fakeIds(ids),
   clock: { nowIso: () => '2026-07-11T00:00:00.000Z' },
+  tenantCreationMode: 'open' as const,
 });
 
 describe('createTenant', () => {
@@ -89,6 +90,23 @@ describe('createTenant', () => {
         staffRole: 'owner',
       },
     ]);
+  });
+
+  it('rejects tenant creation when instance policy is closed', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity },
+      { slug: 'new-co', name: 'New Co' },
+      { ...deps(store.repo), tenantCreationMode: 'closed' },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden', message: 'Tenant creation is closed on this instance' },
+    });
+    expect(store.tenants).toEqual([]);
+    expect(store.ownerGrants).toEqual([]);
   });
 
   it('rejects slug conflicts before creating records', async () => {

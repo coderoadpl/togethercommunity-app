@@ -22,6 +22,7 @@ import {
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
   tenantNotFound,
+  unavailable,
   validation,
   type EmailBranding,
   type Identity,
@@ -236,11 +237,25 @@ const autoIssueFulfilledOrder = async (
 };
 
 export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+  const attestation = { version: deps.appVersion, sha: deps.commitSha };
+
+  app.get(API_PATHS.healthLive, () =>
+    respond(ok({ status: 'ok' as const, ...attestation })),
+  );
+
+  app.get(API_PATHS.healthReady, async () =>
+    respond(
+      (await deps.health.pingDatabase())
+        ? ok({ status: 'ok' as const, database: 'up' as const, ...attestation })
+        : err(unavailable('Database is not reachable')),
+    ),
+  );
+
   app.get(API_PATHS.health, async () =>
     respond(
       ok({
         status: 'ok' as const,
-        version: '0.1.0',
+        ...attestation,
         database: (await deps.health.pingDatabase()) ? ('up' as const) : ('down' as const),
       }),
     ),

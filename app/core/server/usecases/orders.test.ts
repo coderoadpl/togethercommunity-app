@@ -76,6 +76,21 @@ const harness = (rows: OrderListItem[] = []) => {
 };
 
 describe('listOrders', () => {
+  it('requires the declared order read capability', async () => {
+    const h = harness([orderItem('o1')]);
+    const actor = identity('owner');
+    expect(await listOrders(
+      { identity: actor, capabilities: ['order:read'] },
+      {},
+      h.deps,
+    )).toMatchObject({ ok: true });
+    expect(await listOrders(
+      { identity: actor, capabilities: ['order:export'] },
+      {},
+      h.deps,
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('applies status, product, kind and member-search filters with server-side paging', async () => {
     const rows = [
       orderItem('o1'),

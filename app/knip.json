@@ -20,7 +20,12 @@
     "config-regression/**/*.ts",
     ".storybook/**/*.{ts,tsx}"
   ],
-  "ignoreBinaries": ["openssl"],
+  "ignoreBinaries": [
+    "openssl"
+  ],
+  "ignoreDependencies": [
+    "@argos-ci/cli"
+  ],
   "rules": {
     "files": "error",
     "dependencies": "error",

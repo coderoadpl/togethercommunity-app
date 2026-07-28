@@ -6,7 +6,9 @@ Platforma source-available dla twórców: sprzedaż produktów cyfrowych + marke
 
 ## Status
 
-Etap założeń projektowych (lipiec 2026). Brak kodu.
+Działający PoC jest zaimplementowany w katalogu `app/`. Obejmuje aplikację
+webową, serwer API, CLI, migracje i dane demonstracyjne oraz automatyczne testy
+i reguły architektury; dokumenty nadal opisują kierunek dalszego rozwoju.
 
 ## Dokumenty
 

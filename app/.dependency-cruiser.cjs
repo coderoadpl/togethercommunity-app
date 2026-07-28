@@ -28,9 +28,9 @@ const webExternal =
   'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|marked|msw|react|react-dom|vite|vitest)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
 const scriptsExternal =
-  'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|axe-core|drizzle-orm|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
+  'node_modules/(axe-core|drizzle-orm|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|zod)(/|$)';
 const scriptsTestExternal =
-  'node_modules/(@core/(contract|domain)|@adapters/(auth|db)|vitest|zod)(/|$)';
+  'node_modules/(vitest|zod)(/|$)';
 
 module.exports = {
   forbidden: [
@@ -97,7 +97,7 @@ module.exports = {
       name: 'vercel-and-neon-only-in-adapters',
       severity: 'error',
       comment: 'Zero platform lock-in in core and apps (PRD: Goals)',
-      from: { pathNot: '^(adapters|apps/server/src/entry\\.vercel\\.ts)' },
+      from: { pathNot: '^adapters' },
       to: { path: 'node_modules/(@vercel|@neondatabase)' },
     },
     {

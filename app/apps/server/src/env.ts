@@ -9,7 +9,14 @@ export const envSchema = z
     DATABASE_URL: z
       .string()
       .default('postgres://together:together@localhost:48912/together'),
-    DB_DRIVER: z.enum(['node-postgres', 'neon-http']).default('node-postgres'),
+    DB_DRIVER: z
+      .literal('node-postgres', {
+        errorMap: () => ({
+          message:
+            'DB_DRIVER must be node-postgres because runtime adapters require interactive transactions',
+        }),
+      })
+      .default('node-postgres'),
     APP_BASE_DOMAIN: z.string().default('localhost'),
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: z.string().min(1).optional(),

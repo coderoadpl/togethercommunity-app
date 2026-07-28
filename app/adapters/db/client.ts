@@ -10,11 +10,6 @@ export type DbDriver = 'node-postgres' | 'neon-http';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
-/**
- * The only place the concrete Postgres driver is chosen.
- * `node-postgres` — long-lived processes (Docker, local dev).
- * `neon-http`     — serverless (Vercel Functions), no connection pool to exhaust.
- */
 export const createDb = (driver: DbDriver, connectionString: string): Db => {
   switch (driver) {
     case 'neon-http':

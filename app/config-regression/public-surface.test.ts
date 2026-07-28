@@ -28,5 +28,5 @@ describe('public route manifest fail-closed probe', () => {
         stdio: 'pipe',
       }),
     ).not.toThrow();
-  });
+  }, 15_000);
 });

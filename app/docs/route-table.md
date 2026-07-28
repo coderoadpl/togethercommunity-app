@@ -12,10 +12,10 @@ Authenticated includes session, API-key, webhook-secret, and operator-secret sur
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
 | `GET /api/public/auth-config` | public | read | Login capability discovery |
-| `POST /api/auth/sign-in/magic-link` | public | mutating | Login and magic-link authentication surface |
-| `POST /api/auth/request-password-reset` | public | mutating | Login and magic-link authentication surface |
+| `POST /api/auth/sign-in/magic-link` | public | mutating | Login, recovery, and magic-link authentication surface |
+| `POST /api/auth/request-password-reset` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `GET /api/auth/*` | public | read | Authentication callbacks and session reads |
-| `POST /api/auth/*` | public | mutating | Login and magic-link authentication surface |
+| `POST /api/auth/*` | public | mutating | Login, recovery, and magic-link authentication surface |
 | `POST /api/webhooks/ses/:webhookToken` | public | mutating | Amazon SNS delivery webhook |
 | `POST /u/:token` | public | mutating | Unsubscribe preference changes |
 | `POST /u/:token/confirm` | public | mutating | Unsubscribe preference changes |

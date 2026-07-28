@@ -69,3 +69,10 @@ empirically:
 - The Hobby plan's screenshot quota. Each build captures 210 screenshots (35
   scenarios times three themes times two viewports), and every push to every open
   pull request can consume another build's allocation.
+
+## Story shots
+
+Storybook's scope, drift gate, and the advisory non-golden status of
+`tasks/lost-pixel-baselines/` are documented in
+[Storybook](storybook.md). The determinism and platform rules above apply to
+`tasks/visual-goldens/`; story shots are not a merge signal.

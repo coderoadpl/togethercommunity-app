@@ -355,7 +355,7 @@ const useCaseRows = (): PermissionRow[] =>
       before,
       after: capability === null ? [] : effectiveAfter(before, capability),
       derivable: capability !== null,
-      evidence: `${relative(appRoot, join(useCasesRoot, file))} inline guard or same-file guard helper`,
+      evidence: `${relative(appRoot, join(useCasesRoot, file))} declared authorization entry`,
     };
   });
 
@@ -393,27 +393,27 @@ const collectSourceEvidence = (): AuthorizationEvidence[] => {
 const suspicious: SuspiciousPermission[] = [
   {
     subject: 'development-only routes',
-    behavior: 'When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control.',
+    behavior: 'When the composition flag is enabled, these routes have no session or secret check; the flag alone is the current control (`apps/server/src/internal-app.ts`).',
   },
   {
     subject: 'GET /api/tenant/settings',
-    behavior: 'The use-case checks only tenantId, so a member can read tenant settings while updates remain owner-only.',
+    behavior: 'A member can read tenant settings while updates remain owner-only (`core/server/usecases/tenant-settings.ts`).',
   },
   {
     subject: 'marketing synthetic identities',
-    behavior: 'API-key, worker, checkout, unsubscribe, and webhook handlers synthesize Identity values; several marketing use-cases check only tenant context rather than the originating credential type.',
+    behavior: 'API-key, worker, checkout, unsubscribe, and webhook handlers synthesize Identity values; several marketing use-cases check only tenant context rather than the originating credential type (`apps/server/src/marketing-routes.ts`, `apps/server/src/internal-app.ts`, `core/server/usecases/marketing-email.ts`).',
   },
   {
     subject: 'tenant creation mode',
-    behavior: 'The route supplies a tenantless authenticated identity, while direct use-case callers may also carry a staff or member grant; the deployment mode separately denies all creation when closed.',
+    behavior: 'The route supplies a tenantless authenticated identity, while direct use-case callers may also carry a staff or member grant; the deployment mode separately denies all creation when closed (`apps/server/src/internal-app.ts`, `core/server/usecases/create-tenant.ts`).',
   },
   {
     subject: 'staff with simultaneous membership',
-    behavior: 'Identity resolution can carry both staffRole and memberId; staff checks take precedence in some use-cases while member-scoped use-cases accept the same identity through memberId.',
+    behavior: 'Identity resolution can carry both staffRole and memberId; staff checks take precedence in some use-cases while member-scoped use-cases accept the same identity through memberId (`core/server/usecases/resolve-identity.ts`, `core/server/authorize.ts`, `core/server/usecases/member-billing-orders.ts`).',
   },
   {
     subject: 'staff lesson access',
-    behavior: 'Staff identities can use the student lesson and course-structure use-cases without a member row or product grant.',
+    behavior: 'Staff identities can use the student lesson and course-structure use-cases without a member row or product grant (`core/server/usecases/entitlements.ts`, `core/server/usecases/lesson-media.ts`).',
   },
 ];
 

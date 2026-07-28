@@ -946,7 +946,11 @@ export default tseslint.config(
   },
   {
     // Scoped exception (Observability §Enforcement): composition-root startup/fatal path.
-    files: ['apps/server/src/entry.*.ts', 'apps/server/src/env.ts'],
+    files: [
+      'apps/server/src/entry.node.ts',
+      'apps/server/src/entry.vercel.ts',
+      'apps/server/src/env.ts',
+    ],
     rules: {
       'no-console': 'off',
     },

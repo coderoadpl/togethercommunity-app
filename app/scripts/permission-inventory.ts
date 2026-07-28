@@ -328,7 +328,7 @@ const beforeForUseCase = (
   if (capability === null) return [];
   if (body.includes('staffTenantIdFrom(ctx)')) return staff;
   if (body.includes('tenantIdFrom(ctx)')) return allHumans;
-  if (file === 'create-tenant.ts') return authenticated;
+  if (file === 'create-tenant.ts') return allHumans;
   if (file === 'member-billing-orders.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
@@ -405,7 +405,7 @@ const suspicious: SuspiciousPermission[] = [
   },
   {
     subject: 'tenant creation mode',
-    behavior: 'The route accepts any authenticated session, while the use-case separately denies all creation when the deployment mode is closed.',
+    behavior: 'The route supplies a tenantless authenticated identity, while direct use-case callers may also carry a staff or member grant; the deployment mode separately denies all creation when closed.',
   },
   {
     subject: 'staff with simultaneous membership',

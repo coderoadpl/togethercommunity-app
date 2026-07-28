@@ -1,6 +1,5 @@
 import {
   err,
-  forbidden,
   ok,
   tenantNotFound,
   updateTenantSettingsInputSchema,
@@ -12,6 +11,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { TenantRepository } from '../ports.js';
 
 export interface TenantSettingsDeps {
@@ -22,8 +22,9 @@ export const getTenantSettings = async (
   ctx: Ctx,
   deps: TenantSettingsDeps,
 ): Promise<Result<TenantSettings, AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to read its settings'));
-  const settings = await deps.tenants.findSettings(ctx.identity.tenantId);
+  const tenant = authorizeTenant(ctx, 'tenant:settings:read');
+  if (!tenant.ok) return tenant;
+  const settings = await deps.tenants.findSettings(tenant.value);
   if (!settings) return err(tenantNotFound());
   return ok(settings);
 };
@@ -33,16 +34,14 @@ export const updateTenantSettings = async (
   input: UpdateTenantSettingsInput,
   deps: TenantSettingsDeps,
 ): Promise<Result<TenantSettings, AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to update its settings'));
-  if (ctx.identity.staffRole !== 'owner') {
-    return err(forbidden('Only the owner can change tenant settings'));
-  }
+  const tenant = authorizeTenant(ctx, 'tenant:settings:write');
+  if (!tenant.ok) return tenant;
   const parsed = updateTenantSettingsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid tenant settings', parsed.error.flatten()));
-  const current = await deps.tenants.findSettings(ctx.identity.tenantId);
+  const current = await deps.tenants.findSettings(tenant.value);
   if (!current) return err(tenantNotFound());
   return ok(
-    await deps.tenants.updateSettings(ctx.identity.tenantId, {
+    await deps.tenants.updateSettings(tenant.value, {
       billingPortalUrl:
         parsed.data.billingPortalUrl === undefined ? current.billingPortalUrl : parsed.data.billingPortalUrl,
       bunnyStreamLibraryId:

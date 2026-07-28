@@ -103,6 +103,7 @@ export type Principal = (typeof PRINCIPALS)[number];
 export type CapabilityMatrix = Record<Principal, readonly Capability[]>;
 
 const sharedStaffCapabilities = [
+  'tenant:create',
   'tenant:list-own',
   'tenant:settings:read',
   'tenant:secret:read',
@@ -179,6 +180,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
   owner: [...sharedStaffCapabilities, ...ownerOnlyCapabilities],
   admin: sharedStaffCapabilities,
   member: [
+    'tenant:create',
     'tenant:list-own',
     'tenant:settings:read',
     'member:progress:self-write',

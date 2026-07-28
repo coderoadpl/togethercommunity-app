@@ -10,6 +10,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorize } from '../authorize.js';
 import type { Clock, IdGenerator, TenantRepository } from '../ports.js';
 
 const slugPattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
@@ -51,6 +52,8 @@ export const createTenant = async (
   input: { slug: string; name: string },
   deps: CreateTenantDeps,
 ): Promise<Result<Tenant, AppError>> => {
+  const denial = authorize(ctx, 'tenant:create');
+  if (denial !== null) return err(denial);
   if (deps.tenantCreationMode === 'closed') {
     return err(forbidden('Tenant creation is closed on this instance'));
   }

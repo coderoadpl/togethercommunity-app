@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface EntryEnv {
   NODE_ENV: string;
@@ -8,7 +8,7 @@ interface EntryEnv {
   KSEF_DISPATCH_INTERVAL_MS: number;
 }
 
-const h = vi.hoisted(() => {
+const harness = vi.hoisted(() => {
   const env: EntryEnv = {
     NODE_ENV: 'test',
     PORT: 47100,
@@ -36,16 +36,16 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock('@hono/node-server', () => ({ serve: h.serve }));
-vi.mock('@hono/node-server/serve-static', () => ({ serveStatic: h.serveStatic }));
-vi.mock('./app.js', () => ({ buildApp: h.buildApp }));
-vi.mock('./composition.js', () => ({ createDeps: h.createDeps }));
-vi.mock('./env.js', () => ({ loadEnv: h.loadEnv }));
+vi.mock('@hono/node-server', () => ({ serve: harness.serve }));
+vi.mock('@hono/node-server/serve-static', () => ({ serveStatic: harness.serveStatic }));
+vi.mock('./app.js', () => ({ buildApp: harness.buildApp }));
+vi.mock('./composition.js', () => ({ createDeps: harness.createDeps }));
+vi.mock('./env.js', () => ({ loadEnv: harness.loadEnv }));
 vi.mock('./ksef-dispatch.js', () => ({
-  dispatchKsefInBackground: h.dispatchKsefInBackground,
+  dispatchKsefInBackground: harness.dispatchKsefInBackground,
 }));
 vi.mock('./observability.js', () => ({
-  startServerObservability: h.startServerObservability,
+  startServerObservability: harness.startServerObservability,
 }));
 
 const importEntry = () => import('./entry.node.js');
@@ -53,36 +53,86 @@ const importEntry = () => import('./entry.node.js');
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  h.env.NODE_ENV = 'test';
-  h.env.PORT = 47100;
-  h.env.WEB_DIST_DIR = '/web-dist';
+  harness.env.NODE_ENV = 'test';
+  harness.env.PORT = 47100;
+  harness.env.WEB_DIST_DIR = '/web-dist';
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('entry.node composition', () => {
   it('starts observability, composes the app, and serves the SPA', async () => {
     await importEntry();
 
-    expect(h.startServerObservability).toHaveBeenCalledOnce();
-    expect(h.loadEnv).toHaveBeenCalledOnce();
-    expect(h.createDeps).toHaveBeenCalledWith(h.env);
-    expect(h.buildApp).toHaveBeenCalledWith(h.deps);
-    expect(h.serveStatic).toHaveBeenNthCalledWith(1, { root: '/web-dist' });
-    expect(h.serveStatic).toHaveBeenNthCalledWith(2, {
+    expect(harness.startServerObservability).toHaveBeenCalledOnce();
+    expect(harness.loadEnv).toHaveBeenCalledOnce();
+    expect(harness.createDeps).toHaveBeenCalledWith(harness.env);
+    expect(harness.buildApp).toHaveBeenCalledWith(harness.deps);
+    expect(harness.serveStatic).toHaveBeenNthCalledWith(1, { root: '/web-dist' });
+    expect(harness.serveStatic).toHaveBeenNthCalledWith(2, {
       path: '/web-dist/index.html',
     });
-    expect(h.app.use).toHaveBeenCalledWith('*', h.serveStatic.mock.results[0]?.value);
-    expect(h.app.get).toHaveBeenCalledWith('*', h.serveStatic.mock.results[1]?.value);
-    expect(h.serve).toHaveBeenCalledWith(
-      { fetch: h.app.fetch, port: 47100, hostname: '0.0.0.0' },
+    expect(harness.app.use).toHaveBeenCalledWith(
+      '*',
+      harness.serveStatic.mock.results[0]?.value,
+    );
+    expect(harness.app.get).toHaveBeenCalledWith(
+      '*',
+      harness.serveStatic.mock.results[1]?.value,
+    );
+    expect(harness.serve).toHaveBeenCalledWith(
+      { fetch: harness.app.fetch, port: 47100, hostname: '0.0.0.0' },
       expect.any(Function),
     );
   });
 
   it('propagates listener startup failures', async () => {
-    h.serve.mockImplementationOnce(() => {
+    harness.serve.mockImplementationOnce(() => {
       throw new Error('port unavailable');
     });
 
     await expect(importEntry()).rejects.toThrow('port unavailable');
+  });
+
+  it('runs and unreferences production background tickers', async () => {
+    vi.useFakeTimers();
+    harness.env.NODE_ENV = 'production';
+    harness.deps.dispatchEmails.mockResolvedValueOnce({
+      ok: false,
+      error: new Error('outbox unavailable'),
+    });
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+    await importEntry();
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(2);
+    expect(setIntervalSpy).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Function),
+      harness.env.EMAIL_DISPATCH_INTERVAL_MS,
+    );
+    expect(setIntervalSpy).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      harness.env.KSEF_DISPATCH_INTERVAL_MS,
+    );
+    expect(setIntervalSpy.mock.results[0]?.value.hasRef()).toBe(false);
+    expect(setIntervalSpy.mock.results[1]?.value.hasRef()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(harness.env.EMAIL_DISPATCH_INTERVAL_MS);
+
+    expect(harness.deps.dispatchEmails).toHaveBeenCalledWith('cron');
+    expect(harness.dispatchKsefInBackground).toHaveBeenCalledWith(
+      harness.deps.ksef,
+      harness.deps.logger,
+      'node ticker',
+    );
+    expect(stderr).toHaveBeenCalledWith(
+      '[email-outbox] ticker dispatch failed: outbox unavailable\n',
+    );
   });
 });

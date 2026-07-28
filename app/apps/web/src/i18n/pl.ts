@@ -65,6 +65,7 @@ export const pl: Messages = {
     messageIntegrationUnavailable:
       'Usługa zewnętrzna jest chwilowo niedostępna. Spróbuj ponownie za chwilę.',
     messageRateLimited: 'Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.',
+    messageSlugReservedGeneric: 'Ten adres jest zarezerwowany dla platformy. Wybierz inny.',
     messageSlugReserved: ({ slug }) =>
       format('Adres `{slug}` jest zarezerwowany dla platformy. Wybierz inny — np. dodaj nazwę marki.', { slug }),
     messageInternal: 'Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.',

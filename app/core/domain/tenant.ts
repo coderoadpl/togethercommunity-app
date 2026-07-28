@@ -59,19 +59,14 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
   faviconUrl: null,
 };
 
-export const tenantSocialSchema = z.object({
-  ogTitle: z.string().max(70).nullable().default(null),
-  ogDescription: z.string().max(200).nullable().default(null),
+const OG_TITLE_MAX_LENGTH = 70;
+const OG_DESCRIPTION_MAX_LENGTH = 200;
+
+const tenantSocialSchema = z.object({
+  ogTitle: z.string().max(OG_TITLE_MAX_LENGTH).nullable().default(null),
+  ogDescription: z.string().max(OG_DESCRIPTION_MAX_LENGTH).nullable().default(null),
   ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
 });
-
-export type TenantSocial = z.output<typeof tenantSocialSchema>;
-
-export const EMPTY_TENANT_SOCIAL: TenantSocial = {
-  ogTitle: null,
-  ogDescription: null,
-  ogImageUrl: null,
-};
 
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
@@ -79,10 +74,8 @@ export const tenantSettingsSchema = z.object({
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
-  ogTitle: z.string().max(70).nullable().default(null),
-  ogDescription: z.string().max(200).nullable().default(null),
-  ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
   supportEmail: z.string().email().nullable().default(null),
+  supportConfigured: z.boolean().optional(),
   supportUrl: z.string().url().nullable().default(null),
   termsUrl: z.string().url().nullable().default(null),
   privacyUrl: z.string().url().nullable().default(null),
@@ -92,7 +85,7 @@ export const tenantSettingsSchema = z.object({
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
-});
+}).extend(tenantSocialSchema.shape);
 
 export type TenantSettings = z.output<typeof tenantSettingsSchema>;
 
@@ -136,8 +129,8 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
-  ogTitle: clearableText(70),
-  ogDescription: clearableText(200),
+  ogTitle: clearableText(OG_TITLE_MAX_LENGTH),
+  ogDescription: clearableText(OG_DESCRIPTION_MAX_LENGTH),
   ogImageUrl: clearableBrandingAssetUrl,
   supportEmail: clearableEmail,
   supportUrl: clearableUrl,

@@ -116,4 +116,33 @@ describe('sendSupportMessage', () => {
       ),
     ).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
+
+  it('rejects an authenticated identity without member or staff scope', async () => {
+    const h = harness('support@alpha.test');
+    expect(
+      await sendSupportMessage(
+        { identity: { ...identity, memberId: null } },
+        { subject: 'Help', body: 'Body' },
+        h.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(h.queued).toEqual([]);
+  });
+
+  it('does not send for a deleted member', async () => {
+    const h = harness('support@alpha.test');
+    const findById = h.deps.members.findById;
+    h.deps.members.findById = async (tenantId, memberId) => {
+      const member = await findById(tenantId, memberId);
+      return member === null ? null : { ...member, deletedAt: '2026-07-28T09:00:00.000Z' };
+    };
+    expect(
+      await sendSupportMessage(
+        { identity },
+        { subject: 'Help', body: 'Body' },
+        h.deps,
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(h.queued).toEqual([]);
+  });
 });

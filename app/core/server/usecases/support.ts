@@ -1,4 +1,5 @@
 import {
+  DEFAULT_LANGUAGE,
   err,
   integrationNotConfigured,
   notFound,
@@ -62,7 +63,7 @@ export const sendSupportMessage = async (
     to: settings.supportEmail,
     payload: {
       kind: 'support-message',
-      language: 'pl',
+      language: DEFAULT_LANGUAGE,
       tenantName: ctx.identity.tenantName ?? '',
       memberEmail,
       memberDisplay: member?.displayName ?? ctx.identity.name,

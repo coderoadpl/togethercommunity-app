@@ -6,7 +6,7 @@ import {
   type GrantSource,
   type Result,
   type Tenant,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   DevMagicLinkReader,

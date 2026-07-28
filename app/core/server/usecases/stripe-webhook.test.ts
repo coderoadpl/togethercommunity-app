@@ -13,7 +13,7 @@ import {
   type ProductPrice,
   type Coupon,
   type CouponRedemption,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';

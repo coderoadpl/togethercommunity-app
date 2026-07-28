@@ -30,7 +30,7 @@ import type {
   CouponRecurringDuration,
   CouponStatsCursor,
   CouponStatsItem,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import {

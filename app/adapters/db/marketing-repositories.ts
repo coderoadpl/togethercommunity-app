@@ -19,7 +19,7 @@ import {
   type Campaign,
   type CampaignEngagementStats,
   type CampaignSend,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 import type {
   AutomationIdempotencyRepository,
   CampaignRepository,
@@ -35,7 +35,7 @@ import type {
   TenantDocumentRepository,
   TenantSesSettingsRepository,
   UnsubscribeTokenRepository,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import {

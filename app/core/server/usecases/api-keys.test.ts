@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole, TenantApiKey } from '@core/domain/index.js';
+import type { Identity, StaffRole, TenantApiKey } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { ApiKeyCrypto, TenantApiKeyRepository } from '../ports.js';

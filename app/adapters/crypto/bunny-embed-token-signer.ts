@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { BunnyEmbedTokenSigner } from '@core/server/index.js';
+import type { BunnyEmbedTokenSigner } from '#core/server/index.js';
 
 export const createBunnyEmbedTokenSigner = (): BunnyEmbedTokenSigner => ({
   sign: ({ securityKey, videoId, expires }) =>

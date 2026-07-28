@@ -18,7 +18,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { PanelCourseDetailRoute, PanelModuleCreateRoute } from '../panel-routes.js';

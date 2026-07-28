@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 
-import { integrationUnavailable, ok } from '@core/domain/index.js';
-import type { EmailPort } from '@core/server/index.js';
+import { integrationUnavailable, ok } from '#core/domain/index.js';
+import type { EmailPort } from '#core/server/index.js';
 
 export interface SmtpEmailSettings {
   host: string;

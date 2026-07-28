@@ -1,4 +1,4 @@
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { ok, type AppError, type Result } from '#core/domain/index.js';
 
 import type { KsefSubmissionJobRepository } from '../ports.js';
 import { runKsefSubmission, type KsefSubmissionDeps } from './ksef-submissions.js';

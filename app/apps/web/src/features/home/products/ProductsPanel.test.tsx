@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import type { Product, ProductAccessIssues, ProductPrice } from '@core/domain/index.js';
+import type { Product, ProductAccessIssues, ProductPrice } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';

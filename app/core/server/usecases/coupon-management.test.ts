@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Coupon, Identity } from '@core/domain/index.js';
+import type { Coupon, Identity } from '#core/domain/index.js';
 
 import type { CouponManagementRepository } from '../ports.js';
 import { archiveCoupon, createCoupon } from './coupon-management.js';

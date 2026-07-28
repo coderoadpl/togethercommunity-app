@@ -4,8 +4,8 @@ import {
   nipSchema,
   ok,
   validation,
-} from '@core/domain/index.js';
-import type { KsefCredentialResolver, TenantSecretResolver } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { KsefCredentialResolver, TenantSecretResolver } from '#core/server/index.js';
 
 export const createKsefCredentialResolver = (
   secrets: TenantSecretResolver,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type CouponStatsItem, type Identity } from '@core/domain/index.js';
+import { type CouponStatsItem, type Identity } from '#core/domain/index.js';
 
 import { exportCouponStats, listCouponOptions, listCouponStats } from './coupon-stats.js';
 

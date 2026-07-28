@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole } from '@core/domain/index.js';
-import { err, notFound, ok } from '@core/domain/index.js';
+import type { Identity, StaffRole } from '#core/domain/index.js';
+import { err, notFound, ok } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';

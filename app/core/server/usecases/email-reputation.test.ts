@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { emailEventSchema, type CampaignSend, type EmailEvent, type Identity } from '@core/domain/index.js';
+import { emailEventSchema, type CampaignSend, type EmailEvent, type Identity } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { InMemoryCampaignSendRepository, InMemoryEmailEventRepository } from '../testing/marketing-fakes.js';

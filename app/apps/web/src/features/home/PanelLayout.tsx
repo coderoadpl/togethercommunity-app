@@ -21,7 +21,7 @@ import { useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
 import { useTenantBranding } from '../../branding.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';

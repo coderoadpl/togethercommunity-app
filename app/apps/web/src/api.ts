@@ -1,6 +1,6 @@
 import { context, trace } from '@opentelemetry/api';
 
-import { createBetterAuthClientAdapter } from '@adapters/auth/client-adapter.js';
+import { createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
 import {
   authConfigQuery,
   attachModuleMutation,
@@ -161,7 +161,7 @@ import {
   tenantsQuery,
   updateLastViewedMutation,
   verifyTotpMutation,
-} from '@core/client/index.js';
+} from '#core/client/index.js';
 import type {
   DiscussionGetInput,
   OrdersExportQueryInput,
@@ -173,8 +173,8 @@ import type {
   SchedulerRunsQueryInput,
   PostsSearchInput,
   SpaceFeedGetInput,
-} from '@core/contract/index.js';
-import type { MemberExportFormat } from '@core/domain/index.js';
+} from '#core/contract/index.js';
+import type { MemberExportFormat } from '#core/domain/index.js';
 
 /**
  * W3C `traceparent` for the active span, formatted from the OTel facade so FE→BE

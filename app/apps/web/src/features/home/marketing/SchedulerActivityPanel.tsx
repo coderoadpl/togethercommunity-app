@@ -17,7 +17,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useParams } from '@tanstack/react-router';
 
-import type { SchedulerRunKind, SchedulerRunStatus } from '@core/domain/index.js';
+import type { SchedulerRunKind, SchedulerRunStatus } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';

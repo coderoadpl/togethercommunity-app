@@ -8,8 +8,8 @@ import {
   validation,
   type AppError,
   type Result,
-} from '@core/domain/index.js';
-import type { Fa3Validator } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { Fa3Validator } from '#core/server/index.js';
 
 const schemaPath = fileURLToPath(
   new URL('./xsd/schemat_FA(3)_v1-0E.xsd', import.meta.url),

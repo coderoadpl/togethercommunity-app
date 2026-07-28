@@ -10,7 +10,7 @@ import {
   type ListStreamVideosInput,
   type Result,
   type StreamVideoPage,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { TenantRepository, TenantSecretResolver, VideoLibraryPort } from '../ports.js';

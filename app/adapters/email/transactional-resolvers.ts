@@ -4,7 +4,7 @@ import type {
   TenantSecretResolver,
   TenantSesSettingsRepository,
   TransactionalEmailTransportResolver,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 import { createSesEmailPort } from './ses.js';
 import { createSmtpEmailPort, type SmtpEmailSettings } from './smtp.js';

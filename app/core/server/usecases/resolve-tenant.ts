@@ -5,7 +5,7 @@ import {
   type AppError,
   type Result,
   type Tenant,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { TenantDomainRepository, TenantRepository } from '../ports.js';
 

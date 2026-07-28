@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { AccessItem, Course, CourseModule, Product } from '@core/domain/index.js';
+import type { AccessItem, Course, CourseModule, Product } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { useTranslations, type Messages } from '../../../i18n/index.js';

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS",
+  "imports": {
+    "#core/*": "./core/*",
+    "#adapters/*": "./adapters/*"
+  },
   "engines": {
     "node": "24.x"
   },

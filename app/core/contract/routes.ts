@@ -113,7 +113,7 @@ import {
   updatePostInputSchema,
   updateProductAccessItemsInputSchema,
   billingDataSchema,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 /**
  * Single source of truth for the HTTP API shared by server and all clients.

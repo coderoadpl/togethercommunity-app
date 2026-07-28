@@ -27,7 +27,7 @@ import type {
   MemberCourseLearningSummary,
   MemberGrant,
   MemberWithProductIds,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';

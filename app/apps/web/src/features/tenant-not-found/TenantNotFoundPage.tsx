@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Box, Container, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';

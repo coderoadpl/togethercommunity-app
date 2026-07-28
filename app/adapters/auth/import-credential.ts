@@ -1,4 +1,4 @@
-import { normalizeEmail } from '@core/domain/index.js';
+import { normalizeEmail } from '#core/domain/index.js';
 
 import type { Auth } from './create-auth.js';
 import { isLegacyPasswordHash } from './legacy-password.js';

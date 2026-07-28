@@ -1,6 +1,6 @@
 import { Box, Chip, Stack } from '@mui/material';
 
-import type { SchedulerRunStatus } from '@core/domain/index.js';
+import type { SchedulerRunStatus } from '#core/domain/index.js';
 
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 

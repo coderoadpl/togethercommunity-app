@@ -10,7 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import type { EmailEvent } from '@core/domain/index.js';
+import type { EmailEvent } from '#core/domain/index.js';
 
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';

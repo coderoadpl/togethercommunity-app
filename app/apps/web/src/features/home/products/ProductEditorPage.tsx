@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { priceMajorSchema, SUPPORTED_CURRENCIES, type PriceKind, type Product, type ProductPrice } from '@core/domain/index.js';
+import { priceMajorSchema, SUPPORTED_CURRENCIES, type PriceKind, type Product, type ProductPrice } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';

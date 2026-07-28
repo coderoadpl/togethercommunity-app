@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '@core/contract/index.js';
-import { BETTER_AUTH_MAGIC_LINK_PATH } from '@adapters/auth/create-auth.js';
+import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import { BETTER_AUTH_MAGIC_LINK_PATH } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
 import {
@@ -18,8 +18,8 @@ import {
   type Tenant,
   type TenantDomain,
   type TermsConsent,
-} from '@core/domain/index.js';
-import type { PaymentWebhookEvent } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { PaymentWebhookEvent } from '#core/server/index.js';
 import {
   FakeEmailHmac,
   FakeScheduler,
@@ -39,7 +39,7 @@ import {
   InMemorySuppressionRepository,
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
-} from '@core/server/testing/marketing-fakes.js';
+} from '#core/server/testing/marketing-fakes.js';
 
 const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
 const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole, StreamVideo, TenantSettings } from '@core/domain/index.js';
-import { err, integrationAuth, integrationUnavailable, notFound, ok } from '@core/domain/index.js';
+import type { Identity, StaffRole, StreamVideo, TenantSettings } from '#core/domain/index.js';
+import { err, integrationAuth, integrationUnavailable, notFound, ok } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { TenantRepository, TenantSecretResolver, VideoLibraryPort } from '../ports.js';

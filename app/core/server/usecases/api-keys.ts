@@ -12,7 +12,7 @@ import {
   type Result,
   type TenantApiKey,
   type TenantApiKeyPublic,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { ApiKeyCrypto, Clock, IdGenerator, TenantApiKeyRepository } from '../ports.js';

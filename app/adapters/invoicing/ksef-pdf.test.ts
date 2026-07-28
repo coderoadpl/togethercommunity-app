@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderFa3Invoice, type Invoice } from '@core/domain/index.js';
+import { renderFa3Invoice, type Invoice } from '#core/domain/index.js';
 
 import { createKsefInvoicePdf } from './ksef-pdf.js';
 

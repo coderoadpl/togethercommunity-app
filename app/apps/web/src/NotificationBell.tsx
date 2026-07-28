@@ -3,7 +3,7 @@ import { Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, SvgIcon, Too
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { Notification } from '@core/domain/index.js';
+import type { Notification } from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { useLanguage, useTranslations } from './i18n/index.js';

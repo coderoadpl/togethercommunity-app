@@ -38,7 +38,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { MEMBER_ROUTE_PATHS } from '@core/contract/index.js';
+import { MEMBER_ROUTE_PATHS } from '#core/contract/index.js';
 
 import { TenantBrandingBoundary } from './branding.js';
 import { AppChromeProvider } from './components/ui/app-chrome.js';

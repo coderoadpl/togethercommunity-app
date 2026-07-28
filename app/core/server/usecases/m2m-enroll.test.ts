@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type EmailOutboxPayload, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '@core/domain/index.js';
+import { ok, type EmailOutboxPayload, type Member, type Order, type Product, type ProductGrant, type TenantApiKey } from '#core/domain/index.js';
 
 import type {
   ApiKeyCrypto,

@@ -14,26 +14,26 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { z } from 'zod';
 
-import { createContentHash } from '@adapters/crypto/content-hash.js';
-import { createKsefCredentialResolver } from '@adapters/crypto/ksef-credential-resolver.js';
-import { createSecretCrypto } from '@adapters/crypto/secret-crypto.js';
-import { createTenantSecretResolver } from '@adapters/crypto/tenant-secret-resolver.js';
-import { createInvoiceRepository } from '@adapters/db/invoice-repositories.js';
+import { createContentHash } from '#adapters/crypto/content-hash.js';
+import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-resolver.js';
+import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
+import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
+import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
   createFiscalArtifactRepository,
   createKsefNumberRepository,
   createKsefSubmissionJobRepository,
-} from '@adapters/db/ksef-repositories.js';
+} from '#adapters/db/ksef-repositories.js';
 import {
   createOrderRepository,
   createTenantRepository,
   createTenantSecretRepository,
-} from '@adapters/db/repositories.js';
-import * as schema from '@adapters/db/schema.js';
-import { createFakeInvoicing } from '@adapters/invoicing/fake.js';
-import { createFa3XsdValidator } from '@adapters/invoicing/fa3-validator.js';
-import { createKsefClient } from '@adapters/invoicing/ksef.js';
-import { dispatchKsefJob, requestInvoice } from '@core/server/index.js';
+} from '#adapters/db/repositories.js';
+import * as schema from '#adapters/db/schema.js';
+import { createFakeInvoicing } from '#adapters/invoicing/fake.js';
+import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
+import { createKsefClient } from '#adapters/invoicing/ksef.js';
+import { dispatchKsefJob, requestInvoice } from '#core/server/index.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');

@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-import { invoiceSchema } from '@core/domain/index.js';
-import type { InvoiceRepository, KsefSubmissionRepository } from '@core/server/index.js';
+import { invoiceSchema } from '#core/domain/index.js';
+import type { InvoiceRepository, KsefSubmissionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { fiscalArtifacts, invoiceEvents, invoices, ksefSubmissionJobs, orders } from './app-schema.js';

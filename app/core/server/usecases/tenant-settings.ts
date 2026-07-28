@@ -9,7 +9,7 @@ import {
   type Result,
   type TenantSettings,
   type UpdateTenantSettingsInput,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { TenantRepository } from '../ports.js';

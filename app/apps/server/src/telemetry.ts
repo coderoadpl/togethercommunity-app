@@ -6,7 +6,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 import { type Context, type Next } from 'hono';
 
-import type { AppError, Identity } from '@core/domain/index.js';
+import type { AppError, Identity } from '#core/domain/index.js';
 
 type TelemetryVars = { Variables: { identity?: Identity } };
 

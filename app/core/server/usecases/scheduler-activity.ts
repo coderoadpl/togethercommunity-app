@@ -6,7 +6,7 @@ import {
   type AppError,
   type Result,
   type SchedulerRunListQuery,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { Clock, SchedulerRunRepository } from '../ports.js';

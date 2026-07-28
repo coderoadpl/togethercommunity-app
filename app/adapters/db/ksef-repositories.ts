@@ -4,7 +4,7 @@ import type {
   FiscalArtifactRepository,
   KsefNumberRepository,
   KsefSubmissionJobRepository,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import {

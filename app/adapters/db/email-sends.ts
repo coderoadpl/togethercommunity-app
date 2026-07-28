@@ -6,8 +6,8 @@ import {
   renderEmailOutboxPayload,
   type EmailSendListQuery,
   type EmailSendProjection,
-} from '@core/domain/index.js';
-import type { EmailSendRepository } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { EmailSendRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { campaigns, campaignSends, emailEvents, emailOutbox } from './schema.js';

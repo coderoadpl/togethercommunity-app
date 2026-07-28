@@ -1,6 +1,6 @@
 import type { Theme } from '@mui/material/styles';
 
-import type { TenantBranding } from '@core/domain/index.js';
+import type { TenantBranding } from '#core/domain/index.js';
 
 /**
  * Branding is a thin token overlay on the theme system, never a theme fork:

@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@core/domain/index.js';
+import type { ErrorCode } from '#core/domain/index.js';
 
 export interface RefreshToast {
   readonly code: ErrorCode | null;

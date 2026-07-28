@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { productPriceSchema } from '@core/domain/index.js';
+import { productPriceSchema } from '#core/domain/index.js';
 
 import { legacyPriceToProductPrice } from './price-migration.js';
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole, TenantSecret, TenantSecretKey } from '@core/domain/index.js';
-import { ok } from '@core/domain/index.js';
+import type { Identity, StaffRole, TenantSecret, TenantSecretKey } from '#core/domain/index.js';
+import { ok } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { SecretCrypto, TenantSecretRepository } from '../ports.js';

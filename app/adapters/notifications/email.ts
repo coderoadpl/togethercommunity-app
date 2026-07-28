@@ -1,5 +1,5 @@
-import { ok } from '@core/domain/index.js';
-import type { Clock, EmailOutboxRepository, IdGenerator, NotificationChannelPort } from '@core/server/index.js';
+import { ok } from '#core/domain/index.js';
+import type { Clock, EmailOutboxRepository, IdGenerator, NotificationChannelPort } from '#core/server/index.js';
 
 export const createEmailNotificationChannel = (
   emailOutbox: EmailOutboxRepository,

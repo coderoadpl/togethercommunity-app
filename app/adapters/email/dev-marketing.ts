@@ -1,5 +1,5 @@
-import { ok } from '@core/domain/index.js';
-import type { EmailPort, SesMarketingSender } from '@core/server/index.js';
+import { ok } from '#core/domain/index.js';
+import type { EmailPort, SesMarketingSender } from '#core/server/index.js';
 
 export const createDevMarketingSender = (email: EmailPort): SesMarketingSender => ({
   send: async (input) => {

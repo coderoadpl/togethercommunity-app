@@ -3,7 +3,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinition, type ConsentDefinitionVersion, type EmailLayout, type MarketingConsent, type Suppression, type TenantDocument, type TenantDocumentVersion } from '@core/domain/index.js';
+import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinition, type ConsentDefinitionVersion, type EmailLayout, type MarketingConsent, type Suppression, type TenantDocument, type TenantDocumentVersion } from '#core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
 import { createEmailEventRepository } from './email-events.js';

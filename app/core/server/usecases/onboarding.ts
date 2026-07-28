@@ -7,7 +7,7 @@ import {
   type AppError,
   type CreatorOnboarding,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {

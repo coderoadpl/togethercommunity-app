@@ -7,7 +7,7 @@ import type {
   Product,
   ProductGrant,
   ProductPrice,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { AuthPort, ProductRepository, PurchaseRepository } from '../ports.js';
 import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase.js';

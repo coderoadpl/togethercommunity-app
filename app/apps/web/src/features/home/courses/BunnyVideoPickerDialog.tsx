@@ -16,8 +16,8 @@ import {
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
-import type { StreamVideo } from '@core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import type { StreamVideo } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';

@@ -15,8 +15,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
-import type { MemberExportFormat, MemberWithProductIds } from '@core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import type { MemberExportFormat, MemberWithProductIds } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';

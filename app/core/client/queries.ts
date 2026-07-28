@@ -74,8 +74,8 @@ import type {
   TenantSecretDeleteInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
-} from '@core/contract/index.js';
-import type { DevGrantInput, MemberExportFormat, NewProductInput, OrderExportFormat } from '@core/domain/index.js';
+} from '#core/contract/index.js';
+import type { DevGrantInput, MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';

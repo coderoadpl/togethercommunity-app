@@ -80,7 +80,7 @@ import type {
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 /**
  * Ports: interfaces the core depends on, implemented in `adapters/`.

@@ -1,6 +1,6 @@
 import { Alert, Box } from '@mui/material';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
 

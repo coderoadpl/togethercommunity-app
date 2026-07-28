@@ -1,4 +1,4 @@
-import type { AccessItem } from '@core/domain/index.js';
+import type { AccessItem } from '#core/domain/index.js';
 
 export interface LegacyAccessItem {
   courseId: string;

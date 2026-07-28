@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { MemberSubscription, Order, ProductGrant, ProductPrice } from '@core/domain/index.js';
+import type { MemberSubscription, Order, ProductGrant, ProductPrice } from '#core/domain/index.js';
 
 import type { SubscriptionLifecycleDeps } from './subscription-lifecycle.js';
 import {

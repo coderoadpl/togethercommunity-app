@@ -6,7 +6,7 @@ import {
   type FiscalArtifact,
   type Invoice,
   type KsefInvoiceData,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { KsefSubmissionDeps } from './ksef-submissions.js';
 import { runKsefSubmission } from './ksef-submissions.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, Product, ProductPrice } from '@core/domain/index.js';
+import type { Identity, Product, ProductPrice } from '#core/domain/index.js';
 
 import type { ProductPriceDeps } from './product-prices.js';
 import { createProductPrice, deactivateProductPrice, listProductPrices } from './product-prices.js';

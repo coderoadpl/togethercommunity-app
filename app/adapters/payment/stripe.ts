@@ -10,8 +10,8 @@ import {
   validation,
   type AppError,
   type Result,
-} from '@core/domain/index.js';
-import type { PaymentProvider, PaymentWebhookEvent, TenantSecretResolver } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { PaymentProvider, PaymentWebhookEvent, TenantSecretResolver } from '#core/server/index.js';
 
 /**
  * Turns any thrown Stripe SDK error into a readable, non-leaky diagnostic (Z-3):

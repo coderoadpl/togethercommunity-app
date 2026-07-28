@@ -25,7 +25,7 @@ Nazwa: **Together** (zdecydowana). Domena: otwarta kwestia — `together.*` zaj�
 ## Licencja
 
 Together jest udostępniany jako Fair Source na licencji
-[FSL-1.1-Apache-2.0](LICENSE.md). Możesz go hostować samodzielnie, ale nie możesz
+[FSL-1.1-ALv2](LICENSE.md). Możesz go hostować samodzielnie, ale nie możesz
 oferować konkurencyjnego hostingu. Każde wydanie automatycznie przechodzi na
 Apache-2.0 po dwóch latach. Więcej informacji:
 [fsl.software](https://fsl.software/) i [fair.io](https://fair.io/).

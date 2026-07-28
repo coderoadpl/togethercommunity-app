@@ -721,7 +721,12 @@ export default tseslint.config(
         {
           default: 'disallow',
           message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
-          rules: [{ from: ['app-cli'], allow: ['vitest'] }],
+          rules: [
+            {
+              from: ['app-cli'],
+              allow: ['node:fs', 'node:os', 'node:path', 'vitest'],
+            },
+          ],
         },
       ],
     },

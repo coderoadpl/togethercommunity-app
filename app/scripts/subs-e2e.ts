@@ -146,7 +146,12 @@ const expectError = (result: Run, label: string, exitCode: number, errorCode: st
 };
 
 const authSchema = z.object({ token: z.string().min(1).nullable() });
-const cliConfigSchema = z.object({ token: z.string().min(1) });
+const cliConfigSchema = z.object({
+  profiles: z.record(
+    z.string(),
+    z.object({ token: z.string().min(1).nullable() }),
+  ),
+});
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
@@ -425,9 +430,11 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     const config = cliConfigSchema.parse(
       readJson(readFileSync(join(staffHome, '.config/together/config.json'), 'utf8'), 'staff cli config'),
     );
+    const token = config.profiles[new URL(url).origin]?.token;
+    assert(token !== undefined && token !== null, 'staff cli config should contain the active origin token');
     const exportFetch = async (format: 'csv' | 'json'): Promise<z.output<typeof ordersExportOutputSchema>> => {
       const response = await fetch(`${url}${API_PATHS.ordersExport}?format=${format}`, {
-        headers: { [TENANT_HEADER]: 'subs', authorization: `Bearer ${config.token}` },
+        headers: { [TENANT_HEADER]: 'subs', authorization: `Bearer ${token}` },
       });
       assert(response.status === 200, `orders export ${format} expected 200, got ${response.status}`);
       const envelope = looseEnvelopeSchema.parse(await response.json());

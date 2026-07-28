@@ -345,6 +345,9 @@ const deps = (input: {
       listReplies: async () => [],
       updateBody: async () => null,
       softDelete: async () => null,
+      setPinned: async () => null,
+      listPinnedForContext: async () => [],
+      countPinnedForContext: async () => 0,
       search: async () => [],
     },
     spaces: {

@@ -96,6 +96,7 @@ import {
   subscriptionSimulateOutputSchema,
   discussionOutputSchema,
   postOutputSchema,
+  postPinOutputSchema,
   postReactOutputSchema,
   postsSearchOutputSchema,
   spaceDeleteOutputSchema,
@@ -179,6 +180,7 @@ import {
   type DiscussionGetInput,
   type PostCreateInput,
   type PostDeleteInput,
+  type PostPinInput,
   type PostReactInput,
   type PostUpdateInput,
   type PostsSearchInput,
@@ -1040,6 +1042,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   createPost: (input: PostCreateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsCreate.method, API_ROUTES.postsCreate.path, postOutputSchema, input, signal),
+  pinPost: (input: PostPinInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsPin.method,
+      API_ROUTES.postsPin.path,
+      postPinOutputSchema,
+      input,
+      signal,
+    ),
   updatePost: (input: PostUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.postsUpdate.method, API_ROUTES.postsUpdate.path, postOutputSchema, input, signal),
   deletePost: (input: PostDeleteInput, signal?: AbortSignal) =>

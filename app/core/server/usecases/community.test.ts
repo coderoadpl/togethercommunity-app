@@ -252,6 +252,36 @@ class FakePosts implements PostRepository {
     return next;
   }
 
+  async setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null> {
+    const post = await this.findById(tenantId, input.id);
+    if (post === null) return null;
+    const next = { ...post, pinnedAt: input.pinnedAt };
+    this.replace(next);
+    return next;
+  }
+
+  async listPinnedForContext(
+    tenantId: string,
+    query: { contextKind: PostContextKind; contextId: string; limit: number },
+  ): Promise<Post[]> {
+    return this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.contextKind === query.contextKind &&
+          post.contextId === query.contextId &&
+          post.pinnedAt !== null,
+      )
+      .slice(0, query.limit);
+  }
+
+  async countPinnedForContext(
+    tenantId: string,
+    query: { contextKind: PostContextKind; contextId: string },
+  ): Promise<number> {
+    return (await this.listPinnedForContext(tenantId, { ...query, limit: this.rows.length })).length;
+  }
+
   async search(
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },

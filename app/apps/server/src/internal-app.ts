@@ -52,6 +52,7 @@ import {
   ordersReconciliationQuerySchema,
   postCreateInputSchema,
   postDeleteInputSchema,
+  postPinInputSchema,
   postReactInputSchema,
   postsSearchInputSchema,
   postUpdateInputSchema,
@@ -84,6 +85,7 @@ import {
   memberExportFormatSchema,
   ok,
   tenantNotFound,
+  toPublicPost,
   unauthorized,
   validation,
   type EmailBranding,
@@ -216,6 +218,7 @@ import {
   sendSesSimulatorTest,
   sendTransactionalSmtpTest,
   setSpaceArchived,
+  setPostPinned,
   setTenantSecret,
   simulatePurchase,
   simulateSubscriptionCycle,
@@ -1899,6 +1902,20 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid post payload', parsed.error.flatten())));
     const result = await createPost({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ post: result.value }) : result);
+  });
+
+  app.post(API_PATHS.postsPin, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postPinInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid post pin payload', parsed.error.flatten())));
+    }
+    const result = await setPostPinned({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(
+      result.ok
+        ? ok({ post: toPublicPost(result.value, c.get('identity').userId) })
+        : result,
+    );
   });
 
   app.post(API_PATHS.postsUpdate, async (c) => {

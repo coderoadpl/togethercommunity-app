@@ -54,6 +54,7 @@ import type {
   DiscussionGetInput,
   PostCreateInput,
   PostDeleteInput,
+  PostPinInput,
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
@@ -921,6 +922,12 @@ export const reactToPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'react'],
     call: (input: PostReactInput) => api.reactToPost(input),
+  });
+
+export const pinPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'pin'],
+    call: (input: PostPinInput) => api.pinPost(input),
   });
 
 export const unreactToPostMutation = (api: ApiClient) =>

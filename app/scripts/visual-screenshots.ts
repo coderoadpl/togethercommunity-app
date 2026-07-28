@@ -499,6 +499,7 @@ const stubNonDeterministicRequests = async (context: BrowserContext): Promise<vo
 const applyChrome = async (context: BrowserContext, mode: ThemeMode): Promise<void> => {
   await context.addInitScript(
     ([themeKey, themeValue, langKey]) => {
+      Object.defineProperty(window, 'EventSource', { configurable: true, value: undefined });
       try {
         window.localStorage.setItem(themeKey, themeValue);
         window.localStorage.setItem(langKey, 'pl');

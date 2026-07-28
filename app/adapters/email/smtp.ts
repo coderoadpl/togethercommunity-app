@@ -6,8 +6,8 @@ import type { EmailPort } from '#core/server/index.js';
 export interface SmtpEmailSettings {
   host: string;
   port: number;
-  user: string;
-  password: string;
+  user?: string;
+  password?: string;
   secure: boolean;
   from: string;
 }
@@ -27,7 +27,7 @@ export type SmtpTransportFactory = (settings: {
   host: string;
   port: number;
   secure: boolean;
-  auth: { user: string; pass: string };
+  auth?: { user: string; pass: string };
 }) => SmtpTransport;
 
 export const createSmtpEmailPort = (
@@ -38,7 +38,9 @@ export const createSmtpEmailPort = (
     host: settings.host,
     port: settings.port,
     secure: settings.secure,
-    auth: { user: settings.user, pass: settings.password },
+    ...(settings.user === undefined || settings.password === undefined
+      ? {}
+      : { auth: { user: settings.user, pass: settings.password } }),
   });
   return {
     send: async (message) => {

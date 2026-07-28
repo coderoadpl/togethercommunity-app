@@ -62,4 +62,26 @@ describe('SMTP transactional e-mail adapter', () => {
       expect(sent.error.message).toContain('authentication failed');
     }
   });
+
+  it('connects to a local SMTP sink without authentication', async () => {
+    const createTransport = vi.fn(() => ({
+      sendMail: async () => ({ messageId: '<mailpit-message@local>' }),
+    }));
+
+    createSmtpEmailPort(
+      {
+        host: 'localhost',
+        port: 47925,
+        secure: false,
+        from: 'Together <dev@together.local>',
+      },
+      createTransport,
+    );
+
+    expect(createTransport).toHaveBeenCalledWith({
+      host: 'localhost',
+      port: 47925,
+      secure: false,
+    });
+  });
 });

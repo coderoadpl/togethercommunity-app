@@ -480,7 +480,10 @@ const deps = (input: {
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
 
-const scopedApp = (scope: 'none' | 'member' | 'staff') => {
+const scopedApp = (
+  scope: 'none' | 'member' | 'staff',
+  options: { memberDeletedAt?: string } = {},
+) => {
   const base = deps();
   const member: Member = {
     id: 'member-1',
@@ -492,7 +495,7 @@ const scopedApp = (scope: 'none' | 'member' | 'staff') => {
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: '2026-07-12T00:00:00.000Z',
-    deletedAt: null,
+    deletedAt: options.memberDeletedAt ?? null,
   };
   const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
   const post: Post = {
@@ -528,7 +531,8 @@ const scopedApp = (scope: 'none' | 'member' | 'staff') => {
     },
     members: {
       ...base.members,
-      findById: async () => (scope === 'member' ? member : null),
+      findById: async () =>
+        scope === 'member' || options.memberDeletedAt !== undefined ? member : null,
     },
     tenants: {
       ...base.tenants,
@@ -1279,6 +1283,18 @@ describe('new route authorization', () => {
 
     expect((await scopedApp('member').request(API_PATHS.postsPin, request)).status).toBe(403);
     expect((await scopedApp('staff').request(API_PATHS.postsPin, request)).status).toBe(200);
+  });
+
+  it('maps a tombstoned grant mutation to conflict', async () => {
+    const response = await scopedApp('staff', {
+      memberDeletedAt: '2026-07-12T00:00:00.000Z',
+    }).request(API_PATHS.grantsCreate, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', productId: 'acme-published' }),
+    });
+
+    expect(response.status).toBe(409);
   });
 
   it('denies support messages from a session without member or staff scope', async () => {

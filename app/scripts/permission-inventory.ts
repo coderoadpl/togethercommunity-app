@@ -128,6 +128,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.endsWith('/access-items')) return 'product:access:write';
   if (path.endsWith('/access-issues')) return 'product:access:read';
   if (path.includes('/prices')) return method === 'GET' ? 'product:price:read' : 'product:price:write';
+  if (path === '/api/orders/reconciliation') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/export') return 'order:export';
   if (path === '/api/sales/summary') return 'sales:read';

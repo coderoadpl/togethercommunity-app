@@ -68,6 +68,7 @@ import type {
   ProductPriceCreateInput,
   ProductPriceDeactivateInput,
   OrdersListQueryInput,
+  OrdersReconciliationQueryInput,
   OrdersExportQueryInput,
   SimulatePurchaseInput,
   TenantCreateInput,
@@ -174,6 +175,8 @@ export const salesScopes = {
   order: (id: string) => ['sales', 'order', id] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
   summary: () => ['sales', 'summary'] as const,
+  reconciliation: (input: OrdersReconciliationQueryInput) =>
+    ['sales', 'reconciliation', input] as const,
 };
 
 export const couponScopes = {
@@ -518,6 +521,15 @@ export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
   defineQuery({
     queryKey: salesScopes.orders(input),
     call: ({ signal }) => api.listOrders(input, signal),
+  });
+
+export const orderReconciliationQuery = (
+  api: ApiClient,
+  input: OrdersReconciliationQueryInput = {},
+) =>
+  defineQuery({
+    queryKey: salesScopes.reconciliation(input),
+    call: ({ signal }) => api.listOrderReconciliation(input, signal),
   });
 
 export const memberBillingOrdersQuery = (api: ApiClient) =>

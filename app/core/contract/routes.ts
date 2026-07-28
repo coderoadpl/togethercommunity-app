@@ -45,6 +45,8 @@ import {
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
+  orderReconciliationQuerySchema,
+  paidWithoutGrantRowSchema,
   invoiceSchema,
   priceIntervalSchema,
   priceKindSchema,
@@ -427,6 +429,15 @@ export const ordersExportQuerySchema = exportOrdersQuerySchema;
 export type OrdersExportQueryInput = z.input<typeof ordersExportQuerySchema>;
 
 export const ordersExportOutputSchema = orderExportFileSchema;
+
+export const ordersReconciliationQuerySchema = orderReconciliationQuerySchema;
+
+export type OrdersReconciliationQueryInput = z.input<typeof ordersReconciliationQuerySchema>;
+
+export const ordersReconciliationOutputSchema = z.object({
+  rows: z.array(paidWithoutGrantRowSchema),
+  checkedThrough: z.string().datetime(),
+});
 
 export const salesSummaryOutputSchema = z.object({
   summary: salesSummarySchema,
@@ -1086,6 +1097,7 @@ export const API_ROUTES = {
   productPriceDeactivate: { method: 'POST', path: '/api/products/prices/deactivate' },
   productPrices: { method: 'GET', path: '/api/products/:productId/prices' },
   orders: { method: 'GET', path: '/api/orders' },
+  ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
   invoiceRefresh: { method: 'POST', path: '/api/invoices/:invoiceId/refresh' },
@@ -1253,6 +1265,7 @@ export const API_PATHS = {
   productPriceDeactivate: API_ROUTES.productPriceDeactivate.path,
   productPrices: API_ROUTES.productPrices.path,
   orders: API_ROUTES.orders.path,
+  ordersReconciliation: API_ROUTES.ordersReconciliation.path,
   order: API_ROUTES.order.path,
   invoiceIssue: API_ROUTES.invoiceIssue.path,
   invoiceRefresh: API_ROUTES.invoiceRefresh.path,

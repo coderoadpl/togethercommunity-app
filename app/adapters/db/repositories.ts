@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -14,6 +14,7 @@ import {
   notificationSchema,
   orderSchema,
   orderListItemSchema,
+  paidWithoutGrantRowSchema,
   productPriceSchema,
   postSchema,
   REACTION_EMOJIS,
@@ -1733,6 +1734,47 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
         );
       return rows[0]?.value ?? 0;
     },
+    listPaidWithoutGrant: async (tenantId, query) =>
+      (
+        await db
+          .select({
+            orderId: orders.id,
+            createdAt: orders.createdAt,
+            memberId: orders.memberId,
+            memberEmail: members.email,
+            productId: orders.productId,
+            productTitle: products.title,
+            kind: orders.kind,
+            provider: orders.provider,
+            amountCents: orders.amountCents,
+            currency: orders.currency,
+            providerObjectIds: orders.providerObjectIds,
+          })
+          .from(orders)
+          .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+          .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+          .where(
+            and(
+              eq(orders.tenantId, tenantId),
+              eq(orders.status, 'paid'),
+              sql`${orders.createdAt} <= ${query.paidBefore}`,
+              notExists(
+                db
+                  .select({ id: productGrants.id })
+                  .from(productGrants)
+                  .where(
+                    and(
+                      eq(productGrants.tenantId, orders.tenantId),
+                      eq(productGrants.memberId, orders.memberId),
+                      eq(productGrants.productId, orders.productId),
+                    ),
+                  ),
+              ),
+            ),
+          )
+          .orderBy(desc(orders.createdAt), desc(orders.id))
+          .limit(query.limit)
+      ).map((row) => paidWithoutGrantRowSchema.parse(row)),
   };
 };
 

@@ -49,6 +49,7 @@ import {
   notificationReadInputSchema,
   notificationsListInputSchema,
   ordersExportQuerySchema,
+  ordersReconciliationQuerySchema,
   postCreateInputSchema,
   postDeleteInputSchema,
   postReactInputSchema,
@@ -178,6 +179,7 @@ import {
   listMyTenants,
   listNotifications,
   listOrders,
+  listPaidOrdersWithoutGrant,
   listProductAccessIssues,
   listProductPrices,
   listProducts,
@@ -1452,6 +1454,22 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     };
     const result = await listOrders({ identity: c.get('identity') }, query, deps);
     return respond(result);
+  });
+
+  app.get(API_PATHS.ordersReconciliation, async (c) => {
+    const query = {
+      ...(c.req.query('minAgeMinutes') === undefined
+        ? {}
+        : { minAgeMinutes: c.req.query('minAgeMinutes') }),
+      ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
+    };
+    const parsed = ordersReconciliationQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid order reconciliation query', parsed.error.flatten())));
+    }
+    return respond(
+      await listPaidOrdersWithoutGrant({ identity: c.get('identity') }, parsed.data, deps),
+    );
   });
 
   app.get(API_PATHS.ordersExport, async (c) => {

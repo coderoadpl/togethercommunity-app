@@ -43,6 +43,7 @@ describe('listMemberBillingOrders', () => {
       },
       revenueSince: async () => [],
       countSince: async () => 0,
+      listPaidWithoutGrant: async () => [],
     };
     const result = await listMemberBillingOrders(ctx, { page: 2, pageSize: 10 }, { orders });
     expect(result).toMatchObject({
@@ -63,6 +64,7 @@ describe('listMemberBillingOrders', () => {
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
       countSince: async () => 0,
+      listPaidWithoutGrant: async () => [],
     };
     expect(await listMemberBillingOrders(
       { identity: { ...ctx.identity, staffRole: 'owner', memberId: null } },

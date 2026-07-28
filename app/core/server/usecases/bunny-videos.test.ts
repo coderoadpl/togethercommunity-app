@@ -42,7 +42,12 @@ const harness = (options: HarnessOptions = {}): Harness => {
   const apiKey = options.apiKey === undefined ? 'bunny-key-1234' : options.apiKey;
   const settings =
     options.settings === undefined
-      ? { billingPortalUrl: null, bunnyStreamLibraryId: 'lib-77', logoUrl: null, accentColor: null, faviconUrl: null, termsUrl: null, privacyUrl: null }
+      ? {
+          billingPortalUrl: null, bunnyStreamLibraryId: 'lib-77', logoUrl: null,
+          accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+          ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+          privacyUrl: null,
+        }
       : options.settings;
   const calls: Harness['calls'] = [];
   const tenants: TenantRepository = {
@@ -91,7 +96,12 @@ describe('listBunnyVideos', () => {
   });
 
   it('reports integration_not_configured when no library id is set, without calling Bunny', async () => {
-    const h = harness({ settings: { billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null, accentColor: null, faviconUrl: null, termsUrl: null, privacyUrl: null } });
+    const h = harness({ settings: {
+      billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
+      accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
+      ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
+      privacyUrl: null,
+    } });
     const result = await listBunnyVideos(ctx('owner'), {}, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
     expect(h.calls).toHaveLength(0);

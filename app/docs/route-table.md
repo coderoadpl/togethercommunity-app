@@ -192,3 +192,4 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |
 | `GET /api/notifications/unread-count` | authenticated | read | notifications unread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
+| `GET /*` | public | read | Tenant social preview for link crawlers |

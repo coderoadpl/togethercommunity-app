@@ -605,6 +605,11 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+      supportEmail: null,
+      supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
     });

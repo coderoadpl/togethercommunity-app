@@ -67,6 +67,7 @@ const effectiveAfter = (
 };
 
 const capabilityForRoute = (method: string, path: string): Capability | null => {
+  if (path === '*' || path === '/*') return 'offer:read';
   if (path.startsWith('/api/health')) return 'health:read';
   if (publicRouteManifestEntry({ method, path })?.why.toLowerCase().includes('authentication') === true) return 'auth:use';
   if (path === '/api/public/offer') return 'offer:read';

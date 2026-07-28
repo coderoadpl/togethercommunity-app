@@ -27,6 +27,17 @@
     },
     {
       "source": "/(.*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Googlebot|redditbot|Applebot).*"
+        }
+      ],
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],

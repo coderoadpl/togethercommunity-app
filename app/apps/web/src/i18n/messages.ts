@@ -999,6 +999,13 @@ export interface Messages {
     previewHint: string;
     faviconLabel: string;
     faviconPlaceholder: string;
+    socialHeading: string;
+    ogTitleLabel: string;
+    ogTitleHint: string;
+    ogDescriptionLabel: string;
+    ogDescriptionHint: string;
+    ogImageLabel: string;
+    ogImageHint: string;
     save: string;
     saving: string;
     saved: string;

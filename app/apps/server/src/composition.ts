@@ -343,6 +343,12 @@ export interface MarketingAppDeps {
   dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
 }
 
+export const selectDevSinkPurge = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV'>,
+  create: () => DevSinkPurge,
+): DevSinkPurge | undefined =>
+  env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? undefined : create();
+
 /**
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
@@ -425,6 +431,7 @@ export const createDeps = (env: Env): AppDeps => {
   const marketingJobs = createMarketingJobRepository(db);
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
+  const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
   const invoicing = production ? createIfirmaInvoicing() : createFakeInvoicing();
   const tenantMarketingCredentials = createMarketingSesCredentialResolver(secretResolver);
   const platformTransactionalPool = createPlatformTransactionalPool(db);
@@ -687,7 +694,7 @@ export const createDeps = (env: Env): AppDeps => {
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
     devEmails: createDevEmailReader(db),
     devMagicLinks: createDevMagicLinkReader(db),
-    ...(production ? {} : { devSinkPurge: createDevSinkPurge(db) }),
+    ...(devSinkPurge === undefined ? {} : { devSinkPurge }),
     tenantDomains,
     tenants,
     consents,

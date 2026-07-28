@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { selectDevSinkPurge } from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -81,5 +82,17 @@ describe('local SMTP policy', () => {
         'SMTP_USER and SMTP_PASSWORD must be set together',
       );
     }
+  });
+});
+
+describe('development sink policy', () => {
+  it.each([
+    { NODE_ENV: 'production' as const, APP_ENV: 'development' as const },
+    { NODE_ENV: 'development' as const, APP_ENV: 'production' as const },
+  ])('omits the purge adapter in production', (env) => {
+    const create = vi.fn();
+
+    expect(selectDevSinkPurge(env, create)).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
   });
 });

@@ -136,8 +136,12 @@ describe('CheckoutPage', () => {
     renderWithProviders(<CheckoutPage productId="course-1" />);
 
     expect(await screen.findByLabelText(pl.checkout.couponLabel)).toHaveValue('partner20');
+    expect(screen.getByTestId('checkout-coupon-input')).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-coupon-apply')).toBeInTheDocument();
     await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
     expect(await screen.findByText('Do zapłaty: 39,20 zł')).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-coupon-breakdown')).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-coupon-final')).toHaveTextContent('39,20');
     expect(screen.getByText('Najniższa cena z ostatnich 30 dni: 45,00 zł')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: pl.checkout.submitIdle }));
     expect(purchases).toMatchObject([{ couponCode: 'partner20' }]);
@@ -215,10 +219,11 @@ describe('CheckoutPage', () => {
     );
     renderWithProviders(<CheckoutPage productId="course-1" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: pl.checkout.couponReveal }));
+    await userEvent.click(await screen.findByTestId('checkout-coupon-reveal'));
     await userEvent.type(screen.getByLabelText(pl.checkout.couponLabel), 'OLD20');
-    await userEvent.click(screen.getByRole('button', { name: pl.checkout.couponApply }));
+    await userEvent.click(screen.getByTestId('checkout-coupon-apply'));
     expect(await screen.findByText(pl.checkout.couponExpired)).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-coupon-error')).toBeInTheDocument();
   });
 
   it('requires accepting configured documents and sends the consent with the purchase', async () => {

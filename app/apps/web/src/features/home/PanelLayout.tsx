@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
-  AppBar,
   Box,
   Chip,
-  Container,
   Divider,
-  Drawer,
   IconButton,
   List,
   ListItemIcon,
@@ -13,7 +10,6 @@ import {
   Menu,
   MenuItem,
   ThemeProvider,
-  Toolbar,
   Tooltip,
   useMediaQuery,
 } from '@mui/material';
@@ -29,7 +25,7 @@ import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { StatusView } from '../../components/layout/index.js';
+import { AppShell, type PageState } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
@@ -103,8 +99,6 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'marketingSettings', to: '/panel/marketing/settings' },
   { id: 'settings', to: '/panel/settings' },
 ];
-
-const drawerWidth = 248;
 
 const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
   role === 'owner' ? t.tenant.roleOwner : role === 'admin' ? t.tenant.roleAdmin : t.tenant.roleMember;
@@ -266,9 +260,13 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   const nav = <PanelNav onNavigate={goTo} />;
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      <AppBar position="fixed" sx={{ zIndex: (appBarTheme) => appBarTheme.zIndex.drawer + 1 }}>
-        <Toolbar sx={{ gap: '0.75rem' }}>
+    <AppShell
+      isDesktop={isDesktop}
+      mobileNavigationOpen={mobileOpen}
+      onMobileNavigationClose={() => setMobileOpen(false)}
+      navigation={nav}
+      header={
+        <>
           {isDesktop ? null : (
             <Tooltip title={t.panel.openNavigation}>
               <IconButton
@@ -291,7 +289,9 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
           </Box>
           <Box sx={{ flex: 1 }} />
-          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}>
+          <Box
+            sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
+          >
             <LanguageSwitcher inline />
             <ThemeSwitcher inline />
           </Box>
@@ -302,45 +302,50 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             pending={signOut.isPending}
             onSignOut={() => signOut.mutate()}
           />
-        </Toolbar>
-      </AppBar>
+        </>
+      }
+    >
+      <Outlet />
+    </AppShell>
+  );
+};
 
-      <Box sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}>
-        {isDesktop ? (
-          <Drawer
-            variant="permanent"
-            open
-            sx={{
-              display: { xs: 'none', md: 'block' },
-              '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' },
-            }}
-          >
-            <Toolbar />
-            {nav}
-          </Drawer>
-        ) : (
-          <Drawer
-            variant="temporary"
-            open={mobileOpen}
-            onClose={() => setMobileOpen(false)}
-            sx={{
-              display: { xs: 'block', md: 'none' },
-              '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' },
-            }}
-          >
-            <Toolbar />
-            {nav}
-          </Drawer>
-        )}
-      </Box>
+const PanelBootstrapShell = ({ state }: { state: PageState }) => {
+  const t = useTranslations();
+  const theme = useTheme();
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-      <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Toolbar />
-        <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
-          <Outlet />
-        </Box>
-      </Box>
-    </Box>
+  useSuppressGlobalChrome();
+
+  return (
+    <AppShell
+      isDesktop={isDesktop}
+      mobileNavigationOpen={mobileOpen}
+      onMobileNavigationClose={() => setMobileOpen(false)}
+      state={state}
+      navigation={<List component="nav" aria-label={t.sections.aria} />}
+      header={
+        <>
+          {isDesktop ? null : (
+            <Tooltip title={t.panel.openNavigation}>
+              <IconButton
+                edge="start"
+                color="inherit"
+                data-testid="open-navigation"
+                aria-label={t.panel.openNavigation}
+                onClick={() => setMobileOpen(true)}
+                sx={{ minHeight: '44px', minWidth: '44px' }}
+              >
+                <MenuIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
+          <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+        </>
+      }
+    />
   );
 };
 
@@ -369,17 +374,17 @@ export const PanelLayout = () => {
 
   if (me.isPending) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <StatusView state={{ kind: 'loading', label: t.tenant.openingWorkspace }} />
-      </Container>
+      <ThemeProvider theme={theme}>
+        <PanelBootstrapShell state={{ kind: 'loading', label: t.tenant.openingWorkspace }} />
+      </ThemeProvider>
     );
   }
   if (unauthorized || noTenant || memberOnly) return null;
   if (me.isError) {
     return (
-      <Container sx={{ maxWidth: '44rem', py: 6 }}>
-        <StatusView state={{ kind: 'error', message: localizeError(me.error, t) }} />
-      </Container>
+      <ThemeProvider theme={theme}>
+        <PanelBootstrapShell state={{ kind: 'error', message: localizeError(me.error, t) }} />
+      </ThemeProvider>
     );
   }
   if (!tenant || !tenant.staffRole) return null;

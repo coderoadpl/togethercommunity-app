@@ -238,3 +238,15 @@ deferred under FR-33.
 | API + SPA | 48730 |
 | Vite dev | 48731 |
 | Postgres (Docker) | 48912 |
+
+## License
+
+Together is Fair Source software available under
+[FSL-1.1-Apache-2.0](../LICENSE.md). Self-hosting for your own organization or
+community is allowed. Offering Together, or substantially similar
+functionality based on it, as a competing commercial hosted service is not.
+Each release automatically becomes available under Apache-2.0 two years after
+that release is made available.
+
+Learn more at [fsl.software](https://fsl.software/) and
+[fair.io](https://fair.io/).

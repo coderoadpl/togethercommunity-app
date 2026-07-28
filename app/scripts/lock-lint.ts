@@ -23,6 +23,8 @@ try {
       '--dry-run',
       '--json',
       '--legacy-peer-deps',
+      '--loglevel',
+      'warn',
       '--cache',
       cacheDir,
     ],
@@ -33,15 +35,23 @@ try {
     process.stderr.write(result.stderr);
     process.exitCode = 1;
   } else {
-    const changes = resultSchema.parse(JSON.parse(result.stdout));
-    const drift = changes.added + changes.removed + changes.changed;
-    if (drift > 0) {
+    const output = result.stdout.trim();
+    if (output === '') {
       process.stderr.write(
-        `lock-lint: package-lock.json has ${String(drift)} pending change(s); run npm install\n`,
+        'lock-lint: npm completed without the JSON lockfile report\n',
       );
       process.exitCode = 1;
     } else {
-      process.stdout.write('lock-lint: OK\n');
+      const changes = resultSchema.parse(JSON.parse(output));
+      const drift = changes.added + changes.removed + changes.changed;
+      if (drift > 0) {
+        process.stderr.write(
+          `lock-lint: package-lock.json has ${String(drift)} pending change(s); run npm install\n`,
+        );
+        process.exitCode = 1;
+      } else {
+        process.stdout.write('lock-lint: OK\n');
+      }
     }
   }
 } finally {

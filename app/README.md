@@ -94,10 +94,10 @@ entirely, while `student structure <courseId>` still resolves it as
 
 ```bash
 npm run --silent cli -- login --email creator2@together.dev --password demo1234
-npm run --silent cli -- org list
-npm run --silent cli -- org switch acme
-npm run --silent cli -- todo list
-npm run --silent cli -- --tenant acme todo add "Something for Acme"
+npm run --silent cli -- tenant list
+npm run --silent cli -- tenant switch acme
+npm run --silent cli -- product list
+npm run --silent cli -- --tenant acme course list
 npm run --silent cli -- --json whoami        # single JSON document on stdout
 ```
 

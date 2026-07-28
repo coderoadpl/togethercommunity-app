@@ -1,11 +1,9 @@
 import {
   DELETED_MEMBER_DISPLAY,
   err,
-  forbidden,
   memberTombstone,
   notFound,
   ok,
-  tenantNotFound,
   type AppError,
   type MemberExportFile,
   type MemberExportFormat,
@@ -14,6 +12,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { Clock, MemberErasurePort, MemberRepository } from '../ports.js';
 
 export interface MembersDeps {
@@ -21,12 +20,6 @@ export interface MembersDeps {
   memberErasure: MemberErasurePort;
   clock: Clock;
 }
-
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to manage members'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can manage members'));
-  return ok(ctx.identity.tenantId);
-};
 
 const neutralizeFormula = (value: string): string =>
   /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
@@ -72,7 +65,7 @@ export const listMembers = async (
   ctx: Ctx,
   deps: MembersDeps,
 ): Promise<Result<MemberWithProductIds[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:read');
   if (!tenant.ok) return tenant;
   return ok(await deps.members.listWithProductIds(tenant.value, deps.clock.nowIso()));
 };
@@ -82,7 +75,7 @@ export const exportMembers = async (
   input: { format: MemberExportFormat },
   deps: MembersDeps,
 ): Promise<Result<MemberExportFile, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:export');
   if (!tenant.ok) return tenant;
 
   const members = await deps.members.listWithProductIds(tenant.value, deps.clock.nowIso());
@@ -100,7 +93,7 @@ export const removeMember = async (
   input: { memberId: string },
   deps: MembersDeps,
 ): Promise<Result<{ memberId: string }, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:remove');
   if (!tenant.ok) return tenant;
 
   const tombstone = memberTombstone(input.memberId);

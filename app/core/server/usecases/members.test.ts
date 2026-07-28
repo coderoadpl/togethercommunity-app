@@ -80,6 +80,18 @@ const depsFor = (
 });
 
 describe('listMembers', () => {
+  it('requires the declared member read capability', async () => {
+    const identity = staff('t-acme', 'acme');
+    const deps = depsFor({ 't-acme': [memberRow({ id: 'm1' })] });
+    expect(await listMembers({ identity, capabilities: ['member:read'] }, deps)).toMatchObject({
+      ok: true,
+    });
+    expect(await listMembers({ identity, capabilities: ['member:export'] }, deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
   it('forbids a plain member identity', async () => {
     const result = await listMembers(
       { identity: plainMember('t-acme') },

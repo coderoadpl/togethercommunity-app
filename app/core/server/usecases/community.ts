@@ -322,7 +322,7 @@ export const createPost = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<PublicPost, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = createPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post payload', parsed.error.flatten()));
@@ -387,7 +387,7 @@ export const listDiscussion = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<Discussion, AppError>> => {
-  const scope = requireMemberOrStaff(ctx);
+  const scope = requireMemberOrStaff(ctx, 'community:read');
   if (!scope.ok) return scope;
   const parsed = listDiscussionInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid discussion query', parsed.error.flatten()));
@@ -426,7 +426,7 @@ export const editPost = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<PublicPost, AppError>> => {
-  const actor = requireActor(ctx);
+  const actor = requireActor(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = updatePostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post update payload', parsed.error.flatten()));
@@ -448,7 +448,7 @@ export const deletePost = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<PublicPost, AppError>> => {
-  const actor = requireActor(ctx);
+  const actor = requireActor(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = deletePostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post delete payload', parsed.error.flatten()));
@@ -469,7 +469,7 @@ export const subscribeThread = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<{ rootPostId: string }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = subscribeThreadInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid thread subscription payload', parsed.error.flatten()));
@@ -490,7 +490,7 @@ export const muteThread = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<{ rootPostId: string }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = muteThreadInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid thread mute payload', parsed.error.flatten()));
@@ -507,7 +507,7 @@ export const searchPosts = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<PostSearchHit[], AppError>> => {
-  const tenant = requireTenant(ctx);
+  const tenant = requireTenant(ctx, 'community:read');
   if (!tenant.ok) return tenant;
   const parsed = searchPostsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post search payload', parsed.error.flatten()));
@@ -544,7 +544,7 @@ export const listNotifications = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<{ notifications: Notification[]; nextCursor: string | null }, AppError>> => {
-  const actor = requireActor(ctx);
+  const actor = requireActor(ctx, 'notification:read');
   if (!actor.ok) return actor;
   const parsed = notificationListInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid notifications query', parsed.error.flatten()));
@@ -562,7 +562,7 @@ export const markNotificationRead = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<Notification, AppError>> => {
-  const actor = requireActor(ctx);
+  const actor = requireActor(ctx, 'notification:write');
   if (!actor.ok) return actor;
   const parsed = notificationMarkReadInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid notification payload', parsed.error.flatten()));
@@ -578,7 +578,7 @@ export const markAllNotificationsRead = async (
   ctx: Ctx,
   deps: CommunityDeps,
 ): Promise<Result<{ read: number }, AppError>> => {
-  const actor = requireActor(ctx);
+  const actor = requireActor(ctx, 'notification:write');
   if (!actor.ok) return actor;
   return ok({
     read: await deps.notifications.markAllRead(actor.value.tenantId, {
@@ -592,7 +592,7 @@ export const unreadNotificationCount = async (
   ctx: Ctx,
   deps: CommunityDeps,
 ): Promise<Result<{ unread: number }, AppError>> => {
-  const actor = requireActor(ctx);
+  const actor = requireActor(ctx, 'notification:read');
   if (!actor.ok) return actor;
   return ok({ unread: await deps.notifications.unreadCount(actor.value.tenantId, actor.value.userId) });
 };

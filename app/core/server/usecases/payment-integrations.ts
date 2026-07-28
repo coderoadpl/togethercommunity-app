@@ -1,17 +1,18 @@
-import { err, forbidden, ok, tenantNotFound, type AppError, type Result } from '#core/domain/index.js';
+import { ok, type AppError, type Result } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { PaymentProvider } from '../ports.js';
+import { authorizeTenant } from '../authorize.js';
 
 export const testStripeConnection = async (
   ctx: Ctx,
   input: { appBaseUrl: string },
   payment: PaymentProvider,
 ): Promise<Result<{ ok: true; diagnostic: string }, AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to test Stripe'));
-  if (ctx.identity.staffRole !== 'owner') return err(forbidden('Only the tenant owner can test Stripe'));
+  const tenant = authorizeTenant(ctx, 'integration:test');
+  if (!tenant.ok) return tenant;
   const created = await payment.createCheckoutSession({
-    tenantId: ctx.identity.tenantId,
+    tenantId: tenant.value,
     productId: 'connection-test',
     productName: 'Stripe connection test',
     priceCents: 100,
@@ -21,7 +22,7 @@ export const testStripeConnection = async (
   });
   if (!created.ok) return created;
   const expired = await payment.expireCheckoutSession({
-    tenantId: ctx.identity.tenantId,
+    tenantId: tenant.value,
     sessionId: created.value.sessionId,
   });
   if (!expired.ok) return expired;

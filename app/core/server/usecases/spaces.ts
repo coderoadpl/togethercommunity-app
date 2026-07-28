@@ -5,7 +5,6 @@ import {
   deleteSpaceInputSchema,
   err,
   followSpaceInputSchema,
-  forbidden,
   listSpaceFeedInputSchema,
   notFound,
   ok,
@@ -71,11 +70,8 @@ export interface SpacesDeps {
   clock: Clock;
 }
 
-const requireStaff = (ctx: Ctx): Result<ActorScope, AppError> => {
-  const actor = requireActor(ctx);
-  if (!actor.ok) return actor;
-  if (!ctx.identity.staffRole) return err(forbidden('Only staff can manage spaces'));
-  return actor;
+const requireStaff = (ctx: Ctx, capability: 'space:write'): Result<ActorScope, AppError> => {
+  return requireActor(ctx, capability);
 };
 
 export const createSpace = async (
@@ -83,7 +79,7 @@ export const createSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<Space, AppError>> => {
-  const staff = requireStaff(ctx);
+  const staff = requireStaff(ctx, 'space:write');
   if (!staff.ok) return staff;
   const parsed = createSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space payload', parsed.error.flatten()));
@@ -115,7 +111,7 @@ export const updateSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<Space, AppError>> => {
-  const staff = requireStaff(ctx);
+  const staff = requireStaff(ctx, 'space:write');
   if (!staff.ok) return staff;
   const parsed = updateSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space update payload', parsed.error.flatten()));
@@ -141,7 +137,7 @@ export const deleteSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string }, AppError>> => {
-  const staff = requireStaff(ctx);
+  const staff = requireStaff(ctx, 'space:write');
   if (!staff.ok) return staff;
   const parsed = deleteSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space delete payload', parsed.error.flatten()));
@@ -155,7 +151,7 @@ export const setSpaceArchived = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<Space, AppError>> => {
-  const staff = requireStaff(ctx);
+  const staff = requireStaff(ctx, 'space:write');
   if (!staff.ok) return staff;
   const parsed = setSpaceArchivedInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space archive payload', parsed.error.flatten()));
@@ -171,7 +167,7 @@ export const listSpacesForStaff = async (
   ctx: Ctx,
   deps: SpacesDeps,
 ): Promise<Result<StaffSpace[], AppError>> => {
-  const staff = requireStaff(ctx);
+  const staff = requireStaff(ctx, 'space:write');
   if (!staff.ok) return staff;
   const spaces = await deps.spaces.list(staff.value.tenantId, { includeArchived: true });
   const stats = await deps.spaces.stats(
@@ -187,7 +183,7 @@ export const listSpacesForMember = async (
   ctx: Ctx,
   deps: SpacesDeps,
 ): Promise<Result<MemberSpace[], AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:read');
   if (!actor.ok) return actor;
   const visible = await listAccessibleSpaces(ctx, deps);
   if (!visible.ok) return visible;
@@ -206,7 +202,7 @@ export const getSpaceFeed = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<SpaceFeed, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:read');
   if (!actor.ok) return actor;
   const parsed = listSpaceFeedInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space feed query', parsed.error.flatten()));
@@ -244,7 +240,7 @@ export const followSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string; isFollowing: boolean }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = followSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space follow payload', parsed.error.flatten()));
@@ -263,7 +259,7 @@ export const unfollowSpace = async (
   input: unknown,
   deps: SpacesDeps,
 ): Promise<Result<{ spaceId: string; isFollowing: boolean }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = followSpaceInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid space follow payload', parsed.error.flatten()));
@@ -289,7 +285,7 @@ const reactionOutcome = async (
     reaction: { postId: string; userId: string; emoji: ReactionEmoji },
   ) => Promise<unknown>,
 ): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
-  const actor = requireMemberOrStaff(ctx);
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
   if (!actor.ok) return actor;
   const parsed = reactToPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid reaction payload', parsed.error.flatten()));
@@ -309,21 +305,27 @@ const reactionOutcome = async (
   return ok({ postId: post.id, reactions: summaries.get(post.id) ?? [] });
 };
 
-export const reactToPost = (
+export const reactToPost = async (
   ctx: Ctx,
   input: unknown,
   deps: SpacesDeps,
-): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> =>
-  reactionOutcome(ctx, input, deps, (tenantId, reaction) =>
+): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  if (!actor.ok) return actor;
+  return reactionOutcome(ctx, input, deps, (tenantId, reaction) =>
     deps.reactions.add(tenantId, { ...reaction, createdAt: deps.clock.nowIso() }),
   );
+};
 
-export const unreactToPost = (
+export const unreactToPost = async (
   ctx: Ctx,
   input: unknown,
   deps: SpacesDeps,
-): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> =>
-  reactionOutcome(ctx, input, deps, (tenantId, reaction) => deps.reactions.remove(tenantId, reaction));
+): Promise<Result<{ postId: string; reactions: ReactionSummary[] }, AppError>> => {
+  const actor = requireMemberOrStaff(ctx, 'space:interact');
+  if (!actor.ok) return actor;
+  return reactionOutcome(ctx, input, deps, (tenantId, reaction) => deps.reactions.remove(tenantId, reaction));
+};
 
 export interface SpaceNotifyDeps {
   spaceSubscriptions: SpaceSubscriptionRepository;

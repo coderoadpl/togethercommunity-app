@@ -2,7 +2,6 @@ import {
   err,
   forbidden,
   ok,
-  tenantNotFound,
   type AppError,
   type GrantedProduct,
   type GrantWindowStatus,
@@ -13,6 +12,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { Clock, MemberSubscriptionRepository, ProductGrantRepository } from '../ports.js';
 
 export interface MyProductsDeps {
@@ -48,10 +48,12 @@ export const listMyProducts = async (
   ctx: Ctx,
   deps: MyProductsDeps,
 ): Promise<Result<MyProduct[], AppError>> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to see your products'));
+  const tenant = authorizeTenant(ctx, 'member:product:read');
+  if (!tenant.ok) return tenant;
   if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));
 
-  const { tenantId, memberId } = ctx.identity;
+  const tenantId = tenant.value;
+  const { memberId } = ctx.identity;
   const now = deps.clock.nowIso();
   const nowMs = new Date(now).getTime();
   const [grants, products, subscriptions] = await Promise.all([

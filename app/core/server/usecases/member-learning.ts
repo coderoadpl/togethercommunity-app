@@ -1,9 +1,7 @@
 import {
   err,
-  forbidden,
   notFound,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type MemberCourseLearningSummary,
@@ -12,6 +10,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   CourseLessonRepository,
@@ -34,12 +33,6 @@ export interface MemberLearningSummaryDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to view members'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can view member learning'));
-  return ok(ctx.identity.tenantId);
-};
-
 const latestIso = (values: Array<string | null>): string | null =>
   values.reduce<string | null>(
     (latest, value) => (value !== null && (latest === null || value > latest) ? value : latest),
@@ -51,7 +44,7 @@ export const getMemberLearningSummary = async (
   memberId: string,
   deps: MemberLearningSummaryDeps,
 ): Promise<Result<MemberLearningSummary, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'member:learning:read');
   if (!tenant.ok) return tenant;
   if (!memberId) return err(validation('memberId is required'));
 

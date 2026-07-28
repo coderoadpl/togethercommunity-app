@@ -259,6 +259,15 @@ const ctx = {
 };
 
 describe('requestInvoice', () => {
+  it('requires the declared invoice write capability', async () => {
+    const h = harness();
+    expect(await requestInvoice(
+      { ...ctx, capabilities: ['invoice:read'] },
+      'order-1',
+      h.deps,
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
   it('is idempotent per order', async () => {
     const h = harness();
     expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(true);

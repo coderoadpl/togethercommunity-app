@@ -8,6 +8,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type { BunnyEmbedTokenSigner, FileUrlSigner, TenantSecretResolver } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
@@ -64,6 +65,8 @@ export const getPlayableLesson = async (
   lessonId: string,
   deps: PlayableLessonDeps,
 ): Promise<Result<PlayableCourseLesson, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'lesson:play');
+  if (!tenant.ok) return tenant;
   const lesson = await getAccessibleLesson(ctx, lessonId, deps);
   if (!lesson.ok) return lesson;
   const tenantId = ctx.identity.tenantId;

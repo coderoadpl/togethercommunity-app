@@ -252,6 +252,19 @@ describe('course management use-cases', () => {
     expect(result.ok && result.value.map((item) => item.id)).toEqual(['c1']);
   });
 
+  it('enforces the declared course capability independently for reads and writes', async () => {
+    const d = deps({ courses: [course('c1', 't-acme')] });
+    const ctx = {
+      identity: identity('t-acme', 'owner'),
+      capabilities: ['course:read'] as const,
+    };
+    expect(await listCourses(ctx, d)).toMatchObject({ ok: true });
+    expect(await createCourse(ctx, { name: 'Course', imageUrl: null }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
   it('creates and updates a course', async () => {
     const store: Course[] = [];
     const d = deps({ courses: store, ids: ['course-1', 'course-snapshot-1'] });

@@ -1,14 +1,12 @@
 import {
-  err,
-  forbidden,
   ok,
-  tenantNotFound,
   type AppError,
   type ProductAccessIssues,
   type Result,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   CourseLessonRepository,
   CourseModuleRepository,
@@ -23,17 +21,11 @@ export interface ProductAccessIssuesDeps {
   lessons: CourseLessonRepository;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to inspect products'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can inspect products'));
-  return ok(ctx.identity.tenantId);
-};
-
 export const listProductAccessIssues = async (
   ctx: Ctx,
   deps: ProductAccessIssuesDeps,
 ): Promise<Result<ProductAccessIssues[], AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'product:access:read');
   if (!tenant.ok) return tenant;
 
   const [products, courses, modules, lessons] = await Promise.all([

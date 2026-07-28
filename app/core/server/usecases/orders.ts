@@ -2,11 +2,9 @@ import {
   currencySchema,
   err,
   exportOrdersQuerySchema,
-  forbidden,
   listOrdersQuerySchema,
   notFound,
   ok,
-  tenantNotFound,
   validation,
   type AppError,
   type OrderListItem,
@@ -16,6 +14,7 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
   MemberSubscriptionRepository,
@@ -30,12 +29,6 @@ export interface OrdersDeps {
   clock: Clock;
 }
 
-const requireStaffTenant = (ctx: Ctx): Result<string, AppError> => {
-  if (!ctx.identity.tenantId) return err(tenantNotFound('Select a tenant to see sales'));
-  if (!ctx.identity.staffRole) return err(forbidden('Only tenant staff can see sales'));
-  return ok(ctx.identity.tenantId);
-};
-
 export interface OrdersPage {
   orders: OrderListItem[];
   total: number;
@@ -48,7 +41,7 @@ export const listOrders = async (
   query: unknown,
   deps: Pick<OrdersDeps, 'orders'>,
 ): Promise<Result<OrdersPage, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
 
   const parsed = listOrdersQuerySchema.safeParse(query);
@@ -71,7 +64,7 @@ export const getOrder = async (
   id: string,
   deps: { orders: OrderDetailRepository; invoices?: InvoiceRepository },
 ): Promise<Result<{ order: OrderListItem; invoice: Awaited<ReturnType<InvoiceRepository['findCurrentByOrder']>> }, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'order:read');
   if (!tenant.ok) return tenant;
   const order = await deps.orders.findById(tenant.value, id);
   if (order === null) return err(notFound('Order was not found'));
@@ -135,7 +128,7 @@ export const exportOrders = async (
   query: unknown,
   deps: Pick<OrdersDeps, 'orders'>,
 ): Promise<Result<OrderExportFile, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'order:export');
   if (!tenant.ok) return tenant;
 
   const parsed = exportOrdersQuerySchema.safeParse(query);
@@ -181,7 +174,7 @@ export const getSalesSummary = async (
   ctx: Ctx,
   deps: OrdersDeps,
 ): Promise<Result<SalesSummary, AppError>> => {
-  const tenant = requireStaffTenant(ctx);
+  const tenant = authorizeTenant(ctx, 'sales:read');
   if (!tenant.ok) return tenant;
 
   const now = deps.clock.nowIso();

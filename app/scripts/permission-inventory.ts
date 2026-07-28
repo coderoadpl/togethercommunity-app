@@ -506,6 +506,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     'BEFORE records the current edge middleware, inline checks, same-file guard helpers, API-key checks, token checks, webhook verification, and public manifests. AFTER records the effective principal set after the capability is applied at the same edge. The generator fails when a derivable row differs.',
     '',
+    'Equivalence here compares principal **sets**, not capability identity. A capability renamed consistently across `CAPABILITIES`, `ROLE_CAPABILITIES` and its call sites produces the same BEFORE and AFTER principal sets, so this table reports "no changes" for it. The table proves that no principal gained or lost access; it does not prove that the capability vocabulary is unchanged. Reviewing a rename requires reading the diff of `core/domain/authorization.ts`.',
+    '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',
     '## Human-readable diff',

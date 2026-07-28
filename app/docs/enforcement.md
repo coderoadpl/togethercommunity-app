@@ -16,5 +16,11 @@ Dependency Cruiser independently enforces `core-domain-depends-on-nothing`,
 containment is reinforced by `auth-provider-sdk-only-in-adapters-auth` and
 `smtp-sdk-only-in-adapters-email`.
 
+Page chrome is split between the stateless `components/layout/AppShell.tsx`
+skeleton and the stateful panel composition. Layout components own only
+structure and receive content through slots. Loading, error, empty, and
+not-found are page states rendered inside their stable owning skeleton, never
+full-page structural replacements.
+
 `npm run check` also verifies the npm lockfile, dead code and dependency
 declarations, documentation promises, and the test suite.

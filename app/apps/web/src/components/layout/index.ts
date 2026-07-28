@@ -1,3 +1,4 @@
+export { AppShell } from './AppShell.js';
 export { ConfirmDialog } from './ConfirmDialog.js';
 export { FocusCard } from './FocusCard.js';
 export { ListSection, ResponsiveTable } from './ListSection.js';

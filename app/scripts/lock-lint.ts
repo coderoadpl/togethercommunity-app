@@ -7,6 +7,11 @@ const result = spawnSync(
   { cwd: join(import.meta.dirname, '..'), encoding: 'utf8' },
 );
 
+if (result.error !== undefined) {
+  process.stderr.write(`lock-lint: could not run pnpm: ${result.error.message}\n`);
+  process.exit(1);
+}
+
 if (result.status !== 0) {
   process.stderr.write(result.stdout);
   process.stderr.write(result.stderr);

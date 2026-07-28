@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { Alert, Box, Link, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
-import type { CourseStructureWithAccess, PostSearchHit } from '@core/domain/index.js';
+import type { CourseStructureWithAccess, PostSearchHit } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SearchField, useDebouncedValue } from '../../components/ui/SearchField.js';

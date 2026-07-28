@@ -8,7 +8,7 @@ import {
   type OrderProvider,
   type ProductPrice,
   type BillingData,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   Clock,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { err, ok, type AppError, type Result } from '@core/domain/index.js';
+import { err, ok, type AppError, type Result } from '#core/domain/index.js';
 
 import { emit } from './output.js';
 

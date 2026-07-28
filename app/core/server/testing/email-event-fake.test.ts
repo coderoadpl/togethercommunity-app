@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { emailEventSchema, type EmailEvent } from '@core/domain/index.js';
+import { emailEventSchema, type EmailEvent } from '#core/domain/index.js';
 
 import { InMemoryEmailEventRepository } from './marketing-fakes.js';
 

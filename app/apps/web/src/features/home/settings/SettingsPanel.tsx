@@ -15,8 +15,8 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { accentColorSchema } from '@core/domain/index.js';
-import type { TenantSecretKey } from '@core/domain/index.js';
+import { accentColorSchema } from '#core/domain/index.js';
+import type { TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';

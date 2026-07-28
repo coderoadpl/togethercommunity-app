@@ -2,7 +2,7 @@ import { pbkdf2 } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { verifyPasswordWithLegacyFallback } from '@adapters/auth/legacy-password.js';
+import { verifyPasswordWithLegacyFallback } from '#adapters/auth/legacy-password.js';
 
 import {
   collectOrphanContentAnomalies,

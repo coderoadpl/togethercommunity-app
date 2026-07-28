@@ -1,4 +1,4 @@
-import type { GrantSource, ProductGrant } from '@core/domain/index.js';
+import type { GrantSource, ProductGrant } from '#core/domain/index.js';
 
 import type { Clock, IdGenerator, ProductGrantRepository } from '../ports.js';
 

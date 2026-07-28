@@ -5,7 +5,7 @@ architecture spec is normative).
 
 ## The two gates
 
-- `npm run check` = typecheck + ESLint (boundaries) + dependency-cruiser +
+- `npm run check` = typecheck + ESLint (boundaries) + lock-lint + dependency-cruiser + knip + doc-lint +
   vitest — the **static** gate.
 - `npm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `package-lock.json`, drops+recreates an isolated
@@ -17,6 +17,24 @@ architecture spec is normative).
 
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
+
+The toolchain is pinned to Node 24 by `.nvmrc` and `engines.node`. Run
+`nvm use` before installing dependencies or executing gates.
+
+## Flake doctrine
+
+Gates are deterministic. A flake is a P1 bug; rerun-to-green is prohibited.
+Investigate the failed run and fix the commit or the gate. If a known flaky
+suite fails during a broader gate, rerun only that suite to isolate and
+diagnose it before deciding whether the stage failed:
+
+- `adapters/db/post-search.test.ts`
+- `adapters/auth/create-auth.test.ts`
+- `apps/web/src/features/member/DiscussionSection.test.tsx`
+- the module-editor cases in
+  `apps/web/src/features/home/courses/CoursesPanel.test.tsx`
+
+Visual verification has zero retries.
 
 ## Licensing & IP policy (owner decision 2026-07-21 — HARD RULES)
 
@@ -40,7 +58,8 @@ must actually run. Do not weaken lint rules to make either green.
 - `adapters/**` implement ports; only `apps/server/src/composition.ts` instantiates them.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.
-- `@vercel/*` / `@neondatabase/*` only inside `adapters/` (and `entry.vercel.ts`).
+- `@vercel/*` / `@neondatabase/*` only inside `adapters/`. A reviewed
+  platform-entry exemption may be added when the Vercel entry lands.
 - No `any`. No `as` (except `as const`). Parse with zod at every boundary.
 - Use-cases return `Result<T, AppError>`; never throw across a boundary.
   New error kinds go into `ERROR_CODES` in `core/domain/errors.ts` and get an
@@ -60,6 +79,10 @@ A run row is finalized once from `running` to `completed` or `failed`; its
 per-tenant rows are written at finalization and are not mutated afterward.
 
 ## Verify features through the CLI first
+
+The CLI is the default verification path because its envelopes and exit codes
+are exact, cheap, and fast. Browser and vision checks are available and
+legitimate when rendered behavior matters.
 
 ```bash
 npm run db:up && npm run db:migrate && npm run db:seed

@@ -1,13 +1,6 @@
 import { defineConfig } from 'vitest/config';
-import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      '@core': fileURLToPath(new URL('./core', import.meta.url)),
-      '@adapters': fileURLToPath(new URL('./adapters', import.meta.url)),
-    },
-  },
   test: {
     coverage: {
       provider: 'v8',
@@ -51,6 +44,7 @@ export default defineConfig({
             'apps/server/**/*.test.ts',
             'apps/server/**/*.test.tsx',
             'eslint-plugin-together/**/*.test.js',
+            'config-regression/**/*.test.ts',
             'scripts/**/*.test.ts',
           ],
         },

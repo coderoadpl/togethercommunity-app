@@ -8,7 +8,7 @@ import {
   type ProductPrice,
   type Result,
   type BillingData,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { AuthPort, MemberRepository, ProductRepository, PurchaseRepository } from '../ports.js';
 import { ensureMember } from './ensure-member.js';

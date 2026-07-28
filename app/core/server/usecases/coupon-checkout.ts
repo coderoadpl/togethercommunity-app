@@ -12,7 +12,7 @@ import {
   type CouponCheckoutBreakdown,
   type PriceKind,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   Clock,

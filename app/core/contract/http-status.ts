@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@core/domain/index.js';
+import type { ErrorCode } from '#core/domain/index.js';
 
 export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   unauthorized: 401,

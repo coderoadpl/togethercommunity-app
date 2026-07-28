@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
-import { err, internal, ok, type Result, type AppError } from '@core/domain/index.js';
-import type { SecretCrypto } from '@core/server/index.js';
+import { err, internal, ok, type Result, type AppError } from '#core/domain/index.js';
+import type { SecretCrypto } from '#core/server/index.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;

@@ -4,7 +4,7 @@ import {
   type Invoice,
   type KsefInvoiceData,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   Clock,

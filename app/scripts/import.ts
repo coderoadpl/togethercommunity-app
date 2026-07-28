@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
-import { accessItemSchema, chapterSchema, lessonBlockSchema } from '@core/domain/index.js';
-import { createAuth } from '@adapters/auth/create-auth.js';
-import { createImportAuthGateway } from '@adapters/auth/import-credential.js';
-import { createEmailHmac } from '@adapters/crypto/email-hmac.js';
-import { createDb } from '@adapters/db/client.js';
-import { createEmailOutboxRepository } from '@adapters/db/email-outbox.js';
+import { accessItemSchema, chapterSchema, lessonBlockSchema } from '#core/domain/index.js';
+import { createAuth } from '#adapters/auth/create-auth.js';
+import { createImportAuthGateway } from '#adapters/auth/import-credential.js';
+import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
+import { createDb } from '#adapters/db/client.js';
+import { createEmailOutboxRepository } from '#adapters/db/email-outbox.js';
 import {
   ImportFailure,
   resolveImportTenants,
@@ -21,7 +21,7 @@ import {
   type TenantBundle,
   type TenantMapping,
   type VerificationReport,
-} from '@adapters/db/importer.js';
+} from '#adapters/db/importer.js';
 import { assertSafeBundleSlug } from './import-bundle-slug.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');

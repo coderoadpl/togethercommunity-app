@@ -85,6 +85,18 @@ export default {
       'JSXAttribute[name.name="sx"]:exit'() {
         sxDepth -= 1;
       },
+      'Property[key.name="sx"]'() {
+        sxDepth += 1;
+      },
+      'Property[key.name="sx"]:exit'() {
+        sxDepth -= 1;
+      },
+      'Property[key.value="sx"]'() {
+        sxDepth += 1;
+      },
+      'Property[key.value="sx"]:exit'() {
+        sxDepth -= 1;
+      },
       Property(node) {
         if (sxDepth === 0 || node.computed) return;
         const name = keyName(node.key);

@@ -1,4 +1,4 @@
-import type { KsefInvoicePdf } from '@core/server/index.js';
+import type { KsefInvoicePdf } from '#core/server/index.js';
 
 const decodeXml = (value: string): string =>
   value

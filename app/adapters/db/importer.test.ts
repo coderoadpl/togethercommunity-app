@@ -4,13 +4,13 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { memberTombstone } from '@core/domain/index.js';
-import { createAuth, type Auth } from '@adapters/auth/create-auth.js';
+import { memberTombstone } from '#core/domain/index.js';
+import { createAuth, type Auth } from '#adapters/auth/create-auth.js';
 import {
   createImportAuthGateway,
   type ImportAuthGateway,
-} from '@adapters/auth/import-credential.js';
-import { deriveLegacyPasswordHash } from '@adapters/auth/legacy-password.js';
+} from '#adapters/auth/import-credential.js';
+import { deriveLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 
 import { createDb, type Db } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';

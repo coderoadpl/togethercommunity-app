@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import type { TenantSecretKey } from '@core/domain/index.js';
+import type { TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SecretField as SecretFieldView } from '../../../components/ui/SecretField.js';

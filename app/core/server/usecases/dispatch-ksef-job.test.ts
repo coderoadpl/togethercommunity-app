@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type Invoice, type KsefInvoiceData } from '@core/domain/index.js';
+import { ok, type Invoice, type KsefInvoiceData } from '#core/domain/index.js';
 
 import type { DispatchKsefJobDeps } from './dispatch-ksef-job.js';
 import { dispatchKsefJob } from './dispatch-ksef-job.js';

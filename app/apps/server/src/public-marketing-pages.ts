@@ -1,4 +1,4 @@
-import { DEFAULT_LANGUAGE, languageSchema, type Language, type Tenant, type TenantSettings } from '@core/domain/index.js';
+import { DEFAULT_LANGUAGE, languageSchema, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
 
 interface PublicMarketingMessages {
   language: string;

@@ -1,7 +1,7 @@
 import { and, eq, inArray, lt, lte, or, sql } from 'drizzle-orm';
 
-import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, type AppError, type Result } from '@core/domain/index.js';
-import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformTransactionalPool } from '@core/server/index.js';
+import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, type AppError, type Result } from '#core/domain/index.js';
+import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformTransactionalPool } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createMemberRepository, createProductGrantRepository } from './repositories.js';

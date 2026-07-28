@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Campaign, CampaignSend, MarketingConsent, UnsubscribeToken } from '@core/domain/index.js';
+import type { Campaign, CampaignSend, MarketingConsent, UnsubscribeToken } from '#core/domain/index.js';
 
 import {
   InMemoryCampaignRepository,

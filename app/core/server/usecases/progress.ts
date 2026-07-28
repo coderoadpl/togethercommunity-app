@@ -11,7 +11,7 @@ import {
   type ProgressView,
   type Result,
   type UpdateLastViewedInput,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {

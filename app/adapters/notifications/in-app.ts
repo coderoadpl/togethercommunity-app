@@ -1,9 +1,9 @@
-import { ok } from '@core/domain/index.js';
+import { ok } from '#core/domain/index.js';
 import type {
   NotificationChannelPort,
   RealtimeBusPort,
   RealtimeNotificationEvent,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 export const createRealtimeBus = (): RealtimeBusPort => {
   const listeners = new Set<(event: RealtimeNotificationEvent) => void>();

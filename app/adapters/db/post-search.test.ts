@@ -3,7 +3,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { Post } from '@core/domain/index.js';
+import type { Post } from '#core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
 import { createPostRepository } from './repositories.js';

@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 
-import { err, ok, validation } from '@core/domain/index.js';
-import type { FileUrlSigner } from '@core/server/index.js';
+import { err, ok, validation } from '#core/domain/index.js';
+import type { FileUrlSigner } from '#core/server/index.js';
 
 const S3_HOST_PATTERN =
   /^(?<bucket>[a-z0-9][a-z0-9.-]*)\.s3(?:[.-](?<region>[a-z0-9-]+))?\.amazonaws\.com$/;

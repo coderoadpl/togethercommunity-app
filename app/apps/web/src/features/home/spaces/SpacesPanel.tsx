@@ -3,7 +3,7 @@ import { Alert, Box, Button, Chip, Paper, Stack, Typography } from '@mui/materia
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { StaffSpace } from '@core/domain/index.js';
+import type { StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';

@@ -1,4 +1,4 @@
-import { NOTIFICATIONS_STREAM_PATH } from '@core/client/index.js';
+import { NOTIFICATIONS_STREAM_PATH } from '#core/client/index.js';
 
 export interface NotificationStreamSource {
   addEventListener(type: 'unread' | 'notification' | 'error', listener: () => void): void;

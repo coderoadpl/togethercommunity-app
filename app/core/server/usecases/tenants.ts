@@ -1,4 +1,4 @@
-import { ok, type AppError, type Membership, type Result } from '@core/domain/index.js';
+import { ok, type AppError, type Membership, type Result } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { TenantAccessReader } from '../ports.js';

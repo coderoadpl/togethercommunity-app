@@ -1,9 +1,7 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 import pg from 'pg';
 import { z } from 'zod';
@@ -24,12 +22,24 @@ import {
   simulatePurchaseOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
-} from '@core/contract/index.js';
+} from '#core/contract/index.js';
 
-const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
+import {
+  bootServer,
+  delay,
+  ephemeralPort,
+  killServer,
+  run,
+  type RunResult,
+  tsxBin,
+} from './server-harness.js';
+
+type Run = RunResult;
+
 const verifyContainer = 'together-verify-pg';
-const verifyDatabaseUrl = 'postgres://together:together@localhost:49217/together';
+const managedDatabaseUrl = 'postgres://together:together@localhost:49217/together';
+const verifyDatabaseUrl = process.env['E2E_DATABASE_URL'] ?? managedDatabaseUrl;
+const managesPostgres = process.env['E2E_DATABASE_URL'] === undefined;
 
 class PocE2eFailure extends Error {}
 
@@ -41,45 +51,8 @@ function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new PocE2eFailure(message);
 }
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface Run {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-const run = (cmd: string, args: string[], env: NodeJS.ProcessEnv = {}): Promise<Run> =>
-  new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: rootDir, env: { ...process.env, ...env } });
-    let stdout = '';
-    let stderr = '';
-    child.stdout?.on('data', (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on('error', (cause) => resolve({ code: 1, stdout, stderr: `${stderr}${String(cause)}` }));
-    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
-  });
-
-const ephemeralPort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, () => {
-      const address = probe.address();
-      if (address === null || typeof address === 'string') {
-        probe.close(() => reject(new Error('Could not allocate an ephemeral port')));
-        return;
-      }
-      const { port } = address;
-      probe.close(() => resolve(port));
-    });
-  });
-
 const startPostgres = async (): Promise<void> => {
+  if (!managesPostgres) return;
   await run('docker', ['rm', '-f', verifyContainer]);
   const started = await run('docker', [
     'run',
@@ -104,6 +77,7 @@ const startPostgres = async (): Promise<void> => {
 };
 
 const stopPostgres = async (): Promise<void> => {
+  if (!managesPostgres) return;
   await run('docker', ['rm', '-f', verifyContainer]);
 };
 
@@ -123,71 +97,12 @@ const waitForPostgres = async (): Promise<void> => {
     }
     await delay(250);
   }
-  fail(`Verification Postgres did not become ready on port 49217.\n${lastError}`);
+  fail(`Verification Postgres did not become ready at ${verifyDatabaseUrl}.\n${lastError}`);
 };
 
 const migrate = async (): Promise<void> => {
   const result = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: verifyDatabaseUrl });
   assert(result.code === 0, `Migration failed:\n${result.stdout}${result.stderr}`);
-};
-
-const bootServer = async (port: number, webDistDir: string): Promise<ChildProcess> => {
-  const child = spawn(tsxBin, ['apps/server/src/entry.node.ts'], {
-    cwd: rootDir,
-    detached: true,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      DATABASE_URL: verifyDatabaseUrl,
-      APP_BASE_URL: `http://localhost:${port}`,
-      APP_BASE_DOMAIN: 'localhost',
-      WEB_DIST_DIR: webDistDir,
-      SIMULATED_PAYMENTS: 'true',
-      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
-    },
-  });
-  let logs = '';
-  child.stdout?.on('data', (chunk) => {
-    logs += String(chunk);
-  });
-  child.stderr?.on('data', (chunk) => {
-    logs += String(chunk);
-  });
-  let exitInfo: string | null = null;
-  child.on('exit', (code, signal) => {
-    exitInfo = `code=${String(code)} signal=${String(signal)}`;
-  });
-
-  const healthUrl = `http://localhost:${port}${API_PATHS.health}`;
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    if (exitInfo !== null) {
-      fail(`Server exited before becoming ready (${exitInfo}).\n--- server output ---\n${logs}`);
-    }
-    try {
-      const response = await fetch(healthUrl);
-      if (response.ok) return child;
-    } catch {
-    }
-    await delay(250);
-  }
-  throw new PocE2eFailure(`Server did not become ready within 20s on port ${port}.\n--- server output ---\n${logs}`);
-};
-
-const killServer = async (child: ChildProcess): Promise<void> => {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const { pid } = child;
-  const signalGroup = (signal: NodeJS.Signals): void => {
-    try {
-      if (pid !== undefined) process.kill(-pid, signal);
-    } catch {
-      child.kill(signal);
-    }
-  };
-  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  signalGroup('SIGTERM');
-  await Promise.race([exited, delay(3000)]);
-  if (child.exitCode === null && child.signalCode === null) signalGroup('SIGKILL');
 };
 
 const readJson = (raw: string, label: string): unknown => {
@@ -472,7 +387,18 @@ try {
   const webDistDir = mkdtempSync(join(tmpdir(), 'poc-e2e-web-'));
   homes.push(webDistDir);
   console.log(`poc-e2e: booting server on port ${port}...`);
-  server = await bootServer(port, webDistDir);
+  server = await bootServer({
+    port,
+    healthUrl: `http://localhost:${String(port)}${API_PATHS.health}`,
+    env: {
+      DATABASE_URL: verifyDatabaseUrl,
+      APP_BASE_URL: `http://localhost:${String(port)}`,
+      APP_BASE_DOMAIN: 'localhost',
+      WEB_DIST_DIR: webDistDir,
+      SIMULATED_PAYMENTS: 'true',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+    },
+  });
   console.log('poc-e2e: driving full CLI scenario...');
   const steps = await driveCli(port, homes);
   console.log(`\npoc-e2e: PASS (${steps} steps, ${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
-const envSchema = z
+export const envSchema = z
   .object({
     NODE_ENV: z.string().optional(),
     APP_ENV: z.string().optional(),

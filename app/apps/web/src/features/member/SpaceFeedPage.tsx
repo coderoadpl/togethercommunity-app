@@ -3,8 +3,8 @@ import { Box, Button, Chip, Link, Paper, Stack } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
-import { REACTION_EMOJIS, type ReactionEmoji, type ReactionSummary, type SpaceFeedItem } from '@core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import { REACTION_EMOJIS, type ReactionEmoji, type ReactionSummary, type SpaceFeedItem } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';

@@ -7,7 +7,7 @@ import {
   type Invoice,
   type InvoiceEvent,
   type OrderListItem,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { InvoiceDeps } from './invoices.js';
 import {

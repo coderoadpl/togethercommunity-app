@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError } from '@core/client/index.js';
-import { unauthorized } from '@core/domain/index.js';
+import { ApiError } from '#core/client/index.js';
+import { unauthorized } from '#core/domain/index.js';
 
 import { pl } from './i18n/pl.js';
 import { RootErrorFallback, renderRootErrorFallback } from './RootErrorFallback.js';

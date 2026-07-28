@@ -1,5 +1,5 @@
-import { ok } from '@core/domain/index.js';
-import type { InvoicingPort } from '@core/server/index.js';
+import { ok } from '#core/domain/index.js';
+import type { InvoicingPort } from '#core/server/index.js';
 
 export const createFakeInvoicing = (): InvoicingPort => {
   const issued = new Map<string, string>();

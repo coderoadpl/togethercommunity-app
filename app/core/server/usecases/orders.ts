@@ -13,7 +13,7 @@ import {
   type OrderExportFile,
   type Result,
   type SalesSummary,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {

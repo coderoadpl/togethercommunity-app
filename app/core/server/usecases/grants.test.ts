@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Member, Product, ProductGrant } from '@core/domain/index.js';
+import type { Member, Product, ProductGrant } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type {

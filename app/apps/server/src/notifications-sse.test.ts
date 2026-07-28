@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Notification } from '@core/domain/index.js';
-import type { RealtimeBusPort, RealtimeNotificationEvent } from '@core/server/index.js';
+import type { Notification } from '#core/domain/index.js';
+import type { RealtimeBusPort, RealtimeNotificationEvent } from '#core/server/index.js';
 
 import { createNotificationEventStream } from './notifications-sse.js';
 

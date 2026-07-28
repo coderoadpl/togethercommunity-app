@@ -8,8 +8,8 @@ import {
   type Result,
   type TenantSecret,
   type TenantSecretKey,
-} from '@core/domain/index.js';
-import type { SecretCrypto, TenantSecretRepository } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { SecretCrypto, TenantSecretRepository } from '#core/server/index.js';
 
 import { createTenantSecretResolver } from './tenant-secret-resolver.js';
 

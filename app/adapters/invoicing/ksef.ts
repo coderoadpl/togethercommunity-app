@@ -19,8 +19,8 @@ import {
   type AppError,
   type KsefEnvironment,
   type Result,
-} from '@core/domain/index.js';
-import type { KsefClientPort, KsefCredentials } from '@core/server/index.js';
+} from '#core/domain/index.js';
+import type { KsefClientPort, KsefCredentials } from '#core/server/index.js';
 
 const ksefTimestampSchema = z
   .string()

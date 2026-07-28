@@ -10,7 +10,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
-import type { Course, CourseStructureWithAccess, ProgressView } from '@core/domain/index.js';
+import type { Course, CourseStructureWithAccess, ProgressView } from '#core/domain/index.js';
 
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';

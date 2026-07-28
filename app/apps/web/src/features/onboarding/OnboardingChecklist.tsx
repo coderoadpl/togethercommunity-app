@@ -2,7 +2,7 @@ import { Button, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Svg
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { OnboardingStepId } from '@core/domain/index.js';
+import type { OnboardingStepId } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard } from '../../components/layout/index.js';

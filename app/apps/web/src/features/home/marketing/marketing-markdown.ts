@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify';
 import { Marked, Renderer } from 'marked';
 
-import { renderMarketingTemplate } from '@core/domain/index.js';
+import { renderMarketingTemplate } from '#core/domain/index.js';
 
 const escapeAttribute = (value: string): string => value
   .replaceAll('&', '&amp;')

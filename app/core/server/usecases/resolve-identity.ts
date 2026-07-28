@@ -6,7 +6,7 @@ import {
   type AppError,
   type Identity,
   type Result,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   AuthenticatedUser,

@@ -1,5 +1,5 @@
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
-import type { MarketingSesCredentialResolver, SesMarketingCredentials, TenantSecretResolver } from '@core/server/index.js';
+import { appError, ok, type AppError, type Result } from '#core/domain/index.js';
+import type { MarketingSesCredentialResolver, SesMarketingCredentials, TenantSecretResolver } from '#core/server/index.js';
 
 export const createMarketingSesCredentialResolver = (
   resolver: TenantSecretResolver,

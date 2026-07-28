@@ -1,4 +1,4 @@
-import type { ProductPrice } from '@core/domain/index.js';
+import type { ProductPrice } from '#core/domain/index.js';
 
 export interface LegacyPricedProduct {
   id: string;

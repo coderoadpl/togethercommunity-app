@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { EmailReputation } from '@core/domain/index.js';
+import type { EmailReputation } from '#core/domain/index.js';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { ReputationSummary } from './ReputationSummary.js';

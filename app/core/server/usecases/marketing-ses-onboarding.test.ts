@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, integrationUnavailable, ok, type TenantSesSettings } from '@core/domain/index.js';
+import { err, integrationUnavailable, ok, type TenantSesSettings } from '#core/domain/index.js';
 import {
   deriveSesOnboardingChecklist,
   pollSesOnboarding,

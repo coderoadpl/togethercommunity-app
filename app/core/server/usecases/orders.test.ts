@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { orderListItemSchema, type Identity, type OrderListItem } from '@core/domain/index.js';
+import { orderListItemSchema, type Identity, type OrderListItem } from '#core/domain/index.js';
 
 import type { OrderListQuery } from '../ports.js';
 import { exportOrders, getSalesSummary, listOrders, type OrdersDeps } from './orders.js';

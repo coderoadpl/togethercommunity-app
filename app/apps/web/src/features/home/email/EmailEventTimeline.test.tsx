@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type { EmailEvent } from '@core/domain/index.js';
+import type { EmailEvent } from '#core/domain/index.js';
 
 import { renderWithProviders } from '../../../test/render.js';
 import { LanguageProvider } from '../../../i18n/index.js';

@@ -24,7 +24,7 @@ import type {
   EmailSendProjection,
   EmailSendStatus,
   TransactionalEmailTransport,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';

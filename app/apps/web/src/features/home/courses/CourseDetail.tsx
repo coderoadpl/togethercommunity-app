@@ -19,7 +19,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import type { Chapter, Course, CourseLesson, CourseModule } from '@core/domain/index.js';
+import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';

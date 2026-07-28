@@ -47,7 +47,7 @@ import {
   type TenantApiKey,
   type TenantSecret,
   type TenantSettings,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 import type {
   CourseLessonRepository,
   CourseModuleRepository,
@@ -86,7 +86,7 @@ import type {
   TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
-} from '@core/server/index.js';
+} from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { buildPrefixTsquery } from './post-search-query.js';

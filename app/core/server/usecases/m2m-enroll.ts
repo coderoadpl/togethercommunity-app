@@ -9,7 +9,7 @@ import {
   type Result,
   type Tenant,
   type TenantApiKey,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   ApiKeyCrypto,

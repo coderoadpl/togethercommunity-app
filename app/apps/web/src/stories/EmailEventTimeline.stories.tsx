@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box, Paper, Typography } from '@mui/material';
 
-import type { EmailEvent } from '@core/domain/index.js';
+import type { EmailEvent } from '#core/domain/index.js';
 
 import { EmailEventTimeline } from '../features/home/email/index.js';
 

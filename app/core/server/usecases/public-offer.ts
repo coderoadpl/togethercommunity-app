@@ -11,7 +11,7 @@ import {
   type Result,
   type Tenant,
   type TenantBranding,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import type {
   ConsentDefinitionRepository,

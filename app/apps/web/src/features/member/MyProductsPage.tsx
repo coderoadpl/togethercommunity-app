@@ -10,12 +10,12 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError } from '#core/client/index.js';
 import type {
   GrantWindowStatus,
   MemberSubscriptionSummary,
   SubscriptionStatus,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';

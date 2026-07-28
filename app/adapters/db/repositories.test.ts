@@ -4,7 +4,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone } from '@core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
 import type {
   CourseLesson,
   CourseModule,
@@ -18,7 +18,7 @@ import type {
   ProductPrice,
   TenantApiKey,
   TenantSecret,
-} from '@core/domain/index.js';
+} from '#core/domain/index.js';
 
 import { createDb, type Db } from './client.js';
 import {

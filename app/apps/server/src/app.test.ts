@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '#core/contract/index.js';
-import { BETTER_AUTH_MAGIC_LINK_PATH } from '#adapters/auth/create-auth.js';
+import {
+  BETTER_AUTH_API_PATH_PATTERN,
+  BETTER_AUTH_MAGIC_LINK_PATH,
+} from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
+import { PUBLIC_ROUTE_MANIFEST } from './public-route-manifest.js';
 import {
   err,
   emailEventSchema,
@@ -1003,6 +1007,63 @@ describe('health route', () => {
 
     const down = await buildApp(deps({ databaseUp: false })).request(API_PATHS.health);
     expect(await down.json()).toMatchObject({ ok: true, data: { database: 'down' } });
+  });
+});
+
+describe('server edge security baseline', () => {
+  it('sets secure headers and keeps authenticated responses out of shared caches', async () => {
+    const response = await deps({ authenticated: true });
+    const app = buildApp(response);
+    const result = await app.request(API_PATHS.health);
+
+    expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(result.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(result.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    expect(result.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
+    const app = buildApp(deps());
+    const response = await app.request(API_PATHS.checkoutSession, {
+      method: 'POST',
+      headers: {
+        'content-length': String(100 * 1024 + 1),
+        host: 'acme.localhost',
+      },
+      body: '{}',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  });
+
+  it('does not open CORS on an authenticated route', async () => {
+    const app = buildApp(deps({ authenticated: true }));
+    const response = await app.request(API_PATHS.me, {
+      headers: { origin: 'https://example.test' },
+    });
+
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('public route manifest', () => {
+  it('records the six approved mutating surfaces', () => {
+    const mutating = PUBLIC_ROUTE_MANIFEST
+      .filter((route) => route.mutating)
+      .map((route) => route.path);
+
+    expect(mutating).toEqual([
+      '/u/:token*',
+      '/marketing/confirm/:token',
+      '/api/webhooks/ses/:webhookToken',
+      '/api/webhooks/stripe/:tenantId',
+      API_PATHS.checkoutSession,
+      BETTER_AUTH_API_PATH_PATTERN,
+    ]);
   });
 });
 

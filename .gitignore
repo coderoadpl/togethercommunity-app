@@ -9,3 +9,4 @@ app/out/
 app/storybook-static/
 app/coverage/
 .ksef-spike-ref/
+.claude/worktrees/

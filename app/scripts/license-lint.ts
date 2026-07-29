@@ -185,7 +185,7 @@ const lockedPackageIdentifiers = (raw: string): Set<string> => {
     }
     if (inPackages && /^\S/.test(line)) break;
     if (!inPackages) continue;
-    const match = /^ {2}(.+):$/.exec(line);
+    const match = /^ {2}(\S.+):$/.exec(line);
     if (match?.[1] === undefined) continue;
     const quoted = match[1];
     const key =

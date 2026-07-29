@@ -68,7 +68,7 @@
   (bad key, validation) with actionable panel copy; test-mode support for
   e2e (fake adapter in dev, contract tests against recorded shapes).
 - Docs: tenant runbook — connect iFirma (username and `faktura` API key, KSeF inside
-  iFirma), select the tenant VAT rate, what auto-issue does, B2C-on-request workflow (issue from
+  iFirma), select the tenant VAT rate or exemption basis, what auto-issue does, B2C-on-request workflow (issue from
   the order detail within the 3-month window).
 - Anomaly guard: order without billing data + tenant auto-issue on → issue
   a B2C domestic invoice through iFirma or skip with a
@@ -81,7 +81,9 @@ Self-billing, corrective invoices UI beyond a link-out to iFirma,
 multi-currency fiscal logic (orders are PLN today), platform-level VAT
 registration and VAT-rate determination (the tenant is the seller of record and must select
 the applicable supported rate before issuance — consistent with the
-controller/processor posture), OSS/MOSS.
+controller/processor posture), OSS/MOSS. VAT-exempt `zw` issuance with a materialized
+legal basis is delivered for direct KSeF; iFirma production enablement awaits the
+documented real-account acceptance.
 
 ## Interplay
 

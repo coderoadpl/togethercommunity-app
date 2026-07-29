@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, check, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
   AccessItem,
@@ -48,11 +48,19 @@ export const tenants = pgTable(
       .notNull()
       .default('b2b_only'),
     invoiceVatRatePercent: integer('invoice_vat_rate_percent'),
+    invoiceVatMode: text('invoice_vat_mode', { enum: ['rate', 'exempt'] }).notNull().default('rate'),
+    invoiceExemptionBasisKind: text('invoice_exemption_basis_kind', {
+      enum: ['art_113_1', 'art_113_9', 'art_43_1', 'other_statute', 'other'],
+    }),
+    invoiceExemptionBasis: text('invoice_exemption_basis'),
     invoicingProvider: text('invoicing_provider', { enum: ['ifirma', 'ksef'] }).notNull().default('ifirma'),
     invoiceSellerName: text('invoice_seller_name'),
     invoiceSellerAddress: text('invoice_seller_address'),
   },
-  (table) => [uniqueIndex('tenants_slug_uidx').on(table.slug)],
+  (table) => [
+    uniqueIndex('tenants_slug_uidx').on(table.slug),
+    check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
+  ],
 );
 
 export const consents = pgTable(

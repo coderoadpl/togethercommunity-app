@@ -2241,7 +2241,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
           invoiceVatMode:
             row.invoiceVatMode === 'rate' || row.invoiceVatMode === 'exempt'
               ? row.invoiceVatMode
-              : undefined,
+              : null,
           invoiceExemptionBasisKind:
             row.invoiceExemptionBasisKind === 'art_113_1' ||
             row.invoiceExemptionBasisKind === 'art_113_9' ||
@@ -2276,7 +2276,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
-        invoiceVatMode: settings.invoiceVatMode,
+        invoiceVatMode: settings.invoiceVatMode ?? undefined,
         invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
         invoiceExemptionBasis: settings.invoiceExemptionBasis,
         invoicingProvider: settings.invoicingProvider,

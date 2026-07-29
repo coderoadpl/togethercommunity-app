@@ -3,6 +3,7 @@ import {
   err,
   forbidden,
   integrationNotConfigured,
+  invoiceVatTreatmentsEqual,
   notFound,
   ok,
   renderFa3Invoice,
@@ -130,8 +131,7 @@ const issueIfirma = async (
     : resolveInvoiceVat(settings);
   if (existing !== null && vatResolution.ok) {
     const previous = await deps.invoices.findLatestRequestedEvent(tenantId, existing.id);
-    if (previous?.meta.vat !== undefined &&
-        JSON.stringify(previous.meta.vat) !== JSON.stringify(vatResolution.treatment)) {
+    if (!invoiceVatTreatmentsEqual(previous?.meta.vat, vatResolution.treatment)) {
       return err(appError(
         'conflict',
         'The VAT treatment changed since this invoice was requested. Cancel it and issue a new one.',

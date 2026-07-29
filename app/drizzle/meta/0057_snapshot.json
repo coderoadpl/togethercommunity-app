@@ -8413,7 +8413,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "tenants_invoice_vat_mode_check": {
+          "name": "tenants_invoice_vat_mode_check",
+          "value": "\"tenants\".\"invoice_vat_mode\" IN ('rate', 'exempt')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.thread_subscriptions": {

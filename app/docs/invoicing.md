@@ -90,8 +90,8 @@ The durable dispatcher is invoked every minute by the Vercel cron entry for `GET
 The isolated real-environment acceptance script:
 
 ```bash
-npm run db:up
-npm run e2e:ksef
+pnpm run db:up
+pnpm run e2e:ksef
 ```
 
 Each run creates a fresh checksum-valid synthetic seller NIP, buyer NIP, TEST certificate, tenant KSeF token, isolated database, seeded paid order, and unique P_2. It submits the invoice through Together's renderer and durable adapter, polls to a KSeF number, downloads UPO, asserts lifecycle rows and events, closes the session, revokes the test token, and removes the isolated database. If the official TEST environment cannot be reached, it prints an explicit `SKIP`; it is intentionally excluded from `check` and `smoke`.

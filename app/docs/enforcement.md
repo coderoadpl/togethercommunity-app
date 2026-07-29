@@ -24,6 +24,6 @@ structure and receive content through slots. Loading, error, empty, and
 not-found are page states rendered inside their stable owning skeleton, never
 full-page structural replacements.
 
-`npm run check` also runs the DOM-free island typecheck and verifies the npm
+`pnpm run check` also runs the DOM-free island typecheck and verifies the pnpm
 lockfile, dead code and dependency declarations, documentation promises, and
 the test suite.

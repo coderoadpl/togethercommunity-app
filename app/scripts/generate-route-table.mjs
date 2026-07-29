@@ -55,7 +55,7 @@ const rows = () => collectRuntimeRoutes()
 const document = () => [
   '# Server route table',
   '',
-  'Generated from the Hono route table by `npx tsx scripts/generate-route-table.mjs`.',
+  'Generated from the Hono route table by `pnpm exec tsx scripts/generate-route-table.mjs`.',
   'Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.',
   '',
   '| Route | Access | Operation | Purpose |',
@@ -69,7 +69,9 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
   const rendered = document();
   if (process.argv.includes('--check')) {
     if (readFileSync(output, 'utf8') !== rendered) {
-      throw new Error('docs/route-table.md is stale; run npx tsx scripts/generate-route-table.mjs');
+      throw new Error(
+        'docs/route-table.md is stale; run pnpm exec tsx scripts/generate-route-table.mjs',
+      );
     }
   } else {
     writeFileSync(output, rendered);

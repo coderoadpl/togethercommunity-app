@@ -31,8 +31,8 @@ These modules compose and deliver behavior; domain rules remain in core.
 ## Verify this layer
 
 ```bash
-npm run typecheck
-npm run lint
-npm run depcruise
-npm run test
+pnpm run typecheck
+pnpm run lint
+pnpm run depcruise
+pnpm run test
 ```

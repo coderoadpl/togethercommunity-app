@@ -1,19 +1,3 @@
-/**
- * Accessibility runtime scan (ux-decisions §4).
- *
- * `npm run a11y` — builds the web SPA, seeds an isolated dev database, boots the
- * real server on an ephemeral port and runs axe-core (WCAG 2.0/2.1 A+AA plus
- * best-practice) against every key screen, across all 7 themes at desktop 1440;
- * the member-facing screens are additionally scanned at mobile 390.
- *
- * It aggregates violations by rule x theme x screen, writes a JSON + Markdown
- * summary to out/a11y/, and fails the process when any serious/critical
- * violation survives so the gate stays honest.
- *
- * The harness (database prep, web build, server boot, theme injection, member
- * and creator sign-in) mirrors scripts/visual-screenshots.ts so the two scans
- * observe the same deterministic fixture state.
- */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';

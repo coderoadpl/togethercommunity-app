@@ -71,6 +71,10 @@ import {
   meOutputSchema,
   memberBillingOrdersOutputSchema,
   memberBanOutputSchema,
+  memberDataExportOutputSchema,
+  memberErasureRequestOutputSchema,
+  memberErasureRequestMutationOutputSchema,
+  memberErasureRequestsOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
   memberProgressResetOutputSchema,
@@ -171,6 +175,8 @@ import {
   type SchedulerRunsQueryInput,
   type MemberRemoveInput,
   type MemberBanInput,
+  type MemberErasureRequestCreateInput,
+  type MemberErasureRequestsQueryInput,
   type ModuleAttachInput,
   type ModuleDetachInput,
   type ModuleCreateInput,
@@ -804,6 +810,74 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   myProducts: (signal?: AbortSignal) =>
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
+  exportMyData: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberDataExport.method,
+      API_ROUTES.memberDataExport.path,
+      memberDataExportOutputSchema,
+      undefined,
+      signal,
+    ),
+  getMyErasureRequest: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberErasureRequest.method,
+      API_ROUTES.memberErasureRequest.path,
+      memberErasureRequestOutputSchema,
+      undefined,
+      signal,
+    ),
+  requestMyErasure: (input: MemberErasureRequestCreateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberErasureRequestCreate.method,
+      API_ROUTES.memberErasureRequestCreate.path,
+      memberErasureRequestMutationOutputSchema,
+      input,
+      signal,
+    ),
+  cancelMyErasureRequest: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberErasureRequestCancel.method,
+      API_ROUTES.memberErasureRequestCancel.path,
+      memberErasureRequestMutationOutputSchema,
+      undefined,
+      signal,
+    ),
+  listErasureRequests: (
+    input: MemberErasureRequestsQueryInput,
+    signal?: AbortSignal,
+  ) => {
+    const query = new URLSearchParams();
+    if (input.status !== undefined) query.set('status', input.status);
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`;
+    return request(
+      options,
+      API_ROUTES.memberErasureRequests.method,
+      `${API_ROUTES.memberErasureRequests.path}${suffix}`,
+      memberErasureRequestsOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  rejectErasureRequest: (
+    requestId: string,
+    note: string,
+    signal?: AbortSignal,
+  ) =>
+    request(
+      options,
+      API_ROUTES.memberErasureReject.method,
+      API_ROUTES.memberErasureReject.path.replace(
+        ':requestId',
+        encodeURIComponent(requestId),
+      ),
+      memberErasureRequestMutationOutputSchema,
+      { note },
+      signal,
+    ),
   listMembers: (signal?: AbortSignal) =>
     request(options, API_ROUTES.members.method, API_ROUTES.members.path, membersListOutputSchema, undefined, signal),
   setMemberBanned: (input: MemberBanInput, signal?: AbortSignal) =>

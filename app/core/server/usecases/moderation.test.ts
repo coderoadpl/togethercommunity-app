@@ -211,6 +211,7 @@ const makeDeps = (
         posts.filter((row) => row.tenantId === tenantId && ids.includes(row.id)),
       countByAuthorSince: async () => 0,
       listRecentBodiesByAuthor: async () => [],
+      listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,

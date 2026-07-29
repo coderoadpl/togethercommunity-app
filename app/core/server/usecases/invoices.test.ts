@@ -73,6 +73,9 @@ const harness = (options: {
       findById: async (_tenantId, id) => invoices.find((invoice) => invoice.id === id) ?? null,
       findCurrentByOrder: async (_tenantId, orderId) =>
         invoices.find((invoice) => invoice.orderId === orderId) ?? null,
+      findLatestRequestedEvent: async (_tenantId, invoiceId) =>
+        [...events].reverse().find((event) =>
+          event.invoiceId === invoiceId && event.type === 'requested') ?? null,
       create: async (_tenantId, invoice, event) => {
         if (invoices.some((item) => item.orderId === invoice.orderId && item.status !== 'failed')) {
           return false;
@@ -331,6 +334,93 @@ describe('requestInvoice', () => {
     expect(h.calls()).toBe(0);
   });
 
+  it.each(['ifirma', 'ksef'] as const)('refuses incomplete exemption settings for %s', async (provider) => {
+    const h = harness({ provider });
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : {
+        ...settings,
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: null,
+        invoiceExemptionBasis: null,
+      };
+    };
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'invoice_exemption_basis_missing' },
+    });
+    expect(h.calls()).toBe(0);
+  });
+
+  it('records the applied treatment and blocks a changed-treatment retry', async () => {
+    const h = harness({ fail: true });
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
+    expect(h.events.find((event) => event.type === 'requested')).toMatchObject({
+      meta: { vat: { kind: 'rate', percent: 23 } },
+    });
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : {
+        ...settings,
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: 'art_113_1',
+        invoiceExemptionBasis: 'art. 113 ust. 1',
+      };
+    };
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
+    expect(h.calls()).toBe(1);
+  });
+
+  it('retries an unchanged exempt treatment after object keys are reordered', async () => {
+    const h = harness({ fail: true });
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const current = await findSettings(tenantId);
+      return current === null ? null : {
+        ...current,
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: 'art_113_1',
+        invoiceExemptionBasis: 'art. 113 ust. 1',
+      };
+    };
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
+    const requested = h.events.find((event) => event.type === 'requested');
+    if (requested !== undefined) {
+      requested.meta.vat = {
+        kind: 'exempt',
+        basis: 'art. 113 ust. 1',
+        basisKind: 'art_113_1',
+      };
+    }
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable' },
+    });
+    expect(h.calls()).toBe(2);
+  });
+
+  it('blocks a retry when the previous request has no frozen VAT treatment', async () => {
+    const h = harness({ fail: true });
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
+    const requested = h.events.find((event) => event.type === 'requested');
+    if (requested !== undefined) requested.meta = {};
+
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
+    expect(h.calls()).toBe(1);
+  });
+
   it('blocks an automatic retry when the create outcome is unknown', async () => {
     const h = harness({ uncertainFailure: true });
     expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(false);
@@ -360,6 +450,24 @@ describe('requestInvoice', () => {
     });
     expect(h.calls()).toBe(0);
     expect(h.events.at(-1)).toMatchObject({ type: 'frozen' });
+  });
+
+  it('freezes an exempt KSeF basis into the hashed XML', async () => {
+    const h = harness({ provider: 'ksef' });
+    const findSettings = h.deps.tenants.findSettings;
+    h.deps.tenants.findSettings = async (tenantId) => {
+      const settings = await findSettings(tenantId);
+      return settings === null ? null : {
+        ...settings,
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: 'art_113_1',
+        invoiceExemptionBasis: 'art. 113 ust. 1 ustawy',
+      };
+    };
+    expect((await requestInvoice(ctx, 'order-1', h.deps)).ok).toBe(true);
+    expect(h.frozenXml()).toContain('<P_19A>art. 113 ust. 1 ustawy</P_19A>');
+    expect(h.events.filter((event) => event.type === 'frozen')).toHaveLength(1);
   });
 
   it('preserves a frozen KSeF row after the tenant switches to iFirma', async () => {

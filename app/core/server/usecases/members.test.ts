@@ -64,14 +64,24 @@ const erasureFor = (
     const rows = byTenant[tenantId] ?? [];
     const row = rows.find((member) => member.id === input.memberId);
     if (!row) return null;
-    if (row.deletedAt !== null) return { alreadyDeleted: true, authUserErased: false };
+    if (row.deletedAt !== null) {
+      return {
+        alreadyDeleted: true,
+        authUserErased: false,
+        erasureRequestId: null,
+      };
+    }
     row.deletedAt = input.deletedAt;
     row.email = input.tombstoneEmail;
     row.displayName = null;
     row.tags = [];
     row.marketingConsents = {};
     row.externalCustomerIds = {};
-    return { alreadyDeleted: false, authUserErased: true };
+    return {
+      alreadyDeleted: false,
+      authUserErased: true,
+      erasureRequestId: null,
+    };
   },
 });
 
@@ -235,7 +245,10 @@ describe('removeMember', () => {
       depsFor(byTenant, calls),
     );
 
-    expect(result).toEqual({ ok: true, value: { memberId: 'm1' } });
+    expect(result).toEqual({
+      ok: true,
+      value: { memberId: 'm1', erasureRequestId: null },
+    });
     expect(calls).toEqual([
       {
         tenantId: 't-acme',
@@ -274,7 +287,10 @@ describe('removeMember', () => {
 
     const result = await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, depsFor(byTenant));
 
-    expect(result).toEqual({ ok: true, value: { memberId: 'm1' } });
+    expect(result).toEqual({
+      ok: true,
+      value: { memberId: 'm1', erasureRequestId: null },
+    });
     expect(byTenant['t-acme'][0]?.deletedAt).toBe('2026-07-01T00:00:00.000Z');
   });
 

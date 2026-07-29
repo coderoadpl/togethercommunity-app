@@ -57,12 +57,7 @@ import {
   tenantSesSettings,
   unsubscribeTokens,
 } from './schema.js';
-
-const record = (value: unknown): Record<string, unknown> | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : null;
-
-const uniqueViolation = (cause: unknown): boolean => record(cause)?.['code'] === '23505'
-  || record(record(cause)?.['cause'])?.['code'] === '23505';
+import { uniqueViolation } from './pg-errors.js';
 
 const iso = (value: string): string => new Date(value).toISOString();
 const nullableIso = (value: string | null): string | null => value === null ? null : iso(value);
@@ -96,8 +91,9 @@ const parseUnsubscribe = (row: typeof unsubscribeTokens.$inferSelect) => unsubsc
   ...row, createdAt: iso(row.createdAt), usedAt: nullableIso(row.usedAt),
 });
 const parseSesSettings = (row: typeof tenantSesSettings.$inferSelect) => tenantSesSettingsSchema.parse({
-  ...row, identityVerifiedAt: nullableIso(row.identityVerifiedAt), quotaRefreshedAt: nullableIso(row.quotaRefreshedAt),
-  webhookVerifiedAt: nullableIso(row.webhookVerifiedAt),
+  ...row, identityVerifiedAt: nullableIso(row.identityVerifiedAt), identityCheckedAt: nullableIso(row.identityCheckedAt),
+  quotaRefreshedAt: nullableIso(row.quotaRefreshedAt), webhookVerifiedAt: nullableIso(row.webhookVerifiedAt),
+  reputationAlertedAt: nullableIso(row.reputationAlertedAt),
 });
 const parseIdempotency = (row: typeof marketingIdempotencyKeys.$inferSelect) => automationIdempotencyKeySchema.parse({
   ...row, claimedAt: iso(row.claimedAt), expiresAt: iso(row.expiresAt),
@@ -343,6 +339,32 @@ export const createMarketingJobRepository = (db: Db): MarketingJobRepository => 
     ]);
     return [...new Set([...consentTenants, ...sendTenants, ...idempotencyTenants].map((row) => row.tenantId))].sort();
   },
+  listSesIdentityRefreshTenantIds: async (checkedBefore) =>
+    (
+      await db
+        .select({ tenantId: tenantSesSettings.tenantId })
+        .from(tenantSesSettings)
+        .where(
+          or(
+            isNull(tenantSesSettings.identityCheckedAt),
+            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
+          ),
+        )
+        .orderBy(asc(tenantSesSettings.tenantId))
+    ).map((row) => row.tenantId),
+  listSesTenantIds: async (checkedBefore) =>
+    (
+      await db
+        .select({ tenantId: tenantSesSettings.tenantId })
+        .from(tenantSesSettings)
+        .where(
+          or(
+            isNull(tenantSesSettings.identityCheckedAt),
+            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
+          ),
+        )
+        .orderBy(asc(tenantSesSettings.tenantId))
+    ).map((row) => row.tenantId),
 });
 
 export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepository => ({

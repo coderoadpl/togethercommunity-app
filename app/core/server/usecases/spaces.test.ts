@@ -220,6 +220,12 @@ class FakePosts implements PostRepository {
       .map((post) => post.body);
   }
 
+  async listByAuthor(tenantId: string, authorUserId: string): Promise<Post[]> {
+    return this.rows.filter(
+      (post) => post.tenantId === tenantId && post.authorUserId === authorUserId,
+    );
+  }
+
   async listThreadsForContext(
     tenantId: string,
     query: {

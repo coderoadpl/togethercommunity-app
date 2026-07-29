@@ -33,6 +33,8 @@ import type {
   MemberProgressResetInput,
   MemberBanInput,
   MemberRemoveInput,
+  MemberErasureRequestCreateInput,
+  MemberErasureRequestsQueryInput,
   MarketingAudiencePreviewInput,
   MarketingCampaignActionInput,
   MarketingCampaignCreateInput,
@@ -627,6 +629,48 @@ export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =
     staleTime: 0,
     gcTime: 0,
     call: ({ signal }) => api.exportMembers(format, signal),
+  });
+
+export const myDataExportQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: ['my-data-export'],
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportMyData(signal),
+  });
+
+export const myErasureRequestQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: ['my-erasure-request'],
+    call: ({ signal }) => api.getMyErasureRequest(signal),
+  });
+
+export const requestMyErasureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['my-erasure-request', 'create'],
+    call: (input: MemberErasureRequestCreateInput) => api.requestMyErasure(input),
+  });
+
+export const cancelMyErasureRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['my-erasure-request', 'cancel'],
+    call: () => api.cancelMyErasureRequest(),
+  });
+
+export const erasureRequestsQuery = (
+  api: ApiClient,
+  input: MemberErasureRequestsQueryInput,
+) =>
+  defineQuery({
+    queryKey: ['erasure-requests', input],
+    call: ({ signal }) => api.listErasureRequests(input, signal),
+  });
+
+export const rejectErasureRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['erasure-requests', 'reject'],
+    call: (input: { requestId: string; note: string }) =>
+      api.rejectErasureRequest(input.requestId, input.note),
   });
 
 export const removeMemberMutation = (api: ApiClient) =>

@@ -68,6 +68,33 @@ const tenantSocialSchema = z.object({
   ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
+export const invoiceVatModeSchema = z.enum(['rate', 'exempt']);
+export const exemptionBasisKindSchema = z.enum([
+  'art_113_1',
+  'art_113_9',
+  'art_43_1',
+  'other_statute',
+  'other',
+]);
+export const EXEMPTION_BASIS_MAX_LENGTH = 256;
+
+export type ExemptionBasisKind = z.infer<typeof exemptionBasisKindSchema>;
+export const invoiceVatTreatmentSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('rate'),
+    percent: z.union([z.literal(5), z.literal(8), z.literal(23)]),
+  }),
+  z.object({
+    kind: z.literal('exempt'),
+    basisKind: exemptionBasisKindSchema,
+    basis: z.string(),
+  }),
+]);
+export type InvoiceVatTreatment = z.infer<typeof invoiceVatTreatmentSchema>;
+export type InvoiceVatResolution =
+  | { ok: true; treatment: InvoiceVatTreatment }
+  | { ok: false; reason: 'unset' | 'exempt_basis_missing' };
+
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
@@ -82,6 +109,9 @@ export const tenantSettingsSchema = z.object({
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
+  invoiceVatMode: invoiceVatModeSchema.nullable().optional(),
+  invoiceExemptionBasisKind: exemptionBasisKindSchema.nullable().optional(),
+  invoiceExemptionBasis: z.string().trim().min(1).max(EXEMPTION_BASIS_MAX_LENGTH).nullable().optional(),
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
@@ -139,12 +169,53 @@ export const updateTenantSettingsInputSchema = z.object({
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
+  invoiceVatMode: invoiceVatModeSchema.optional(),
+  invoiceExemptionBasisKind: exemptionBasisKindSchema.nullable().optional(),
+  invoiceExemptionBasis: clearableText(EXEMPTION_BASIS_MAX_LENGTH),
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().trim().min(1).nullable().optional(),
   invoiceSellerAddress: z.string().trim().min(1).nullable().optional(),
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+export const resolveInvoiceVat = (settings: TenantSettings): InvoiceVatResolution => {
+  if (settings.invoiceVatMode === null) return { ok: false, reason: 'unset' };
+  if (settings.invoiceVatMode === undefined || settings.invoiceVatMode === 'rate') {
+    return settings.invoiceVatRatePercent === 5 ||
+      settings.invoiceVatRatePercent === 8 ||
+      settings.invoiceVatRatePercent === 23
+      ? { ok: true, treatment: { kind: 'rate', percent: settings.invoiceVatRatePercent } }
+      : { ok: false, reason: 'unset' };
+  }
+  const basis = settings.invoiceExemptionBasis?.trim();
+  if (settings.invoiceExemptionBasisKind == null || basis == null || basis.length === 0 ||
+      (settings.invoiceExemptionBasisKind === 'art_43_1' && !/\bpkt\s*\d/iu.test(basis))) {
+    return { ok: false, reason: 'exempt_basis_missing' };
+  }
+  return {
+    ok: true,
+    treatment: {
+      kind: 'exempt',
+      basisKind: settings.invoiceExemptionBasisKind,
+      basis,
+    },
+  };
+};
+
+export const invoiceVatTreatmentsEqual = (
+  stored: unknown,
+  current: InvoiceVatTreatment,
+): boolean => {
+  const parsed = invoiceVatTreatmentSchema.safeParse(stored);
+  if (!parsed.success) return false;
+  if (parsed.data.kind === 'rate') {
+    return current.kind === 'rate' && parsed.data.percent === current.percent;
+  }
+  return current.kind === 'exempt' &&
+    parsed.data.basisKind === current.basisKind &&
+    parsed.data.basis === current.basis;
+};
 
 export const resolveTenantSocial = (
   tenant: Tenant,

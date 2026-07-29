@@ -16,7 +16,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { accentColorSchema } from '#core/domain/index.js';
-import type { TenantSecretKey } from '#core/domain/index.js';
+import type { ExemptionBasisKind, TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -25,6 +25,13 @@ import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { SecretField } from '../integrations/SecretField.js';
 import { usePanelContext } from '../panel-context.js';
+
+const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
+  value === 'art_113_1' ||
+  value === 'art_113_9' ||
+  value === 'art_43_1' ||
+  value === 'other_statute' ||
+  value === 'other';
 
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
@@ -225,7 +232,20 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   });
   const enabled = settings.data?.settings.autoIssueInvoices ?? false;
   const scope = settings.data?.settings.autoIssueInvoiceScope ?? 'b2b_only';
-  const vatRate = settings.data?.settings.invoiceVatRatePercent ?? '';
+  const storedMode = settings.data?.settings.invoiceVatMode ??
+    (settings.data?.settings.invoiceVatRatePercent == null ? '' : 'rate');
+  const storedRate = settings.data?.settings.invoiceVatRatePercent ?? '';
+  const [vatChoice, setVatChoice] = useState<string | number | null>(null);
+  const [basisKind, setBasisKind] = useState<ExemptionBasisKind | '' | null>(null);
+  const [basis, setBasis] = useState<string | null>(null);
+  const treatment = vatChoice ?? (storedMode === 'exempt' ? 'exempt' : storedRate);
+  const selectedBasisKind = basisKind ?? settings.data?.settings.invoiceExemptionBasisKind ?? '';
+  const basisValue = basis ?? settings.data?.settings.invoiceExemptionBasis ?? '';
+  const basisInvalid = treatment === 'exempt' && (
+    selectedBasisKind === '' ||
+    basisValue.trim() === '' ||
+    (selectedBasisKind === 'art_43_1' && !/\bpkt\s*\d/iu.test(basisValue))
+  );
   const provider = settings.data?.settings.invoicingProvider ?? 'ifirma';
   const [sellerName, setSellerName] = useState<string | null>(null);
   const [sellerAddress, setSellerAddress] = useState<string | null>(null);
@@ -273,24 +293,78 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </Select>
       </FormControl>
       <FormControl fullWidth>
-        <FormLabel id="invoice-vat-rate-label">{t.billing.vatRate}</FormLabel>
+        <FormLabel id="invoice-vat-rate-label">{t.billing.vatTreatment}</FormLabel>
         <Select
+          data-testid="invoice-vat-treatment"
           labelId="invoice-vat-rate-label"
-          value={vatRate}
+          value={treatment}
           disabled={!canEdit || settings.isPending || updateSettings.isPending}
           onChange={(event) => {
-            const value = Number(event.target.value);
-            updateSettings.mutate({
-              invoiceVatRatePercent: value === 5 || value === 8 || value === 23 ? value : null,
-            });
+            const raw = event.target.value;
+            setVatChoice(raw === 'exempt' ? 'exempt' : Number(raw) || '');
+            if (raw !== 'exempt') {
+              setBasisKind('');
+              setBasis('');
+            }
           }}
         >
           <MenuItem value="">{t.billing.vatRateUnset}</MenuItem>
-          <MenuItem value={5}>5%</MenuItem>
-          <MenuItem value={8}>8%</MenuItem>
-          <MenuItem value={23}>23%</MenuItem>
+          <MenuItem value={5}>{t.billing.vatTreatmentRate} 5%</MenuItem>
+          <MenuItem value={8}>{t.billing.vatTreatmentRate} 8%</MenuItem>
+          <MenuItem value={23}>{t.billing.vatTreatmentRate} 23%</MenuItem>
+          <MenuItem value="exempt">{t.billing.vatTreatmentExempt}</MenuItem>
         </Select>
       </FormControl>
+      {treatment === 'exempt' ? (
+        <>
+          <FormControl fullWidth error={basisInvalid}>
+            <FormLabel id="invoice-exemption-kind-label">{t.billing.exemptionBasisKind}</FormLabel>
+            <Select
+              data-testid="invoice-exemption-kind"
+              labelId="invoice-exemption-kind-label"
+              value={selectedBasisKind}
+              onChange={(event) => {
+                const kind = event.target.value;
+                if (!isExemptionBasisKind(kind)) return;
+                setBasisKind(kind);
+                if (kind === 'art_113_1') {
+                  setBasis('art. 113 ust. 1 ustawy o podatku od towarów i usług');
+                } else if (kind === 'art_113_9') {
+                  setBasis('art. 113 ust. 9 ustawy o podatku od towarów i usług');
+                } else if (kind === 'art_43_1') {
+                  setBasis('art. 43 ust. 1 pkt ');
+                } else {
+                  setBasis('');
+                }
+              }}
+            >
+              <MenuItem value="art_113_1">{t.billing.exemptionBasisKindArt113_1}</MenuItem>
+              <MenuItem value="art_113_9">{t.billing.exemptionBasisKindArt113_9}</MenuItem>
+              <MenuItem value="art_43_1">{t.billing.exemptionBasisKindArt43_1}</MenuItem>
+              <MenuItem value="other_statute">{t.billing.exemptionBasisKindOtherStatute}</MenuItem>
+              <MenuItem value="other">{t.billing.exemptionBasisKindOther}</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl fullWidth error={basisInvalid}>
+            <FormLabel htmlFor="invoice-exemption-basis">{t.billing.exemptionBasis}</FormLabel>
+            <OutlinedInput
+              id="invoice-exemption-basis"
+              inputProps={{ 'data-testid': 'invoice-exemption-basis', maxLength: 256 }}
+              value={basisValue}
+              readOnly={selectedBasisKind === 'art_113_1' || selectedBasisKind === 'art_113_9'}
+              onChange={(event) => setBasis(event.target.value)}
+            />
+            <Typography variant="caption" color={basisInvalid ? 'error' : 'text.secondary'}>
+              {basisInvalid
+                ? t.billing.exemptionBasisRequired
+                : selectedBasisKind === 'art_43_1'
+                  ? t.billing.exemptionBasisArt43Help
+                  : t.billing.exemptionBasisHelp}
+            </Typography>
+          </FormControl>
+          <Typography variant="caption">{t.billing.exemptNote}</Typography>
+        </>
+      ) : null}
       <FormControl fullWidth>
         <FormLabel htmlFor="invoice-seller-name">{t.billing.sellerName}</FormLabel>
         <OutlinedInput
@@ -311,8 +385,15 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       </FormControl>
       <Button
         variant="contained"
-        disabled={!canEdit || settings.isPending || updateSettings.isPending}
+        disabled={!canEdit || settings.isPending || updateSettings.isPending || basisInvalid}
         onClick={() => updateSettings.mutate({
+          invoiceVatMode: treatment === 'exempt' ? 'exempt' : 'rate',
+          invoiceVatRatePercent:
+            treatment === 5 || treatment === 8 || treatment === 23 ? treatment : null,
+          invoiceExemptionBasisKind: treatment === 'exempt' && selectedBasisKind !== ''
+            ? selectedBasisKind
+            : null,
+          invoiceExemptionBasis: treatment === 'exempt' ? basisValue.trim() || null : null,
           invoiceSellerName: sellerName ?? settings.data?.settings.invoiceSellerName ?? null,
           invoiceSellerAddress: sellerAddress ?? settings.data?.settings.invoiceSellerAddress ?? null,
         })}

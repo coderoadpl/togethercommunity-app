@@ -3,6 +3,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createDb } from '#adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
+import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
+import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -132,6 +134,7 @@ import type {
   ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
   EnrollmentTransactionPort,
+  PaymentTransactionPort,
   DevMagicLinkReader,
   DevSinkPurge,
   FileUrlSigner,
@@ -149,6 +152,7 @@ import type {
   KsefInvoicePdf,
   KsefSubmissionJobRepository,
   MemberCourseProgressRepository,
+  MemberErasureRequestRepository,
   MemberErasurePort,
   MemberRepository,
   MemberSubscriptionRepository,
@@ -194,7 +198,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -239,6 +243,7 @@ export interface AppDeps {
   userDisplays: UserDisplayReader;
   members: MemberRepository;
   memberErasure: MemberErasurePort;
+  erasureRequests: MemberErasureRequestRepository;
   emailHmac?: EmailHmac;
   posts: PostRepository;
   reports: PostReportRepository;
@@ -280,6 +285,7 @@ export interface AppDeps {
   email: EmailPort;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
+  paymentTransaction: PaymentTransactionPort;
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
@@ -343,7 +349,7 @@ export interface MarketingAppDeps {
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number; reputationAlertsSent: number }, AppError>>;
 }
 
 export const selectDevSinkPurge = (
@@ -360,6 +366,7 @@ export const createDeps = (env: Env): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const tenants = createTenantRepository(db);
+  const tenantAccess = createTenantAccessReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
   const ids = { nextId: () => randomUUID() };
@@ -432,6 +439,7 @@ export const createDeps = (env: Env): AppDeps => {
   const documents = createTenantDocumentRepository(db);
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
+  const sesOnboardingControlPlane = createSesOnboardingControlPlane();
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
@@ -532,6 +540,12 @@ export const createDeps = (env: Env): AppDeps => {
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
   });
+  const reputationDashboardUrl = (tenantSlug: string): string => {
+    const url = new URL(env.APP_BASE_URL);
+    url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
+    url.pathname = '/panel/marketing';
+    return url.toString();
+  };
   const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
     return runScheduledMarketingJobs({
@@ -539,6 +553,7 @@ export const createDeps = (env: Env): AppDeps => {
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       engagementOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      sesIdentityRefreshIntervalMs: SES_IDENTITY_REFRESH_INTERVAL_MS,
     }, {
       jobs: marketingJobs,
       runs: schedulerRuns,
@@ -549,6 +564,32 @@ export const createDeps = (env: Env): AppDeps => {
       }, input, {
         definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock,
       }),
+      refreshIdentity: (tenantId) =>
+        refreshSesIdentity(
+          { identity: workerIdentity(tenantId) },
+          {
+            settings: sesSettings,
+            credentials: tenantMarketingCredentials,
+            controlPlane: sesOnboardingControlPlane,
+            clock,
+            webhookBaseUrl: `${env.APP_BASE_URL}/api/webhooks/ses`,
+          },
+        ),
+      runReputationAlerts: (tenantId) =>
+        runReputationAlerts(
+          { identity: workerIdentity(tenantId) },
+          {
+            events: emailEvents,
+            settings: sesSettings,
+            tenants,
+            tenantAccess,
+            emailOutbox,
+            ids,
+            clock,
+            dashboardUrl: reputationDashboardUrl,
+            dispatchEmail,
+          },
+        ),
     });
   };
   const realtimeBus = createRealtimeBus();
@@ -641,6 +682,7 @@ export const createDeps = (env: Env): AppDeps => {
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
+    erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,
     posts: createPostRepository(db),
     reports: createPostReportRepository(db),
@@ -697,6 +739,7 @@ export const createDeps = (env: Env): AppDeps => {
     email,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
+    paymentTransaction: createPaymentTransactionPort(db),
     dispatchEmails,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,
@@ -707,7 +750,7 @@ export const createDeps = (env: Env): AppDeps => {
     tenants,
     consents,
     onboardingState: createOnboardingStateRepository(db),
-    tenantAccess: createTenantAccessReader(db),
+    tenantAccess,
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
@@ -744,7 +787,7 @@ export const createDeps = (env: Env): AppDeps => {
       marketingCredentials,
       quotaReader,
       sesOnboarding: {
-        controlPlane: createSesOnboardingControlPlane(),
+        controlPlane: sesOnboardingControlPlane,
         credentials: tenantMarketingCredentials,
       },
       throttle: marketingThrottle,

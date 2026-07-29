@@ -108,9 +108,13 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/marketing/sends') || /^\/api\/members\/:id\/emails$/.test(path)) return 'marketing:delivery:read';
   if (path === '/api/me' || path === '/api/tenants') return 'tenant:list-own';
   if (path === '/api/me/billing-orders') return 'member:billing:read';
+  if (path === '/api/me/data-export') return 'member:data-export:self-read';
+  if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/my/products') return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
   if (path === '/api/members') return 'member:read';
+  if (path === '/api/members/erasure-requests') return 'member:erasure:read';
+  if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
   if (path === '/api/members/export') return 'member:export';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
   if (path.endsWith('/learning-summary')) return 'member:learning:read';
@@ -186,7 +190,7 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
   if (path.startsWith('/api/student/')) {
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
@@ -409,8 +413,14 @@ const beforeForUseCase = (
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
+  if (file === 'marketing-ses-onboarding.ts' && name === 'refreshSesIdentity') {
+    return allHumans;
+  }
+  if (file === 'email-reputation.ts' && name === 'runReputationAlerts') {
+    return allHumans;
+  }
   if (file === 'create-tenant.ts') return allHumans;
-  if (file === 'member-billing-orders.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
+  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }

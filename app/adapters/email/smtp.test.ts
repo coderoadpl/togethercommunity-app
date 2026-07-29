@@ -63,6 +63,24 @@ describe('SMTP transactional e-mail adapter', () => {
     }
   });
 
+  it('records no delivery telemetry for SMTP sends', async () => {
+    const email = createSmtpEmailPort(settings, () => ({
+      sendMail: async () => ({ messageId: '<accepted-only@example.test>' }),
+    }));
+
+    const sent = await email.send({
+      to: 'member@example.test',
+      subject: 'Accepted',
+      html: '<p>Accepted</p>',
+      text: 'Accepted',
+    });
+
+    expect(sent).toEqual({
+      ok: true,
+      value: { messageId: '<accepted-only@example.test>' },
+    });
+  });
+
   it('connects to a local SMTP sink without authentication', async () => {
     const createTransport = vi.fn(() => ({
       sendMail: async () => ({ messageId: '<mailpit-message@local>' }),

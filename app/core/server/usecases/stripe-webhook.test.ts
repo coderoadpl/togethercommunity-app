@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   err,
+  internal,
   ok,
   validation,
   type Member,
@@ -147,10 +148,17 @@ const subscriptionEvent = (input: {
   },
 });
 
-const harness = (options: { prices?: ProductPrice[] } = {}) => {
+const harness = (
+  options: { prices?: ProductPrice[]; rejectPaymentCommit?: boolean } = {},
+) => {
   const members = new Map<string, Member>();
   const grants = new Map<string, ProductGrant>();
   const events = new Map<string, ProcessedPaymentEvent>();
+  const eventClaims = new Map<string, {
+    workerId: string;
+    leaseExpiresAt: string;
+    status: 'processing' | 'processed';
+  }>();
   const orders: Order[] = [];
   const subscriptions = new Map<string, MemberSubscription>();
   const prices = options.prices ?? [];
@@ -308,18 +316,88 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
       listGrantedProducts: async () => [],
     },
     processedPaymentEvents: {
-      claim: async (tenantId, event) => {
-        if (events.has(event.id)) return false;
+      claim: async (tenantId, event, lease) => {
+        const existingClaim = eventClaims.get(event.id);
+        if (
+          existingClaim !== undefined
+          && (
+            existingClaim.status === 'processed'
+            || Date.parse(existingClaim.leaseExpiresAt) > Date.parse(lease.now)
+          )
+        ) {
+          return 'duplicate';
+        }
         for (const existing of events.values()) {
-          if (existing.tenantId === tenantId && existing.objectId === event.objectId && existing.type === event.type) {
-            return false;
+          if (
+            existing.id !== event.id
+            && existing.tenantId === tenantId
+            && existing.objectId === event.objectId
+            && existing.type === event.type
+          ) {
+            return 'duplicate';
           }
         }
         events.set(event.id, { ...event, tenantId });
-        return true;
+        eventClaims.set(event.id, {
+          workerId: lease.workerId,
+          leaseExpiresAt: lease.leaseExpiresAt,
+          status: 'processing',
+        });
+        return 'claimed';
       },
-      release: async (_tenantId, eventId) => {
+      finalize: async (_tenantId, eventId, workerId) => {
+        const claim = eventClaims.get(eventId);
+        if (claim?.workerId === workerId && claim.status === 'processing') {
+          eventClaims.set(eventId, { ...claim, status: 'processed' });
+        }
+      },
+      release: async (_tenantId, eventId, workerId) => {
+        if (eventClaims.get(eventId)?.workerId !== workerId) return;
+        eventClaims.delete(eventId);
         events.delete(eventId);
+      },
+    },
+    paymentTransaction: {
+      run: async (operation) => {
+        const memberSnapshot = new Map(members);
+        const grantSnapshot = new Map(grants);
+        const eventSnapshot = new Map(events);
+        const claimSnapshot = new Map(eventClaims);
+        const orderSnapshot = [...orders];
+        const subscriptionSnapshot = new Map(subscriptions);
+        const sentSnapshot = [...sent];
+        const queuedSnapshot = [...queued];
+        const refundSnapshot = refundTransitions;
+        const result = await operation({
+          members: deps.members,
+          grants: deps.grants,
+          orders: deps.orders,
+          subscriptions: deps.subscriptions,
+          paymentRefunds: deps.paymentRefunds,
+          couponRedemptions: deps.couponRedemptions ?? {
+            counts: async () => ({ total: 0, member: 0 }),
+            createOrderAndClaim: async () => false,
+          },
+          emailOutbox: deps.emailOutbox,
+          processedPaymentEvents: deps.processedPaymentEvents,
+          enrollmentTransaction: deps.enrollmentTransaction,
+        });
+        if (!options.rejectPaymentCommit) return result;
+        members.clear();
+        memberSnapshot.forEach((value, key) => members.set(key, value));
+        grants.clear();
+        grantSnapshot.forEach((value, key) => grants.set(key, value));
+        events.clear();
+        eventSnapshot.forEach((value, key) => events.set(key, value));
+        eventClaims.clear();
+        claimSnapshot.forEach((value, key) => eventClaims.set(key, value));
+        orders.splice(0, orders.length, ...orderSnapshot);
+        subscriptions.clear();
+        subscriptionSnapshot.forEach((value, key) => subscriptions.set(key, value));
+        sent.splice(0, sent.length, ...sentSnapshot);
+        queued.splice(0, queued.length, ...queuedSnapshot);
+        refundTransitions = refundSnapshot;
+        return err(internal('commit rejected'));
       },
     },
     enrollmentTransaction: {
@@ -702,6 +780,56 @@ describe('fulfillStripeWebhook', () => {
       provider: 'stripe',
       providerObjectIds: { checkoutSession: 'cs-1' },
     });
+  });
+
+  it('leaves no payment projections or claim when the transaction commit is rejected', async () => {
+    const h = harness({
+      prices: [monthlyPrice(tenantA.id)],
+      rejectPaymentCommit: true,
+    });
+    const result = await fulfillStripeWebhook(
+      tenantA,
+      completedEvent({ priceId: 'price-monthly', subscriptionId: 'sub-1' }),
+      h.deps,
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(h.orders).toEqual([]);
+    expect(h.subscriptions.size).toBe(0);
+    expect(h.grants.size).toBe(0);
+    expect(h.members.size).toBe(0);
+    expect(h.events.size).toBe(0);
+    expect(h.sent).toEqual([]);
+    expect(h.queued).toEqual([]);
+  });
+
+  it('reprocesses an expired claim and creates exactly one order', async () => {
+    const h = harness();
+    const event = completedEvent({ id: 'evt-expired', objectId: 'cs-expired' });
+    const processedEvent: ProcessedPaymentEvent = {
+      id: event.id,
+      tenantId: tenantA.id,
+      type: event.type,
+      objectId: event.objectId ?? '',
+      processedAt: now,
+    };
+    await h.deps.processedPaymentEvents.claim(tenantA.id, processedEvent, {
+      workerId: 'stalled-worker',
+      now,
+      leaseExpiresAt: '2026-07-14T10:05:00.000Z',
+    });
+    h.setNow('2026-07-14T10:06:00.000Z');
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: true },
+    });
+    expect(h.orders).toHaveLength(1);
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual({
+      ok: true,
+      value: { processed: false },
+    });
+    expect(h.orders).toHaveLength(1);
   });
 
   it('appends exactly one order when two duplicate deliveries race the same event', async () => {

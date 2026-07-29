@@ -411,6 +411,19 @@ describe('resetMemberCourseProgress', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 
+  it('rejects resetting progress for an erased member', async () => {
+    const store = makeProgressStore();
+    const result = await resetMemberCourseProgress(
+      staffCtx,
+      { memberId: 'mem1', courseId: 'c1' },
+      {
+        ...resetDeps(store.repo),
+        members: membersRepo([{ ...mem1, deletedAt: '2026-07-14T10:00:00.000Z' }]),
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
   it('is not found for an unknown course', async () => {
     const store = makeProgressStore();
     const result = await resetMemberCourseProgress(

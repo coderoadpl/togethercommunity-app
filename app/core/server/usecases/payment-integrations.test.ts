@@ -17,6 +17,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     tenantName: tenantId ? 'Acme' : null,
     staffRole,
     memberId: null,
+  memberBannedAt: null,
   } satisfies Identity,
 });
 
@@ -38,6 +39,7 @@ const fakePayment = (
     calls.expired.push(input.sessionId);
     return ok({ expired: true });
   },
+  cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
   verifyWebhookEvent: async () =>
     ok({ id: 'evt_1', type: 'checkout.session.completed', objectId: 'cs_1', checkoutSession: null }),
 });

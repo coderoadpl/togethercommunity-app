@@ -411,6 +411,110 @@ try {
     'pin lifecycle: the unpinned post leaves the pinned projection',
     unpinnedFeed.data.feed.pinned.every((post) => post.id !== 'post-spolecznosc-hello'),
   );
+
+  const moderationPost = z.object({
+    post: z.object({ id: z.string() }),
+  }).parse(envelopeData(cli(studioStaff, apiUrl, [
+    '--tenant', 'studio', 'space', 'post',
+    '--space', 'space-studio-spolecznosc',
+    '--body', 'QA moderation lifecycle target',
+  ])));
+  const reported = z.object({
+    report: z.object({ id: z.string(), postId: z.string(), status: z.literal('open') }),
+  }).parse(envelopeData(cli(studioMember, apiUrl, [
+    '--tenant', 'studio', 'post', 'report',
+    '--post', moderationPost.post.id,
+    '--reason', 'spam',
+    '--note', 'QA moderation lifecycle probe',
+  ])));
+  const listedReports = z.object({
+    items: z.array(z.object({ report: z.object({ id: z.string() }) })),
+  }).parse(envelopeData(cli(studioStaff, apiUrl, ['--tenant', 'studio', 'report', 'list'])));
+  must(
+    'report lifecycle: staff queue contains the member report',
+    listedReports.items.some((item) => item.report.id === reported.report.id),
+  );
+  const duplicateReport = curl([
+    '-H', `authorization: Bearer ${memberToken}`,
+    '-H', 'content-type: application/json',
+    '-H', 'x-tenant: studio',
+    '-d', JSON.stringify({ postId: moderationPost.post.id, reason: 'spam' }),
+    `${apiUrl}${API_PATHS.postsReport}`,
+  ]);
+  must('report lifecycle: a duplicate member report returns conflict', duplicateReport === '409', `HTTP ${duplicateReport}`);
+
+  await panelPage.goto(`${studioUrl}/panel/reports`, { waitUntil: 'load' });
+  await panelPage.getByTestId('report-row').first().waitFor({ state: 'visible', timeout: 15000 });
+  await shoot(panelPage, 'panel-reports-open-desktop');
+
+  cli(studioStaff, apiUrl, [
+    '--tenant', 'studio', 'report', 'resolve',
+    '--report', reported.report.id,
+    '--action', 'delete-post',
+  ]);
+  const deletedFeed = z.object({
+    ok: z.literal(true),
+    data: z.object({
+      feed: z.object({
+        items: z.array(z.object({ id: z.string(), deletedAt: z.string().nullable() })),
+      }),
+    }),
+  }).parse(JSON.parse(curlBody([
+    '-H', `authorization: Bearer ${memberToken}`,
+    '-H', 'x-tenant: studio',
+    `${apiUrl}${API_PATHS.spaceFeed.replace(':spaceId', 'space-studio-spolecznosc')}`,
+  ])));
+  must(
+    'report lifecycle: deleting through moderation leaves only the removal projection',
+    deletedFeed.data.feed.items.some((post) => post.id === moderationPost.post.id && post.deletedAt !== null),
+  );
+
+  cli(studioStaff, apiUrl, [
+    '--tenant', 'studio', 'member', 'ban',
+    '--member', 'member-studio-aktywny',
+    '--reason', 'QA moderation lifecycle probe',
+  ]);
+  await panelPage.goto(`${studioUrl}/panel/members/member-studio-aktywny`, { waitUntil: 'load' });
+  await panelPage.getByText('QA moderation lifecycle probe').waitFor({ state: 'visible', timeout: 15000 });
+  await shoot(panelPage, 'panel-member-banned-desktop');
+
+  const bannedPostArgs = [
+    '-X', 'POST',
+    '-H', 'content-type: application/json',
+    '-H', 'x-tenant: studio',
+    '-d', JSON.stringify({
+      contextKind: 'space',
+      contextId: 'space-studio-spolecznosc',
+      body: 'QA post after moderation transition',
+    }),
+    `${apiUrl}${API_PATHS.postsCreate}`,
+  ];
+  const bannedPostStatus = curl([
+    '-H', `authorization: Bearer ${memberToken}`,
+    ...bannedPostArgs,
+  ]);
+  const bannedPostBody = z.object({
+    ok: z.literal(false),
+    error: z.object({ code: z.literal('banned') }),
+  }).parse(JSON.parse(curlBody([
+    '-H', `authorization: Bearer ${memberToken}`,
+    ...bannedPostArgs,
+  ])));
+  must(
+    'ban lifecycle: a banned member receives the distinct banned error',
+    bannedPostStatus === '403' && bannedPostBody.error.code === 'banned',
+    `HTTP ${bannedPostStatus}`,
+  );
+  cli(studioStaff, apiUrl, [
+    '--tenant', 'studio', 'member', 'unban',
+    '--member', 'member-studio-aktywny',
+  ]);
+  const restoredPost = curl([
+    '-H', `authorization: Bearer ${memberToken}`,
+    ...bannedPostArgs,
+  ]);
+  must('ban lifecycle: lifting the ban restores posting', restoredPost === '200', `HTTP ${restoredPost}`);
+
   cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'delete', '--space', qaSpaceId]);
   const deleteProbe = cli(studioStaff, apiUrl, ['--tenant', 'studio', 'space', 'stats']);
   record('panel CRUD: delete removes the space (staff stats no longer list it)', !deleteProbe.includes(qaSpaceId));

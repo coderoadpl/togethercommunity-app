@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import {
   err,
   ok,
+  stripeCancelErrorSchema,
   stripeChargeObjectSchema,
   stripeDisputeObjectSchema,
   stripeInvoiceObjectSchema,
@@ -19,6 +20,18 @@ import type { PaymentProvider, PaymentWebhookEvent, TenantSecretResolver } from 
  */
 const asDiagnostic = (prefix: string, cause: unknown): AppError =>
   validation(`${prefix}: ${cause instanceof Error ? cause.message : String(cause)}`);
+
+const alreadySettledCancelSchema = stripeCancelErrorSchema;
+
+export const stripeCancelAlreadySettled = (cause: unknown): boolean => {
+  const parsed = alreadySettledCancelSchema.safeParse(cause);
+  if (!parsed.success) return false;
+  return (
+    parsed.data.code === 'resource_missing' ||
+    parsed.data.statusCode === 404 ||
+    /already canceled|canceled subscription/i.test(parsed.data.message ?? '')
+  );
+};
 
 const localeFor = (language: string | undefined): Stripe.Checkout.SessionCreateParams.Locale | undefined =>
   language === 'pl' ? 'pl' : language === 'en' ? 'en' : undefined;
@@ -224,6 +237,23 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return ok({ expired: true });
       } catch (cause) {
         return err(asDiagnostic('Stripe could not expire the session', cause));
+      }
+    },
+    cancelSubscription: async (input) => {
+      const client = await clientFor(input.tenantId);
+      if (!client.ok) return client;
+      try {
+        await client.value.subscriptions.cancel(
+          input.providerSubscriptionId,
+          {},
+          { idempotencyKey: input.idempotencyKey },
+        );
+        return ok({ canceled: true, alreadySettled: false });
+      } catch (cause) {
+        if (stripeCancelAlreadySettled(cause)) {
+          return ok({ canceled: true, alreadySettled: true });
+        }
+        return err(asDiagnostic('Stripe could not cancel the subscription', cause));
       }
     },
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {

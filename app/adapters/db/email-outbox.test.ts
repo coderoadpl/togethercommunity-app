@@ -120,7 +120,7 @@ describe('email outbox database adapter', () => {
   });
 
   it('rolls member, grant, and outbox writes back together', async () => {
-    const member: Member = { id: 'member-rollback', tenantId: 'tenant-outbox', userId: 'user-rollback', email: 'rollback@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null };
+    const member: Member = { id: 'member-rollback', tenantId: 'tenant-outbox', userId: 'user-rollback', email: 'rollback@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null };
     const grant: ProductGrant = { id: 'grant-rollback', tenantId: 'tenant-outbox', memberId: member.id, productId: 'product-outbox', source: 'manual', startsAt: NOW, expiresAt: null, legacyId: null, createdAt: NOW };
     const result = await createEnrollmentTransactionPort(db).run(async (transaction) => {
       await transaction.members.create('tenant-outbox', member);

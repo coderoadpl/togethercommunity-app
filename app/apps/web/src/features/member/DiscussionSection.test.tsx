@@ -47,6 +47,7 @@ const okMe = (staffRole: 'owner' | null = null) =>
           name: 'Acme',
           staffRole,
           memberId: staffRole === null ? 'm1' : null,
+          banned: false,
         },
       },
     }),

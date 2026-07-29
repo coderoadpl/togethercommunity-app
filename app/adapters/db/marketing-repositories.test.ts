@@ -15,12 +15,13 @@ import {
   createCampaignSendRepository,
   createConsentDefinitionRepository,
   createEmailLayoutRepository,
+  createMarketingJobRepository,
   createMarketingConsentRepository,
   createMarketingThrottleRepository,
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { emailOutbox, schedulerRuns, tenants } from './schema.js';
+import { emailOutbox, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
 
 const TEST_DB = 'together_marketing_repositories_test';
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -66,6 +67,40 @@ const campaign = (tenantId: string): Campaign => ({
 });
 
 describe('marketing database repositories', () => {
+  it('selects SES identities that have never been checked or exceeded the cadence', async () => {
+    await db.insert(tenantSesSettings).values([
+      {
+        tenantId: 'tenant-a',
+        fromAddress: 'news@tenant-a.test',
+        fromName: 'Tenant A',
+        identity: 'tenant-a.test',
+        webhookToken: 'tenant-a-webhook-token-123456',
+      },
+      {
+        tenantId: 'tenant-b',
+        fromAddress: 'news@tenant-b.test',
+        fromName: 'Tenant B',
+        identity: 'tenant-b.test',
+        identityCheckedAt: '2026-07-22T00:00:00.000Z',
+        webhookToken: 'tenant-b-webhook-token-123456',
+      },
+    ]);
+
+    await expect(
+      createMarketingJobRepository(db).listSesIdentityRefreshTenantIds(
+        '2026-07-21T23:59:59.999Z',
+      ),
+    ).resolves.toEqual(['tenant-a']);
+    await expect(
+      createMarketingJobRepository(db).listSesTenantIds(NOW),
+    ).resolves.toEqual(['tenant-a', 'tenant-b']);
+    await expect(
+      createMarketingJobRepository(db).listSesTenantIds(
+        '2026-07-21T23:59:59.999Z',
+      ),
+    ).resolves.toEqual(['tenant-a']);
+  });
+
   it('lists and summarizes scheduler runs with global and tenant scopes', async () => {
     const repository = createSchedulerRunRepository(db);
     const start = async (id: string, kind: 'marketing_tick' | 'outbox_dispatch', startedAt: string) => {

@@ -327,7 +327,6 @@ export const updateTenantSesMarketingSettings = async (
     fromAddress: string;
     fromName: string;
     identity: string;
-    identityVerified: boolean;
     configurationSet: string | null;
     snsTopicArn: string | null;
     trackingEnabled: boolean;
@@ -350,7 +349,6 @@ export const updateTenantSesMarketingSettings = async (
     return err(validation('Open and click tracking requires an SES configuration set'));
   }
   const current = await deps.settings.findByTenant(tenantId.value);
-  const now = deps.clock.nowIso();
   const hasCredentials = await credentialsConfigured(tenantId.value, deps.secrets);
   const hasSmtp = await smtpConfigured(tenantId.value, deps.secrets);
   const usage = await deps.pool.usage(tenantId.value);
@@ -359,7 +357,12 @@ export const updateTenantSesMarketingSettings = async (
     fromAddress: input.fromAddress,
     fromName: input.fromName,
     identity: input.identity,
-    identityVerifiedAt: input.identityVerified ? current?.identityVerifiedAt ?? now : null,
+    identityVerifiedAt:
+      current?.identity === input.identity ? current.identityVerifiedAt : null,
+    identityCheckedAt:
+      current?.identity === input.identity ? current.identityCheckedAt : null,
+    identityCheckError:
+      current?.identity === input.identity ? current.identityCheckError : null,
     configurationSet: input.configurationSet,
     snsTopicArn: input.snsTopicArn,
     trackingEnabled: input.trackingEnabled,
@@ -374,6 +377,8 @@ export const updateTenantSesMarketingSettings = async (
     footerLegalName: input.footerLegalName,
     footerAddress: input.footerAddress,
     broadcastsEnabled: false,
+    reputationAlertStatus: current?.reputationAlertStatus ?? null,
+    reputationAlertedAt: current?.reputationAlertedAt ?? null,
   };
   settings.broadcastsEnabled = broadcastsEnabled(settings, hasCredentials);
   const stored = await deps.settings.upsert(tenantId.value, settings);

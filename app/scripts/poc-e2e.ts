@@ -13,6 +13,11 @@ import {
   healthOutputSchema,
   looseEnvelopeSchema,
   meOutputSchema,
+  memberBanOutputSchema,
+  memberDataExportOutputSchema,
+  memberErasureRequestMutationOutputSchema,
+  memberErasureRequestsOutputSchema,
+  memberRemoveOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
   ordersReconciliationOutputSchema,
@@ -21,10 +26,12 @@ import {
   productsPublishOutputSchema,
   publicOfferOutputSchema,
   simulatePurchaseOutputSchema,
+  spaceOutputSchema,
   supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
 } from '#core/contract/index.js';
+import { memberDataExportSchema } from '#core/domain/index.js';
 
 import {
   bootServer,
@@ -186,6 +193,14 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     tenantCreateOutputSchema,
   );
   assert(alfaTenant.tenant.slug === 'alfa' && alfaTenant.tenant.name === 'Alfa Academy', 'alfa tenant mismatch');
+  const alfaSpace = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'space', 'create', '--slug', 'community', '--name', 'Community', '--visibility', 'members'],
+      alfaHome,
+    ),
+    'alfa space create',
+    spaceOutputSchema,
+  ).space;
   const kursAlfa = expectOk(
     await cli(
       ['--tenant', 'alfa', 'product', 'create', '--title', 'Kurs Alfa', '--price-cents', '19900', '--currency', 'PLN'],
@@ -313,6 +328,30 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   assert(whoami.tenant.staffRole === null, 'member should not have a staff role');
   steps += 1;
 
+  expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'member', 'ban', '--member', whoami.tenant.memberId, '--reason', 'PoC taxonomy probe'],
+      alfaHome,
+    ),
+    'staff bans member',
+    memberBanOutputSchema,
+  );
+  expectError(
+    await cli(
+      ['--tenant', 'alfa', 'space', 'post', '--space', alfaSpace.id, '--body', 'This post must be refused while banned.'],
+      buyerHome,
+    ),
+    'banned member post',
+    EXIT_CODE_BY_ERROR_CODE.banned,
+    'banned',
+  );
+  expectOk(
+    await cli(['--tenant', 'alfa', 'member', 'unban', '--member', whoami.tenant.memberId], alfaHome),
+    'staff lifts member ban',
+    memberBanOutputSchema,
+  );
+  steps += 1;
+
   const db = new pg.Client({ connectionString: verifyDatabaseUrl });
   await db.connect();
   try {
@@ -368,6 +407,16 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   assert(myProducts.products.length === 1, `member should have one product, got ${myProducts.products.length}`);
   assert(myProducts.products[0]?.id === kursAlfa.id && myProducts.products[0].title === 'Kurs Alfa', 'member grant mismatch');
+  const myDataExport = expectOk(
+    await cli(['--tenant', 'alfa', 'my', 'data-export'], buyerHome),
+    'member data export',
+    memberDataExportOutputSchema,
+  );
+  const exportedMemberData = memberDataExportSchema.parse(JSON.parse(myDataExport.content));
+  assert(
+    exportedMemberData.profile.email === 'kursant@together.dev',
+    'member data export email mismatch',
+  );
   expectError(
     await cli(['--tenant', 'beta', 'my', 'products'], buyerHome),
     'member my products beta',
@@ -405,6 +454,70 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     'member export forbidden',
     EXIT_CODE_BY_ERROR_CODE.forbidden,
     'forbidden',
+  );
+  const erasureRequest = expectOk(
+    await cli(
+      [
+        '--tenant',
+        'alfa',
+        'my',
+        'erasure-request',
+        'create',
+        '--confirm-email',
+        exportedMemberData.profile.email,
+      ],
+      buyerHome,
+    ),
+    'member erasure request',
+    memberErasureRequestMutationOutputSchema,
+  );
+  const openErasureRequests = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'member', 'erasure-requests', '--status', 'open'],
+      alfaHome,
+    ),
+    'staff open erasure requests',
+    memberErasureRequestsOutputSchema,
+  );
+  assert(
+    openErasureRequests.requests.some(
+      (request) => request.id === erasureRequest.request.id,
+    ),
+    'staff should see the member erasure request',
+  );
+  const removal = expectOk(
+    await cli(
+      [
+        '--tenant',
+        'alfa',
+        'member',
+        'remove',
+        exportedMemberData.profile.memberId,
+      ],
+      alfaHome,
+    ),
+    'staff executes member erasure',
+    memberRemoveOutputSchema,
+  );
+  assert(
+    removal.erasureRequestId === erasureRequest.request.id,
+    'member removal should report the completed request',
+  );
+  const completedErasureRequests = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'member', 'erasure-requests', '--status', 'completed'],
+      alfaHome,
+    ),
+    'staff completed erasure requests',
+    memberErasureRequestsOutputSchema,
+  );
+  assert(
+    completedErasureRequests.requests.some(
+      (request) =>
+        request.id === erasureRequest.request.id &&
+        request.status === 'completed',
+    ),
+    'member erasure request should be completed',
   );
   steps += 1;
 

@@ -308,6 +308,8 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
     enabled: tab === 'emails',
   });
   const [revoking, setRevoking] = useState<MemberGrant | null>(null);
+  const [banReason, setBanReason] = useState('');
+  const [confirmingBan, setConfirmingBan] = useState(false);
 
   const refresh = async () => {
     await Promise.all([
@@ -321,6 +323,14 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
     onSuccess: async () => {
       setRevoking(null);
       await refresh();
+    },
+  });
+  const setBanned = useMutation({
+    ...actions.setMemberBanned,
+    onSuccess: async () => {
+      setConfirmingBan(false);
+      setBanReason('');
+      await queryClient.invalidateQueries(actions.membersInvalidates());
     },
   });
 
@@ -373,9 +383,42 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
         </Box>
       ) : (
         <>
+          {member.deletedAt === null ? (
+            <SectionCard title={t.members.moderationHeading}>
+              <Stack useFlexGap spacing="0.75rem">
+                <Typography variant="body2" color="text.secondary">{t.members.banVsRemoval}</Typography>
+                {member.bannedAt === null ? null : (
+                  <>
+                    <Chip
+                      color="warning"
+                      label={t.members.bannedSince({ date: formatDate(member.bannedAt, language) })}
+                      sx={{ alignSelf: 'flex-start' }}
+                    />
+                    {member.bannedReason === null ? null : <Typography variant="body2">{member.bannedReason}</Typography>}
+                  </>
+                )}
+                <Button
+                  color={member.bannedAt === null ? 'error' : 'primary'}
+                  variant="outlined"
+                  sx={{ alignSelf: 'flex-start' }}
+                  onClick={() => setConfirmingBan(true)}
+                >
+                  {member.bannedAt === null ? t.members.ban : t.members.unban}
+                </Button>
+                {setBanned.isError ? <MutationError error={setBanned.error} /> : null}
+              </Stack>
+            </SectionCard>
+          ) : null}
           <LearningSummary memberId={member.id} />
 
-          <GrantForm memberId={member.id} onGranted={refresh} />
+          {member.deletedAt === null ? (
+            <GrantForm memberId={member.id} onGranted={refresh} />
+          ) : (
+            <StatusView
+              state={{ kind: 'empty', title: t.members.tombstoneNotice }}
+              data-testid="member-tombstone-notice"
+            />
+          )}
 
           <Box component="section">
         <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
@@ -417,7 +460,9 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
+                        {member.deletedAt === null ? (
+                          <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
+                        ) : null}
                         <Button size="small" variant="text" color="error" onClick={() => setRevoking(grant)}>
                           {t.members.revoke}
                         </Button>
@@ -443,6 +488,33 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
             onConfirm={() => {
               if (revoking) revoke.mutate({ grantId: revoking.id });
             }}
+          />
+          <ConfirmDialog
+            open={confirmingBan}
+            title={member.bannedAt === null ? t.members.ban : t.members.unban}
+            body={member.bannedAt === null ? (
+              <Stack useFlexGap spacing="0.75rem">
+                <Typography variant="body2">{t.members.banConfirm({ email: member.email })}</Typography>
+                <FormControl size="small">
+                  <FormLabel htmlFor="member-ban-reason">{t.members.banReasonLabel}</FormLabel>
+                  <OutlinedInput
+                    id="member-ban-reason"
+                    value={banReason}
+                    onChange={(event) => setBanReason(event.target.value)}
+                    inputProps={{ maxLength: 500 }}
+                  />
+                </FormControl>
+              </Stack>
+            ) : t.members.unbanConfirm({ email: member.email })}
+            confirmLabel={member.bannedAt === null ? t.members.ban : t.members.unban}
+            cancelLabel={t.common.cancel}
+            pending={setBanned.isPending}
+            onClose={() => setConfirmingBan(false)}
+            onConfirm={() => setBanned.mutate({
+              memberId: member.id,
+              banned: member.bannedAt === null,
+              ...(member.bannedAt === null && banReason.trim() !== '' ? { reason: banReason } : {}),
+            })}
           />
         </>
       )}

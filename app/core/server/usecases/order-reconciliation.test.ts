@@ -14,6 +14,7 @@ const identity = (staffRole: 'owner' | 'admin' | null): Identity => ({
   tenantName: 'Alpha',
   staffRole,
   memberId: staffRole === null ? 'member-1' : null,
+memberBannedAt: null,
 });
 
 const row: PaidWithoutGrantRow = {

@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-import { invoiceSchema } from '#core/domain/index.js';
+import { invoiceEventSchema, invoiceSchema } from '#core/domain/index.js';
 import type { InvoiceRepository, KsefSubmissionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -37,6 +37,22 @@ export const createInvoiceRepository = (
     )[0];
     return row === undefined ? null : invoiceSchema.parse(row.invoice);
   },
+  listForMember: async (tenantId, memberId) =>
+    (
+      await db
+        .select({ invoice: invoices })
+        .from(invoices)
+        .innerJoin(
+          orders,
+          and(
+            eq(orders.tenantId, invoices.tenantId),
+            eq(orders.id, invoices.orderId),
+            eq(orders.memberId, memberId),
+          ),
+        )
+        .where(eq(invoices.tenantId, tenantId))
+        .orderBy(desc(invoices.createdAt), desc(invoices.id))
+    ).map((row) => invoiceSchema.parse(row.invoice)),
   findCurrentByOrder: async (tenantId, orderId) => {
     const row = (
       await db
@@ -52,6 +68,21 @@ export const createInvoiceRepository = (
         .limit(1)
     )[0];
     return row === undefined ? null : invoiceSchema.parse(row);
+  },
+  findLatestRequestedEvent: async (tenantId, invoiceId) => {
+    const row = (
+      await db
+        .select()
+        .from(invoiceEvents)
+        .where(and(
+          eq(invoiceEvents.tenantId, tenantId),
+          eq(invoiceEvents.invoiceId, invoiceId),
+          eq(invoiceEvents.type, 'requested'),
+        ))
+        .orderBy(desc(invoiceEvents.occurredAt))
+        .limit(1)
+    )[0];
+    return row === undefined ? null : invoiceEventSchema.parse(row);
   },
   create: async (tenantId, invoice, event) =>
     db.transaction(async (tx) => {

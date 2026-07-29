@@ -17,7 +17,7 @@ const xml = renderFa3Invoice({
   productName: 'Course',
   grossAmountCents: 7900,
   discountCents: 0,
-  vatRatePercent: 23,
+  vat: { kind: 'rate', percent: 23 },
 });
 
 describe('FA(3) XSD validator', () => {
@@ -26,6 +26,23 @@ describe('FA(3) XSD validator', () => {
       ok: true,
       value: undefined,
     });
+  });
+
+  it.each(['art_113_1', 'other'] as const)('accepts exempt XML for %s', async (basisKind) => {
+    const exemptXml = renderFa3Invoice({
+      ...{
+        invoiceNumber: 'FV/2026/000002',
+        issueDate: '2026-07-29',
+        generatedAt: '2026-07-29T10:00:00Z',
+        seller: { nip: '5555555555', name: 'Together', addressLine: 'Prosta 1' },
+        buyer: null,
+        productName: 'Course',
+        grossAmountCents: 12345,
+        discountCents: 0,
+      },
+      vat: { kind: 'exempt', basisKind, basis: 'art. 113 ust. 1' },
+    });
+    expect(await createFa3XsdValidator().validate(exemptXml)).toEqual({ ok: true, value: undefined });
   });
 
   it('rejects a structurally plausible schema violation', async () => {

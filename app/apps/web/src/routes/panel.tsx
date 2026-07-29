@@ -13,6 +13,7 @@ export {
   PanelLessonEditRoute,
   PanelMemberDetailRoute,
   PanelMembersRoute,
+  PanelReportsRoute,
   PanelProductsRoute,
   PanelProductCreateRoute,
   PanelProductDetailRoute,

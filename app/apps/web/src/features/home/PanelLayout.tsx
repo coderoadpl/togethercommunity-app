@@ -61,6 +61,7 @@ type PanelSection =
   | 'courses'
   | 'lessons'
   | 'members'
+  | 'reports'
   | 'spaces'
   | 'sales'
   | 'coupons'
@@ -86,6 +87,7 @@ const sectionDescriptors: SectionDescriptor[] = [
   { id: 'courses', to: '/panel/courses' },
   { id: 'lessons', to: '/panel/lessons' },
   { id: 'members', to: '/panel/members' },
+  { id: 'reports', to: '/panel/reports' },
   { id: 'spaces', to: '/panel/spaces' },
   { id: 'sales', to: '/panel/sales' },
   { id: 'coupons', to: '/panel/sales/coupons' },
@@ -122,6 +124,8 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
       return <LessonsIcon />;
     case 'members':
       return <MembersIcon />;
+    case 'reports':
+      return <MembersIcon />;
     case 'spaces':
       return <SpacesIcon />;
     case 'sales':
@@ -145,6 +149,7 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
 const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const t = useTranslations();
   const { pathname } = useLocation();
+  const openReports = useQuery(actions.reports({ status: 'open', limit: 1 }));
   return (
     <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
       {sectionDescriptors.map(({ id, to, exact }) => {
@@ -161,6 +166,13 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
               <SectionIcon id={id} />
             </ListItemIcon>
             <ListItemText primary={t.sections[id]} />
+            {id === 'reports' && openReports.data !== undefined ? (
+              <Chip
+                data-testid="reports-open-count"
+                size="small"
+                label={openReports.data.openCount}
+              />
+            ) : null}
           </PanelNavItem>
         );
       })}

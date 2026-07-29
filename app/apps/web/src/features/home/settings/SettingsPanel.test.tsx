@@ -21,6 +21,10 @@ interface StoredSettings {
   termsUrl: string | null;
   privacyUrl: string | null;
   invoicingProvider?: 'ifirma' | 'ksef';
+  invoiceVatMode?: 'rate' | 'exempt';
+  invoiceVatRatePercent?: 5 | 8 | 23 | null;
+  invoiceExemptionBasisKind?: 'art_113_1' | 'art_113_9' | 'art_43_1' | 'other_statute' | 'other' | null;
+  invoiceExemptionBasis?: string | null;
 }
 
 const EMPTY_SETTINGS: StoredSettings = {
@@ -131,6 +135,42 @@ describe('SettingsPanel direct KSeF', () => {
     expect(await screen.findByTestId('ksef-test-result')).toHaveTextContent(
       'KSeF accepted the token for this NIP context.',
     );
+  });
+});
+
+describe('SettingsPanel VAT exemption', () => {
+  it('shows the basis controls and saves a materialized preset', async () => {
+    const { updates } = renderPanel({
+      ...EMPTY_SETTINGS,
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'art_113_1',
+      invoiceExemptionBasis: 'art. 113 ust. 1 ustawy o podatku od towarów i usług',
+    });
+
+    const basis = await screen.findByTestId('invoice-exemption-basis');
+    expect(basis).toHaveValue('art. 113 ust. 1 ustawy o podatku od towarów i usług');
+    expect(basis).toHaveAttribute('readonly');
+    await userEvent.click(screen.getByRole('button', { name: pl.billing.saveSeller }));
+    expect(updates).toContainEqual(expect.objectContaining({
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'art_113_1',
+      invoiceExemptionBasis: 'art. 113 ust. 1 ustawy o podatku od towarów i usług',
+    }));
+  });
+
+  it('blocks save when an exempt basis is blank', async () => {
+    renderPanel({
+      ...EMPTY_SETTINGS,
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other',
+      invoiceExemptionBasis: null,
+    });
+
+    expect(await screen.findByText(pl.billing.exemptionBasisRequired)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.billing.saveSeller })).toBeDisabled();
   });
 });
 

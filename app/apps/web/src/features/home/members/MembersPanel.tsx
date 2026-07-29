@@ -25,6 +25,7 @@ import { matchesQuery, SearchField, useDebouncedValue } from '../../../component
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
+import { ErasureRequestsSection } from './ErasureRequestsSection.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.members.exportFailed;
@@ -53,6 +54,7 @@ export const MembersPanel = () => {
   const [search, setSearch] = useState('');
   const [grantFilter, setGrantFilter] = useState<GrantFilter>('all');
   const [removing, setRemoving] = useState<MemberWithProductIds | null>(null);
+  const [failedSubscriptionIds, setFailedSubscriptionIds] = useState<string[]>([]);
   const query = useDebouncedValue(search);
   const impactMemberId = removing?.id ?? '';
   const removalGrants = useQuery({
@@ -65,7 +67,14 @@ export const MembersPanel = () => {
   });
   const removeMember = useMutation({
     ...actions.removeMember,
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      setFailedSubscriptionIds(
+        result.subscriptionCancellations.flatMap((cancellation) =>
+          cancellation.outcome === 'failed' && cancellation.providerSubscriptionId !== null
+            ? [cancellation.providerSubscriptionId]
+            : [],
+        ),
+      );
       setRemoving(null);
       await queryClient.invalidateQueries(actions.membersInvalidates());
     },
@@ -122,6 +131,7 @@ export const MembersPanel = () => {
         </Stack>
       }
     >
+      <ErasureRequestsSection />
       <ListSection
         toolbar={{
           search: (
@@ -179,6 +189,8 @@ export const MembersPanel = () => {
                     <TableCell>
                       {member.deletedAt !== null ? (
                         <Chip size="small" variant="outlined" label={t.members.deletedBadge} data-testid="member-deleted-badge" />
+                      ) : member.bannedAt !== null ? (
+                        <Chip size="small" color="warning" label={t.members.bannedBadge} data-testid="member-banned-badge" />
                       ) : (
                         member.displayName ?? '—'
                       )}
@@ -215,6 +227,13 @@ export const MembersPanel = () => {
         )}
       </ListSection>
       {exportError !== null ? <Alert>{exportError}</Alert> : null}
+      {failedSubscriptionIds.length > 0 ? (
+        <Alert severity="warning" data-testid="member-remove-cancellation-warning">
+          {t.members.removeCancellationWarning({
+            providerSubscriptionIds: failedSubscriptionIds.join(', '),
+          })}
+        </Alert>
+      ) : null}
       {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
       <ConfirmDialog
         open={removing !== null}

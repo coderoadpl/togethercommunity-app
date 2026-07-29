@@ -17,7 +17,7 @@ const stubMe = () =>
         userId: 'user-1',
         email: 'member@together.dev',
         name: 'Member',
-        tenant: { id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1' },
+        tenant: { id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false },
       },
     }),
   );
@@ -32,7 +32,13 @@ const stubBillingOrders = (orders: unknown[] = []) =>
     HttpResponse.json({ ok: true, data: { orders, total: orders.length, page: 1, pageSize: 25 } }),
   );
 
+const stubErasureRequest = () =>
+  http.get('*/api/me/erasure-request', () =>
+    HttpResponse.json({ ok: true, data: { request: null } }),
+  );
+
 const renderAccount = async () => {
+  server.use(stubErasureRequest());
   const rootRoute = createRootRoute({ component: MemberAccountPage });
   const router = createRouter({
     routeTree: rootRoute,
@@ -73,13 +79,82 @@ describe('MemberAccountPage', () => {
     expect(await screen.findByTestId('account-reset-sent')).toHaveTextContent(pl.account.resetSent);
   });
 
+  it('downloads the authenticated member data export', async () => {
+    let requested = false;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.get('*/api/me/data-export', () => {
+        requested = true;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            filename: 'moje-dane-studio-1998-07-29.json',
+            mimeType: 'application/json; charset=utf-8',
+            content: '{}',
+          },
+        });
+      }),
+    );
+    const createObjectUrl = URL.createObjectURL;
+    const revokeObjectUrl = URL.revokeObjectURL;
+    URL.createObjectURL = () => 'blob:member-export';
+    URL.revokeObjectURL = () => undefined;
+    await renderAccount();
+
+    await userEvent.click(await screen.findByTestId('account-data-export'));
+    await waitFor(() => expect(requested).toBe(true));
+    URL.createObjectURL = createObjectUrl;
+    URL.revokeObjectURL = revokeObjectUrl;
+  });
+
+  it('requires an exact e-mail confirmation before creating an erasure request', async () => {
+    let requested = false;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*/api/me/erasure-request', () => {
+        requested = true;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            request: {
+              id: 'request-1',
+              tenantId: 't1',
+              memberId: 'm1',
+              status: 'open',
+              reason: null,
+              requestedAt: '1998-07-29T10:00:00.000Z',
+              dueAt: '1998-08-28T10:00:00.000Z',
+              resolvedAt: null,
+              resolvedByUserId: null,
+              resolutionNote: null,
+            },
+          },
+        });
+      }),
+    );
+    await renderAccount();
+    const button = await screen.findByTestId('account-erasure-create');
+    expect(button).toBeDisabled();
+    await userEvent.type(
+      screen.getByLabelText(pl.account.erasureConfirmLabel),
+      'member@together.dev',
+    );
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    await waitFor(() => expect(requested).toBe(true));
+  });
+
   it('renders only the narrow billing-order projection', async () => {
     server.use(
       stubMe(),
       stubSettings(null),
       stubBillingOrders([{
         id: 'order-1',
-        createdAt: '2026-07-27T10:00:00.000Z',
+        createdAt: '1998-07-27T10:00:00.000Z',
         billing: {
           nip: '5555555555',
           companyName: 'Acme sp. z o.o.',
@@ -101,7 +176,7 @@ describe('MemberAccountPage', () => {
       stubSettings(null),
       stubBillingOrders([{
         id: 'order-1',
-        createdAt: '2026-07-28T10:00:00.000Z',
+        createdAt: '1998-07-28T10:00:00.000Z',
         billing: null,
         invoice: { id: 'invoice-1', status: 'issued', provider: 'ksef' },
       }]),

@@ -17,13 +17,13 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
-import { resolveAuthE2eDatabaseUrl } from './auth-e2e-config.js';
+import { resolveE2eDatabaseUrl } from './e2e-config.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 
 const E2E_DB = 'together_auth_e2e';
-const baseDatabaseUrl = resolveAuthE2eDatabaseUrl(process.env);
+const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();

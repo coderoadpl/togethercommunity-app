@@ -47,6 +47,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   tenantName: 'Acme',
   staffRole: null,
   memberId: 'mem1',
+  memberBannedAt: null,
   ...over,
 });
 
@@ -329,6 +330,9 @@ const mem1: Member = {
   externalCustomerIds: {},
   createdAt: '2026-01-01T00:00:00.000Z',
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
 };
 
 const membersRepo = (rows: Member[]): MemberRepository => ({
@@ -338,6 +342,7 @@ const membersRepo = (rows: Member[]): MemberRepository => ({
   listWithProductIds: async () => [],
   create: async () => undefined,
   updateEmail: async () => null,
+setBanned: async () => null,
 });
 
 const resetDeps = (progress: MemberCourseProgressRepository): ResetMemberCourseProgressDeps => ({

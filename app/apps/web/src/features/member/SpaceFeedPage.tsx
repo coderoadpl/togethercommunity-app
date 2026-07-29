@@ -21,6 +21,7 @@ import {
 import { EmptyFeedIcon } from './community-icons.js';
 import { MemberSurface } from './MemberSurface.js';
 import { PostComposer } from './ThreadDiscussion.js';
+import { ReportPostButton } from './ReportPostButton.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -139,6 +140,7 @@ const FeedPost = ({
               {item.pinnedAt === null ? t.community.pin : t.community.unpin}
             </Button>
           ) : null}
+          {!item.isOwn && !deleted ? <ReportPostButton postId={item.id} /> : null}
         </Stack>
       </Stack>
     </DiscussionThread>
@@ -153,6 +155,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const spaces = useQuery(actions.spaces);
   const me = useQuery(actions.me);
   const feed = useQuery(actions.spaceFeed({ spaceId }));
+  const banned = me.data?.tenant?.banned === true;
 
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
@@ -261,6 +264,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
             submitLabel={t.community.post}
             pendingLabel={t.community.posting}
             busy={create.isPending}
+            disabled={banned}
             onSubmit={(body, reset) =>
               create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
             }
@@ -268,7 +272,17 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           />
         </Paper>
 
-        {create.isError && <StatusView surface={false} state={{ kind: 'error', message: localizeError(create.error, t) }} />}
+        {create.isError && (
+          <StatusView
+            surface={false}
+            state={{
+              kind: 'error',
+              message: create.error instanceof ApiError && create.error.appError.code === 'rate_limited'
+                ? t.community.postTooFast
+                : localizeError(create.error, t),
+            }}
+          />
+        )}
         {pin.isError ? (
           <StatusView surface={false} state={{ kind: 'error', message: localizeError(pin.error, t) }} />
         ) : null}

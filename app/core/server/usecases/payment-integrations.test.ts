@@ -17,6 +17,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     tenantName: tenantId ? 'Acme' : null,
     staffRole,
     memberId: null,
+  memberBannedAt: null,
   } satisfies Identity,
 });
 

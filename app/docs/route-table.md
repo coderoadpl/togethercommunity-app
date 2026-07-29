@@ -106,6 +106,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/my/products` | authenticated | read | my products |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |
+| `POST /api/members/ban` | authenticated | mutating | member ban |
 | `GET /api/members/:memberId/grants` | authenticated | read | member grants |
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |
@@ -176,6 +177,9 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/posts` | authenticated | mutating | posts create |
 | `POST /api/support/message` | authenticated | mutating | support message |
 | `POST /api/posts/pin` | authenticated | mutating | posts pin |
+| `POST /api/posts/report` | authenticated | mutating | posts report |
+| `GET /api/reports` | authenticated | read | reports |
+| `POST /api/reports/resolve` | authenticated | mutating | report resolve |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |

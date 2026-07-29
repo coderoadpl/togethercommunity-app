@@ -17,6 +17,9 @@ const member: Member = {
   externalCustomerIds: { stripe: 'cus_1' },
   createdAt: '2026-01-01T00:00:00.000Z',
   deletedAt: null,
+  bannedAt: null,
+  bannedReason: null,
+  bannedByUserId: null,
 };
 const post: Post = {
   id: 'post-1',
@@ -59,6 +62,7 @@ const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
     tenantName: role === 'none' ? null : 'Acme',
     staffRole: role === 'staff' ? 'admin' : null,
     memberId: role === 'member' ? 'member-1' : null,
+    memberBannedAt: null,
   },
 });
 
@@ -72,6 +76,7 @@ const deps = (
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+    setBanned: async () => null,
   },
   grants: {
     findById: async () => null,
@@ -122,6 +127,9 @@ const deps = (
   posts: {
     createPost: async (_tenantId, value) => value,
     findById: async () => null,
+    findByIds: async () => [],
+    countByAuthorSince: async () => 0,
+    listRecentBodiesByAuthor: async () => [],
     listByAuthor: async (_tenantId, authorUserId) =>
       authoredPosts.filter((value) => value.authorUserId === authorUserId),
     listThreadsForContext: async () => ({ threads: [], nextCursor: null }),

@@ -127,6 +127,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   tenantName: tenant.name,
   staffRole: null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const checkoutConsentEvidence = (headers: Headers) => {

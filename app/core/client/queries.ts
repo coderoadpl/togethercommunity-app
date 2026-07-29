@@ -31,6 +31,7 @@ import type {
   LessonCreateInput,
   LessonUpdateInput,
   MemberProgressResetInput,
+  MemberBanInput,
   MemberRemoveInput,
   MemberErasureRequestCreateInput,
   MemberErasureRequestsQueryInput,
@@ -57,6 +58,9 @@ import type {
   PostCreateInput,
   PostDeleteInput,
   PostPinInput,
+  PostReportInput,
+  ReportResolveInput,
+  ReportsListInput,
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
@@ -271,6 +275,11 @@ export const spacesScopes = {
   lists: () => ['spaces', 'list'] as const,
   staff: () => ['spaces', 'staff'] as const,
   feed: (spaceId: string, limit?: number) => ['spaces', 'feed', spaceId, limit ?? null] as const,
+};
+
+export const reportScopes = {
+  all: () => ['reports'] as const,
+  list: (input: ReportsListInput) => ['reports', 'list', input] as const,
 };
 
 export const notificationScopes = {
@@ -975,6 +984,26 @@ export const pinPostMutation = (api: ApiClient) =>
     call: (input: PostPinInput) => api.pinPost(input),
   });
 
+export const reportsQuery = (api: ApiClient, input: ReportsListInput = {}) =>
+  defineQuery({
+    queryKey: reportScopes.list(input),
+    call: ({ signal }) => api.listReports(input, signal),
+  });
+
+export const reportPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'report'],
+    call: (input: PostReportInput) => api.reportPost(input),
+  });
+
+export const resolveReportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...reportScopes.all(), 'resolve'],
+    call: (input: ReportResolveInput) => api.resolveReport(input),
+  });
+
+export const reportsInvalidates = () => ({ queryKey: reportScopes.all() });
+
 export const unreactToPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unreact'],
@@ -1133,6 +1162,12 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.all() });
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
+
+export const setMemberBannedMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'ban'],
+    call: (input: MemberBanInput) => api.setMemberBanned(input),
+  });
 
 export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: membersScopes.grants(memberId) });
 

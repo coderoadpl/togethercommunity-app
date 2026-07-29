@@ -111,6 +111,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/my/products') return 'member:product:read';
+  if (path === '/api/members/ban') return 'member:ban';
   if (path === '/api/members') return 'member:read';
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
@@ -155,6 +156,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     return 'lesson:play';
   }
   if (path === '/api/posts/pin') return 'community:pin';
+  if (path === '/api/posts/report') return 'community:report';
+  if (path === '/api/reports') return 'community:report:read';
+  if (path === '/api/reports/resolve') return 'community:moderate';
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }
@@ -247,6 +251,7 @@ const AUTHORIZATION_UTILITIES = new Set([
   'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
+  'community-access.ts#requireUnbannedMember',
   'community-access.ts#requireTenant',
 ]);
 
@@ -257,6 +262,7 @@ const authorizationCallNames = new Set([
   'requireActor',
   'requireMember',
   'requireMemberOrStaff',
+  'requireUnbannedMember',
   'requireStaff',
   'requireStaffTenant',
   'requireTenant',
@@ -425,6 +431,7 @@ const beforeForUseCase = (
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
+  if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
   if (file === 'spaces.ts') {
     return name === 'listSpacesForStaff' || capability === 'space:write' || capability === 'community:pin'
@@ -543,6 +550,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'Equivalence here compares principal **sets**, not capability identity. A capability renamed consistently across `CAPABILITIES`, `ROLE_CAPABILITIES` and its call sites produces the same BEFORE and AFTER principal sets, so this table reports "no changes" for it. The table proves that no principal gained or lost access; it does not prove that the capability vocabulary is unchanged. Reviewing a rename requires reading the diff of `core/domain/authorization.ts`.',
     '',
     'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
+    '',
+    'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

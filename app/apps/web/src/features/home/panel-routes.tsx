@@ -11,6 +11,7 @@ import { LessonCreatePage, LessonEditPage, LessonsSection } from './courses/Less
 import { IntegrationsPanel } from './integrations/IntegrationsPanel.js';
 import { MemberDetail } from './members/MemberDetail.js';
 import { MembersPanel } from './members/MembersPanel.js';
+import { ReportsPanel } from './reports/ReportsPanel.js';
 import { usePanelContext } from './panel-context.js';
 import { ProductCreatePage } from './products/ProductCreatePage.js';
 import { ProductEditorPage } from './products/ProductEditorPage.js';
@@ -106,6 +107,7 @@ export const PanelLessonEditRoute = () => {
 };
 
 export const PanelMembersRoute = () => <MembersPanel />;
+export const PanelReportsRoute = () => <ReportsPanel />;
 
 export const PanelMemberDetailRoute = () => {
   const t = useTranslations();

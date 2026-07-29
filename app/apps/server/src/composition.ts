@@ -54,6 +54,7 @@ import {
   createOrderRepository,
   createPaymentRefundRepository,
   createPostReactionRepository,
+  createPostReportRepository,
   createPostRepository,
   createSpaceRepository,
   createSpaceSubscriptionRepository,
@@ -165,6 +166,7 @@ import type {
   OrderDetailRepository,
   PaymentRefundRepository,
   PostRepository,
+  PostReportRepository,
   PurchaseRepository,
   ProductGrantRepository,
   ProductPriceRepository,
@@ -244,6 +246,7 @@ export interface AppDeps {
   erasureRequests: MemberErasureRequestRepository;
   emailHmac?: EmailHmac;
   posts: PostRepository;
+  reports: PostReportRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaces: SpaceRepository;
   reactions: PostReactionRepository;
@@ -519,7 +522,7 @@ export const createDeps = (env: Env): AppDeps => {
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -535,7 +538,7 @@ export const createDeps = (env: Env): AppDeps => {
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     const url = new URL(env.APP_BASE_URL);
@@ -682,6 +685,7 @@ export const createDeps = (env: Env): AppDeps => {
     erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,
     posts: createPostRepository(db),
+    reports: createPostReportRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     spaces: createSpaceRepository(db),
     reactions: createPostReactionRepository(db),

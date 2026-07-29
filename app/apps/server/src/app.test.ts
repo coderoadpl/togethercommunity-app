@@ -113,9 +113,19 @@ const deps = (input: {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      setBanned: async () => null,
     },
     memberErasure: {
       pseudonymize: async () => null,
+    },
+    reports: {
+      open: async () => null,
+      findById: async () => null,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpenByPost: async () => new Map(),
+      countOpen: async () => 0,
+      resolve: async () => null,
+      resolveAllForPost: async () => 0,
     },
     erasureRequests: {
       create: async () => 'created',
@@ -247,6 +257,9 @@ const deps = (input: {
           externalCustomerIds: {},
           createdAt: purchase.createdAt,
           deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
         },
         grantCreated: true,
       }),
@@ -270,6 +283,7 @@ const deps = (input: {
           listWithProductIds: async () => [],
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
+        setBanned: async () => null,
         },
         grants: {
           findById: async () => null,
@@ -374,6 +388,9 @@ const deps = (input: {
     posts: {
       createPost: async (_tenantId, post) => post,
       findById: async () => null,
+      findByIds: async () => [],
+      countByAuthorSince: async () => 0,
+      listRecentBodiesByAuthor: async () => [],
       listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
@@ -496,7 +513,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
   app.request(API_PATHS.publicOffer, { headers });
 
 const scopedApp = (
-  scope: 'none' | 'member' | 'staff',
+  scope: 'none' | 'member' | 'banned-member' | 'staff',
   options: { memberDeletedAt?: string } = {},
 ) => {
   const base = deps();
@@ -511,6 +528,9 @@ const scopedApp = (
     externalCustomerIds: {},
     createdAt: '2026-07-12T00:00:00.000Z',
     deletedAt: options.memberDeletedAt ?? null,
+    bannedAt: scope === 'banned-member' ? '2026-07-12T00:00:00.000Z' : null,
+    bannedReason: null,
+    bannedByUserId: null,
   };
   const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
   const post: Post = {
@@ -542,12 +562,12 @@ const scopedApp = (
     tenantAccess: {
       ...base.tenantAccess,
       findStaffGrant: async () => (scope === 'staff' ? staffGrant : null),
-      findMember: async () => (scope === 'member' ? member : null),
+      findMember: async () => (scope === 'member' || scope === 'banned-member' ? member : null),
     },
     members: {
       ...base.members,
-      findById: async () =>
-        scope === 'member' || options.memberDeletedAt !== undefined ? member : null,
+      findById: async () => (scope === 'none' ? null : member),
+      setBanned: async () => member,
     },
     tenants: {
       ...base.tenants,
@@ -567,6 +587,55 @@ const scopedApp = (
       setPinned: async (_tenantId, input) => ({
         ...post,
         pinnedAt: input.pinnedAt,
+      }),
+    },
+    spaces: {
+      ...base.spaces,
+      findById: async () => ({
+        id: 'space-1',
+        tenantId: acme.id,
+        slug: 'general',
+        name: 'General',
+        description: null,
+        visibility: 'members',
+        productIds: [],
+        position: 0,
+        archivedAt: null,
+        createdAt: '2026-07-12T00:00:00.000Z',
+      }),
+    },
+    reports: {
+      ...base.reports,
+      open: async (_tenantId, report) => report,
+      findById: async () => ({
+        id: 'report-1',
+        tenantId: acme.id,
+        postId: post.id,
+        reporterUserId: member.userId,
+        reporterDisplay: member.displayName,
+        source: 'member',
+        reason: 'spam',
+        note: null,
+        signals: null,
+        status: 'open',
+        createdAt: '2026-07-12T00:00:00.000Z',
+        resolvedAt: null,
+        resolvedByUserId: null,
+      }),
+      resolve: async (_tenantId, input) => ({
+        id: input.id,
+        tenantId: acme.id,
+        postId: post.id,
+        reporterUserId: member.userId,
+        reporterDisplay: member.displayName,
+        source: 'member',
+        reason: 'spam',
+        note: null,
+        signals: null,
+        status: input.status,
+        createdAt: '2026-07-12T00:00:00.000Z',
+        resolvedAt: input.resolvedAt,
+        resolvedByUserId: input.resolvedByUserId,
       }),
     },
     orders: {
@@ -1341,6 +1410,72 @@ describe('new route authorization', () => {
 
     expect((await scopedApp('member').request(API_PATHS.postsPin, request)).status).toBe(403);
     expect((await scopedApp('staff').request(API_PATHS.postsPin, request)).status).toBe(200);
+  });
+
+  it('permits tenant actors to report posts', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId: 'post-1', reason: 'spam' }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.postsReport, request)).status).toBe(200);
+    expect((await scopedApp('staff').request(API_PATHS.postsReport, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.postsReport, request)).status).toBe(403);
+  });
+
+  it('restricts report queue access to staff', async () => {
+    const request = { method: 'GET', headers };
+
+    expect((await scopedApp('member').request(API_PATHS.reports, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.reports, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.reports, request)).status).toBe(403);
+  });
+
+  it('restricts report resolution to staff', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ reportId: 'report-1', action: 'dismiss' }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.reportResolve, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.reportResolve, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.reportResolve, request)).status).toBe(403);
+  });
+
+  it('restricts member bans to staff', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', banned: true, reason: 'Repeated abuse' }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.memberBan, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.memberBan, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.memberBan, request)).status).toBe(403);
+  });
+
+  it('returns the banned code when a suspended member creates a post', async () => {
+    const response = await scopedApp('banned-member').request(API_PATHS.postsCreate, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ contextKind: 'space', contextId: 'space-1', body: 'A new post' }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'banned' } });
+  });
+
+  it('returns the banned code when a suspended member reports a post', async () => {
+    const response = await scopedApp('banned-member').request(API_PATHS.postsReport, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId: 'post-1', reason: 'spam' }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'banned' } });
   });
 
   it('maps a tombstoned grant mutation to conflict', async () => {

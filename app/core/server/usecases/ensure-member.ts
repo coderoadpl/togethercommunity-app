@@ -30,6 +30,9 @@ export const ensureMember = async (
     externalCustomerIds: {},
     createdAt: deps.clock.nowIso(),
     deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
   };
   await deps.members.create(tenantId, member);
   const stored = await deps.members.findByEmail(tenantId, normalizedEmail);

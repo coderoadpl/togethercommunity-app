@@ -16,6 +16,7 @@ import type {
   TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
+  MemberEvent,
   MemberGrant,
   MemberCourseProgress,
   MemberSubscription,
@@ -40,6 +41,9 @@ import type {
   Notification,
   Post,
   PostContextKind,
+  PostReport,
+  PostReportEvent,
+  PostReportStatus,
   ReactionEmoji,
   ReactionSummary,
   Space,
@@ -172,6 +176,15 @@ export interface PostSearchRow {
 export interface PostRepository {
   createPost(tenantId: string, post: Post): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
+  findByIds(tenantId: string, ids: string[]): Promise<Post[]>;
+  countByAuthorSince(
+    tenantId: string,
+    query: { authorUserId: string; since: string },
+  ): Promise<number>;
+  listRecentBodiesByAuthor(
+    tenantId: string,
+    query: { authorUserId: string; since: string; limit: number },
+  ): Promise<string[]>;
   listByAuthor(tenantId: string, authorUserId: string): Promise<Post[]>;
   listThreadsForContext(
     tenantId: string,
@@ -201,6 +214,32 @@ export interface PostRepository {
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
   ): Promise<PostSearchRow[]>;
+}
+
+export interface PostReportRepository {
+  open(tenantId: string, report: PostReport, event: PostReportEvent): Promise<PostReport | null>;
+  findById(tenantId: string, id: string): Promise<PostReport | null>;
+  listByStatus(
+    tenantId: string,
+    query: { status: PostReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: PostReport[]; nextCursor: string | null }>;
+  countOpenByPost(tenantId: string, postIds: string[]): Promise<Map<string, number>>;
+  countOpen(tenantId: string): Promise<number>;
+  resolve(
+    tenantId: string,
+    input: {
+      id: string;
+      status: 'dismissed' | 'resolved';
+      resolvedAt: string;
+      resolvedByUserId: string;
+    },
+    event: PostReportEvent,
+  ): Promise<PostReport | null>;
+  resolveAllForPost(
+    tenantId: string,
+    input: { postId: string; resolvedAt: string; resolvedByUserId: string },
+    event: (reportId: string) => PostReportEvent,
+  ): Promise<number>;
 }
 
 export interface SpaceRepository {
@@ -321,6 +360,16 @@ export interface MemberRepository {
   listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
+  setBanned(
+    tenantId: string,
+    input: {
+      memberId: string;
+      bannedAt: string | null;
+      reason: string | null;
+      actorUserId: string;
+    },
+    event: MemberEvent,
+  ): Promise<Member | null>;
 }
 
 export interface MemberPseudonymization {

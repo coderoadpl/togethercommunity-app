@@ -17,7 +17,7 @@ const stubMe = () =>
         userId: 'user-1',
         email: 'member@together.dev',
         name: 'Member',
-        tenant: { id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1' },
+        tenant: { id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false },
       },
     }),
   );

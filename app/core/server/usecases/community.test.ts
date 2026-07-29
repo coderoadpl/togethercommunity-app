@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeCourseModuleName,
+  POST_RATE_LIMIT,
   type Course,
   type CourseLesson,
   type CourseModule,
@@ -10,6 +11,8 @@ import {
   type Notification,
   type Post,
   type PostContextKind,
+  type PostReport,
+  type PostReportEvent,
   type Product,
   type ProductGrant,
 } from '#core/domain/index.js';
@@ -24,6 +27,7 @@ import type {
   NotificationChannelPort,
   NotificationRepository,
   PostRepository,
+  PostReportRepository,
   ProductGrantRepository,
   SpaceRepository,
   SpaceSubscription,
@@ -47,6 +51,7 @@ import {
   unreadNotificationCount,
   type CommunityDeps,
 } from './community.js';
+import { openHeuristicReport } from './moderation.js';
 
 const NOW = '2026-07-15T10:00:00.000Z';
 
@@ -59,6 +64,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  memberBannedAt: null,
   ...overrides,
 });
 
@@ -204,6 +210,39 @@ class FakePosts implements PostRepository {
     return this.rows.find((post) => post.tenantId === tenantId && post.id === id) ?? null;
   }
 
+  async findByIds(tenantId: string, ids: string[]): Promise<Post[]> {
+    return this.rows.filter((post) => post.tenantId === tenantId && ids.includes(post.id));
+  }
+
+  async countByAuthorSince(
+    tenantId: string,
+    query: { authorUserId: string; since: string },
+  ): Promise<number> {
+    return this.rows.filter(
+      (post) =>
+        post.tenantId === tenantId &&
+        post.authorUserId === query.authorUserId &&
+        post.createdAt >= query.since &&
+        post.deletedAt === null,
+    ).length;
+  }
+
+  async listRecentBodiesByAuthor(
+    tenantId: string,
+    query: { authorUserId: string; since: string; limit: number },
+  ): Promise<string[]> {
+    return this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.authorUserId === query.authorUserId &&
+          post.createdAt >= query.since &&
+          post.deletedAt === null,
+      )
+      .slice(-query.limit)
+      .map((post) => post.body);
+  }
+
   async listByAuthor(tenantId: string, authorUserId: string): Promise<Post[]> {
     return this.rows.filter(
       (post) => post.tenantId === tenantId && post.authorUserId === authorUserId,
@@ -309,6 +348,69 @@ class FakePosts implements PostRepository {
   private replace(post: Post): void {
     const index = this.rows.findIndex((item) => item.id === post.id);
     if (index >= 0) this.rows[index] = post;
+  }
+}
+
+class FakeReports implements PostReportRepository {
+  readonly rows: PostReport[] = [];
+  readonly events: PostReportEvent[] = [];
+
+  async open(
+    _tenantId: string,
+    report: PostReport,
+    event: PostReportEvent,
+  ): Promise<PostReport | null> {
+    if (
+      report.source === 'heuristic' &&
+      this.rows.some((row) => row.source === 'heuristic' && row.postId === report.postId)
+    ) {
+      return null;
+    }
+    this.rows.push(report);
+    this.events.push(event);
+    return report;
+  }
+
+  async findById(tenantId: string, id: string): Promise<PostReport | null> {
+    return this.rows.find((report) => report.tenantId === tenantId && report.id === id) ?? null;
+  }
+
+  async listByStatus(
+    tenantId: string,
+    query: { status: PostReport['status']; cursor?: string; limit: number },
+  ): Promise<{ reports: PostReport[]; nextCursor: string | null }> {
+    return {
+      reports: this.rows
+        .filter((report) => report.tenantId === tenantId && report.status === query.status)
+        .slice(0, query.limit),
+      nextCursor: null,
+    };
+  }
+
+  async countOpenByPost(tenantId: string, postIds: string[]): Promise<Map<string, number>> {
+    return new Map(postIds.map((postId) => [
+      postId,
+      this.rows.filter(
+        (report) =>
+          report.tenantId === tenantId &&
+          report.postId === postId &&
+          report.status === 'open',
+      ).length,
+    ]));
+  }
+
+  async countOpen(tenantId: string): Promise<number> {
+    return this.rows.filter(
+      (report) => report.tenantId === tenantId && report.status === 'open',
+    ).length;
+  }
+
+  async resolve(): Promise<PostReport | null> {
+    return null;
+  }
+
+  async resolveAllForPost(): Promise<number> {
+    return 0;
   }
 }
 
@@ -446,10 +548,10 @@ const deps = (
   staffUserIds: string[] = [],
 ): CommunityDeps => {
   const members: Member[] = [
-    { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-    { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-    { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
+    { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
   ];
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
@@ -471,6 +573,7 @@ const deps = (
   };
   return {
     posts: new FakePosts(),
+    reports: new FakeReports(),
     threadSubscriptions: new FakeSubscriptions(),
     spaceSubscriptions: new FakeSpaceSubscriptions(),
     spaces: emptySpacesRepo,
@@ -529,6 +632,94 @@ describe('community use-cases', () => {
       d,
     );
     expect(created).toMatchObject({ ok: true, value: { authorDisplay: 'Kapitan Świt' } });
+  });
+
+  it('rate-limits the eleventh member post in ten minutes while exempting staff', async () => {
+    const memberDeps = deps([allAccess], [grant('m1', 'all')]);
+    for (let index = 0; index < POST_RATE_LIMIT.maxPosts; index += 1) {
+      await expect(createPost(
+        ctx(),
+        { contextKind: 'lesson', contextId: 'l1', body: `post ${index}` },
+        memberDeps,
+      )).resolves.toMatchObject({ ok: true });
+    }
+    await expect(createPost(
+      ctx(),
+      { contextKind: 'lesson', contextId: 'l1', body: 'one post too many' },
+      memberDeps,
+    )).resolves.toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+
+    const staffDeps = deps([allAccess]);
+    for (let index = 0; index <= POST_RATE_LIMIT.maxPosts; index += 1) {
+      await expect(createPost(
+        ctx({ staffRole: 'admin', memberId: null }),
+        { contextKind: 'lesson', contextId: 'l1', body: `staff post ${index}` },
+        staffDeps,
+      )).resolves.toMatchObject({ ok: true });
+    }
+  });
+
+  it('opens deduplicated heuristic reports for link floods and repeated content', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const linked = await createPost(
+      ctx(),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: 'https://one.test https://two.test https://three.test',
+      },
+      d,
+    );
+    expect(linked).toMatchObject({ ok: true });
+    if (!linked.ok || !(d.reports instanceof FakeReports) || !(d.posts instanceof FakePosts)) return;
+    expect(d.reports.rows).toMatchObject([
+      { postId: linked.value.id, source: 'heuristic', reason: 'spam', signals: ['link-flood'] },
+    ]);
+
+    const repeatedBody = 'This meaningful community message is repeated.';
+    await createPost(
+      ctx(),
+      { contextKind: 'lesson', contextId: 'l1', body: repeatedBody },
+      d,
+    );
+    const duplicate = await createPost(
+      ctx(),
+      { contextKind: 'lesson', contextId: 'l1', body: 'This meaningful community message is repeated!' },
+      d,
+    );
+    expect(duplicate).toMatchObject({ ok: true });
+    if (!duplicate.ok) return;
+    expect(d.reports.rows).toContainEqual(expect.objectContaining({
+      postId: duplicate.value.id,
+      signals: ['duplicate-body'],
+    }));
+
+    const linkedPost = await d.posts.findById('t1', linked.value.id);
+    if (linkedPost === null) return;
+    await openHeuristicReport('t1', linkedPost, ['link-flood'], d);
+    expect(d.reports.rows.filter((report) => report.postId === linked.value.id)).toHaveLength(1);
+  });
+
+  it('keeps a created post successful when heuristic report persistence fails', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    d.reports.open = async () => {
+      throw new Error('report repository unavailable');
+    };
+
+    const created = await createPost(
+      ctx(),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: 'https://one.test https://two.test https://three.test',
+      },
+      d,
+    );
+
+    expect(created).toMatchObject({ ok: true });
+    expect(d.posts).toBeInstanceOf(FakePosts);
+    if (!(d.posts instanceof FakePosts)) return;
+    expect(d.posts.rows).toHaveLength(1);
   });
 
   it('projects posts to a public shape: isOwn per viewer, never the raw author id', async () => {
@@ -846,5 +1037,28 @@ describe('community guard and error branches', () => {
     const d = deps([], []);
     expect(await muteThread(memberCtx, { rootPostId: 'id-1' }, d)).toMatchObject({ ok: true });
     expect(await searchPosts(memberCtx, { query: 'anything' }, d)).toMatchObject({ ok: true, value: [] });
+  });
+
+  it('blocks banned member writes while staff remain unaffected', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const postId = await seedPost(d);
+    const bannedMember = ctx({ memberBannedAt: NOW });
+    await expect(
+      createPost(bannedMember, { contextKind: 'lesson', contextId: 'l1', body: 'blocked' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'banned' } });
+    await expect(
+      editPost(bannedMember, { id: postId, body: 'blocked edit' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'banned' } });
+    await expect(deletePost(bannedMember, { id: postId }, d)).resolves.toMatchObject({ ok: true });
+    await expect(
+      createPost(
+        ctx({ staffRole: 'admin', memberId: null, memberBannedAt: NOW }),
+        { contextKind: 'lesson', contextId: 'l1', body: 'staff post' },
+        d,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'restored' }, d),
+    ).resolves.toMatchObject({ ok: true });
   });
 });

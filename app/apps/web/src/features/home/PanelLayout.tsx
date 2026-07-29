@@ -149,6 +149,7 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
 const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const t = useTranslations();
   const { pathname } = useLocation();
+  const openReports = useQuery(actions.reports({ status: 'open', limit: 1 }));
   return (
     <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
       {sectionDescriptors.map(({ id, to, exact }) => {
@@ -165,6 +166,13 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
               <SectionIcon id={id} />
             </ListItemIcon>
             <ListItemText primary={t.sections[id]} />
+            {id === 'reports' && openReports.data !== undefined ? (
+              <Chip
+                data-testid="reports-open-count"
+                size="small"
+                label={openReports.data.openCount}
+              />
+            ) : null}
           </PanelNavItem>
         );
       })}

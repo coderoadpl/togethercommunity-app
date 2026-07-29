@@ -2706,10 +2706,16 @@ export const EmptyStateContent = styled(Stack)({
 export const LessonMediaFrame = styled(Box)(({ theme }) => ({
   position: 'relative',
   width: '100%',
-  overflow: 'hidden',
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
   backgroundColor: theme.palette.background.default,
+}));
+
+export const LessonMediaClip = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  inset: 0,
+  overflow: 'hidden',
+  borderRadius: theme.shape.borderRadius,
 }));
 
 export const LessonMediaIframe = styled('iframe')({

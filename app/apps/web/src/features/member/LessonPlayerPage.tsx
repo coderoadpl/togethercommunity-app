@@ -26,6 +26,7 @@ import {
   Eyebrow,
   LessonFooterBar,
   LessonHtmlContent,
+  LessonMediaClip,
   LessonMediaFrame,
   LessonMediaIframe,
   LessonPlaceholder,
@@ -81,14 +82,16 @@ const MediaIframe = ({
   const [loaded, setLoaded] = useState(false);
   return (
     <LessonMediaFrame sx={frameSx}>
-      {loaded ? null : (
-        <Skeleton
-          variant="rectangular"
-          data-testid="lesson-media-skeleton"
-          sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-        />
-      )}
-      <LessonMediaIframe {...iframeProps} onLoad={() => setLoaded(true)} />
+      <LessonMediaClip>
+        {loaded ? null : (
+          <Skeleton
+            variant="rectangular"
+            data-testid="lesson-media-skeleton"
+            sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+          />
+        )}
+        <LessonMediaIframe {...iframeProps} onLoad={() => setLoaded(true)} />
+      </LessonMediaClip>
     </LessonMediaFrame>
   );
 };

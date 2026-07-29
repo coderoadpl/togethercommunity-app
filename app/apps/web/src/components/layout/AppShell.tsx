@@ -12,6 +12,7 @@ interface AppShellProps {
   onMobileNavigationClose: () => void;
   header: ReactNode;
   navigation: ReactNode;
+  footer?: ReactNode;
   state?: PageState;
   children?: ReactNode;
 }
@@ -22,6 +23,7 @@ export const AppShell = ({
   onMobileNavigationClose,
   header,
   navigation,
+  footer,
   state,
   children,
 }: AppShellProps) => (
@@ -59,9 +61,12 @@ export const AppShell = ({
       )}
     </Box>
 
-    <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+    <Box
+      component="main"
+      sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}
+    >
       <Toolbar />
-      <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
+      <Box sx={{ flexGrow: 1, px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
         {state === undefined ? (
           children
         ) : (
@@ -69,6 +74,12 @@ export const AppShell = ({
             <StatusView state={state} />
           </Container>
         )}
+      </Box>
+      <Box
+        component="footer"
+        sx={{ display: 'flex', justifyContent: 'flex-end', px: '1.5rem', py: '0.8rem' }}
+      >
+        {footer}
       </Box>
     </Box>
   </Box>

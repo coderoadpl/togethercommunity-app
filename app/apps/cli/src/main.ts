@@ -46,12 +46,14 @@ import {
 } from './config.js';
 import { emit } from './output.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
+import { CLI_VERSION } from './version.js';
 
 const program = new Command('together')
   .description('Reference client for the together API - the agent feedback loop')
   .option('--json', 'machine-readable JSON output', false)
   .option('--api-url <url>', 'API base URL (overrides config)')
-  .option('--tenant <slug>', 'tenant slug for this invocation (overrides config)');
+  .option('--tenant <slug>', 'tenant slug for this invocation (overrides config)')
+  .version(CLI_VERSION, '-V, --version', 'print the CLI version');
 
 program.exitOverride().configureOutput({ writeErr: () => {} });
 
@@ -526,6 +528,14 @@ const withInput =
     }
     await handler(ctx.value, input.value);
   };
+
+program.command('version').description('This CLI build identity').action(() => {
+  emit(
+    ok({ name: 'together', version: CLI_VERSION }),
+    currentJsonFlag(),
+    ({ name, version }) => `${name}/${version}`,
+  );
+});
 
 program.command('health').description('API and database status').action(
   withCtx(async (ctx) => {

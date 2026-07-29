@@ -1224,6 +1224,15 @@ export const pl: Messages = {
     saving: 'Zapisywanie…',
     saved: 'Zapisano.',
   },
+  buildInfo: {
+    heading: 'Informacje o kompilacji',
+    intro: 'Porównaj pakiet przeglądarki z serwerem, z którym jest połączony.',
+    browserVersion: 'wersja przeglądarki',
+    browserSha: 'SHA przeglądarki',
+    serverVersion: 'wersja serwera',
+    serverSha: 'SHA serwera',
+    mismatch: 'Kompilacje przeglądarki i serwera różnią się. Odśwież stronę.',
+  },
   checkout: {
     loading: 'Ładowanie płatności…',
     checkoutEyebrow: 'płatność',

@@ -1089,6 +1089,15 @@ export interface Messages {
     saving: string;
     saved: string;
   };
+  buildInfo: {
+    heading: string;
+    intro: string;
+    browserVersion: string;
+    browserSha: string;
+    serverVersion: string;
+    serverSha: string;
+    mismatch: string;
+  };
   checkout: {
     loading: string;
     checkoutEyebrow: string;

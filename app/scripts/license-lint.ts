@@ -1,22 +1,19 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { z } from 'zod';
 
-const lockedPackageSchema = z
+const licensePackageSchema = z
   .object({
-    dev: z.boolean().optional(),
-    license: z.string().optional(),
-    optional: z.boolean().optional(),
-    version: z.string().optional(),
+    license: z.string(),
+    name: z.string(),
+    versions: z.array(z.string()).min(1),
   })
   .passthrough();
 
-const packageLockSchema = z.object({
-  packages: z.record(z.string(), lockedPackageSchema),
-});
-
-type LockedPackage = z.infer<typeof lockedPackageSchema>;
+const licenseReportSchema = z.record(z.string(), z.array(licensePackageSchema));
+const packageJsonSchema = z.object({ license: z.string().optional() });
 
 interface LicenseException {
   devOnly?: boolean;
@@ -24,6 +21,13 @@ interface LicenseException {
   packagePattern: RegExp;
   reason: string;
   versionPattern: RegExp;
+}
+
+interface LicensedPackage {
+  devOnly: boolean;
+  license: string;
+  name: string;
+  version: string;
 }
 
 const allowedLicenses = new Set([
@@ -108,8 +112,9 @@ const exceptions = new Map<string, LicenseException>([
     'rechoir@0.6.2',
     {
       devOnly: true,
+      license: 'MIT',
       packagePattern: /^rechoir$/,
-      reason: 'The lockfile omits metadata; npm registry metadata identifies 0.6.2 as MIT.',
+      reason: 'The installed package manifest identifies 0.6.2 as MIT.',
       versionPattern: /^0\.6\.2$/,
     },
   ],
@@ -148,19 +153,6 @@ const exceptions = new Map<string, LicenseException>([
   ],
 ]);
 
-const packageNameFromPath = (path: string): string | undefined => {
-  const marker = 'node_modules/';
-  const markerIndex = path.lastIndexOf(marker);
-  if (markerIndex === -1) return undefined;
-  const tail = path.slice(markerIndex + marker.length);
-  const parts = tail.split('/');
-  if (parts[0]?.startsWith('@')) {
-    if (parts[1] === undefined) return undefined;
-    return `${parts[0]}/${parts[1]}`;
-  }
-  return parts[0];
-};
-
 const hasAllowedAlternative = (license: string): boolean => {
   if (/\s+(?:AND|WITH)\s+/.test(license)) return false;
   const alternatives = license
@@ -170,71 +162,157 @@ const hasAllowedAlternative = (license: string): boolean => {
   return alternatives.some((alternative) => allowedLicenses.has(alternative.trim()));
 };
 
-const matchingException = (
-  packageName: string,
-  lockedPackage: LockedPackage,
-): string | undefined => {
-  const version = lockedPackage.version ?? '';
+const packageIdentifier = (name: string, version: string): string => `${name}@${version}`;
+
+const splitPackageIdentifier = (
+  identifier: string,
+): { name: string; version: string } | undefined => {
+  const separator = identifier.lastIndexOf('@');
+  if (separator <= 0) return undefined;
+  return {
+    name: identifier.slice(0, separator),
+    version: identifier.slice(separator + 1),
+  };
+};
+
+const lockedPackageIdentifiers = (raw: string): Set<string> => {
+  const identifiers = new Set<string>();
+  let inPackages = false;
+  for (const line of raw.split('\n')) {
+    if (line === 'packages:') {
+      inPackages = true;
+      continue;
+    }
+    if (inPackages && /^\S/.test(line)) break;
+    if (!inPackages) continue;
+    const match = /^ {2}(.+):$/.exec(line);
+    if (match?.[1] === undefined) continue;
+    const quoted = match[1];
+    const key =
+      quoted.startsWith("'") && quoted.endsWith("'")
+        ? quoted.slice(1, -1).replaceAll("''", "'")
+        : quoted;
+    const identifier = key.replace(/\(.+$/, '');
+    if (splitPackageIdentifier(identifier) !== undefined) identifiers.add(identifier);
+  }
+  return identifiers;
+};
+
+const runLicenseReport = (prod: boolean): z.infer<typeof licenseReportSchema> => {
+  const args = ['licenses', 'list'];
+  if (prod) args.push('--prod');
+  args.push('--json');
+  const result = spawnSync('pnpm', args, {
+    cwd: join(import.meta.dirname, '..'),
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr);
+    process.exit(1);
+  }
+  return licenseReportSchema.parse(JSON.parse(result.stdout));
+};
+
+const reportPackages = (
+  report: z.infer<typeof licenseReportSchema>,
+  productionIdentifiers: ReadonlySet<string>,
+): LicensedPackage[] =>
+  Object.values(report).flatMap((packages) =>
+    packages.flatMap((pkg) =>
+      pkg.versions.map((version) => {
+        const identifier = packageIdentifier(pkg.name, version);
+        return {
+          devOnly: !productionIdentifiers.has(identifier),
+          license: pkg.license,
+          name: pkg.name,
+          version,
+        };
+      }),
+    ),
+  );
+
+const matchingException = (pkg: LicensedPackage): string | undefined => {
   for (const [key, exception] of exceptions) {
-    if (!exception.packagePattern.test(packageName)) continue;
-    if (!exception.versionPattern.test(version)) continue;
-    if (exception.license !== undefined && exception.license !== lockedPackage.license) continue;
-    if (exception.license === undefined && lockedPackage.license !== undefined) continue;
-    if (exception.devOnly === true && lockedPackage.dev !== true) continue;
+    if (!exception.packagePattern.test(pkg.name)) continue;
+    if (!exception.versionPattern.test(pkg.version)) continue;
+    if (exception.license !== undefined && exception.license !== pkg.license) continue;
+    if (exception.devOnly === true && !pkg.devOnly) continue;
     return key;
   }
   return undefined;
 };
 
-const lockPath = join(import.meta.dirname, '..', 'package-lock.json');
-const thirdPartyPath = join(import.meta.dirname, '..', '..', 'THIRD-PARTY-LICENSES.md');
-const licensePath = join(import.meta.dirname, '..', '..', 'LICENSE.md');
-const parsed: unknown = JSON.parse(readFileSync(lockPath, 'utf8'));
-const lock = packageLockSchema.parse(parsed);
+const rootDir = join(import.meta.dirname, '..');
+const lockPath = join(rootDir, 'pnpm-lock.yaml');
+const thirdPartyPath = join(rootDir, '..', 'THIRD-PARTY-LICENSES.md');
+const licensePath = join(rootDir, '..', 'LICENSE.md');
+const packageJsonPath = join(rootDir, 'package.json');
+const lockIdentifiers = lockedPackageIdentifiers(readFileSync(lockPath, 'utf8'));
+const allReport = runLicenseReport(false);
+const prodReport = runLicenseReport(true);
+const productionIdentifiers = new Set(
+  Object.values(prodReport).flatMap((packages) =>
+    packages.flatMap((pkg) =>
+      pkg.versions.map((version) => packageIdentifier(pkg.name, version)),
+    ),
+  ),
+);
+const packages = reportPackages(allReport, productionIdentifiers);
 const thirdPartyLicenses = readFileSync(thirdPartyPath, 'utf8');
 const licenseDocument = readFileSync(licensePath, 'utf8');
+const packageJson = packageJsonSchema.parse(JSON.parse(readFileSync(packageJsonPath, 'utf8')));
 const problems: string[] = [];
 const matchedExceptions = new Set<string>();
 const thirdPartyPackages = new Set(
   [...thirdPartyLicenses.matchAll(/^- \[([^\]]+@[^\]]+)\]/gm)].map((match) => match[1]),
 );
 const licenseAbbreviation = /^## Abbreviation\s+(\S+)/m.exec(licenseDocument)?.[1];
-const rootLicense = lock.packages['']?.license;
 
 if (licenseAbbreviation === undefined) {
   problems.push('LICENSE.md: missing abbreviation');
-} else if (rootLicense !== licenseAbbreviation) {
+} else if (packageJson.license !== licenseAbbreviation) {
   problems.push(
-    `package-lock.json root license: ${rootLicense ?? 'missing'} (expected ${licenseAbbreviation})`,
+    `package.json root license: ${packageJson.license ?? 'missing'} (expected ${licenseAbbreviation})`,
   );
 }
 
-for (const [path, lockedPackage] of Object.entries(lock.packages)) {
-  if (path === '') continue;
-  const packageName = packageNameFromPath(path);
-  if (packageName === undefined) {
-    problems.push(`${path}: cannot determine package name`);
+for (const pkg of packages) {
+  const identifier = packageIdentifier(pkg.name, pkg.version);
+  if (!lockIdentifiers.has(identifier)) {
+    problems.push(`${identifier}: reported by pnpm but missing from pnpm-lock.yaml`);
     continue;
   }
-  const license = lockedPackage.license;
-  if (license !== undefined && hasAllowedAlternative(license)) continue;
-  const exceptionKey = matchingException(packageName, lockedPackage);
+  const exceptionKey = matchingException(pkg);
   if (exceptionKey !== undefined) {
     matchedExceptions.add(exceptionKey);
     continue;
   }
-  problems.push(
-    `${packageName}@${lockedPackage.version ?? 'unknown'}: ${license ?? 'missing license metadata'}`,
-  );
+  if (!hasAllowedAlternative(pkg.license)) {
+    problems.push(`${identifier}: ${pkg.license}`);
+  }
 }
 
-for (const [path, lockedPackage] of Object.entries(lock.packages)) {
-  if (path === '' || lockedPackage.dev === true || lockedPackage.optional === true) continue;
-  const packageName = packageNameFromPath(path);
-  if (packageName === undefined) continue;
-  const packageIdentifier = `${packageName}@${lockedPackage.version ?? 'unknown'}`;
-  if (!thirdPartyPackages.has(packageIdentifier)) {
-    problems.push(`${packageIdentifier}: missing from THIRD-PARTY-LICENSES.md`);
+for (const identifier of productionIdentifiers) {
+  if (!thirdPartyPackages.has(identifier)) {
+    problems.push(`${identifier}: missing from THIRD-PARTY-LICENSES.md`);
+  }
+}
+
+for (const [exceptionKey, exception] of exceptions) {
+  if (matchedExceptions.has(exceptionKey)) continue;
+  for (const identifier of lockIdentifiers) {
+    const parsed = splitPackageIdentifier(identifier);
+    if (parsed === undefined) continue;
+    const candidate: LicensedPackage = {
+      devOnly: !productionIdentifiers.has(identifier),
+      license: exception.license ?? '',
+      name: parsed.name,
+      version: parsed.version,
+    };
+    if (matchingException(candidate) === exceptionKey) {
+      matchedExceptions.add(exceptionKey);
+      break;
+    }
   }
 }
 
@@ -251,5 +329,5 @@ if (problems.length > 0) {
 }
 
 process.stdout.write(
-  `license-lint: OK — ${String(Object.keys(lock.packages).length - 1)} locked package(s), ${String(exceptions.size)} documented exception(s)\n`,
+  `license-lint: OK — ${String(lockIdentifiers.size)} locked package(s), ${String(exceptions.size)} documented exception(s)\n`,
 );

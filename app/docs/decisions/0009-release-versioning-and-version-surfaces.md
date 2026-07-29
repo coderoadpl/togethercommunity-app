@@ -34,7 +34,8 @@ necessary only when their concrete triggers occur.
      and the `version` command work locally without contacting a server.
    - The web build reads the manifest in `apps/web/vite.config.ts` and injects
      the version into the browser bundle. It also injects a short
-     `APP_COMMIT_SHA`, or `unknown` when no deployment attestation is available.
+     `APP_COMMIT_SHA`, falling back to Vercel's build-time commit SHA and then
+     to `unknown` when no deployment attestation is available.
 
    The package version names the application release. The commit SHA identifies
    the exact build. Neither value substitutes for the other.
@@ -123,6 +124,9 @@ network call from the local surfaces, while signed-in settings can detect a
 browser/server mismatch through the existing health endpoint. All version
 surfaces derive from one manifest, and deployed build identity continues to use
 the commit SHA already carried by the health attestation.
+
+Because the browser version appears in committed visual baselines, every
+release version bump requires a full `visual:update` on the macOS renderer.
 
 Together remains honestly pre-release: version visibility does not create a
 public support contract, an API v1 promise, a release automation claim, a

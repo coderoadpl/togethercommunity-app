@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockIns
 
 import { appError, err, ok } from '#core/domain/index.js';
 
+import pkg from '../../../package.json' with { type: 'json' };
+
 import type { CliConfig, CliProfile, ResolveCliConfigInput } from './config.js';
 
 interface Hoisted {
@@ -153,6 +155,40 @@ describe('one-envelope discipline', () => {
     expect(h.health).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('version identity', () => {
+  it('emits the manifest version without calling health', async () => {
+    await run('--json', 'version');
+
+    expect(soleJson()).toEqual({
+      ok: true,
+      data: { name: 'together', version: pkg.version },
+    });
+    expect(h.health).not.toHaveBeenCalled();
+  });
+
+  it('prints the manifest version for --version without calling health', async () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await run('--version');
+
+    expect(stdoutSpy).toHaveBeenCalledWith(`${pkg.version}\n`);
+    expect(h.health).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('emits the manifest version envelope for --json --version without calling health', async () => {
+    await run('--json', '--version');
+
+    expect(soleJson()).toEqual({
+      ok: true,
+      data: { name: 'together', version: pkg.version },
+    });
+    expect(h.health).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
   });
 });
 

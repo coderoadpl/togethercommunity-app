@@ -44,6 +44,7 @@ import {
   deleteTenantSecretMutation,
   enableTwoFactorMutation,
   grantProductToMemberMutation,
+  healthQuery,
   memberGrantsQuery,
   memberEmailSendsQuery,
   schedulerRunQuery,
@@ -213,6 +214,7 @@ const authClient = createBetterAuthClientAdapter('');
  * these ready actions and never see a client, a port or an adapter.
  */
 export const actions = {
+  health: healthQuery(apiClient),
   me: meQuery(apiClient),
   memberBillingOrders: memberBillingOrdersQuery(apiClient),
   publicOffer: publicOfferQuery(apiClient),

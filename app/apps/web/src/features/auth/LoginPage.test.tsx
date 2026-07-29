@@ -48,6 +48,7 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
     expect(screen.getByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: pl.auth.signInIdle })).toBeInTheDocument();
+    expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
     expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
   });
 

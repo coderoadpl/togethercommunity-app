@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Divider,
   FormControl,
@@ -16,6 +17,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { actions } from '../../api.js';
 import { BrandMark } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
@@ -89,6 +91,9 @@ export const LoginPage = () => {
           <Link href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</Link>
         </FinePrint>
       ) : null}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
+        <BuildStamp />
+      </Box>
     </>
   );
 

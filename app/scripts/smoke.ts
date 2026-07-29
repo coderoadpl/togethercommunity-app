@@ -36,66 +36,15 @@ function assert(condition: boolean, message: string): asserts condition {
 }
 type Run = Awaited<ReturnType<typeof run>>;
 
-const dropOptionalDependencyEdges = (entry: readonly string[]): string[] => {
-  const kept: string[] = [];
-  let inOptionalEdges = false;
-  for (const line of entry) {
-    if (/^ {4}optionalDependencies:$/.test(line)) {
-      inOptionalEdges = true;
-      continue;
-    }
-    if (inOptionalEdges && /^ {6}\S/.test(line)) continue;
-    inOptionalEdges = false;
-    kept.push(line);
-  }
-  return kept;
-};
-
-// Host-specific optional packages differ legitimately, so remove them and
-// their optional edges from both lockfiles before comparing the installed tree.
-const normalizeLockfile = (raw: string): string => {
-  const out: string[] = [];
-  let section = '';
-  let entry: string[] = [];
-
-  const flushEntry = (): void => {
-    if (entry.length === 0) return;
-    const platformConditional =
-      section === 'packages:' && entry.some((line) => /^ {4}(?:os|cpu|libc): /.test(line));
-    const optionalSnapshot =
-      section === 'snapshots:' && entry.some((line) => /^ {4}optional: true$/.test(line));
-    if (!platformConditional && !optionalSnapshot) {
-      out.push(...(section === 'snapshots:' ? dropOptionalDependencyEdges(entry) : entry));
-    }
-    entry = [];
-  };
-
-  for (const line of raw.split('\n')) {
-    if (/^\S/.test(line)) {
-      flushEntry();
-      section = line;
-      out.push(line);
-      continue;
-    }
-    if (section === 'packages:' || section === 'snapshots:') {
-      if (/^ {2}\S/.test(line)) flushEntry();
-      if (entry.length > 0 || /^ {2}\S/.test(line)) {
-        entry.push(line);
-        continue;
-      }
-    }
-    out.push(line);
-  }
-  flushEntry();
-  return out.join('\n');
-};
-
 const checkLockfileDrift = (): void => {
   const verification = spawnSync(
     'pnpm',
     ['install', '--frozen-lockfile', '--lockfile-only'],
     { cwd: rootDir, encoding: 'utf8' },
   );
+  if (verification.error !== undefined) {
+    fail(`Could not run pnpm: ${verification.error.message}`);
+  }
   if (verification.status !== 0) {
     fail(
       `pnpm-lock.yaml does not match package.json:\n${verification.stdout}${verification.stderr}`,
@@ -110,7 +59,7 @@ const checkLockfileDrift = (): void => {
       'Dependencies are not installed (node_modules/.pnpm/lock.yaml missing). Run: pnpm install --frozen-lockfile',
     );
   }
-  if (normalizeLockfile(installed) !== normalizeLockfile(source)) {
+  if (installed !== source) {
     fail(
       'Installed dependency tree does not match pnpm-lock.yaml. Run: pnpm install --frozen-lockfile',
     );

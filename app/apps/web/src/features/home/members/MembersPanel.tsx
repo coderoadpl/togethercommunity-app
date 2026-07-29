@@ -54,6 +54,7 @@ export const MembersPanel = () => {
   const [search, setSearch] = useState('');
   const [grantFilter, setGrantFilter] = useState<GrantFilter>('all');
   const [removing, setRemoving] = useState<MemberWithProductIds | null>(null);
+  const [failedSubscriptionIds, setFailedSubscriptionIds] = useState<string[]>([]);
   const query = useDebouncedValue(search);
   const impactMemberId = removing?.id ?? '';
   const removalGrants = useQuery({
@@ -66,7 +67,14 @@ export const MembersPanel = () => {
   });
   const removeMember = useMutation({
     ...actions.removeMember,
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      setFailedSubscriptionIds(
+        result.subscriptionCancellations.flatMap((cancellation) =>
+          cancellation.outcome === 'failed' && cancellation.providerSubscriptionId !== null
+            ? [cancellation.providerSubscriptionId]
+            : [],
+        ),
+      );
       setRemoving(null);
       await queryClient.invalidateQueries(actions.membersInvalidates());
     },
@@ -219,6 +227,13 @@ export const MembersPanel = () => {
         )}
       </ListSection>
       {exportError !== null ? <Alert>{exportError}</Alert> : null}
+      {failedSubscriptionIds.length > 0 ? (
+        <Alert severity="warning" data-testid="member-remove-cancellation-warning">
+          {t.members.removeCancellationWarning({
+            providerSubscriptionIds: failedSubscriptionIds.join(', '),
+          })}
+        </Alert>
+      ) : null}
       {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
       <ConfirmDialog
         open={removing !== null}

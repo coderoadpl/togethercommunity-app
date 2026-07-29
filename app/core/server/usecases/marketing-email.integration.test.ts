@@ -813,7 +813,26 @@ describe('marketing e-mail use-case integration', () => {
       create: async () => undefined, updateEmail: async () => member, setBanned: async () => null,
     };
     const erased = await removeMember(ctx, { memberId: 'member-1' }, {
-      members, memberErasure, clock, ids,
+      members,
+      memberErasure,
+      clock,
+      ids,
+      subscriptions: {
+        findById: async () => null,
+        findByProviderSubscriptionId: async () => null,
+        listForMember: async () => [],
+        create: async () => undefined,
+        update: async () => null,
+        countActive: async () => 0,
+      },
+      payment: {
+        createCheckoutSession: async () => ok({ url: 'https://checkout.test', sessionId: 'cs_1' }),
+        expireCheckoutSession: async () => ok({ expired: true }),
+        cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
+        verifyWebhookEvent: async () =>
+          ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
+      },
+      logger: { error: () => undefined },
     });
     expect(erased.ok).toBe(true);
     expect(await deps.campaigns.findById('tenant-1', 'campaign-1')).toEqual(before);

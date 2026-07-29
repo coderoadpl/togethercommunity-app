@@ -198,6 +198,7 @@ const deps = (input: {
     payment: {
       createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
       expireCheckoutSession: async () => ok({ expired: true }),
+      cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
       verifyWebhookEvent: async () => ok({ id: 'evt', type: 'test', objectId: null, checkoutSession: null }),
     },
     invoices: {

@@ -652,6 +652,7 @@ export interface Messages {
     removeConfirmTitle: string;
     removeConfirmIntro: (params: { email: string }) => string;
     removeImpact: (params: { grants: number; completedLessons: number }) => string;
+    removeCancellationWarning: (params: { providerSubscriptionIds: string }) => string;
     deletedBadge: string;
     tombstoneNotice: string;
     exportFailed: string;

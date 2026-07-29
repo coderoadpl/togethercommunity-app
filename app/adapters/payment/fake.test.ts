@@ -36,6 +36,28 @@ const signature = (body: string, signingSecret = secret): string => {
 };
 
 describe('fake Stripe webhook verification', () => {
+  it('cancels without resolving the tenant secret', async () => {
+    let resolutions = 0;
+    const cancelProvider = createFakePaymentProvider({
+      resolve: async () => {
+        resolutions += 1;
+        return ok(secret);
+      },
+    });
+
+    const result = await cancelProvider.cancelSubscription({
+      tenantId: 'tenant-a',
+      providerSubscriptionId: 'sub_123',
+      idempotencyKey: 'member-removal-subscription-1',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { canceled: true, alreadySettled: false },
+    });
+    expect(resolutions).toBe(0);
+  });
+
   it('accepts a valid Stripe-style HMAC and preserves checkout metadata', async () => {
     const result = await provider.verifyWebhookEvent({
       payloadRaw: payload,

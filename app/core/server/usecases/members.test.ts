@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone, type Identity, type Member, type MemberWithProductIds } from '#core/domain/index.js';
+import {
+  DELETED_MEMBER_DISPLAY,
+  err,
+  memberTombstone,
+  ok,
+  validation,
+  type Identity,
+  type Member,
+  type MemberSubscription,
+  type MemberWithProductIds,
+} from '#core/domain/index.js';
 
-import type { MemberErasurePort, MemberPseudonymization, MemberRepository } from '../ports.js';
+import type {
+  MemberErasurePort,
+  MemberPseudonymization,
+  MemberRepository,
+  MemberSubscriptionRepository,
+  PaymentProvider,
+} from '../ports.js';
 import { exportMembers, listMembers, removeMember, setMemberBanned } from './members.js';
 
 const staff = (tenantId: string | null, tenantSlug: string | null): Identity => ({
@@ -36,7 +52,7 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
   tags: input.tags ?? [],
   marketingConsents: input.marketingConsents ?? {},
   externalCustomerIds: input.externalCustomerIds ?? {},
-  createdAt: input.createdAt ?? '2026-07-12T00:00:00.000Z',
+  createdAt: input.createdAt ?? '1998-07-12T00:00:00.000Z',
   deletedAt: input.deletedAt ?? null,
   bannedAt: input.bannedAt ?? null,
   bannedReason: input.bannedReason ?? null,
@@ -44,7 +60,7 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
   activeProductIds: input.activeProductIds ?? [],
 });
 
-const clock = { nowIso: () => '2026-07-12T12:00:00.000Z' };
+const clock = { nowIso: () => '1998-07-12T12:00:00.000Z' };
 
 const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRepository => ({
   findById: async (): Promise<Member | null> => null,
@@ -58,8 +74,10 @@ const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRep
 const erasureFor = (
   byTenant: Record<string, MemberWithProductIds[]>,
   calls: Array<{ tenantId: string; input: MemberPseudonymization }> = [],
+  onPseudonymize: (() => void) | undefined = undefined,
 ): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) => {
+    onPseudonymize?.();
     calls.push({ tenantId, input });
     const rows = byTenant[tenantId] ?? [];
     const row = rows.find((member) => member.id === input.memberId);
@@ -85,14 +103,67 @@ const erasureFor = (
   },
 });
 
+const subscriptionRow = (
+  input: Partial<MemberSubscription> & { id: string },
+): MemberSubscription => ({
+  id: input.id,
+  tenantId: input.tenantId ?? 't-acme',
+  memberId: input.memberId ?? 'm1',
+  productId: input.productId ?? 'p1',
+  priceId: input.priceId ?? 'price-1',
+  provider: input.provider ?? 'stripe',
+  providerSubscriptionId:
+    'providerSubscriptionId' in input
+      ? input.providerSubscriptionId ?? null
+      : `sub_${input.id}`,
+  status: input.status ?? 'active',
+  currentPeriodEnd: input.currentPeriodEnd ?? '1998-08-12T00:00:00.000Z',
+  cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
+  couponId: input.couponId ?? null,
+  couponDiscountCents: input.couponDiscountCents ?? 0,
+  couponRecurringDuration: input.couponRecurringDuration ?? null,
+  createdAt: input.createdAt ?? '1998-07-12T00:00:00.000Z',
+  updatedAt: input.updatedAt ?? '1998-07-12T00:00:00.000Z',
+});
+
+const subscriptionsFor = (rows: MemberSubscription[]): MemberSubscriptionRepository => ({
+  findById: async () => null,
+  findByProviderSubscriptionId: async () => null,
+  listForMember: async (tenantId, memberId) =>
+    rows.filter((row) => row.tenantId === tenantId && row.memberId === memberId),
+  create: async () => undefined,
+  update: async () => null,
+  countActive: async () => 0,
+});
+
+const paymentFor = (
+  cancelSubscription: PaymentProvider['cancelSubscription'] = async () =>
+    ok({ canceled: true, alreadySettled: false }),
+): PaymentProvider => ({
+  createCheckoutSession: async () => ok({ url: 'https://checkout.test', sessionId: 'cs_1' }),
+  expireCheckoutSession: async () => ok({ expired: true }),
+  cancelSubscription,
+  verifyWebhookEvent: async () =>
+    ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
+});
+
 const depsFor = (
   byTenant: Record<string, MemberWithProductIds[]>,
   calls: Array<{ tenantId: string; input: MemberPseudonymization }> = [],
+  options: {
+    subscriptions?: MemberSubscription[];
+    cancelSubscription?: PaymentProvider['cancelSubscription'];
+    errors?: string[];
+    onPseudonymize?: () => void;
+  } = {},
 ) => ({
   members: membersFor(byTenant),
-  memberErasure: erasureFor(byTenant, calls),
+  memberErasure: erasureFor(byTenant, calls, options.onPseudonymize),
   clock,
   ids: { nextId: () => 'event-1' },
+  subscriptions: subscriptionsFor(options.subscriptions ?? []),
+  payment: paymentFor(options.cancelSubscription),
+  logger: { error: (message: string) => options.errors?.push(message) },
 });
 
 describe('listMembers', () => {
@@ -145,7 +216,7 @@ describe('setMemberBanned', () => {
     tags: [],
     marketingConsents: {},
     externalCustomerIds: {},
-    createdAt: '2026-07-01T00:00:00.000Z',
+    createdAt: '1998-07-01T00:00:00.000Z',
     deletedAt: null,
     bannedAt: null,
     bannedReason: null,
@@ -247,7 +318,7 @@ describe('removeMember', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { memberId: 'm1', erasureRequestId: null },
+      value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
     });
     expect(calls).toEqual([
       {
@@ -282,16 +353,202 @@ describe('removeMember', () => {
 
   it('stays idempotent for an already pseudonymized member', async () => {
     const byTenant = {
-      't-acme': [memberRow({ id: 'm1', deletedAt: '2026-07-01T00:00:00.000Z' })],
+      't-acme': [memberRow({ id: 'm1', deletedAt: '1998-07-01T00:00:00.000Z' })],
     };
 
     const result = await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, depsFor(byTenant));
 
     expect(result).toEqual({
       ok: true,
-      value: { memberId: 'm1', erasureRequestId: null },
+      value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
     });
-    expect(byTenant['t-acme'][0]?.deletedAt).toBe('2026-07-01T00:00:00.000Z');
+    expect(byTenant['t-acme'][0]?.deletedAt).toBe('1998-07-01T00:00:00.000Z');
+  });
+
+  it('cancels Stripe subscriptions before pseudonymization with stable idempotency keys', async () => {
+    const calls: string[] = [];
+    const providerInputs: Parameters<PaymentProvider['cancelSubscription']>[0][] = [];
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [subscriptionRow({ id: 'subscription-1' })],
+          cancelSubscription: async (input) => {
+            calls.push('cancel');
+            providerInputs.push(input);
+            return ok({ canceled: true, alreadySettled: false });
+          },
+          onPseudonymize: () => calls.push('pseudonymize'),
+        },
+      ),
+    );
+
+    expect(calls).toEqual(['cancel', 'pseudonymize']);
+    expect(providerInputs).toEqual([
+      {
+        tenantId: 't-acme',
+        providerSubscriptionId: 'sub_subscription-1',
+        idempotencyKey: 'member-removal-subscription-1',
+      },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [
+          {
+            subscriptionId: 'subscription-1',
+            providerSubscriptionId: 'sub_subscription-1',
+            outcome: 'canceled',
+            message: null,
+          },
+        ],
+      },
+    });
+  });
+
+  it('skips simulated subscriptions and Stripe rows without provider ids', async () => {
+    let providerCalls = 0;
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [
+            subscriptionRow({
+              id: 'simulated-1',
+              provider: 'simulated',
+              providerSubscriptionId: 'simulated_subscription',
+            }),
+            subscriptionRow({ id: 'stripe-null', providerSubscriptionId: null }),
+          ],
+          cancelSubscription: async () => {
+            providerCalls += 1;
+            return ok({ canceled: true, alreadySettled: false });
+          },
+        },
+      ),
+    );
+
+    expect(providerCalls).toBe(0);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [
+          {
+            subscriptionId: 'simulated-1',
+            providerSubscriptionId: 'simulated_subscription',
+            outcome: 'skipped',
+            message: null,
+          },
+          {
+            subscriptionId: 'stripe-null',
+            providerSubscriptionId: null,
+            outcome: 'skipped',
+            message: null,
+          },
+        ],
+      },
+    });
+  });
+
+  it('logs provider failures and completes pseudonymization', async () => {
+    const errors: string[] = [];
+    let pseudonymized = false;
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [subscriptionRow({ id: 'subscription-1' })],
+          cancelSubscription: async () => err(validation('Stripe is unavailable')),
+          errors,
+          onPseudonymize: () => {
+            pseudonymized = true;
+          },
+        },
+      ),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [
+          {
+            subscriptionId: 'subscription-1',
+            outcome: 'failed',
+            message: 'Stripe is unavailable',
+          },
+        ],
+      },
+    });
+    expect(pseudonymized).toBe(true);
+    expect(errors).toEqual([
+      '[member-removal] provider cancel failed tenant=t-acme member=m1 subscription=subscription-1 providerSubscriptionId=sub_subscription-1 error=Stripe is unavailable',
+    ]);
+  });
+
+  it('reports provider subscriptions that were already settled', async () => {
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [subscriptionRow({ id: 'subscription-1' })],
+          cancelSubscription: async () => ok({ canceled: true, alreadySettled: true }),
+        },
+      ),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [{ outcome: 'already_canceled', message: null }],
+      },
+    });
+  });
+
+  it('retries provider cancellation when removal is rerun for a tombstoned member', async () => {
+    const byTenant = {
+      't-acme': [memberRow({ id: 'm1', deletedAt: '1998-07-01T00:00:00.000Z' })],
+    };
+    let providerCalls = 0;
+    const deps = depsFor(byTenant, [], {
+      subscriptions: [subscriptionRow({ id: 'subscription-1', status: 'canceled' })],
+      cancelSubscription: async () => {
+        providerCalls += 1;
+        return ok({ canceled: true, alreadySettled: providerCalls > 1 });
+      },
+    });
+
+    const first = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      deps,
+    );
+    const second = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      deps,
+    );
+
+    expect(providerCalls).toBe(2);
+    expect(first).toMatchObject({
+      ok: true,
+      value: { subscriptionCancellations: [{ outcome: 'canceled' }] },
+    });
+    expect(second).toMatchObject({
+      ok: true,
+      value: { subscriptionCancellations: [{ outcome: 'already_canceled' }] },
+    });
   });
 
   it('forbids a plain member identity', async () => {
@@ -305,13 +562,24 @@ describe('removeMember', () => {
   });
 
   it('returns not_found when the member is absent in this tenant', async () => {
+    let providerCalls = 0;
     const result = await removeMember(
       { identity: staff('t-acme', 'acme') },
       { memberId: 'missing' },
-      depsFor({ 't-acme': [memberRow({ id: 'm1' })] }),
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          cancelSubscription: async () => {
+            providerCalls += 1;
+            return ok({ canceled: true, alreadySettled: false });
+          },
+        },
+      ),
     );
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(providerCalls).toBe(0);
   });
 });
 
@@ -326,7 +594,7 @@ describe('exportMembers', () => {
           tags: ['vip', 'trial'],
           marketingConsents: { email: true },
           externalCustomerIds: { stripe: 'cus_123' },
-          createdAt: '2026-07-12T09:00:00.000Z',
+          createdAt: '1998-07-12T09:00:00.000Z',
           productIds: ['p1', 'p2'],
         }),
       ],
@@ -341,7 +609,7 @@ describe('exportMembers', () => {
       '"id","email","displayName","tags","marketingConsents","externalCustomerIds","createdAt","deletedAt","productIds"',
     );
     expect(lines[1]).toBe(
-      '"m1","jane@together.dev","Doe, ""Jane""","vip;trial","{""email"":true}","{""stripe"":""cus_123""}","2026-07-12T09:00:00.000Z","","p1;p2"',
+      '"m1","jane@together.dev","Doe, ""Jane""","vip;trial","{""email"":true}","{""stripe"":""cus_123""}","1998-07-12T09:00:00.000Z","","p1;p2"',
     );
     expect(result.value.filename).toBe('members-acme.csv');
     expect(result.value.mimeType).toContain('text/csv');
@@ -360,7 +628,7 @@ describe('exportMembers', () => {
     const lines = result.value.content.split('\n');
     expect(lines).toHaveLength(2);
     expect(lines[1]).toBe(
-      `"m1","${memberTombstone('m1').email}","","","{}","{}","2026-07-12T00:00:00.000Z","${clock.nowIso()}","p1"`,
+      `"m1","${memberTombstone('m1').email}","","","{}","{}","1998-07-12T00:00:00.000Z","${clock.nowIso()}","p1"`,
     );
   });
 

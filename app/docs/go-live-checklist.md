@@ -71,7 +71,7 @@ repository has no rotation tool.
 production validation branch does not check it
 (`apps/server/src/env.ts:91-168`). The fake adapter returns
 `https://fake.checkout.local/...` checkout URLs
-(`adapters/payment/fake.ts:40`).
+(`adapters/payment/fake.ts:41`).
 
 Set `PAYMENT_PROVIDER=stripe`, store the tenant credentials, and run:
 
@@ -154,8 +154,31 @@ carry both one-click unsubscribe headers
 `core/server/usecases/marketing-email.ts:467-522`). No address appears in the
 URL.
 
-Verify once in production. Send a campaign to a controlled Gmail address, use
-Gmail's native unsubscribe control and the `/u/<token>` page, then run:
+Verify once in production by sending a campaign to a controlled Gmail address.
+Gmail's native one-click control and the preference page's plain Confirm button
+withdraw only the consent named by the production token's `consent:<id>` scope
+(`core/server/usecases/marketing-email.ts:467-522`,
+`core/server/usecases/marketing-email.ts:997-1003`). For each action, verify
+that the latest consent projection is withdrawn:
+
+```sql
+select definition_id, status, occurred_at
+from marketing_consents
+where email = lower(trim('<controlled-address>'))
+order by occurred_at desc, id desc
+limit 1;
+```
+
+The row must have `status = 'withdrawn'` for the campaign's consent definition.
+For a campaign send, the `email_events` lifecycle also records
+`mail_kind = 'marketing'` and `type = 'unsubscribed'`. Neither action writes a
+suppression row for a production consent-scoped token.
+
+Then open the preference page and use Unsubscribe from everything. That button
+is the separate `/u/:token/all` path and writes `unsubscribe_global`
+unconditionally (`apps/server/src/marketing-routes.ts:591-602`,
+`core/server/usecases/marketing-email.ts:525-583`,
+`apps/server/src/public-marketing-pages.ts:306`). Verify it with:
 
 ```sql
 select email, reason
@@ -164,7 +187,10 @@ where email = '<controlled-address>'
   and reason = 'unsubscribe_global';
 ```
 
-Both paths must produce the global unsubscribe suppression.
+This query must return the controlled address. Its plaintext `email` predicate
+is valid only for unsubscribe suppressions. Erasure suppressions store
+`email = null` and only `email_hmac`
+(`adapters/db/repositories.ts:1347-1351`).
 
 ### 10. Rate limiting
 
@@ -203,7 +229,7 @@ Repeat the signature and refund checks once in live mode with a 1 PLN product.
 Store `stripe.restrictedKey` and `stripe.webhookSecret` with `tenant-secret set`.
 In Stripe, add
 `https://<tenant-domain>/api/webhooks/stripe/<tenantId>` as a webhook endpoint
-(`core/contract/routes.ts:1206`,
+(`core/contract/routes.ts:1214`,
 `apps/server/src/public-app.ts:548-571`). Enable exactly
 `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
 `customer.subscription.updated`, `customer.subscription.deleted`,
@@ -249,7 +275,9 @@ immediately canceled, `subscriptionCancellations` reports `canceled`, and a
 later test-clock tick does not revive access.
 
 h. Change one byte in a payload and replay it. Confirm HTTP 400 with no state
-change (`adapters/payment/stripe.ts:259-268`). Redeliver an already processed
+change (`adapters/payment/stripe.ts:259-317`,
+`apps/server/src/public-app.ts:555-562`,
+`core/contract/http-status.ts:8`). Redeliver an already processed
 event from Stripe and confirm `processed=false` with no duplicate order
 (`core/server/usecases/stripe-webhook.ts:610-612`,
 `adapters/db/app-schema.ts:797-812`).
@@ -265,7 +293,7 @@ i. After the run, execute the SQL in item 15 and call
 Signing activates only when the tenant stores `bunny.securityKey`.
 `core/server/usecases/lesson-media.ts:76-86` resolves the key, and
 `core/server/usecases/lesson-media.ts:42-53` appends `token` and `expires` with a
-one-hour lifetime (`core/server/usecases/lesson-media.ts:21`). The HMAC
+one-hour lifetime (`core/server/usecases/lesson-media.ts:22`). The HMAC
 implementation is in `adapters/crypto/bunny-embed-token-signer.ts`.
 
 For every production tenant with `bunny.securityKey`, open Bunny dashboard,
@@ -332,11 +360,31 @@ and retry behavior is documented in
 Cancellation failures do not block erasure. The response includes
 `subscriptionCancellations`, the server logs failures with the
 `[member-removal]` prefix, and the staff panel names provider subscription IDs
-that still require cancellation. Re-running the same removal is the retry; the
-flow ignores local subscription status, so tombstoned members and locally
-canceled rows are retried.
+that returned `failed`. These records are not durable by themselves: the server
+uses `process.stderr.write` for a short-retention runtime log, the response is
+seen once, and the panel warning is transient component state overwritten by
+the next successful removal (`apps/server/src/composition.ts:472`,
+`apps/web/src/features/home/members/MembersPanel.tsx:56-76`). Before launch,
+configure a log drain and alert for `[member-removal]`, and capture failures from
+the response array or panel warning when they occur.
 
-Find the durable operational worklist with:
+The `already_canceled` outcome is also an operational risk. The Stripe adapter
+maps `resource_missing` and every 404 to that outcome, although either can mean
+a stale subscription ID or credentials for the wrong Stripe account, and the
+staff panel warns only for `failed`
+(`adapters/payment/stripe.ts:26-33`,
+`apps/web/src/features/home/members/MembersPanel.tsx:69-76`). Surface
+`already_canceled` provider IDs in the staff panel too and check them directly
+in the intended Stripe account.
+
+Re-running the same removal is the retry. The flow ignores local subscription
+status, so tombstoned members and locally canceled rows are retried. The
+cancel-before-pseudonymize path is unreachable through `npm run smoke`: smoke
+uses the fake adapter and never removes the created member
+(`adapters/payment/fake.ts:48`, `scripts/smoke.ts:480-545`). Item 11g is the
+only execution of this path before launch and must not be skipped.
+
+Run this periodic safety-net query:
 
 ```sql
 select s.id, s.provider_subscription_id, s.member_id
@@ -347,15 +395,31 @@ where m.deleted_at is not null
   and s.provider_subscription_id is not null;
 ```
 
-For every row, check whether the subscription is still active in Stripe. If it
-is, re-run the member removal endpoint.
+The query has no provider-cancellation completion discriminator and grows with
+every erased member, because local erasure marks every subscription canceled
+regardless of the provider result. It is not a worklist. Use the response array,
+panel warning, and `[member-removal]` alert as the primary failure signals; use
+this SQL periodically to catch missed signals. For every row, check whether the
+subscription is still active in Stripe. If it is, re-run member removal. This
+reconcile pass must complete before the next billing cycle.
 
-`listPaidOrdersWithoutGrant` does not surface this case. A surviving Stripe
-subscription can send a late `invoice.paid`; the webhook renews the subscription
-period and creates or renews a grant
-(`core/server/usecases/stripe-webhook.ts:425`,
-`core/server/usecases/subscription-lifecycle.ts:130-165`), so the paid-without-
-grant report remains empty.
+If provider cancellation fails and a late `invoice.paid` arrives:
+
+- the erased member continues to be charged;
+- the webhook flips the local subscription from `canceled` back to `active`,
+  undoing the erasure transaction's local cancel;
+- it creates or renews the product grant for the tombstoned member; and
+- it appends a new paid order after the erasure date with the retained company
+  name, address, postal code, city, and NIP copied from the previous order.
+
+The webhook finds the unchanged `provider_subscription_id`, sources billing
+from `previousOrder?.billing`, and calls `renewSubscriptionPeriod`
+(`core/server/usecases/stripe-webhook.ts:399-442`,
+`core/server/usecases/subscription-lifecycle.ts:140-196`,
+`core/domain/commerce.ts:83-95`). The member row remains tombstoned and its auth
+user remains severed, so nobody can log in with the restored grant. Because the
+grant is restored, `listPaidOrdersWithoutGrant` remains empty and does not
+surface the incident.
 
 Durable retry scheduling, cancel-at-period-end or refund policy, Stripe customer
 deletion, and self-service member deletion are outside this change. Production

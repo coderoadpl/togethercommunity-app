@@ -82,6 +82,7 @@ import type {
   BillingData,
   Invoice,
   InvoiceEvent,
+  InvoiceVatTreatment,
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
@@ -505,7 +506,7 @@ export interface InvoicingPort {
     order: Order;
     billing: BillingData | null;
     productName: string;
-    vatRatePercent: 5 | 8 | 23;
+    vat: InvoiceVatTreatment;
     providerInvoiceId: string | null;
     onProviderInvoiceCreateUncertain(): Promise<void>;
     onProviderInvoiceCreated(providerInvoiceId: string): Promise<void>;
@@ -536,6 +537,7 @@ export interface InvoiceRepository {
   findByIdForMember?(tenantId: string, memberId: string, id: string): Promise<Invoice | null>;
   listForMember?(tenantId: string, memberId: string): Promise<Invoice[]>;
   findCurrentByOrder(tenantId: string, orderId: string): Promise<Invoice | null>;
+  findLatestRequestedEvent(tenantId: string, invoiceId: string): Promise<InvoiceEvent | null>;
   create(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   claimRetry(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   update(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<Invoice | null>;

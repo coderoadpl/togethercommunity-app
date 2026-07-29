@@ -56,6 +56,33 @@ describe('authorization contract', () => {
     expect(capabilitiesForPrincipal('public')).not.toContain('tenant:settings:read');
   });
 
+  it('covers every capability the non-human edges demand', () => {
+    const demands = [
+      ['api-key', [
+        'marketing:message:read',
+        'marketing:message:send',
+        'marketing:consent:read',
+        'marketing:consent:write',
+        'marketing:suppression:write',
+        'enrollment:create',
+      ]],
+      ['token', ['marketing:consent:read', 'marketing:consent:write']],
+      ['webhook', ['webhook:process']],
+      ['operator-secret', [
+        'scheduler:dispatch',
+        'scheduler:read',
+        'marketing:campaign:dispatch',
+        'marketing:message:send',
+      ]],
+    ] as const;
+
+    for (const [principal, demandedCapabilities] of demands) {
+      expect(capabilitiesForPrincipal(principal)).toEqual(
+        expect.arrayContaining([...demandedCapabilities]),
+      );
+    }
+  });
+
   it('derives the identity principal with staff taking precedence over membership', () => {
     expect(principalForIdentity(identity('owner', 'member-1'))).toBe('owner');
     expect(principalForIdentity(identity('admin'))).toBe('admin');

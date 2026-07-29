@@ -19,6 +19,7 @@ export const ERROR_CODES = [
   'broadcasts_disabled',
   'transactional_platform_cap_reached',
   'slug_reserved',
+  'invoice_exemption_basis_missing',
   'internal',
 ] as const;
 

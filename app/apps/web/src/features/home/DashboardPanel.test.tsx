@@ -56,6 +56,47 @@ const members: MemberWithProductIds[] = [
 ];
 
 describe('DashboardPanel', () => {
+  it('counts active members and reports removed accounts separately', async () => {
+    const activeAndRemoved = [
+      member('active-1', '2026-07-01T10:00:00.000Z', []),
+      member('active-2', '2026-07-02T10:00:00.000Z', []),
+      {
+        ...member('removed', '2026-07-03T10:00:00.000Z', []),
+        deletedAt: '2026-07-20T10:00:00.000Z',
+      },
+    ];
+    server.use(
+      http.get('/api/products', () =>
+        HttpResponse.json({ ok: true, data: { products: [] } }),
+      ),
+      http.get('/api/courses', () =>
+        HttpResponse.json({ ok: true, data: { courses: [] } }),
+      ),
+      http.get('/api/members', () =>
+        HttpResponse.json({ ok: true, data: { members: activeAndRemoved } }),
+      ),
+      http.get('/api/sales/summary', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            summary: {
+              revenueLast30Days: [],
+              activeSubscriptions: 0,
+              ordersLast30Days: 0,
+            },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<DashboardPanel />);
+
+    const tile = await screen.findByTestId('dashboard-tile-members');
+    expect(tile).toHaveTextContent('2');
+    expect(tile).toHaveTextContent(pl.dashboard.membersRemoved({ count: 1 }));
+    expect(tile).toHaveTextContent('+ 1 usunięty');
+  });
+
   it('shows counts for products, courses, members and active grants plus recent members', async () => {
     server.use(
       http.get('/api/products', () =>

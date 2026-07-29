@@ -455,6 +455,11 @@ export interface PaymentProvider {
     tenantId: string;
     sessionId: string;
   }): Promise<Result<{ expired: true }, AppError>>;
+  cancelSubscription(input: {
+    tenantId: string;
+    providerSubscriptionId: string;
+    idempotencyKey: string;
+  }): Promise<Result<{ canceled: true; alreadySettled: boolean }, AppError>>;
   verifyWebhookEvent(input: {
     payloadRaw: string;
     signatureHeader: string;

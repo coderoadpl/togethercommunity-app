@@ -315,8 +315,16 @@ export const memberRemoveInputSchema = z.object({
 
 export type MemberRemoveInput = z.input<typeof memberRemoveInputSchema>;
 
+export const memberSubscriptionCancellationSchema = z.object({
+  subscriptionId: z.string(),
+  providerSubscriptionId: z.string().nullable(),
+  outcome: z.enum(['canceled', 'already_canceled', 'skipped', 'failed']),
+  message: z.string().nullable(),
+});
+
 export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
+  subscriptionCancellations: z.array(memberSubscriptionCancellationSchema),
 });
 
 export const memberGrantsOutputSchema = z.object({

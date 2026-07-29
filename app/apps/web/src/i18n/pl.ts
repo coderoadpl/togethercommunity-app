@@ -725,6 +725,11 @@ export const pl: Messages = {
           ),
         },
       ),
+    removeCancellationWarning: ({ providerSubscriptionIds }) =>
+      format(
+        'Dane uczestnika zostały usunięte, ale te subskrypcje nadal trzeba anulować w Stripe: {providerSubscriptionIds}.',
+        { providerSubscriptionIds },
+      ),
     deletedBadge: 'Konto usunięte',
     tombstoneNotice: 'Konto usunięte — akcje przyznawania i odnawiania dostępu są niedostępne.',
     exportFailed: 'Eksport nie powiódł się',

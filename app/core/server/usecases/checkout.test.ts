@@ -86,6 +86,7 @@ const checkoutDeps = (): CheckoutDeps => ({
     createCheckoutSession: async () =>
       ok({ url: 'https://checkout.stripe.test/default', sessionId: 'default' }),
     expireCheckoutSession: async () => ok({ expired: true }),
+    cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
     verifyWebhookEvent: async () =>
       ok({ id: 'evt-1', type: 'ignored', objectId: null, checkoutSession: null }),
   },
@@ -227,6 +228,7 @@ describe('createCheckoutSession', () => {
           return ok({ url: 'https://checkout.stripe.test/cs_1', sessionId: 'cs_1' });
         },
         expireCheckoutSession: async () => ok({ expired: true }),
+        cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
         verifyWebhookEvent: async () =>
           ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
       },
@@ -300,6 +302,7 @@ describe('createCheckoutSession', () => {
           return ok({ url: 'https://checkout.stripe.test/cs_sub', sessionId: 'cs_sub' });
         },
         expireCheckoutSession: async () => ok({ expired: true }),
+        cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
         verifyWebhookEvent: async () =>
           ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
       },

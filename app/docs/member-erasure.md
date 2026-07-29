@@ -8,12 +8,22 @@ member is physically deleted.
 
 `removeMember` in `core/server/usecases/members.ts` authorizes
 `member:remove`, builds opaque tombstone identifiers with `memberTombstone`
-from `core/domain/tenant.ts`, and calls
-`MemberErasurePort.pseudonymize`. The implementation in
+from `core/domain/tenant.ts`, and lists the member's subscriptions. Stripe
+subscriptions with provider identifiers are canceled immediately before
+pseudonymization. Simulated subscriptions and rows without provider identifiers
+are skipped.
+
+Provider cancellation failure does not block erasure. The response reports the
+outcome for every subscription, the server writes a structured
+`[member-removal]` error, and staff sees a warning naming subscriptions that
+still require cancellation in Stripe. Re-running member removal retries every
+Stripe row regardless of its local status.
+
+`MemberErasurePort.pseudonymize` then runs. The implementation in
 `adapters/db/repositories.ts` performs one transaction that:
 
 - records the erasure in `erasedMemberImports`;
-- end-dates product grants and cancels member subscriptions;
+- end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `DELETED_MEMBER_DISPLAY`;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
@@ -72,5 +82,6 @@ Requests are handled case by case:
 ## Out of scope and known gaps
 
 Self-service data-subject export and deletion remain backlog item B1.
-Provider-side subscription cancellation remains backlog item B7. Neither is
-part of this document's guarantees.
+Provider-side customer deletion and durable cancellation retry scheduling are
+not part of this flow. The operational retry and reconciliation procedure is in
+the [go-live checklist](go-live-checklist.md#15-provider-side-subscription-cancel-on-member-removal).

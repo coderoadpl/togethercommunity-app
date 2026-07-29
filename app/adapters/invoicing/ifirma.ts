@@ -83,6 +83,29 @@ export const ifirmaInvoicePayload = (
   const grossAmount = input.order.amountCents / 100;
   const billing = input.billing;
   const discount = (input.order.discountCents / 100).toFixed(2).replace('.', ',');
+  const position = input.vat.kind === 'exempt'
+    ? {
+        StawkaVat: null,
+        Ilosc: 1,
+        CenaJednostkowa: grossAmount,
+        NazwaPelna: input.order.couponId === null
+          ? input.productName
+          : `${input.productName} (rabat kuponowy: ${discount} zł)`,
+        Jednostka: 'szt.',
+        TypStawkiVat: 'ZW',
+        PodstawaPrawna: input.vat.basis,
+      }
+    : {
+        StawkaVat: input.vat.percent / 100,
+        Ilosc: 1,
+        CenaJednostkowa: grossAmount,
+        NazwaPelna: input.order.couponId === null
+          ? input.productName
+          : `${input.productName} (rabat kuponowy: ${discount} zł)`,
+        Jednostka: 'szt.',
+        PKWiU: '',
+        TypStawkiVat: 'PRC',
+      };
   return {
     Zaplacono: grossAmount,
     ZaplaconoNaDokumencie: grossAmount,
@@ -96,17 +119,8 @@ export const ifirmaInvoicePayload = (
     RodzajPodpisuOdbiorcy: 'BWO',
     WidocznyNumerBdo: false,
     Numer: null,
-    Pozycje: [{
-      StawkaVat: input.vatRatePercent / 100,
-      Ilosc: 1,
-      CenaJednostkowa: grossAmount,
-      NazwaPelna: input.order.couponId === null
-        ? input.productName
-        : `${input.productName} (rabat kuponowy: ${discount} zł)`,
-      Jednostka: 'szt.',
-      PKWiU: '',
-      TypStawkiVat: 'PRC',
-    }],
+    ...(input.vat.kind === 'exempt' ? { Uwagi: `Zwolnienie z VAT: ${input.vat.basis}` } : {}),
+    Pozycje: [position],
     Kontrahent: billing === null
       ? {
           Nazwa: 'Klient detaliczny',
@@ -272,7 +286,9 @@ export const createIfirmaInvoicing = (
             createResponse.status,
             providerResponse.success ? providerResponse.data.response.Kod : null,
             providerResponse.success ? providerResponse.data.response.Informacja : undefined,
-            'issue the invoice',
+            input.vat.kind === 'exempt'
+              ? 'issue the VAT-exempt invoice. Confirm in iFirma that this account is configured for exempt sales (nievatowiec) and that the legal basis is accepted'
+              : 'issue the invoice',
           ));
         }
         const created = invoiceCreatedSchema.safeParse(createPayload);

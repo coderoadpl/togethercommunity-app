@@ -42,7 +42,7 @@ const input: Parameters<InvoicingPort['issueInvoice']>[0] = {
     country: 'PL',
   },
   productName: 'Course',
-  vatRatePercent: 23,
+  vat: { kind: 'rate', percent: 23 },
   providerInvoiceId: null,
   onProviderInvoiceCreateUncertain: async () => undefined,
   onProviderInvoiceCreated: async () => undefined,
@@ -124,6 +124,26 @@ describe('ifirmaInvoicePayload', () => {
         OsobaFizyczna: true,
       },
     });
+  });
+
+  it('maps an exempt position and mirrors its basis in notes', () => {
+    const payload = ifirmaInvoicePayload({
+      ...input,
+      vat: { kind: 'exempt', basisKind: 'art_113_1', basis: 'art. 113 ust. 1' },
+    }, '2026-07-27');
+
+    expect(payload).toMatchObject({
+      Zaplacono: 79,
+      ZaplaconoNaDokumencie: 79,
+      Uwagi: 'Zwolnienie z VAT: art. 113 ust. 1',
+      Pozycje: [{
+        StawkaVat: null,
+        TypStawkiVat: 'ZW',
+        PodstawaPrawna: 'art. 113 ust. 1',
+        NazwaPelna: 'Course (rabat kuponowy: 20,00 zł)',
+      }],
+    });
+    expect(payload.Pozycje[0]).not.toHaveProperty('PKWiU');
   });
 });
 

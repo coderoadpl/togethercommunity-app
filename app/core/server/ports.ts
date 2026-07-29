@@ -573,7 +573,7 @@ export interface InvoicingPort {
   getInvoiceStatus(input: {
     providerInvoiceId: string;
     config: { invoiceApiKey: string; username: string };
-  }): Promise<Result<'issued' | 'delivered' | 'failed', AppError>>;
+  }): Promise<Result<'issued' | 'delivered' | 'failed' | 'conflict', AppError>>;
   downloadInvoice(input: {
     providerInvoiceId: string;
     config: { invoiceApiKey: string; username: string };

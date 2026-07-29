@@ -10,7 +10,11 @@ import { startServerObservability } from './observability.js';
 startServerObservability();
 
 const env = loadEnv();
-const deps = createDeps(env);
+const visualClockOverride = env.TOGETHER_VISUAL_CLOCK;
+const deps =
+  visualClockOverride === undefined
+    ? createDeps(env)
+    : createDeps(env, { clock: { nowIso: () => visualClockOverride } });
 const app = buildApp(deps);
 
 if (env.NODE_ENV !== 'test' && deps.devSinkPurge !== undefined) {

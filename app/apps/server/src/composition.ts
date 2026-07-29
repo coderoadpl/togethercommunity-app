@@ -363,7 +363,7 @@ export const selectDevSinkPurge = (
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
-export const createDeps = (env: Env): AppDeps => {
+export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps => {
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const tenants = createTenantRepository(db);
@@ -371,7 +371,7 @@ export const createDeps = (env: Env): AppDeps => {
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
   const ids = { nextId: () => randomUUID() };
-  const clock = { nowIso: () => new Date().toISOString() };
+  const clock = options.clock ?? { nowIso: () => new Date().toISOString() };
   const secretCrypto = createSecretCrypto(env.SECRETS_MASTER_KEY);
   const emailHmac = createEmailHmac(env.SECRETS_MASTER_KEY);
   const secretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
@@ -409,7 +409,7 @@ export const createDeps = (env: Env): AppDeps => {
     env.PAYMENT_PROVIDER === 'stripe'
       ? createStripePaymentProvider({ resolver: secretResolver })
       : createFakePaymentProvider(secretResolver);
-  const devEmail = createDevEmailPort(db);
+  const devEmail = createDevEmailPort(db, clock);
   const email =
     env.EMAIL_PROVIDER === 'ses'
       ? createSesEmailPort({ from: env.EMAIL_FROM ?? '' })

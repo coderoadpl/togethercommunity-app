@@ -413,6 +413,7 @@ const bootServer = async (
       WEB_DIST_DIR: webDistDir,
       SIMULATED_PAYMENTS: 'true',
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+      TOGETHER_VISUAL_CLOCK: SEED_BASE_TIME,
     },
   });
   let logs = '';

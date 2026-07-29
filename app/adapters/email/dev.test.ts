@@ -12,7 +12,7 @@ const connectionString =
 describe('createDevEmailPort', () => {
   it('stores a magic-link email for a recipient that the dev reader can read back', async () => {
     const db = createDb('node-postgres', connectionString);
-    const port = createDevEmailPort(db);
+    const port = createDevEmailPort(db, { nowIso: () => '2026-07-01T12:00:00.000Z' });
     const reader = createDevEmailReader(db);
     const recipient = `dev-email-${Date.now()}@together.dev`;
     const rendered = magicLink('pl', {
@@ -30,6 +30,7 @@ describe('createDevEmailPort', () => {
     expect(stored?.headers).toEqual({});
     expect(stored?.messageId).toBe(sent.ok ? sent.value.messageId : null);
     expect(stored?.to).toBe(normalizeEmail(recipient));
+    expect(stored?.createdAt).toBe('2026-07-01T12:00:00.000Z');
   });
 
   it('keeps only the last message per recipient', async () => {

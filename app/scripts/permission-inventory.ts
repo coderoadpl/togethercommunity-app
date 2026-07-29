@@ -350,6 +350,9 @@ const beforeForUseCase = (
   if (file === 'marketing-ses-onboarding.ts' && name === 'refreshSesIdentity') {
     return allHumans;
   }
+  if (file === 'email-reputation.ts' && name === 'runReputationAlerts') {
+    return allHumans;
+  }
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {

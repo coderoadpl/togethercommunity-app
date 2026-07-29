@@ -1138,6 +1138,7 @@ export interface MarketingJobRepository {
   listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
   listRetentionTenantIds(): Promise<string[]>;
   listSesIdentityRefreshTenantIds(checkedBefore: string): Promise<string[]>;
+  listSesTenantIds(): Promise<string[]>;
 }
 
 export interface EmailLayoutRepository {

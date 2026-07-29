@@ -125,6 +125,27 @@ describe('renderEmailOutboxPayload', () => {
     expect(ended.success).toBe(true);
   });
 
+  it('renders a reputation alert with the measured window and rates', () => {
+    const rendered = renderEmailOutboxPayload({
+      kind: 'reputation-alert',
+      language: 'en',
+      tenantName: 'Studio',
+      status: 'critical',
+      hardBounceRate: 0.1,
+      complaintRate: 0.0015,
+      windowStart: '1998-07-20T12:00:00.000Z',
+      windowEnd: '1998-07-27T12:00:00.000Z',
+      dashboardUrl: 'https://studio.test/panel/marketing',
+    });
+
+    expect(rendered.success).toBe(true);
+    if (rendered.success) {
+      expect(rendered.data.subject).toContain('critical');
+      expect(rendered.data.text).toContain('10.000%');
+      expect(rendered.data.text).toContain('0.150%');
+    }
+  });
+
   it('fails on an unknown payload kind', () => {
     const rendered = renderEmailOutboxPayload({ kind: 'nonsense', language: 'pl' });
     expect(rendered.success).toBe(false);

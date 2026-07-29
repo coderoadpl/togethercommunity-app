@@ -940,6 +940,7 @@ describe('marketing e-mail use-case integration', () => {
           checkedBefore = value;
           return ['tenant-2'];
         },
+        listSesTenantIds: async () => ['tenant-1', 'tenant-2'],
       },
       runs,
       dispatchCampaign: async (tenantId, campaignId) => {
@@ -954,11 +955,14 @@ describe('marketing e-mail use-case integration', () => {
         refreshed.push(tenantId);
         return ok(undefined);
       },
+      runReputationAlerts: async (tenantId) =>
+        ok({ sent: tenantId === 'tenant-1' ? 2 : 0 }),
     });
     expect(result).toEqual(ok({
       campaignsDispatched: 2,
       retentionTenantsProcessed: 2,
       identityChecksPerformed: 1,
+      reputationAlertsSent: 2,
     }));
     expect(dispatched).toEqual(['tenant-1:campaign-1', 'tenant-2:campaign-2']);
     expect(retained).toEqual(['tenant-1', 'tenant-3']);
@@ -999,17 +1003,20 @@ describe('marketing e-mail use-case integration', () => {
         listRunnableCampaigns: async () => [],
         listRetentionTenantIds: async () => [],
         listSesIdentityRefreshTenantIds: async () => [],
+        listSesTenantIds: async () => [],
       },
       runs,
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
       refreshIdentity: async () => ok(undefined),
+      runReputationAlerts: async () => ok({ sent: 0 }),
     });
 
     expect(result).toEqual(ok({
       campaignsDispatched: 0,
       retentionTenantsProcessed: 0,
       identityChecksPerformed: 0,
+      reputationAlertsSent: 0,
     }));
     expect(await runs.getWithTenants('stuck-outbox-run')).toMatchObject({
       run: {
@@ -1037,6 +1044,7 @@ describe('marketing e-mail use-case integration', () => {
         ],
         listRetentionTenantIds: async () => ['tenant-1'],
         listSesIdentityRefreshTenantIds: async () => ['tenant-2'],
+        listSesTenantIds: async () => ['tenant-1'],
       },
       runs,
       dispatchCampaign: async (tenantId) => {
@@ -1051,6 +1059,10 @@ describe('marketing e-mail use-case integration', () => {
         processed.push(`identity:${tenantId}`);
         return ok(undefined);
       },
+      runReputationAlerts: async (tenantId) => {
+        processed.push(`reputation:${tenantId}`);
+        return ok({ sent: 0 });
+      },
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'integration_auth' } });
     expect(processed).toEqual([
@@ -1058,6 +1070,7 @@ describe('marketing e-mail use-case integration', () => {
       'campaign:tenant-2',
       'retention:tenant-1',
       'identity:tenant-2',
+      'reputation:tenant-1',
     ]);
   });
 

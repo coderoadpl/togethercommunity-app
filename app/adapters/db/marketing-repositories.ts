@@ -357,6 +357,13 @@ export const createMarketingJobRepository = (db: Db): MarketingJobRepository => 
         )
         .orderBy(asc(tenantSesSettings.tenantId))
     ).map((row) => row.tenantId),
+  listSesTenantIds: async () =>
+    (
+      await db
+        .select({ tenantId: tenantSesSettings.tenantId })
+        .from(tenantSesSettings)
+        .orderBy(asc(tenantSesSettings.tenantId))
+    ).map((row) => row.tenantId),
 });
 
 export const createMarketingThrottleRepository = (db: Db): MarketingThrottleRepository => ({

@@ -91,6 +91,9 @@ describe('marketing database repositories', () => {
         '2026-07-21T23:59:59.999Z',
       ),
     ).resolves.toEqual(['tenant-a']);
+    await expect(
+      createMarketingJobRepository(db).listSesTenantIds(),
+    ).resolves.toEqual(['tenant-a', 'tenant-b']);
   });
 
   it('lists and summarizes scheduler runs with global and tenant scopes', async () => {

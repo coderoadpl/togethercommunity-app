@@ -1684,11 +1684,15 @@ export const runScheduledMarketingJobs = async (
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
     refreshIdentity(tenantId: string): Promise<Result<unknown, AppError>>;
+    runReputationAlerts(
+      tenantId: string,
+    ): Promise<Result<{ sent: number }, AppError>>;
   },
 ): Promise<Result<{
   campaignsDispatched: number;
   retentionTenantsProcessed: number;
   identityChecksPerformed: number;
+  reputationAlertsSent: number;
 }, AppError>> => {
   let firstError: AppError | null = null;
   await deps.runs.failStale({
@@ -1720,10 +1724,18 @@ export const runScheduledMarketingJobs = async (
     const refreshed = await deps.refreshIdentity(tenantId);
     if (!refreshed.ok && firstError === null) firstError = refreshed.error;
   }
+  let reputationAlertsSent = 0;
+  const sesTenantIds = await deps.jobs.listSesTenantIds();
+  for (const tenantId of sesTenantIds) {
+    const alerted = await deps.runReputationAlerts(tenantId);
+    if (alerted.ok) reputationAlertsSent += alerted.value.sent;
+    else if (firstError === null) firstError = alerted.error;
+  }
   if (firstError !== null) return err(firstError);
   return ok({
     campaignsDispatched: runnable.length,
     retentionTenantsProcessed: retentionTenantIds.length,
     identityChecksPerformed: identityTenantIds.length,
+    reputationAlertsSent,
   });
 };

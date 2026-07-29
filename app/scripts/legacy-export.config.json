@@ -1,0 +1,9 @@
+{
+  "streamLibraryId": "424242",
+  "pdfUrlPrefix": "https://legacy-pdf-bucket-example.s3.eu-central-1.amazonaws.com/pdf-files",
+  "tenantByCourseId": {
+    "656b0000000000000aa1b096": "coderoad",
+    "656b0000000000000aa2b0b0": "coderoad",
+    "656b0000000000000aa3b0a3": "akademia-samouka"
+  }
+}

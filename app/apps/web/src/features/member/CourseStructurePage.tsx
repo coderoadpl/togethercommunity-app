@@ -1,0 +1,185 @@
+import { useEffect } from 'react';
+import { Box, Link, Paper, Stack, Typography } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+
+import { ApiError } from '#core/client/index.js';
+import type { CourseStructureWithAccess } from '#core/domain/index.js';
+
+import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
+import {
+  CourseCoverImage,
+  Eyebrow,
+  StatTile,
+  StatTileLabel,
+  StatTileValue,
+} from '../../theme.js';
+import {
+  courseTotals,
+  CourseProgressCard,
+  CurriculumCard,
+  formatTotalDuration,
+} from './CourseRail.js';
+import { CourseDiscussionSearch } from './CourseDiscussionSearch.js';
+import { MemberSurface } from './MemberSurface.js';
+import { EmptyCourseIcon, StatCheckIcon, StatClockIcon, StatLessonsIcon } from './overview-icons.js';
+
+const isUnauthorized = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'unauthorized';
+
+const isForbidden = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'forbidden';
+
+const isNotFound = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'not_found';
+
+const CourseStatTiles = ({ structure }: { structure: CourseStructureWithAccess }) => {
+  const t = useTranslations();
+  const totals = courseTotals(structure);
+  const tiles = [
+    {
+      key: 'lessons',
+      icon: <StatLessonsIcon />,
+      value: `${totals.total}`,
+      label: t.courseOverview.statLessons({ count: totals.total }),
+    },
+    ...(totals.totalMinutes > 0
+      ? [
+          {
+            key: 'duration',
+            icon: <StatClockIcon />,
+            value: formatTotalDuration(t, totals.totalMinutes),
+            label: t.courseOverview.statDuration,
+          },
+        ]
+      : []),
+    {
+      key: 'completed',
+      icon: <StatCheckIcon />,
+      value: t.courseOverview.percentValue({ percent: totals.percent }),
+      label: t.courseOverview.statCompleted,
+    },
+  ];
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gap: '0.75rem',
+        gridTemplateColumns: { xs: '1fr', sm: `repeat(${tiles.length}, 1fr)` },
+      }}
+    >
+      {tiles.map((tile) => (
+        <StatTile key={tile.key} data-testid={`stat-tile-${tile.key}`}>
+          {tile.icon}
+          <Box sx={{ minWidth: 0 }}>
+            <StatTileValue component="p">{tile.value}</StatTileValue>
+            <StatTileLabel component="p">{tile.label}</StatTileLabel>
+          </Box>
+        </StatTile>
+      ))}
+    </Box>
+  );
+};
+
+export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
+  const t = useTranslations();
+  const structure = useQuery(actions.courseStructure(courseId));
+  const progress = useQuery(actions.studentProgress(courseId));
+  const courses = useQuery(actions.studentCourses);
+  const navigate = useNavigate();
+  const unauthorized = isUnauthorized(structure.error);
+
+  useEffect(() => {
+    if (unauthorized) void navigate({ to: '/login' });
+  }, [navigate, unauthorized]);
+
+  if (structure.isPending) {
+    return (
+      <MemberSurface
+        title={t.student.myCourses}
+        eyebrow={t.courseTree.courseSyllabus}
+        width="wide"
+        state={{ kind: 'loading', label: t.courseTree.loadingCourse }}
+      />
+    );
+  }
+
+  if (unauthorized) return null;
+
+  if (structure.isError) {
+    const notFound = isNotFound(structure.error);
+    return (
+      <MemberSurface
+        title={notFound ? t.courseTree.courseNotFound : t.student.myCourses}
+        eyebrow={t.courseTree.courseSyllabus}
+        width={notFound ? 'prose' : 'wide'}
+        state={notFound
+          ? {
+              kind: 'not-found',
+              title: t.courseTree.courseNotFound,
+              body: t.courseTree.courseNotInLibrary,
+              action: <Link href="/my">{t.courseTree.backToMyCourses}</Link>,
+            }
+          : {
+              kind: 'error',
+              message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
+            }}
+      />
+    );
+  }
+
+  const course = structure.data.structure;
+  const catalogEntry = courses.data?.courses.find((entry) => entry.id === courseId);
+  const hasModules = course.modules.length > 0;
+
+  return (
+    <MemberSurface
+      title={course.name}
+      eyebrow={t.courseTree.courseSyllabus}
+      width="wide"
+      rail={
+        <>
+          <CourseProgressCard
+            courseId={courseId}
+            structure={course}
+            lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
+          />
+          {hasModules && <CourseDiscussionSearch courseId={courseId} structure={course} />}
+          {hasModules && <CurriculumCard courseId={courseId} structure={course} />}
+        </>
+      }
+    >
+      <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
+        <CourseStatTiles structure={course} />
+        {catalogEntry?.imageUrl != null && (
+          <CourseCoverImage
+            src={catalogEntry.imageUrl}
+            alt={t.courseOverview.coverAlt({ name: course.name })}
+            data-testid="course-cover"
+          />
+        )}
+        {catalogEntry !== undefined && catalogEntry.description !== '' && (
+          <Paper elevation={1} sx={{ p: '1.5rem' }}>
+            <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+              {t.courseOverview.aboutCourse}
+            </Eyebrow>
+            <Typography variant="body1">{catalogEntry.description}</Typography>
+          </Paper>
+        )}
+        {!hasModules && (
+          <StatusView
+            state={{
+              kind: 'empty',
+              icon: <EmptyCourseIcon />,
+              title: t.courseTree.emptyCourseTitle,
+              body: t.courseTree.noPublishedContent,
+            }}
+            data-testid="course-empty-state"
+          />
+        )}
+      </Stack>
+    </MemberSurface>
+  );
+};

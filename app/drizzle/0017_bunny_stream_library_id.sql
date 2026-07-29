@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "bunny_stream_library_id" text;

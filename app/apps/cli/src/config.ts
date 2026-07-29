@@ -1,0 +1,220 @@
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, parse, resolve } from 'node:path';
+
+import { z } from 'zod';
+
+export const DEFAULT_DEV_API_URL = 'http://localhost:48730';
+
+const profileSchema = z
+  .object({
+    token: z.string().nullable(),
+    tenant: z.string().nullable(),
+  })
+  .strict();
+
+const canonicalOriginSchema = z
+  .string()
+  .url()
+  .refine(
+    (value) => URL.canParse(value) && new URL(value).origin === value,
+    'must be a canonical URL origin',
+  );
+
+export const cliConfigSchema = z
+  .object({
+    version: z.literal(2),
+    currentOrigin: canonicalOriginSchema,
+    profiles: z.record(canonicalOriginSchema, profileSchema),
+  })
+  .strict();
+
+const legacyConfigSchema = z
+  .object({
+    apiUrl: z.unknown().optional(),
+    token: z.string().nullable().default(null),
+    tenant: z.string().nullable().default(null),
+  })
+  .strict();
+
+const packageMarkerSchema = z.object({ name: z.string() });
+const recordSchema = z.record(z.string(), z.unknown());
+
+export type CliConfig = z.output<typeof cliConfigSchema>;
+export type CliProfile = z.output<typeof profileSchema>;
+export type CliOriginSource = 'flag' | 'env' | 'repo' | 'stored';
+
+export interface CliEnv {
+  TOGETHER_CLI_API_URL?: string | undefined;
+  TOGETHER_CLI_TENANT?: string | undefined;
+}
+
+export interface ResolveCliConfigInput {
+  config: CliConfig;
+  cwd: string;
+  env: CliEnv;
+  apiUrl?: string;
+  tenant?: string;
+}
+
+export interface ResolvedCliConfig {
+  apiUrl: string;
+  origin: string;
+  originSource: CliOriginSource;
+  profile: CliProfile;
+  tenant: string | null;
+}
+
+const configFile = join(homedir(), '.config', 'together', 'config.json');
+let tempFileSequence = 0;
+
+const emptyConfig = (): CliConfig => ({
+  version: 2,
+  currentOrigin: DEFAULT_DEV_API_URL,
+  profiles: {},
+});
+
+export const apiOrigin = (apiUrl: string): string => new URL(apiUrl).origin;
+
+const atomicWriteConfig = (config: CliConfig): void => {
+  const configDir = dirname(configFile);
+  mkdirSync(configDir, { recursive: true });
+  tempFileSequence += 1;
+  const tempFile = join(configDir, `.config.json.${String(process.pid)}.${String(tempFileSequence)}.tmp`);
+  try {
+    writeFileSync(tempFile, `${JSON.stringify(config, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    renameSync(tempFile, configFile);
+  } catch (error) {
+    rmSync(tempFile, { force: true });
+    throw error;
+  }
+};
+
+const legacyOrigin = (apiUrl: unknown): string => {
+  const parsed = z.string().url().safeParse(apiUrl);
+  return parsed.success ? apiOrigin(parsed.data) : DEFAULT_DEV_API_URL;
+};
+
+const migrateLegacyConfig = (legacy: z.output<typeof legacyConfigSchema>): CliConfig => {
+  const origin = legacyOrigin(legacy.apiUrl);
+  const migrated = cliConfigSchema.parse({
+    version: 2,
+    currentOrigin: origin,
+    profiles: {
+      [origin]: {
+        token: legacy.token,
+        tenant: legacy.tenant,
+      },
+    },
+  });
+  atomicWriteConfig(migrated);
+  console.error(
+    `together: migrated ~/.config/together/config.json to per-origin profiles (${origin})`,
+  );
+  return migrated;
+};
+
+export const loadConfig = (): CliConfig => {
+  let text: string;
+  try {
+    text = readFileSync(configFile, 'utf8');
+  } catch (error) {
+    const parsed = z.object({ code: z.string().optional() }).safeParse(error);
+    if (parsed.success && parsed.data.code === 'ENOENT') return emptyConfig();
+    throw new Error(
+      `together: could not read ~/.config/together/config.json: ${String(error)}`,
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `together: invalid ~/.config/together/config.json: malformed JSON (${String(error)})`,
+    );
+  }
+
+  const current = cliConfigSchema.safeParse(raw);
+  if (current.success) return current.data;
+
+  const record = recordSchema.safeParse(raw);
+  if (record.success && Object.hasOwn(record.data, 'version')) {
+    if (record.data['version'] !== 2) return emptyConfig();
+    throw new Error(
+      `together: invalid ~/.config/together/config.json: ${current.error.issues
+        .map((issue) => issue.message)
+        .join('; ')}`,
+    );
+  }
+  if (record.success && Object.hasOwn(record.data, 'profiles')) return emptyConfig();
+
+  const legacy = legacyConfigSchema.safeParse(raw);
+  if (legacy.success) return migrateLegacyConfig(legacy.data);
+
+  throw new Error(
+    `together: invalid ~/.config/together/config.json: ${current.error.issues
+      .map((issue) => issue.message)
+      .join('; ')}`,
+  );
+};
+
+export const saveConfig = (config: CliConfig): void => {
+  atomicWriteConfig(cliConfigSchema.parse(config));
+};
+
+export const isTogetherRepo = (cwd: string): boolean => {
+  let directory = resolve(cwd);
+  const root = parse(directory).root;
+  while (true) {
+    try {
+      const marker: unknown = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
+      const parsed = packageMarkerSchema.safeParse(marker);
+      if (parsed.success && parsed.data.name === 'together') return true;
+    } catch {}
+    if (directory === root) return false;
+    directory = dirname(directory);
+  }
+};
+
+export const resolveCliConfig = (input: ResolveCliConfigInput): ResolvedCliConfig => {
+  const apiSelection =
+    input.apiUrl !== undefined
+      ? { apiUrl: input.apiUrl, originSource: 'flag' as const }
+      : input.env.TOGETHER_CLI_API_URL !== undefined
+        ? { apiUrl: input.env.TOGETHER_CLI_API_URL, originSource: 'env' as const }
+        : isTogetherRepo(input.cwd)
+          ? { apiUrl: DEFAULT_DEV_API_URL, originSource: 'repo' as const }
+          : { apiUrl: input.config.currentOrigin, originSource: 'stored' as const };
+  const origin = apiOrigin(apiSelection.apiUrl);
+  const profile = input.config.profiles[origin] ?? { token: null, tenant: null };
+  const tenant = input.tenant ?? input.env.TOGETHER_CLI_TENANT ?? profile.tenant;
+  return { ...apiSelection, origin, profile, tenant };
+};
+
+export const updateOriginProfile = (
+  config: CliConfig,
+  origin: string,
+  patch: Partial<CliProfile>,
+  setCurrent: boolean,
+): CliConfig => {
+  const profile = config.profiles[origin] ?? { token: null, tenant: null };
+  return cliConfigSchema.parse({
+    ...config,
+    currentOrigin: setCurrent ? origin : config.currentOrigin,
+    profiles: {
+      ...config.profiles,
+      [origin]: { ...profile, ...patch },
+    },
+  });
+};

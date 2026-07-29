@@ -3,3 +3,9 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+app/dist/
+app/out/
+app/storybook-static/
+app/coverage/
+.ksef-spike-ref/

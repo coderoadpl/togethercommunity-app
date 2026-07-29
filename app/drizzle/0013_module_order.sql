@@ -1,0 +1,1 @@
+ALTER TABLE "courses" ADD COLUMN "module_order" jsonb DEFAULT '[]'::jsonb NOT NULL;

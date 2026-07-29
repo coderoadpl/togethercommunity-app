@@ -1,0 +1,340 @@
+import { useEffect, useState } from 'react';
+import { Box, Button, Chip, Link, Paper, Stack } from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+
+import { ApiError } from '#core/client/index.js';
+import { REACTION_EMOJIS, type ReactionEmoji, type ReactionSummary, type SpaceFeedItem } from '#core/domain/index.js';
+
+import { actions } from '../../api.js';
+import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { formatRelativeTime } from '../../lib/format.js';
+import {
+  AuthorChip,
+  DeletedPostText,
+  DiscussionThread,
+  PostAuthorName,
+  PostBody,
+  PostMetaText,
+} from '../../theme.js';
+import { EmptyFeedIcon } from './community-icons.js';
+import { MemberSurface } from './MemberSurface.js';
+import { PostComposer } from './ThreadDiscussion.js';
+import { ReportPostButton } from './ReportPostButton.js';
+
+const isUnauthorized = (error: Error | null) =>
+  error instanceof ApiError && error.appError.code === 'unauthorized';
+
+const reactionFor = (reactions: ReactionSummary[], emoji: ReactionEmoji): ReactionSummary | undefined =>
+  reactions.find((reaction) => reaction.emoji === emoji);
+
+const ReactionBar = ({
+  postId,
+  reactions,
+  onToggle,
+  busy,
+}: {
+  postId: string;
+  reactions: ReactionSummary[];
+  onToggle: (emoji: ReactionEmoji, reacted: boolean) => void;
+  busy: boolean;
+}) => {
+  const t = useTranslations();
+  return (
+    <Stack direction="row" useFlexGap sx={{ columnGap: '0.5rem', flexWrap: 'wrap' }}>
+      {REACTION_EMOJIS.map((emoji) => {
+        const summary = reactionFor(reactions, emoji);
+        const count = summary?.count ?? 0;
+        const reacted = summary?.viewerReacted ?? false;
+        return (
+          <Chip
+            key={emoji}
+            size="small"
+            variant={reacted ? 'filled' : 'outlined'}
+            color={reacted ? 'primary' : 'default'}
+            disabled={busy}
+            aria-pressed={reacted}
+            aria-label={t.community.reactAria({ emoji })}
+            data-testid={`reaction-${postId}-${emoji}`}
+            label={count > 0 ? `${emoji} ${count}` : emoji}
+            onClick={() => onToggle(emoji, reacted)}
+          />
+        );
+      })}
+    </Stack>
+  );
+};
+
+const FeedPost = ({
+  spaceId,
+  item,
+  reactions,
+  onToggle,
+  busy,
+  canPin,
+  pinBusy,
+  onPin,
+}: {
+  spaceId: string;
+  item: SpaceFeedItem;
+  reactions: ReactionSummary[];
+  onToggle: (postId: string, emoji: ReactionEmoji, reacted: boolean) => void;
+  busy: boolean;
+  canPin: boolean;
+  pinBusy: boolean;
+  onPin: (postId: string, pinned: boolean) => void;
+}) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const deleted = item.deletedAt !== null;
+  return (
+    <DiscussionThread sx={{ p: '1rem 1.25rem' }} data-testid={`feed-post-${item.id}`}>
+      <Stack useFlexGap sx={{ rowGap: '0.6rem' }}>
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}>
+          <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
+          {item.authorIsStaff && <AuthorChip data-testid={`author-chip-${item.id}`}>{t.discussion.authorChip}</AuthorChip>}
+          {item.pinnedAt !== null ? (
+            <Chip
+              size="small"
+              label={item.authorIsStaff ? t.community.announcementChip : t.community.pinnedChip}
+            />
+          ) : null}
+          <PostMetaText component="time" dateTime={item.createdAt}>
+            {formatRelativeTime(item.createdAt, language)}
+          </PostMetaText>
+        </Stack>
+
+        {deleted ? (
+          <DeletedPostText variant="body2" component="p" data-testid={`deleted-post-${item.id}`}>
+            {t.discussion.deletedPost}
+          </DeletedPostText>
+        ) : (
+          <PostBody variant="body1" component="p" data-testid={`post-body-${item.id}`}>
+            {item.body}
+          </PostBody>
+        )}
+
+        {!deleted && (
+          <ReactionBar
+            postId={item.id}
+            reactions={reactions}
+            busy={busy}
+            onToggle={(emoji, reacted) => onToggle(item.id, emoji, reacted)}
+          />
+        )}
+
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '1rem', flexWrap: 'wrap' }}>
+          <PostMetaText component="span" data-testid={`reply-count-${item.id}`}>
+            {t.discussion.replyCount({ count: item.replyCount })}
+          </PostMetaText>
+          <Link href={`/community/${spaceId}/posts/${item.id}`} data-testid={`open-thread-${item.id}`}>
+            {t.community.openThread}
+          </Link>
+          {canPin ? (
+            <Button
+              size="small"
+              disabled={pinBusy}
+              onClick={() => onPin(item.id, item.pinnedAt === null)}
+            >
+              {item.pinnedAt === null ? t.community.pin : t.community.unpin}
+            </Button>
+          ) : null}
+          {!item.isOwn && !deleted ? <ReportPostButton postId={item.id} /> : null}
+        </Stack>
+      </Stack>
+    </DiscussionThread>
+  );
+};
+
+export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
+  const t = useTranslations();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const spaces = useQuery(actions.spaces);
+  const me = useQuery(actions.me);
+  const feed = useQuery(actions.spaceFeed({ spaceId }));
+  const banned = me.data?.tenant?.banned === true;
+
+  const [followOverride, setFollowOverride] = useState<boolean | null>(null);
+  const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
+
+  const invalidateSpaces = () => queryClient.invalidateQueries(actions.spacesInvalidates());
+  const create = useMutation({ ...actions.createPost, onSettled: invalidateSpaces });
+  const follow = useMutation({ ...actions.followSpace, onSettled: invalidateSpaces });
+  const unfollow = useMutation({ ...actions.unfollowSpace, onSettled: invalidateSpaces });
+  const react = useMutation(actions.reactToPost);
+  const unreact = useMutation(actions.unreactToPost);
+  const pin = useMutation({
+    ...actions.pinPost,
+    onSuccess: () => void feed.refetch(),
+  });
+
+  const unauthorized = isUnauthorized(spaces.error) || isUnauthorized(feed.error);
+  useEffect(() => {
+    if (unauthorized) void navigate({ to: '/login' });
+  }, [navigate, unauthorized]);
+
+  if (spaces.isPending) {
+    return (
+      <MemberSurface
+        title={t.community.heading}
+        eyebrow={t.community.feedEyebrow}
+        width="wide"
+        state={{ kind: 'loading', label: t.community.loadingFeed }}
+      />
+    );
+  }
+
+  if (unauthorized) return null;
+
+  const space = spaces.isError ? undefined : spaces.data.spaces.find((candidate) => candidate.id === spaceId);
+
+  if (space === undefined) {
+    return (
+      <MemberSurface
+        title={t.community.spaceNotFoundTitle}
+        eyebrow={t.community.feedEyebrow}
+        width="wide"
+        state={{
+          kind: 'not-found',
+          title: t.community.spaceNotFoundTitle,
+          body: t.community.spaceNotFoundBody,
+          action: <Link href="/community">{t.community.backToSpaces}</Link>,
+        }}
+      />
+    );
+  }
+
+  const isFollowing = followOverride ?? space.isFollowing;
+  const toggleFollow = () => {
+    if (isFollowing) {
+      setFollowOverride(false);
+      unfollow.mutate({ spaceId }, { onError: () => setFollowOverride(null) });
+    } else {
+      setFollowOverride(true);
+      follow.mutate({ spaceId }, { onError: () => setFollowOverride(null) });
+    }
+  };
+
+  const reactionBusy = react.isPending || unreact.isPending;
+  const toggleReaction = (postId: string, emoji: ReactionEmoji, reacted: boolean) => {
+    const onSuccess = (data: { postId: string; reactions: ReactionSummary[] }) =>
+      setReactionOverrides((previous) => ({ ...previous, [postId]: data.reactions }));
+    if (reacted) unreact.mutate({ postId, emoji }, { onSuccess });
+    else react.mutate({ postId, emoji }, { onSuccess });
+  };
+
+  const rail = (
+    <SectionCard title={t.community.aboutHeading} data-testid="space-about">
+      <PostBody variant="body2" component="p" color="text.secondary">
+        {space.description ?? t.community.noDescription}
+      </PostBody>
+      <Chip
+        size="small"
+        variant="outlined"
+        label={space.visibility === 'product' ? t.community.productGated : t.community.membersOnly}
+      />
+      <Box>
+        <Button
+          variant={isFollowing ? 'outlined' : 'contained'}
+          aria-pressed={isFollowing}
+          data-testid="space-follow-toggle"
+          onClick={toggleFollow}
+        >
+          {isFollowing ? t.community.unfollow : t.community.follow}
+        </Button>
+      </Box>
+    </SectionCard>
+  );
+
+  const items = feed.data?.feed.items ?? [];
+  const pinned = feed.data?.feed.pinned ?? [];
+  const canPin =
+    me.data?.tenant?.staffRole !== null && me.data?.tenant?.staffRole !== undefined;
+
+  return (
+    <MemberSurface title={space.name} eyebrow={t.community.feedEyebrow} width="wide" rail={rail}>
+      <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
+        <Paper elevation={1} sx={{ p: '1.25rem' }}>
+          <PostComposer
+            label={t.community.composerLabel}
+            placeholder={t.community.composerPlaceholder}
+            submitLabel={t.community.post}
+            pendingLabel={t.community.posting}
+            busy={create.isPending}
+            disabled={banned}
+            onSubmit={(body, reset) =>
+              create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
+            }
+            testId="space-composer"
+          />
+        </Paper>
+
+        {create.isError && (
+          <StatusView
+            surface={false}
+            state={{
+              kind: 'error',
+              message: create.error instanceof ApiError && create.error.appError.code === 'rate_limited'
+                ? t.community.postTooFast
+                : localizeError(create.error, t),
+            }}
+          />
+        )}
+        {pin.isError ? (
+          <StatusView surface={false} state={{ kind: 'error', message: localizeError(pin.error, t) }} />
+        ) : null}
+
+        {feed.isPending ? (
+          <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
+        ) : feed.isError ? (
+          <StatusView
+            surface={false}
+            state={{
+              kind: 'error',
+              message: localizeError(feed.error, t),
+              retry: { label: t.discussion.retry, onRetry: () => void feed.refetch() },
+            }}
+          />
+        ) : items.length === 0 && pinned.length === 0 ? (
+          <StatusView
+            state={{ kind: 'empty', icon: <EmptyFeedIcon />, title: t.community.emptyFeed }}
+            data-testid="feed-empty-state"
+          />
+        ) : (
+          <Stack useFlexGap sx={{ rowGap: '1rem' }}>
+            {pinned.length > 0 ? <Chip label={t.community.pinnedHeading} /> : null}
+            {pinned.map((item) => (
+              <FeedPost
+                key={`pinned-${item.id}`}
+                spaceId={spaceId}
+                item={item}
+                reactions={reactionOverrides[item.id] ?? item.reactions}
+                onToggle={toggleReaction}
+                busy={reactionBusy}
+                canPin={canPin}
+                pinBusy={pin.isPending}
+                onPin={(postId, nextPinned) => pin.mutate({ postId, pinned: nextPinned })}
+              />
+            ))}
+            {items.map((item) => (
+              <FeedPost
+                key={item.id}
+                spaceId={spaceId}
+                item={item}
+                reactions={reactionOverrides[item.id] ?? item.reactions}
+                onToggle={toggleReaction}
+                busy={reactionBusy}
+                canPin={canPin}
+                pinBusy={pin.isPending}
+                onPin={(postId, nextPinned) => pin.mutate({ postId, pinned: nextPinned })}
+              />
+            ))}
+          </Stack>
+        )}
+      </Stack>
+    </MemberSurface>
+  );
+};

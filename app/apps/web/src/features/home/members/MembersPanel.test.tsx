@@ -109,7 +109,7 @@ describe('MembersPanel', () => {
     await waitFor(() => expect(screen.getAllByTestId('member-row')).toHaveLength(3));
   });
 
-  it('confirms member removal with grant and progress impact counts', async () => {
+  it('confirms member removal and warns about failed provider cancellations', async () => {
     const removed: string[] = [];
     useMembers();
     server.use(
@@ -170,7 +170,21 @@ describe('MembersPanel', () => {
       ),
       http.delete('/api/members/:memberId', ({ params }) => {
         removed.push(String(params.memberId));
-        return HttpResponse.json({ ok: true, data: { memberId: String(params.memberId) } });
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            memberId: String(params.memberId),
+            subscriptionCancellations: [
+              {
+                subscriptionId: 'subscription-1',
+                providerSubscriptionId: 'sub_failed_1',
+                outcome: 'failed',
+                message: 'Stripe is unavailable',
+              },
+            ],
+            erasureRequestId: null,
+          },
+        });
       }),
     );
 
@@ -190,6 +204,12 @@ describe('MembersPanel', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: pl.members.remove }));
 
     await waitFor(() => expect(removed).toEqual(['member-1']));
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: pl.members.removeConfirmTitle })).toBeNull(),
+    );
+    expect(await screen.findByTestId('member-remove-cancellation-warning')).toHaveTextContent(
+      pl.members.removeCancellationWarning({ providerSubscriptionIds: 'sub_failed_1' }),
+    );
   });
 
   it('marks pseudonymized members and hides their remove action', async () => {

@@ -8,18 +8,40 @@ member is physically deleted.
 
 `removeMember` in `core/server/usecases/members.ts` authorizes
 `member:remove`, builds opaque tombstone identifiers with `memberTombstone`
-from `core/domain/tenant.ts`, and calls
-`MemberErasurePort.pseudonymize`. The implementation in
+from `core/domain/tenant.ts`, and lists the member's subscriptions. Stripe
+subscriptions with provider identifiers are canceled immediately before
+pseudonymization. Simulated subscriptions and rows without provider identifiers
+are skipped.
+
+Provider cancellation failure does not block erasure. The response reports the
+outcome for every subscription, the server writes a `[member-removal]` runtime
+error, and staff sees a transient warning naming subscriptions whose
+cancellation returned `failed`. Re-running member removal retries every Stripe
+row regardless of its local status.
+
+If cancellation fails and a late `invoice.paid` arrives, the erased member is
+charged again, the local subscription flips from `canceled` back to `active`, a
+product grant is restored for the tombstoned member, and a new paid order is
+created after erasure with the retained company name, address, postal code,
+city, and NIP copied from the previous order. The member row and severed auth
+identity remain tombstoned, so nobody can log in with that restored grant and
+the paid-without-grant reconciliation report remains empty. Provider
+reconciliation must therefore finish before the next billing cycle.
+
+`MemberErasurePort.pseudonymize` then runs. The implementation in
 `adapters/db/repositories.ts` performs one transaction that:
 
 - records the erasure in `erasedMemberImports`;
-- end-dates product grants and cancels member subscriptions;
+- end-dates product grants and marks member subscriptions canceled locally;
 - replaces post author labels with `DELETED_MEMBER_DISPLAY`;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, and ban state (`bannedAt`,
   `bannedReason`, and `bannedByUserId`); and
 - records `deletedAt`.
+
+Marking member subscriptions canceled locally remains true only until a late
+`invoice.paid` flips a surviving provider subscription back to `active`.
 
 The transaction does not rewrite free text retained for moderation and audit:
 `member_events.reason` and `post_reports.note` keep their original values.
@@ -99,5 +121,6 @@ relabels `reporter_display` to `DELETED_MEMBER_DISPLAY`. A full redesign around
 non-identifying subject references remains backlog item B1.
 
 Self-service data-subject export and deletion remain backlog item B1.
-Provider-side subscription cancellation remains backlog item B7. Neither is
-part of this document's guarantees.
+Provider-side customer deletion and durable cancellation retry scheduling are
+not part of this flow. The operational retry and reconciliation procedure is in
+the [go-live checklist](go-live-checklist.md#15-provider-side-subscription-cancel-on-member-removal).

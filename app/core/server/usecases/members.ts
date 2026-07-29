@@ -27,6 +27,8 @@ import type {
   MemberErasurePort,
   MemberErasureRequestRepository,
   MemberRepository,
+  MemberSubscriptionRepository,
+  PaymentProvider,
 } from '../ports.js';
 
 export interface MembersDeps {
@@ -34,6 +36,19 @@ export interface MembersDeps {
   memberErasure: MemberErasurePort;
   clock: Clock;
   ids: IdGenerator;
+}
+
+export interface MemberRemovalDeps extends MembersDeps {
+  subscriptions: MemberSubscriptionRepository;
+  payment: PaymentProvider;
+  logger: { error(message: string): void };
+}
+
+interface MemberSubscriptionCancellation {
+  subscriptionId: string;
+  providerSubscriptionId: string | null;
+  outcome: 'canceled' | 'already_canceled' | 'skipped' | 'failed';
+  message: string | null;
 }
 
 const neutralizeFormula = (value: string): string =>
@@ -106,10 +121,52 @@ export const exportMembers = async (
 export const removeMember = async (
   ctx: Ctx,
   input: { memberId: string },
-  deps: MembersDeps,
-): Promise<Result<{ memberId: string; erasureRequestId: string | null }, AppError>> => {
+  deps: MemberRemovalDeps,
+): Promise<Result<{
+  memberId: string;
+  subscriptionCancellations: MemberSubscriptionCancellation[];
+  erasureRequestId: string | null;
+}, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:remove');
   if (!tenant.ok) return tenant;
+
+  const subscriptions = await deps.subscriptions.listForMember(tenant.value, input.memberId);
+  const subscriptionCancellations: MemberSubscriptionCancellation[] = [];
+  for (const subscription of subscriptions) {
+    const providerSubscriptionId = subscription.providerSubscriptionId;
+    if (subscription.provider !== 'stripe' || providerSubscriptionId === null) {
+      subscriptionCancellations.push({
+        subscriptionId: subscription.id,
+        providerSubscriptionId,
+        outcome: 'skipped',
+        message: null,
+      });
+      continue;
+    }
+    const cancellation = await deps.payment.cancelSubscription({
+      tenantId: tenant.value,
+      providerSubscriptionId,
+      idempotencyKey: `member-removal-${subscription.id}`,
+    });
+    if (!cancellation.ok) {
+      deps.logger.error(
+        `[member-removal] provider cancel failed tenant=${tenant.value} member=${input.memberId} subscription=${subscription.id} providerSubscriptionId=${providerSubscriptionId} error=${cancellation.error.message}`,
+      );
+      subscriptionCancellations.push({
+        subscriptionId: subscription.id,
+        providerSubscriptionId,
+        outcome: 'failed',
+        message: cancellation.error.message,
+      });
+      continue;
+    }
+    subscriptionCancellations.push({
+      subscriptionId: subscription.id,
+      providerSubscriptionId,
+      outcome: cancellation.value.alreadySettled ? 'already_canceled' : 'canceled',
+      message: null,
+    });
+  }
 
   const tombstone = memberTombstone(input.memberId);
   const result = await deps.memberErasure.pseudonymize(tenant.value, {
@@ -122,6 +179,7 @@ export const removeMember = async (
   if (result === null) return err(notFound(`No member "${input.memberId}" in this tenant`));
   return ok({
     memberId: input.memberId,
+    subscriptionCancellations,
     erasureRequestId: result.erasureRequestId,
   });
 };

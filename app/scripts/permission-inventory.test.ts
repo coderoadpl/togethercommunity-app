@@ -88,8 +88,8 @@ describe('permission inventory', () => {
 describe('use-case shape probe', () => {
   it('rejects exported function declarations', () => {
     const source = `
-      export function getThing(ctx: Ctx) {
-        return staffTenantIdFrom(ctx, 'product:read');
+      export function getThing(context: Ctx) {
+        return staffTenantIdFrom(context, 'product:read');
       }
     `;
     expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(
@@ -110,8 +110,8 @@ describe('use-case shape probe', () => {
   it('rejects intersection ctx types', () => {
     const source = `
       export const getThing = async (
-        ctx: Ctx & { capabilities: readonly Capability[] },
-      ) => staffTenantIdFrom(ctx, 'product:read');
+        context: Ctx & { capabilities: readonly Capability[] },
+      ) => staffTenantIdFrom(context, 'product:read');
     `;
     expect(() => collectUseCasesInSource('probe.ts', source)).toThrow(
       /inline ctx types are not classified/,

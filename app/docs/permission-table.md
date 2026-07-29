@@ -6,6 +6,8 @@ BEFORE records the current edge middleware, inline checks, same-file guard helpe
 
 Equivalence here compares principal **sets**, not capability identity. A capability renamed consistently across `CAPABILITIES`, `ROLE_CAPABILITIES` and its call sites produces the same BEFORE and AFTER principal sets, so this table reports "no changes" for it. The table proves that no principal gained or lost access; it does not prove that the capability vocabulary is unchanged. Reviewing a rename requires reading the diff of `core/domain/authorization.ts`.
 
+The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.
+
 Closed capability count: 83. Route rows: 184. Exported `Ctx` use-case rows: 159.
 
 ## Human-readable diff
@@ -381,10 +383,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
 | api-key | `apps/server/src/marketing-routes.ts:81` | `identity: apiIdentity(tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:89` | `const key = headers.get(API_KEY_HEADER);` |
-| api-key | `apps/server/src/marketing-routes.ts:91` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
-| api-key | `apps/server/src/marketing-routes.ts:96` | `identity: apiIdentity(resolved.value.tenant),` |
-| api-key | `apps/server/src/marketing-routes.ts:485` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }),` |
+| api-key | `apps/server/src/marketing-routes.ts:92` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/marketing-routes.ts:94` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
+| api-key | `apps/server/src/marketing-routes.ts:99` | `identity: apiIdentity(resolved.value.tenant),` |
+| api-key | `apps/server/src/marketing-routes.ts:488` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }),` |
 | staff-role | `core/server/usecases/community-access.ts:60` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:60` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:67` | `ctx.identity.tenantId && ctx.identity.memberId` |

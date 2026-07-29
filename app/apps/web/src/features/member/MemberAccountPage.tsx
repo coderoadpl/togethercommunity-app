@@ -179,7 +179,9 @@ export const MemberAccountPage = () => {
           ) : (
             <Typography>
               {t.account.erasureResolved({
-                status: erasureRequest.data.request.status,
+                status: t.account.erasureRequestStatus[
+                  erasureRequest.data.request.status
+                ],
                 resolvedAt:
                   erasureRequest.data.request.resolvedAt === null
                     ? '—'

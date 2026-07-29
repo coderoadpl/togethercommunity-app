@@ -727,6 +727,12 @@ export const pl: Messages = {
     exportFailed: 'Eksport nie powiódł się',
     erasureRequestsHeading: 'Wnioski o usunięcie danych',
     erasureRequestsEmpty: 'Brak wniosków o usunięcie danych.',
+    erasureRequestStatus: {
+      open: 'otwarty',
+      cancelled: 'anulowany',
+      rejected: 'odrzucony',
+      completed: 'zakończony',
+    },
     erasureRejectNote: 'Powód odrzucenia',
     erasureReject: 'Odrzuć',
     allMembersBack: '← Wszyscy uczestnicy',
@@ -1033,6 +1039,12 @@ export const pl: Messages = {
     erasureRequestButton: 'Wyślij wniosek',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Wniosek otwarty · termin do ${dueAt}`,
     erasureCancelButton: 'Anuluj wniosek',
+    erasureRequestStatus: {
+      open: 'otwarty',
+      cancelled: 'anulowany',
+      rejected: 'odrzucony',
+      completed: 'zakończony',
+    },
     erasureResolved: ({ status, resolvedAt }: { status: string; resolvedAt: string }) =>
       `Status wniosku: ${status} · rozstrzygnięto ${resolvedAt}`,
     menuAccount: 'Konto',

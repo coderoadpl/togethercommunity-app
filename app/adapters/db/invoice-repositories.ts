@@ -37,6 +37,22 @@ export const createInvoiceRepository = (
     )[0];
     return row === undefined ? null : invoiceSchema.parse(row.invoice);
   },
+  listForMember: async (tenantId, memberId) =>
+    (
+      await db
+        .select({ invoice: invoices })
+        .from(invoices)
+        .innerJoin(
+          orders,
+          and(
+            eq(orders.tenantId, invoices.tenantId),
+            eq(orders.id, invoices.orderId),
+            eq(orders.memberId, memberId),
+          ),
+        )
+        .where(eq(invoices.tenantId, tenantId))
+        .orderBy(desc(invoices.createdAt), desc(invoices.id))
+    ).map((row) => invoiceSchema.parse(row.invoice)),
   findCurrentByOrder: async (tenantId, orderId) => {
     const row = (
       await db

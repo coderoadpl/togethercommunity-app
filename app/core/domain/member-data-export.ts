@@ -2,14 +2,15 @@ import { z } from 'zod';
 
 import { memberCourseProgressSchema } from './course.js';
 import { memberGrantSchema } from './grant.js';
-import { marketingConsentSchema } from './marketing-email.js';
+import { invoiceSchema } from './invoice.js';
+import { isoDateTimeSchema, marketingConsentSchema } from './marketing-email.js';
 import { memberSubscriptionSchema, orderSchema } from './commerce.js';
 import { termsConsentSchema } from './consent.js';
 import { postContextKindSchema } from './community.js';
 
 export const memberDataExportSchema = z.object({
   formatVersion: z.literal(1),
-  exportedAt: z.string().datetime(),
+  exportedAt: isoDateTimeSchema,
   tenant: z.object({
     id: z.string(),
     slug: z.string().nullable(),
@@ -31,6 +32,7 @@ export const memberDataExportSchema = z.object({
   grants: z.array(memberGrantSchema),
   subscriptions: z.array(memberSubscriptionSchema),
   orders: z.array(orderSchema),
+  invoices: z.array(invoiceSchema),
   courseProgress: z.array(memberCourseProgressSchema),
   posts: z.array(
     z.object({

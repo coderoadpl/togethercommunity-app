@@ -1226,6 +1226,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           grants: deps.grants,
           subscriptions: deps.subscriptions,
           orders: deps.orders,
+          invoices: deps.invoices,
           progress: deps.progress,
           posts: deps.posts,
           consents: deps.consents,

@@ -1,0 +1,2 @@
+ALTER TABLE "posts" ADD COLUMN "pinned_at" text;--> statement-breakpoint
+CREATE INDEX "posts_tenant_context_pinned_idx" ON "posts" USING btree ("tenant_id","context_kind","context_id","pinned_at" DESC NULLS LAST) WHERE "posts"."pinned_at" is not null;

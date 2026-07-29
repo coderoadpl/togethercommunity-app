@@ -43,7 +43,18 @@ const fakeTenants = (branding?: {
   findSettings: async () =>
     branding === undefined
       ? null
-      : { billingPortalUrl: null, bunnyStreamLibraryId: null, termsUrl: null, privacyUrl: null, ...branding },
+      : {
+          billingPortalUrl: null,
+          bunnyStreamLibraryId: null,
+          ogTitle: null,
+          ogDescription: null,
+          ogImageUrl: null,
+          supportEmail: null,
+          supportUrl: null,
+          termsUrl: null,
+          privacyUrl: null,
+          ...branding,
+        },
   updateSettings: async (_tenantId, next) => next,
   createTenantWithOwnerGrant: async () => {
     throw new Error('not used');
@@ -82,6 +93,7 @@ describe('getPublicOffer', () => {
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
           legal: { termsUrl: null, privacyUrl: null },
+          support: { url: null },
         },
         contentVersion: 7,
         products: [

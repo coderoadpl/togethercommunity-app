@@ -6,9 +6,11 @@ import {
   err,
   followSpaceInputSchema,
   listSpaceFeedInputSchema,
+  MAX_PINNED_POSTS_PER_SPACE,
   notFound,
   ok,
   postSnippet,
+  pinPostInputSchema,
   reactToPostInputSchema,
   renderPost,
   setSpaceArchivedInputSchema,
@@ -70,7 +72,10 @@ export interface SpacesDeps {
   clock: Clock;
 }
 
-const requireStaff = (ctx: Ctx, capability: 'space:write'): Result<ActorScope, AppError> => {
+const requireStaff = (
+  ctx: Ctx,
+  capability: 'space:write' | 'community:pin',
+): Result<ActorScope, AppError> => {
   return requireActor(ctx, capability);
 };
 
@@ -208,31 +213,78 @@ export const getSpaceFeed = async (
   if (!parsed.success) return err(validation('Invalid space feed query', parsed.error.flatten()));
   const space = await spaceContextAccess(ctx, parsed.data.spaceId, deps);
   if (!space.ok) return space;
-  const listed = await deps.posts.listThreadsForContext(actor.value.tenantId, {
-    contextKind: 'space',
-    contextId: space.value.id,
-    limit: parsed.data.limit,
-    order: 'desc',
-    ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
-  });
+  const [listed, pinnedPosts] = await Promise.all([
+    deps.posts.listThreadsForContext(actor.value.tenantId, {
+      contextKind: 'space',
+      contextId: space.value.id,
+      limit: parsed.data.limit,
+      order: 'desc',
+      ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
+    }),
+    deps.posts.listPinnedForContext(actor.value.tenantId, {
+      contextKind: 'space',
+      contextId: space.value.id,
+      limit: MAX_PINNED_POSTS_PER_SPACE,
+    }),
+  ]);
+  const pinnedIds = new Set(pinnedPosts.map((post) => post.id));
   const reactions = await deps.reactions.summarize(actor.value.tenantId, {
-    postIds: listed.threads.map((thread) => thread.post.id),
+    postIds: [...listed.threads.map((thread) => thread.post.id), ...pinnedIds],
     viewerUserId: actor.value.userId,
   });
+  const pinnedReplies = await Promise.all(
+    pinnedPosts.map((post) => deps.posts.listReplies(actor.value.tenantId, post.rootPostId)),
+  );
   const followed = await deps.spaceSubscriptions.listForUser(actor.value.tenantId, {
     userId: actor.value.userId,
     spaceIds: [space.value.id],
   });
   return ok({
     spaceId: space.value.id,
-    items: listed.threads.map((thread) => ({
-      ...toPublicPost(renderPost(thread.post), actor.value.userId),
-      replyCount: thread.replyCount,
-      reactions: reactions.get(thread.post.id) ?? [],
+    pinned: pinnedPosts.map((post, index) => ({
+      ...toPublicPost(renderPost(post), actor.value.userId),
+      replyCount: pinnedReplies[index]?.length ?? 0,
+      reactions: reactions.get(post.id) ?? [],
     })),
+    items: listed.threads
+      .filter((thread) => !pinnedIds.has(thread.post.id))
+      .map((thread) => ({
+        ...toPublicPost(renderPost(thread.post), actor.value.userId),
+        replyCount: thread.replyCount,
+        reactions: reactions.get(thread.post.id) ?? [],
+      })),
     nextCursor: listed.nextCursor,
     isFollowing: followed.length > 0,
   });
+};
+
+export const setPostPinned = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: SpacesDeps,
+): Promise<Result<Post, AppError>> => {
+  const staff = requireStaff(ctx, 'community:pin');
+  if (!staff.ok) return staff;
+  const parsed = pinPostInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid post pin payload', parsed.error.flatten()));
+  const post = await deps.posts.findById(staff.value.tenantId, parsed.data.postId);
+  if (post === null || post.deletedAt !== null) return err(notFound('Post not found'));
+  if (post.contextKind !== 'space') return err(validation('Only space posts can be pinned'));
+  if (post.parentPostId !== null) return err(validation('Only root posts can be pinned'));
+  if (parsed.data.pinned && post.pinnedAt === null) {
+    const count = await deps.posts.countPinnedForContext(staff.value.tenantId, {
+      contextKind: 'space',
+      contextId: post.contextId,
+    });
+    if (count >= MAX_PINNED_POSTS_PER_SPACE) {
+      return err(appError('conflict', 'A space can have at most five pinned posts'));
+    }
+  }
+  const updated = await deps.posts.setPinned(staff.value.tenantId, {
+    id: post.id,
+    pinnedAt: parsed.data.pinned ? deps.clock.nowIso() : null,
+  });
+  return updated === null ? err(notFound('Post not found')) : ok(updated);
 };
 
 export const followSpace = async (

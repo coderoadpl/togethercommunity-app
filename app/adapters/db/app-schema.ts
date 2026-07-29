@@ -36,6 +36,11 @@ export const tenants = pgTable(
     logoUrl: text('logo_url'),
     accentColor: text('accent_color'),
     faviconUrl: text('favicon_url'),
+    ogTitle: text('og_title'),
+    ogDescription: text('og_description'),
+    ogImageUrl: text('og_image_url'),
+    supportEmail: text('support_email'),
+    supportUrl: text('support_url'),
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
     autoIssueInvoices: boolean('auto_issue_invoices').notNull().default(false),
@@ -924,6 +929,7 @@ export const posts = pgTable(
     createdAt: text('created_at').notNull(),
     editedAt: text('edited_at'),
     deletedAt: text('deleted_at'),
+    pinnedAt: text('pinned_at'),
   },
   (table) => [
     index('posts_tenant_context_created_idx').on(
@@ -933,6 +939,9 @@ export const posts = pgTable(
       table.createdAt,
     ),
     index('posts_tenant_root_idx').on(table.tenantId, table.rootPostId),
+    index('posts_tenant_context_pinned_idx')
+      .on(table.tenantId, table.contextKind, table.contextId, table.pinnedAt.desc())
+      .where(sql`${table.pinnedAt} is not null`),
   ],
 );
 

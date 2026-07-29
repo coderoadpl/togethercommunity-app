@@ -55,6 +55,7 @@ export const SalesPanel = () => {
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
   const orders = useQuery(actions.orders({ ...filters, page: page + 1, pageSize }));
+  const reconciliation = useQuery(actions.orderReconciliation);
 
   const resetPage = () => setPage(0);
   const download = async (format: OrderExportFormat) => {
@@ -91,6 +92,20 @@ export const SalesPanel = () => {
 
   return (
     <PanelPage title={t.sections.sales}>
+      {reconciliation.data !== undefined && reconciliation.data.rows.length > 0 ? (
+        <Alert severity="warning" data-testid="order-reconciliation">
+          <Typography variant="subtitle2">{t.sales.reconciliationHeading}</Typography>
+          <Typography variant="body2">{t.sales.reconciliationHint}</Typography>
+          {reconciliation.data.rows.map((row) => (
+            <Typography key={row.orderId} variant="body2">
+              {row.orderId.slice(0, 8)} · {row.memberEmail} · {row.productTitle} ·{' '}
+              {formatPrice(row.amountCents, row.currency, language)} ·{' '}
+              {t.sales.reconciliationAge({ date: formatDateTime(row.createdAt, language) })} ·{' '}
+              {JSON.stringify(row.providerObjectIds)}
+            </Typography>
+          ))}
+        </Alert>
+      ) : null}
       <ListSection
         data-testid="sales-list"
         toolbar={{

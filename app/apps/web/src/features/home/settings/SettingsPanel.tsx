@@ -92,6 +92,62 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   );
 };
 
+const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const settings = useQuery(actions.tenantSettings);
+  const [email, setEmail] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  const update = useMutation({
+    ...actions.updateTenantSettings,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+    },
+  });
+  const emailValue = email ?? settings.data?.settings.supportEmail ?? '';
+  const urlValue = url ?? settings.data?.settings.supportUrl ?? '';
+  return (
+    <SectionCard
+      title={t.support.heading}
+      description={t.support.intro}
+      onSubmit={(event) => {
+        event.preventDefault();
+        update.mutate({
+          supportEmail: emailValue.trim() === '' ? null : emailValue.trim(),
+          supportUrl: urlValue.trim() === '' ? null : urlValue.trim(),
+        });
+      }}
+    >
+      <FormControl fullWidth>
+        <FormLabel htmlFor="support-email">{t.support.emailLabel}</FormLabel>
+        <OutlinedInput
+          id="support-email"
+          type="email"
+          value={emailValue}
+          disabled={!canEdit}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="support-url">{t.support.urlLabel}</FormLabel>
+        <OutlinedInput
+          id="support-url"
+          type="url"
+          value={urlValue}
+          disabled={!canEdit}
+          onChange={(event) => setUrl(event.target.value)}
+        />
+      </FormControl>
+      {canEdit ? (
+        <Button type="submit" variant="outlined" disabled={update.isPending}>
+          {t.support.save}
+        </Button>
+      ) : null}
+      {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 const previewFor = (
   secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
   key: TenantSecretKey,
@@ -360,11 +416,17 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [faviconUrl, setFaviconUrl] = useState<string | null>(null);
+  const [ogTitle, setOgTitle] = useState<string | null>(null);
+  const [ogDescription, setOgDescription] = useState<string | null>(null);
+  const [ogImageUrl, setOgImageUrl] = useState<string | null>(null);
   const [accentError, setAccentError] = useState(false);
 
   const logoValue = logoUrl ?? settings.data?.settings.logoUrl ?? '';
   const accentValue = accentColor ?? settings.data?.settings.accentColor ?? '';
   const faviconValue = faviconUrl ?? settings.data?.settings.faviconUrl ?? '';
+  const ogTitleValue = ogTitle ?? settings.data?.settings.ogTitle ?? '';
+  const ogDescriptionValue = ogDescription ?? settings.data?.settings.ogDescription ?? '';
+  const ogImageValue = ogImageUrl ?? settings.data?.settings.ogImageUrl ?? '';
   const accentValid = accentColorSchema.safeParse(accentValue.trim()).success;
   const swatch = accentValid ? deriveBrandPalette(accentValue.trim()) : null;
 
@@ -387,6 +449,9 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       logoUrl: logoValue.trim() === '' ? null : logoValue.trim(),
       accentColor: accent === '' ? null : accent,
       faviconUrl: faviconValue.trim() === '' ? null : faviconValue.trim(),
+      ogTitle: ogTitleValue.trim() === '' ? null : ogTitleValue.trim(),
+      ogDescription: ogDescriptionValue.trim() === '' ? null : ogDescriptionValue.trim(),
+      ogImageUrl: ogImageValue.trim() === '' ? null : ogImageValue.trim(),
     });
   };
 
@@ -444,6 +509,45 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               placeholder={t.branding.faviconPlaceholder}
               inputProps={{ 'data-testid': 'branding-favicon-url' }}
             />
+          </FormControl>
+          <Typography variant="h6" component="h3">{t.branding.socialHeading}</Typography>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="branding-og-title">{t.branding.ogTitleLabel}</FormLabel>
+            <OutlinedInput
+              id="branding-og-title"
+              value={ogTitleValue}
+              disabled={disabled}
+              onChange={(event) => setOgTitle(event.target.value)}
+              inputProps={{ maxLength: 70, 'data-testid': 'branding-og-title' }}
+            />
+            <Typography variant="caption" component="p">{t.branding.ogTitleHint}</Typography>
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="branding-og-description">{t.branding.ogDescriptionLabel}</FormLabel>
+            <OutlinedInput
+              id="branding-og-description"
+              value={ogDescriptionValue}
+              disabled={disabled}
+              multiline
+              minRows={3}
+              onChange={(event) => setOgDescription(event.target.value)}
+              inputProps={{ maxLength: 200, 'data-testid': 'branding-og-description' }}
+            />
+            <Typography variant="caption" component="p">
+              {t.branding.ogDescriptionHint}
+            </Typography>
+          </FormControl>
+          <FormControl fullWidth>
+            <FormLabel htmlFor="branding-og-image-url">{t.branding.ogImageLabel}</FormLabel>
+            <OutlinedInput
+              id="branding-og-image-url"
+              type="url"
+              value={ogImageValue}
+              disabled={disabled}
+              onChange={(event) => setOgImageUrl(event.target.value)}
+              inputProps={{ 'data-testid': 'branding-og-image-url' }}
+            />
+            <Typography variant="caption" component="p">{t.branding.ogImageHint}</Typography>
           </FormControl>
         </>
       )}
@@ -601,6 +705,7 @@ export const SettingsPanel = () => {
   return (
     <PanelPage title={t.sections.settings}>
       <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
+      <SupportSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <InvoiceSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />

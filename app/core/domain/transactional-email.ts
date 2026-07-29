@@ -231,3 +231,98 @@ export const magicLink = (
     text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.`,
   });
 };
+
+export const subscriptionPaymentFailed = (
+  language: string,
+  input: {
+    tenantName: string;
+    productTitle: string;
+    accessEndsAt: string;
+    billingPortalUrl: string | null;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const productTitle = escapeHtml(input.productTitle);
+  const accessEndsAt = escapeHtml(input.accessEndsAt);
+  const header = brandHeader(input.branding);
+  const portal =
+    input.billingPortalUrl === null
+      ? ''
+      : `<p>${link(input.billingPortalUrl, languageOrDefault(language) === 'en' ? 'Update billing details' : 'Zaktualizuj płatność')}</p>`;
+
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `Payment failed for ${input.productTitle}`,
+      html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitle} on ${tenantName}.</p><p>Your access ends on ${accessEndsAt}.</p>${portal}`,
+      text: `Hello!\n\nWe could not collect payment for ${input.productTitle} on ${input.tenantName}.\n\nYour access ends on ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${input.billingPortalUrl}`}`,
+    });
+  }
+
+  return emailMessageSchema.parse({
+    subject: `Nie udało się pobrać płatności za ${input.productTitle}`,
+    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za ${productTitle} na platformie ${tenantName}.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p>${portal}`,
+    text: `Cześć!\n\nNie udało się pobrać płatności za ${input.productTitle} na platformie ${input.tenantName}.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj płatność: ${input.billingPortalUrl}`}`,
+  });
+};
+
+export const subscriptionEnded = (
+  language: string,
+  input: {
+    tenantName: string;
+    productTitle: string;
+    accessEndsAt: string;
+    offerUrl: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const productTitle = escapeHtml(input.productTitle);
+  const accessEndsAt = escapeHtml(input.accessEndsAt);
+  const header = brandHeader(input.branding);
+
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `Your ${input.productTitle} subscription has ended`,
+      html: `${header}<p>Hello!</p><p>Your subscription to ${productTitle} on ${tenantName} has ended.</p><p>Your access ends on ${accessEndsAt}.</p><p>${link(input.offerUrl, 'View the offer')}</p>`,
+      text: `Hello!\n\nYour subscription to ${input.productTitle} on ${input.tenantName} has ended.\n\nYour access ends on ${input.accessEndsAt}.\n\nView the offer: ${input.offerUrl}`,
+    });
+  }
+
+  return emailMessageSchema.parse({
+    subject: `Twoja subskrypcja ${input.productTitle} zakończyła się`,
+    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja ${productTitle} na platformie ${tenantName} zakończyła się.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>`,
+    text: `Cześć!\n\nTwoja subskrypcja ${input.productTitle} na platformie ${input.tenantName} zakończyła się.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.\n\nZobacz ofertę: ${input.offerUrl}`,
+  });
+};
+
+export const supportMessage = (
+  language: string,
+  input: {
+    tenantName: string;
+    memberEmail: string;
+    memberDisplay: string;
+    subject: string;
+    body: string;
+    branding?: EmailBranding;
+  },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const memberEmail = escapeHtml(input.memberEmail);
+  const memberDisplay = escapeHtml(input.memberDisplay);
+  const subject = escapeHtml(input.subject);
+  const body = escapeHtml(input.body);
+  const header = brandHeader(input.branding);
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `[${input.tenantName}] ${input.subject}`,
+      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `[${input.tenantName}] ${input.subject}`,
+    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+  });
+};

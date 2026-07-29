@@ -11,7 +11,9 @@ const brand = {
   tenant: { id: 'tenant-1', slug: 'studio', name: 'Studio Demo', contentVersion: 1 },
   settings: {
     billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/brand.svg',
-    accentColor: '#0E7490', faviconUrl: '/favicon.svg', termsUrl: null, privacyUrl: null,
+    accentColor: '#0E7490', faviconUrl: '/favicon.svg',
+    ogTitle: null, ogDescription: null, ogImageUrl: null,
+    supportEmail: null, supportUrl: null, termsUrl: null, privacyUrl: null,
   },
 };
 

@@ -15,11 +15,13 @@ import {
   meOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
+  ordersReconciliationOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
   publicOfferOutputSchema,
   simulatePurchaseOutputSchema,
+  supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
 } from '#core/contract/index.js';
@@ -309,6 +311,44 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   assert(whoami.tenant?.slug === 'alfa', 'whoami should resolve alfa tenant');
   assert(whoami.tenant.memberId !== null, 'whoami should include memberId');
   assert(whoami.tenant.staffRole === null, 'member should not have a staff role');
+  steps += 1;
+
+  const db = new pg.Client({ connectionString: verifyDatabaseUrl });
+  await db.connect();
+  try {
+    await db.query(
+      'update tenants set support_email = $1 where id = $2',
+      ['support@alfa.test', alfaTenant.tenant.id],
+    );
+  } finally {
+    await db.end();
+  }
+  expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'support', 'send', '--subject', 'Pomoc', '--body', 'Treść zgłoszenia'],
+      buyerHome,
+    ),
+    'member support request',
+    supportMessageOutputSchema,
+  );
+  expectError(
+    await cli(['--tenant', 'alfa', 'support', 'send', '--subject', 'Pomoc', '--body', 'Treść'], anonHome),
+    'unscoped support request',
+    EXIT_CODE_BY_ERROR_CODE.unauthorized,
+    'unauthorized',
+  );
+  const reconciliation = expectOk(
+    await cli(['--tenant', 'alfa', 'orders', 'reconciliation'], alfaHome),
+    'staff order reconciliation',
+    ordersReconciliationOutputSchema,
+  );
+  assert(reconciliation.rows.length === 0, 'healthy purchases should not appear in reconciliation');
+  expectError(
+    await cli(['--tenant', 'alfa', 'orders', 'reconciliation'], buyerHome),
+    'member order reconciliation',
+    EXIT_CODE_BY_ERROR_CODE.forbidden,
+    'forbidden',
+  );
   steps += 1;
 
   const memberTenants = expectOk(await cli(['tenant', 'list'], buyerHome), 'member tenant list', tenantListOutputSchema);

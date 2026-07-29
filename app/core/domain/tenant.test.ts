@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { tenantSettingsSchema, updateTenantSettingsInputSchema } from './tenant.js';
+import {
+  resolveTenantSocial,
+  tenantSettingsSchema,
+  updateTenantSettingsInputSchema,
+} from './tenant.js';
 
 describe('updateTenantSettingsInputSchema', () => {
   it('leaves omitted fields undefined so the use-case can keep the stored value', () => {
@@ -39,6 +43,52 @@ describe('updateTenantSettingsInputSchema', () => {
   });
 });
 
+describe('resolveTenantSocial', () => {
+  const tenant = { id: 'tenant-1', slug: 'acme', name: 'Acme', contentVersion: 1 };
+
+  it('falls back to the tenant name and logo', () => {
+    expect(resolveTenantSocial(tenant, {
+      billingPortalUrl: null,
+      bunnyStreamLibraryId: null,
+      logoUrl: '/logo.svg',
+      accentColor: null,
+      faviconUrl: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+      supportEmail: null,
+      supportUrl: null,
+      termsUrl: null,
+      privacyUrl: null,
+    })).toEqual({
+      title: 'Acme',
+      description: null,
+      imageUrl: '/logo.svg',
+    });
+  });
+
+  it('prefers configured social metadata', () => {
+    expect(resolveTenantSocial(tenant, {
+      billingPortalUrl: null,
+      bunnyStreamLibraryId: null,
+      logoUrl: '/logo.svg',
+      accentColor: null,
+      faviconUrl: null,
+      ogTitle: 'Acme Academy',
+      ogDescription: 'Learn with Acme',
+      ogImageUrl: 'https://cdn.example.com/social.png',
+      supportEmail: null,
+      supportUrl: null,
+      termsUrl: null,
+      privacyUrl: null,
+    })).toEqual({
+      title: 'Acme Academy',
+      description: 'Learn with Acme',
+      imageUrl: 'https://cdn.example.com/social.png',
+    });
+  });
+});
+
 describe('tenantSettingsSchema', () => {
   it('accepts a fully-cleared settings row', () => {
     expect(tenantSettingsSchema.parse({ billingPortalUrl: null, bunnyStreamLibraryId: null })).toEqual({
@@ -47,6 +97,11 @@ describe('tenantSettingsSchema', () => {
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageUrl: null,
+      supportEmail: null,
+      supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
     });

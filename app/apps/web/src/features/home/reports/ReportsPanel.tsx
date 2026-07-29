@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Card, Chip, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { PostReportStatus } from '#core/domain/index.js';
+import type { PostReportReason, PostReportStatus } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage } from '../../../components/layout/index.js';
@@ -39,6 +39,20 @@ export const ReportsPanel = () => {
       : value === 'dismissed'
         ? t.reports.statusDismissed
         : t.reports.statusResolved;
+  const reasonLabel = (value: PostReportReason): string => {
+    switch (value) {
+      case 'spam':
+        return t.community.reportReasonSpam;
+      case 'harassment':
+        return t.community.reportReasonHarassment;
+      case 'off-topic':
+        return t.community.reportReasonOffTopic;
+      case 'illegal':
+        return t.community.reportReasonIllegal;
+      case 'other':
+        return t.community.reportReasonOther;
+    }
+  };
 
   return (
     <PanelPage title={t.reports.heading}>
@@ -59,7 +73,7 @@ export const ReportsPanel = () => {
         <Card key={report.id} data-testid="report-row" variant="outlined" sx={{ p: '1rem' }}>
           <Stack useFlexGap sx={{ gap: '0.75rem' }}>
             <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-              <Chip size="small" label={report.reason} />
+              <Chip size="small" label={reasonLabel(report.reason)} />
               <Chip
                 size="small"
                 label={report.source === 'member' ? t.reports.sourceMember : t.reports.sourceHeuristic}

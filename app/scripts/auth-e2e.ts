@@ -22,6 +22,7 @@ import { resolveE2eDatabaseUrl } from './e2e-config.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
+const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const E2E_DB = uniqueTestDatabaseName('together_auth_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
@@ -116,7 +117,11 @@ const runTotpPath = async (transport: { connectUrl: string; origin: string }): P
 const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
-    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
     const context = await browser.newContext();
     const page = await context.newPage();
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));

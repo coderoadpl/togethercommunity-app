@@ -19,6 +19,7 @@ import {
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
+const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 const E2E_DB = uniqueTestDatabaseName('together_coupon_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
@@ -91,7 +92,11 @@ try {
     },
   });
 
-  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  browser = await chromium.launch(
+    chromeExecutablePath
+      ? { executablePath: chromeExecutablePath, headless: true }
+      : { channel: 'chrome', headless: true },
+  );
   const context = await browser.newContext();
   await context.addInitScript(() => {
     window.localStorage.setItem('together-language', 'pl');

@@ -124,8 +124,17 @@ jobs:
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - if: matrix.suite == 'auth' || matrix.suite == 'coupon'
-        run: google-chrome --version
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@73954683cc80eced513145a42b668b9b91f753c3
+        with:
+          chrome-version: 151.0.7922.47
+      - if: matrix.suite == 'auth' || matrix.suite == 'coupon'
+        run: '"$CHROME_PATH" --version'
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - run: pnpm run e2e:${{ matrix.suite }}
+        env:
+          PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
 
   argos-advisory:
     runs-on: ubuntu-24.04
@@ -164,8 +173,16 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: google-chrome --version
+      - id: setup-chrome
+        uses: browser-actions/setup-chrome@73954683cc80eced513145a42b668b9b91f753c3
+        with:
+          chrome-version: 151.0.7922.47
+      - run: '"$CHROME_PATH" --version'
+        env:
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - run: pnpm run visual:argos-capture
+        env:
+          PLAYWRIGHT_CHROME_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
       - if: env.HAS_ARGOS == 'true'
         run: pnpm exec argos upload out/visual/argos
         env:

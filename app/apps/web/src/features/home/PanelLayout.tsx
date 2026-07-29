@@ -20,6 +20,7 @@ import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 
 import { useTenantBranding } from '../../branding.js';
+import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
@@ -277,6 +278,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
       navigation={nav}
+      footer={<BuildStamp />}
       header={
         <>
           {isDesktop ? null : (
@@ -337,6 +339,7 @@ const PanelBootstrapShell = ({ state }: { state: PageState }) => {
       onMobileNavigationClose={() => setMobileOpen(false)}
       state={state}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
+      footer={<BuildStamp />}
       header={
         <>
           {isDesktop ? null : (

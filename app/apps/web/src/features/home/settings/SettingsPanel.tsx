@@ -21,6 +21,11 @@ import type { ExemptionBasisKind, TenantSecretKey } from '#core/domain/index.js'
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
+import {
+  BUILD_SHA,
+  BUILD_VERSION,
+  isBuildMismatch,
+} from '../../../lib/build-info.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
 import { SecretField } from '../integrations/SecretField.js';
@@ -780,6 +785,32 @@ const SecurityPanel = () => {
   );
 };
 
+const BuildInfoPanel = () => {
+  const t = useTranslations();
+  const health = useQuery(actions.health);
+  const mismatch = health.data !== undefined && isBuildMismatch(health.data);
+
+  return (
+    <SectionCard title={t.buildInfo.heading} description={t.buildInfo.intro}>
+      <Stack useFlexGap spacing="0.3rem">
+        <Typography variant="body2">{t.buildInfo.browserVersion}: {BUILD_VERSION}</Typography>
+        <Typography variant="body2">{t.buildInfo.browserSha}: {BUILD_SHA}</Typography>
+        {health.data === undefined ? null : (
+          <>
+            <Typography variant="body2">{t.buildInfo.serverVersion}: {health.data.version}</Typography>
+            <Typography variant="body2">{t.buildInfo.serverSha}: {health.data.sha}</Typography>
+          </>
+        )}
+      </Stack>
+      {mismatch ? (
+        <Alert severity="warning" data-testid="build-mismatch-warning">
+          {t.buildInfo.mismatch}
+        </Alert>
+      ) : null}
+    </SectionCard>
+  );
+};
+
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
   const t = useTranslations();
@@ -791,6 +822,7 @@ export const SettingsPanel = () => {
       <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
       <SecurityPanel />
+      <BuildInfoPanel />
     </PanelPage>
   );
 };

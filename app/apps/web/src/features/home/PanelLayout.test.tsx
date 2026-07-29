@@ -136,6 +136,7 @@ describe('Creator panel routing', () => {
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
     expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('3');
     expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
+    expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
   });
 
   it('shows the dashboard overview at /panel index', async () => {

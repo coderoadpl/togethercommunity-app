@@ -12,6 +12,7 @@ describe('AppShell', () => {
         onMobileNavigationClose={vi.fn()}
         header={<span>Acme header</span>}
         navigation={<nav><a href="/panel/products">Products</a></nav>}
+        footer={<span data-testid="shell-footer">v0.1.0</span>}
       >
         <p>Panel content</p>
       </AppShell>,
@@ -20,6 +21,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('banner')).toHaveTextContent('Acme header');
     expect(screen.getByRole('navigation')).toHaveTextContent('Products');
     expect(screen.getByRole('main')).toHaveTextContent('Panel content');
+    expect(screen.getByRole('contentinfo')).toContainElement(screen.getByTestId('shell-footer'));
   });
 
   it('renders the temporary navigation when opened on mobile', () => {
@@ -36,6 +38,7 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByRole('navigation')).toHaveTextContent('Products');
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
 
   it('renders page state inside the stable shell', () => {

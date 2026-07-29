@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { pl } from '../../../i18n/pl.js';
+import { BUILD_VERSION } from '../../../lib/build-info.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider } from '../panel-context.js';
@@ -85,6 +86,37 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
 
   return { updates };
 };
+
+describe('SettingsPanel build information', () => {
+  it('shows matching browser and server versions from the health action', async () => {
+    renderPanel();
+
+    expect(await screen.findByText(`${pl.buildInfo.serverVersion}: ${BUILD_VERSION}`))
+      .toBeInTheDocument();
+    expect(screen.queryByTestId('build-mismatch-warning')).not.toBeInTheDocument();
+  });
+
+  it('warns when the health action reports a different server build', async () => {
+    server.use(
+      http.get('/api/health', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            status: 'ok',
+            database: 'up',
+            version: '999.0.0',
+            sha: 'unknown',
+          },
+        }),
+      ),
+    );
+    renderPanel();
+
+    expect(await screen.findByTestId('build-mismatch-warning')).toHaveTextContent(
+      pl.buildInfo.mismatch,
+    );
+  });
+});
 
 describe('SettingsPanel legal documents', () => {
   it('saves terms and privacy urls through the settings endpoint', async () => {

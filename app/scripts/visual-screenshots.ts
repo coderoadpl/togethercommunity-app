@@ -388,7 +388,11 @@ const prepareDatabase = async (): Promise<void> => {
 };
 
 const buildWeb = async (): Promise<void> => {
-  const build = await run(viteBin, ['build', '--config', 'apps/web/vite.config.ts']);
+  const build = await run(
+    viteBin,
+    ['build', '--config', 'apps/web/vite.config.ts'],
+    { APP_COMMIT_SHA: '' },
+  );
   assert(build.code === 0, `Web build failed:\n${build.stdout}${build.stderr}`);
 };
 

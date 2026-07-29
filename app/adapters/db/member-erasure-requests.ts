@@ -12,15 +12,7 @@ import {
   members,
 } from './app-schema.js';
 import type { Db } from './client.js';
-
-const record = (value: unknown): Record<string, unknown> | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value))
-    : null;
-
-const uniqueViolation = (cause: unknown): boolean =>
-  record(cause)?.['code'] === '23505' ||
-  record(record(cause)?.['cause'])?.['code'] === '23505';
+import { uniqueViolation } from './pg-errors.js';
 
 const iso = (value: string): string => new Date(value).toISOString();
 const nullableIso = (value: string | null): string | null =>
@@ -46,7 +38,9 @@ export const createMemberErasureRequestRepository = (
       });
       return 'created';
     } catch (cause) {
-      if (uniqueViolation(cause)) return 'already-open';
+      if (uniqueViolation(cause, 'member_erasure_requests_open_uidx')) {
+        return 'already-open';
+      }
       throw cause;
     }
   },

@@ -60,6 +60,7 @@ const settings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSettings
 class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   failEventDestinationOnce = false;
   eventDestinationAttempts = 0;
+  eventDestinationTracking: boolean[] = [];
   identityVerified = false;
   identityFailure = false;
   infrastructureReady = true;
@@ -88,8 +89,8 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
     return ok({ verified: this.identityVerified, dkimVerified: this.identityVerified, records: [] });
   }
 
-  async ensureConfigurationSet() {
-    return ok({ name: 'together-tenant-1' });
+  async ensureConfigurationSet(_credentials: unknown, name: string) {
+    return ok({ name });
   }
 
   async ensureTopic() {
@@ -111,8 +112,12 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
     });
   }
 
-  async ensureEventDestination() {
+  async ensureEventDestination(
+    _credentials: unknown,
+    input: { engagementTracking: boolean },
+  ) {
     this.eventDestinationAttempts += 1;
+    this.eventDestinationTracking.push(input.engagementTracking);
     if (this.failEventDestinationOnce && this.eventDestinationAttempts === 1) {
       return err(integrationUnavailable('SES event destination could not be created'));
     }
@@ -195,7 +200,8 @@ describe('SES onboarding wizard', () => {
         feedbackForwardingDisabled: true,
       },
     });
-    expect(controlPlane.eventDestinationAttempts).toBe(2);
+    expect(controlPlane.eventDestinationAttempts).toBe(3);
+    expect(controlPlane.eventDestinationTracking).toEqual([true, true, false]);
   });
 
   it('keeps SES feedback forwarding enabled while SNS confirmation is pending', async () => {

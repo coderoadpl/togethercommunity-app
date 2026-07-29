@@ -97,7 +97,14 @@ export const runReputationAlerts = async (
   const tenant = await deps.tenants.findById(tenantId.value);
   if (tenant === null) return err(notFound('Tenant not found'));
   const recipients = await tenantStaffRecipients(tenantId.value, deps);
-  if (recipients.length === 0) return ok({ sent: 0 });
+  if (recipients.length === 0) {
+    await deps.settings.upsert(tenantId.value, {
+      ...settings,
+      reputationAlertStatus: decision.nextStatus,
+      reputationAlertedAt: decision.nextAlertedAt,
+    });
+    return ok({ sent: 0 });
+  }
   for (const recipient of recipients) {
     const queued = await deps.emailOutbox.enqueue({
       id: deps.ids.nextId(),

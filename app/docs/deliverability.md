@@ -5,7 +5,7 @@ feedback depends on the selected transport.
 
 | Transport | Feedback available to Together | Operational meaning |
 |---|---|---|
-| Tenant SES | Delivery, permanent and transient bounce, and complaint events through the tenant configuration set and signed SNS webhook | Reputation reports and automated reactions reflect the SES event stream. |
+| Tenant SES | Delivery, permanent and transient bounce, and complaint events through the non-engagement transactional configuration set and signed SNS webhook | Reputation reports and automated reactions reflect the SES event stream without open pixels or click redirects. |
 | Tenant SMTP | Relay acceptance only | SMTP supplies no asynchronous delivery, bounce, or complaint feed. Reputation numbers under-report failures. |
 | Platform pool | Pool-level acceptance and only the feedback exposed by the platform transport | Results describe the shared fallback pool rather than a tenant-owned sender identity. |
 

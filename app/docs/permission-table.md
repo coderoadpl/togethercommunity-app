@@ -429,8 +429,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/invoices.ts:412` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:28` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
-| member-scope | `core/server/usecases/member-data-export.ts:44` | `if (ctx.identity.memberId === null) {` |
-| member-scope | `core/server/usecases/member-data-export.ts:50` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |
+| member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:49` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:54` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |

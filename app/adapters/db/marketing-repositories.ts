@@ -57,12 +57,7 @@ import {
   tenantSesSettings,
   unsubscribeTokens,
 } from './schema.js';
-
-const record = (value: unknown): Record<string, unknown> | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? Object.fromEntries(Object.entries(value)) : null;
-
-const uniqueViolation = (cause: unknown): boolean => record(cause)?.['code'] === '23505'
-  || record(record(cause)?.['cause'])?.['code'] === '23505';
+import { uniqueViolation } from './pg-errors.js';
 
 const iso = (value: string): string => new Date(value).toISOString();
 const nullableIso = (value: string | null): string | null => value === null ? null : iso(value);
@@ -357,11 +352,17 @@ export const createMarketingJobRepository = (db: Db): MarketingJobRepository => 
         )
         .orderBy(asc(tenantSesSettings.tenantId))
     ).map((row) => row.tenantId),
-  listSesTenantIds: async () =>
+  listSesTenantIds: async (checkedBefore) =>
     (
       await db
         .select({ tenantId: tenantSesSettings.tenantId })
         .from(tenantSesSettings)
+        .where(
+          or(
+            isNull(tenantSesSettings.identityCheckedAt),
+            lte(tenantSesSettings.identityCheckedAt, checkedBefore),
+          ),
+        )
         .orderBy(asc(tenantSesSettings.tenantId))
     ).map((row) => row.tenantId),
 });

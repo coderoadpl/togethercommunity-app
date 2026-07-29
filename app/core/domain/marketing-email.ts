@@ -4,7 +4,11 @@ import { normalizeEmail } from './email.js';
 import { validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 
-const isoDateTimeSchema = z.string().datetime();
+export const isoDateTimeSchema = z.string().datetime();
+
+export const transactionalSesConfigurationSetName = (
+  marketingConfigurationSet: string,
+): string => `${marketingConfigurationSet.slice(0, 50)}-transactional`;
 
 export const consentDocumentRefSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('url'), url: z.string().url() }),

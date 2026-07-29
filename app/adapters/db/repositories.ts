@@ -91,6 +91,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { uniqueViolation } from './pg-errors.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
   consents,
@@ -2164,18 +2165,11 @@ export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentE
         .returning({ id: processedPaymentEvents.id });
       return rows.length > 0 ? 'claimed' : 'duplicate';
     } catch (cause) {
-      const record = (value: unknown): Record<string, unknown> | null =>
-        typeof value === 'object' && value !== null && !Array.isArray(value)
-          ? Object.fromEntries(Object.entries(value))
-          : null;
-      const uniqueViolation =
-        record(cause)?.['code'] === '23505' ||
-        record(record(cause)?.['cause'])?.['code'] === '23505';
-      if (uniqueViolation) return 'duplicate';
+      if (uniqueViolation(cause)) return 'duplicate';
       throw cause;
     }
   },
-  finalize: async (tenantId, eventId, processedAt) => {
+  finalize: async (tenantId, eventId, workerId, processedAt) => {
     await db
       .update(processedPaymentEvents)
       .set({
@@ -2185,12 +2179,21 @@ export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentE
         claimedAt: null,
         leaseExpiresAt: null,
       })
-      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)));
+      .where(and(
+        eq(processedPaymentEvents.tenantId, tenantId),
+        eq(processedPaymentEvents.id, eventId),
+        eq(processedPaymentEvents.workerId, workerId),
+        eq(processedPaymentEvents.status, 'processing'),
+      ));
   },
-  release: async (tenantId, eventId) => {
+  release: async (tenantId, eventId, workerId) => {
     await db
       .delete(processedPaymentEvents)
-      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)));
+      .where(and(
+        eq(processedPaymentEvents.tenantId, tenantId),
+        eq(processedPaymentEvents.id, eventId),
+        eq(processedPaymentEvents.workerId, workerId),
+      ));
   },
 });
 

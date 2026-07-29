@@ -16,6 +16,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app
@@ -37,6 +38,8 @@ jobs:
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
         with:
           package_json_file: app/package.json
@@ -54,6 +57,7 @@ jobs:
 
   smoke:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: app
@@ -75,6 +79,8 @@ jobs:
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
         with:
           package_json_file: app/package.json
@@ -89,6 +95,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -114,6 +121,8 @@ jobs:
       E2E_DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
         with:
           package_json_file: app/package.json
@@ -164,6 +173,8 @@ jobs:
       HAS_ARGOS: ${{ secrets.ARGOS_TOKEN != '' }}
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
         with:
           package_json_file: app/package.json

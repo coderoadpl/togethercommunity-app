@@ -61,26 +61,27 @@ export const AppShell = ({
       )}
     </Box>
 
-    <Box
-      component="main"
-      sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}
-    >
-      <Toolbar />
-      <Box sx={{ flexGrow: 1, px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
-        {state === undefined ? (
-          children
-        ) : (
-          <Container data-testid="app-shell-status" sx={{ maxWidth: APP_CONTENT_WIDTH }}>
-            <StatusView state={state} />
-          </Container>
-        )}
+    <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Toolbar />
+        <Box sx={{ px: { xs: '1.25rem', md: '2rem' }, py: '2rem' }}>
+          {state === undefined ? (
+            children
+          ) : (
+            <Container data-testid="app-shell-status" sx={{ maxWidth: APP_CONTENT_WIDTH }}>
+              <StatusView state={state} />
+            </Container>
+          )}
+        </Box>
       </Box>
-      <Box
-        component="footer"
-        sx={{ display: 'flex', justifyContent: 'flex-end', px: '1.5rem', py: '0.8rem' }}
-      >
-        {footer}
-      </Box>
+      {footer === undefined ? null : (
+        <Box
+          component="footer"
+          sx={{ display: 'flex', justifyContent: 'flex-end', px: '1.5rem', py: '0.8rem' }}
+        >
+          {footer}
+        </Box>
+      )}
     </Box>
   </Box>
 );

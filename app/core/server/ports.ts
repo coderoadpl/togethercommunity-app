@@ -16,9 +16,14 @@ import type {
   TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
+  MemberEvent,
   MemberGrant,
   MemberCourseProgress,
   MemberSubscription,
+  MemberErasureRequest,
+  MemberErasureRequestEvent,
+  MemberErasureRequestStatus,
+  MemberErasureRequestWithMember,
   MemberWithProductIds,
   Membership,
   Order,
@@ -36,6 +41,9 @@ import type {
   Notification,
   Post,
   PostContextKind,
+  PostReport,
+  PostReportEvent,
+  PostReportStatus,
   ReactionEmoji,
   ReactionSummary,
   Space,
@@ -78,6 +86,7 @@ import type {
   BillingData,
   Invoice,
   InvoiceEvent,
+  InvoiceVatTreatment,
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
@@ -167,6 +176,16 @@ export interface PostSearchRow {
 export interface PostRepository {
   createPost(tenantId: string, post: Post): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
+  findByIds(tenantId: string, ids: string[]): Promise<Post[]>;
+  countByAuthorSince(
+    tenantId: string,
+    query: { authorUserId: string; since: string },
+  ): Promise<number>;
+  listRecentBodiesByAuthor(
+    tenantId: string,
+    query: { authorUserId: string; since: string; limit: number },
+  ): Promise<string[]>;
+  listByAuthor(tenantId: string, authorUserId: string): Promise<Post[]>;
   listThreadsForContext(
     tenantId: string,
     query: {
@@ -195,6 +214,32 @@ export interface PostRepository {
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
   ): Promise<PostSearchRow[]>;
+}
+
+export interface PostReportRepository {
+  open(tenantId: string, report: PostReport, event: PostReportEvent): Promise<PostReport | null>;
+  findById(tenantId: string, id: string): Promise<PostReport | null>;
+  listByStatus(
+    tenantId: string,
+    query: { status: PostReportStatus; cursor?: string; limit: number },
+  ): Promise<{ reports: PostReport[]; nextCursor: string | null }>;
+  countOpenByPost(tenantId: string, postIds: string[]): Promise<Map<string, number>>;
+  countOpen(tenantId: string): Promise<number>;
+  resolve(
+    tenantId: string,
+    input: {
+      id: string;
+      status: 'dismissed' | 'resolved';
+      resolvedAt: string;
+      resolvedByUserId: string;
+    },
+    event: PostReportEvent,
+  ): Promise<PostReport | null>;
+  resolveAllForPost(
+    tenantId: string,
+    input: { postId: string; resolvedAt: string; resolvedByUserId: string },
+    event: (reportId: string) => PostReportEvent,
+  ): Promise<number>;
 }
 
 export interface SpaceRepository {
@@ -315,6 +360,16 @@ export interface MemberRepository {
   listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
+  setBanned(
+    tenantId: string,
+    input: {
+      memberId: string;
+      bannedAt: string | null;
+      reason: string | null;
+      actorUserId: string;
+    },
+    event: MemberEvent,
+  ): Promise<Member | null>;
 }
 
 export interface MemberPseudonymization {
@@ -328,6 +383,7 @@ export interface MemberPseudonymization {
 export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
+  erasureRequestId: string | null;
 }
 
 /**
@@ -340,6 +396,39 @@ export interface MemberErasurePort {
     tenantId: string,
     input: MemberPseudonymization,
   ): Promise<MemberPseudonymizationResult | null>;
+}
+
+export interface MemberErasureRequestRepository {
+  /** Projection row and requested event commit together; the partial unique index rejects a second open request. */
+  create(
+    tenantId: string,
+    request: MemberErasureRequest,
+    event: MemberErasureRequestEvent,
+  ): Promise<'created' | 'already-open'>;
+  findOpenForMember(
+    tenantId: string,
+    memberId: string,
+  ): Promise<MemberErasureRequest | null>;
+  findLatestForMember(
+    tenantId: string,
+    memberId: string,
+  ): Promise<MemberErasureRequest | null>;
+  list(
+    tenantId: string,
+    query: { status?: MemberErasureRequestStatus },
+  ): Promise<MemberErasureRequestWithMember[]>;
+  /** Terminal transition and its event commit together; returns null when the request is no longer open. */
+  resolve(
+    tenantId: string,
+    input: {
+      id: string;
+      status: Exclude<MemberErasureRequestStatus, 'open'>;
+      resolvedAt: string;
+      resolvedByUserId: string | null;
+      resolutionNote: string | null;
+    },
+    event: MemberErasureRequestEvent,
+  ): Promise<MemberErasureRequest | null>;
 }
 
 export interface ProductGrantRepository {
@@ -454,6 +543,11 @@ export interface PaymentProvider {
     tenantId: string;
     sessionId: string;
   }): Promise<Result<{ expired: true }, AppError>>;
+  cancelSubscription(input: {
+    tenantId: string;
+    providerSubscriptionId: string;
+    idempotencyKey: string;
+  }): Promise<Result<{ canceled: true; alreadySettled: boolean }, AppError>>;
   verifyWebhookEvent(input: {
     payloadRaw: string;
     signatureHeader: string;
@@ -466,7 +560,7 @@ export interface InvoicingPort {
     order: Order;
     billing: BillingData | null;
     productName: string;
-    vatRatePercent: 5 | 8 | 23;
+    vat: InvoiceVatTreatment;
     providerInvoiceId: string | null;
     onProviderInvoiceCreateUncertain(): Promise<void>;
     onProviderInvoiceCreated(providerInvoiceId: string): Promise<void>;
@@ -495,7 +589,9 @@ export interface InvoicingPort {
 export interface InvoiceRepository {
   findById(tenantId: string, id: string): Promise<Invoice | null>;
   findByIdForMember?(tenantId: string, memberId: string, id: string): Promise<Invoice | null>;
+  listForMember?(tenantId: string, memberId: string): Promise<Invoice[]>;
   findCurrentByOrder(tenantId: string, orderId: string): Promise<Invoice | null>;
+  findLatestRequestedEvent(tenantId: string, invoiceId: string): Promise<InvoiceEvent | null>;
   create(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   claimRetry(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   update(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<Invoice | null>;
@@ -829,13 +925,23 @@ export interface MemberSubscriptionRepository {
 
 export interface ProcessedPaymentEventRepository {
   /**
-   * Records the event before its effects run and returns whether this call won the insert.
-   * The event-id primary key and the object+type unique index make the write atomic, so a
-   * duplicate delivery racing the original loses here instead of double-applying the effects.
+   * Wins the event for this worker, or reports a duplicate. An expired processing lease can be
+   * reclaimed so a worker that dies mid-effect does not strand the event.
    */
-  claim(tenantId: string, event: ProcessedPaymentEvent): Promise<boolean>;
+  claim(
+    tenantId: string,
+    event: ProcessedPaymentEvent,
+    lease: { workerId: string; now: string; leaseExpiresAt: string },
+  ): Promise<'claimed' | 'duplicate'>;
+  /** Marks the claim terminal after its effects committed. */
+  finalize(
+    tenantId: string,
+    eventId: string,
+    workerId: string,
+    processedAt: string,
+  ): Promise<void>;
   /** Undoes a claim whose effects did not apply, so a later redelivery can reprocess it. */
-  release(tenantId: string, eventId: string): Promise<void>;
+  release(tenantId: string, eventId: string, workerId: string): Promise<void>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */
@@ -933,6 +1039,23 @@ export interface EmailOutboxRepository {
 
 export interface EnrollmentTransactionPort {
   run<T>(operation: (deps: { members: MemberRepository; grants: ProductGrantRepository; emailOutbox: EmailOutboxRepository }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+}
+
+export interface PaymentTransactionPort {
+  /** Every payment projection write of one webhook branch commits together or not at all. */
+  run<T>(
+    operation: (deps: {
+      members: MemberRepository;
+      grants: ProductGrantRepository;
+      orders: OrderRepository;
+      subscriptions: MemberSubscriptionRepository;
+      paymentRefunds: PaymentRefundRepository;
+      couponRedemptions: CouponRedemptionRepository;
+      emailOutbox: EmailOutboxRepository;
+      processedPaymentEvents: ProcessedPaymentEventRepository;
+      enrollmentTransaction: EnrollmentTransactionPort;
+    }) => Promise<Result<T, AppError>>,
+  ): Promise<Result<T, AppError>>;
 }
 
 /** Dev-only sink so tests and the CLI can read magic links without a mailer. */
@@ -1076,6 +1199,8 @@ export interface CampaignRepository {
 export interface MarketingJobRepository {
   listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
   listRetentionTenantIds(): Promise<string[]>;
+  listSesIdentityRefreshTenantIds(checkedBefore: string): Promise<string[]>;
+  listSesTenantIds(checkedBefore: string): Promise<string[]>;
 }
 
 export interface EmailLayoutRepository {
@@ -1195,11 +1320,20 @@ export interface SesOnboardingControlPlane {
   ): Promise<Result<{ confirmed: boolean; arn: string | null }, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
-    input: { configurationSet: string; topicArn: string; endpoint: string },
+    input: {
+      configurationSet: string;
+      transactionalConfigurationSet: string;
+      topicArn: string;
+      endpoint: string;
+    },
   ): Promise<Result<{ configurationSetReady: boolean; eventDestinationReady: boolean; subscriptionConfirmed: boolean }, AppError>>;
   ensureEventDestination(
     credentials: SesMarketingCredentials,
-    input: { configurationSet: string; topicArn: string },
+    input: {
+      configurationSet: string;
+      topicArn: string;
+      engagementTracking: boolean;
+    },
   ): Promise<Result<{ ready: true }, AppError>>;
   disableFeedbackForwarding(
     credentials: SesMarketingCredentials,

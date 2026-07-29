@@ -48,6 +48,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   tenantName: 'Acme',
   staffRole: null,
   memberId: 'mem1',
+  memberBannedAt: null,
   ...over,
 });
 

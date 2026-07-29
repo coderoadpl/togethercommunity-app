@@ -23,12 +23,15 @@ import {
   emailEvents,
   emailOutbox,
   memberCourseProgress,
+  memberEvents,
   members,
   memberSubscriptions,
   marketingConsents,
   notifications,
   orders,
   postReactions,
+  postReportEvents,
+  postReports,
   posts,
   productGrants,
   productPrices,
@@ -1172,6 +1175,28 @@ await db
   )
   .onConflictDoNothing();
 
+const seededBanAt = relativeIso(-2);
+await db
+  .update(members)
+  .set({
+    bannedAt: seededBanAt,
+    bannedReason: 'Powtarzające się reklamy w społeczności',
+    bannedByUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+  })
+  .where(eq(members.id, 'member-studio-free'));
+await db
+  .insert(memberEvents)
+  .values({
+    id: 'member-event-studio-free-banned',
+    tenantId: 'tenant-studio',
+    memberId: 'member-studio-free',
+    type: 'banned',
+    reason: 'Powtarzające się reklamy w społeczności',
+    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    occurredAt: seededBanAt,
+  })
+  .onConflictDoNothing();
+
 await db
   .insert(marketingConsents)
   .values({
@@ -1952,6 +1977,37 @@ await db
       authorIsStaff: sql`excluded.author_is_staff`,
     },
   });
+
+await db
+  .insert(postReports)
+  .values({
+    id: 'report-studio-polecajki',
+    tenantId: 'tenant-studio',
+    postId: 'post-spolecznosc-polecajki',
+    reporterUserId: aktywnyUserId,
+    reporterDisplay: 'Kursant Aktywny',
+    source: 'member',
+    reason: 'off-topic',
+    note: 'Ten wpis wygląda jak reklama zewnętrznego serwisu.',
+    signals: null,
+    status: 'open',
+    createdAt: relativeIso(-5),
+    resolvedAt: null,
+    resolvedByUserId: null,
+  })
+  .onConflictDoNothing();
+
+await db
+  .insert(postReportEvents)
+  .values({
+    id: 'report-event-studio-polecajki-opened',
+    tenantId: 'tenant-studio',
+    reportId: 'report-studio-polecajki',
+    postId: 'post-spolecznosc-polecajki',
+    type: 'opened',
+    occurredAt: relativeIso(-5),
+  })
+  .onConflictDoNothing();
 
 const reactionDefs: Array<{ postId: string; userId: string; emoji: string; createdAt: string }> = [
   { postId: 'post-spolecznosc-hello', userId: aktywnyUserId, emoji: '👍', createdAt: relativeIso(-13) },

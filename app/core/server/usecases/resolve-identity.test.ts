@@ -23,6 +23,9 @@ const member: Member = {
   externalCustomerIds: {},
   createdAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
 };
 
 const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): TenantAccessReader => ({
@@ -81,6 +84,7 @@ const deps = (
       memberRows[index] = refreshed;
       return refreshed;
     },
+    setBanned: async () => null,
     delete: async () => false,
   },
   tenants: fakeTenants(tenantRows),

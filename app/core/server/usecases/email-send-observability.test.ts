@@ -20,6 +20,7 @@ const identity = (staffRole: Identity['staffRole'] = 'owner'): Ctx => ({ identit
   tenantName: 'Alpha',
   staffRole,
   memberId: null,
+memberBannedAt: null,
 } });
 
 const sends: EmailSendProjection[] = [
@@ -128,11 +129,15 @@ describe('email send observability use-cases', () => {
           externalCustomerIds: {},
           createdAt: '2026-07-01T00:00:00.000Z',
           deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
         }),
         findByEmail: async () => null,
         listWithProductIds: async () => [],
         create: async () => undefined,
         updateEmail: async () => null,
+      setBanned: async () => null,
       },
     });
     expect(result).toEqual({ ok: true, value: { sends } });

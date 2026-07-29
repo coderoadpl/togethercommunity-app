@@ -1,9 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone, type Identity, type Member, type MemberWithProductIds } from '#core/domain/index.js';
+import {
+  DELETED_MEMBER_DISPLAY,
+  err,
+  memberTombstone,
+  ok,
+  validation,
+  type Identity,
+  type Member,
+  type MemberSubscription,
+  type MemberWithProductIds,
+} from '#core/domain/index.js';
 
-import type { MemberErasurePort, MemberPseudonymization, MemberRepository } from '../ports.js';
-import { exportMembers, listMembers, removeMember } from './members.js';
+import type {
+  MemberErasurePort,
+  MemberPseudonymization,
+  MemberRepository,
+  MemberSubscriptionRepository,
+  PaymentProvider,
+} from '../ports.js';
+import { exportMembers, listMembers, removeMember, setMemberBanned } from './members.js';
 
 const staff = (tenantId: string | null, tenantSlug: string | null): Identity => ({
   userId: 'u-staff',
@@ -14,6 +30,7 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   tenantName: tenantSlug ? 'Acme' : null,
   staffRole: tenantId ? 'owner' : null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const plainMember = (tenantId: string): Identity => ({
@@ -25,6 +42,7 @@ const plainMember = (tenantId: string): Identity => ({
   tenantName: 'Acme',
   staffRole: null,
   memberId: 'member-1',
+  memberBannedAt: null,
 });
 
 const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): MemberWithProductIds => ({
@@ -36,6 +54,8 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
   externalCustomerIds: input.externalCustomerIds ?? {},
   createdAt: input.createdAt ?? '2026-07-12T00:00:00.000Z',
   deletedAt: input.deletedAt ?? null,
+  bannedAt: input.bannedAt ?? null,
+  bannedReason: input.bannedReason ?? null,
   productIds: input.productIds ?? [],
   activeProductIds: input.activeProductIds ?? [],
 });
@@ -48,35 +68,102 @@ const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRep
   create: async () => undefined,
   listWithProductIds: async (tenantId) => byTenant[tenantId] ?? [],
   updateEmail: async () => null,
+  setBanned: async () => null,
 });
 
 const erasureFor = (
   byTenant: Record<string, MemberWithProductIds[]>,
   calls: Array<{ tenantId: string; input: MemberPseudonymization }> = [],
+  onPseudonymize: (() => void) | undefined = undefined,
 ): MemberErasurePort => ({
   pseudonymize: async (tenantId, input) => {
+    onPseudonymize?.();
     calls.push({ tenantId, input });
     const rows = byTenant[tenantId] ?? [];
     const row = rows.find((member) => member.id === input.memberId);
     if (!row) return null;
-    if (row.deletedAt !== null) return { alreadyDeleted: true, authUserErased: false };
+    if (row.deletedAt !== null) {
+      return {
+        alreadyDeleted: true,
+        authUserErased: false,
+        erasureRequestId: null,
+      };
+    }
     row.deletedAt = input.deletedAt;
     row.email = input.tombstoneEmail;
     row.displayName = null;
     row.tags = [];
     row.marketingConsents = {};
     row.externalCustomerIds = {};
-    return { alreadyDeleted: false, authUserErased: true };
+    return {
+      alreadyDeleted: false,
+      authUserErased: true,
+      erasureRequestId: null,
+    };
   },
+});
+
+const subscriptionRow = (
+  input: Partial<MemberSubscription> & { id: string },
+): MemberSubscription => ({
+  id: input.id,
+  tenantId: input.tenantId ?? 't-acme',
+  memberId: input.memberId ?? 'm1',
+  productId: input.productId ?? 'p1',
+  priceId: input.priceId ?? 'price-1',
+  provider: input.provider ?? 'stripe',
+  providerSubscriptionId:
+    'providerSubscriptionId' in input
+      ? input.providerSubscriptionId ?? null
+      : `sub_${input.id}`,
+  status: input.status ?? 'active',
+  currentPeriodEnd: input.currentPeriodEnd ?? '2026-08-12T00:00:00.000Z',
+  cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
+  couponId: input.couponId ?? null,
+  couponDiscountCents: input.couponDiscountCents ?? 0,
+  couponRecurringDuration: input.couponRecurringDuration ?? null,
+  createdAt: input.createdAt ?? '2026-07-12T00:00:00.000Z',
+  updatedAt: input.updatedAt ?? '2026-07-12T00:00:00.000Z',
+});
+
+const subscriptionsFor = (rows: MemberSubscription[]): MemberSubscriptionRepository => ({
+  findById: async () => null,
+  findByProviderSubscriptionId: async () => null,
+  listForMember: async (tenantId, memberId) =>
+    rows.filter((row) => row.tenantId === tenantId && row.memberId === memberId),
+  create: async () => undefined,
+  update: async () => null,
+  countActive: async () => 0,
+});
+
+const paymentFor = (
+  cancelSubscription: PaymentProvider['cancelSubscription'] = async () =>
+    ok({ canceled: true, alreadySettled: false }),
+): PaymentProvider => ({
+  createCheckoutSession: async () => ok({ url: 'https://checkout.test', sessionId: 'cs_1' }),
+  expireCheckoutSession: async () => ok({ expired: true }),
+  cancelSubscription,
+  verifyWebhookEvent: async () =>
+    ok({ id: 'evt_1', type: 'ignored', objectId: null, checkoutSession: null }),
 });
 
 const depsFor = (
   byTenant: Record<string, MemberWithProductIds[]>,
   calls: Array<{ tenantId: string; input: MemberPseudonymization }> = [],
+  options: {
+    subscriptions?: MemberSubscription[];
+    cancelSubscription?: PaymentProvider['cancelSubscription'];
+    errors?: string[];
+    onPseudonymize?: () => void;
+  } = {},
 ) => ({
   members: membersFor(byTenant),
-  memberErasure: erasureFor(byTenant, calls),
+  memberErasure: erasureFor(byTenant, calls, options.onPseudonymize),
   clock,
+  ids: { nextId: () => 'event-1' },
+  subscriptions: subscriptionsFor(options.subscriptions ?? []),
+  payment: paymentFor(options.cancelSubscription),
+  logger: { error: (message: string) => options.errors?.push(message) },
 });
 
 describe('listMembers', () => {
@@ -119,6 +206,102 @@ describe('listMembers', () => {
   });
 });
 
+describe('setMemberBanned', () => {
+  const member: Member = {
+    id: 'm1',
+    tenantId: 't-acme',
+    userId: 'u1',
+    email: 'member@together.dev',
+    displayName: 'Member',
+    tags: [],
+    marketingConsents: {},
+    externalCustomerIds: {},
+    createdAt: '2026-07-01T00:00:00.000Z',
+    deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
+  };
+
+  it('writes the projection and event and is idempotent', async () => {
+    const events: Array<{ type: 'banned' | 'unbanned'; actorUserId: string; reason: string | null }> = [];
+    let stored = member;
+    const repository: MemberRepository = {
+      findById: async () => stored,
+      findByEmail: async () => stored,
+      listWithProductIds: async () => [],
+      create: async () => undefined,
+      updateEmail: async () => stored,
+      setBanned: async (_tenantId, input, event) => {
+        events.push({ type: event.type, actorUserId: event.actorUserId, reason: event.reason });
+        stored = {
+          ...stored,
+          bannedAt: input.bannedAt,
+          bannedReason: input.reason,
+          bannedByUserId: input.bannedAt === null ? null : input.actorUserId,
+        };
+        return stored;
+      },
+    };
+    const deps = {
+      members: repository,
+      memberErasure: erasureFor({}),
+      clock,
+      ids: { nextId: () => 'event-1' },
+    };
+    const first = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: true, reason: 'spam' },
+      deps,
+    );
+    const second = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: true, reason: 'ignored' },
+      deps,
+    );
+    const unbanned = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: false, reason: 'not retained' },
+      deps,
+    );
+    expect(first).toMatchObject({ ok: true, value: { bannedReason: 'spam' } });
+    expect(second).toMatchObject({ ok: true, value: { bannedReason: 'spam' } });
+    expect(unbanned).toMatchObject({
+      ok: true,
+      value: { bannedAt: null, bannedReason: null, bannedByUserId: null },
+    });
+    expect(events).toEqual([
+      { type: 'banned', actorUserId: 'u-staff', reason: 'spam' },
+      { type: 'unbanned', actorUserId: 'u-staff', reason: null },
+    ]);
+  });
+
+  it.each([
+    ['unknown', null],
+    ['tombstoned', { ...member, deletedAt: clock.nowIso() }],
+  ])('does not ban %s members', async (_label, found) => {
+    const repository: MemberRepository = {
+      findById: async () => found,
+      findByEmail: async () => null,
+      listWithProductIds: async () => [],
+      create: async () => undefined,
+      updateEmail: async () => null,
+      setBanned: async () => null,
+    };
+    const result = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: true },
+      {
+        members: repository,
+        memberErasure: erasureFor({}),
+        clock,
+        ids: { nextId: () => 'event-1' },
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
 describe('removeMember', () => {
   it('pseudonymizes the member with tombstone identifiers scoped to the staff tenant', async () => {
     const byTenant = {
@@ -133,7 +316,10 @@ describe('removeMember', () => {
       depsFor(byTenant, calls),
     );
 
-    expect(result).toEqual({ ok: true, value: { memberId: 'm1' } });
+    expect(result).toEqual({
+      ok: true,
+      value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
+    });
     expect(calls).toEqual([
       {
         tenantId: 't-acme',
@@ -172,8 +358,197 @@ describe('removeMember', () => {
 
     const result = await removeMember({ identity: staff('t-acme', 'acme') }, { memberId: 'm1' }, depsFor(byTenant));
 
-    expect(result).toEqual({ ok: true, value: { memberId: 'm1' } });
+    expect(result).toEqual({
+      ok: true,
+      value: { memberId: 'm1', subscriptionCancellations: [], erasureRequestId: null },
+    });
     expect(byTenant['t-acme'][0]?.deletedAt).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('cancels Stripe subscriptions before pseudonymization with stable idempotency keys', async () => {
+    const calls: string[] = [];
+    const providerInputs: Parameters<PaymentProvider['cancelSubscription']>[0][] = [];
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [subscriptionRow({ id: 'subscription-1' })],
+          cancelSubscription: async (input) => {
+            calls.push('cancel');
+            providerInputs.push(input);
+            return ok({ canceled: true, alreadySettled: false });
+          },
+          onPseudonymize: () => calls.push('pseudonymize'),
+        },
+      ),
+    );
+
+    expect(calls).toEqual(['cancel', 'pseudonymize']);
+    expect(providerInputs).toEqual([
+      {
+        tenantId: 't-acme',
+        providerSubscriptionId: 'sub_subscription-1',
+        idempotencyKey: 'member-removal-subscription-1',
+      },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [
+          {
+            subscriptionId: 'subscription-1',
+            providerSubscriptionId: 'sub_subscription-1',
+            outcome: 'canceled',
+            message: null,
+          },
+        ],
+      },
+    });
+  });
+
+  it('skips simulated subscriptions and Stripe rows without provider ids', async () => {
+    let providerCalls = 0;
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [
+            subscriptionRow({
+              id: 'simulated-1',
+              provider: 'simulated',
+              providerSubscriptionId: 'simulated_subscription',
+            }),
+            subscriptionRow({ id: 'stripe-null', providerSubscriptionId: null }),
+          ],
+          cancelSubscription: async () => {
+            providerCalls += 1;
+            return ok({ canceled: true, alreadySettled: false });
+          },
+        },
+      ),
+    );
+
+    expect(providerCalls).toBe(0);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [
+          {
+            subscriptionId: 'simulated-1',
+            providerSubscriptionId: 'simulated_subscription',
+            outcome: 'skipped',
+            message: null,
+          },
+          {
+            subscriptionId: 'stripe-null',
+            providerSubscriptionId: null,
+            outcome: 'skipped',
+            message: null,
+          },
+        ],
+      },
+    });
+  });
+
+  it('logs provider failures and completes pseudonymization', async () => {
+    const errors: string[] = [];
+    let pseudonymized = false;
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [subscriptionRow({ id: 'subscription-1' })],
+          cancelSubscription: async () => err(validation('Stripe is unavailable')),
+          errors,
+          onPseudonymize: () => {
+            pseudonymized = true;
+          },
+        },
+      ),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [
+          {
+            subscriptionId: 'subscription-1',
+            outcome: 'failed',
+            message: 'Stripe is unavailable',
+          },
+        ],
+      },
+    });
+    expect(pseudonymized).toBe(true);
+    expect(errors).toEqual([
+      '[member-removal] provider cancel failed tenant=t-acme member=m1 subscription=subscription-1 providerSubscriptionId=sub_subscription-1 error=Stripe is unavailable',
+    ]);
+  });
+
+  it('reports provider subscriptions that were already settled', async () => {
+    const result = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          subscriptions: [subscriptionRow({ id: 'subscription-1' })],
+          cancelSubscription: async () => ok({ canceled: true, alreadySettled: true }),
+        },
+      ),
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        subscriptionCancellations: [{ outcome: 'already_canceled', message: null }],
+      },
+    });
+  });
+
+  it('retries provider cancellation when removal is rerun for a tombstoned member', async () => {
+    const byTenant = {
+      't-acme': [memberRow({ id: 'm1', deletedAt: '2026-07-01T00:00:00.000Z' })],
+    };
+    let providerCalls = 0;
+    const deps = depsFor(byTenant, [], {
+      subscriptions: [subscriptionRow({ id: 'subscription-1', status: 'canceled' })],
+      cancelSubscription: async () => {
+        providerCalls += 1;
+        return ok({ canceled: true, alreadySettled: providerCalls > 1 });
+      },
+    });
+
+    const first = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      deps,
+    );
+    const second = await removeMember(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1' },
+      deps,
+    );
+
+    expect(providerCalls).toBe(2);
+    expect(first).toMatchObject({
+      ok: true,
+      value: { subscriptionCancellations: [{ outcome: 'canceled' }] },
+    });
+    expect(second).toMatchObject({
+      ok: true,
+      value: { subscriptionCancellations: [{ outcome: 'already_canceled' }] },
+    });
   });
 
   it('forbids a plain member identity', async () => {
@@ -187,13 +562,24 @@ describe('removeMember', () => {
   });
 
   it('returns not_found when the member is absent in this tenant', async () => {
+    let providerCalls = 0;
     const result = await removeMember(
       { identity: staff('t-acme', 'acme') },
       { memberId: 'missing' },
-      depsFor({ 't-acme': [memberRow({ id: 'm1' })] }),
+      depsFor(
+        { 't-acme': [memberRow({ id: 'm1' })] },
+        [],
+        {
+          cancelSubscription: async () => {
+            providerCalls += 1;
+            return ok({ canceled: true, alreadySettled: false });
+          },
+        },
+      ),
     );
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(providerCalls).toBe(0);
   });
 });
 

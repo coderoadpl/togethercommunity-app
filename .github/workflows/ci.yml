@@ -49,6 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:migrate
       - run: pnpm run check
+      - run: pnpm run storybook:build
       - run: pnpm audit --prod --audit-level=high
         continue-on-error: true
 
@@ -92,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [auth, poc, subs, marketing]
+        suite: [auth, poc, subs, marketing, coupon]
     defaults:
       run:
         working-directory: app
@@ -123,7 +124,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - if: matrix.suite == 'auth'
+      - if: matrix.suite == 'auth' || matrix.suite == 'coupon'
         run: google-chrome --version
       - run: pnpm run e2e:${{ matrix.suite }}
 

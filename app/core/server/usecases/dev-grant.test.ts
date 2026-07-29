@@ -38,6 +38,9 @@ const member = (id: string, email: string): Member => ({
   externalCustomerIds: {},
   createdAt: '2026-01-01T00:00:00.000Z',
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
 });
 
 interface Harness {
@@ -67,6 +70,7 @@ const harness = (options: { products: Product[]; existingMember?: Member }): Har
       members.push(m);
     },
     updateEmail: async () => null,
+  setBanned: async () => null,
   };
   const grantsRepo: ProductGrantRepository = {
     findById: async (_t, id) => grants.find((g) => g.id === id) ?? null,

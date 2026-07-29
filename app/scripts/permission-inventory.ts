@@ -108,8 +108,13 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/marketing/sends') || /^\/api\/members\/:id\/emails$/.test(path)) return 'marketing:delivery:read';
   if (path === '/api/me' || path === '/api/tenants') return 'tenant:list-own';
   if (path === '/api/me/billing-orders') return 'member:billing:read';
+  if (path === '/api/me/data-export') return 'member:data-export:self-read';
+  if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/my/products') return 'member:product:read';
+  if (path === '/api/members/ban') return 'member:ban';
   if (path === '/api/members') return 'member:read';
+  if (path === '/api/members/erasure-requests') return 'member:erasure:read';
+  if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
   if (path === '/api/members/export') return 'member:export';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
   if (path.endsWith('/learning-summary')) return 'member:learning:read';
@@ -151,6 +156,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     return 'lesson:play';
   }
   if (path === '/api/posts/pin') return 'community:pin';
+  if (path === '/api/posts/report') return 'community:report';
+  if (path === '/api/reports') return 'community:report:read';
+  if (path === '/api/reports/resolve') return 'community:moderate';
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }
@@ -182,7 +190,7 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
   if (path.startsWith('/api/student/')) {
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
@@ -233,7 +241,7 @@ const routeRows = (): PermissionRow[] =>
       };
     });
 
-interface CollectedUseCase {
+export interface CollectedUseCase {
   name: string;
   file: string;
   capability: Capability;
@@ -243,6 +251,7 @@ const AUTHORIZATION_UTILITIES = new Set([
   'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
+  'community-access.ts#requireUnbannedMember',
   'community-access.ts#requireTenant',
 ]);
 
@@ -253,6 +262,7 @@ const authorizationCallNames = new Set([
   'requireActor',
   'requireMember',
   'requireMemberOrStaff',
+  'requireUnbannedMember',
   'requireStaff',
   'requireStaffTenant',
   'requireTenant',
@@ -289,31 +299,91 @@ const capabilityFromBody = (
   return capability;
 };
 
-const collectCtxUseCases = (): CollectedUseCase[] => {
+const hasExportModifier = (node: ts.Node): boolean =>
+  ts.canHaveModifiers(node)
+  && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
+
+const isCtxShapedParameter = (
+  parameter: ts.ParameterDeclaration | undefined,
+  sourceFile: ts.SourceFile,
+): boolean =>
+  parameter !== undefined
+  && (
+    (ts.isIdentifier(parameter.name) && parameter.name.text === 'ctx')
+    || /\bidentity\s*[?:]/u.test(parameter.type?.getText(sourceFile) ?? '')
+  );
+
+const isBareCtxType = (
+  parameter: ts.ParameterDeclaration | undefined,
+): boolean =>
+  parameter?.type !== undefined
+  && ts.isTypeReferenceNode(parameter.type)
+  && ts.isIdentifier(parameter.type.typeName)
+  && parameter.type.typeName.text === 'Ctx'
+  && parameter.type.typeArguments === undefined;
+
+const isCtxTypedParameter = (
+  parameter: ts.ParameterDeclaration | undefined,
+  sourceFile: ts.SourceFile,
+): boolean =>
+  isBareCtxType(parameter)
+  || /\bCtx\b/u.test(parameter?.type?.getText(sourceFile) ?? '');
+
+export const collectUseCasesInSource = (
+  file: string,
+  source: string,
+): CollectedUseCase[] => {
   const found: CollectedUseCase[] = [];
-  for (const file of readdirSync(useCasesRoot).filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts')).sort()) {
-    const source = readFileSync(join(useCasesRoot, file), 'utf8');
-    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    sourceFile.statements.forEach((statement) => {
-      if (!ts.isVariableStatement(statement) || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) return;
-      statement.declarationList.declarations.forEach((declaration) => {
-        if (!ts.isIdentifier(declaration.name)) return;
-        const initializer = declaration.initializer;
-        if (initializer === undefined || (!ts.isArrowFunction(initializer) && !ts.isFunctionExpression(initializer))) return;
-        const firstParameter = initializer.parameters[0];
-        if (firstParameter?.type?.getText(sourceFile) !== 'Ctx') return;
-        const subject = `${file}#${declaration.name.text}`;
-        if (AUTHORIZATION_UTILITIES.has(subject)) return;
-        found.push({
-          name: declaration.name.text,
-          file,
-          capability: capabilityFromBody(initializer.body, subject),
-        });
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  sourceFile.statements.forEach((statement) => {
+    if (ts.isFunctionDeclaration(statement) && hasExportModifier(statement) && statement.name !== undefined) {
+      const subject = `${file}#${statement.name.text}`;
+      if (AUTHORIZATION_UTILITIES.has(subject)) return;
+      if (
+        isCtxShapedParameter(statement.parameters[0], sourceFile)
+        || isCtxTypedParameter(statement.parameters[0], sourceFile)
+      ) {
+        throw new Error(
+          `${subject} must be an exported const arrow function; function declarations are not classified`,
+        );
+      }
+      return;
+    }
+    if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) return;
+    statement.declarationList.declarations.forEach((declaration) => {
+      if (!ts.isIdentifier(declaration.name)) return;
+      const initializer = declaration.initializer;
+      if (initializer === undefined || (!ts.isArrowFunction(initializer) && !ts.isFunctionExpression(initializer))) return;
+      const subject = `${file}#${declaration.name.text}`;
+      if (AUTHORIZATION_UTILITIES.has(subject)) return;
+      const firstParameter = initializer.parameters[0];
+      if (!isBareCtxType(firstParameter)) {
+        if (
+          isCtxShapedParameter(firstParameter, sourceFile)
+          || isCtxTypedParameter(firstParameter, sourceFile)
+        ) {
+          throw new Error(
+            `${subject} must type its first parameter as Ctx; inline ctx types are not classified`,
+          );
+        }
+        return;
+      }
+      found.push({
+        name: declaration.name.text,
+        file,
+        capability: capabilityFromBody(initializer.body, subject),
       });
     });
-  }
+  });
   return found;
 };
+
+const collectCtxUseCases = (): CollectedUseCase[] =>
+  readdirSync(useCasesRoot)
+    .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+    .sort()
+    .flatMap((file) =>
+      collectUseCasesInSource(file, readFileSync(join(useCasesRoot, file), 'utf8')));
 
 const marketingTenantContextUseCases = new Set([
   'applyVerifiedSesEvent',
@@ -343,8 +413,14 @@ const beforeForUseCase = (
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
+  if (file === 'marketing-ses-onboarding.ts' && name === 'refreshSesIdentity') {
+    return allHumans;
+  }
+  if (file === 'email-reputation.ts' && name === 'runReputationAlerts') {
+    return allHumans;
+  }
   if (file === 'create-tenant.ts') return allHumans;
-  if (file === 'member-billing-orders.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
+  if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }
@@ -355,6 +431,7 @@ const beforeForUseCase = (
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
+  if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
   if (file === 'spaces.ts') {
     return name === 'listSpacesForStaff' || capability === 'space:write' || capability === 'community:pin'
@@ -469,6 +546,12 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'Generated by `pnpm run permissions:generate`. Do not edit by hand.',
     '',
     'BEFORE records the current edge middleware, inline checks, same-file guard helpers, API-key checks, token checks, webhook verification, and public manifests. AFTER records the effective principal set after the capability is applied at the same edge. The generator fails when a derivable row differs.',
+    '',
+    'Equivalence here compares principal **sets**, not capability identity. A capability renamed consistently across `CAPABILITIES`, `ROLE_CAPABILITIES` and its call sites produces the same BEFORE and AFTER principal sets, so this table reports "no changes" for it. The table proves that no principal gained or lost access; it does not prove that the capability vocabulary is unchanged. Reviewing a rename requires reading the diff of `core/domain/authorization.ts`.',
+    '',
+    'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
+    '',
+    'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

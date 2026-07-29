@@ -24,6 +24,8 @@ const member: MemberWithProductIds = {
   externalCustomerIds: {},
   createdAt: '2026-07-01T10:00:00.000Z',
   deletedAt: null,
+  bannedAt: null,
+  bannedReason: null,
   productIds: ['p1'],
   activeProductIds: ['p1'],
 };
@@ -107,11 +109,16 @@ const emailSends: EmailSendProjection[] = [
   },
 ];
 
-const setup = (): { grantBodies: unknown[]; revoked: string[] } => {
+const setup = (): { banBodies: unknown[]; grantBodies: unknown[]; revoked: string[] } => {
+  const banBodies: unknown[] = [];
   const grantBodies: unknown[] = [];
   const revoked: string[] = [];
   server.use(
     http.get('/api/members/:memberId/grants', () => HttpResponse.json({ ok: true, data: { grants } })),
+    http.get('/api/members/:memberId/learning-summary', () => HttpResponse.json({
+      ok: true,
+      data: { summary: { lastActivityAt: null, courses: [] } },
+    })),
     http.get('/api/members/:memberId/emails', () => HttpResponse.json({
       ok: true,
       data: { sends: emailSends },
@@ -125,11 +132,53 @@ const setup = (): { grantBodies: unknown[]; revoked: string[] } => {
       revoked.push(String(params.grantId));
       return HttpResponse.json({ ok: true, data: { grantId: String(params.grantId), expiresAt: '2026-07-13T00:00:00.000Z' } });
     }),
+    http.post('/api/members/ban', async ({ request }) => {
+      banBodies.push(await request.json());
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          member: {
+            ...member,
+            bannedAt: '2026-07-14T10:00:00.000Z',
+            bannedReason: 'Repeated abuse',
+            bannedByUserId: 'staff-1',
+          },
+        },
+      });
+    }),
   );
-  return { grantBodies, revoked };
+  return { banBodies, grantBodies, revoked };
 };
 
 describe('MemberDetail', () => {
+  it('keeps grant and renew controls available for an active member', async () => {
+    setup();
+    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+
+    expect(await screen.findByText(pl.members.grantProduct)).toBeInTheDocument();
+    expect(await screen.findAllByRole('button', { name: pl.members.renew })).toHaveLength(2);
+    expect(screen.queryByTestId('member-tombstone-notice')).not.toBeInTheDocument();
+  });
+
+  it('shows the tombstone while keeping grant history and revoke controls', async () => {
+    setup();
+    renderWithProviders(
+      <MemberDetail
+        member={{ ...member, deletedAt: '2026-07-20T10:00:00.000Z' }}
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByTestId('member-tombstone-notice')).toHaveTextContent(
+      pl.members.tombstoneNotice,
+    );
+    expect(screen.queryByText(pl.members.grantProduct)).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.members.renew)).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.members.moderationHeading)).not.toBeInTheDocument();
+    expect(await screen.findAllByTestId('grant-row')).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: pl.members.revoke })).toHaveLength(2);
+  });
+
   it('renders active vs expired grants', async () => {
     setup();
     renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
@@ -164,6 +213,23 @@ describe('MemberDetail', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: pl.members.revoke }));
 
     await waitFor(() => expect(revoked).toEqual(['grant-active']));
+  });
+
+  it('bans a member with the staff-only reason from the confirmation dialog', async () => {
+    const { banBodies } = setup();
+    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.members.ban }));
+    const dialog = await screen.findByRole('dialog', { name: pl.members.ban });
+    await userEvent.type(
+      within(dialog).getByRole('textbox', { name: pl.members.banReasonLabel }),
+      'Repeated abuse',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: pl.members.ban }));
+
+    await waitFor(() => expect(banBodies).toEqual([
+      { memberId: 'member-1', banned: true, reason: 'Repeated abuse' },
+    ]));
   });
 
   it('shows all email kinds newest-first in the email tab and links to send history', async () => {

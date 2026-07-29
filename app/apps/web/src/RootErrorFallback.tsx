@@ -14,6 +14,8 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingInvalidCredentials;
     case 'forbidden':
       return t.errors.headingForbidden;
+    case 'banned':
+      return t.errors.headingForbidden;
     case 'not_found':
       return t.errors.headingNotFound;
     case 'tenant_not_found':
@@ -36,6 +38,7 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'ses_not_configured':
     case 'broadcasts_disabled':
     case 'transactional_platform_cap_reached':
+    case 'invoice_exemption_basis_missing':
     case 'internal':
       return t.errors.headingGeneric;
   }

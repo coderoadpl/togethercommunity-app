@@ -31,7 +31,10 @@ import type {
   LessonCreateInput,
   LessonUpdateInput,
   MemberProgressResetInput,
+  MemberBanInput,
   MemberRemoveInput,
+  MemberErasureRequestCreateInput,
+  MemberErasureRequestsQueryInput,
   MarketingAudiencePreviewInput,
   MarketingCampaignActionInput,
   MarketingCampaignCreateInput,
@@ -55,6 +58,9 @@ import type {
   PostCreateInput,
   PostDeleteInput,
   PostPinInput,
+  PostReportInput,
+  ReportResolveInput,
+  ReportsListInput,
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
@@ -269,6 +275,11 @@ export const spacesScopes = {
   lists: () => ['spaces', 'list'] as const,
   staff: () => ['spaces', 'staff'] as const,
   feed: (spaceId: string, limit?: number) => ['spaces', 'feed', spaceId, limit ?? null] as const,
+};
+
+export const reportScopes = {
+  all: () => ['reports'] as const,
+  list: (input: ReportsListInput) => ['reports', 'list', input] as const,
 };
 
 export const notificationScopes = {
@@ -620,6 +631,48 @@ export const membersExportQuery = (api: ApiClient, format: MemberExportFormat) =
     call: ({ signal }) => api.exportMembers(format, signal),
   });
 
+export const myDataExportQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: ['my-data-export'],
+    staleTime: 0,
+    gcTime: 0,
+    call: ({ signal }) => api.exportMyData(signal),
+  });
+
+export const myErasureRequestQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: ['my-erasure-request'],
+    call: ({ signal }) => api.getMyErasureRequest(signal),
+  });
+
+export const requestMyErasureMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['my-erasure-request', 'create'],
+    call: (input: MemberErasureRequestCreateInput) => api.requestMyErasure(input),
+  });
+
+export const cancelMyErasureRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['my-erasure-request', 'cancel'],
+    call: () => api.cancelMyErasureRequest(),
+  });
+
+export const erasureRequestsQuery = (
+  api: ApiClient,
+  input: MemberErasureRequestsQueryInput,
+) =>
+  defineQuery({
+    queryKey: ['erasure-requests', input],
+    call: ({ signal }) => api.listErasureRequests(input, signal),
+  });
+
+export const rejectErasureRequestMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: ['erasure-requests', 'reject'],
+    call: (input: { requestId: string; note: string }) =>
+      api.rejectErasureRequest(input.requestId, input.note),
+  });
+
 export const removeMemberMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...membersScopes.all(), 'remove'],
@@ -931,6 +984,26 @@ export const pinPostMutation = (api: ApiClient) =>
     call: (input: PostPinInput) => api.pinPost(input),
   });
 
+export const reportsQuery = (api: ApiClient, input: ReportsListInput = {}) =>
+  defineQuery({
+    queryKey: reportScopes.list(input),
+    call: ({ signal }) => api.listReports(input, signal),
+  });
+
+export const reportPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'report'],
+    call: (input: PostReportInput) => api.reportPost(input),
+  });
+
+export const resolveReportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...reportScopes.all(), 'resolve'],
+    call: (input: ReportResolveInput) => api.resolveReport(input),
+  });
+
+export const reportsInvalidates = () => ({ queryKey: reportScopes.all() });
+
 export const unreactToPostMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...spacesScopes.all(), 'unreact'],
@@ -1089,6 +1162,12 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.all() });
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
+
+export const setMemberBannedMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'ban'],
+    call: (input: MemberBanInput) => api.setMemberBanned(input),
+  });
 
 export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: membersScopes.grants(memberId) });
 

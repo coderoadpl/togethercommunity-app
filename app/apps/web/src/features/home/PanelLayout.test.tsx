@@ -29,7 +29,7 @@ const meWithTenant = {
   userId: 'u1',
   email: 'creator@together.dev',
   name: 'Demo',
-  tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null },
+  tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null, banned: false },
 };
 
 const stubViewport = (isDesktop: boolean) => {
@@ -54,6 +54,8 @@ const commonHandlers = () => {
     http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
     http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
     http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
+    http.get('/api/reports', () =>
+      HttpResponse.json({ ok: true, data: { items: [], nextCursor: null, openCount: 3 } })),
     http.get('/api/sales/summary', () =>
       HttpResponse.json({
         ok: true,
@@ -116,6 +118,7 @@ describe('Creator panel routing', () => {
       'courses',
       'lessons',
       'members',
+      'reports',
       'sales',
       'integrations',
       'marketingActivity',
@@ -131,6 +134,7 @@ describe('Creator panel routing', () => {
     }
     expect(screen.getByTestId('section-members')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('section-products')).not.toHaveAttribute('aria-current');
+    expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('3');
     expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
   });
 

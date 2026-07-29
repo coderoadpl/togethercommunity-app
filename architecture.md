@@ -182,7 +182,8 @@ rows are written during finalization and are not mutated afterward.
 Erasure is policy-aware rather than a blind cascade. Product data that may be
 removed or pseudonymized follows the relevant retention flow. Fiscal records
 and immutable compliance evidence remain when their legal retention basis
-requires it.
+requires it. The retained-data policies and operational removal path are
+documented in [app/docs/member-erasure.md](app/docs/member-erasure.md).
 
 ## Transactions and external effects
 
@@ -293,13 +294,16 @@ Architecture is enforced by configuration and executable probes:
 | `pnpm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
 | `pnpm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
 | `pnpm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
-| `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` is the browser-driven suite). |
+| `pnpm run e2e:coupon` | The interactive checkout coupon flow in a real browser: reveal, invalid code, valid code, discounted breakdown. |
+| `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` and `e2e:coupon` are the browser-driven suites). |
 | `pnpm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
 | `pnpm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
 | `pnpm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
+| `pnpm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
 
-CI runs `check`, `smoke`, the quickstart probe, and the auth, PoC, subscription,
-and marketing e2e suites on pushes and pull requests to `poc-together`. KSeF
+CI runs `check`, `smoke`, the quickstart probe, and the auth, coupon, PoC,
+subscription, and marketing e2e suites on pushes and pull requests to
+`poc-together`. KSeF
 e2e is excluded because it targets an external shared test network. Visual
 comparison remains local until platform-scoped CI baselines and a platform
 guard land. Third-party GitHub Actions are pinned to full commit SHAs.

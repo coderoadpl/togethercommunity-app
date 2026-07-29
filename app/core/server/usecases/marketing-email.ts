@@ -1481,7 +1481,9 @@ export const applyVerifiedSesEvent = async (
       }
       const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
       if (outbox === null) return ok({ processed: false });
-      const classification = event.kind === 'bounce' ? classifySesEvent(event) : null;
+      const classification = event.kind === 'delivery'
+        ? null
+        : classifySesEvent(event);
       const status = event.kind === 'delivery'
         ? 'delivered'
         : event.kind === 'complaint'
@@ -1505,7 +1507,36 @@ export const applyVerifiedSesEvent = async (
           event.occurredAt,
         ),
       });
-      return marked.ok ? ok({ processed: true }) : ok({ processed: false });
+      if (!marked.ok) return ok({ processed: false });
+      if (classification === 'hard' || classification === 'complaint') {
+        const reason =
+          classification === 'complaint' ? 'complaint' : 'hard_bounce';
+        await deps.suppressions.record(
+          tenantId.value,
+          {
+            id: deps.ids.nextId(),
+            tenantId: tenantId.value,
+            email: outbox.to,
+            emailHmac: deps.hmac.compute(tenantId.value, outbox.to),
+            reason,
+            sourceRef: outbox.id,
+            meta: event.raw,
+            createdAt: deps.clock.nowIso(),
+            liftedAt: null,
+            liftedBy: null,
+          },
+          lifecycleEvent(
+            deps,
+            tenantId.value,
+            'transactional',
+            outbox.id,
+            'suppressed_written',
+            { reason },
+            event.occurredAt,
+          ),
+        );
+      }
+      return ok({ processed: true });
     }
     if (event.kind === 'open' || event.kind === 'click') {
       if (!settings.trackingEnabled) return ok({ processed: false });
@@ -1629,12 +1660,15 @@ export const scheduleMarketingRetentionJobs = async (
   return deps.scheduler.enqueueRetentionJobs(tenantId.value);
 };
 
+export const SES_IDENTITY_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 export const runScheduledMarketingJobs = async (
   input: {
     now: string;
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
     engagementOlderThan: string;
+    sesIdentityRefreshIntervalMs: number;
   },
   deps: {
     jobs: MarketingJobRepository;
@@ -1646,8 +1680,17 @@ export const runScheduledMarketingJobs = async (
       engagementOlderThan: string;
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
+    refreshIdentity(tenantId: string): Promise<Result<unknown, AppError>>;
+    runReputationAlerts(
+      tenantId: string,
+    ): Promise<Result<{ sent: number }, AppError>>;
   },
-): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>> => {
+): Promise<Result<{
+  campaignsDispatched: number;
+  retentionTenantsProcessed: number;
+  identityChecksPerformed: number;
+  reputationAlertsSent: number;
+}, AppError>> => {
   let firstError: AppError | null = null;
   await deps.runs.failStale({
     startedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
@@ -1669,6 +1712,28 @@ export const runScheduledMarketingJobs = async (
     });
     if (!retained.ok && firstError === null) firstError = retained.error;
   }
+  const checkedBefore = new Date(
+    Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
+  ).toISOString();
+  const [identityTenantIds, sesTenantIds] = await Promise.all([
+    deps.jobs.listSesIdentityRefreshTenantIds(checkedBefore),
+    deps.jobs.listSesTenantIds(checkedBefore),
+  ]);
+  for (const tenantId of identityTenantIds) {
+    const refreshed = await deps.refreshIdentity(tenantId);
+    if (!refreshed.ok && firstError === null) firstError = refreshed.error;
+  }
+  let reputationAlertsSent = 0;
+  for (const tenantId of sesTenantIds) {
+    const alerted = await deps.runReputationAlerts(tenantId);
+    if (alerted.ok) reputationAlertsSent += alerted.value.sent;
+    else if (firstError === null) firstError = alerted.error;
+  }
   if (firstError !== null) return err(firstError);
-  return ok({ campaignsDispatched: runnable.length, retentionTenantsProcessed: retentionTenantIds.length });
+  return ok({
+    campaignsDispatched: runnable.length,
+    retentionTenantsProcessed: retentionTenantIds.length,
+    identityChecksPerformed: identityTenantIds.length,
+    reputationAlertsSent,
+  });
 };

@@ -8,7 +8,7 @@ Equivalence here compares principal **sets**, not capability identity. A capabil
 
 The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.
 
-The `member` and `authenticated` matrix rows carry historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, `marketing:message:send`, and `marketing:message:read`) that are not reachable through any session route (verified 2026-07-29). Narrowing these grants is recommended pending owner decision O-08.
+The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
@@ -269,7 +269,7 @@ no changes
 | `course-management.ts#updateProductAccessItems` | product:access:write | owner, admin | owner, admin | yes | core/server/usecases/course-management.ts authorization call |
 | `create-tenant.ts#createTenant` | tenant:create | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/create-tenant.ts authorization call |
 | `email-reputation.ts#getEmailReputation` | marketing:reputation:read | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
-| `email-reputation.ts#runReputationAlerts` | scheduler:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/email-reputation.ts authorization call |
+| `email-reputation.ts#runReputationAlerts` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/email-reputation.ts authorization call |
 | `email-send-observability.ts#listEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#getEmailSend` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
 | `email-send-observability.ts#listMemberEmailSends` | marketing:delivery:read | owner, admin | owner, admin | yes | core/server/usecases/email-send-observability.ts authorization call |
@@ -315,14 +315,14 @@ no changes
 | `marketing-email.ts#pauseCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#cancelCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#updateCampaignContent` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
+| `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
+| `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#testSendCampaignToSelf` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#claimIdempotencyKey` | marketing:message:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#completeIdempotentRequest` | marketing:message:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
+| `marketing-email.ts#applyVerifiedSesEvent` | webhook:process | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
+| `marketing-email.ts#runMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
+| `marketing-email.ts#scheduleMarketingRetentionJobs` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-management.ts#getMarketingConsentDefinition` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#updateMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#listTenantDocuments` | marketing:document:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
@@ -340,7 +340,7 @@ no changes
 | `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
-| `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
+| `marketing-ses-onboarding.ts#refreshSesIdentity` | scheduler:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#sendSesSimulatorTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `member-billing-orders.ts#listMemberBillingOrders` | member:billing:read | member | member | yes | core/server/usecases/member-billing-orders.ts authorization call |
 | `member-data-export.ts#exportMyData` | member:data-export:self-read | member | member | yes | core/server/usecases/member-data-export.ts authorization call |

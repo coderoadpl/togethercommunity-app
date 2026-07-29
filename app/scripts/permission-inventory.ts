@@ -386,8 +386,6 @@ const collectCtxUseCases = (): CollectedUseCase[] =>
       collectUseCasesInSource(file, readFileSync(join(useCasesRoot, file), 'utf8')));
 
 const marketingTenantContextUseCases = new Set([
-  'applyVerifiedSesEvent',
-  'campaignTick',
   'claimIdempotencyKey',
   'completeIdempotentRequest',
   'confirmMarketingConsent',
@@ -396,10 +394,7 @@ const marketingTenantContextUseCases = new Set([
   'purgeStalePendingConsents',
   'recordCheckoutMarketingConsents',
   'recordMarketingConsent',
-  'runMarketingRetentionJobs',
   'saveMarketingConsentPreferences',
-  'scheduleMarketingRetentionJobs',
-  'sendMarketingMessages',
   'unsubscribeAllMarketing',
   'unsubscribeOneClick',
   'withdrawMarketingConsent',
@@ -412,12 +407,6 @@ const beforeForUseCase = (
 ): readonly Principal[] => {
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
-  }
-  if (file === 'marketing-ses-onboarding.ts' && name === 'refreshSesIdentity') {
-    return allHumans;
-  }
-  if (file === 'email-reputation.ts' && name === 'runReputationAlerts') {
-    return allHumans;
   }
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
@@ -551,7 +540,7 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
     '',
-    'The `member` and `authenticated` matrix rows carry historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, `marketing:message:send`, and `marketing:message:read`) that are not reachable through any session route (verified 2026-07-29). Narrowing these grants is recommended pending owner decision O-08.',
+    'The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',

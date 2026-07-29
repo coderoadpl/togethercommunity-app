@@ -2,7 +2,7 @@
 
 Google is the one auth method the PoC cannot exercise headlessly: it needs a real
 OAuth consent screen. It is therefore **env-gated** and verified by hand. Passkeys
-and TOTP 2FA are covered automatically by `npm run e2e:auth`.
+and TOTP 2FA are covered automatically by `pnpm run e2e:auth`.
 
 ## What is wired
 
@@ -32,9 +32,9 @@ and TOTP 2FA are covered automatically by `npm run e2e:auth`.
 ## Manual smoke steps
 
 ```bash
-npm run db:up && npm run db:migrate && npm run db:seed
-npm run dev:server      # port 48730
-npm run dev:web         # port 48731
+pnpm run db:up && pnpm run db:migrate && pnpm run db:seed
+pnpm run dev:server      # port 48730
+pnpm run dev:web         # port 48731
 ```
 
 1. Open `http://acme.localhost:48731/login`.

@@ -5,21 +5,22 @@ architecture spec is normative).
 
 ## The two gates
 
-- `npm run check` = typecheck + ESLint (boundaries) + lock-lint + migration-lint + dependency-cruiser + knip + doc-lint +
+- `pnpm run check` = typecheck + ESLint (boundaries) + lock-lint + migration-lint + dependency-cruiser + knip + doc-lint +
   vitest — the **static** gate.
-- `npm run smoke` = the **runtime** gate: it verifies the installed dependency
-  tree matches `package-lock.json`, drops+recreates an isolated
+- `pnpm run smoke` = the **runtime** gate: it verifies the installed dependency
+  tree matches `pnpm-lock.yaml`, drops+recreates an isolated
   `together_smoke` database (never touches your dev-seeded data), migrates
   and seeds it, boots the real server (`entry.node.ts`) on an ephemeral port and
   drives health → sign-in → products → simulated purchase → magic-link sign-in
   through the CLI, asserting taxonomy exit codes (including unauthorized =
-  exit 3). Assumes `npm run db:up`. Runs in ~5s.
+  exit 3). Assumes `pnpm run db:up`. Runs in ~5s.
 
 **Done = `check` green AND `smoke` green.** Static-green is not done; the app
 must actually run. Do not weaken lint rules to make either green.
 
-The toolchain is pinned to Node 24 by `.nvmrc` and `engines.node`. Run
-`nvm use` before installing dependencies or executing gates.
+The toolchain is pinned to Node 24 by `.nvmrc` and `engines.node`, and to pnpm
+10.34.5 by `packageManager`. Run `nvm use` before installing dependencies or
+executing gates.
 
 ## Flake doctrine
 
@@ -87,11 +88,11 @@ are exact, cheap, and fast. Browser and vision checks are available and
 legitimate when rendered behavior matters.
 
 ```bash
-npm run db:up && npm run db:migrate && npm run db:seed
-npm run dev:server &          # port 48730
-npm run --silent cli -- --json health
-npm run --silent cli -- login --email creator2@together.dev --password demo1234
-npm run --silent cli -- --tenant acme product list
+pnpm run db:up && pnpm run db:migrate && pnpm run db:seed
+pnpm run dev:server &          # port 48730
+pnpm --silent run cli --json health
+pnpm --silent run cli login --email creator2@together.dev --password demo1234
+pnpm --silent run cli --tenant acme product list
 ```
 
 `--json` prints exactly one JSON envelope on stdout; exit codes come from

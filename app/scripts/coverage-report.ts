@@ -59,8 +59,8 @@ const writeBaseline = (byLayer: Map<Layer, LayerCoverage>): void => {
     };
   }
   const payload = {
-    note: 'Per-layer coverage floors (rounded down from achieved). Enforced by `npm run coverage:check`. Raise a floor only after `npm run coverage` shows the layer safely above the new number.',
-    generatedFrom: 'npm run coverage',
+    note: 'Per-layer coverage floors (rounded down from achieved). Enforced by `pnpm run coverage:check`. Raise a floor only after `pnpm run coverage` shows the layer safely above the new number.',
+    generatedFrom: 'pnpm run coverage',
     floors,
   };
   writeFileSync(baselinePath, `${JSON.stringify(payload, null, 2)}\n`);
@@ -69,7 +69,7 @@ const writeBaseline = (byLayer: Map<Layer, LayerCoverage>): void => {
 
 const main = (): void => {
   if (!existsSync(summaryPath)) {
-    console.error(`Coverage summary not found at ${summaryPath}. Run \`npm run coverage\` first.`);
+    console.error(`Coverage summary not found at ${summaryPath}. Run \`pnpm run coverage\` first.`);
     process.exitCode = 1;
     return;
   }

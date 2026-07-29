@@ -147,7 +147,7 @@ const ISLAND_CORE_PORTABILITY_PATTERN = {
 /**
  * Layer boundaries (PRD §3.2). `boundaries/element-types` denies everything by
  * default; each rule below is an explicit permission. dependency-cruiser
- * double-checks the same graph plus vendor bans in `npm run depcruise`.
+ * double-checks the same graph plus vendor bans in `pnpm run depcruise`.
  */
 export default tseslint.config(
   {

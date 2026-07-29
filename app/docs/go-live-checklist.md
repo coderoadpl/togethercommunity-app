@@ -76,7 +76,7 @@ production validation branch does not check it
 Set `PAYMENT_PROVIDER=stripe`, store the tenant credentials, and run:
 
 ```sh
-npm run --silent cli -- --tenant <slug> stripe test-connection
+pnpm --silent run cli --tenant <slug> stripe test-connection
 ```
 
 Complete item 11 before accepting payments.
@@ -121,16 +121,16 @@ Create a fresh least-privilege IAM user limited to `s3:GetObject` on the media
 prefix. Store it on the production tenant:
 
 ```sh
-npm run --silent cli -- --tenant <slug> tenant-secret set s3.accessKeyId <id>
-npm run --silent cli -- --tenant <slug> tenant-secret set s3.secretAccessKey <secret>
+pnpm --silent run cli --tenant <slug> tenant-secret set s3.accessKeyId <id>
+pnpm --silent run cli --tenant <slug> tenant-secret set s3.secretAccessKey <secret>
 ```
 
 The commands are implemented in `apps/cli/src/main.ts:2368-2381`. Deactivate and
 then delete the legacy key in IAM. Delete the development copy with:
 
 ```sh
-npm run --silent cli -- --tenant akademia-samouka tenant-secret delete s3.accessKeyId
-npm run --silent cli -- --tenant akademia-samouka tenant-secret delete s3.secretAccessKey
+pnpm --silent run cli --tenant akademia-samouka tenant-secret delete s3.accessKeyId
+pnpm --silent run cli --tenant akademia-samouka tenant-secret delete s3.secretAccessKey
 ```
 
 Deletion is implemented in `apps/cli/src/main.ts:2383-2390`. Open an imported
@@ -239,7 +239,7 @@ In Stripe, add
 Confirm credentials with:
 
 ```sh
-npm run --silent cli -- --tenant <slug> stripe test-connection
+pnpm --silent run cli --tenant <slug> stripe test-connection
 ```
 
 The command creates and immediately expires a session
@@ -379,7 +379,7 @@ in the intended Stripe account.
 
 Re-running the same removal is the retry. The flow ignores local subscription
 status, so tombstoned members and locally canceled rows are retried. The
-cancel-before-pseudonymize path is unreachable through `npm run smoke`: smoke
+cancel-before-pseudonymize path is unreachable through `pnpm run smoke`: smoke
 uses the fake adapter and never removes the created member
 (`adapters/payment/fake.ts:48`, `scripts/smoke.ts:480-545`). Item 11g is the
 only execution of this path before launch and must not be skipped.

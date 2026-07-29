@@ -60,7 +60,7 @@ Run the remote gate manually against an existing deployment:
 BASE_URL=https://deployment.example \
 SMOKE_TENANT=acme \
 EXPECTED_SHA="$(git rev-parse HEAD)" \
-npm run smoke:remote
+pnpm run smoke:remote
 ```
 
 The gate checks the health/database/SHA attestation, the public offer API using

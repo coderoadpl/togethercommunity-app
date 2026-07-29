@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
+import { spawnSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -36,51 +36,33 @@ function assert(condition: boolean, message: string): asserts condition {
 }
 type Run = Awaited<ReturnType<typeof run>>;
 
-interface LockPackage {
-  version?: string;
-  optional?: boolean;
-  os?: unknown;
-  cpu?: unknown;
-}
-interface LockFile {
-  packages: Record<string, LockPackage>;
-}
-const readLock = (raw: string): LockFile => JSON.parse(raw);
-
 const checkLockfileDrift = (): void => {
-  const src = readLock(readFileSync(join(rootDir, 'package-lock.json'), 'utf8'));
-  let installedRaw: string;
-  try {
-    installedRaw = readFileSync(join(rootDir, 'node_modules/.package-lock.json'), 'utf8');
-  } catch {
-    throw new SmokeFailure(
-      'Dependencies are not installed (node_modules/.package-lock.json missing). Run: npm install',
+  const verification = spawnSync(
+    'pnpm',
+    ['install', '--frozen-lockfile', '--lockfile-only'],
+    { cwd: rootDir, encoding: 'utf8' },
+  );
+  if (verification.error !== undefined) {
+    fail(`Could not run pnpm: ${verification.error.message}`);
+  }
+  if (verification.status !== 0) {
+    fail(
+      `pnpm-lock.yaml does not match package.json:\n${verification.stdout}${verification.stderr}`,
     );
   }
-  const installed = readLock(installedRaw);
-  const problems: string[] = [];
-  for (const [name, entry] of Object.entries(src.packages)) {
-    if (name === '') continue;
-    const present = installed.packages[name];
-    // Platform-conditional packages are legitimately absent on this host.
-    const platformConditional =
-      entry.optional === true || entry.os !== undefined || entry.cpu !== undefined;
-    if (!present) {
-      if (!platformConditional) problems.push(`missing: ${name}`);
-      continue;
-    }
-    if (entry.version !== undefined && present.version !== undefined && entry.version !== present.version) {
-      problems.push(`version: ${name} lock=${entry.version} installed=${present.version}`);
-    }
+  const source = readFileSync(join(rootDir, 'pnpm-lock.yaml'), 'utf8');
+  let installed: string;
+  try {
+    installed = readFileSync(join(rootDir, 'node_modules/.pnpm/lock.yaml'), 'utf8');
+  } catch {
+    throw new SmokeFailure(
+      'Dependencies are not installed (node_modules/.pnpm/lock.yaml missing). Run: pnpm install --frozen-lockfile',
+    );
   }
-  for (const name of Object.keys(installed.packages)) {
-    if (name === '') continue;
-    if (!(name in src.packages)) problems.push(`extraneous: ${name}`);
-  }
-  if (problems.length > 0) {
-    const shown = problems.slice(0, 10).join('\n  ');
-    const rest = problems.length > 10 ? `\n  ...and ${problems.length - 10} more` : '';
-    fail(`Installed dependency tree does not match package-lock.json. Run: npm install\n  ${shown}${rest}`);
+  if (installed !== source) {
+    fail(
+      'Installed dependency tree does not match pnpm-lock.yaml. Run: pnpm install --frozen-lockfile',
+    );
   }
 };
 
@@ -93,7 +75,7 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     await client.query(`CREATE DATABASE ${SMOKE_DB}`);
   } catch (cause) {
     fail(
-      `Could not prepare the smoke database "${SMOKE_DB}". Is the dev Postgres up (npm run db:up)?\n${String(cause)}`,
+      `Could not prepare the smoke database "${SMOKE_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
   } finally {
     await client.end();

@@ -1,6 +1,6 @@
 # Server route table
 
-Generated from the Hono route table by `npx tsx scripts/generate-route-table.mjs`.
+Generated from the Hono route table by `pnpm exec tsx scripts/generate-route-table.mjs`.
 Self-authenticating routes enforce a session, API key, or operator secret before the shared tenant identity middleware.
 
 | Route | Access | Operation | Purpose |

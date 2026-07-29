@@ -1,8 +1,8 @@
 # Visual regression
 
-`npm run visual` captures the canonical seeded routes at fixed desktop and mobile
+`pnpm run visual` captures the canonical seeded routes at fixed desktop and mobile
 viewports in the Shadcn, Material, and Scoreboard themes. It compares every pixel
-against the committed baseline in `tasks/visual-goldens/`. `npm run visual:update`
+against the committed baseline in `tasks/visual-goldens/`. `pnpm run visual:update`
 is the only baseline-authoring command.
 
 The harness fixes the seed time, browser clock, locale, timezone, color scheme,
@@ -28,7 +28,7 @@ set as if the bytes were portable.
 ## Baseline ownership
 
 Only the contributor responsible for the visual change or a maintainer reviewing
-that change may run `npm run visual:update`. It must run on the macOS renderer
+that change may run `pnpm run visual:update`. It must run on the macOS renderer
 from the exact commit proposed for review. If the commit changes afterwards, the
 baseline and its evidence must be regenerated from the new commit.
 

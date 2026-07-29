@@ -2,7 +2,7 @@
 
 Storybook is Together's isolated component workbench and design-review
 catalogue. A story may merge only when the fast story-module test in
-`npm run check` passes. CI also runs `npm run storybook:build` as a hard step
+`pnpm run check` passes. CI also runs `pnpm run storybook:build` as a hard step
 to catch builder and `.storybook` configuration drift.
 
 ## Supported scope
@@ -19,7 +19,7 @@ of the seven themes.
 Stories do not verify routing, data fetching, authentication, tenant
 resolution, content security policy, server-rendered public pages, island
 state, or coverage. The nonce policy in `apps/server/src/app.ts` is verified by
-`npm run visual` and `npm run smoke`, never by stories. Island cores governed
+`pnpm run visual` and `pnpm run smoke`, never by stories. Island cores governed
 by `tsconfig.islands.json` remain DOM-free and node-tested.
 `vitest.config.ts` deliberately excludes `**/*.stories.tsx` from coverage.
 
@@ -39,21 +39,21 @@ files.
 
 `addons: []` stays empty. Do not add a Storybook test runner, an accessibility
 addon, Chromatic, or another hosted comparison service. Accessibility already
-belongs to `npm run a11y` and `eslint-plugin-jsx-a11y`; hosted advisory pixels
+belongs to `pnpm run a11y` and `eslint-plugin-jsx-a11y`; hosted advisory pixels
 belong to Argos. Any Storybook dependency or addon requires an owner decision
 and the licence review required by `CLAUDE.md`.
 
 ## Pixel ownership
 
 Canonical route pixels belong to `tasks/visual-goldens/` and the deterministic
-`npm run visual` workflow documented in the
+`pnpm run visual` workflow documented in the
 [visual regression policy](visual-regression.md). The hosted advisory track is
 Argos.
 
 `tasks/lost-pixel-baselines/` is an advisory, partial, macOS-authored local
 snapshot. It is not a golden set or a merge signal and must never be added to a
 gate or branch protection. Missing baselines are expected rather than defects;
-`npm run visual:stories` reports unbaselined stories as additions.
+`pnpm run visual:stories` reports unbaselined stories as additions.
 
 The story-shot regime differs materially from the route goldens: it uses a
 `0.01` threshold, four concurrent shots, one flakiness retry, a fixed
@@ -71,5 +71,5 @@ batch.
 ## Merge gate
 
 `apps/web/src/stories/stories.test.tsx` eagerly imports every story module and
-checks its CSF exports during `npm run check`. CI then builds the complete
+checks its CSF exports during `pnpm run check`. CI then builds the complete
 Storybook. A story added without passing both checks cannot merge.

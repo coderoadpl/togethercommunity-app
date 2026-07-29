@@ -1,59 +1,21 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { z } from 'zod';
+const result = spawnSync(
+  'pnpm',
+  ['install', '--frozen-lockfile', '--lockfile-only'],
+  { cwd: join(import.meta.dirname, '..'), encoding: 'utf8' },
+);
 
-const resultSchema = z.object({
-  added: z.number().int().nonnegative(),
-  removed: z.number().int().nonnegative(),
-  changed: z.number().int().nonnegative(),
-});
-
-const cacheDir = mkdtempSync(join(tmpdir(), 'together-lock-lint-'));
-
-try {
-  const result = spawnSync(
-    'npm',
-    [
-      'install',
-      '--package-lock-only',
-      '--ignore-scripts',
-      '--dry-run',
-      '--json',
-      '--legacy-peer-deps',
-      '--loglevel',
-      'warn',
-      '--cache',
-      cacheDir,
-    ],
-    { encoding: 'utf8' },
-  );
-
-  if (result.status !== 0) {
-    process.stderr.write(result.stderr);
-    process.exitCode = 1;
-  } else {
-    const output = result.stdout.trim();
-    if (output === '') {
-      process.stderr.write(
-        'lock-lint: npm completed without the JSON lockfile report\n',
-      );
-      process.exitCode = 1;
-    } else {
-      const changes = resultSchema.parse(JSON.parse(output));
-      const drift = changes.added + changes.removed + changes.changed;
-      if (drift > 0) {
-        process.stderr.write(
-          `lock-lint: package-lock.json has ${String(drift)} pending change(s); run npm install\n`,
-        );
-        process.exitCode = 1;
-      } else {
-        process.stdout.write('lock-lint: OK\n');
-      }
-    }
-  }
-} finally {
-  rmSync(cacheDir, { recursive: true, force: true });
+if (result.error !== undefined) {
+  process.stderr.write(`lock-lint: could not run pnpm: ${result.error.message}\n`);
+  process.exit(1);
 }
+
+if (result.status !== 0) {
+  process.stderr.write(result.stdout);
+  process.stderr.write(result.stderr);
+  process.exit(1);
+}
+
+process.stdout.write('lock-lint: OK\n');

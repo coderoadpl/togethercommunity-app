@@ -147,6 +147,7 @@ export interface Messages {
     heading: string;
     loading: string;
     publishedDraft: (params: { published: number; draft: number }) => string;
+    membersRemoved: (params: { count: number }) => string;
     activeGrants: string;
     recentMembers: string;
     viewAllMembers: string;
@@ -630,6 +631,7 @@ export interface Messages {
     removeConfirmIntro: (params: { email: string }) => string;
     removeImpact: (params: { grants: number; completedLessons: number }) => string;
     deletedBadge: string;
+    tombstoneNotice: string;
     exportFailed: string;
     allMembersBack: string;
     joined: string;

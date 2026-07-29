@@ -375,7 +375,14 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
         <>
           <LearningSummary memberId={member.id} />
 
-          <GrantForm memberId={member.id} onGranted={refresh} />
+          {member.deletedAt === null ? (
+            <GrantForm memberId={member.id} onGranted={refresh} />
+          ) : (
+            <StatusView
+              state={{ kind: 'empty', title: t.members.tombstoneNotice }}
+              data-testid="member-tombstone-notice"
+            />
+          )}
 
           <Box component="section">
         <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
@@ -417,7 +424,9 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
+                        {member.deletedAt === null ? (
+                          <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
+                        ) : null}
                         <Button size="small" variant="text" color="error" onClick={() => setRevoking(grant)}>
                           {t.members.revoke}
                         </Button>

@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
   API_KEY_HEADER,
+  capabilitiesForPrincipal,
   HTTP_STATUS_BY_ERROR_CODE,
   TENANT_HEADER,
   toEnvelope,
@@ -43,6 +44,7 @@ import {
   sendMarketingMessages,
   unsubscribeAllMarketing,
   unsubscribeOneClick,
+  type Ctx,
 } from '#core/server/index.js';
 
 import type { AppDeps, MarketingAppDeps } from './composition.js';
@@ -72,10 +74,18 @@ const requireMarketing = (deps: AppDeps): Result<MarketingAppDeps, AppError> => 
 const apiIdentity = (tenant: Tenant): Identity => ({
   userId: 'api-key', email: 'api-key@together.invalid', name: 'Automation API',
   tenantId: tenant.id, tenantSlug: tenant.slug, tenantName: tenant.name,
-  staffRole: 'admin', memberId: null,
+  staffRole: null, memberId: null,
 });
 
-const authenticate = async (headers: Headers, deps: AppDeps): Promise<Result<{ tenant: Tenant; identity: Identity }, AppError>> => {
+const tokenCtx = (tenant: Tenant): Ctx => ({
+  identity: apiIdentity(tenant),
+  capabilities: capabilitiesForPrincipal('token'),
+});
+
+export const authenticateMarketingApiKey = async (
+  headers: Headers,
+  deps: AppDeps,
+): Promise<Result<{ tenant: Tenant; ctx: Ctx }, AppError>> => {
   const resolved = await resolveTenant(headers.get('host') ?? '', headers.get(TENANT_HEADER), deps);
   if (!resolved.ok) return resolved;
   if (resolved.value === null) return err(tenantNotFound());
@@ -83,7 +93,13 @@ const authenticate = async (headers: Headers, deps: AppDeps): Promise<Result<{ t
   if (key === null) return err(unauthorized('Missing API key'));
   const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);
   return authenticated.ok
-    ? ok({ tenant: resolved.value.tenant, identity: apiIdentity(resolved.value.tenant) })
+    ? ok({
+        tenant: resolved.value.tenant,
+        ctx: {
+          identity: apiIdentity(resolved.value.tenant),
+          capabilities: capabilitiesForPrincipal('api-key'),
+        },
+      })
     : authenticated;
 };
 
@@ -204,12 +220,12 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/m2m/marketing/messages', async (c) => {
     const marketingResult = requireMarketing(deps);
     if (!marketingResult.ok) return response(marketingResult);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const rawBody = await c.req.text();
     const idempotencyKey = c.req.header('Idempotency-Key');
     if (idempotencyKey !== undefined) {
-      const claimed = await claimIdempotencyKey({ identity: authenticated.value.identity }, {
+      const claimed = await claimIdempotencyKey(authenticated.value.ctx, {
         key: idempotencyKey,
         method: 'POST',
         path: '/api/m2m/marketing/messages',
@@ -221,7 +237,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     const json: unknown = (() => { try { return JSON.parse(rawBody); } catch { return null; } })();
     const parsed = marketingAutomationMessagesSchema.safeParse(json);
     if (!parsed.success) {
-      if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status: 400 }, { repository: marketingResult.value.idempotency });
+      if (idempotencyKey !== undefined) await completeIdempotentRequest(authenticated.value.ctx, { key: idempotencyKey, status: 400 }, { repository: marketingResult.value.idempotency });
       return response(err(validation('Invalid marketing messages payload', parsed.error.flatten())));
     }
     const templates = new Map<string, Awaited<ReturnType<MarketingAppDeps['campaigns']['findById']>>>();
@@ -229,7 +245,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       if (message.templateId === undefined || templates.has(message.templateId)) continue;
       const template = await marketingResult.value.campaigns.findById(authenticated.value.tenant.id, message.templateId);
       if (template === null) {
-        if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status: 400 }, { repository: marketingResult.value.idempotency });
+        if (idempotencyKey !== undefined) await completeIdempotentRequest(authenticated.value.ctx, { key: idempotencyKey, status: 400 }, { repository: marketingResult.value.idempotency });
         return response(err(validation('The requested marketing template was not found')));
       }
       templates.set(message.templateId, template);
@@ -255,7 +271,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       }
       campaignIds.set(message.campaignKey, campaignId);
     }
-    const sent = await sendMarketingMessages({ identity: authenticated.value.identity }, parsed.data.messages.map((message) => {
+    const sent = await sendMarketingMessages(authenticated.value.ctx, parsed.data.messages.map((message) => {
       const template = message.templateId === undefined ? null : templates.get(message.templateId) ?? null;
       return {
         to: message.to,
@@ -271,7 +287,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       };
     }), sendDeps(deps, marketingResult.value, `${new URL(c.req.url).origin}/u`));
     const status = sent.ok ? 202 : HTTP_STATUS_BY_ERROR_CODE[sent.error.code];
-    if (idempotencyKey !== undefined) await completeIdempotentRequest({ identity: authenticated.value.identity }, { key: idempotencyKey, status }, { repository: marketingResult.value.idempotency });
+    if (idempotencyKey !== undefined) await completeIdempotentRequest(authenticated.value.ctx, { key: idempotencyKey, status }, { repository: marketingResult.value.idempotency });
     if (!sent.ok) return sent.error.code === 'rate_limited'
       ? response(sent, undefined, { 'retry-after': '1' })
       : response(sent);
@@ -283,7 +299,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/eligibility', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingEligibilityQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid eligibility query', parsed.error.flatten())));
@@ -293,7 +309,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
       definitionId = definitions.find((definition) => definition.kind === 'optional_marketing')?.id;
     }
     if (definitionId === undefined) return response(err(validation('No active marketing consent definition exists')));
-    return response(await getMarketingEligibility({ identity: authenticated.value.identity }, {
+    return response(await getMarketingEligibility(authenticated.value.ctx, {
       email: parsed.data.email, definitionId,
     }, { definitions: marketing.value.definitions, consents: marketing.value.marketingConsents, suppressions: marketing.value.suppressions, hmac: marketing.value.hmac }));
   });
@@ -301,12 +317,12 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/m2m/marketing/consents', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingConsentApiSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) return response(err(validation('Invalid marketing consent payload', parsed.error.flatten())));
     const { email, memberId, definitionId, collectedAt, source, proofRef, ip, userAgent } = parsed.data;
-    return response(await recordMarketingConsent({ identity: authenticated.value.identity }, {
+    return response(await recordMarketingConsent(authenticated.value.ctx, {
       email, memberId, definitionId, source,
       evidence: { collectedAt, proofRef, ...(ip === undefined ? {} : { ip }), ...(userAgent === undefined ? {} : { userAgent }) },
       confirmationBaseUrl: `${new URL(c.req.url).origin}/marketing/confirm`,
@@ -321,7 +337,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/suppressions', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingSuppressionQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid suppression query', parsed.error.flatten())));
@@ -336,11 +352,11 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.post('/api/m2m/marketing/suppressions', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingSuppressionApiSchema.safeParse(await readJson(c.req.raw));
     if (!parsed.success) return response(err(validation('Invalid suppression payload', parsed.error.flatten())));
-    return response(await addManualSuppression({ identity: authenticated.value.identity }, parsed.data, {
+    return response(await addManualSuppression(authenticated.value.ctx, parsed.data, {
       suppressions: marketing.value.suppressions, hmac: marketing.value.hmac, ids: deps.ids, clock: deps.clock,
     }), 201);
   });
@@ -348,7 +364,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/messages', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const parsed = marketingMessagesQuerySchema.safeParse(queryObject(c.req.url));
     if (!parsed.success) return response(err(validation('Invalid message query', parsed.error.flatten())));
@@ -370,7 +386,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/messages/:id', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const send = await marketing.value.campaignSends.findById(authenticated.value.tenant.id, c.req.param('id'));
     if (send === null) return response(err(appError('not_found', 'Marketing message was not found')));
@@ -385,7 +401,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/consent-definitions', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const definitions = await marketing.value.definitions.list(authenticated.value.tenant.id, 'active');
     const discovered = await Promise.all(definitions.map(async (definition) => {
@@ -409,7 +425,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
   app.get('/api/m2m/marketing/templates', async (c) => {
     const marketing = requireMarketing(deps);
     if (!marketing.ok) return response(marketing);
-    const authenticated = await authenticate(c.req.raw.headers, deps);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
     if (!authenticated.ok) return response(authenticated);
     const campaigns = await marketing.value.campaigns.list(authenticated.value.tenant.id);
     return response(ok({
@@ -468,7 +484,10 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     }
     const message: unknown = (() => { try { return JSON.parse(verified.value.message); } catch { return null; } })();
     const applyEvent = async (event: Parameters<typeof applyVerifiedSesEvent>[1]) => {
-      const applied = await applyVerifiedSesEvent({ identity: { ...apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }), staffRole: null } }, event, {
+      const applied = await applyVerifiedSesEvent({
+        identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', contentVersion: 1 }),
+        capabilities: capabilitiesForPrincipal('webhook'),
+      }, event, {
         sesSettings: marketing.value.sesSettings, sends: marketing.value.campaignSends,
         events: marketing.value.events, outbox: deps.emailOutbox,
         suppressions: marketing.value.suppressions,
@@ -538,9 +557,8 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     if (!marketing.ok) return response(marketing);
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
-    const identity = apiIdentity(resolved.value.tenant);
     const result = await unsubscribeOneClick(
-      { identity },
+      tokenCtx(resolved.value.tenant),
       { token: c.req.param('token') },
       unsubscribeDeps(deps, marketing.value),
     );
@@ -553,11 +571,11 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const token = c.req.param('token');
-    const identity = apiIdentity(resolved.value.tenant);
-    const result = await unsubscribeOneClick({ identity }, { token }, unsubscribeDeps(deps, marketing.value));
+    const ctx = tokenCtx(resolved.value.tenant);
+    const result = await unsubscribeOneClick(ctx, { token }, unsubscribeDeps(deps, marketing.value));
     if (!result.ok) return response(result);
     const preferences = await getUnsubscribePreferences(
-      { identity }, { token }, unsubscribeDeps(deps, marketing.value),
+      ctx, { token }, unsubscribeDeps(deps, marketing.value),
     );
     if (!preferences.ok) return response(preferences);
     return html(renderPreferenceResultPage({
@@ -577,7 +595,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const token = c.req.param('token');
     const result = await unsubscribeAllMarketing(
-      { identity: apiIdentity(resolved.value.tenant) },
+      tokenCtx(resolved.value.tenant),
       { token },
       unsubscribeDeps(deps, marketing.value),
     );
@@ -600,7 +618,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const token = c.req.param('token');
     const form = await c.req.formData();
     const selectedDefinitionIds = form.getAll('consent').filter((value): value is string => typeof value === 'string');
-    const result = await saveMarketingConsentPreferences({ identity: apiIdentity(resolved.value.tenant) }, {
+    const result = await saveMarketingConsentPreferences(tokenCtx(resolved.value.tenant), {
       token,
       selectedDefinitionIds,
       evidence: {
@@ -633,7 +651,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const preferences = await getUnsubscribePreferences(
-      { identity: apiIdentity(resolved.value.tenant) },
+      tokenCtx(resolved.value.tenant),
       { token: c.req.param('token') },
       unsubscribeDeps(deps, marketing.value),
     );
@@ -675,7 +693,7 @@ export const registerPublicMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): v
     const resolved = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
     if (!resolved.ok || resolved.value === null) return response(resolved.ok ? err(tenantNotFound()) : resolved);
     const token = c.req.param('token');
-    const result = await confirmMarketingConsent({ identity: apiIdentity(resolved.value.tenant) }, {
+    const result = await confirmMarketingConsent(tokenCtx(resolved.value.tenant), {
       token,
       evidence: {
         collectedAt: deps.clock.nowIso(),

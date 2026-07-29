@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { API_PATHS, SCHEDULER_OPERATOR_SECRET_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import {
+  API_PATHS,
+  capabilitiesForPrincipal,
+  SCHEDULER_OPERATOR_SECRET_HEADER,
+  TENANT_HEADER,
+} from '#core/contract/index.js';
 import {
   BETTER_AUTH_MAGIC_LINK_PATH,
 } from '#adapters/auth/create-auth.js';
@@ -23,7 +28,8 @@ import {
   type TenantDomain,
   type TermsConsent,
 } from '#core/domain/index.js';
-import type { PaymentWebhookEvent } from '#core/server/index.js';
+import { authorize, type PaymentWebhookEvent } from '#core/server/index.js';
+import { authenticateMarketingApiKey } from './marketing-routes.js';
 import {
   FakeEmailHmac,
   FakeScheduler,
@@ -697,6 +703,27 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 };
 
 describe('marketing HTTP surfaces', () => {
+  it('denies staff-only capabilities to an authenticated API-key context', async () => {
+    const configured = deps();
+    configured.tenantApiKeys = {
+      listByTenant: async () => [],
+      create: async () => undefined,
+      findActiveByHash: async (tenantId, hash) => tenantId === acme.id && hash === 'hash:marketing-key' ? {
+        id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+        createdAt: '2026-07-22T00:00:00.000Z', revokedAt: null,
+      } : null,
+      revoke: async () => null,
+    };
+    const authenticated = await authenticateMarketingApiKey(new Headers({
+      host: 'acme.localhost:48730',
+      'x-api-key': 'marketing-key',
+    }), configured);
+    expect(authenticated.ok).toBe(true);
+    if (!authenticated.ok) return;
+    expect(authenticated.value.ctx.capabilities).toEqual(capabilitiesForPrincipal('api-key'));
+    expect(authorize(authenticated.value.ctx, 'marketing:campaign:write')).toMatchObject({ code: 'forbidden' });
+  });
+
   it('runs the due-campaign and retention scan only for the configured cron bearer', async () => {
     const marketing = marketingDeps();
     const triggers: string[] = [];

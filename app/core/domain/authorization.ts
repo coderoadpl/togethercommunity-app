@@ -217,11 +217,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'support:request',
     'marketing:consent:read',
     'marketing:consent:write',
-    'marketing:campaign:dispatch',
     'marketing:message:read',
-    'marketing:message:send',
-    'scheduler:dispatch',
-    'webhook:process',
   ],
   authenticated: [
     'tenant:create',
@@ -229,11 +225,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'terms:accept',
     'marketing:consent:read',
     'marketing:consent:write',
-    'marketing:campaign:dispatch',
     'marketing:message:read',
-    'marketing:message:send',
-    'scheduler:dispatch',
-    'webhook:process',
   ],
   'api-key': [
     'marketing:consent:read',

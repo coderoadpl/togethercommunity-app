@@ -24,4 +24,9 @@ describe('localizeError', () => {
     expect(localizeError(undefined, en)).toBe(en.errors.messageUnknown);
     expect(localizeError({ appError: { code: 'not-a-real-code' } }, pl)).toBe(pl.errors.messageUnknown);
   });
+
+  it('uses a slug-free generic message for reserved addresses', () => {
+    expect(localizeErrorCode('slug_reserved', en)).toBe(en.errors.messageSlugReservedGeneric);
+    expect(localizeErrorCode('slug_reserved', pl)).not.toContain('…');
+  });
 });

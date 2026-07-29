@@ -140,6 +140,22 @@ const ordersExportOptionsSchema = z.object({
   search: z.string().min(1).optional(),
   out: z.string().min(1).optional(),
 });
+const ordersReconciliationOptionsSchema = z.object({
+  minAgeMinutes: z
+    .string()
+    .regex(/^\d+$/, 'min-age-minutes must be a non-negative integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+  limit: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
+    .transform((value) => Number.parseInt(value, 10))
+    .optional(),
+});
+const supportMessageOptionsSchema = z.object({
+  subject: z.string().trim().min(1),
+  body: z.string().trim().min(1),
+});
 const couponCreateOptionsSchema = z.object({
   code: z.string().trim().min(1),
   kind: z.enum(['percent', 'amount']),
@@ -1007,6 +1023,34 @@ ordersCommand
     }),
   );
 
+ordersCommand
+  .command('reconciliation')
+  .description('List paid orders that have no matching product grant')
+  .option('--min-age-minutes <n>')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([ordersReconciliationOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listOrderReconciliation({
+          ...(options.minAgeMinutes === undefined
+            ? {}
+            : { minAgeMinutes: options.minAgeMinutes }),
+          ...(options.limit === undefined ? {} : { limit: options.limit }),
+        }),
+        ctx.json,
+        (data) =>
+          data.rows.length === 0
+            ? 'no paid orders without a grant'
+            : data.rows
+                .map(
+                  (row) =>
+                    `${row.createdAt}\t${row.memberEmail}\t${row.productTitle}\t${row.amountCents} ${row.currency}\t(${row.orderId.slice(0, 8)})`,
+                )
+                .join('\n'),
+      );
+    }),
+  );
+
 ordersCommand.command('summary').description('Dashboard sales summary (last 30 days)').action(
   withCtx(async (ctx) => {
     emit(await ctx.api.salesSummary(), ctx.json, (data) => {
@@ -1020,6 +1064,22 @@ ordersCommand.command('summary').description('Dashboard sales summary (last 30 d
     });
   }),
 );
+
+program
+  .command('support')
+  .description('Contact the active tenant creator')
+  .command('send')
+  .requiredOption('--subject <subject>')
+  .requiredOption('--body <body>')
+  .action(
+    withInput(z.tuple([supportMessageOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.sendSupportMessage(options),
+        ctx.json,
+        () => 'support message queued',
+      );
+    }),
+  );
 
 const couponsCommand = program.command('coupons').description('Coupons and attributed sales');
 

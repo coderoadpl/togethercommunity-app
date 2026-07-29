@@ -601,14 +601,14 @@ interface ShotFailure {
 const comparePng = (name: string, currentPath: string): ShotFailure | null => {
   const goldenPath = join(goldenDir, name);
   if (!existsSync(goldenPath)) {
-    return { file: name, reason: 'golden missing — run `npm run visual:update` and review it' };
+    return { file: name, reason: 'baseline missing — run `npm run visual:update` and review it' };
   }
   const golden = PNG.sync.read(readFileSync(goldenPath));
   const current = PNG.sync.read(readFileSync(currentPath));
   if (golden.width !== current.width || golden.height !== current.height) {
     return {
       file: name,
-      reason: `size mismatch: golden ${golden.width}x${golden.height} vs current ${current.width}x${current.height}`,
+      reason: `size mismatch: baseline ${golden.width}x${golden.height} vs current ${current.width}x${current.height}`,
     };
   }
   const diff = new PNG({ width: golden.width, height: golden.height });
@@ -637,7 +637,7 @@ try {
 
   if (updateMode && process.platform !== goldenAuthoringPlatform) {
     fail(
-      `Golden authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
+      `Baseline authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
     );
   }
 
@@ -732,19 +732,19 @@ try {
       `\nvisual:argos-capture: DONE (${seconds}s) — ${captured} screenshots written to ${argosDir}`,
     );
   } else if (updateMode) {
-    console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} goldens written to ${goldenDir}`);
-    console.log('Review the golden diffs and commit them with the change that caused them.');
+    console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} baseline images written to ${goldenDir}`);
+    console.log('Review the baseline diffs and commit them with the change that caused them.');
   } else if (failures.length > 0) {
-    console.error(`\nvisual: FAIL — ${failures.length}/${captured} screenshots differ from the goldens:\n`);
+    console.error(`\nvisual: FAIL — ${failures.length}/${captured} screenshots differ from the baseline:\n`);
     for (const failure of failures) {
       console.error(`  ✗ ${failure.file}\n    ${failure.reason}`);
     }
     console.error(
-      '\nIntended change? Run `npm run visual:update`, review the golden diffs and commit them.\nUnintended? That is a visual regression — fix it.',
+      '\nIntended change? Run `npm run visual:update`, review the baseline diffs and commit them.\nUnintended? That is a visual regression — fix it.',
     );
     process.exitCode = 1;
   } else {
-    console.log(`\nvisual: PASS (${seconds}s) — ${captured} screenshots match the goldens`);
+    console.log(`\nvisual: PASS (${seconds}s) — ${captured} screenshots match the baseline`);
   }
 } catch (error) {
   const message = error instanceof VisualFailure ? error.message : String(error);

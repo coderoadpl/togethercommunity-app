@@ -83,6 +83,14 @@ const PickTenant = () => {
     event.preventDefault();
     createTenant.mutate({ name, slug: slugPreview });
   };
+  const slugReserved =
+    typeof createTenant.error === 'object' &&
+    createTenant.error !== null &&
+    'appError' in createTenant.error &&
+    typeof createTenant.error.appError === 'object' &&
+    createTenant.error.appError !== null &&
+    'code' in createTenant.error.appError &&
+    createTenant.error.appError.code === 'slug_reserved';
 
   return (
     <FocusCard eyebrow={t.tenant.eachOwnDomain} width="wide">
@@ -134,6 +142,11 @@ const PickTenant = () => {
           <Typography variant="caption" component="p">
             {slugPreview ? tenantUrl(slugPreview) : t.tenant.enterNameToPreview}
           </Typography>
+          {slugReserved ? (
+            <Typography color="error" variant="caption" component="p">
+              {t.errors.messageSlugReserved({ slug: slugPreview })}
+            </Typography>
+          ) : null}
           <Button type="submit" variant="contained" disabled={createTenant.isPending || !slugPreview}>
             {createTenant.isPending ? t.tenant.creating : t.tenant.createButton}
           </Button>

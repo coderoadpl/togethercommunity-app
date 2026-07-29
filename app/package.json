@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "license": "FSL-1.1-ALv2",
   "description": "Agent-first, strictly layered full-stack TypeScript foundation for multi-tenant SaaS",
   "imports": {
     "#core/*": "./core/*",
@@ -30,9 +31,10 @@
     "depcruise": "depcruise core adapters apps scripts",
     "knip": "knip",
     "doc-lint": "tsx scripts/doc-lint.ts",
+    "license-lint": "tsx scripts/license-lint.ts",
     "permissions:generate": "tsx scripts/permission-inventory.ts",
     "permissions:check": "tsx scripts/permission-inventory.ts --check",
-    "check": "npm run typecheck && npm run typecheck:islands && npm run lint && npm run lock-lint && npm run migration-lint && npm run depcruise && npm run knip && npm run doc-lint && npm run test",
+    "check": "npm run typecheck && npm run typecheck:islands && npm run lint && npm run lock-lint && npm run license-lint && npm run migration-lint && npm run depcruise && npm run knip && npm run doc-lint && npm run test",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx adapters/db/migrate.ts",
@@ -143,5 +145,8 @@
     "typescript-eslint": "^8.37.0",
     "vite": "^7.0.5",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "handlebars": "4.7.9"
   }
 }

@@ -5,9 +5,57 @@ import {
   magicLink,
   resetPassword,
   spacePost,
+  subscriptionEnded,
+  subscriptionPaymentFailed,
+  supportMessage,
   threadReply,
   welcomeSetPassword,
 } from './transactional-email.js';
+
+describe('subscription lifecycle emails', () => {
+  const input = {
+    tenantName: 'Acme <Studio>',
+    productTitle: 'Course "One"',
+    accessEndsAt: '1998-08-17T10:00:00.000Z',
+  };
+
+  it('renders payment failure in both languages and omits an absent portal link', () => {
+    const pl = subscriptionPaymentFailed('pl', { ...input, billingPortalUrl: null });
+    expect(pl.subject).toContain('Course "One"');
+    expect(pl.html).toContain('Acme &lt;Studio&gt;');
+    expect(pl.html).toContain('Course &quot;One&quot;');
+    expect(pl.html).not.toContain('<a ');
+
+    const en = subscriptionPaymentFailed('en', {
+      ...input,
+      billingPortalUrl: 'https://billing.example.com/portal',
+    });
+    expect(en.subject).toContain('Payment failed');
+    expect(en.html).toContain('https://billing.example.com/portal');
+  });
+
+  it('renders ended subscription copy in both languages with an offer link', () => {
+    const offerUrl = 'https://acme.example.com/';
+    expect(subscriptionEnded('pl', { ...input, offerUrl }).html).toContain('Zobacz ofertę');
+    expect(subscriptionEnded('en', { ...input, offerUrl }).html).toContain('View the offer');
+  });
+});
+
+describe('support message email', () => {
+  it('renders PL and EN while escaping sender-controlled content', () => {
+    const input = {
+      tenantName: 'Acme <Studio>',
+      memberEmail: 'member@example.com',
+      memberDisplay: 'Marta & Jan',
+      subject: 'Help <now>',
+      body: 'Please <script>alert(1)</script>',
+    };
+    const pl = supportMessage('pl', input);
+    expect(pl.html).toContain('Acme &lt;Studio&gt;');
+    expect(pl.html).not.toContain('<script>');
+    expect(supportMessage('en', input).html).toContain('Reply to: member@example.com');
+  });
+});
 
 describe('welcomeSetPassword', () => {
   it('renders the Polish template', () => {

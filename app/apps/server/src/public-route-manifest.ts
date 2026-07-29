@@ -14,6 +14,7 @@ export type PublicRouteManifestEntry = {
 };
 
 export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
+  { path: '*', methods: ['GET'], mutating: false, why: 'Tenant social preview for link crawlers' },
   { path: '/api/health', methods: ['GET'], mutating: false, why: 'Runtime health check' },
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
   { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },
@@ -45,7 +46,8 @@ export const publicRouteManifestEntry = (
   manifest: readonly PublicRouteManifestEntry[] = PUBLIC_ROUTE_MANIFEST,
 ): PublicRouteManifestEntry | undefined =>
   manifest.find((entry) =>
-    entry.methods.includes(route.method) && entry.path === route.path,
+    entry.methods.includes(route.method)
+    && entry.path === (route.path === '/*' ? '*' : route.path),
   );
 
 export const assertPublicRouteManifest = (

@@ -37,6 +37,7 @@ const post = (id: string, body: string): Post => ({
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
+  pinnedAt: null,
 });
 
 const bodiesFor = async (query: string): Promise<string[]> => {

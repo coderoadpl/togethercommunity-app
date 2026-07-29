@@ -23,6 +23,7 @@ const post = (input: Partial<PublicPost> & { id: string }): PublicPost => ({
   createdAt: '2026-07-15T08:00:00.000Z',
   editedAt: null,
   deletedAt: null,
+  pinnedAt: null,
   ...input,
 });
 

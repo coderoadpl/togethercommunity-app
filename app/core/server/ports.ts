@@ -23,6 +23,7 @@ import type {
   Membership,
   Order,
   OrderListItem,
+  PaidWithoutGrantRow,
   OrderStatus,
   PriceKind,
   Product,
@@ -179,7 +180,17 @@ export interface PostRepository {
   ): Promise<{ threads: Array<{ post: Post; replyCount: number }>; nextCursor: string | null }>;
   listReplies(tenantId: string, rootPostId: string): Promise<Post[]>;
   updateBody(tenantId: string, input: { id: string; body: string; editedAt: string }): Promise<Post | null>;
+  /** Clears pinnedAt when marking a post deleted. */
   softDelete(tenantId: string, input: { id: string; deletedAt: string }): Promise<Post | null>;
+  setPinned(tenantId: string, input: { id: string; pinnedAt: string | null }): Promise<Post | null>;
+  listPinnedForContext(
+    tenantId: string,
+    query: { contextKind: PostContextKind; contextId: string; limit: number },
+  ): Promise<Post[]>;
+  countPinnedForContext(
+    tenantId: string,
+    query: { contextKind: PostContextKind; contextId: string },
+  ): Promise<number>;
   search(
     tenantId: string,
     query: { query: string; lessonIds: string[]; spaceIds: string[]; limit: number },
@@ -784,6 +795,10 @@ export interface OrderRepository {
   }>;
   revenueSince(tenantId: string, sinceIso: string): Promise<Array<{ currency: string; amountCents: number }>>;
   countSince(tenantId: string, sinceIso: string): Promise<number>;
+  listPaidWithoutGrant(
+    tenantId: string,
+    query: { paidBefore: string; limit: number },
+  ): Promise<PaidWithoutGrantRow[]>;
 }
 
 export interface OrderDetailRepository {
@@ -943,6 +958,11 @@ export interface DevEmail {
 
 export interface DevEmailReader {
   findByRecipient(to: string): Promise<DevEmail | null>;
+}
+
+/** Dev-only: the sinks are scratch space, so a fresh boot starts from an empty one. */
+export interface DevSinkPurge {
+  purge(): Promise<{ magicLinks: number; emails: number }>;
 }
 
 export interface TenantDomainRepository {

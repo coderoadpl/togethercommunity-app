@@ -14,6 +14,7 @@ import {
 } from './public-route-manifest.js';
 import { registerPublicRoutes } from './public-app.js';
 import { respond } from './respond.js';
+import { registerSocialPreviewRoute } from './social-preview.js';
 import { recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
@@ -73,6 +74,7 @@ export const buildApp = (deps: AppDeps) => {
     }
     const routeExists = app.routes.some((route) =>
       route.method !== 'ALL'
+      && route.path !== '/*'
       && route.method === c.req.method
       && routePathMatches(route.path, c.req.path),
     );
@@ -95,6 +97,9 @@ export const buildApp = (deps: AppDeps) => {
       ? deps.auth.handler(c.req.raw)
       : respond(err(notFound(`No API route for ${c.req.method} ${c.req.path}`))),
   );
+  const socialRouteStart = app.routes.length;
+  registerSocialPreviewRoute(app, deps);
+  assertPublicRouteManifest(app.routes.slice(socialRouteStart), PUBLIC_ROUTE_MANIFEST);
 
   return app;
 };

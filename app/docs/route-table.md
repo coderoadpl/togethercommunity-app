@@ -129,6 +129,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/products/prices` | authenticated | mutating | product prices create |
 | `POST /api/products/prices/deactivate` | authenticated | mutating | product price deactivate |
 | `GET /api/orders` | authenticated | read | orders |
+| `GET /api/orders/reconciliation` | authenticated | read | orders reconciliation |
 | `GET /api/orders/export` | authenticated | read | orders export |
 | `GET /api/orders/:orderId` | authenticated | read | order |
 | `POST /api/orders/:orderId/invoice` | authenticated | mutating | invoice issue |
@@ -167,6 +168,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/student/progress` | authenticated | read | student progress |
 | `GET /api/student/lessons/:lessonId` | authenticated | read | student lesson |
 | `POST /api/posts` | authenticated | mutating | posts create |
+| `POST /api/support/message` | authenticated | mutating | support message |
+| `POST /api/posts/pin` | authenticated | mutating | posts pin |
 | `POST /api/posts/update` | authenticated | mutating | posts update |
 | `DELETE /api/posts/:postId` | authenticated | mutating | posts delete |
 | `GET /api/discussion` | authenticated | read | discussion |
@@ -189,3 +192,4 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/notifications/read-all` | authenticated | mutating | notifications read all |
 | `GET /api/notifications/unread-count` | authenticated | read | notifications unread |
 | `GET /api/notifications/stream` | authenticated | read | notifications stream |
+| `GET /*` | public | read | Tenant social preview for link crawlers |

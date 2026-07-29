@@ -71,12 +71,18 @@ const FeedPost = ({
   reactions,
   onToggle,
   busy,
+  canPin,
+  pinBusy,
+  onPin,
 }: {
   spaceId: string;
   item: SpaceFeedItem;
   reactions: ReactionSummary[];
   onToggle: (postId: string, emoji: ReactionEmoji, reacted: boolean) => void;
   busy: boolean;
+  canPin: boolean;
+  pinBusy: boolean;
+  onPin: (postId: string, pinned: boolean) => void;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -87,6 +93,12 @@ const FeedPost = ({
         <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.6rem', flexWrap: 'wrap' }}>
           <PostAuthorName component="span">{item.authorDisplay}</PostAuthorName>
           {item.authorIsStaff && <AuthorChip data-testid={`author-chip-${item.id}`}>{t.discussion.authorChip}</AuthorChip>}
+          {item.pinnedAt !== null ? (
+            <Chip
+              size="small"
+              label={item.authorIsStaff ? t.community.announcementChip : t.community.pinnedChip}
+            />
+          ) : null}
           <PostMetaText component="time" dateTime={item.createdAt}>
             {formatRelativeTime(item.createdAt, language)}
           </PostMetaText>
@@ -118,6 +130,15 @@ const FeedPost = ({
           <Link href={`/community/${spaceId}/posts/${item.id}`} data-testid={`open-thread-${item.id}`}>
             {t.community.openThread}
           </Link>
+          {canPin ? (
+            <Button
+              size="small"
+              disabled={pinBusy}
+              onClick={() => onPin(item.id, item.pinnedAt === null)}
+            >
+              {item.pinnedAt === null ? t.community.pin : t.community.unpin}
+            </Button>
+          ) : null}
         </Stack>
       </Stack>
     </DiscussionThread>
@@ -130,6 +151,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const queryClient = useQueryClient();
 
   const spaces = useQuery(actions.spaces);
+  const me = useQuery(actions.me);
   const feed = useQuery(actions.spaceFeed({ spaceId }));
 
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
@@ -141,6 +163,10 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const unfollow = useMutation({ ...actions.unfollowSpace, onSettled: invalidateSpaces });
   const react = useMutation(actions.reactToPost);
   const unreact = useMutation(actions.unreactToPost);
+  const pin = useMutation({
+    ...actions.pinPost,
+    onSuccess: () => void feed.refetch(),
+  });
 
   const unauthorized = isUnauthorized(spaces.error) || isUnauthorized(feed.error);
   useEffect(() => {
@@ -221,6 +247,9 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   );
 
   const items = feed.data?.feed.items ?? [];
+  const pinned = feed.data?.feed.pinned ?? [];
+  const canPin =
+    me.data?.tenant?.staffRole !== null && me.data?.tenant?.staffRole !== undefined;
 
   return (
     <MemberSurface title={space.name} eyebrow={t.community.feedEyebrow} width="wide" rail={rail}>
@@ -240,6 +269,9 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
         </Paper>
 
         {create.isError && <StatusView surface={false} state={{ kind: 'error', message: localizeError(create.error, t) }} />}
+        {pin.isError ? (
+          <StatusView surface={false} state={{ kind: 'error', message: localizeError(pin.error, t) }} />
+        ) : null}
 
         {feed.isPending ? (
           <StatusView surface={false} state={{ kind: 'loading', label: t.community.loadingFeed }} />
@@ -252,13 +284,27 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
               retry: { label: t.discussion.retry, onRetry: () => void feed.refetch() },
             }}
           />
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && pinned.length === 0 ? (
           <StatusView
             state={{ kind: 'empty', icon: <EmptyFeedIcon />, title: t.community.emptyFeed }}
             data-testid="feed-empty-state"
           />
         ) : (
           <Stack useFlexGap sx={{ rowGap: '1rem' }}>
+            {pinned.length > 0 ? <Chip label={t.community.pinnedHeading} /> : null}
+            {pinned.map((item) => (
+              <FeedPost
+                key={`pinned-${item.id}`}
+                spaceId={spaceId}
+                item={item}
+                reactions={reactionOverrides[item.id] ?? item.reactions}
+                onToggle={toggleReaction}
+                busy={reactionBusy}
+                canPin={canPin}
+                pinBusy={pin.isPending}
+                onPin={(postId, nextPinned) => pin.mutate({ postId, pinned: nextPinned })}
+              />
+            ))}
             {items.map((item) => (
               <FeedPost
                 key={item.id}
@@ -267,6 +313,9 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
                 reactions={reactionOverrides[item.id] ?? item.reactions}
                 onToggle={toggleReaction}
                 busy={reactionBusy}
+                canPin={canPin}
+                pinBusy={pin.isPending}
+                onPin={(postId, nextPinned) => pin.mutate({ postId, pinned: nextPinned })}
               />
             ))}
           </Stack>

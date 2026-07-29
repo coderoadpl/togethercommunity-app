@@ -13,6 +13,7 @@ import {
   type ProductPrice,
   type Coupon,
   type CouponRedemption,
+  type EmailOutboxPayload,
 } from '#core/domain/index.js';
 
 import type { PaymentWebhookEvent } from '../ports.js';
@@ -132,6 +133,7 @@ const subscriptionEvent = (input: {
   subscriptionId: string;
   cancelAtPeriodEnd?: boolean;
   status?: string;
+  currentPeriodEnd?: string | null;
 }): PaymentWebhookEvent => ({
   id: input.id,
   type: input.type,
@@ -141,7 +143,7 @@ const subscriptionEvent = (input: {
     id: input.subscriptionId,
     status: input.status ?? null,
     cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
-    currentPeriodEnd: null,
+    currentPeriodEnd: input.currentPeriodEnd ?? null,
   },
 });
 
@@ -153,6 +155,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
   const subscriptions = new Map<string, MemberSubscription>();
   const prices = options.prices ?? [];
   const sent: string[] = [];
+  const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   let sequence = 0;
   let clockNow = now;
   let refundTransitions = 0;
@@ -211,6 +214,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
       list: async () => ({ orders: [], total: 0 }),
       revenueSince: async () => [],
       countSince: async () => 0,
+      listPaidWithoutGrant: async () => [],
     },
     paymentRefunds: {
       findOrderByProviderObjectIds: async (tenantId, providerObjectIds) =>
@@ -332,6 +336,15 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
         },
       }),
     },
+    emailOutbox: {
+      enqueue: async (message) => {
+        queued.push({ to: message.to, payload: message.payload });
+        return ok({ id: message.id });
+      },
+      claimBatch: async () => ok([]),
+      markSent: async () => ok(undefined),
+      markFailed: async () => ok(undefined),
+    },
     dispatchEmail: () => undefined,
     devMagicLinks: { findByEmail: async () => null },
     ids: { nextId: () => `id-${++sequence}` },
@@ -349,6 +362,7 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
     orders,
     subscriptions,
     sent,
+    queued,
     refundTransitions: () => refundTransitions,
     setNow: (iso: string) => {
       clockNow = iso;
@@ -857,6 +871,50 @@ describe('fulfillStripeWebhook', () => {
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(grantBefore?.expiresAt);
     expect(h.orders).toHaveLength(2);
     expect(h.orders[1]).toMatchObject({ kind: 'recurring', status: 'failed', amountCents: 2900 });
+    expect(h.queued).toEqual([
+      {
+        to: 'buyer@example.com',
+        payload: expect.objectContaining({
+          kind: 'subscription-payment-failed',
+          accessEndsAt: '1998-08-17T10:00:00.000Z',
+        }),
+      },
+    ]);
+  });
+
+  it('does not notify twice for a redelivered failed invoice', async () => {
+    const h = await subscribedHarness();
+    const event = invoiceEvent({
+      id: 'evt-3',
+      type: 'invoice.payment_failed',
+      invoiceId: 'in-2',
+      subscriptionId: 'sub-1',
+    });
+
+    await fulfillStripeWebhook(tenantA, event, h.deps);
+    await fulfillStripeWebhook(tenantA, event, h.deps);
+
+    expect(h.queued).toHaveLength(1);
+  });
+
+  it('skips a deleted member payment notification', async () => {
+    const h = await subscribedHarness();
+    const member = Array.from(h.members.values())[0];
+    if (member === undefined) throw new Error('checkout did not create a member');
+    h.members.set(`${member.tenantId}:${member.id}`, { ...member, deletedAt: now });
+
+    await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-3',
+        type: 'invoice.payment_failed',
+        invoiceId: 'in-2',
+        subscriptionId: 'sub-1',
+      }),
+      h.deps,
+    );
+
+    expect(h.queued).toEqual([]);
   });
 
   it('flags cancelAtPeriodEnd on customer.subscription.updated and cancels on deleted without cutting the grant', async () => {
@@ -881,12 +939,26 @@ describe('fulfillStripeWebhook', () => {
     const expiresBefore = Array.from(h.grants.values())[0]?.expiresAt;
     await fulfillStripeWebhook(
       tenantA,
-      subscriptionEvent({ id: 'evt-5', type: 'customer.subscription.deleted', subscriptionId: 'sub-1' }),
+      subscriptionEvent({
+        id: 'evt-5',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+      }),
       h.deps,
     );
     expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(expiresBefore);
     expect(h.orders).toHaveLength(1);
+    expect(h.queued).toEqual([
+      {
+        to: 'buyer@example.com',
+        payload: expect.objectContaining({
+          kind: 'subscription-ended',
+          accessEndsAt: '1998-08-23T10:00:00.000Z',
+        }),
+      },
+    ]);
   });
 
   it('marks a refunded order and revokes its grant', async () => {

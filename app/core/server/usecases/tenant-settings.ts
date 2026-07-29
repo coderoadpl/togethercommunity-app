@@ -26,7 +26,12 @@ export const getTenantSettings = async (
   if (!tenant.ok) return tenant;
   const settings = await deps.tenants.findSettings(tenant.value);
   if (!settings) return err(tenantNotFound());
-  return ok(settings);
+  const supportConfigured = settings.supportEmail !== null && settings.supportEmail !== undefined;
+  return ok(
+    ctx.identity.staffRole === null
+      ? { ...settings, supportEmail: null, supportConfigured }
+      : { ...settings, supportConfigured },
+  );
 };
 
 export const updateTenantSettings = async (
@@ -51,6 +56,14 @@ export const updateTenantSettings = async (
       logoUrl: parsed.data.logoUrl === undefined ? current.logoUrl : parsed.data.logoUrl,
       accentColor: parsed.data.accentColor === undefined ? current.accentColor : parsed.data.accentColor,
       faviconUrl: parsed.data.faviconUrl === undefined ? current.faviconUrl : parsed.data.faviconUrl,
+      ogTitle: parsed.data.ogTitle === undefined ? current.ogTitle : parsed.data.ogTitle,
+      ogDescription:
+        parsed.data.ogDescription === undefined ? current.ogDescription : parsed.data.ogDescription,
+      ogImageUrl:
+        parsed.data.ogImageUrl === undefined ? current.ogImageUrl : parsed.data.ogImageUrl,
+      supportEmail:
+        parsed.data.supportEmail === undefined ? current.supportEmail : parsed.data.supportEmail,
+      supportUrl: parsed.data.supportUrl === undefined ? current.supportUrl : parsed.data.supportUrl,
       termsUrl: parsed.data.termsUrl === undefined ? current.termsUrl : parsed.data.termsUrl,
       privacyUrl: parsed.data.privacyUrl === undefined ? current.privacyUrl : parsed.data.privacyUrl,
       autoIssueInvoices:

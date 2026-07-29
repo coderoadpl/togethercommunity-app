@@ -18,3 +18,19 @@ request bodies are limited to 100KB. Public HTML mutations are limited to 16KB,
 provider webhooks to 512KB, and bounded layout, document, and lesson authoring
 payloads to 2MB. JSON errors and authenticated successes are always `no-store`;
 only successful public-offer responses opt into revalidated shared caching.
+
+## Accepted dependency advisories
+
+`pnpm audit --prod --audit-level=moderate` is a blocking CI gate. Its allowlist
+contains only these reviewed advisories:
+
+- `GHSA-frvp-7c67-39w9` affects `@hono/node-server` static-file serving on
+  Windows through encoded backslashes. Together deploys to Linux/Vercel, so the
+  vulnerable path semantics are not present. Revisit this acceptance when the
+  `@hono/node-server` 2.x major upgrade lands.
+- `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
+  audit reaches the old esbuild through `better-auth` and `drizzle-kit`; the
+  development tree also reaches esbuild through Lost Pixel. Together does not
+  invoke esbuild's development server from application code. Revisit when
+  `better-auth` or `drizzle-kit` can resolve esbuild 0.25 or newer, and when
+  Lost Pixel is removed as planned in [Storybook](storybook.md).

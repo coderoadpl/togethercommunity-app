@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { z } from 'zod';
 
+import { lockfilePackages, splitPackageIdentifier } from './license-lock.js';
+
 const licensePackageSchema = z
   .object({
     license: z.string(),
@@ -164,48 +166,15 @@ const hasAllowedAlternative = (license: string): boolean => {
 
 const packageIdentifier = (name: string, version: string): string => `${name}@${version}`;
 
-const splitPackageIdentifier = (
-  identifier: string,
-): { name: string; version: string } | undefined => {
-  const separator = identifier.lastIndexOf('@');
-  if (separator <= 0) return undefined;
-  return {
-    name: identifier.slice(0, separator),
-    version: identifier.slice(separator + 1),
-  };
-};
-
-const lockedPackageIdentifiers = (raw: string): Set<string> => {
-  const identifiers = new Set<string>();
-  let inPackages = false;
-  for (const line of raw.split('\n')) {
-    if (line === 'packages:') {
-      inPackages = true;
-      continue;
-    }
-    if (inPackages && /^\S/.test(line)) break;
-    if (!inPackages) continue;
-    const match = /^ {2}(\S.+):$/.exec(line);
-    if (match?.[1] === undefined) continue;
-    const quoted = match[1];
-    const key =
-      quoted.startsWith("'") && quoted.endsWith("'")
-        ? quoted.slice(1, -1).replaceAll("''", "'")
-        : quoted;
-    const identifier = key.replace(/\(.+$/, '');
-    if (splitPackageIdentifier(identifier) !== undefined) identifiers.add(identifier);
-  }
-  return identifiers;
-};
-
-const runLicenseReport = (prod: boolean): z.infer<typeof licenseReportSchema> => {
-  const args = ['licenses', 'list'];
-  if (prod) args.push('--prod');
-  args.push('--json');
-  const result = spawnSync('pnpm', args, {
+const runLicenseReport = (): z.infer<typeof licenseReportSchema> => {
+  const result = spawnSync('pnpm', ['licenses', 'list', '--json'], {
     cwd: join(import.meta.dirname, '..'),
     encoding: 'utf8',
   });
+  if (result.error !== undefined) {
+    process.stderr.write(`license-lint: could not run pnpm: ${result.error.message}\n`);
+    process.exit(1);
+  }
   if (result.status !== 0) {
     process.stderr.write(result.stderr);
     process.exit(1);
@@ -247,25 +216,26 @@ const lockPath = join(rootDir, 'pnpm-lock.yaml');
 const thirdPartyPath = join(rootDir, '..', 'THIRD-PARTY-LICENSES.md');
 const licensePath = join(rootDir, '..', 'LICENSE.md');
 const packageJsonPath = join(rootDir, 'package.json');
-const lockIdentifiers = lockedPackageIdentifiers(readFileSync(lockPath, 'utf8'));
-const allReport = runLicenseReport(false);
-const prodReport = runLicenseReport(true);
-const productionIdentifiers = new Set(
-  Object.values(prodReport).flatMap((packages) =>
-    packages.flatMap((pkg) =>
-      pkg.versions.map((version) => packageIdentifier(pkg.name, version)),
-    ),
-  ),
-);
+const lockPackages = lockfilePackages(readFileSync(lockPath, 'utf8'));
+const lockIdentifiers = lockPackages.all;
+const allReport = runLicenseReport();
+const productionIdentifiers = lockPackages.production;
 const packages = reportPackages(allReport, productionIdentifiers);
 const thirdPartyLicenses = readFileSync(thirdPartyPath, 'utf8');
 const licenseDocument = readFileSync(licensePath, 'utf8');
 const packageJson = packageJsonSchema.parse(JSON.parse(readFileSync(packageJsonPath, 'utf8')));
 const problems: string[] = [];
 const matchedExceptions = new Set<string>();
-const thirdPartyPackages = new Set(
-  [...thirdPartyLicenses.matchAll(/^- \[([^\]]+@[^\]]+)\]/gm)].map((match) => match[1]),
-);
+const thirdPartyPackages = new Map<string, string>();
+for (const match of thirdPartyLicenses.matchAll(
+  /^- \[([^\]]+@[^\]]+)\]\([^)]+\) - (.+)$/gm,
+)) {
+  const identifier = match[1];
+  const license = match[2];
+  if (identifier !== undefined && license !== undefined) {
+    thirdPartyPackages.set(identifier, license);
+  }
+}
 const licenseAbbreviation = /^## Abbreviation\s+(\S+)/m.exec(licenseDocument)?.[1];
 
 if (licenseAbbreviation === undefined) {
@@ -282,37 +252,44 @@ for (const pkg of packages) {
     problems.push(`${identifier}: reported by pnpm but missing from pnpm-lock.yaml`);
     continue;
   }
+  const documentedLicense = thirdPartyPackages.get(identifier);
+  if (documentedLicense !== undefined && documentedLicense !== pkg.license) {
+    problems.push(
+      `${identifier}: installed license ${pkg.license} differs from documented ${documentedLicense}`,
+    );
+  }
+}
+
+for (const identifier of lockIdentifiers) {
+  const parsed = splitPackageIdentifier(identifier);
+  if (parsed === undefined) {
+    problems.push(`${identifier}: invalid package identifier in pnpm-lock.yaml`);
+    continue;
+  }
+  const license = thirdPartyPackages.get(identifier);
+  if (license === undefined) {
+    problems.push(`${identifier}: missing from THIRD-PARTY-LICENSES.md`);
+    continue;
+  }
+  const pkg = {
+    devOnly: !productionIdentifiers.has(identifier),
+    license,
+    name: parsed.name,
+    version: parsed.version,
+  };
   const exceptionKey = matchingException(pkg);
   if (exceptionKey !== undefined) {
     matchedExceptions.add(exceptionKey);
     continue;
   }
-  if (!hasAllowedAlternative(pkg.license)) {
-    problems.push(`${identifier}: ${pkg.license}`);
+  if (!hasAllowedAlternative(license)) {
+    problems.push(`${identifier}: ${license}`);
   }
 }
 
-for (const identifier of productionIdentifiers) {
-  if (!thirdPartyPackages.has(identifier)) {
-    problems.push(`${identifier}: missing from THIRD-PARTY-LICENSES.md`);
-  }
-}
-
-for (const [exceptionKey, exception] of exceptions) {
-  if (matchedExceptions.has(exceptionKey)) continue;
-  for (const identifier of lockIdentifiers) {
-    const parsed = splitPackageIdentifier(identifier);
-    if (parsed === undefined) continue;
-    const candidate: LicensedPackage = {
-      devOnly: !productionIdentifiers.has(identifier),
-      license: exception.license ?? '',
-      name: parsed.name,
-      version: parsed.version,
-    };
-    if (matchingException(candidate) === exceptionKey) {
-      matchedExceptions.add(exceptionKey);
-      break;
-    }
+for (const identifier of thirdPartyPackages.keys()) {
+  if (!lockIdentifiers.has(identifier)) {
+    problems.push(`${identifier}: documented but missing from pnpm-lock.yaml`);
   }
 }
 

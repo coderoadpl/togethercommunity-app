@@ -414,6 +414,13 @@
       "when": 1785279549869,
       "tag": "0058_member_erasure_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1785281053730,
+      "tag": "0059_ses_identity_freshness_and_reputation_alerts",
+      "breakpoints": true
     }
   ]
 }

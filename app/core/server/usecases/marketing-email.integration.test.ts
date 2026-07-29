@@ -97,13 +97,15 @@ const consent = (email: string, status: MarketingConsent['status'] = 'confirmed'
 });
 const settings: TenantSesSettings = {
   tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
-  identityVerifiedAt: NOW, configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
+  identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+  configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
   trackingEnabled: true,
   autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
   quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Legal Ltd',
   quotaSentLast24Hours: 0,
   footerAddress: 'Street 1, Warsaw; contact@tenant.test', broadcastsEnabled: true,
+  reputationAlertStatus: null, reputationAlertedAt: null,
 };
 const campaign = (overrides: Partial<Campaign> = {}): Campaign => ({
   id: 'campaign-1', tenantId: 'tenant-1', name: 'Weekly', subject: 'Hello {{member.email}}',
@@ -918,12 +920,15 @@ describe('marketing e-mail use-case integration', () => {
   it('scans all due campaign work and runs retention for every marketing tenant', async () => {
     const dispatched: string[] = [];
     const retained: string[] = [];
+    const refreshed: string[] = [];
+    let checkedBefore = '';
     const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -931,6 +936,10 @@ describe('marketing e-mail use-case integration', () => {
           { tenantId: 'tenant-2', campaignId: 'campaign-2' },
         ],
         listRetentionTenantIds: async () => ['tenant-1', 'tenant-3'],
+        listSesIdentityRefreshTenantIds: async (value) => {
+          checkedBefore = value;
+          return ['tenant-2'];
+        },
       },
       runs,
       dispatchCampaign: async (tenantId, campaignId) => {
@@ -941,10 +950,20 @@ describe('marketing e-mail use-case integration', () => {
         retained.push(tenantId);
         return ok(undefined);
       },
+      refreshIdentity: async (tenantId) => {
+        refreshed.push(tenantId);
+        return ok(undefined);
+      },
     });
-    expect(result).toEqual(ok({ campaignsDispatched: 2, retentionTenantsProcessed: 2 }));
+    expect(result).toEqual(ok({
+      campaignsDispatched: 2,
+      retentionTenantsProcessed: 2,
+      identityChecksPerformed: 1,
+    }));
     expect(dispatched).toEqual(['tenant-1:campaign-1', 'tenant-2:campaign-2']);
     expect(retained).toEqual(['tenant-1', 'tenant-3']);
+    expect(refreshed).toEqual(['tenant-2']);
+    expect(checkedBefore).toBe('1998-07-22T04:00:00.000Z');
   });
 
   it('fails stale scheduler runs when there are no marketing retention tenants', async () => {
@@ -974,17 +993,24 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
         listRunnableCampaigns: async () => [],
         listRetentionTenantIds: async () => [],
+        listSesIdentityRefreshTenantIds: async () => [],
       },
       runs,
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
+      refreshIdentity: async () => ok(undefined),
     });
 
-    expect(result).toEqual(ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }));
+    expect(result).toEqual(ok({
+      campaignsDispatched: 0,
+      retentionTenantsProcessed: 0,
+      identityChecksPerformed: 0,
+    }));
     expect(await runs.getWithTenants('stuck-outbox-run')).toMatchObject({
       run: {
         status: 'failed',
@@ -1002,6 +1028,7 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -1009,6 +1036,7 @@ describe('marketing e-mail use-case integration', () => {
           { tenantId: 'tenant-2', campaignId: 'campaign-2' },
         ],
         listRetentionTenantIds: async () => ['tenant-1'],
+        listSesIdentityRefreshTenantIds: async () => ['tenant-2'],
       },
       runs,
       dispatchCampaign: async (tenantId) => {
@@ -1019,9 +1047,18 @@ describe('marketing e-mail use-case integration', () => {
         processed.push(`retention:${tenantId}`);
         return ok(undefined);
       },
+      refreshIdentity: async (tenantId) => {
+        processed.push(`identity:${tenantId}`);
+        return ok(undefined);
+      },
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'integration_auth' } });
-    expect(processed).toEqual(['campaign:tenant-1', 'campaign:tenant-2', 'retention:tenant-1']);
+    expect(processed).toEqual([
+      'campaign:tenant-1',
+      'campaign:tenant-2',
+      'retention:tenant-1',
+      'identity:tenant-2',
+    ]);
   });
 
   it('schedules another tick when a campaign still has recipients after its budgeted batch', async () => {

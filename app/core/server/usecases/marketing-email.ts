@@ -1663,12 +1663,15 @@ export const scheduleMarketingRetentionJobs = async (
   return deps.scheduler.enqueueRetentionJobs(tenantId.value);
 };
 
+export const SES_IDENTITY_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 export const runScheduledMarketingJobs = async (
   input: {
     now: string;
     pendingOlderThan: string;
     renderedBodiesOlderThan: string;
     engagementOlderThan: string;
+    sesIdentityRefreshIntervalMs: number;
   },
   deps: {
     jobs: MarketingJobRepository;
@@ -1680,8 +1683,13 @@ export const runScheduledMarketingJobs = async (
       engagementOlderThan: string;
       idempotencyNow: string;
     }): Promise<Result<unknown, AppError>>;
+    refreshIdentity(tenantId: string): Promise<Result<unknown, AppError>>;
   },
-): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>> => {
+): Promise<Result<{
+  campaignsDispatched: number;
+  retentionTenantsProcessed: number;
+  identityChecksPerformed: number;
+}, AppError>> => {
   let firstError: AppError | null = null;
   await deps.runs.failStale({
     startedBefore: new Date(Date.parse(input.now) - 60 * 60 * 1000).toISOString(),
@@ -1703,6 +1711,19 @@ export const runScheduledMarketingJobs = async (
     });
     if (!retained.ok && firstError === null) firstError = retained.error;
   }
+  const identityTenantIds = await deps.jobs.listSesIdentityRefreshTenantIds(
+    new Date(
+      Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
+    ).toISOString(),
+  );
+  for (const tenantId of identityTenantIds) {
+    const refreshed = await deps.refreshIdentity(tenantId);
+    if (!refreshed.ok && firstError === null) firstError = refreshed.error;
+  }
   if (firstError !== null) return err(firstError);
-  return ok({ campaignsDispatched: runnable.length, retentionTenantsProcessed: retentionTenantIds.length });
+  return ok({
+    campaignsDispatched: runnable.length,
+    retentionTenantsProcessed: retentionTenantIds.length,
+    identityChecksPerformed: identityTenantIds.length,
+  });
 };

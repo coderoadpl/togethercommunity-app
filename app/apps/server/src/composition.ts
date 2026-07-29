@@ -196,7 +196,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -346,7 +346,7 @@ export interface MarketingAppDeps {
     failed: number;
     skipped: number;
   }, AppError>>;
-  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number }, AppError>>;
+  dispatchScheduledMarketing(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<{ campaignsDispatched: number; retentionTenantsProcessed: number; identityChecksPerformed: number }, AppError>>;
 }
 
 export const selectDevSinkPurge = (
@@ -435,6 +435,7 @@ export const createDeps = (env: Env): AppDeps => {
   const documents = createTenantDocumentRepository(db);
   const idempotency = createAutomationIdempotencyRepository(db);
   const marketingJobs = createMarketingJobRepository(db);
+  const sesOnboardingControlPlane = createSesOnboardingControlPlane();
   const marketingThrottle = createMarketingThrottleRepository(db);
   const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
   const devSinkPurge = selectDevSinkPurge(env, () => createDevSinkPurge(db));
@@ -541,6 +542,7 @@ export const createDeps = (env: Env): AppDeps => {
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       engagementOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      sesIdentityRefreshIntervalMs: SES_IDENTITY_REFRESH_INTERVAL_MS,
     }, {
       jobs: marketingJobs,
       runs: schedulerRuns,
@@ -548,6 +550,17 @@ export const createDeps = (env: Env): AppDeps => {
       runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
         definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock,
       }),
+      refreshIdentity: (tenantId) =>
+        refreshSesIdentity(
+          { identity: workerIdentity(tenantId) },
+          {
+            settings: sesSettings,
+            credentials: tenantMarketingCredentials,
+            controlPlane: sesOnboardingControlPlane,
+            clock,
+            webhookBaseUrl: `${env.APP_BASE_URL}/api/webhooks/ses`,
+          },
+        ),
     });
   };
   const realtimeBus = createRealtimeBus();
@@ -744,7 +757,7 @@ export const createDeps = (env: Env): AppDeps => {
       marketingCredentials,
       quotaReader,
       sesOnboarding: {
-        controlPlane: createSesOnboardingControlPlane(),
+        controlPlane: sesOnboardingControlPlane,
         credentials: tenantMarketingCredentials,
       },
       throttle: marketingThrottle,

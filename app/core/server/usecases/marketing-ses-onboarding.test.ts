@@ -5,6 +5,7 @@ import {
   deriveSesOnboardingChecklist,
   pollSesOnboarding,
   provisionSesInfrastructure,
+  refreshSesIdentity,
   sendSesSimulatorTest,
   startSesIdentityVerification,
   type SesOnboardingControlPlane,
@@ -35,6 +36,8 @@ const settings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSettings
   fromName: 'Tenant',
   identity: 'tenant.test',
   identityVerifiedAt: null,
+  identityCheckedAt: null,
+  identityCheckError: null,
   configurationSet: null,
   snsTopicArn: null,
   trackingEnabled: false,
@@ -49,6 +52,8 @@ const settings = (overrides: Partial<TenantSesSettings> = {}): TenantSesSettings
   footerLegalName: 'Tenant Ltd',
   footerAddress: 'Street 1, Warsaw',
   broadcastsEnabled: false,
+  reputationAlertStatus: null,
+  reputationAlertedAt: null,
   ...overrides,
 });
 
@@ -56,6 +61,8 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   failEventDestinationOnce = false;
   eventDestinationAttempts = 0;
   identityVerified = false;
+  identityFailure = false;
+  infrastructureReady = true;
   subscriptionConfirmed = true;
   feedbackForwardingAttempts = 0;
   simulatorRecipients: string[] = [];
@@ -75,6 +82,9 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
   }
 
   async readIdentity() {
+    if (this.identityFailure) {
+      return err(integrationUnavailable('SES identity lookup failed'));
+    }
     return ok({ verified: this.identityVerified, dkimVerified: this.identityVerified, records: [] });
   }
 
@@ -95,7 +105,7 @@ class FakeSesOnboardingControlPlane implements SesOnboardingControlPlane {
 
   async readInfrastructure() {
     return ok({
-      configurationSetReady: true,
+      configurationSetReady: this.infrastructureReady,
       eventDestinationReady: true,
       subscriptionConfirmed: this.subscriptionConfirmed,
     });
@@ -225,6 +235,69 @@ describe('SES onboarding wizard', () => {
       },
     });
     expect((await repository.findByTenant('tenant-1'))?.identityVerifiedAt).toBeNull();
+  });
+
+  it('refreshes identity state and clears verification after a regression', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: '2026-07-20T10:00:00.000Z',
+      configurationSet: 'together-tenant-1',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+
+    const result = await refreshSesIdentity(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        identityVerifiedAt: null,
+        identityCheckedAt: NOW,
+        identityCheckError: null,
+      },
+    });
+  });
+
+  it('records a refresh error without clearing the last verified state', async () => {
+    const verifiedAt = '2026-07-20T10:00:00.000Z';
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: verifiedAt,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityFailure = true;
+
+    const result = await refreshSesIdentity(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        identityVerifiedAt: verifiedAt,
+        identityCheckedAt: NOW,
+        identityCheckError: 'SES identity lookup failed',
+      },
+    });
+  });
+
+  it('removes a configuration set that SES no longer reports', async () => {
+    const repository = new InMemoryTenantSesSettingsRepository([settings({
+      identityVerifiedAt: NOW,
+      configurationSet: 'missing-configuration-set',
+      snsTopicArn: 'arn:aws:sns:eu-central-1:123456789012:together-tenant-1',
+      webhookVerifiedAt: NOW,
+    })]);
+    const controlPlane = new FakeSesOnboardingControlPlane();
+    controlPlane.identityVerified = true;
+    controlPlane.infrastructureReady = false;
+
+    const result = await refreshSesIdentity(ctx, deps(repository, controlPlane));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        configurationSet: null,
+        webhookVerifiedAt: null,
+        broadcastsEnabled: false,
+      },
+    });
   });
 
   it('derives every M19 item from provider and webhook state', () => {

@@ -506,6 +506,8 @@ export const tenantSesSettingsSchema = z.object({
   fromName: z.string().min(1),
   identity: z.string().min(1),
   identityVerifiedAt: isoDateTimeSchema.nullable(),
+  identityCheckedAt: isoDateTimeSchema.nullable(),
+  identityCheckError: z.string().nullable(),
   configurationSet: z.string().nullable(),
   snsTopicArn: z.string().nullable(),
   trackingEnabled: z.boolean(),
@@ -520,6 +522,10 @@ export const tenantSesSettingsSchema = z.object({
   footerLegalName: z.string(),
   footerAddress: z.string(),
   broadcastsEnabled: z.boolean(),
+  reputationAlertStatus: z
+    .enum(['insufficient_data', 'ok', 'warn', 'critical'])
+    .nullable(),
+  reputationAlertedAt: isoDateTimeSchema.nullable(),
 });
 
 export type TenantSesSettings = z.output<typeof tenantSesSettingsSchema>;
@@ -532,6 +538,17 @@ export const tenantSesBroadcastsReady = (settings: TenantSesSettings): boolean =
   && settings.footerLegalName.trim() !== ''
   && settings.footerAddress.trim() !== ''
   && !settings.inSandbox;
+
+export const sesIdentityFreshness = (
+  settings: TenantSesSettings,
+  now: string,
+  staleAfterMs = 24 * 60 * 60 * 1000,
+): 'never-checked' | 'stale' | 'fresh' => {
+  if (settings.identityCheckedAt === null) return 'never-checked';
+  return Date.parse(now) - Date.parse(settings.identityCheckedAt) > staleAfterMs
+    ? 'stale'
+    : 'fresh';
+};
 
 export const automationIdempotencyKeySchema = z.object({
   id: z.string().min(1),

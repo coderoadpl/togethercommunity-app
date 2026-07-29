@@ -2313,6 +2313,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: tenants.autoIssueInvoices,
         autoIssueInvoiceScope: tenants.autoIssueInvoiceScope,
         invoiceVatRatePercent: tenants.invoiceVatRatePercent,
+        invoiceVatMode: tenants.invoiceVatMode,
+        invoiceExemptionBasisKind: tenants.invoiceExemptionBasisKind,
+        invoiceExemptionBasis: tenants.invoiceExemptionBasis,
         invoicingProvider: tenants.invoicingProvider,
         invoiceSellerName: tenants.invoiceSellerName,
         invoiceSellerAddress: tenants.invoiceSellerAddress,
@@ -2343,6 +2346,19 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
             row.invoiceVatRatePercent === 23
               ? row.invoiceVatRatePercent
               : null,
+          invoiceVatMode:
+            row.invoiceVatMode === 'rate' || row.invoiceVatMode === 'exempt'
+              ? row.invoiceVatMode
+              : null,
+          invoiceExemptionBasisKind:
+            row.invoiceExemptionBasisKind === 'art_113_1' ||
+            row.invoiceExemptionBasisKind === 'art_113_9' ||
+            row.invoiceExemptionBasisKind === 'art_43_1' ||
+            row.invoiceExemptionBasisKind === 'other_statute' ||
+            row.invoiceExemptionBasisKind === 'other'
+              ? row.invoiceExemptionBasisKind
+              : null,
+          invoiceExemptionBasis: row.invoiceExemptionBasis,
           invoicingProvider: row.invoicingProvider,
           invoiceSellerName: row.invoiceSellerName,
           invoiceSellerAddress: row.invoiceSellerAddress,
@@ -2368,6 +2384,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         autoIssueInvoices: settings.autoIssueInvoices,
         autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
         invoiceVatRatePercent: settings.invoiceVatRatePercent,
+        invoiceVatMode: settings.invoiceVatMode ?? undefined,
+        invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
+        invoiceExemptionBasis: settings.invoiceExemptionBasis,
         invoicingProvider: settings.invoicingProvider,
         invoiceSellerName: settings.invoiceSellerName,
         invoiceSellerAddress: settings.invoiceSellerAddress,
@@ -2389,6 +2408,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       autoIssueInvoices: settings.autoIssueInvoices,
       autoIssueInvoiceScope: settings.autoIssueInvoiceScope,
       invoiceVatRatePercent: settings.invoiceVatRatePercent,
+      invoiceVatMode: settings.invoiceVatMode,
+      invoiceExemptionBasisKind: settings.invoiceExemptionBasisKind,
+      invoiceExemptionBasis: settings.invoiceExemptionBasis,
       invoicingProvider: settings.invoicingProvider,
       invoiceSellerName: settings.invoiceSellerName,
       invoiceSellerAddress: settings.invoiceSellerAddress,

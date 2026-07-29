@@ -198,7 +198,7 @@ import type {
 } from '#core/server/index.js';
 import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
-import { communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
+import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import type { Env } from './env.js';
 import { APP_VERSION } from './version.js';
@@ -521,6 +521,7 @@ export const createDeps = (env: Env): AppDeps => {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
       },
+      capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
       definitions, consents: marketingConsents, campaigns, layouts, sends: campaignSends, events: emailEvents, audience,
       suppressions, unsubscribes, sesSettings, ses: marketingSes, credentials: marketingCredentials,
@@ -554,7 +555,10 @@ export const createDeps = (env: Env): AppDeps => {
       jobs: marketingJobs,
       runs: schedulerRuns,
       dispatchCampaign: (tenantId, campaignId) => dispatchCampaign(tenantId, campaignId, trigger),
-      runRetention: (tenantId, input) => runMarketingRetentionJobs({ identity: workerIdentity(tenantId) }, input, {
+      runRetention: (tenantId, input) => runMarketingRetentionJobs({
+        identity: workerIdentity(tenantId),
+        capabilities: capabilitiesForPrincipal('operator-secret'),
+      }, input, {
         definitions, consents: marketingConsents, sends: campaignSends, events: emailEvents, idempotency, clock,
       }),
       refreshIdentity: (tenantId) =>

@@ -130,6 +130,33 @@ const setup = (): { grantBodies: unknown[]; revoked: string[] } => {
 };
 
 describe('MemberDetail', () => {
+  it('keeps grant and renew controls available for an active member', async () => {
+    setup();
+    renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);
+
+    expect(await screen.findByText(pl.members.grantProduct)).toBeInTheDocument();
+    expect(await screen.findAllByRole('button', { name: pl.members.renew })).toHaveLength(2);
+    expect(screen.queryByTestId('member-tombstone-notice')).not.toBeInTheDocument();
+  });
+
+  it('shows the tombstone while keeping grant history and revoke controls', async () => {
+    setup();
+    renderWithProviders(
+      <MemberDetail
+        member={{ ...member, deletedAt: '1998-07-20T10:00:00.000Z' }}
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByTestId('member-tombstone-notice')).toHaveTextContent(
+      pl.members.tombstoneNotice,
+    );
+    expect(screen.queryByText(pl.members.grantProduct)).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.members.renew)).not.toBeInTheDocument();
+    expect(await screen.findAllByTestId('grant-row')).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: pl.members.revoke })).toHaveLength(2);
+  });
+
   it('renders active vs expired grants', async () => {
     setup();
     renderWithProviders(<MemberDetail member={member} onBack={() => undefined} />);

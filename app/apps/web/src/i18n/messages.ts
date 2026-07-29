@@ -60,6 +60,7 @@ export interface Messages {
     messageIntegrationUnavailable: string;
     messageRateLimited: string;
     messageSlugReservedGeneric: string;
+    messageInvoiceExemptionBasisMissing: string;
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
@@ -147,6 +148,7 @@ export interface Messages {
     heading: string;
     loading: string;
     publishedDraft: (params: { published: number; draft: number }) => string;
+    membersRemoved: (params: { count: number }) => string;
     activeGrants: string;
     recentMembers: string;
     viewAllMembers: string;
@@ -630,6 +632,7 @@ export interface Messages {
     removeConfirmIntro: (params: { email: string }) => string;
     removeImpact: (params: { grants: number; completedLessons: number }) => string;
     deletedBadge: string;
+    tombstoneNotice: string;
     exportFailed: string;
     erasureRequestsHeading: string;
     erasureRequestsEmpty: string;
@@ -986,8 +989,21 @@ export interface Messages {
     autoIssueScope: string;
     b2bOnly: string;
     allBuyers: string;
-    vatRate: string;
     vatRateUnset: string;
+    vatTreatment: string;
+    vatTreatmentRate: string;
+    vatTreatmentExempt: string;
+    exemptionBasisKind: string;
+    exemptionBasisKindArt113_1: string;
+    exemptionBasisKindArt113_9: string;
+    exemptionBasisKindArt43_1: string;
+    exemptionBasisKindOtherStatute: string;
+    exemptionBasisKindOther: string;
+    exemptionBasis: string;
+    exemptionBasisHelp: string;
+    exemptionBasisRequired: string;
+    exemptionBasisArt43Help: string;
+    exemptNote: string;
     invoicingProvider: string;
     providerIfirma: string;
     providerKsef: string;

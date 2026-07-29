@@ -46,6 +46,7 @@ jobs:
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run check
+      - run: npm run storybook:build
       - run: npm audit --omit=dev --audit-level=high
         continue-on-error: true
 
@@ -86,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [auth, poc, subs, marketing]
+        suite: [auth, poc, subs, marketing, coupon]
     defaults:
       run:
         working-directory: app
@@ -114,7 +115,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
-      - if: matrix.suite == 'auth'
+      - if: matrix.suite == 'auth' || matrix.suite == 'coupon'
         run: google-chrome --version
       - run: npm run e2e:${{ matrix.suite }}
 

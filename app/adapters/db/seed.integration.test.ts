@@ -3,7 +3,9 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-const TEST_DB = 'together_seed_integration_test';
+import { uniqueTestDatabaseName } from './test-database-name.js';
+
+const TEST_DB = uniqueTestDatabaseName('together_seed_integration_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testDatabaseUrl = (() => {

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { z } from 'zod';
 
+import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 
 import {
@@ -19,7 +20,7 @@ import {
 } from './server-harness.js';
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
 
-const SMOKE_DB = 'together_smoke';
+const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
   'postgres://together:together@localhost:48912/together';
@@ -77,6 +78,16 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     fail(
       `Could not prepare the smoke database "${SMOKE_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
+  } finally {
+    await client.end();
+  }
+};
+
+const dropDatabase = async (adminUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    await client.query(`DROP DATABASE IF EXISTS ${SMOKE_DB} WITH (FORCE)`);
   } finally {
     await client.end();
   }
@@ -1154,4 +1165,5 @@ try {
 } finally {
   if (server) await killServer(server);
   for (const dir of homes) rmSync(dir, { recursive: true, force: true });
+  await dropDatabase(baseDatabaseUrl);
 }

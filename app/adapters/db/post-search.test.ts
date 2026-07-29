@@ -1,15 +1,17 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Post } from '#core/domain/index.js';
 
-import { createDb, type Db } from './client.js';
+import type { Db } from './client.js';
 import { createPostRepository } from './repositories.js';
+import * as dbSchema from './schema.js';
 import { tenants } from './schema.js';
+import { uniqueTestDatabaseName } from './test-database-name.js';
 
-const TEST_DB = 'together_post_search_test';
+const TEST_DB = uniqueTestDatabaseName('together_post_search_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testUrl = (() => {
@@ -22,6 +24,15 @@ const TENANT_ID = 'tenant-search-spec';
 const LESSON_ID = 'lesson-1';
 
 let db: Db;
+let dbPool: pg.Pool;
+
+afterAll(async () => {
+  await dbPool.end();
+  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
+  await admin.connect();
+  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
+  await admin.end();
+});
 
 const post = (id: string, body: string): Post => ({
   id,
@@ -61,7 +72,8 @@ beforeAll(async () => {
   await migrate(drizzle(migrationPool), { migrationsFolder: 'drizzle' });
   await migrationPool.end();
 
-  db = createDb('node-postgres', testUrl);
+  dbPool = new pg.Pool({ connectionString: testUrl });
+  db = drizzle(dbPool, { schema: dbSchema });
   await db.insert(tenants).values({
     id: TENANT_ID,
     slug: 'search-spec',

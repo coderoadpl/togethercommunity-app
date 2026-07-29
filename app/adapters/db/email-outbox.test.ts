@@ -2,18 +2,20 @@ import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { err, internal, ok, type Member, type ProductGrant } from '#core/domain/index.js';
 import { dispatchEmailBatch } from '#core/server/index.js';
 
-import { createDb, type Db } from './client.js';
+import type { Db } from './client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';
 import { createEmailEventRepository } from './email-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
 import { emailOutbox, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
+import * as dbSchema from './schema.js';
+import { uniqueTestDatabaseName } from './test-database-name.js';
 
-const TEST_DB = 'together_email_outbox_test';
+const TEST_DB = uniqueTestDatabaseName('together_email_outbox_test');
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testUrl = (() => {
   const url = new URL(baseDatabaseUrl);
@@ -23,6 +25,15 @@ const testUrl = (() => {
 
 const NOW = '2026-07-21T12:00:00.000Z';
 let db: Db;
+let dbPool: pg.Pool;
+
+afterAll(async () => {
+  await dbPool.end();
+  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
+  await admin.connect();
+  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
+  await admin.end();
+});
 
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -33,7 +44,8 @@ beforeAll(async () => {
   const pool = new pg.Pool({ connectionString: testUrl });
   await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
   await pool.end();
-  db = createDb('node-postgres', testUrl);
+  dbPool = new pg.Pool({ connectionString: testUrl });
+  db = drizzle(dbPool, { schema: dbSchema });
   await db.insert(tenants).values({ id: 'tenant-outbox', slug: 'outbox', name: 'Outbox', createdAt: NOW });
   await db.insert(products).values({ id: 'product-outbox', tenantId: 'tenant-outbox', title: 'Course', description: '', priceCents: 0, currency: 'PLN', published: true, accessItems: [], createdAt: NOW });
 }, 60000);

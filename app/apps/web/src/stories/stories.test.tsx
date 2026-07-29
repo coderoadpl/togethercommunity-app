@@ -9,15 +9,15 @@ declare global {
   }
 }
 
-const modules = import.meta.glob('./*.stories.tsx', { eager: true });
+const modules = import.meta.glob('./**/*.stories.tsx', { eager: true });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 describe('Storybook stories', () => {
   it('loads every story module and validates its CSF exports', () => {
-    const storyFiles = readdirSync(import.meta.dirname)
-      .filter((file) => file.endsWith('.stories.tsx'));
+    const storyFiles = readdirSync(import.meta.dirname, { recursive: true })
+      .filter((file): file is string => typeof file === 'string' && file.endsWith('.stories.tsx'));
     expect(Object.keys(modules).length).toBeGreaterThan(0);
     expect(Object.keys(modules)).toHaveLength(storyFiles.length);
 

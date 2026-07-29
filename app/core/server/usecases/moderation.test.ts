@@ -368,6 +368,29 @@ describe('moderation use-cases', () => {
     });
   });
 
+  it('reports zero open reports for a post in a dismissed queue', async () => {
+    const reports = new FakeReports();
+    reports.rows.push(report({
+      status: 'dismissed',
+      resolvedAt: NOW,
+      resolvedByUserId: 'staff-user',
+    }));
+
+    await expect(
+      listReports(
+        ctx({ staffRole: 'admin', memberId: null }),
+        { status: 'dismissed' },
+        makeDeps(reports),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        openCount: 0,
+        items: [{ openReportsForPost: 0 }],
+      },
+    });
+  });
+
   it('dismisses a report without deleting the post', async () => {
     const reports = new FakeReports();
     reports.rows.push(report());

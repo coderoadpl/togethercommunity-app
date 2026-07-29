@@ -112,7 +112,7 @@ export const listReports = async (
       spaceName: post.contextKind === 'space'
         ? (await deps.spaces.findById(actor.value.tenantId, post.contextId))?.name ?? null
         : null,
-      openReportsForPost: Math.max(1, counts.get(post.id) ?? 0),
+      openReportsForPost: counts.get(post.id) ?? 0,
     })];
   }).map((hydrate) => hydrate()));
   return ok({

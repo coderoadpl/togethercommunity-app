@@ -48,7 +48,7 @@ export const reportQueueItemSchema = z.object({
   report: postReportSchema,
   post: publicPostSchema,
   spaceName: z.string().nullable(),
-  openReportsForPost: z.number().int().positive(),
+  openReportsForPost: z.number().int().nonnegative(),
 });
 
 export type ReportQueueItem = z.output<typeof reportQueueItemSchema>;

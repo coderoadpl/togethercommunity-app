@@ -14,10 +14,19 @@ pseudonymization. Simulated subscriptions and rows without provider identifiers
 are skipped.
 
 Provider cancellation failure does not block erasure. The response reports the
-outcome for every subscription, the server writes a structured
-`[member-removal]` error, and staff sees a warning naming subscriptions that
-still require cancellation in Stripe. Re-running member removal retries every
-Stripe row regardless of its local status.
+outcome for every subscription, the server writes a `[member-removal]` runtime
+error, and staff sees a transient warning naming subscriptions whose
+cancellation returned `failed`. Re-running member removal retries every Stripe
+row regardless of its local status.
+
+If cancellation fails and a late `invoice.paid` arrives, the erased member is
+charged again, the local subscription flips from `canceled` back to `active`, a
+product grant is restored for the tombstoned member, and a new paid order is
+created after erasure with the retained company name, address, postal code,
+city, and NIP copied from the previous order. The member row and severed auth
+identity remain tombstoned, so nobody can log in with that restored grant and
+the paid-without-grant reconciliation report remains empty. Provider
+reconciliation must therefore finish before the next billing cycle.
 
 `MemberErasurePort.pseudonymize` then runs. The implementation in
 `adapters/db/repositories.ts` performs one transaction that:
@@ -29,6 +38,9 @@ Stripe row regardless of its local status.
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, and legacy identifier; and
 - records `deletedAt`.
+
+Marking member subscriptions canceled locally remains true only until a late
+`invoice.paid` flips a surviving provider subscription back to `active`.
 
 The staff member-detail surface preserves learning, grant, and e-mail history.
 It hides granting and renewal controls for a tombstoned member, while keeping

@@ -17,8 +17,14 @@ from `core/domain/tenant.ts`, and calls
 - replaces post author labels with `DELETED_MEMBER_DISPLAY`;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
-  customer identifiers, and legacy identifier; and
+  customer identifiers, legacy identifier, and ban state (`bannedAt`,
+  `bannedReason`, and `bannedByUserId`); and
 - records `deletedAt`.
+
+The transaction does not rewrite free text retained for moderation and audit:
+`member_events.reason` and `post_reports.note` keep their original values.
+Pseudonymization changes the member projection and reporter display, but it
+does not minimize these event and report fields.
 
 The staff member-detail surface preserves learning, grant, and e-mail history.
 It hides granting and renewal controls for a tombstoned member, while keeping
@@ -78,8 +84,8 @@ transition is recorded in `member_events`, and staff can lift the ban.
 
 Erasure (`memberTombstone`) is irreversible pseudonymization for a
 data-subject request. It severs the user id, tombstones the e-mail, ends
-grants, cancels subscriptions, and relabels authored content. A tombstoned
-identity cannot authenticate.
+grants, cancels subscriptions, lifts the tenant-visible ban, and relabels
+authored content. A tombstoned identity cannot authenticate.
 
 Never implement a ban in terms of erasure or ban a member as a step of
 erasure. The UI hides ban controls for members whose `deletedAt` is set, and

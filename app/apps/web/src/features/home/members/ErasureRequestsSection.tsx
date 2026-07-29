@@ -56,7 +56,7 @@ export const ErasureRequestsSection = () => {
             {requests.data.requests.map((request) => (
               <Stack key={request.id} useFlexGap spacing="0.5rem">
                 <Typography>
-                  {request.member.email} · {request.status} · {request.dueAt.slice(0, 10)}
+                  {request.member.email} · {t.members.erasureRequestStatus[request.status]} · {request.dueAt.slice(0, 10)}
                 </Typography>
                 <Stack direction="row" useFlexGap spacing="0.5rem">
                   <Button

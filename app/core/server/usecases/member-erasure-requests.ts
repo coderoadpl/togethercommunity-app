@@ -95,30 +95,35 @@ export const requestMyErasure = async (
     return err(appError('conflict', 'An erasure request is already open'));
   }
   if (deps.notifications !== undefined) {
-    const recipients = await tenantStaffRecipients(tenant.value, deps.notifications);
-    const panelUrl = new URL('/panel/members', deps.notifications.appBaseUrl);
-    if (ctx.identity.tenantSlug !== null) {
-      panelUrl.hostname = `${ctx.identity.tenantSlug}.${deps.notifications.baseDomain}`;
+    try {
+      const recipients = await tenantStaffRecipients(tenant.value, deps.notifications);
+      const panelUrl = new URL('/panel/members', deps.notifications.appBaseUrl);
+      if (ctx.identity.tenantSlug !== null) {
+        panelUrl.hostname = `${ctx.identity.tenantSlug}.${deps.notifications.baseDomain}`;
+      }
+      let queuedCount = 0;
+      for (const recipient of recipients) {
+        const queued = await deps.notifications.emailOutbox.enqueue({
+          id: deps.ids.nextId(),
+          tenantId: tenant.value,
+          to: recipient,
+          payload: {
+            kind: 'member-erasure-request',
+            language: DEFAULT_LANGUAGE,
+            tenantName: ctx.identity.tenantName ?? '',
+            memberEmail: member.value.email,
+            requestedAt,
+            dueAt: request.dueAt,
+            panelUrl: panelUrl.toString(),
+          },
+          now: requestedAt,
+        });
+        if (queued.ok) queuedCount += 1;
+      }
+      if (queuedCount > 0) deps.notifications.dispatchEmail();
+    } catch {
+      return ok(request);
     }
-    for (const recipient of recipients) {
-      const queued = await deps.notifications.emailOutbox.enqueue({
-        id: deps.ids.nextId(),
-        tenantId: tenant.value,
-        to: recipient,
-        payload: {
-          kind: 'member-erasure-request',
-          language: DEFAULT_LANGUAGE,
-          tenantName: ctx.identity.tenantName ?? '',
-          memberEmail: member.value.email,
-          requestedAt,
-          dueAt: request.dueAt,
-          panelUrl: panelUrl.toString(),
-        },
-        now: requestedAt,
-      });
-      if (!queued.ok) return queued;
-    }
-    deps.notifications.dispatchEmail();
   }
   return ok(request);
 };

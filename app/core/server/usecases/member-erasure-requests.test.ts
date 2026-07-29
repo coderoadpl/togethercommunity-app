@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   erasureRequestDueAt,
+  err,
+  integrationUnavailable,
+  ok,
   type Member,
   type MemberErasureRequest,
   type MemberErasureRequestEvent,
@@ -125,6 +128,115 @@ describe('member erasure requests', () => {
       h.deps,
     );
     expect(second).toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
+  it('queues staff notifications with the tenant panel URL', async () => {
+    const h = harness();
+    const queued: Array<{ to: string; payload: unknown }> = [];
+    let dispatched = 0;
+    h.deps.notifications = {
+      tenants: {
+        findById: async () => null,
+        findBySlug: async () => null,
+        findSettings: async () => null,
+        updateSettings: async (_tenantId, settings) => settings,
+        createTenantWithOwnerGrant: async () => {
+          throw new Error('not used');
+        },
+      },
+      tenantAccess: {
+        listTenantsForStaff: async () => [],
+        listStaffForTenant: async () => [
+          { userId: 'staff-1', email: 'first@example.com' },
+          { userId: 'staff-2', email: 'second@example.com' },
+        ],
+        findStaffGrant: async () => null,
+        findMember: async () => null,
+      },
+      emailOutbox: {
+        enqueue: async (input) => {
+          queued.push({ to: input.to, payload: input.payload });
+          return ok({ id: input.id });
+        },
+        claimBatch: async () => ok([]),
+        markSent: async () => ok(undefined),
+        markFailed: async () => ok(undefined),
+      },
+      appBaseUrl: 'https://app.example.com',
+      baseDomain: 'example.com',
+      dispatchEmail: () => {
+        dispatched += 1;
+      },
+    };
+
+    await expect(
+      requestMyErasure(
+        context('member'),
+        { confirmEmail: member.email },
+        h.deps,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(queued).toEqual([
+      {
+        to: 'first@example.com',
+        payload: expect.objectContaining({
+          kind: 'member-erasure-request',
+          memberEmail: member.email,
+          requestedAt: now,
+          dueAt: erasureRequestDueAt(now),
+          panelUrl: 'https://acme.example.com/panel/members',
+        }),
+      },
+      {
+        to: 'second@example.com',
+        payload: expect.objectContaining({
+          kind: 'member-erasure-request',
+          panelUrl: 'https://acme.example.com/panel/members',
+        }),
+      },
+    ]);
+    expect(dispatched).toBe(1);
+  });
+
+  it('keeps the durable request successful when notification enqueue fails', async () => {
+    const h = harness();
+    h.deps.notifications = {
+      tenants: {
+        findById: async () => null,
+        findBySlug: async () => null,
+        findSettings: async () => null,
+        updateSettings: async (_tenantId, settings) => settings,
+        createTenantWithOwnerGrant: async () => {
+          throw new Error('not used');
+        },
+      },
+      tenantAccess: {
+        listTenantsForStaff: async () => [],
+        listStaffForTenant: async () => [
+          { userId: 'staff-1', email: 'staff@example.com' },
+        ],
+        findStaffGrant: async () => null,
+        findMember: async () => null,
+      },
+      emailOutbox: {
+        enqueue: async () => err(integrationUnavailable('outbox unavailable')),
+        claimBatch: async () => ok([]),
+        markSent: async () => ok(undefined),
+        markFailed: async () => ok(undefined),
+      },
+      appBaseUrl: 'https://app.example.com',
+      baseDomain: 'example.com',
+      dispatchEmail: () => undefined,
+    };
+
+    await expect(
+      requestMyErasure(
+        context('member'),
+        { confirmEmail: member.email },
+        h.deps,
+      ),
+    ).resolves.toMatchObject({ ok: true, value: { status: 'open' } });
+    expect(h.getRequest()).toMatchObject({ status: 'open' });
   });
 
   it('cancels only the signed-in member open request', async () => {

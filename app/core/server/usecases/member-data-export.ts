@@ -17,6 +17,7 @@ import type {
   MemberCourseProgressRepository,
   MemberRepository,
   MemberSubscriptionRepository,
+  InvoiceRepository,
   OrderRepository,
   PostRepository,
   ProductGrantRepository,
@@ -28,6 +29,7 @@ export interface MemberDataExportDeps {
   grants: ProductGrantRepository;
   subscriptions: MemberSubscriptionRepository;
   orders: OrderRepository;
+  invoices: InvoiceRepository;
   progress: MemberCourseProgressRepository;
   posts: PostRepository;
   consents: TermsConsentRepository;
@@ -50,7 +52,7 @@ export const exportMyData = async (
     return err(notFound(`No member "${ctx.identity.memberId}" in this tenant`));
   }
 
-  const [grants, subscriptions, orders, courseProgress, posts, terms, marketing] =
+  const [grants, subscriptions, orders, invoices, courseProgress, posts, terms, marketing] =
     await Promise.all([
       deps.grants.listForMemberWithProductNames(
         tenant.value,
@@ -59,6 +61,7 @@ export const exportMyData = async (
       ),
       deps.subscriptions.listForMember(tenant.value, member.id),
       deps.orders.listForMember?.(tenant.value, member.id) ?? Promise.resolve([]),
+      deps.invoices.listForMember?.(tenant.value, member.id) ?? Promise.resolve([]),
       deps.progress.listByMember(tenant.value, member.id),
       deps.posts.listByAuthor(tenant.value, member.userId),
       deps.consents.listByEmail(tenant.value, member.email),
@@ -86,6 +89,7 @@ export const exportMyData = async (
     grants,
     subscriptions,
     orders,
+    invoices,
     courseProgress,
     posts: posts.map((post) => ({
       id: post.id,

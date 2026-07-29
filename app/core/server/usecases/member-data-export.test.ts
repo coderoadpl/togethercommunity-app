@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Member, Post } from '#core/domain/index.js';
+import type { Invoice, Member, Post } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { exportMyData, type MemberDataExportDeps } from './member-data-export.js';
@@ -33,6 +33,20 @@ const post: Post = {
   editedAt: null,
   deletedAt: null,
   pinnedAt: null,
+};
+const invoice: Invoice = {
+  id: 'invoice-1',
+  tenantId: 'tenant-1',
+  orderId: 'order-1',
+  status: 'issued',
+  provider: 'ksef',
+  providerInvoiceId: 'provider-invoice-1',
+  invoiceNumber: 'FV/1/2026',
+  pdfUrl: 'https://invoices.example.com/invoice-1.pdf',
+  error: null,
+  issuedAt: now,
+  createdAt: now,
+  ksef: null,
 };
 
 const context = (role: 'member' | 'staff' | 'none'): Ctx => ({
@@ -85,6 +99,16 @@ const deps = (
     countSince: async () => 0,
     listPaidWithoutGrant: async () => [],
   },
+  invoices: {
+    findById: async () => null,
+    findByIdForMember: async () => null,
+    listForMember: async () => [invoice],
+    findCurrentByOrder: async () => null,
+    create: async () => false,
+    claimRetry: async () => false,
+    update: async () => null,
+    appendEvent: async () => undefined,
+  },
   progress: {
     findByMemberAndCourse: async () => null,
     listByMember: async () => [],
@@ -134,6 +158,11 @@ describe('exportMyData', () => {
       formatVersion: 1,
       profile: { email: member.email },
       posts: [{ id: post.id, body: post.body }],
+      invoices: [{
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        providerInvoiceId: invoice.providerInvoiceId,
+      }],
     });
   });
 

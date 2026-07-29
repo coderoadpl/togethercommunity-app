@@ -708,6 +708,12 @@ export const en: Messages = {
     exportFailed: 'Export failed',
     erasureRequestsHeading: 'Erasure requests',
     erasureRequestsEmpty: 'No erasure requests.',
+    erasureRequestStatus: {
+      open: 'open',
+      cancelled: 'cancelled',
+      rejected: 'rejected',
+      completed: 'completed',
+    },
     erasureRejectNote: 'Rejection note',
     erasureReject: 'Reject',
     allMembersBack: '← All members',
@@ -1013,6 +1019,12 @@ export const en: Messages = {
     erasureRequestButton: 'Request erasure',
     erasureOpen: ({ dueAt }: { dueAt: string }) => `Request open · due by ${dueAt}`,
     erasureCancelButton: 'Cancel request',
+    erasureRequestStatus: {
+      open: 'open',
+      cancelled: 'cancelled',
+      rejected: 'rejected',
+      completed: 'completed',
+    },
     erasureResolved: ({ status, resolvedAt }: { status: string; resolvedAt: string }) =>
       `Request status: ${status} · resolved ${resolvedAt}`,
     menuAccount: 'Account',

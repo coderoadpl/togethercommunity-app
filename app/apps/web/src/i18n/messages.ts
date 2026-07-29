@@ -633,6 +633,7 @@ export interface Messages {
     exportFailed: string;
     erasureRequestsHeading: string;
     erasureRequestsEmpty: string;
+    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureRejectNote: string;
     erasureReject: string;
     allMembersBack: string;
@@ -935,6 +936,7 @@ export interface Messages {
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;
     erasureCancelButton: string;
+    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
   resetPassword: {

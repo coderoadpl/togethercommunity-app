@@ -304,6 +304,7 @@ export interface AppDeps {
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void };
+  deferredEffects: { schedule(effect: () => Promise<void>): void };
   baseDomain: string;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
@@ -758,6 +759,11 @@ export const createDeps = (env: Env): AppDeps => {
     ids,
     clock,
     logger,
+    deferredEffects: {
+      schedule: (effect) => {
+        queueMicrotask(() => { void effect(); });
+      },
+    },
     baseDomain: env.APP_BASE_DOMAIN,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {

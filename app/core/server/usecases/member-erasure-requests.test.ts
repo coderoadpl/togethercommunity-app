@@ -17,6 +17,7 @@ import type {
 } from '../ports.js';
 import {
   cancelMyErasureRequest,
+  getMyErasureRequest,
   requestMyErasure,
   type MemberErasureRequestDeps,
 } from './member-erasure-requests.js';
@@ -253,6 +254,29 @@ describe('member erasure requests', () => {
       value: { status: 'cancelled', memberId: member.id },
     });
     expect(h.events.map((event) => event.type)).toEqual(['requested', 'cancelled']);
+  });
+
+  it('reads only the signed-in member request in the resolved tenant', async () => {
+    const h = harness();
+    await requestMyErasure(context('member'), { confirmEmail: member.email }, h.deps);
+    const calls: Array<{ tenantId: string; memberId: string }> = [];
+    const findLatest = h.deps.erasureRequests.findLatestForMember;
+    h.deps.erasureRequests.findLatestForMember = async (tenantId, memberId) => {
+      calls.push({ tenantId, memberId });
+      return findLatest(tenantId, memberId);
+    };
+    expect(await getMyErasureRequest(context('member'), h.deps)).toMatchObject({
+      ok: true,
+      value: { memberId: member.id, status: 'open' },
+    });
+    expect(calls).toEqual([{ tenantId: 'tenant-1', memberId: member.id }]);
+  });
+
+  it('forbids requester-side reads without a member identity', async () => {
+    expect(await getMyErasureRequest(context('staff'), harness().deps)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
   });
 
   it('hides requests for a tombstoned member', async () => {

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { ok, type Coupon, type Product, type ProductPrice, type TenantSecret } from '#core/domain/index.js';
+import {
+  err,
+  integrationUnavailable,
+  ok,
+  type Coupon,
+  type Product,
+  type ProductPrice,
+  type TenantSecret,
+} from '#core/domain/index.js';
 import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
 const product: Product = {
@@ -93,6 +101,84 @@ const checkoutDeps = (): CheckoutDeps => ({
 });
 
 describe('createCheckoutSession', () => {
+  it('rejects an unpublished product', async () => {
+    const base = checkoutDeps();
+    const result = await (await import('./checkout.js')).createCheckoutSession(
+      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      'https://alpha.example.com',
+      { productId: product.id },
+      {
+        ...base,
+        products: { ...base.products, findById: async () => ({ ...product, published: false }) },
+      },
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'not_found',
+        message: `No published product "${product.id}" in this tenant`,
+      },
+    });
+  });
+
+  it.each([
+    ['missing', null],
+    ['belonging to another product', { ...recurringPrice, productId: 'product-2' }],
+    ['inactive', { ...recurringPrice, active: false }],
+  ] as const)('rejects a %s price', async (_case, foundPrice) => {
+    const base = checkoutDeps();
+    const result = await (await import('./checkout.js')).createCheckoutSession(
+      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      'https://alpha.example.com',
+      { productId: product.id, priceId: recurringPrice.id },
+      {
+        ...base,
+        prices: {
+          ...base.prices,
+          findById: async () => foundPrice,
+        },
+      },
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'not_found',
+        message: `No active price "${recurringPrice.id}" for this product`,
+      },
+    });
+  });
+
+  it('rejects checkout when tenant Stripe secrets are missing', async () => {
+    const base = checkoutDeps();
+    const result = await (await import('./checkout.js')).createCheckoutSession(
+      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      'https://alpha.example.com',
+      { productId: product.id },
+      {
+        ...base,
+        tenantSecrets: { ...base.tenantSecrets, findByKey: async () => null },
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('propagates provider failure with its error code', async () => {
+    const base = checkoutDeps();
+    const result = await (await import('./checkout.js')).createCheckoutSession(
+      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      'https://alpha.example.com',
+      { productId: product.id },
+      {
+        ...base,
+        payment: {
+          ...base.payment,
+          createCheckoutSession: async () => err(integrationUnavailable('Stripe unavailable')),
+        },
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+  });
+
   it('returns a free fulfillment handoff without creating a provider session', async () => {
     let providerSessions = 0;
     const base = checkoutDeps();

@@ -502,6 +502,11 @@ const deps = (input: {
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
+    deferredEffects: {
+      schedule: (effect) => {
+        queueMicrotask(() => { void effect(); });
+      },
+    },
     baseDomain: 'localhost',
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
@@ -515,7 +520,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
 
 const scopedApp = (
   scope: 'none' | 'member' | 'banned-member' | 'staff',
-  options: { memberDeletedAt?: string } = {},
+  options: { memberDeletedAt?: string; marketing?: MarketingAppDeps } = {},
 ) => {
   const base = deps();
   const member: Member = {
@@ -643,7 +648,7 @@ const scopedApp = (
       ...base.orders,
       listPaidWithoutGrant: async () => [],
     },
-    marketing: marketingDeps(),
+    marketing: options.marketing ?? marketingDeps(),
   });
 };
 
@@ -811,6 +816,67 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 };
 
 describe('marketing HTTP surfaces', () => {
+  it('rejects staff sessions on machine-only marketing edges', async () => {
+    const marketing = marketingDeps();
+    const app = scopedApp('staff', { marketing });
+    const tenantHeaders = { host: 'acme.localhost:48730' };
+
+    expect((await app.request('/api/internal/marketing/tick', {
+      method: 'GET',
+      headers: tenantHeaders,
+    })).status).toBe(401);
+    expect((await app.request('/api/internal/marketing/tick', {
+      method: 'POST',
+      headers: { ...tenantHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 't-acme', campaignId: 'campaign-1' }),
+    })).status).toBe(401);
+    expect((await app.request('/api/m2m/marketing/messages', {
+      method: 'GET',
+      headers: tenantHeaders,
+    })).status).toBe(401);
+    expect((await app.request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: { ...tenantHeaders, 'content-type': 'application/json' },
+      body: '{}',
+    })).status).toBe(401);
+  });
+
+  it('returns the same SES webhook response regardless of session scope', async () => {
+    const request = async (scope: 'none' | 'member' | 'staff') => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+        tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+        identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+        identityCheckError: null, configurationSet: null, snsTopicArn: 'topic',
+        trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
+        quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0,
+        quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
+        webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+        broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
+      }]);
+      const response = await scopedApp(scope, { marketing }).request(
+        '/api/webhooks/ses/webhook-token',
+        { method: 'POST', headers: { host: 'acme.localhost:48730' }, body: '{}' },
+      );
+      return { status: response.status, body: await response.json() };
+    };
+
+    const [anonymous, member, staff] = await Promise.all([
+      request('none'),
+      request('member'),
+      request('staff'),
+    ]);
+    expect(anonymous).toEqual({
+      status: 400,
+      body: {
+        ok: false,
+        error: expect.objectContaining({ code: 'validation' }),
+      },
+    });
+    expect(member).toEqual(anonymous);
+    expect(staff).toEqual(anonymous);
+  });
+
   it('denies staff-only capabilities to an authenticated API-key context', async () => {
     const configured = deps();
     configured.tenantApiKeys = {
@@ -880,6 +946,14 @@ describe('marketing HTTP surfaces', () => {
     const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it.each([
+    [{ host: 'globex.localhost:48730', 'x-api-key': 'marketing-key' }],
+    [{ host: 'localhost:48730', 'x-tenant': 'globex', 'x-api-key': 'marketing-key' }],
+  ])('rejects a tenant A API key resolved against tenant B', async (headers) => {
+    const response = await marketingApp().request('/api/m2m/marketing/messages', { headers });
+    expect(response.status).toBe(401);
   });
 
   it('exposes active consent definitions and ordered message events to API clients', async () => {
@@ -2041,6 +2115,9 @@ describe('checkout consent ordering', () => {
     let orderResult: Order | null = order;
     const orderLookups: Record<string, string>[] = [];
     const logger = { error: vi.fn() };
+    const deferredEffects: Array<() => Promise<void>> = [];
+    let invoiceRequests = 0;
+    let deferredLookupFails = false;
     const app = buildApp({
       ...base,
       marketing,
@@ -2062,8 +2139,36 @@ describe('checkout consent ordering', () => {
                 supportUrl: null,
                 termsUrl: 'https://acme.example/terms-v2',
                 privacyUrl: 'https://acme.example/privacy-v3',
+                autoIssueInvoices: true,
+                autoIssueInvoiceScope: 'all',
+                invoiceVatRatePercent: 23,
+                invoicingProvider: 'ifirma',
+                invoiceSellerName: 'Acme',
+                invoiceSellerAddress: 'Warsaw',
               }
             : null,
+      },
+      orderDetails: {
+        findById: async () => ({
+          ...order,
+          billing: null,
+          memberEmail: 'webhook-buyer@together.dev',
+          memberName: 'Webhook Buyer',
+          productTitle: attached.title,
+          couponCode: null,
+        }),
+      },
+      invoices: {
+        ...base.invoices,
+        create: async () => {
+          invoiceRequests += 1;
+          return true;
+        },
+      },
+      deferredEffects: {
+        schedule: (effect) => {
+          deferredEffects.push(effect);
+        },
       },
       consents: {
         ...base.consents,
@@ -2102,6 +2207,7 @@ describe('checkout consent ordering', () => {
       paymentRefunds: {
         ...base.paymentRefunds,
         findOrderByProviderObjectIds: async (_tenantId, providerObjectIds) => {
+          if (deferredLookupFails) throw new Error('invoice lookup failed');
           orderLookups.push(providerObjectIds);
           return orderResult;
         },
@@ -2133,8 +2239,15 @@ describe('checkout consent ordering', () => {
       });
 
     expect((await deliver()).status).toBe(200);
-    expect((await deliver()).status).toBe(200);
+    expect(invoiceRequests).toBe(0);
     expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    orderLookups.length = 0;
+    expect(deferredEffects).toHaveLength(1);
+    await deferredEffects.shift()?.();
+    expect(invoiceRequests).toBe(1);
+    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    orderLookups.length = 0;
+    expect((await deliver()).status).toBe(200);
     expect(recorded).toEqual([
       expect.objectContaining({
         email: 'webhook-buyer@together.dev',
@@ -2206,6 +2319,13 @@ describe('checkout consent ordering', () => {
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+    deferredLookupFails = true;
+    const failingEffect = deferredEffects.at(-1);
+    if (failingEffect === undefined) throw new Error('Deferred invoice effect is missing');
+    await expect(failingEffect()).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith(
+      '[invoice-auto] tenant=t-acme unexpected=Error: invoice lookup failed',
+    );
   });
 
   it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {

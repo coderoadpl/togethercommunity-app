@@ -164,6 +164,72 @@ describe('marketing database repositories', () => {
       });
   });
 
+  it('allows only one concurrent worker to finalize a scheduler run', async () => {
+    const repository = createSchedulerRunRepository(db);
+    await repository.start({
+      id: 'run-finalize-race',
+      kind: 'marketing_tick',
+      trigger: 'cron',
+      startedAt: '2026-07-22T03:00:00.000Z',
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0,
+        reEnqueued: false,
+      },
+      createdAt: '2026-07-22T03:00:00.000Z',
+    });
+    const finalize = (status: 'completed' | 'failed') =>
+      repository.finalize('run-finalize-race', {
+        finishedAt: '2026-07-22T03:00:01.000Z',
+        durationMs: 1000,
+        status,
+        error: status === 'failed' ? 'worker failed' : null,
+        totals: {
+          campaignsTouched: 1, sendsAttempted: 1, sent: status === 'completed' ? 1 : 0,
+          failed: status === 'failed' ? 1 : 0, skipped: 0, reEnqueued: false,
+        },
+        tenants: [],
+      });
+    const outcomes = await Promise.all([finalize('completed'), finalize('failed')]);
+    expect(outcomes.filter((outcome) => outcome !== null)).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome === null)).toHaveLength(1);
+  });
+
+  it('marks only stale running scheduler jobs as failed', async () => {
+    const repository = createSchedulerRunRepository(db);
+    const start = (id: string, startedAt: string) => repository.start({
+      id,
+      kind: 'outbox_dispatch',
+      trigger: 'cron',
+      startedAt,
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: {
+        campaignsTouched: 0, sendsAttempted: 0, sent: 0, failed: 0, skipped: 0,
+        reEnqueued: false,
+      },
+      createdAt: startedAt,
+    });
+    await start('run-stale', '2026-07-22T01:00:00.000Z');
+    await start('run-fresh', '2026-07-22T04:00:00.000Z');
+    await expect(repository.failStale({
+      startedBefore: '2026-07-22T02:00:00.000Z',
+      finishedAt: '2026-07-22T05:00:00.000Z',
+      error: 'scheduler run timed out',
+    })).resolves.toBe(1);
+    await expect(repository.getWithTenants('run-stale')).resolves.toMatchObject({
+      run: { status: 'failed', error: 'scheduler run timed out' },
+    });
+    await expect(repository.getWithTenants('run-fresh')).resolves.toMatchObject({
+      run: { status: 'running', error: null },
+    });
+  });
+
   it('tenant-scopes definitions and claims a campaign lease with compare-and-set', async () => {
     const definitions = createConsentDefinitionRepository(db);
     await definitions.create('tenant-a', definition('tenant-a'), version('tenant-a'));

@@ -6,7 +6,7 @@ FSL-1.1-ALv2
 
 ## Notice
 
-Copyright 2026 Mateusz Choma
+Copyright 2026 Amazing Company sp. z o.o.
 
 ## Terms and Conditions
 

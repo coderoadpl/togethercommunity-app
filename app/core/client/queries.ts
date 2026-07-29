@@ -55,6 +55,9 @@ import type {
   PostCreateInput,
   PostDeleteInput,
   PostPinInput,
+  PostReportInput,
+  ReportResolveInput,
+  ReportsListInput,
   PostReactInput,
   PostUpdateInput,
   PostsSearchInput,
@@ -269,6 +272,11 @@ export const spacesScopes = {
   lists: () => ['spaces', 'list'] as const,
   staff: () => ['spaces', 'staff'] as const,
   feed: (spaceId: string, limit?: number) => ['spaces', 'feed', spaceId, limit ?? null] as const,
+};
+
+export const reportScopes = {
+  all: () => ['reports'] as const,
+  list: (input: ReportsListInput) => ['reports', 'list', input] as const,
 };
 
 export const notificationScopes = {
@@ -930,6 +938,26 @@ export const pinPostMutation = (api: ApiClient) =>
     mutationKey: [...spacesScopes.all(), 'pin'],
     call: (input: PostPinInput) => api.pinPost(input),
   });
+
+export const reportsQuery = (api: ApiClient, input: ReportsListInput = {}) =>
+  defineQuery({
+    queryKey: reportScopes.list(input),
+    call: ({ signal }) => api.listReports(input, signal),
+  });
+
+export const reportPostMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...spacesScopes.all(), 'report'],
+    call: (input: PostReportInput) => api.reportPost(input),
+  });
+
+export const resolveReportMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...reportScopes.all(), 'resolve'],
+    call: (input: ReportResolveInput) => api.resolveReport(input),
+  });
+
+export const reportsInvalidates = () => ({ queryKey: reportScopes.all() });
 
 export const unreactToPostMutation = (api: ApiClient) =>
   defineMutation({

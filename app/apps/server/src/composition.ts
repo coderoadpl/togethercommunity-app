@@ -52,6 +52,7 @@ import {
   createOrderRepository,
   createPaymentRefundRepository,
   createPostReactionRepository,
+  createPostReportRepository,
   createPostRepository,
   createSpaceRepository,
   createSpaceSubscriptionRepository,
@@ -161,6 +162,7 @@ import type {
   OrderDetailRepository,
   PaymentRefundRepository,
   PostRepository,
+  PostReportRepository,
   PurchaseRepository,
   ProductGrantRepository,
   ProductPriceRepository,
@@ -239,6 +241,7 @@ export interface AppDeps {
   memberErasure: MemberErasurePort;
   emailHmac?: EmailHmac;
   posts: PostRepository;
+  reports: PostReportRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaces: SpaceRepository;
   reactions: PostReactionRepository;
@@ -640,6 +643,7 @@ export const createDeps = (env: Env): AppDeps => {
     memberErasure: createMemberErasureRepository(db, emailHmac),
     emailHmac,
     posts: createPostRepository(db),
+    reports: createPostReportRepository(db),
     threadSubscriptions: createThreadSubscriptionRepository(db),
     spaces: createSpaceRepository(db),
     reactions: createPostReactionRepository(db),

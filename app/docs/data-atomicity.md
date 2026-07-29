@@ -37,6 +37,9 @@ at all.
   `CouponManagementRepository.archive`, and
   `CouponRedemptionRepository.createOrderAndClaim` keep coupon projections,
   events, orders, and redemption limits consistent.
+- Moderation: `PostReportRepository.open`, `PostReportRepository.resolve`,
+  and `PostReportRepository.resolveAllForPost` keep report projections and
+  events consistent.
 - Marketing: `ConsentDefinitionRepository.create`,
   `TenantDocumentRepository.create`, `TenantDocumentRepository.saveDraft`,
   `TenantDocumentRepository.publishDraft`,

@@ -297,6 +297,18 @@ const reactionOptionsSchema = z.object({
   post: z.string().min(1),
   emoji: reactionEmojiSchema,
 });
+const postReportOptionsSchema = z.object({
+  post: z.string().min(1),
+  reason: z.enum(['spam', 'harassment', 'off-topic', 'illegal', 'other']),
+  note: z.string().max(1000).optional(),
+});
+const reportListOptionsSchema = z.object({
+  status: z.enum(['open', 'dismissed', 'resolved']).optional(),
+});
+const reportResolveOptionsSchema = z.object({
+  report: z.string().min(1),
+  action: z.enum(['dismiss', 'delete-post']),
+});
 const spaceCreateOptionsSchema = z.object({
   slug: z.string().min(1),
   name: z.string().min(1),
@@ -1604,6 +1616,63 @@ student
   );
 
 const discussion = program.command('discussion').description('Lesson discussions');
+
+const post = program.command('post').description('Community posts');
+
+post
+  .command('report')
+  .description('Report a post')
+  .requiredOption('--post <postId>')
+  .requiredOption('--reason <reason>')
+  .option('--note <text>')
+  .action(
+    withInput(z.tuple([postReportOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.reportPost({
+          postId: options.post,
+          reason: options.reason,
+          ...(options.note === undefined ? {} : { note: options.note }),
+        }),
+        ctx.json,
+        (data) => `reported post ${data.report.postId.slice(0, 8)} (${data.report.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+const report = program.command('report').description('Post reports (staff only)');
+
+report
+  .command('list')
+  .description('List reports')
+  .option('--status <status>', 'open, dismissed, or resolved')
+  .action(
+    withInput(z.tuple([reportListOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listReports(options.status === undefined ? {} : { status: options.status }),
+        ctx.json,
+        (data) => data.items.length === 0
+          ? 'no reports'
+          : data.items.map(({ report: item, post: reportedPost }) =>
+              `- ${item.reason}\t${reportedPost.body.slice(0, 80)}\t(${item.id})`
+            ).join('\n'),
+      );
+    }),
+  );
+
+report
+  .command('resolve')
+  .description('Resolve a report')
+  .requiredOption('--report <id>')
+  .requiredOption('--action <action>', 'dismiss or delete-post')
+  .action(
+    withInput(z.tuple([reportResolveOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.resolveReport({ reportId: options.report, action: options.action }),
+        ctx.json,
+        (data) => `resolved report ${data.report.id.slice(0, 8)} as ${data.report.status}`,
+      );
+    }),
+  );
 
 discussion
   .command('post')

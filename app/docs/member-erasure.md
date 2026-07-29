@@ -71,6 +71,11 @@ Requests are handled case by case:
 
 ## Out of scope and known gaps
 
+Report rows retain `post_reports.reporter_user_id` after erasure, matching the
+existing retention of `posts.author_user_id`. The pseudonymization transaction
+relabels `reporter_display` to `DELETED_MEMBER_DISPLAY`. A full redesign around
+non-identifying subject references remains backlog item B1.
+
 Self-service data-subject export and deletion remain backlog item B1.
 Provider-side subscription cancellation remains backlog item B7. Neither is
 part of this document's guarantees.

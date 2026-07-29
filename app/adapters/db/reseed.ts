@@ -17,6 +17,8 @@ import {
   notifications,
   orders,
   posts,
+  postReportEvents,
+  postReports,
   processedPaymentEvents,
   productGrants,
   products,
@@ -125,6 +127,20 @@ record(
     .delete(threadSubscriptions)
     .where(inArray(threadSubscriptions.tenantId, DEMO_TENANT_IDS))
     .returning({ rootPostId: threadSubscriptions.rootPostId }),
+);
+record(
+  'post_report_events',
+  await db
+    .delete(postReportEvents)
+    .where(inArray(postReportEvents.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: postReportEvents.id }),
+);
+record(
+  'post_reports',
+  await db
+    .delete(postReports)
+    .where(inArray(postReports.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: postReports.id }),
 );
 record(
   'posts',

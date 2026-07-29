@@ -151,6 +151,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
     return 'lesson:play';
   }
   if (path === '/api/posts/pin') return 'community:pin';
+  if (path === '/api/posts/report') return 'community:report';
+  if (path === '/api/reports') return 'community:report:read';
+  if (path === '/api/reports/resolve') return 'community:moderate';
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads')) {
     return method === 'GET' ? 'community:read' : 'community:write';
   }
@@ -415,6 +418,7 @@ const beforeForUseCase = (
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
+  if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
   if (file === 'support.ts') return tenantActors;
   if (file === 'spaces.ts') {
     return name === 'listSpacesForStaff' || capability === 'space:write' || capability === 'community:pin'

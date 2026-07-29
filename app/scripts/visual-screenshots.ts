@@ -11,7 +11,7 @@
  * a flat placeholder), so a golden only changes when the UI changes.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,8 +31,10 @@ const webDistDir = join(rootDir, 'dist/web');
 const goldenDir = join(rootDir, 'tasks/visual-goldens');
 const currentDir = join(rootDir, 'out/visual/current');
 const diffDir = join(rootDir, 'out/visual/diff');
+const argosDir = join(rootDir, 'out/visual/argos');
 
 const updateMode = process.argv.includes('--update');
+const argosCaptureMode = process.argv.includes('--argos-capture');
 const goldenAuthoringPlatform = 'darwin';
 
 const themeStorageKey = 'together-theme-mode';
@@ -599,14 +601,14 @@ interface ShotFailure {
 const comparePng = (name: string, currentPath: string): ShotFailure | null => {
   const goldenPath = join(goldenDir, name);
   if (!existsSync(goldenPath)) {
-    return { file: name, reason: 'golden missing — run `npm run visual:update` and review it' };
+    return { file: name, reason: 'baseline missing — run `npm run visual:update` and review it' };
   }
   const golden = PNG.sync.read(readFileSync(goldenPath));
   const current = PNG.sync.read(readFileSync(currentPath));
   if (golden.width !== current.width || golden.height !== current.height) {
     return {
       file: name,
-      reason: `size mismatch: golden ${golden.width}x${golden.height} vs current ${current.width}x${current.height}`,
+      reason: `size mismatch: baseline ${golden.width}x${golden.height} vs current ${current.width}x${current.height}`,
     };
   }
   const diff = new PNG({ width: golden.width, height: golden.height });
@@ -629,15 +631,24 @@ let server: ChildProcess | null = null;
 let browser: Browser | null = null;
 
 try {
+  if (updateMode && argosCaptureMode) {
+    fail('Golden authoring and Argos capture modes cannot run together.');
+  }
+
   if (updateMode && process.platform !== goldenAuthoringPlatform) {
     fail(
-      `Golden authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
+      `Baseline authoring requires ${goldenAuthoringPlatform}; current platform is ${process.platform}.`,
     );
   }
 
-  mkdirSync(goldenDir, { recursive: true });
-  mkdirSync(currentDir, { recursive: true });
-  mkdirSync(diffDir, { recursive: true });
+  if (argosCaptureMode) {
+    rmSync(argosDir, { recursive: true, force: true });
+    mkdirSync(argosDir, { recursive: true });
+  } else {
+    mkdirSync(goldenDir, { recursive: true });
+    mkdirSync(currentDir, { recursive: true });
+    mkdirSync(diffDir, { recursive: true });
+  }
 
   console.log(`visual: preparing the dev database (SEED_BASE_TIME=${SEED_BASE_TIME})...`);
   await prepareDatabase();
@@ -690,7 +701,10 @@ try {
           await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
           await screen.ready(page);
           await settlePage(page);
-          const shotPath = updateMode ? join(goldenDir, file) : join(currentDir, file);
+          const shotPath = join(
+            argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
+            file,
+          );
           await page.screenshot({
             path: shotPath,
             animations: 'disabled',
@@ -700,7 +714,7 @@ try {
           const { size } = statSync(shotPath);
           assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);
           captured += 1;
-          if (!updateMode) {
+          if (!updateMode && !argosCaptureMode) {
             const failure = comparePng(file, shotPath);
             if (failure !== null) failures.push(failure);
           }
@@ -713,20 +727,24 @@ try {
   }
 
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
-  if (updateMode) {
-    console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} goldens written to ${goldenDir}`);
-    console.log('Review the golden diffs and commit them with the change that caused them.');
+  if (argosCaptureMode) {
+    console.log(
+      `\nvisual:argos-capture: DONE (${seconds}s) — ${captured} screenshots written to ${argosDir}`,
+    );
+  } else if (updateMode) {
+    console.log(`\nvisual:update: PASS (${seconds}s) — ${captured} baseline images written to ${goldenDir}`);
+    console.log('Review the baseline diffs and commit them with the change that caused them.');
   } else if (failures.length > 0) {
-    console.error(`\nvisual: FAIL — ${failures.length}/${captured} screenshots differ from the goldens:\n`);
+    console.error(`\nvisual: FAIL — ${failures.length}/${captured} screenshots differ from the baseline:\n`);
     for (const failure of failures) {
       console.error(`  ✗ ${failure.file}\n    ${failure.reason}`);
     }
     console.error(
-      '\nIntended change? Run `npm run visual:update`, review the golden diffs and commit them.\nUnintended? That is a visual regression — fix it.',
+      '\nIntended change? Run `npm run visual:update`, review the baseline diffs and commit them.\nUnintended? That is a visual regression — fix it.',
     );
     process.exitCode = 1;
   } else {
-    console.log(`\nvisual: PASS (${seconds}s) — ${captured} screenshots match the goldens`);
+    console.log(`\nvisual: PASS (${seconds}s) — ${captured} screenshots match the baseline`);
   }
 } catch (error) {
   const message = error instanceof VisualFailure ? error.message : String(error);

@@ -1,10 +1,17 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
+import {
+  DELETED_MEMBER_DISPLAY,
+  err,
+  invoiceVatTreatmentsEqual,
+  memberTombstone,
+  ok,
+  validation,
+} from '#core/domain/index.js';
 import type {
   CourseLesson,
   CourseModule,
@@ -51,6 +58,8 @@ import {
   createProductPriceHistoryRepository,
 } from './coupon-repositories.js';
 import { createInvoiceRepository } from './invoice-repositories.js';
+import { createPaymentTransactionPort } from './payment-transaction.js';
+import { createMemberErasureRequestRepository } from './member-erasure-requests.js';
 import {
   consents,
   couponRedemptions,
@@ -58,16 +67,21 @@ import {
   coupons,
   devEmails,
   devMagicLinks,
+  emailOutbox,
   emailEvents,
   invoices,
   erasedMemberImports,
   memberCourseProgress,
   memberEvents,
+  memberSubscriptions,
   members,
+  memberErasureRequestEvents,
   orders,
   postReportEvents,
   postReports,
   posts,
+  processedPaymentEvents,
+  productGrants,
   productPriceHistory,
   productPrices,
   suppressions,
@@ -763,6 +777,51 @@ describe('member subscription repository', () => {
   });
 });
 
+describe('invoice repository', () => {
+  it('compares an exempt VAT treatment after a jsonb round-trip', async () => {
+    const repo = createInvoiceRepository(db);
+    await repo.create(
+      ACME,
+      {
+        id: 'invoice-vat-jsonb',
+        tenantId: ACME,
+        orderId: 'order-acme-2',
+        status: 'failed',
+        provider: 'ifirma',
+        providerInvoiceId: null,
+        invoiceNumber: null,
+        pdfUrl: null,
+        error: 'integration_unavailable',
+        issuedAt: null,
+        createdAt: NOW,
+      },
+      {
+        id: 'invoice-event-vat-jsonb',
+        tenantId: ACME,
+        invoiceId: 'invoice-vat-jsonb',
+        orderId: 'order-acme-2',
+        type: 'requested',
+        error: null,
+        meta: {
+          vat: {
+            kind: 'exempt',
+            basisKind: 'art_113_1',
+            basis: 'art. 113 ust. 1',
+          },
+        },
+        occurredAt: NOW,
+      },
+    );
+
+    const event = await repo.findLatestRequestedEvent(ACME, 'invoice-vat-jsonb');
+    expect(invoiceVatTreatmentsEqual(event?.meta.vat, {
+      kind: 'exempt',
+      basisKind: 'art_113_1',
+      basis: 'art. 113 ust. 1',
+    })).toBe(true);
+  });
+});
+
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
     const repo = createTenantRepository(db);
@@ -781,9 +840,25 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
     expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
-    expect(await repo.findSettings(ACME)).toMatchObject({ bunnyStreamLibraryId: 'lib-1' });
+    expect(await repo.findSettings(ACME)).toMatchObject({
+      bunnyStreamLibraryId: 'lib-1',
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
+    });
+  });
+
+  it('rejects unsupported persisted VAT modes', async () => {
+    await expect(db.execute(sql`
+      UPDATE tenants SET invoice_vat_mode = 'reverse_charge' WHERE id = ${ACME}
+    `)).rejects.toThrow();
   });
 
   it('exposes staff memberships and members through the access reader', async () => {
@@ -833,7 +908,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await repo.findByKey(ACME, 'stripe.restrictedKey')).toBeNull();
   });
 
-  it('claims a payment event once and rejects duplicate deliveries', async () => {
+  it('leases, reclaims, finalizes, and releases payment event claims', async () => {
     const repo = createProcessedPaymentEventRepository(db);
     const event: ProcessedPaymentEvent = {
       id: 'evt-1',
@@ -842,11 +917,368 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       objectId: 'in-1',
       processedAt: NOW,
     };
-    expect(await repo.claim(ACME, event)).toBe(true);
-    expect(await repo.claim(ACME, event)).toBe(false);
-    expect(await repo.claim(ACME, { ...event, id: 'evt-2' })).toBe(false);
-    await repo.release(ACME, 'evt-1');
-    expect(await repo.claim(ACME, { ...event, id: 'evt-3' })).toBe(true);
+    const lease = {
+      workerId: 'worker-1',
+      now: NOW,
+      leaseExpiresAt: '1998-07-14T10:05:00.000Z',
+    };
+    expect(await repo.claim(ACME, event, lease)).toBe('claimed');
+    expect(await repo.claim(ACME, event, lease)).toBe('duplicate');
+    expect(await repo.claim(ACME, { ...event, id: 'evt-2' }, lease)).toBe('duplicate');
+    const reclaimed = {
+      workerId: 'worker-2',
+      now: '1998-07-14T10:06:00.000Z',
+      leaseExpiresAt: '1998-07-14T10:11:00.000Z',
+    };
+    expect(await repo.claim(ACME, event, reclaimed)).toBe('claimed');
+    await repo.finalize(ACME, event.id, lease.workerId, reclaimed.now);
+    await repo.release(ACME, event.id, lease.workerId);
+    expect(await repo.claim(ACME, event, reclaimed)).toBe('duplicate');
+    await repo.finalize(ACME, event.id, reclaimed.workerId, reclaimed.now);
+    expect(
+      await repo.claim(ACME, event, {
+        ...reclaimed,
+        now: '1998-07-14T10:12:00.000Z',
+        leaseExpiresAt: '1998-07-14T10:17:00.000Z',
+      }),
+    ).toBe('duplicate');
+
+    const releasable = { ...event, id: 'evt-3', objectId: 'in-3' };
+    expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
+    await repo.release(ACME, releasable.id, lease.workerId);
+    expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
+  });
+
+  it('rolls back payment repository writes when the branch fails', async () => {
+    const transaction = createPaymentTransactionPort(db);
+    const rolledBackOrder = order({
+      id: 'order-payment-rollback',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+
+    const result = await transaction.run(async (transactionDeps) => {
+      await transactionDeps.orders.create(ACME, rolledBackOrder);
+      return err(validation('reject payment branch'));
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    const rows = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.tenantId, ACME), eq(orders.id, rolledBackOrder.id)));
+    expect(rows).toEqual([]);
+  });
+
+  it('rolls back writes from every payment transaction repository', async () => {
+    await db.insert(coupons).values({
+      id: 'coupon-bundle-rollback',
+      tenantId: ACME,
+      code: 'BUNDLEROLLBACK',
+      kind: 'amount',
+      value: 100,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: null,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    const refundableOrder = order({
+      id: 'order-bundle-refundable',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+    await createOrderRepository(db).create(ACME, refundableOrder);
+    const claimedEvent: ProcessedPaymentEvent = {
+      id: 'evt-bundle-rollback',
+      tenantId: ACME,
+      type: 'invoice.paid',
+      objectId: 'invoice-bundle-rollback',
+      processedAt: NOW,
+    };
+    const claimLease = {
+      workerId: 'worker-bundle',
+      now: NOW,
+      leaseExpiresAt: '1998-07-14T10:05:00.000Z',
+    };
+    await createProcessedPaymentEventRepository(db).claim(
+      ACME,
+      claimedEvent,
+      claimLease,
+    );
+    const transaction = createPaymentTransactionPort(db);
+    const transactionMember = member({
+      id: 'mem-bundle-rollback',
+      tenantId: ACME,
+      userId: 'user-acme-owner',
+      email: 'owner-acme@together.dev',
+    });
+    const nestedMember = member({
+      id: 'mem-bundle-nested',
+      tenantId: ACME,
+      userId: 'user-globex-owner',
+      email: 'owner-globex@together.dev',
+    });
+    const transactionOrder = order({
+      id: 'order-bundle-rollback',
+      tenantId: ACME,
+      memberId: transactionMember.id,
+      productId: 'prod-acme',
+    });
+    const couponOrder = order({
+      id: 'order-bundle-coupon',
+      tenantId: ACME,
+      memberId: transactionMember.id,
+      productId: 'prod-acme',
+      couponId: 'coupon-bundle-rollback',
+      discountCents: 100,
+    });
+
+    const result = await transaction.run(async (transactionDeps) => {
+      await transactionDeps.members.create(ACME, transactionMember);
+      await transactionDeps.grants.createGrant(
+        ACME,
+        grant({
+          id: 'grant-bundle-rollback',
+          tenantId: ACME,
+          memberId: transactionMember.id,
+          productId: 'prod-acme',
+        }),
+      );
+      await transactionDeps.orders.create(ACME, transactionOrder);
+      await transactionDeps.subscriptions.create(
+        ACME,
+        subscription({
+          id: 'sub-bundle-rollback',
+          tenantId: ACME,
+          memberId: transactionMember.id,
+          productId: 'prod-acme',
+          priceId: 'price-acme',
+          providerSubscriptionId: 'psub-bundle-rollback',
+        }),
+      );
+      await transactionDeps.paymentRefunds.markOrderRefunded(
+        ACME,
+        refundableOrder.id,
+      );
+      await transactionDeps.couponRedemptions.createOrderAndClaim(ACME, {
+        order: couponOrder,
+        redemption: {
+          id: 'redemption-bundle-rollback',
+          tenantId: ACME,
+          couponId: 'coupon-bundle-rollback',
+          orderId: couponOrder.id,
+          memberId: transactionMember.id,
+          email: transactionMember.email,
+          discountCents: 100,
+          createdAt: NOW,
+        },
+        event: {
+          id: 'redemption-event-bundle-rollback',
+          tenantId: ACME,
+          redemptionId: 'redemption-bundle-rollback',
+          couponId: 'coupon-bundle-rollback',
+          orderId: couponOrder.id,
+          type: 'redeemed',
+          occurredAt: NOW,
+        },
+        maxRedemptions: null,
+        maxRedemptionsPerMember: null,
+      });
+      await transactionDeps.emailOutbox.enqueue({
+        id: 'outbox-bundle-rollback',
+        tenantId: ACME,
+        to: transactionMember.email,
+        payload: {
+          kind: 'reset-password',
+          language: 'pl',
+          actionUrl: 'https://acme.example.test/reset',
+        },
+        now: NOW,
+      });
+      await transactionDeps.processedPaymentEvents.finalize(
+        ACME,
+        claimedEvent.id,
+        claimLease.workerId,
+        NOW,
+      );
+      await transactionDeps.enrollmentTransaction.run(async (nestedDeps) => {
+        await nestedDeps.members.create(ACME, nestedMember);
+        await nestedDeps.grants.createGrant(
+          ACME,
+          grant({
+            id: 'grant-bundle-nested',
+            tenantId: ACME,
+            memberId: nestedMember.id,
+            productId: 'prod-acme',
+          }),
+        );
+        await nestedDeps.emailOutbox.enqueue({
+          id: 'outbox-bundle-nested',
+          tenantId: ACME,
+          to: nestedMember.email,
+          payload: {
+            kind: 'reset-password',
+            language: 'pl',
+            actionUrl: 'https://acme.example.test/reset',
+          },
+          now: NOW,
+        });
+        return ok(undefined);
+      });
+      return err(validation('reject full payment bundle'));
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(
+      await db
+        .select({ id: members.id })
+        .from(members)
+        .where(inArray(members.id, [transactionMember.id, nestedMember.id])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: productGrants.id })
+        .from(productGrants)
+        .where(inArray(productGrants.id, [
+          'grant-bundle-rollback',
+          'grant-bundle-nested',
+        ])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(inArray(orders.id, [transactionOrder.id, couponOrder.id])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: memberSubscriptions.id })
+        .from(memberSubscriptions)
+        .where(eq(memberSubscriptions.id, 'sub-bundle-rollback')),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: couponRedemptions.id })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.id, 'redemption-bundle-rollback')),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: emailOutbox.id })
+        .from(emailOutbox)
+        .where(inArray(emailOutbox.id, [
+          'outbox-bundle-rollback',
+          'outbox-bundle-nested',
+        ])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ status: orders.status })
+        .from(orders)
+        .where(eq(orders.id, refundableOrder.id)),
+    ).toEqual([{ status: 'paid' }]);
+    expect(
+      await db
+        .select({
+          status: processedPaymentEvents.status,
+          workerId: processedPaymentEvents.workerId,
+        })
+        .from(processedPaymentEvents)
+        .where(eq(processedPaymentEvents.id, claimedEvent.id)),
+    ).toEqual([{ status: 'processing', workerId: claimLease.workerId }]);
+  });
+
+  it('keeps the outer payment transaction usable after a coupon savepoint fails', async () => {
+    await db.insert(coupons).values({
+      id: 'coupon-savepoint',
+      tenantId: ACME,
+      code: 'SAVEPOINT',
+      kind: 'amount',
+      value: 100,
+      scope: { kind: 'all' },
+      appliesTo: 'one_time',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: null,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    const transaction = createPaymentTransactionPort(db);
+    const nestedOrder = order({
+      id: 'order-savepoint-nested',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+      couponId: 'coupon-savepoint',
+      discountCents: 100,
+    });
+    const outerOrder = order({
+      id: 'order-savepoint-outer',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+
+    const result = await transaction.run(async (transactionDeps) => {
+      await expect(
+        transactionDeps.couponRedemptions.createOrderAndClaim(ACME, {
+          order: nestedOrder,
+          redemption: {
+            id: 'redemption-savepoint',
+            tenantId: ACME,
+            couponId: 'coupon-savepoint',
+            orderId: nestedOrder.id,
+            memberId: 'mem-acme',
+            email: 'member@together.dev',
+            discountCents: 100,
+            createdAt: NOW,
+          },
+          event: {
+            id: 'redemption-event-savepoint',
+            tenantId: ACME,
+            redemptionId: 'missing-redemption',
+            couponId: 'coupon-savepoint',
+            orderId: nestedOrder.id,
+            type: 'redeemed',
+            occurredAt: NOW,
+          },
+          maxRedemptions: null,
+          maxRedemptionsPerMember: null,
+        }),
+      ).rejects.toBeDefined();
+      await transactionDeps.orders.create(ACME, outerOrder);
+      return ok(undefined);
+    });
+
+    expect(result).toEqual(ok(undefined));
+    expect(
+      await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(inArray(orders.id, [nestedOrder.id, outerOrder.id]))
+        .orderBy(asc(orders.id)),
+    ).toEqual([{ id: outerOrder.id }]);
+    expect(
+      await db
+        .select({ id: couponRedemptions.id })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.id, 'redemption-savepoint')),
+    ).toEqual([]);
   });
 });
 
@@ -928,6 +1360,46 @@ describe('post repository', () => {
     await expect(repo.findByIds(ACME, ['post-spam-recent-a', 'missing']))
       .resolves.toMatchObject([{ id: 'post-spam-recent-a' }]);
     await expect(repo.findByIds(GLOBEX, ['post-spam-recent-a'])).resolves.toEqual([]);
+  });
+
+  it('lists only posts for the requested tenant and author', async () => {
+    const repo = createPostRepository(db);
+    const authoredPost = (
+      id: string,
+      tenantId: string,
+      authorUserId: string,
+    ): Post => ({
+      id,
+      tenantId,
+      contextKind: 'space',
+      contextId: `space-${id}`,
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId,
+      authorDisplay: authorUserId,
+      authorIsStaff: false,
+      body: id,
+      createdAt: NOW,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+    });
+    await repo.createPost(
+      ACME,
+      authoredPost('post-author-acme', ACME, 'user-acme-member'),
+    );
+    await repo.createPost(
+      ACME,
+      authoredPost('post-other-author', ACME, 'user-acme-owner'),
+    );
+    await repo.createPost(
+      GLOBEX,
+      authoredPost('post-author-globex', GLOBEX, 'user-acme-member'),
+    );
+
+    await expect(repo.listByAuthor(ACME, 'user-acme-member')).resolves.toEqual([
+      expect.objectContaining({ id: 'post-author-acme', tenantId: ACME }),
+    ]);
   });
 
   it('clears a pin when soft-deleting a post', async () => {
@@ -1251,7 +1723,11 @@ describe('member erasure repository', () => {
 
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
-    expect(result).toEqual({ alreadyDeleted: false, authUserErased: true });
+    expect(result).toEqual({
+      alreadyDeleted: false,
+      authUserErased: true,
+      erasureRequestId: null,
+    });
 
     const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
     expect(rows).toHaveLength(1);
@@ -1400,7 +1876,11 @@ describe('member erasure repository', () => {
 
   it('reports an already pseudonymized member without touching it again', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
-    expect(result).toEqual({ alreadyDeleted: true, authUserErased: false });
+    expect(result).toEqual({
+      alreadyDeleted: true,
+      authUserErased: false,
+      erasureRequestId: null,
+    });
   });
 
   it('returns null for a member of another tenant', async () => {
@@ -1410,7 +1890,11 @@ describe('member erasure repository', () => {
 
   it('keeps the auth user when other tenant memberships still reference it', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
-    expect(result).toEqual({ alreadyDeleted: false, authUserErased: false });
+    expect(result).toEqual({
+      alreadyDeleted: false,
+      authUserErased: false,
+      erasureRequestId: null,
+    });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));
     expect(authRows).toHaveLength(1);
@@ -1418,6 +1902,70 @@ describe('member erasure repository', () => {
       email: 'anna.shared@together.dev',
       deletedAt: null,
     });
+  });
+
+  it('writes request events atomically and completes an open request during erasure', async () => {
+    await db.insert(user).values({
+      id: 'user-erasure-request',
+      name: 'Request Member',
+      email: 'request.member@together.dev',
+    });
+    await createMemberRepository(db).create(
+      RODO,
+      member({
+        id: 'mem-erasure-request',
+        tenantId: RODO,
+        userId: 'user-erasure-request',
+        email: 'request.member@together.dev',
+      }),
+    );
+    const repository = createMemberErasureRequestRepository(db);
+    const request = {
+      id: 'erasure-request-1',
+      tenantId: RODO,
+      memberId: 'mem-erasure-request',
+      status: 'open' as const,
+      reason: null,
+      requestedAt: NOW,
+      dueAt: '1998-08-13T10:00:00.000Z',
+      resolvedAt: null,
+      resolvedByUserId: null,
+      resolutionNote: null,
+    };
+    const event = {
+      id: 'erasure-event-1',
+      tenantId: RODO,
+      requestId: request.id,
+      type: 'requested' as const,
+      actorUserId: 'user-erasure-request',
+      meta: null,
+      occurredAt: NOW,
+      createdAt: NOW,
+    };
+    expect(await repository.create(RODO, request, event)).toBe('created');
+    expect(
+      await repository.create(
+        RODO,
+        { ...request, id: 'erasure-request-2' },
+        { ...event, id: 'erasure-event-2', requestId: 'erasure-request-2' },
+      ),
+    ).toBe('already-open');
+
+    const erased = await createMemberErasureRepository(db, emailHmac).pseudonymize(
+      RODO,
+      pseudonymizationInput('mem-erasure-request'),
+    );
+    expect(erased).toMatchObject({ erasureRequestId: request.id });
+    expect(await repository.findLatestForMember(RODO, request.memberId)).toMatchObject({
+      id: request.id,
+      status: 'completed',
+    });
+    const events = await db
+      .select({ type: memberErasureRequestEvents.type })
+      .from(memberErasureRequestEvents)
+      .where(eq(memberErasureRequestEvents.requestId, request.id))
+      .orderBy(asc(memberErasureRequestEvents.occurredAt));
+    expect(events).toEqual([{ type: 'requested' }, { type: 'completed' }]);
   });
 
   it('blocks a hard member delete while order history exists', async () => {

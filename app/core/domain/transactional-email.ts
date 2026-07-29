@@ -326,3 +326,65 @@ export const supportMessage = (
     text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
   });
 };
+
+export const memberErasureRequestEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    memberEmail: string;
+    requestedAt: string;
+    dueAt: string;
+    panelUrl: string;
+  },
+): EmailMessage => {
+  const memberEmail = escapeHtml(input.memberEmail);
+  const panelUrl = escapeHtml(input.panelUrl);
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `[${input.tenantName}] Member erasure request`,
+      html: `<p>${memberEmail} requested account erasure.</p><p>Requested: ${input.requestedAt}<br>Due: ${input.dueAt}</p><p><a href="${panelUrl}">Review request</a></p>`,
+      text: `${input.memberEmail} requested account erasure.\nRequested: ${input.requestedAt}\nDue: ${input.dueAt}\n${input.panelUrl}`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `[${input.tenantName}] Wniosek o usunięcie danych`,
+    html: `<p>${memberEmail} wysłał(a) wniosek o usunięcie danych.</p><p>Złożono: ${input.requestedAt}<br>Termin: ${input.dueAt}</p><p><a href="${panelUrl}">Sprawdź wniosek</a></p>`,
+    text: `${input.memberEmail} wysłał(a) wniosek o usunięcie danych.\nZłożono: ${input.requestedAt}\nTermin: ${input.dueAt}\n${input.panelUrl}`,
+  });
+};
+
+export const reputationAlertEmail = (
+  language: string,
+  input: {
+    tenantName: string;
+    status: 'warn' | 'critical';
+    hardBounceRate: number | null;
+    complaintRate: number | null;
+    windowStart: string;
+    windowEnd: string;
+    dashboardUrl: string;
+  },
+): EmailMessage => {
+  const tenantName = escapeHtml(input.tenantName);
+  const dashboardUrl = escapeHtml(input.dashboardUrl);
+  const hardBounceRate =
+    input.hardBounceRate === null
+      ? 'n/a'
+      : `${(input.hardBounceRate * 100).toFixed(3)}%`;
+  const complaintRate =
+    input.complaintRate === null
+      ? 'n/a'
+      : `${(input.complaintRate * 100).toFixed(3)}%`;
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `[${input.tenantName}] E-mail reputation ${input.status}`,
+      html: `<p>E-mail reputation for ${tenantName} is <strong>${input.status}</strong>.</p><p>Hard bounce rate: ${hardBounceRate}<br>Complaint rate: ${complaintRate}<br>Window: ${input.windowStart} – ${input.windowEnd}</p><p><a href="${dashboardUrl}">Review reputation</a></p>`,
+      text: `E-mail reputation for ${input.tenantName} is ${input.status}.\nHard bounce rate: ${hardBounceRate}\nComplaint rate: ${complaintRate}\nWindow: ${input.windowStart} – ${input.windowEnd}\n${input.dashboardUrl}`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `[${input.tenantName}] Reputacja e-mail: ${input.status}`,
+    html: `<p>Reputacja e-mail dla ${tenantName} ma status <strong>${input.status}</strong>.</p><p>Współczynnik trwałych odbić: ${hardBounceRate}<br>Współczynnik skarg: ${complaintRate}<br>Okres: ${input.windowStart} – ${input.windowEnd}</p><p><a href="${dashboardUrl}">Sprawdź reputację</a></p>`,
+    text: `Reputacja e-mail dla ${input.tenantName} ma status ${input.status}.\nWspółczynnik trwałych odbić: ${hardBounceRate}\nWspółczynnik skarg: ${complaintRate}\nOkres: ${input.windowStart} – ${input.windowEnd}\n${input.dashboardUrl}`,
+  });
+};

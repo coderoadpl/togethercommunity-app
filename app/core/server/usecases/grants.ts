@@ -16,6 +16,7 @@ import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type { Clock, IdGenerator, MemberRepository, ProductGrantRepository, ProductRepository } from '../ports.js';
 import { createOrRenewGrant } from './grant-window.js';
+import { requireLiveMember } from './member-status.js';
 
 export interface MemberGrantsDeps {
   members: MemberRepository;
@@ -71,7 +72,8 @@ export const grantProductToMember = async (
   if (!parsed.success) return err(validation('Invalid grant payload', parsed.error.flatten()));
 
   const member = await deps.members.findById(tenant.value, parsed.data.memberId);
-  if (!member) return err(notFound(`No member "${parsed.data.memberId}" in this tenant`));
+  const liveMember = requireLiveMember(member, parsed.data.memberId);
+  if (!liveMember.ok) return liveMember;
 
   const product = await deps.products.findById(tenant.value, parsed.data.productId);
   if (!product) return err(notFound(`No product "${parsed.data.productId}" in this tenant`));

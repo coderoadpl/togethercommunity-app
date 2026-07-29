@@ -65,6 +65,40 @@ export const deriveEmailReputation = (counts: EmailReputationCounts) => {
   return { hardBounce, complaint, overallStatus };
 };
 
+export const reputationAlertDecision = (input: {
+  current: EmailReputationStatus;
+  lastAlerted: EmailReputationStatus | null;
+  lastAlertedAt: string | null;
+  now: string;
+  repeatAfterMs: number;
+}): {
+  notify: boolean;
+  nextStatus: EmailReputationStatus | null;
+  nextAlertedAt: string | null;
+} => {
+  if (severity[input.current] < severity.warn) {
+    return { notify: false, nextStatus: null, nextAlertedAt: null };
+  }
+  const rises =
+    input.lastAlerted === null ||
+    severity[input.current] > severity[input.lastAlerted];
+  const repeats =
+    input.lastAlertedAt === null ||
+    Date.parse(input.now) - Date.parse(input.lastAlertedAt) >= input.repeatAfterMs;
+  if (rises || repeats) {
+    return {
+      notify: true,
+      nextStatus: input.current,
+      nextAlertedAt: input.now,
+    };
+  }
+  return {
+    notify: false,
+    nextStatus: input.lastAlerted,
+    nextAlertedAt: input.lastAlertedAt,
+  };
+};
+
 export const reputationWindow = (now: string): { since: string; until: string } => ({
   since: new Date(Date.parse(now) - 7 * DAY_MS).toISOString(),
   until: now,

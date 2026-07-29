@@ -95,6 +95,12 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/marketing/suppressions` | authenticated | mutating | marketing staff suppressions create |
 | `GET /api/me` | authenticated | read | me |
 | `GET /api/me/billing-orders` | authenticated | read | member billing orders |
+| `GET /api/me/data-export` | authenticated | read | member data export |
+| `GET /api/me/erasure-request` | authenticated | read | member erasure request |
+| `POST /api/me/erasure-request` | authenticated | mutating | member erasure request create |
+| `DELETE /api/me/erasure-request` | authenticated | mutating | member erasure request cancel |
+| `GET /api/members/erasure-requests` | authenticated | read | member erasure requests |
+| `POST /api/members/erasure-requests/:requestId/reject` | authenticated | mutating | member erasure reject |
 | `GET /api/tenants` | authenticated | read | tenants |
 | `GET /api/products` | authenticated | read | products |
 | `GET /api/my/products` | authenticated | read | my products |

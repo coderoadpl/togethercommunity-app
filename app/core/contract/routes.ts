@@ -58,6 +58,9 @@ import {
   salesSummarySchema,
   memberExportFileSchema,
   memberGrantSchema,
+  memberErasureRequestSchema,
+  memberErasureRequestStatusSchema,
+  memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
   memberWithProductIdsSchema,
   memberSchema,
@@ -316,6 +319,34 @@ export const membersListOutputSchema = z.object({
 });
 
 export const membersExportOutputSchema = memberExportFileSchema;
+export const memberDataExportOutputSchema = memberExportFileSchema;
+
+export const memberErasureRequestCreateInputSchema = z.object({
+  confirmEmail: z.string().email(),
+  reason: z.string().trim().max(2000).optional(),
+});
+export type MemberErasureRequestCreateInput = z.input<
+  typeof memberErasureRequestCreateInputSchema
+>;
+
+export const memberErasureRequestOutputSchema = z.object({
+  request: memberErasureRequestSchema.nullable(),
+});
+export const memberErasureRequestMutationOutputSchema = z.object({
+  request: memberErasureRequestSchema,
+});
+export const memberErasureRequestsQuerySchema = z.object({
+  status: memberErasureRequestStatusSchema.optional(),
+});
+export type MemberErasureRequestsQueryInput = z.input<
+  typeof memberErasureRequestsQuerySchema
+>;
+export const memberErasureRequestsOutputSchema = z.object({
+  requests: z.array(memberErasureRequestWithMemberSchema),
+});
+export const memberErasureRejectInputSchema = z.object({
+  note: z.string().trim().min(1).max(2000),
+});
 
 export const memberRemoveInputSchema = z.object({
   memberId: z.string().min(1),
@@ -325,6 +356,7 @@ export type MemberRemoveInput = z.input<typeof memberRemoveInputSchema>;
 
 export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
+  erasureRequestId: z.string().nullable(),
 });
 
 export const memberBanInputSchema = setMemberBannedInputSchema;
@@ -1010,7 +1042,6 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
   identity: z.string().trim().min(1),
-  identityVerified: z.boolean(),
   configurationSet: z.string().trim().min(1).nullable(),
   snsTopicArn: z.string().trim().min(1).nullable(),
   trackingEnabled: z.boolean(),
@@ -1128,6 +1159,10 @@ export const API_ROUTES = {
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
+  memberDataExport: { method: 'GET', path: '/api/me/data-export' },
+  memberErasureRequest: { method: 'GET', path: '/api/me/erasure-request' },
+  memberErasureRequestCreate: { method: 'POST', path: '/api/me/erasure-request' },
+  memberErasureRequestCancel: { method: 'DELETE', path: '/api/me/erasure-request' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
   products: { method: 'GET', path: '/api/products' },
@@ -1207,6 +1242,11 @@ export const API_ROUTES = {
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   members: { method: 'GET', path: '/api/members' },
+  memberErasureRequests: { method: 'GET', path: '/api/members/erasure-requests' },
+  memberErasureReject: {
+    method: 'POST',
+    path: '/api/members/erasure-requests/:requestId/reject',
+  },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
@@ -1304,6 +1344,8 @@ export const API_PATHS = {
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   memberBillingOrders: API_ROUTES.memberBillingOrders.path,
+  memberDataExport: API_ROUTES.memberDataExport.path,
+  memberErasureRequest: API_ROUTES.memberErasureRequest.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,
@@ -1379,6 +1421,8 @@ export const API_PATHS = {
   devGrant: API_ROUTES.devGrant.path,
   myProducts: API_ROUTES.myProducts.path,
   members: API_ROUTES.members.path,
+  memberErasureRequests: API_ROUTES.memberErasureRequests.path,
+  memberErasureReject: API_ROUTES.memberErasureReject.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,

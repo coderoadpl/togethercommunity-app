@@ -26,6 +26,7 @@ import type {
 } from '../ports.js';
 import { isLessonAccessibleByLookup, locateLesson } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
+import { requireLiveMember } from './member-status.js';
 
 export interface ProgressDeps {
   grants: ProductGrantRepository;
@@ -157,14 +158,17 @@ export const resetMemberCourseProgress = async (
     deps.members.findById(tenant.value, input.memberId),
     deps.courses.findById(tenant.value, input.courseId),
   ]);
-  if (!member) return err(notFound(`No member "${input.memberId}" in this tenant`));
+  const liveMember = requireLiveMember(member, input.memberId);
+  if (!liveMember.ok) return liveMember;
   if (!course) return err(notFound(`No course "${input.courseId}" in this tenant`));
 
   const current = await deps.progress.findByMemberAndCourse(tenant.value, {
-    memberId: member.id,
+    memberId: liveMember.value.id,
     courseId: course.id,
   });
-  if (!current) return ok({ memberId: member.id, courseId: course.id, clearedLessonCount: 0 });
+  if (!current) {
+    return ok({ memberId: liveMember.value.id, courseId: course.id, clearedLessonCount: 0 });
+  }
 
   const cleared: MemberCourseProgress = {
     id: current.id,
@@ -177,7 +181,7 @@ export const resetMemberCourseProgress = async (
   const saved = await deps.progress.update(tenant.value, cleared);
   if (!saved) return err(notFound('Progress row vanished while updating'));
   return ok({
-    memberId: member.id,
+    memberId: liveMember.value.id,
     courseId: course.id,
     clearedLessonCount: current.completedLessonIds.length,
   });

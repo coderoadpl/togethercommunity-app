@@ -3,6 +3,7 @@ import {
   notFound,
   ok,
   tenantSesBroadcastsReady,
+  transactionalSesConfigurationSetName,
   type AppError,
   type Result,
   type TenantSesSettings,
@@ -130,6 +131,11 @@ export const provisionSesInfrastructure = async (
   let current = context.value.settings;
   const configurationSet = await deps.controlPlane.ensureConfigurationSet(context.value.credentials, current.configurationSet ?? name);
   if (!configurationSet.ok) return configurationSet;
+  const transactionalConfigurationSet = await deps.controlPlane.ensureConfigurationSet(
+    context.value.credentials,
+    transactionalSesConfigurationSetName(configurationSet.value.name),
+  );
+  if (!transactionalConfigurationSet.ok) return transactionalConfigurationSet;
   if (current.configurationSet !== configurationSet.value.name) {
     current = await store(deps, context.value.tenantId, current, { configurationSet: configurationSet.value.name });
   }
@@ -146,8 +152,18 @@ export const provisionSesInfrastructure = async (
   const destination = await deps.controlPlane.ensureEventDestination(context.value.credentials, {
     configurationSet: configurationSet.value.name,
     topicArn: topic.value.arn,
+    engagementTracking: true,
   });
   if (!destination.ok) return destination;
+  const transactionalDestination = await deps.controlPlane.ensureEventDestination(
+    context.value.credentials,
+    {
+      configurationSet: transactionalConfigurationSet.value.name,
+      topicArn: topic.value.arn,
+      engagementTracking: false,
+    },
+  );
+  if (!transactionalDestination.ok) return transactionalDestination;
   let feedbackForwardingDisabled = false;
   if (subscription.value.confirmed) {
     const feedback = await deps.controlPlane.disableFeedbackForwarding(
@@ -197,6 +213,9 @@ export const pollSesOnboarding = async (
   if (current.configurationSet !== null && current.snsTopicArn !== null) {
     const infrastructure = await deps.controlPlane.readInfrastructure(context.value.credentials, {
       configurationSet: current.configurationSet,
+      transactionalConfigurationSet: transactionalSesConfigurationSetName(
+        current.configurationSet,
+      ),
       topicArn: current.snsTopicArn,
       endpoint: context.value.webhookUrl,
     });
@@ -243,6 +262,63 @@ export const pollSesOnboarding = async (
       inSandbox: current.inSandbox,
     }),
   });
+};
+
+export const refreshSesIdentity = async (
+  ctx: Ctx,
+  deps: SesOnboardingDeps,
+): Promise<Result<TenantSesSettings, AppError>> => {
+  const tenantId = authorizeRequiredTenant(ctx, 'scheduler:dispatch');
+  if (!tenantId.ok) return tenantId;
+  const settings = await deps.settings.findByTenant(tenantId.value);
+  if (settings === null) return err(notFound('SES sender settings do not exist'));
+  const checkedAt = deps.clock.nowIso();
+  const failed = (message: string) =>
+    store(deps, tenantId.value, settings, {
+      identityCheckedAt: checkedAt,
+      identityCheckError: message,
+    });
+  const credentials = await deps.credentials.resolve(tenantId.value);
+  if (!credentials.ok) return ok(await failed(credentials.error.message));
+  const identity = await deps.controlPlane.readIdentity(
+    credentials.value,
+    settings.identity,
+  );
+  if (!identity.ok) return ok(await failed(identity.error.message));
+  const identityReady = identity.value.verified && identity.value.dkimVerified;
+  const patch: Partial<TenantSesSettings> = {
+    identityVerifiedAt: identityReady
+      ? settings.identityVerifiedAt ?? checkedAt
+      : null,
+    identityCheckedAt: checkedAt,
+    identityCheckError: null,
+  };
+  if (settings.configurationSet !== null && settings.snsTopicArn !== null) {
+    const infrastructure = await deps.controlPlane.readInfrastructure(
+      credentials.value,
+      {
+        configurationSet: settings.configurationSet,
+        transactionalConfigurationSet: transactionalSesConfigurationSetName(
+          settings.configurationSet,
+        ),
+        topicArn: settings.snsTopicArn,
+        endpoint: `${deps.webhookBaseUrl}/${settings.webhookToken}`,
+      },
+    );
+    if (!infrastructure.ok) {
+      return ok(
+        await store(deps, tenantId.value, settings, {
+          ...patch,
+          identityCheckError: infrastructure.error.message,
+        }),
+      );
+    }
+    if (!infrastructure.value.configurationSetReady) {
+      patch.configurationSet = null;
+      patch.webhookVerifiedAt = null;
+    }
+  }
+  return ok(await store(deps, tenantId.value, settings, patch));
 };
 
 export const sendSesSimulatorTest = async (

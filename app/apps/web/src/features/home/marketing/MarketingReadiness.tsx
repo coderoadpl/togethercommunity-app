@@ -5,6 +5,7 @@ import { SectionCard } from '../../../components/layout/index.js';
 export interface MarketingReadinessItem {
   label: string;
   ready: boolean;
+  caption?: string;
 }
 
 export const MarketingReadiness = ({
@@ -28,7 +29,7 @@ export const MarketingReadiness = ({
     <List disablePadding>
       {items.map((item) => (
         <ListItem key={item.label} disableGutters>
-          <ListItemText primary={item.label} />
+          <ListItemText primary={item.label} secondary={item.caption} />
           <Chip
             size="small"
             color={item.ready ? 'success' : 'warning'}

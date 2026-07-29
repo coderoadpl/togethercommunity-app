@@ -1,4 +1,8 @@
-import { SESClient } from '@aws-sdk/client-ses';
+import {
+  CreateConfigurationSetEventDestinationCommand,
+  DescribeConfigurationSetCommand,
+  SESClient,
+} from '@aws-sdk/client-ses';
 import { SNSClient } from '@aws-sdk/client-sns';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -18,6 +22,58 @@ const factory = () => ({
 });
 
 describe('SES onboarding AWS adapter', () => {
+  it('omits engagement events from the transactional configuration set', async () => {
+    const created: CreateConfigurationSetEventDestinationCommand[] = [];
+    const ses = new SESClient(credentials);
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises -- SES send also declares callback overloads, while this adapter uses the promise overload.
+    vi.spyOn(ses, 'send').mockImplementation(async (command) => {
+      if (command instanceof DescribeConfigurationSetCommand) {
+        return { EventDestinations: [], $metadata: {} };
+      }
+      if (command instanceof CreateConfigurationSetEventDestinationCommand) {
+        created.push(command);
+        return { $metadata: {} };
+      }
+      throw new Error('unexpected command');
+    });
+    const controlPlane = createSesOnboardingControlPlane(
+      () => ({ ses, sns: new SNSClient(credentials) }),
+    );
+
+    await controlPlane.ensureEventDestination(credentials, {
+      configurationSet: 'marketing',
+      topicArn,
+      engagementTracking: true,
+    });
+    await controlPlane.ensureEventDestination(credentials, {
+      configurationSet: 'marketing-transactional',
+      topicArn,
+      engagementTracking: false,
+    });
+
+    expect(created.map((command) => command.input)).toEqual([
+      expect.objectContaining({
+        ConfigurationSetName: 'marketing',
+        EventDestination: expect.objectContaining({
+          MatchingEventTypes: [
+            'send',
+            'delivery',
+            'bounce',
+            'complaint',
+            'open',
+            'click',
+          ],
+        }),
+      }),
+      expect.objectContaining({
+        ConfigurationSetName: 'marketing-transactional',
+        EventDestination: expect.objectContaining({
+          MatchingEventTypes: ['send', 'delivery', 'bounce', 'complaint'],
+        }),
+      }),
+    ]);
+  });
+
   it('keeps a newly created HTTPS subscription pending until SNS confirms it', async () => {
     const subscribe = vi.fn(async () => ({
       SubscriptionArn: 'pending confirmation',

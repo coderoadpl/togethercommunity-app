@@ -1,7 +1,9 @@
 # Visual regression
 
 `pnpm run visual` captures the canonical seeded routes at fixed desktop and mobile
-viewports in the Shadcn, Material, and Scoreboard themes. It compares every pixel
+viewports in the Shadcn theme, Together's only maintained base theme (owner
+decision 2026-07-29; see
+[ADR-0010](decisions/0010-shadcn-base-theme.md)). It compares every pixel
 against the committed baseline in `tasks/visual-goldens/`. `pnpm run visual:update`
 is the only baseline-authoring command.
 
@@ -80,9 +82,9 @@ empirically:
   its review-workflow documentation does not state a plan restriction.
 - The actual screenshot and build retention period. Argos did not document this
   period when this evaluation track was added.
-- The Hobby plan's screenshot quota. Each build captures 210 screenshots (35
-  scenarios times three themes times two viewports), and every push to every open
-  pull request can consume another build's allocation.
+- The Hobby plan's screenshot quota. Each build captures 70 screenshots (35
+  scenarios times the one maintained theme times two viewports), and every push
+  to every open pull request can consume another build's allocation.
 
 ## Story shots
 

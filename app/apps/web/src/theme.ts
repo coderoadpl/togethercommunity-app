@@ -42,6 +42,12 @@ export const INK_SOFT = '#5c5348';
 export const LINE = 'rgba(25, 21, 18, 0.14)';
 export const LINE_STRONG = 'rgba(25, 21, 18, 0.55)';
 
+/**
+ * Shadcn is the only maintained base theme (owner decision 2026-07-29); the
+ * other six stay compiled and selectable as unmaintained BYO-theme examples
+ * for future tenant theming, with Steady Frame as the showcase reference.
+ * See docs/decisions/0010-shadcn-base-theme.md.
+ */
 export const MODES = [
   { id: 'logbook', label: 'Logbook' },
   { id: 'material', label: 'Material' },

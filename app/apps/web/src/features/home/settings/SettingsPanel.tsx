@@ -26,6 +26,13 @@ import { deriveBrandPalette } from '../../../theme-branding.js';
 import { SecretField } from '../integrations/SecretField.js';
 import { usePanelContext } from '../panel-context.js';
 
+const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
+  value === 'art_113_1' ||
+  value === 'art_113_9' ||
+  value === 'art_43_1' ||
+  value === 'other_statute' ||
+  value === 'other';
+
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -317,7 +324,8 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               labelId="invoice-exemption-kind-label"
               value={selectedBasisKind}
               onChange={(event) => {
-                const kind = event.target.value as ExemptionBasisKind;
+                const kind = event.target.value;
+                if (!isExemptionBasisKind(kind)) return;
                 setBasisKind(kind);
                 if (kind === 'art_113_1') {
                   setBasis('art. 113 ust. 1 ustawy o podatku od towarów i usług');

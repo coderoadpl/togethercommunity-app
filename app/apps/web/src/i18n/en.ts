@@ -1204,6 +1204,15 @@ export const en: Messages = {
     saving: 'Saving…',
     saved: 'Saved.',
   },
+  buildInfo: {
+    heading: 'Build information',
+    intro: 'Compare the browser bundle with the server it is connected to.',
+    browserVersion: 'browser version',
+    browserSha: 'browser SHA',
+    serverVersion: 'server version',
+    serverSha: 'server SHA',
+    mismatch: 'The browser and server builds differ. Reload before continuing.',
+  },
   checkout: {
     loading: 'Loading checkout…',
     checkoutEyebrow: 'checkout',

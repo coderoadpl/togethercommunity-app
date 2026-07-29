@@ -1,9 +1,17 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+import pkg from '../../package.json' with { type: 'json' };
+
+const commitSha = process.env['APP_COMMIT_SHA']?.slice(0, 7) || 'unknown';
+
 export default defineConfig({
   root: 'apps/web',
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_COMMIT_SHA__: JSON.stringify(commitSha),
+  },
   build: {
     outDir: '../../dist/web',
     emptyOutDir: true,

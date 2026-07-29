@@ -150,6 +150,10 @@ export const meScopes = {
   all: () => ['me'] as const,
 };
 
+export const healthScopes = {
+  all: () => ['health'] as const,
+};
+
 export const tenantsScopes = {
   all: () => ['tenants'] as const,
 };
@@ -426,6 +430,12 @@ export const meQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: meScopes.all(),
     call: ({ signal }) => api.me(signal),
+  });
+
+export const healthQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: healthScopes.all(),
+    call: ({ signal }) => api.health(signal),
   });
 
 export const tenantsQuery = (api: ApiClient) =>

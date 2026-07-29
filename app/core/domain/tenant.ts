@@ -68,6 +68,24 @@ const tenantSocialSchema = z.object({
   ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
+export const invoiceVatModeSchema = z.enum(['rate', 'exempt']);
+export const exemptionBasisKindSchema = z.enum([
+  'art_113_1',
+  'art_113_9',
+  'art_43_1',
+  'other_statute',
+  'other',
+]);
+export const EXEMPTION_BASIS_MAX_LENGTH = 256;
+
+export type ExemptionBasisKind = z.infer<typeof exemptionBasisKindSchema>;
+export type InvoiceVatTreatment =
+  | { kind: 'rate'; percent: 5 | 8 | 23 }
+  | { kind: 'exempt'; basisKind: ExemptionBasisKind; basis: string };
+export type InvoiceVatResolution =
+  | { ok: true; treatment: InvoiceVatTreatment }
+  | { ok: false; reason: 'unset' | 'exempt_basis_missing' };
+
 export const tenantSettingsSchema = z.object({
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
@@ -82,6 +100,9 @@ export const tenantSettingsSchema = z.object({
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
+  invoiceVatMode: invoiceVatModeSchema.optional(),
+  invoiceExemptionBasisKind: exemptionBasisKindSchema.nullable().optional(),
+  invoiceExemptionBasis: z.string().trim().min(1).max(EXEMPTION_BASIS_MAX_LENGTH).nullable().optional(),
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().nullable().optional(),
   invoiceSellerAddress: z.string().nullable().optional(),
@@ -139,12 +160,59 @@ export const updateTenantSettingsInputSchema = z.object({
   autoIssueInvoices: z.boolean().optional(),
   autoIssueInvoiceScope: z.enum(['b2b_only', 'all']).optional(),
   invoiceVatRatePercent: z.union([z.literal(5), z.literal(8), z.literal(23)]).nullable().optional(),
+  invoiceVatMode: invoiceVatModeSchema.optional(),
+  invoiceExemptionBasisKind: exemptionBasisKindSchema.nullable().optional(),
+  invoiceExemptionBasis: clearableText(EXEMPTION_BASIS_MAX_LENGTH),
   invoicingProvider: z.enum(['ifirma', 'ksef']).optional(),
   invoiceSellerName: z.string().trim().min(1).nullable().optional(),
   invoiceSellerAddress: z.string().trim().min(1).nullable().optional(),
+}).superRefine((settings, context) => {
+  if (settings.invoiceVatMode !== 'exempt') return;
+  if (settings.invoiceExemptionBasisKind === null ||
+      settings.invoiceExemptionBasisKind === undefined ||
+      settings.invoiceExemptionBasis === null ||
+      settings.invoiceExemptionBasis === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['invoiceExemptionBasis'],
+      message: 'VAT exemption basis is required',
+    });
+    return;
+  }
+  if (settings.invoiceExemptionBasisKind === 'art_43_1' &&
+      !/\bpkt\s*\d/iu.test(settings.invoiceExemptionBasis)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['invoiceExemptionBasis'],
+      message: 'The art. 43 basis must identify a point',
+    });
+  }
 });
 
 export type UpdateTenantSettingsInput = z.input<typeof updateTenantSettingsInputSchema>;
+
+export const resolveInvoiceVat = (settings: TenantSettings): InvoiceVatResolution => {
+  if ((settings.invoiceVatMode ?? 'rate') === 'rate') {
+    return settings.invoiceVatRatePercent === 5 ||
+      settings.invoiceVatRatePercent === 8 ||
+      settings.invoiceVatRatePercent === 23
+      ? { ok: true, treatment: { kind: 'rate', percent: settings.invoiceVatRatePercent } }
+      : { ok: false, reason: 'unset' };
+  }
+  const basis = settings.invoiceExemptionBasis?.trim();
+  if (settings.invoiceExemptionBasisKind == null || basis == null || basis.length === 0 ||
+      (settings.invoiceExemptionBasisKind === 'art_43_1' && !/\bpkt\s*\d/iu.test(basis))) {
+    return { ok: false, reason: 'exempt_basis_missing' };
+  }
+  return {
+    ok: true,
+    treatment: {
+      kind: 'exempt',
+      basisKind: settings.invoiceExemptionBasisKind,
+      basis,
+    },
+  };
+};
 
 export const resolveTenantSocial = (
   tenant: Tenant,

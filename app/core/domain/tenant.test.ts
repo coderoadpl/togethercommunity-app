@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  resolveInvoiceVat,
   resolveTenantSocial,
   tenantSettingsSchema,
   updateTenantSettingsInputSchema,
@@ -40,6 +41,54 @@ describe('updateTenantSettingsInputSchema', () => {
       invoiceVatRatePercent: 8,
     });
     expect(updateTenantSettingsInputSchema.safeParse({ invoiceVatRatePercent: 12 }).success).toBe(false);
+  });
+
+  it('requires a complete basis for exempt settings', () => {
+    expect(updateTenantSettingsInputSchema.safeParse({ invoiceVatMode: 'exempt' }).success).toBe(false);
+    expect(updateTenantSettingsInputSchema.safeParse({
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: 'art_43_1',
+      invoiceExemptionBasis: 'art. 43 ust. 1',
+    }).success).toBe(false);
+    expect(updateTenantSettingsInputSchema.safeParse({
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: 'art_43_1',
+      invoiceExemptionBasis: 'art. 43 ust. 1 pkt 2',
+    }).success).toBe(true);
+    expect(updateTenantSettingsInputSchema.safeParse({
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: 'other',
+      invoiceExemptionBasis: 'x'.repeat(257),
+    }).success).toBe(false);
+  });
+});
+
+describe('resolveInvoiceVat', () => {
+  const base = tenantSettingsSchema.parse({ billingPortalUrl: null, bunnyStreamLibraryId: null });
+
+  it('distinguishes configured, unset, and incomplete treatments', () => {
+    expect(resolveInvoiceVat({ ...base, invoiceVatRatePercent: 23 })).toEqual({
+      ok: true,
+      treatment: { kind: 'rate', percent: 23 },
+    });
+    expect(resolveInvoiceVat(base)).toEqual({ ok: false, reason: 'unset' });
+    expect(resolveInvoiceVat({ ...base, invoiceVatMode: 'exempt' })).toEqual({
+      ok: false,
+      reason: 'exempt_basis_missing',
+    });
+    expect(resolveInvoiceVat({
+      ...base,
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
+    })).toEqual({
+      ok: true,
+      treatment: {
+        kind: 'exempt',
+        basisKind: 'other_statute',
+        basis: '§ 1 rozporządzenia',
+      },
+    });
   });
 });
 

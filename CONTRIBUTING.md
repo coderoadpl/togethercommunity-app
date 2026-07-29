@@ -25,9 +25,17 @@ grants the Licensor the copyright, patent, sublicense, and relicensing rights
 needed to maintain and license Together while you retain ownership of your
 contribution.
 
-CLA Assistant will record acceptance and block merges from contributors who
-have not signed. The repository owner will install and configure the GitHub app
-before the repository is made public.
+A CLA bot comments on every pull request that contains work from a contributor
+who has not accepted the agreement yet. To accept it, reply on the pull request
+with:
+
+> I have read the CLA Document and I hereby sign the CLA
+
+The signature is recorded once in this repository and covers your later
+contributions, so the bot asks only on your first pull request. Comment
+`recheck` if the bot needs to re-evaluate a pull request. The bot reports a
+status check, and a pull request cannot be merged until everyone who
+contributed to it has signed.
 
 Do not submit code, assets, or other material that you do not have the right to
 contribute. Identify any third-party material and its license in the pull

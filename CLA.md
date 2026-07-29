@@ -11,7 +11,17 @@ By accepting this agreement, you agree to the following terms.
 "You" means the individual copyright owner, or the legal entity authorized by
 the copyright owner, entering into this agreement.
 
-"Licensor" means Mateusz Choma.
+"Licensor" means AMAZING COMPANY spółka z ograniczoną odpowiedzialnością,
+with its registered office at ul. Ułanów 23/25, 20-554 Lublin, Poland,
+entered in the register of entrepreneurs of the National Court Register
+under KRS number 0000578833, NIP 7123301205, REGON 362666508.
+
+The licenses, authorizations, and covenants granted in this agreement are
+granted to the Licensor and to its legal successors and assignees, and
+extend to any entity to which the Licensor transfers Together or the rights
+granted in this agreement. The Licensor may assign this agreement and those
+rights, in whole or in part, to an affiliate, a successor, or an acquirer of
+Together without further consent from you.
 
 "Contribution" means any original work of authorship, including modifications
 or additions to existing work, that you intentionally submit to the Licensor
@@ -38,6 +48,25 @@ permission from or compensation to you.
 Except for the licenses granted in this agreement, you retain all right, title,
 and interest in your Contributions.
 
+The licenses granted above are perpetual and irrevocable. To the extent that
+mandatory applicable law nevertheless grants you a right to terminate a
+license granted for an indefinite term, in particular art. 68 of the Polish
+Act on Copyright and Related Rights, the parties agree that such termination
+requires ten (10) years' prior notice with effect at the end of a calendar
+year, this being the longest notice period the parties consider permissible
+under that law.
+
+Termination under the preceding paragraph does not affect versions of the
+Work made available before the termination takes effect, nor copies,
+derivative works, and sublicenses of those versions, nor the future license
+under the Apache License, Version 2.0 that the repository license grants for
+those versions.
+
+At the Licensor's request and at the Licensor's cost, you will confirm the
+licenses and covenants granted in this agreement in written form, or in any
+other form that applicable law requires for them to be effective, including
+by signing a document with a qualified electronic signature.
+
 ## 3. Patent license
 
 You grant the Licensor and recipients of the Work a perpetual, worldwide,
@@ -47,11 +76,19 @@ This license applies only to patent claims licensable by you that are
 necessarily infringed by your Contributions alone or by combination of your
 Contributions with the Work to which they were submitted.
 
+To the extent that the patent license granted above is ineffective for
+reasons of form or under other mandatory law, you irrevocably covenant not
+to assert the patent claims covered by that license against the Licensor,
+its successors and assignees, its licensees, or recipients and users of the
+Work. This covenant is independent of the patent license and applies for as
+long as, and to the extent that, the patent license is ineffective.
+
 If you or any entity acting on your behalf institutes patent litigation
-against the Licensor or another entity alleging that your Contribution or the
-Work constitutes direct or contributory patent infringement, the patent
-licenses granted to you under this agreement for that Contribution or Work
-terminate as of the date the litigation is filed.
+against the Licensor or another entity alleging that your Contribution or
+the Work constitutes direct or contributory patent infringement, any patent
+license granted to you for the Work under the repository license
+(LICENSE.md) terminates as of the date the litigation is filed. The patent
+license and the covenant that you grant in this section remain in effect.
 
 ## 4. Your representations
 

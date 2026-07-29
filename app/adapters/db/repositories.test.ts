@@ -1332,7 +1332,7 @@ describe('post repository', () => {
       contextId: 'space-spam-window',
       parentPostId: null,
       rootPostId: id,
-      authorUserId: 'user-acme-member',
+      authorUserId: 'user-acme-spammer',
       authorDisplay: 'Acme Member',
       authorIsStaff: false,
       body: `Body ${id}`,
@@ -1350,7 +1350,7 @@ describe('post repository', () => {
     );
 
     const query = {
-      authorUserId: 'user-acme-member',
+      authorUserId: 'user-acme-spammer',
       since: '2026-07-14T09:45:00.000Z',
     };
     await expect(repo.countByAuthorSince(ACME, query)).resolves.toBe(2);

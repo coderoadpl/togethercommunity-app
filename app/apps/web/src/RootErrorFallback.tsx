@@ -14,6 +14,8 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingInvalidCredentials;
     case 'forbidden':
       return t.errors.headingForbidden;
+    case 'banned':
+      return t.errors.headingForbidden;
     case 'not_found':
       return t.errors.headingNotFound;
     case 'tenant_not_found':

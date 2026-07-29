@@ -71,10 +71,12 @@ const NOW = '1998-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
+memberBannedAt: null,
 } };
 const anonymousCtx: Ctx = { identity: {
   userId: 'anonymous', email: 'anonymous@invalid.test', name: 'Anonymous', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: null, memberId: null,
+memberBannedAt: null,
 } };
 const clock = { nowIso: () => NOW };
 const ids = (() => { let value = 0; return { nextId: () => `generated-${String(++value)}` }; })();
@@ -97,13 +99,15 @@ const consent = (email: string, status: MarketingConsent['status'] = 'confirmed'
 });
 const settings: TenantSesSettings = {
   tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
-  identityVerifiedAt: NOW, configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
+  identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+  configurationSet: 'marketing', snsTopicArn: 'arn:topic:tenant-1',
   trackingEnabled: true,
   autoPauseOnCritical: false,
   webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
   quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Legal Ltd',
   quotaSentLast24Hours: 0,
   footerAddress: 'Street 1, Warsaw; contact@tenant.test', broadcastsEnabled: true,
+  reputationAlertStatus: null, reputationAlertedAt: null,
 };
 const campaign = (overrides: Partial<Campaign> = {}): Campaign => ({
   id: 'campaign-1', tenantId: 'tenant-1', name: 'Weekly', subject: 'Hello {{member.email}}',
@@ -128,6 +132,7 @@ const setup = async (emails = ['member@example.test']) => {
     layouts: new InMemoryEmailLayoutRepository(),
     audience: new InMemoryMarketingAudienceRepository(emails.map((email, index) => ({
       memberId: `member-${String(index + 1)}`, email, displayName: null, productIds: [],
+    memberBannedAt: null,
     }))),
     sesSettings: new InMemoryTenantSesSettingsRepository([settings]), ses: new FakeSesMarketingSender(),
     hmac: new FakeEmailHmac(), events, outbox: new InMemoryEmailOutboxRepository(events), clock, ids, tokens,
@@ -677,7 +682,32 @@ describe('marketing e-mail use-case integration', () => {
       .filter((event) => event.type === 'opened' || event.type === 'clicked')).toEqual([]);
   });
 
-  it('correlates transactional SNS complaints without writing marketing suppression', async () => {
+  it.each([
+    {
+      name: 'hard bounce',
+      kind: 'bounce',
+      bounceType: 'Permanent',
+      status: '5.1.1',
+      deliveryStatus: 'bounced',
+      suppressionReason: 'hard_bounce',
+    },
+    {
+      name: 'soft bounce',
+      kind: 'bounce',
+      bounceType: 'Transient',
+      status: '4.2.2',
+      deliveryStatus: 'bounced',
+      suppressionReason: null,
+    },
+    {
+      name: 'complaint',
+      kind: 'complaint',
+      deliveryStatus: 'complained',
+      suppressionReason: 'complaint',
+    },
+  ] as const)(
+    'correlates a transactional SNS $name',
+    async (input) => {
     const deps = await setup();
     await deps.outbox.enqueue({
       id: 'outbox-transactional',
@@ -706,31 +736,61 @@ describe('marketing e-mail use-case integration', () => {
       trigger: 'manual',
     });
 
-    expect(await applyVerifiedSesEvent(ctx, {
-      topicArn: settings.snsTopicArn ?? '',
-      messageId: 'transactional-ses-id',
-      kind: 'complaint',
-      occurredAt: NOW,
-      raw: { complaint: true },
-    }, deps)).toEqual(ok({ processed: true }));
+      const common = {
+        topicArn: settings.snsTopicArn ?? '',
+        messageId: 'transactional-ses-id',
+        occurredAt: NOW,
+        raw: { event: input.name },
+      };
+      const applied =
+        input.kind === 'bounce'
+          ? await applyVerifiedSesEvent(
+              ctx,
+              {
+                ...common,
+                kind: 'bounce',
+                bounceType: input.bounceType,
+                status: input.status,
+              },
+              deps,
+            )
+          : await applyVerifiedSesEvent(
+              ctx,
+              { ...common, kind: 'complaint' },
+              deps,
+            );
+      expect(applied).toEqual(ok({ processed: true }));
     expect(await deps.suppressions.isSuppressed(
       'tenant-1',
       deps.hmac.compute('tenant-1', 'transactional@example.test'),
-    )).toBe(false);
-    expect((await deps.events.listByRef(
+      )).toBe(input.suppressionReason !== null);
+      const events = await deps.events.listByRef(
       'tenant-1',
       'transactional',
       'outbox-transactional',
-    )).map((event) => event.type)).toEqual([
+      );
+      expect(events.map((event) => event.type)).toEqual([
       'queued',
       'claimed',
       'rendered',
       'accepted',
-      'complained',
-    ]);
+        input.deliveryStatus,
+        ...(input.suppressionReason === null ? [] : ['suppressed_written']),
+      ]);
+      if (input.suppressionReason !== null) {
+        expect(events.at(-1)).toMatchObject({
+          mailKind: 'transactional',
+          type: 'suppressed_written',
+          meta: { reason: input.suppressionReason },
+        });
+      }
     expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
-      .toMatchObject({ deliveryStatus: 'complained', deliveryOccurredAt: NOW });
-  });
+        .toMatchObject({
+          deliveryStatus: input.deliveryStatus,
+          deliveryOccurredAt: NOW,
+        });
+    },
+  );
 
   it('I10 erasure atomically keeps an HMAC tombstone, pseudonymizes sends, and preserves counters', async () => {
     const deps = await setup();
@@ -740,18 +800,23 @@ describe('marketing e-mail use-case integration', () => {
       pseudonymize: async (tenantId: string, input: { memberId: string; tombstoneEmail: string }) => {
         await deps.sends.pseudonymizeMember(tenantId, { memberId: input.memberId, email: member.email, tombstoneEmail: input.tombstoneEmail });
         await deps.suppressions.record(tenantId, { id: ids.nextId(), tenantId, email: null, emailHmac: deps.hmac.compute(tenantId, member.email), reason: 'erasure', sourceRef: input.memberId, meta: null, createdAt: NOW, liftedAt: null, liftedBy: null });
-        return { alreadyDeleted: false, authUserErased: true };
+        return {
+          alreadyDeleted: false,
+          authUserErased: true,
+          erasureRequestId: null,
+        };
       },
     };
-    const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null };
+    const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null };
     const members = {
       findById: async () => member, findByEmail: async () => member, listWithProductIds: async () => [],
-      create: async () => undefined, updateEmail: async () => member,
+      create: async () => undefined, updateEmail: async () => member, setBanned: async () => null,
     };
     const erased = await removeMember(ctx, { memberId: 'member-1' }, {
       members,
       memberErasure,
       clock,
+      ids,
       subscriptions: {
         findById: async () => null,
         findByProviderSubscriptionId: async () => null,
@@ -877,12 +942,15 @@ describe('marketing e-mail use-case integration', () => {
   it('scans all due campaign work and runs retention for every marketing tenant', async () => {
     const dispatched: string[] = [];
     const retained: string[] = [];
+    const refreshed: string[] = [];
+    let checkedBefore = '';
     const runs = new InMemorySchedulerRunRepository();
     const result = await runScheduledMarketingJobs({
       now: NOW,
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -890,6 +958,11 @@ describe('marketing e-mail use-case integration', () => {
           { tenantId: 'tenant-2', campaignId: 'campaign-2' },
         ],
         listRetentionTenantIds: async () => ['tenant-1', 'tenant-3'],
+        listSesIdentityRefreshTenantIds: async (value) => {
+          checkedBefore = value;
+          return ['tenant-2'];
+        },
+        listSesTenantIds: async () => ['tenant-1', 'tenant-2'],
       },
       runs,
       dispatchCampaign: async (tenantId, campaignId) => {
@@ -900,10 +973,23 @@ describe('marketing e-mail use-case integration', () => {
         retained.push(tenantId);
         return ok(undefined);
       },
+      refreshIdentity: async (tenantId) => {
+        refreshed.push(tenantId);
+        return ok(undefined);
+      },
+      runReputationAlerts: async (tenantId) =>
+        ok({ sent: tenantId === 'tenant-1' ? 2 : 0 }),
     });
-    expect(result).toEqual(ok({ campaignsDispatched: 2, retentionTenantsProcessed: 2 }));
+    expect(result).toEqual(ok({
+      campaignsDispatched: 2,
+      retentionTenantsProcessed: 2,
+      identityChecksPerformed: 1,
+      reputationAlertsSent: 2,
+    }));
     expect(dispatched).toEqual(['tenant-1:campaign-1', 'tenant-2:campaign-2']);
     expect(retained).toEqual(['tenant-1', 'tenant-3']);
+    expect(refreshed).toEqual(['tenant-2']);
+    expect(checkedBefore).toBe('1998-07-22T04:00:00.000Z');
   });
 
   it('fails stale scheduler runs when there are no marketing retention tenants', async () => {
@@ -933,17 +1019,27 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
         listRunnableCampaigns: async () => [],
         listRetentionTenantIds: async () => [],
+        listSesIdentityRefreshTenantIds: async () => [],
+        listSesTenantIds: async () => [],
       },
       runs,
       dispatchCampaign: async () => ok(undefined),
       runRetention: async () => ok(undefined),
+      refreshIdentity: async () => ok(undefined),
+      runReputationAlerts: async () => ok({ sent: 0 }),
     });
 
-    expect(result).toEqual(ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }));
+    expect(result).toEqual(ok({
+      campaignsDispatched: 0,
+      retentionTenantsProcessed: 0,
+      identityChecksPerformed: 0,
+      reputationAlertsSent: 0,
+    }));
     expect(await runs.getWithTenants('stuck-outbox-run')).toMatchObject({
       run: {
         status: 'failed',
@@ -961,6 +1057,7 @@ describe('marketing e-mail use-case integration', () => {
       pendingOlderThan: '1998-06-22T10:00:00.000Z',
       renderedBodiesOlderThan: '1998-06-22T10:00:00.000Z',
       engagementOlderThan: '1998-06-22T10:00:00.000Z',
+      sesIdentityRefreshIntervalMs: 6 * 60 * 60 * 1000,
     }, {
       jobs: {
         listRunnableCampaigns: async () => [
@@ -968,6 +1065,8 @@ describe('marketing e-mail use-case integration', () => {
           { tenantId: 'tenant-2', campaignId: 'campaign-2' },
         ],
         listRetentionTenantIds: async () => ['tenant-1'],
+        listSesIdentityRefreshTenantIds: async () => ['tenant-2'],
+        listSesTenantIds: async () => ['tenant-1'],
       },
       runs,
       dispatchCampaign: async (tenantId) => {
@@ -978,9 +1077,23 @@ describe('marketing e-mail use-case integration', () => {
         processed.push(`retention:${tenantId}`);
         return ok(undefined);
       },
+      refreshIdentity: async (tenantId) => {
+        processed.push(`identity:${tenantId}`);
+        return ok(undefined);
+      },
+      runReputationAlerts: async (tenantId) => {
+        processed.push(`reputation:${tenantId}`);
+        return ok({ sent: 0 });
+      },
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'integration_auth' } });
-    expect(processed).toEqual(['campaign:tenant-1', 'campaign:tenant-2', 'retention:tenant-1']);
+    expect(processed).toEqual([
+      'campaign:tenant-1',
+      'campaign:tenant-2',
+      'retention:tenant-1',
+      'identity:tenant-2',
+      'reputation:tenant-1',
+    ]);
   });
 
   it('schedules another tick when a campaign still has recipients after its budgeted batch', async () => {

@@ -22,6 +22,7 @@ import {
   PostMetaText,
   ReplyIndent,
 } from '../../theme.js';
+import { ReportPostButton } from './ReportPostButton.js';
 
 const PAGE_SIZE = 20;
 const MAX_INDENT = 5;
@@ -83,6 +84,7 @@ export const PostComposer = ({
   initialValue = '',
   focusOnMount = false,
   busy,
+  disabled = false,
   onSubmit,
   onCancel,
   testId,
@@ -94,6 +96,7 @@ export const PostComposer = ({
   initialValue?: string;
   focusOnMount?: boolean;
   busy: boolean;
+  disabled?: boolean;
   onSubmit: (body: string, reset: () => void) => void;
   onCancel?: () => void;
   testId: string;
@@ -121,6 +124,7 @@ export const PostComposer = ({
         multiline
         minRows={3}
         value={body}
+        disabled={disabled}
         inputRef={inputRef}
         onChange={(event) => setBody(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': `${testId}-input` } }}
@@ -129,7 +133,7 @@ export const PostComposer = ({
         <Button
           type="submit"
           variant="contained"
-          disabled={busy || body.trim().length === 0}
+          disabled={disabled || busy || body.trim().length === 0}
           data-testid={`${testId}-submit`}
         >
           {busy ? pendingLabel : submitLabel}
@@ -157,6 +161,7 @@ interface ThreadActions {
   openSubthread: (id: string) => void;
   replyBusy: boolean;
   editBusy: boolean;
+  writeDisabled: boolean;
   pendingReply: { parentId: string; author: string; body: string } | null;
 }
 
@@ -205,6 +210,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             initialValue={post.body}
             focusOnMount
             busy={a.editBusy}
+            disabled={a.writeDisabled}
             onSubmit={(body, reset) => a.submitEdit(post, body, reset)}
             onCancel={() => a.setEditingId(null)}
             testId={`edit-composer-${post.id}`}
@@ -216,13 +222,14 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
         </PostBody>
       )}
 
-      {(canReply || canEdit || canDelete) && (
+      {(canReply || canEdit || canDelete || (!own && !deleted)) && (
         <Stack direction="row" useFlexGap sx={{ columnGap: '0.75rem', mt: '0.25rem' }}>
           {canReply && (
             <Button
               size="small"
               variant="text"
               data-testid={`reply-button-${post.id}`}
+              disabled={a.writeDisabled}
               onClick={() => {
                 a.setEditingId(null);
                 a.setReplyingTo(post.id);
@@ -236,6 +243,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               size="small"
               variant="text"
               data-testid={`edit-button-${post.id}`}
+              disabled={a.writeDisabled}
               onClick={() => {
                 a.setReplyingTo(null);
                 a.setEditingId(post.id);
@@ -254,6 +262,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               {t.discussion.delete}
             </Button>
           )}
+          {!own && !deleted ? <ReportPostButton postId={post.id} /> : null}
         </Stack>
       )}
 
@@ -265,6 +274,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             pendingLabel={t.discussion.sending}
             focusOnMount
             busy={a.replyBusy}
+            disabled={a.writeDisabled}
             onSubmit={(body, reset) => a.submitReply(post, body, reset)}
             onCancel={() => a.setReplyingTo(null)}
             testId={`reply-composer-${post.id}`}
@@ -378,6 +388,7 @@ export const ThreadDiscussion = ({
           name: me.data.name,
           canModerate: me.data.tenant !== null && me.data.tenant.staffRole !== null,
         };
+  const banned = me.data?.tenant?.banned === true;
 
   const threads = discussion.data?.discussion.threads ?? [];
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
@@ -453,11 +464,17 @@ export const ThreadDiscussion = ({
     openSubthread: setSubthreadRootId,
     replyBusy: create.isPending,
     editBusy: update.isPending,
+    writeDisabled: banned,
     pendingReply,
   };
 
   const forbidden = isForbidden(discussion.error);
   const mutationError = [create, update, remove].find((mutation) => mutation.isError)?.error ?? null;
+  const mutationErrorMessage = mutationError instanceof ApiError && mutationError.appError.code === 'rate_limited'
+    ? t.community.postTooFast
+    : mutationError === null
+      ? null
+      : localizeError(mutationError, t);
 
   const goBack = () => {
     if (focus === undefined) {
@@ -532,7 +549,7 @@ export const ThreadDiscussion = ({
               {backLabel}
             </Button>
           </Box>
-          {mutationError !== null && <Alert>{localizeError(mutationError, t)}</Alert>}
+          {mutationErrorMessage !== null && <Alert>{mutationErrorMessage}</Alert>}
           <DiscussionThread
             sx={{ p: '1rem 1.25rem' }}
             data-testid={`discussion-subthread-${subthreadRoot.id}`}
@@ -559,6 +576,7 @@ export const ThreadDiscussion = ({
                 submitLabel={t.discussion.post}
                 pendingLabel={t.discussion.posting}
                 busy={create.isPending}
+                disabled={banned}
                 onSubmit={(body, reset) => {
                   create.mutate(
                     { contextKind: context.contextKind, contextId: context.contextId, body },
@@ -570,7 +588,7 @@ export const ThreadDiscussion = ({
             </Paper>
           )}
 
-          {mutationError !== null && <Alert>{localizeError(mutationError, t)}</Alert>}
+          {mutationErrorMessage !== null && <Alert>{mutationErrorMessage}</Alert>}
 
           {threads.length === 0 && pendingThread === null ? (
             <Typography variant="body1" data-testid="discussion-empty">

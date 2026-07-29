@@ -92,7 +92,7 @@ const deps = (input: {
   const members: Member[] = [];
   const checkoutConsentCaptures = new Map<string, Parameters<AppDeps['checkoutConsentCaptures']['create']>[1]>();
   let nextId = 0;
-  return {
+  const appDeps: AppDeps = {
     auth: {
       handler: async () => new Response(null, { status: 404 }),
       setMagicLinkDeliveryContext: () => undefined,
@@ -113,9 +113,26 @@ const deps = (input: {
       listWithProductIds: async () => [],
       create: async () => undefined,
       updateEmail: async () => null,
+      setBanned: async () => null,
     },
     memberErasure: {
       pseudonymize: async () => null,
+    },
+    reports: {
+      open: async () => null,
+      findById: async () => null,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpenByPost: async () => new Map(),
+      countOpen: async () => 0,
+      resolve: async () => null,
+      resolveAllForPost: async () => 0,
+    },
+    erasureRequests: {
+      create: async () => 'created',
+      findOpenForMember: async () => null,
+      findLatestForMember: async () => null,
+      list: async () => [],
+      resolve: async () => null,
     },
     grants: {
       findById: async () => null,
@@ -224,7 +241,8 @@ const deps = (input: {
       presignGet: (input) => ok(input.url),
     },
     processedPaymentEvents: {
-      claim: async () => true,
+      claim: async () => 'claimed',
+      finalize: async () => undefined,
       release: async () => undefined,
     },
     purchases: {
@@ -240,6 +258,9 @@ const deps = (input: {
           externalCustomerIds: {},
           createdAt: purchase.createdAt,
           deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
         },
         grantCreated: true,
       }),
@@ -263,6 +284,7 @@ const deps = (input: {
           listWithProductIds: async () => [],
           create: async (_tenantId, member) => { members.push(member); },
           updateEmail: async () => null,
+        setBanned: async () => null,
         },
         grants: {
           findById: async () => null,
@@ -281,6 +303,23 @@ const deps = (input: {
           markFailed: async () => ok(undefined),
         },
       }),
+    },
+    paymentTransaction: {
+      run: async (operation) =>
+        operation({
+          members: appDeps.members,
+          grants: appDeps.grants,
+          orders: appDeps.orders,
+          subscriptions: appDeps.subscriptions,
+          paymentRefunds: appDeps.paymentRefunds,
+          couponRedemptions: appDeps.couponRedemptions ?? {
+            counts: async () => ({ total: 0, member: 0 }),
+            createOrderAndClaim: async () => false,
+          },
+          emailOutbox: appDeps.emailOutbox,
+          processedPaymentEvents: appDeps.processedPaymentEvents,
+          enrollmentTransaction: appDeps.enrollmentTransaction,
+        }),
     },
     dispatchEmails: input.dispatchEmails ?? (async () => ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 })),
     dispatchEmail: () => undefined,
@@ -350,6 +389,10 @@ const deps = (input: {
     posts: {
       createPost: async (_tenantId, post) => post,
       findById: async () => null,
+      findByIds: async () => [],
+      countByAuthorSince: async () => 0,
+      listRecentBodiesByAuthor: async () => [],
+      listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
@@ -464,12 +507,16 @@ const deps = (input: {
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
   };
+  return appDeps;
 };
 
 const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<string, string>) =>
   app.request(API_PATHS.publicOffer, { headers });
 
-const scopedApp = (scope: 'none' | 'member' | 'staff') => {
+const scopedApp = (
+  scope: 'none' | 'member' | 'banned-member' | 'staff',
+  options: { memberDeletedAt?: string } = {},
+) => {
   const base = deps();
   const member: Member = {
     id: 'member-1',
@@ -481,7 +528,10 @@ const scopedApp = (scope: 'none' | 'member' | 'staff') => {
     marketingConsents: {},
     externalCustomerIds: {},
     createdAt: '2026-07-12T00:00:00.000Z',
-    deletedAt: null,
+    deletedAt: options.memberDeletedAt ?? null,
+    bannedAt: scope === 'banned-member' ? '2026-07-12T00:00:00.000Z' : null,
+    bannedReason: null,
+    bannedByUserId: null,
   };
   const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
   const post: Post = {
@@ -513,11 +563,12 @@ const scopedApp = (scope: 'none' | 'member' | 'staff') => {
     tenantAccess: {
       ...base.tenantAccess,
       findStaffGrant: async () => (scope === 'staff' ? staffGrant : null),
-      findMember: async () => (scope === 'member' ? member : null),
+      findMember: async () => (scope === 'member' || scope === 'banned-member' ? member : null),
     },
     members: {
       ...base.members,
-      findById: async () => (scope === 'member' ? member : null),
+      findById: async () => (scope === 'none' ? null : member),
+      setBanned: async () => member,
     },
     tenants: {
       ...base.tenants,
@@ -539,10 +590,60 @@ const scopedApp = (scope: 'none' | 'member' | 'staff') => {
         pinnedAt: input.pinnedAt,
       }),
     },
+    spaces: {
+      ...base.spaces,
+      findById: async () => ({
+        id: 'space-1',
+        tenantId: acme.id,
+        slug: 'general',
+        name: 'General',
+        description: null,
+        visibility: 'members',
+        productIds: [],
+        position: 0,
+        archivedAt: null,
+        createdAt: '2026-07-12T00:00:00.000Z',
+      }),
+    },
+    reports: {
+      ...base.reports,
+      open: async (_tenantId, report) => report,
+      findById: async () => ({
+        id: 'report-1',
+        tenantId: acme.id,
+        postId: post.id,
+        reporterUserId: member.userId,
+        reporterDisplay: member.displayName,
+        source: 'member',
+        reason: 'spam',
+        note: null,
+        signals: null,
+        status: 'open',
+        createdAt: '2026-07-12T00:00:00.000Z',
+        resolvedAt: null,
+        resolvedByUserId: null,
+      }),
+      resolve: async (_tenantId, input) => ({
+        id: input.id,
+        tenantId: acme.id,
+        postId: post.id,
+        reporterUserId: member.userId,
+        reporterDisplay: member.displayName,
+        source: 'member',
+        reason: 'spam',
+        note: null,
+        signals: null,
+        status: input.status,
+        createdAt: '2026-07-12T00:00:00.000Z',
+        resolvedAt: input.resolvedAt,
+        resolvedByUserId: input.resolvedByUserId,
+      }),
+    },
     orders: {
       ...base.orders,
       listPaidWithoutGrant: async () => [],
     },
+    marketing: marketingDeps(),
   });
 };
 
@@ -595,7 +696,12 @@ const marketingDeps = (): MarketingAppDeps => ({
   tickSecret: 'test-marketing-tick-secret',
   cronSecret: 'test-marketing-cron-secret',
   dispatchCampaign: async () => ok({ leased: true, yieldedToTransactional: false, sent: 0, failed: 0, skipped: 0 }),
-  dispatchScheduledMarketing: async () => ok({ campaignsDispatched: 0, retentionTenantsProcessed: 0 }),
+  dispatchScheduledMarketing: async () => ok({
+    campaignsDispatched: 0,
+    retentionTenantsProcessed: 0,
+    identityChecksPerformed: 0,
+    reputationAlertsSent: 0,
+  }),
 });
 
 const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> => {
@@ -731,7 +837,12 @@ describe('marketing HTTP surfaces', () => {
     const triggers: string[] = [];
     marketing.dispatchScheduledMarketing = async (trigger) => {
       triggers.push(trigger);
-      return ok({ campaignsDispatched: 2, retentionTenantsProcessed: 3 });
+      return ok({
+        campaignsDispatched: 2,
+        retentionTenantsProcessed: 3,
+        identityChecksPerformed: 4,
+        reputationAlertsSent: 5,
+      });
     };
     const app = marketingApp(marketing);
     expect((await app.request('/api/internal/marketing/tick')).status).toBe(401);
@@ -741,7 +852,12 @@ describe('marketing HTTP surfaces', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
-      data: { campaignsDispatched: 2, retentionTenantsProcessed: 3 },
+      data: {
+        campaignsDispatched: 2,
+        retentionTenantsProcessed: 3,
+        identityChecksPerformed: 4,
+        reputationAlertsSent: 5,
+      },
     });
     expect(triggers).toEqual(['cron']);
   });
@@ -835,12 +951,14 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: 'marketing',
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: 'marketing',
       snsTopicArn: null, trackingEnabled: false, autoPauseOnCritical: false,
       webhookToken: 'webhook-token-123456789012', quotaRatePerSec: 1,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
       webhookVerifiedAt: '2026-07-22T00:00:00.000Z', footerLegalName: 'Acme',
       footerAddress: 'Warsaw', broadcastsEnabled: true,
+      reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     const response = await marketingApp(marketing).request('/api/m2m/marketing/messages', {
       method: 'POST',
@@ -928,12 +1046,13 @@ describe('marketing HTTP surfaces', () => {
     const marketing = marketingDeps();
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: '2026-07-22T00:00:00.000Z', configurationSet: null,
+      identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+      identityCheckError: null, configurationSet: null,
       snsTopicArn: 'arn:aws:sns:eu-central-1:123:acme', trackingEnabled: false,
       autoPauseOnCritical: false, webhookToken: 'webhook-token',
       quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: '2026-07-22T00:00:00.000Z',
       inSandbox: false, webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: true,
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     marketing.sns = new FakeSnsVerifier(ok({
       type: 'Notification', topicArn: 'arn:aws:sns:eu-central-1:123:other', message: '{}', subscribeUrl: null,
@@ -950,11 +1069,12 @@ describe('marketing HTTP surfaces', () => {
     const topicArn = 'arn:aws:sns:eu-central-1:123:acme';
     const settings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: false,
+      broadcastsEnabled: false, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     marketing.sesSettings = settings;
     marketing.sns = new FakeSnsVerifier(ok({
@@ -999,11 +1119,12 @@ describe('marketing HTTP surfaces', () => {
     marketing.campaignSends = sends;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
       trackingEnabled: true, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: true,
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     const app = marketingApp(marketing);
     for (const message of [
@@ -1050,11 +1171,12 @@ describe('marketing HTTP surfaces', () => {
     marketing.campaignSends = sends;
     marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
       tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
-      identityVerifiedAt: now, configurationSet: 'marketing', snsTopicArn: topicArn,
+      identityVerifiedAt: now, identityCheckedAt: null, identityCheckError: null,
+      configurationSet: 'marketing', snsTopicArn: topicArn,
       trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token', quotaRatePerSec: 10,
       quotaDaily: 1000, quotaSentLast24Hours: 0, quotaRefreshedAt: now, inSandbox: false,
       webhookVerifiedAt: now, footerLegalName: 'Acme', footerAddress: 'Warsaw',
-      broadcastsEnabled: true,
+      broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
     }]);
     const app = marketingApp(marketing);
     for (const message of [
@@ -1289,6 +1411,158 @@ describe('new route authorization', () => {
 
     expect((await scopedApp('member').request(API_PATHS.postsPin, request)).status).toBe(403);
     expect((await scopedApp('staff').request(API_PATHS.postsPin, request)).status).toBe(200);
+  });
+
+  it('permits tenant actors to report posts', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId: 'post-1', reason: 'spam' }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.postsReport, request)).status).toBe(200);
+    expect((await scopedApp('staff').request(API_PATHS.postsReport, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.postsReport, request)).status).toBe(403);
+  });
+
+  it('restricts report queue access to staff', async () => {
+    const request = { method: 'GET', headers };
+
+    expect((await scopedApp('member').request(API_PATHS.reports, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.reports, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.reports, request)).status).toBe(403);
+  });
+
+  it('restricts report resolution to staff', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ reportId: 'report-1', action: 'dismiss' }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.reportResolve, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.reportResolve, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.reportResolve, request)).status).toBe(403);
+  });
+
+  it('restricts member bans to staff', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', banned: true, reason: 'Repeated abuse' }),
+    };
+
+    expect((await scopedApp('member').request(API_PATHS.memberBan, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.memberBan, request)).status).toBe(200);
+    expect((await scopedApp('none').request(API_PATHS.memberBan, request)).status).toBe(403);
+  });
+
+  it('returns the banned code when a suspended member creates a post', async () => {
+    const response = await scopedApp('banned-member').request(API_PATHS.postsCreate, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ contextKind: 'space', contextId: 'space-1', body: 'A new post' }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'banned' } });
+  });
+
+  it('returns the banned code when a suspended member reports a post', async () => {
+    const response = await scopedApp('banned-member').request(API_PATHS.postsReport, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId: 'post-1', reason: 'spam' }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: 'banned' } });
+  });
+
+  it('maps a tombstoned grant mutation to conflict', async () => {
+    const response = await scopedApp('staff', {
+      memberDeletedAt: '2026-07-12T00:00:00.000Z',
+    }).request(API_PATHS.grantsCreate, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ memberId: 'member-1', productId: 'acme-published' }),
+    });
+
+    expect(response.status).toBe(409);
+  });
+
+  it('allows only a member to export their own data', async () => {
+    expect(
+      (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(200);
+    expect(
+      (await scopedApp('staff').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await scopedApp('none').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(403);
+  });
+
+  it('enforces member and staff erasure-request scopes', async () => {
+    const memberApp = scopedApp('member');
+    const staffApp = scopedApp('staff');
+    const noneApp = scopedApp('none');
+    expect(
+      (await memberApp.request(API_PATHS.memberErasureRequest, { headers })).status,
+    ).toBe(200);
+    expect(
+      (
+        await memberApp.request(API_PATHS.memberErasureRequest, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ confirmEmail: 'user@acme.test' }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await memberApp.request(API_PATHS.memberErasureRequest, {
+          method: 'DELETE',
+          headers,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await staffApp.request(API_PATHS.memberErasureRequest, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await noneApp.request(API_PATHS.memberErasureRequest, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await staffApp.request(API_PATHS.memberErasureRequests, { headers })).status,
+    ).toBe(200);
+    expect(
+      (await memberApp.request(API_PATHS.memberErasureRequests, { headers })).status,
+    ).toBe(403);
+    expect(
+      (
+        await staffApp.request(
+          API_PATHS.memberErasureReject.replace(':requestId', 'request-1'),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ note: 'Accounting retention' }),
+          },
+        )
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await memberApp.request(
+          API_PATHS.memberErasureReject.replace(':requestId', 'request-1'),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ note: 'No' }),
+          },
+        )
+      ).status,
+    ).toBe(403);
   });
 
   it('denies support messages from a session without member or staff scope', async () => {
@@ -1818,10 +2092,11 @@ describe('checkout consent ordering', () => {
       },
       processedPaymentEvents: {
         claim: async (_tenantId, paymentEvent) => {
-          if (claimedEvents.has(paymentEvent.id)) return false;
+          if (claimedEvents.has(paymentEvent.id)) return 'duplicate';
           claimedEvents.add(paymentEvent.id);
-          return true;
+          return 'claimed';
         },
+        finalize: async () => undefined,
         release: async () => undefined,
       },
       paymentRefunds: {

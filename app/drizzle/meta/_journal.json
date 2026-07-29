@@ -407,6 +407,41 @@
       "when": 1785280057925,
       "tag": "0057_chubby_shooting_star",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785282000000,
+      "tag": "0058_webhook_claim_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1785283000000,
+      "tag": "0059_member_erasure_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1785284000000,
+      "tag": "0060_ses_identity_freshness_and_reputation_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1785285000000,
+      "tag": "0061_post_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1785286000000,
+      "tag": "0062_member_bans",
+      "breakpoints": true
     }
   ]
 }

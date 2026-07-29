@@ -51,6 +51,7 @@ export interface Messages {
     messageUnauthorized: string;
     messageInvalidCredentials: string;
     messageForbidden: string;
+    messageBanned: string;
     messageNotFound: string;
     messageValidation: string;
     messageConflict: string;
@@ -132,6 +133,7 @@ export interface Messages {
     sales: string;
     coupons: string;
     members: string;
+    reports: string;
     integrations: string;
     settings: string;
     marketingActivity: string;
@@ -143,6 +145,25 @@ export interface Messages {
     marketingSettings: string;
     aria: string;
     comingSoon: string;
+  };
+  reports: {
+    heading: string;
+    loading: string;
+    empty: string;
+    statusOpen: string;
+    statusDismissed: string;
+    statusResolved: string;
+    sourceMember: string;
+    sourceHeuristic: string;
+    signalLinkFlood: string;
+    signalDuplicateBody: string;
+    heuristicInfo: string;
+    reportedBy: (params: { name: string }) => string;
+    otherReports: (params: { count: number }) => string;
+    dismiss: string;
+    dismissConfirm: string;
+    deletePost: string;
+    deletePostConfirm: string;
   };
   dashboard: {
     heading: string;
@@ -635,6 +656,11 @@ export interface Messages {
     deletedBadge: string;
     tombstoneNotice: string;
     exportFailed: string;
+    erasureRequestsHeading: string;
+    erasureRequestsEmpty: string;
+    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
+    erasureRejectNote: string;
+    erasureReject: string;
     allMembersBack: string;
     joined: string;
     grantProduct: string;
@@ -681,6 +707,15 @@ export interface Messages {
     emailsTab: string;
     emailsLoading: string;
     emailsEmpty: string;
+    bannedBadge: string;
+    moderationHeading: string;
+    ban: string;
+    unban: string;
+    banReasonLabel: string;
+    banConfirm: (params: { email: string }) => string;
+    unbanConfirm: (params: { email: string }) => string;
+    bannedSince: (params: { date: string }) => string;
+    banVsRemoval: string;
   };
   student: {
     myCourses: string;
@@ -861,6 +896,20 @@ export interface Messages {
     pinLimitReached: string;
     threadTitle: string;
     threadEyebrow: string;
+    report: string;
+    reportTitle: string;
+    reportReasonLabel: string;
+    reportReasonSpam: string;
+    reportReasonHarassment: string;
+    reportReasonOffTopic: string;
+    reportReasonIllegal: string;
+    reportReasonOther: string;
+    reportNoteLabel: string;
+    reportSubmit: string;
+    reportSent: string;
+    reportAlready: string;
+    bannedBanner: string;
+    postTooFast: string;
   };
   spacesPanel: {
     loading: string;
@@ -925,6 +974,18 @@ export interface Messages {
     invoiceDownload: string;
     preferencesHeading: string;
     preferencesIntro: string;
+    dataExportHeading: string;
+    dataExportIntro: string;
+    dataExportButton: string;
+    dataExportPreparing: string;
+    erasureHeading: string;
+    erasureIntro: string;
+    erasureConfirmLabel: string;
+    erasureRequestButton: string;
+    erasureOpen: (input: { dueAt: string }) => string;
+    erasureCancelButton: string;
+    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
+    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
   resetPassword: {
     title: string;
@@ -1302,7 +1363,7 @@ export interface Messages {
     smtpUserLabel: string;
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
-    smtpTrackingNote: string;
+    smtpNoFeedback: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;
@@ -1369,6 +1430,10 @@ export interface Messages {
     blocked: string;
     credentialsConfigured: string;
     identityVerified: string;
+    identityNeverChecked: string;
+    identityLastChecked: (input: { checkedAt: string }) => string;
+    identityCheckStale: (input: { checkedAt: string }) => string;
+    identityCheckFailed: (input: { message: string }) => string;
     configurationSetConfigured: string;
     webhookVerified: string;
     footerConfigured: string;

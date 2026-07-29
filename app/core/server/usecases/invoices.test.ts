@@ -263,6 +263,7 @@ const ctx = {
     tenantName: 'Acme',
     staffRole: 'owner' as const,
     memberId: null,
+    memberBannedAt: null,
   },
 };
 

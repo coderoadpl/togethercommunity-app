@@ -20,6 +20,8 @@ const members: MemberWithProductIds[] = [
     externalCustomerIds: {},
     createdAt: '2026-07-12T10:00:00.000Z',
     deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
     productIds: ['p1', 'p2'],
     activeProductIds: ['p1'],
   },
@@ -32,6 +34,8 @@ const members: MemberWithProductIds[] = [
     externalCustomerIds: {},
     createdAt: '2026-07-12T11:00:00.000Z',
     deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
     productIds: [],
     activeProductIds: [],
   },
@@ -44,6 +48,8 @@ const members: MemberWithProductIds[] = [
     externalCustomerIds: {},
     createdAt: '2026-07-12T12:00:00.000Z',
     deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
     productIds: ['p3'],
     activeProductIds: [],
   },
@@ -176,6 +182,7 @@ describe('MembersPanel', () => {
                 message: 'Stripe is unavailable',
               },
             ],
+            erasureRequestId: null,
           },
         });
       }),
@@ -217,6 +224,8 @@ describe('MembersPanel', () => {
         externalCustomerIds: {},
         createdAt: '2026-07-12T13:00:00.000Z',
         deletedAt: '2026-07-19T09:00:00.000Z',
+        bannedAt: null,
+        bannedReason: null,
         productIds: ['p1'],
         activeProductIds: [],
       },
@@ -234,6 +243,24 @@ describe('MembersPanel', () => {
     expect(within(row).queryByRole('button', { name: pl.members.remove })).toBeNull();
   });
 
+  it('marks banned members in the list', async () => {
+    const bannedMember = {
+      ...members[0],
+      bannedAt: '2026-07-19T09:00:00.000Z',
+      bannedReason: 'Repeated abuse',
+    };
+    server.use(http.get('/api/members', () => HttpResponse.json({
+      ok: true,
+      data: { members: [bannedMember] },
+    })));
+
+    renderWithProviders(<MembersPanel />);
+    const row = await screen.findByTestId('member-row');
+    expect(within(row).getByTestId('member-banned-badge')).toHaveTextContent(
+      pl.members.bannedBadge,
+    );
+  });
+
   it('paginates long member lists and searches across all pages', async () => {
     const manyMembers: MemberWithProductIds[] = Array.from({ length: 30 }, (_, index) => ({
       id: `member-page-${index}`,
@@ -244,6 +271,8 @@ describe('MembersPanel', () => {
       externalCustomerIds: {},
       createdAt: new Date(Date.UTC(2026, 5, 1, 0, index)).toISOString(),
       deletedAt: null,
+      bannedAt: null,
+      bannedReason: null,
       productIds: [],
       activeProductIds: [],
     }));

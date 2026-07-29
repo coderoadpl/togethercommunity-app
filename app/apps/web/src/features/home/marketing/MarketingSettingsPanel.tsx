@@ -17,6 +17,8 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { sesIdentityFreshness } from '#core/domain/index.js';
+
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
@@ -243,7 +245,7 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
       )}
     >
       <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
-      <Alert severity="info">{t.marketing.smtpTrackingNote}</Alert>
+      <Alert severity="info">{t.marketing.smtpNoFeedback}</Alert>
       <FormControl fullWidth>
         <FormLabel htmlFor="marketing-smtp-host">{t.marketing.smtpHostLabel}</FormLabel>
         <OutlinedInput id="marketing-smtp-host" value={host} onChange={(event) => setHost(event.target.value)} />
@@ -288,7 +290,6 @@ export const MarketingSettingsPanel = () => {
     fromAddress: fromAddress ?? settings?.fromAddress ?? '',
     fromName: fromName ?? settings?.fromName ?? '',
     identity: identity ?? settings?.identity ?? '',
-    identityVerified: settings?.identityVerifiedAt !== null && settings?.identityVerifiedAt !== undefined,
     configurationSet: settings?.configurationSet ?? '',
     snsTopicArn: settings?.snsTopicArn ?? '',
     trackingEnabled: trackingEnabled ?? settings?.trackingEnabled ?? false,
@@ -320,6 +321,20 @@ export const MarketingSettingsPanel = () => {
   const webhookVerified = settings?.webhookVerifiedAt !== null && settings?.webhookVerifiedAt !== undefined;
   const enabled = settings?.broadcastsEnabled ?? false;
   const pool = result.data.platformPool;
+  const identityFreshness =
+    settings === null
+      ? 'never-checked'
+      : sesIdentityFreshness(settings, new Date().toISOString());
+  const identityCaption =
+    settings?.identityCheckedAt === null || settings?.identityCheckedAt === undefined
+      ? t.marketing.identityNeverChecked
+      : identityFreshness === 'stale'
+        ? t.marketing.identityCheckStale({
+            checkedAt: formatDateTime(settings.identityCheckedAt, language),
+          })
+        : t.marketing.identityLastChecked({
+            checkedAt: formatDateTime(settings.identityCheckedAt, language),
+          });
 
   return (
     <PanelPage title={t.marketing.settingsTitle} description={t.marketing.settingsDescription}>
@@ -332,7 +347,7 @@ export const MarketingSettingsPanel = () => {
         disabledMessage={t.marketing.broadcastsDisabled}
         items={[
           { label: t.marketing.credentialsConfigured, ready: credentialsConfigured },
-          { label: t.marketing.identityVerified, ready: liveChecklist?.identity ?? verified },
+          { label: t.marketing.identityVerified, ready: liveChecklist?.identity ?? verified, caption: identityCaption },
           { label: t.marketing.configurationSetConfigured, ready: liveChecklist?.configurationSet ?? (settings?.configurationSet !== null && settings?.configurationSet !== undefined) },
           { label: t.marketing.wizardSubscription, ready: liveChecklist?.snsSubscription ?? (settings?.snsTopicArn !== null && settings?.snsTopicArn !== undefined) },
           { label: t.marketing.webhookVerified, ready: liveChecklist?.webhook ?? webhookVerified },
@@ -344,6 +359,11 @@ export const MarketingSettingsPanel = () => {
           },
         ]}
       />
+      {settings?.identityCheckError === null || settings?.identityCheckError === undefined ? null : (
+        <Alert severity="warning">
+          {t.marketing.identityCheckFailed({ message: settings.identityCheckError })}
+        </Alert>
+      )}
       <SectionCard title={t.marketing.platformPool({ used: pool.used, limit: pool.limit })}>
         {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
       </SectionCard>

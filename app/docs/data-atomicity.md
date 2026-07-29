@@ -22,11 +22,15 @@ at all.
   `CourseRepository.update`, `CourseModuleRepository.update`, and
   `CourseLessonRepository.update` write the previous version with the mutation.
 - Privacy and identity: `MemberErasurePort.pseudonymize` erases all member
-  identifiers as one unit.
+  identifiers as one unit; `MemberErasureRequestRepository.create` and
+  `MemberErasureRequestRepository.resolve` keep request projections and events
+  together.
 - Enrollment and tenant creation: `PurchaseRepository.createMemberGrant`,
   `EnrollmentTransactionPort.run`, and
   `TenantRepository.createTenantWithOwnerGrant` prevent partial grants,
   members, outbox messages, or ownerless tenants.
+- Payments and webhooks: `PaymentTransactionPort.run` keeps every payment
+  projection write and webhook finalization in one commit.
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,
   `InvoiceRepository.createFrozenKsef`, `InvoiceRepository.checkpointKsef`,
@@ -37,6 +41,9 @@ at all.
   `CouponManagementRepository.archive`, and
   `CouponRedemptionRepository.createOrderAndClaim` keep coupon projections,
   events, orders, and redemption limits consistent.
+- Moderation: `PostReportRepository.open`, `PostReportRepository.resolve`,
+  `PostReportRepository.resolveAllForPost`, and `MemberRepository.setBanned`
+  keep moderation projections and events consistent.
 - Marketing: `ConsentDefinitionRepository.create`,
   `TenantDocumentRepository.create`, `TenantDocumentRepository.saveDraft`,
   `TenantDocumentRepository.publishDraft`,

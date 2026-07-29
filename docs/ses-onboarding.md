@@ -69,17 +69,15 @@ configuration sets, and the SNS topic are Region-specific.
 3. If a domain cannot be changed, use **Use e-mail identity instead**. AWS sends
    a verification message to that exact address. This fallback does not provide
    domain-level DKIM control and is not recommended for sustained sending.
-4. Select **Create SES + SNS infrastructure**. This repeat-safe step creates:
-   the SES configuration set; an SNS topic and SES publish policy; the HTTPS
-   subscription to `/api/webhooks/ses/:token`; and the SES event destination
-   for Send, Delivery, Bounce, Complaint, Open, and Click. Together attaches
-   the configuration set only to marketing sends. Transactional sends omit it
-   so magic links and other one-to-one messages cannot receive SES open pixels
-   or click link wrapping. Transactional telemetry is consciously limited to
-   SES acceptance; delivery, bounce, complaint, open, and click events from the
-   marketing configuration-set path are not correlated to transactional mail.
-   Open/click events are stored only when the tenant enables engagement
-   tracking.
+4. Select **Create SES + SNS infrastructure**. This repeat-safe step creates
+   separate marketing and transactional SES configuration sets, an SNS topic
+   and SES publish policy, the HTTPS subscription to
+   `/api/webhooks/ses/:token`, and event destinations for both sets. The
+   marketing set publishes Send, Delivery, Bounce, Complaint, Open, and Click.
+   The transactional set publishes only Send, Delivery, Bounce, and Complaint,
+   so magic links and other one-to-one messages receive neither SES open pixels
+   nor click link wrapping. Open/click events are stored only when the tenant
+   enables marketing engagement tracking.
 5. Select **Poll AWS status**. A new HTTPS subscription remains pending until
    SNS confirms it. Together keeps SES identity feedback forwarding enabled
    during that period. Only after the poll sees the confirmed subscription does

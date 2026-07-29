@@ -40,7 +40,11 @@ import {
   marketingSesSettingsUpdateInputSchema,
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
+  memberBanInputSchema,
   memberProgressResetInputSchema,
+  memberErasureRequestCreateInputSchema,
+  memberErasureRejectInputSchema,
+  memberErasureRequestsQuerySchema,
   memberRemoveInputSchema,
   moduleAttachInputSchema,
   moduleCreateInputSchema,
@@ -53,8 +57,11 @@ import {
   postCreateInputSchema,
   postDeleteInputSchema,
   postPinInputSchema,
+  postReportInputSchema,
   postReactInputSchema,
   postsSearchInputSchema,
+  reportResolveInputSchema,
+  reportsListInputSchema,
   postUpdateInputSchema,
   productPriceCreateInputSchema,
   productPriceDeactivateInputSchema,
@@ -134,6 +141,12 @@ import {
   exportCouponStats,
   exportEmailSends,
   exportMembers,
+  exportMyData,
+  requestMyErasure,
+  getMyErasureRequest,
+  cancelMyErasureRequest,
+  listErasureRequests,
+  rejectErasureRequest,
   exportOrders,
   followSpace,
   fulfillStripeWebhook,
@@ -185,6 +198,7 @@ import {
   listPaidOrdersWithoutGrant,
   listProductAccessIssues,
   listProductPrices,
+  listReports,
   listProducts,
   listSchedulerRunsForTenant,
   listSpacesForMember,
@@ -206,9 +220,11 @@ import {
   recordCheckoutMarketingConsents,
   refreshInvoiceStatus,
   removeMember,
+  reportPost,
   requestInvoice,
   resetMemberCourseProgress,
   resolveIdentity,
+  resolveReport,
   resolveTenant,
   revokeGrant,
   revokeTenantApiKey,
@@ -218,6 +234,7 @@ import {
   searchPosts,
   sendSesSimulatorTest,
   sendTransactionalSmtpTest,
+  setMemberBanned,
   setSpaceArchived,
   setPostPinned,
   sendSupportMessage,
@@ -316,6 +333,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   tenantName: null,
   staffRole: null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -327,6 +345,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   tenantName: tenant.name,
   staffRole: null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const checkoutConsentEvidence = (headers: Headers) => {
@@ -1132,7 +1151,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid e-mail sends query', parsed.error.flatten())));
     return respond(await listEmailSends(
       { identity: c.get('identity') },
-      parsed.data,
+      parsed.data.status === undefined ? {} : { status: parsed.data.status },
       { sends: deps.marketing.emailSends },
     ));
   });
@@ -1186,6 +1205,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
               name: identity.tenantName,
               staffRole: identity.staffRole,
               memberId: identity.memberId,
+              banned: identity.memberBannedAt !== null,
             }
             : null,
       }),
@@ -1203,6 +1223,112 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       { orders: deps.orders },
     ));
+  });
+
+  app.get(API_PATHS.memberDataExport, async (c) => {
+    if (deps.marketing === undefined) {
+      return respond(err(internal('Marketing repositories are not configured')));
+    }
+    return respond(
+      await exportMyData(
+        { identity: c.get('identity') },
+        {
+          members: deps.members,
+          grants: deps.grants,
+          subscriptions: deps.subscriptions,
+          orders: deps.orders,
+          invoices: deps.invoices,
+          progress: deps.progress,
+          posts: deps.posts,
+          consents: deps.consents,
+          marketingConsents: deps.marketing.marketingConsents,
+          clock: deps.clock,
+        },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.memberErasureRequest, async (c) => {
+    const result = await getMyErasureRequest(
+      { identity: c.get('identity') },
+      {
+        members: deps.members,
+        erasureRequests: deps.erasureRequests,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.post(API_PATHS.memberErasureRequest, async (c) => {
+    const parsed = memberErasureRequestCreateInputSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return respond(err(validation('Invalid erasure request', parsed.error.flatten())));
+    }
+    const result = await requestMyErasure(
+      { identity: c.get('identity') },
+      {
+        confirmEmail: parsed.data.confirmEmail,
+        ...(parsed.data.reason === undefined ? {} : { reason: parsed.data.reason }),
+      },
+      {
+        members: deps.members,
+        erasureRequests: deps.erasureRequests,
+        ids: deps.ids,
+        clock: deps.clock,
+        notifications: {
+          tenants: deps.tenants,
+          tenantAccess: deps.tenantAccess,
+          emailOutbox: deps.emailOutbox,
+          appBaseUrl: deps.appBaseUrl,
+          baseDomain: deps.baseDomain,
+          dispatchEmail: deps.dispatchEmail,
+        },
+      },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.memberErasureRequest, async (c) => {
+    const result = await cancelMyErasureRequest(
+      { identity: c.get('identity') },
+      {
+        members: deps.members,
+        erasureRequests: deps.erasureRequests,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberErasureRequests, async (c) => {
+    const parsed = memberErasureRequestsQuerySchema.safeParse({
+      status: c.req.query('status'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid erasure request query', parsed.error.flatten())));
+    }
+    const result = await listErasureRequests(
+      { identity: c.get('identity') },
+      parsed.data.status === undefined ? {} : { status: parsed.data.status },
+      { erasureRequests: deps.erasureRequests },
+    );
+    return respond(result.ok ? ok({ requests: result.value }) : result);
+  });
+
+  app.post(API_PATHS.memberErasureReject, async (c) => {
+    const parsed = memberErasureRejectInputSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return respond(err(validation('Invalid erasure rejection', parsed.error.flatten())));
+    }
+    const result = await rejectErasureRequest(
+      { identity: c.get('identity') },
+      { requestId: c.req.param('requestId'), note: parsed.data.note },
+      { erasureRequests: deps.erasureRequests, ids: deps.ids, clock: deps.clock },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
   });
 
   app.get(API_PATHS.tenants, async (c) => {
@@ -1247,6 +1373,14 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       return respond(err(validation('Query parameter "format" must be "csv" or "json"')));
     }
     return respond(await exportMembers({ identity: c.get('identity') }, { format: format.data }, deps));
+  });
+
+  app.post(API_PATHS.memberBan, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = memberBanInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid member ban payload', parsed.error.flatten())));
+    const result = await setMemberBanned({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ member: result.value }) : result);
   });
 
   app.get(API_PATHS.memberGrants, async (c) => {
@@ -1927,6 +2061,33 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         ? ok({ post: toPublicPost(result.value, c.get('identity').userId) })
         : result,
     );
+  });
+
+  app.post(API_PATHS.postsReport, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = postReportInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid report payload', parsed.error.flatten())));
+    const result = await reportPost({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ report: result.value }) : result);
+  });
+
+  app.get(API_PATHS.reports, async (c) => {
+    const parsed = reportsListInputSchema.safeParse({
+      status: c.req.query('status'),
+      cursor: c.req.query('cursor'),
+      limit: c.req.query('limit') === undefined ? undefined : Number(c.req.query('limit')),
+    });
+    if (!parsed.success) return respond(err(validation('Invalid reports query', parsed.error.flatten())));
+    const result = await listReports({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok(result.value) : result);
+  });
+
+  app.post(API_PATHS.reportResolve, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = reportResolveInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid report resolution', parsed.error.flatten())));
+    const result = await resolveReport({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ report: result.value }) : result);
   });
 
   app.post(API_PATHS.postsUpdate, async (c) => {

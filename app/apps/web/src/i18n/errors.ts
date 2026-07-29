@@ -21,6 +21,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageInvalidCredentials;
     case 'forbidden':
       return t.errors.messageForbidden;
+    case 'banned':
+      return t.errors.messageBanned;
     case 'not_found':
       return t.errors.messageNotFound;
     case 'validation':

@@ -30,6 +30,7 @@ import {
   discussionSchema,
   lessonReferencesSchema,
   listDiscussionInputSchema,
+  listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
   courseHistoryEntrySchema,
@@ -57,9 +58,14 @@ import {
   salesSummarySchema,
   memberExportFileSchema,
   memberGrantSchema,
+  memberErasureRequestSchema,
+  memberErasureRequestStatusSchema,
+  memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
   memberWithProductIdsSchema,
+  memberSchema,
   muteThreadInputSchema,
+  setMemberBannedInputSchema,
   revokeGrantInputSchema,
   membershipSchema,
   newCourseLessonSchema,
@@ -69,6 +75,10 @@ import {
   notificationMarkReadInputSchema,
   notificationSchema,
   pinPostInputSchema,
+  postReportSchema,
+  reportPostInputSchema,
+  reportQueueSchema,
+  resolveReportInputSchema,
   newProductSchema,
   nextLessonSchema,
   publicPostSchema,
@@ -173,6 +183,7 @@ export const meOutputSchema = z.object({
       name: z.string(),
       staffRole: staffRoleSchema.nullable(),
       memberId: z.string().nullable(),
+      banned: z.boolean(),
     })
     .nullable(),
 });
@@ -308,6 +319,34 @@ export const membersListOutputSchema = z.object({
 });
 
 export const membersExportOutputSchema = memberExportFileSchema;
+export const memberDataExportOutputSchema = memberExportFileSchema;
+
+export const memberErasureRequestCreateInputSchema = z.object({
+  confirmEmail: z.string().email(),
+  reason: z.string().trim().max(2000).optional(),
+});
+export type MemberErasureRequestCreateInput = z.input<
+  typeof memberErasureRequestCreateInputSchema
+>;
+
+export const memberErasureRequestOutputSchema = z.object({
+  request: memberErasureRequestSchema.nullable(),
+});
+export const memberErasureRequestMutationOutputSchema = z.object({
+  request: memberErasureRequestSchema,
+});
+export const memberErasureRequestsQuerySchema = z.object({
+  status: memberErasureRequestStatusSchema.optional(),
+});
+export type MemberErasureRequestsQueryInput = z.input<
+  typeof memberErasureRequestsQuerySchema
+>;
+export const memberErasureRequestsOutputSchema = z.object({
+  requests: z.array(memberErasureRequestWithMemberSchema),
+});
+export const memberErasureRejectInputSchema = z.object({
+  note: z.string().trim().min(1).max(2000),
+});
 
 export const memberRemoveInputSchema = z.object({
   memberId: z.string().min(1),
@@ -325,7 +364,12 @@ export const memberSubscriptionCancellationSchema = z.object({
 export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
   subscriptionCancellations: z.array(memberSubscriptionCancellationSchema),
+  erasureRequestId: z.string().nullable(),
 });
+
+export const memberBanInputSchema = setMemberBannedInputSchema;
+export type MemberBanInput = z.input<typeof memberBanInputSchema>;
+export const memberBanOutputSchema = z.object({ member: memberSchema });
 
 export const memberGrantsOutputSchema = z.object({
   grants: z.array(memberGrantSchema),
@@ -777,6 +821,18 @@ export const postPinOutputSchema = z.object({
   post: publicPostSchema,
 });
 
+export const postReportInputSchema = reportPostInputSchema;
+export type PostReportInput = z.input<typeof postReportInputSchema>;
+export const postReportOutputSchema = z.object({ report: postReportSchema });
+
+export const reportsListInputSchema = listReportsInputSchema;
+export type ReportsListInput = z.input<typeof reportsListInputSchema>;
+export const reportsListOutputSchema = reportQueueSchema;
+
+export const reportResolveInputSchema = resolveReportInputSchema;
+export type ReportResolveInput = z.input<typeof reportResolveInputSchema>;
+export const reportResolveOutputSchema = z.object({ report: postReportSchema });
+
 export const postsSearchInputSchema = searchPostsInputSchema;
 
 export type PostsSearchInput = z.input<typeof postsSearchInputSchema>;
@@ -994,7 +1050,6 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   fromAddress: z.string().email(),
   fromName: z.string().trim().min(1),
   identity: z.string().trim().min(1),
-  identityVerified: z.boolean(),
   configurationSet: z.string().trim().min(1).nullable(),
   snsTopicArn: z.string().trim().min(1).nullable(),
   trackingEnabled: z.boolean(),
@@ -1112,6 +1167,10 @@ export const API_ROUTES = {
   authConfig: { method: 'GET', path: '/api/public/auth-config' },
   me: { method: 'GET', path: '/api/me' },
   memberBillingOrders: { method: 'GET', path: '/api/me/billing-orders' },
+  memberDataExport: { method: 'GET', path: '/api/me/data-export' },
+  memberErasureRequest: { method: 'GET', path: '/api/me/erasure-request' },
+  memberErasureRequestCreate: { method: 'POST', path: '/api/me/erasure-request' },
+  memberErasureRequestCancel: { method: 'DELETE', path: '/api/me/erasure-request' },
   tenants: { method: 'GET', path: '/api/tenants' },
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
   products: { method: 'GET', path: '/api/products' },
@@ -1163,6 +1222,7 @@ export const API_ROUTES = {
   studentProgress: { method: 'GET', path: '/api/student/progress' },
   postsCreate: { method: 'POST', path: '/api/posts' },
   postsPin: { method: 'POST', path: '/api/posts/pin' },
+  postsReport: { method: 'POST', path: '/api/posts/report' },
   postsUpdate: { method: 'POST', path: '/api/posts/update' },
   postsDelete: { method: 'DELETE', path: '/api/posts/:postId' },
   discussion: { method: 'GET', path: '/api/discussion' },
@@ -1171,6 +1231,8 @@ export const API_ROUTES = {
   postsSearch: { method: 'GET', path: '/api/posts/search' },
   postsReact: { method: 'POST', path: '/api/posts/react' },
   postsUnreact: { method: 'POST', path: '/api/posts/unreact' },
+  reports: { method: 'GET', path: '/api/reports' },
+  reportResolve: { method: 'POST', path: '/api/reports/resolve' },
   spaces: { method: 'GET', path: '/api/spaces' },
   spacesStaff: { method: 'GET', path: '/api/spaces/staff' },
   spacesCreate: { method: 'POST', path: '/api/spaces' },
@@ -1188,11 +1250,17 @@ export const API_ROUTES = {
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   myProducts: { method: 'GET', path: '/api/my/products' },
   members: { method: 'GET', path: '/api/members' },
+  memberErasureRequests: { method: 'GET', path: '/api/members/erasure-requests' },
+  memberErasureReject: {
+    method: 'POST',
+    path: '/api/members/erasure-requests/:requestId/reject',
+  },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
+  memberBan: { method: 'POST', path: '/api/members/ban' },
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
@@ -1284,6 +1352,8 @@ export const API_PATHS = {
   authConfig: API_ROUTES.authConfig.path,
   me: API_ROUTES.me.path,
   memberBillingOrders: API_ROUTES.memberBillingOrders.path,
+  memberDataExport: API_ROUTES.memberDataExport.path,
+  memberErasureRequest: API_ROUTES.memberErasureRequest.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,
   productsPublish: API_ROUTES.productsPublish.path,
@@ -1332,6 +1402,7 @@ export const API_PATHS = {
   studentProgress: API_ROUTES.studentProgress.path,
   postsCreate: API_ROUTES.postsCreate.path,
   postsPin: API_ROUTES.postsPin.path,
+  postsReport: API_ROUTES.postsReport.path,
   postsUpdate: API_ROUTES.postsUpdate.path,
   postsDelete: API_ROUTES.postsDelete.path,
   discussion: API_ROUTES.discussion.path,
@@ -1340,6 +1411,8 @@ export const API_PATHS = {
   postsSearch: API_ROUTES.postsSearch.path,
   postsReact: API_ROUTES.postsReact.path,
   postsUnreact: API_ROUTES.postsUnreact.path,
+  reports: API_ROUTES.reports.path,
+  reportResolve: API_ROUTES.reportResolve.path,
   spaces: API_ROUTES.spaces.path,
   spacesStaff: API_ROUTES.spacesStaff.path,
   spacesUpdate: API_ROUTES.spacesUpdate.path,
@@ -1356,11 +1429,14 @@ export const API_PATHS = {
   devGrant: API_ROUTES.devGrant.path,
   myProducts: API_ROUTES.myProducts.path,
   members: API_ROUTES.members.path,
+  memberErasureRequests: API_ROUTES.memberErasureRequests.path,
+  memberErasureReject: API_ROUTES.memberErasureReject.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
+  memberBan: API_ROUTES.memberBan.path,
   memberEmailSends: API_ROUTES.memberEmailSends.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,

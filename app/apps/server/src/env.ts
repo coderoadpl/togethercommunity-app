@@ -45,6 +45,7 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    TOGETHER_VISUAL_CLOCK: z.string().datetime({ offset: true }).optional(),
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
     EMAIL_FROM: optionalNonEmptyString,
     SMTP_HOST: z.string().min(1).default('localhost'),
@@ -123,6 +124,13 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['AUTH_DEV_EXPOSE_MAGIC_LINKS'],
         message: 'AUTH_DEV_EXPOSE_MAGIC_LINKS cannot be enabled in production',
+      });
+    }
+    if (env.TOGETHER_VISUAL_CLOCK !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TOGETHER_VISUAL_CLOCK'],
+        message: 'TOGETHER_VISUAL_CLOCK cannot be enabled in production',
       });
     }
     if (env.KSEF_ENVIRONMENT !== 'production') {

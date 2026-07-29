@@ -7,6 +7,7 @@ import { createDb } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import { SAMPLE_LESSON_PDF_URL } from './sample-assets.js';
 import {
+  account,
   campaigns,
   campaignSends,
   courseLessons,
@@ -56,22 +57,6 @@ const connectionString =
 
 const db = createDb('node-postgres', connectionString);
 const seedIds = { nextId: () => crypto.randomUUID() };
-const seedClock = { nowIso: () => new Date().toISOString() };
-
-const auth = createAuth(db, {
-  secret: process.env['BETTER_AUTH_SECRET'] ?? 'dev-only-secret-do-not-use-in-prod',
-  baseUrl: 'http://localhost:48730',
-  baseDomain: 'localhost',
-  trustedOrigins: () => ['http://localhost:48730'],
-  secureCookies: false,
-  exposeMagicLinks: false,
-  emailOutbox: createEmailOutboxRepository(db),
-  ids: seedIds,
-  clock: seedClock,
-  dispatchEmail: () => undefined,
-  defaultTenantName: 'Together',
-  google: null,
-});
 
 const PASSWORD = 'demo1234';
 
@@ -90,6 +75,22 @@ const parseBaseTime = (): number => {
 const baseTime = parseBaseTime();
 let sequence = 0;
 const nextIso = (): string => new Date(baseTime + sequence++ * 1000).toISOString();
+const seedClock = { nowIso: () => new Date(baseTime).toISOString() };
+
+const auth = createAuth(db, {
+  secret: process.env['BETTER_AUTH_SECRET'] ?? 'dev-only-secret-do-not-use-in-prod',
+  baseUrl: 'http://localhost:48730',
+  baseDomain: 'localhost',
+  trustedOrigins: () => ['http://localhost:48730'],
+  secureCookies: false,
+  exposeMagicLinks: false,
+  emailOutbox: createEmailOutboxRepository(db),
+  ids: seedIds,
+  clock: seedClock,
+  dispatchEmail: () => undefined,
+  defaultTenantName: 'Together',
+  google: null,
+});
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const relativeIso = (days: number): string => new Date(baseTime + days * DAY_MS).toISOString();
@@ -126,14 +127,20 @@ const ensureCreator = async (email: string, name: string): Promise<string> => {
   const rows = await db.select().from(user).where(eq(user.email, email)).limit(1);
   const row = rows[0];
   if (!row) throw new Error(`Seeded creator not found: ${email}`);
+  const seededAt = new Date(seedClock.nowIso());
+  await db.update(user).set({ createdAt: seededAt, updatedAt: seededAt }).where(eq(user.id, row.id));
+  await db.update(account).set({ createdAt: seededAt, updatedAt: seededAt }).where(eq(account.userId, row.id));
   return row.id;
 };
 
 const ensurePasswordlessUser = async (id: string, email: string, name: string): Promise<string> => {
   const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
   const found = existing[0];
-  if (found) return found.id;
-  const now = new Date();
+  const now = new Date(seedClock.nowIso());
+  if (found) {
+    await db.update(user).set({ createdAt: now, updatedAt: now }).where(eq(user.id, found.id));
+    return found.id;
+  }
   await db
     .insert(user)
     .values({ id, name, email, emailVerified: true, createdAt: now, updatedAt: now })

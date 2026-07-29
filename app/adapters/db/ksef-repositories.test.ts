@@ -1,9 +1,9 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createDb, type Db } from './client.js';
+import type { Db } from './client.js';
 import {
   createKsefNumberRepository,
   createKsefSubmissionJobRepository,
@@ -16,8 +16,10 @@ import {
   products,
   tenants,
 } from './schema.js';
+import * as dbSchema from './schema.js';
+import { uniqueTestDatabaseName } from './test-database-name.js';
 
-const TEST_DB = 'together_ksef_test';
+const TEST_DB = uniqueTestDatabaseName('together_ksef_test');
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testUrl = (() => {
   const url = new URL(baseDatabaseUrl);
@@ -26,6 +28,15 @@ const testUrl = (() => {
 })();
 const now = '2026-07-27T10:00:00.000Z';
 let db: Db;
+let dbPool: pg.Pool;
+
+afterAll(async () => {
+  await dbPool.end();
+  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
+  await admin.connect();
+  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
+  await admin.end();
+});
 
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: baseDatabaseUrl });
@@ -36,7 +47,8 @@ beforeAll(async () => {
   const pool = new pg.Pool({ connectionString: testUrl });
   await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
   await pool.end();
-  db = createDb('node-postgres', testUrl);
+  dbPool = new pg.Pool({ connectionString: testUrl });
+  db = drizzle(dbPool, { schema: dbSchema });
   await db.insert(tenants).values({
     id: 'tenant-ksef',
     slug: 'ksef',

@@ -1,11 +1,11 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinition, type ConsentDefinitionVersion, type EmailLayout, type MarketingConsent, type Suppression, type TenantDocument, type TenantDocumentVersion } from '#core/domain/index.js';
 
-import { createDb, type Db } from './client.js';
+import type { Db } from './client.js';
 import { createEmailEventRepository } from './email-events.js';
 import { createEmailSendRepository } from './email-sends.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
@@ -22,12 +22,23 @@ import {
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
 import { emailOutbox, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
+import * as dbSchema from './schema.js';
+import { uniqueTestDatabaseName } from './test-database-name.js';
 
-const TEST_DB = 'together_marketing_repositories_test';
+const TEST_DB = uniqueTestDatabaseName('together_marketing_repositories_test');
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testUrl = (() => { const url = new URL(baseUrl); url.pathname = `/${TEST_DB}`; return url.toString(); })();
 const NOW = '2026-07-22T00:00:00.000Z';
 let db: Db;
+let dbPool: pg.Pool;
+
+afterAll(async () => {
+  await dbPool.end();
+  const admin = new pg.Client({ connectionString: baseUrl });
+  await admin.connect();
+  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
+  await admin.end();
+});
 
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: baseUrl });
@@ -38,7 +49,8 @@ beforeAll(async () => {
   const pool = new pg.Pool({ connectionString: testUrl });
   await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
   await pool.end();
-  db = createDb('node-postgres', testUrl);
+  dbPool = new pg.Pool({ connectionString: testUrl });
+  db = drizzle(dbPool, { schema: dbSchema });
   await db.insert(tenants).values([
     { id: 'tenant-a', slug: 'tenant-a', name: 'A', createdAt: NOW },
     { id: 'tenant-b', slug: 'tenant-b', name: 'B', createdAt: NOW },

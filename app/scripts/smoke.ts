@@ -7,10 +7,12 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { z } from 'zod';
 
+import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '#core/contract/index.js';
 
 import {
   bootServer,
+  delay,
   ephemeralPort,
   killServer,
   rootDir,
@@ -19,7 +21,7 @@ import {
 } from './server-harness.js';
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
 
-const SMOKE_DB = 'together_smoke';
+const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
   'postgres://together:together@localhost:48912/together';
@@ -77,6 +79,16 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     fail(
       `Could not prepare the smoke database "${SMOKE_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
+  } finally {
+    await client.end();
+  }
+};
+
+const dropDatabase = async (adminUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    await client.query(`DROP DATABASE IF EXISTS ${SMOKE_DB} WITH (FORCE)`);
   } finally {
     await client.end();
   }
@@ -371,6 +383,22 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   homes.push(authedHome, anonHome);
   const cli = (args: string[], home: string): Promise<Run> =>
     run(tsxBin, ['apps/cli/src/main.ts', ...args], { HOME: home });
+  const waitForDevEmail = async (to: string): Promise<z.infer<typeof devEmailResultSchema>> => {
+    const deadline = Date.now() + 3000;
+    while (true) {
+      const result = devEmailResultSchema.parse(
+        expectOk(
+          await cli(
+            ['--json', '--api-url', url, '--tenant', 'acme', 'dev', 'email', '--to', to],
+            anonHome,
+          ),
+          'stripe: welcome email in dev sink',
+        ),
+      );
+      if (result.email !== null || Date.now() >= deadline) return result;
+      await delay(100);
+    }
+  };
 
   const health = healthSchema.parse(expectOk(await cli(['--json', '--api-url', url, 'health'], authedHome), 'health'));
   assert(
@@ -525,15 +553,7 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   );
   const stripeMember = stripeMembers.members.find((member) => member.email === 'stripe-smoke@together.dev');
   assert(stripeMember?.productIds.includes(created.product.id) === true, 'stripe: webhook did not create the member grant');
-  const stripeEmail = devEmailResultSchema.parse(
-    expectOk(
-      await cli(
-        ['--json', '--api-url', url, '--tenant', 'acme', 'dev', 'email', '--to', 'stripe-smoke@together.dev'],
-        anonHome,
-      ),
-      'stripe: welcome email in dev sink',
-    ),
-  );
+  const stripeEmail = await waitForDevEmail('stripe-smoke@together.dev');
   assert(stripeEmail.email !== null, 'stripe: webhook did not send the welcome email');
 
   expectError(
@@ -1154,4 +1174,5 @@ try {
 } finally {
   if (server) await killServer(server);
   for (const dir of homes) rmSync(dir, { recursive: true, force: true });
+  await dropDatabase(baseDatabaseUrl);
 }

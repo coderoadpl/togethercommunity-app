@@ -362,6 +362,7 @@ const deps = (input: {
     posts: {
       createPost: async (_tenantId, post) => post,
       findById: async () => null,
+      findByIds: async () => [],
       countByAuthorSince: async () => 0,
       listRecentBodiesByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),

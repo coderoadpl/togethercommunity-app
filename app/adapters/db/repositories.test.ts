@@ -925,6 +925,9 @@ describe('post repository', () => {
     await expect(repo.countByAuthorSince(GLOBEX, query)).resolves.toBe(0);
     await expect(repo.listRecentBodiesByAuthor(ACME, { ...query, limit: 1 }))
       .resolves.toEqual(['Body post-spam-recent-b']);
+    await expect(repo.findByIds(ACME, ['post-spam-recent-a', 'missing']))
+      .resolves.toMatchObject([{ id: 'post-spam-recent-a' }]);
+    await expect(repo.findByIds(GLOBEX, ['post-spam-recent-a'])).resolves.toEqual([]);
   });
 
   it('clears a pin when soft-deleting a post', async () => {

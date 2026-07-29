@@ -16,6 +16,7 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("reducedMotion: 'reduce'");
     expect(harness).toContain('deviceScaleFactor: 1');
     expect(harness).toContain('page.clock.setFixedTime');
+    expect(harness).toContain("{ APP_COMMIT_SHA: '' }");
   });
 
   it('settles the page before every capture', () => {

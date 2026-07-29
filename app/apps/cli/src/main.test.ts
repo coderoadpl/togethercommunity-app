@@ -179,6 +179,17 @@ describe('version identity', () => {
     expect(logSpy).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
   });
+
+  it('emits the manifest version envelope for --json --version without calling health', async () => {
+    await run('--json', '--version');
+
+    expect(soleJson()).toEqual({
+      ok: true,
+      data: { name: 'together', version: pkg.version },
+    });
+    expect(h.health).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
 });
 
 describe('origin profiles', () => {

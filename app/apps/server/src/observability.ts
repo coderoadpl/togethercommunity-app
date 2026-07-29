@@ -4,6 +4,8 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
+import { APP_VERSION } from './version.js';
+
 /**
  * Composition-root wiring for server tracing. Registers a Node tracer provider
  * (W3C propagator + async-hooks context manager + OTLP exporter) ONLY when an
@@ -22,7 +24,7 @@ export const startServerObservability = (): (() => Promise<void>) | undefined =>
   const provider = new NodeTracerProvider({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? 'together-server',
-      [ATTR_SERVICE_VERSION]: '0.1.0',
+      [ATTR_SERVICE_VERSION]: APP_VERSION,
     }),
     spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
   });

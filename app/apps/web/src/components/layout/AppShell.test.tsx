@@ -38,6 +38,7 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByRole('navigation')).toHaveTextContent('Products');
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
 
   it('renders page state inside the stable shell', () => {

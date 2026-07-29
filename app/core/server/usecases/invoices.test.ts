@@ -14,6 +14,7 @@ import {
   autoIssueOnPayment,
   downloadInvoiceUpo,
   downloadMemberInvoice,
+  refreshInvoiceStatus,
   requestInvoice,
   testIfirmaConnection,
   testKsefConnection,
@@ -537,6 +538,52 @@ describe('requestInvoice', () => {
     });
     expect(h.allocatedYear()).toBe(2026);
     expect(h.frozenXml()).toContain('<P_1>2026-01-01</P_1>');
+  });
+});
+
+describe('refreshInvoiceStatus', () => {
+  it('persists forward transitions and ignores provider status regressions', async () => {
+    const h = harness();
+    expect(await requestInvoice(ctx, 'order-1', h.deps)).toMatchObject({ ok: true });
+    let providerStatus: 'issued' | 'delivered' | 'failed' | 'conflict' = 'delivered';
+    let statusCalls = 0;
+    h.deps.invoicing.getInvoiceStatus = async () => {
+      statusCalls += 1;
+      return ok(providerStatus);
+    };
+
+    expect(await refreshInvoiceStatus(ctx, h.invoices[0]?.id ?? '', h.deps)).toMatchObject({
+      ok: true,
+      value: { status: 'delivered' },
+    });
+    expect(h.invoices[0]).toMatchObject({ status: 'delivered' });
+    expect(h.events.at(-1)).toMatchObject({
+      type: 'refreshed',
+      meta: { status: 'delivered' },
+    });
+
+    providerStatus = 'issued';
+    expect(await refreshInvoiceStatus(ctx, h.invoices[0]?.id ?? '', h.deps)).toMatchObject({
+      ok: true,
+      value: { status: 'delivered' },
+    });
+    expect(h.invoices[0]).toMatchObject({ status: 'delivered' });
+    expect(statusCalls).toBe(2);
+
+    providerStatus = 'failed';
+    expect(await refreshInvoiceStatus(ctx, h.invoices[0]?.id ?? '', h.deps)).toMatchObject({
+      ok: true,
+      value: { status: 'failed', error: 'provider_failed' },
+    });
+    expect(h.invoices[0]).toMatchObject({ status: 'failed', error: 'provider_failed' });
+
+    providerStatus = 'conflict';
+    expect(await refreshInvoiceStatus(ctx, h.invoices[0]?.id ?? '', h.deps)).toMatchObject({
+      ok: true,
+      value: { status: 'conflict', error: null },
+    });
+    expect(h.invoices[0]).toMatchObject({ status: 'conflict', error: null });
+    expect(statusCalls).toBe(4);
   });
 });
 

@@ -8,18 +8,29 @@ import {
   validation,
   type Identity,
   type Member,
+  type MemberErasureRequest,
+  type MemberErasureRequestEvent,
+  type MemberErasureRequestWithMember,
   type MemberSubscription,
   type MemberWithProductIds,
 } from '#core/domain/index.js';
 
 import type {
   MemberErasurePort,
+  MemberErasureRequestRepository,
   MemberPseudonymization,
   MemberRepository,
   MemberSubscriptionRepository,
   PaymentProvider,
 } from '../ports.js';
-import { exportMembers, listMembers, removeMember, setMemberBanned } from './members.js';
+import {
+  exportMembers,
+  listErasureRequests,
+  listMembers,
+  rejectErasureRequest,
+  removeMember,
+  setMemberBanned,
+} from './members.js';
 
 const staff = (tenantId: string | null, tenantSlug: string | null): Identity => ({
   userId: 'u-staff',
@@ -668,5 +679,92 @@ describe('exportMembers', () => {
   it('forbids a plain member identity', async () => {
     const result = await exportMembers({ identity: plainMember('t-acme') }, { format: 'csv' }, depsFor({}));
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
+describe('erasure request administration', () => {
+  const request: MemberErasureRequest = {
+    id: 'request-1',
+    tenantId: 't-acme',
+    memberId: 'member-1',
+    status: 'open',
+    reason: 'privacy',
+    requestedAt: clock.nowIso(),
+    dueAt: '2026-08-11T12:00:00.000Z',
+    resolvedAt: null,
+    resolvedByUserId: null,
+    resolutionNote: null,
+  };
+  const listed: MemberErasureRequestWithMember = {
+    ...request,
+    member: { id: 'member-1', email: 'member@example.com', displayName: 'Member' },
+  };
+  const repository = (
+    calls: Array<{ tenantId: string; event: MemberErasureRequestEvent }>,
+  ): MemberErasureRequestRepository => ({
+    create: async () => 'created',
+    findOpenForMember: async () => request,
+    findLatestForMember: async () => request,
+    list: async (tenantId) => tenantId === 't-acme' ? [listed] : [],
+    resolve: async (tenantId, input, event) => {
+      calls.push({ tenantId, event });
+      return {
+        ...request,
+        status: input.status,
+        resolvedAt: input.resolvedAt,
+        resolvedByUserId: input.resolvedByUserId,
+        resolutionNote: input.resolutionNote,
+      };
+    },
+  });
+
+  it('lists tenant requests only with the read capability', async () => {
+    const calls: Array<{ tenantId: string; event: MemberErasureRequestEvent }> = [];
+    const erasureRequests = repository(calls);
+    expect(await listErasureRequests(
+      { identity: staff('t-acme', 'acme'), capabilities: ['member:erasure:read'] },
+      { status: 'open' },
+      { erasureRequests },
+    )).toMatchObject({ ok: true, value: [{ id: 'request-1', tenantId: 't-acme' }] });
+    expect(await listErasureRequests(
+      { identity: staff('t-acme', 'acme'), capabilities: ['member:remove'] },
+      {},
+      { erasureRequests },
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('rejects an open request only with resolver authority and records the actor', async () => {
+    const calls: Array<{ tenantId: string; event: MemberErasureRequestEvent }> = [];
+    const erasureRequests = repository(calls);
+    const deps = {
+      erasureRequests,
+      ids: { nextId: () => 'event-1' },
+      clock,
+    };
+    expect(await rejectErasureRequest(
+      { identity: staff('t-acme', 'acme'), capabilities: ['member:erasure:read'] },
+      { requestId: request.id, note: 'Retained by request' },
+      deps,
+    )).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await rejectErasureRequest(
+      { identity: staff('t-acme', 'acme'), capabilities: ['member:remove'] },
+      { requestId: request.id, note: 'Retained by request' },
+      deps,
+    )).toMatchObject({
+      ok: true,
+      value: {
+        status: 'rejected',
+        resolvedByUserId: 'u-staff',
+        resolutionNote: 'Retained by request',
+      },
+    });
+    expect(calls).toEqual([{
+      tenantId: 't-acme',
+      event: expect.objectContaining({
+        type: 'rejected',
+        actorUserId: 'u-staff',
+        meta: { note: 'Retained by request' },
+      }),
+    }]);
   });
 });

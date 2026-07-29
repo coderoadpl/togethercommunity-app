@@ -551,6 +551,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     'The `operator-secret` principal requires both `marketing:campaign:dispatch` and `marketing:message:send`. `campaignTickExecution` calls `sendMarketingMessages`, whose independent authorization check requires `marketing:message:send`; the original capability audit table listed only the outer campaign-dispatch requirement. This additional nested requirement is necessary for the marketing worker and does not change any effective principal set in the rows below.',
     '',
+    'The `member` and `authenticated` matrix rows carry historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, `marketing:message:send`, and `marketing:message:read`) that are not reachable through any session route (verified 2026-07-29). Narrowing these grants is recommended pending owner decision O-08.',
+    '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,

@@ -39,6 +39,7 @@ Pull requests should be small enough to review, include tests appropriate to
 the risk, avoid unrelated formatting changes, and update user-facing or
 developer documentation when behavior changes.
 
-By opening a pull request, you agree that the contribution is submitted under
-the repository license and, after your one-time acceptance, under the terms of
-the CLA.
+By opening a pull request, you agree that your contribution is governed by
+the CLA (one-time acceptance, required before the first merge). The CLA grants
+the Licensor the rights needed to distribute the contribution under the
+repository license and any future licensing of the project.

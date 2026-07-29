@@ -1,4 +1,5 @@
 import {
+  banned,
   err,
   forbidden,
   notFound,
@@ -59,6 +60,18 @@ export const requireMemberOrStaff = (
   if (!actor.ok) return actor;
   if (!ctx.identity.staffRole && !ctx.identity.memberId) {
     return err(forbidden('Only members or staff can use the community'));
+  }
+  return actor;
+};
+
+export const requireUnbannedMember = (
+  ctx: Ctx,
+  capability: Capability,
+): Result<ActorScope, AppError> => {
+  const actor = requireMemberOrStaff(ctx, capability);
+  if (!actor.ok) return actor;
+  if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {
+    return err(banned('This account is suspended in this community'));
   }
   return actor;
 };

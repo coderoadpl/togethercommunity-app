@@ -26,6 +26,7 @@ const ctx = {
     tenantName: 'Tenant',
     staffRole: 'owner' as const,
     memberId: null,
+    memberBannedAt: null,
   },
 };
 

@@ -155,6 +155,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
   const spaces = useQuery(actions.spaces);
   const me = useQuery(actions.me);
   const feed = useQuery(actions.spaceFeed({ spaceId }));
+  const banned = me.data?.tenant?.banned === true;
 
   const [followOverride, setFollowOverride] = useState<boolean | null>(null);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionSummary[]>>({});
@@ -263,6 +264,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
             submitLabel={t.community.post}
             pendingLabel={t.community.posting}
             busy={create.isPending}
+            disabled={banned}
             onSubmit={(body, reset) =>
               create.mutate({ contextKind: 'space', contextId: spaceId, body }, { onSuccess: () => reset() })
             }

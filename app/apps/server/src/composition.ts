@@ -514,7 +514,7 @@ export const createDeps = (env: Env): AppDeps => {
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+        tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
     }, { campaignId, workerId: randomUUID(), tickSeconds: 50, trigger }, {
@@ -530,7 +530,7 @@ export const createDeps = (env: Env): AppDeps => {
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
-    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null,
+    tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
   });
   const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();

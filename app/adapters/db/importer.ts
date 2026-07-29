@@ -1725,6 +1725,7 @@ const runSpotChecks = async (
           tenantName,
           staffRole: null,
           memberId: memberRow.id,
+          memberBannedAt: null,
         },
       };
       const result = await isLessonAccessible(ctx, lessonId, deps);

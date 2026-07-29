@@ -54,6 +54,7 @@ import {
   listAccessibleSpaces,
   requireActor,
   requireMemberOrStaff,
+  requireUnbannedMember,
   requireTenant,
   spaceContextAccess,
   spaceVisibleToMemberScope,
@@ -322,7 +323,7 @@ export const createPost = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<PublicPost, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'community:write');
+  const actor = requireUnbannedMember(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = createPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post payload', parsed.error.flatten()));
@@ -426,7 +427,7 @@ export const editPost = async (
   input: unknown,
   deps: CommunityDeps,
 ): Promise<Result<PublicPost, AppError>> => {
-  const actor = requireActor(ctx, 'community:write');
+  const actor = requireUnbannedMember(ctx, 'community:write');
   if (!actor.ok) return actor;
   const parsed = updatePostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post update payload', parsed.error.flatten()));

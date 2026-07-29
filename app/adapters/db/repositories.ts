@@ -112,6 +112,7 @@ import {
   entityVersions,
   invoices,
   memberCourseProgress,
+  memberEvents,
   members,
   memberSubscriptions,
   notifications,
@@ -1347,6 +1348,8 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         externalCustomerIds: members.externalCustomerIds,
         createdAt: members.createdAt,
         deletedAt: members.deletedAt,
+        bannedAt: members.bannedAt,
+        bannedReason: members.bannedReason,
         productIds: sql<
           string[]
         >`coalesce(array_agg(${productGrants.productId}) filter (where ${productGrants.productId} is not null), '{}')`,
@@ -1369,6 +1372,8 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         members.externalCustomerIds,
         members.createdAt,
         members.deletedAt,
+        members.bannedAt,
+        members.bannedReason,
       )
       .orderBy(asc(members.createdAt)),
   create: async (tenantId, member) => {
@@ -1385,6 +1390,9 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         externalCustomerIds: member.externalCustomerIds,
         createdAt: member.createdAt,
         deletedAt: member.deletedAt,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
       })
       .onConflictDoNothing({ target: [members.tenantId, members.userId] });
   },
@@ -1396,6 +1404,26 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .returning();
     return rows[0] ?? null;
   },
+  setBanned: async (tenantId, input, event) =>
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .update(members)
+        .set({
+          bannedAt: input.bannedAt,
+          bannedReason: input.reason,
+          bannedByUserId: input.bannedAt === null ? null : input.actorUserId,
+        })
+        .where(and(
+          eq(members.tenantId, tenantId),
+          eq(members.id, input.memberId),
+          isNull(members.deletedAt),
+        ))
+        .returning();
+      const row = rows[0];
+      if (!row) return null;
+      await tx.insert(memberEvents).values({ ...event, tenantId });
+      return row;
+    }),
 });
 
 export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): MemberErasurePort => ({
@@ -1466,6 +1494,9 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           externalCustomerIds: {},
           legacyId: null,
           deletedAt: input.deletedAt,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
         })
         .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)));
 

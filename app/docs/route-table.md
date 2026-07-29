@@ -100,6 +100,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/my/products` | authenticated | read | my products |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |
+| `POST /api/members/ban` | authenticated | mutating | member ban |
 | `GET /api/members/:memberId/grants` | authenticated | read | member grants |
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |

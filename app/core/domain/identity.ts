@@ -13,4 +13,5 @@ export interface Identity {
   tenantName: string | null;
   staffRole: StaffRole | null;
   memberId: string | null;
+  memberBannedAt: string | null;
 }

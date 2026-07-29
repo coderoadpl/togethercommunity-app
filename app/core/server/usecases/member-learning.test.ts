@@ -38,6 +38,7 @@ const identity = (over: Partial<Identity>): Identity => ({
   tenantName: 'Acme',
   staffRole: 'owner',
   memberId: null,
+  memberBannedAt: null,
   ...over,
 });
 
@@ -58,6 +59,9 @@ const member = (id: string): Member => ({
   externalCustomerIds: {},
   createdAt: PAST,
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
 });
 
 const lesson = (id: string): CourseLesson => ({
@@ -198,6 +202,7 @@ const deps = (input: {
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+  setBanned: async () => null,
   };
 
   const grantsRepo: ProductGrantRepository = {

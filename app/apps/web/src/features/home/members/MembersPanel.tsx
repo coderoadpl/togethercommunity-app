@@ -179,6 +179,8 @@ export const MembersPanel = () => {
                     <TableCell>
                       {member.deletedAt !== null ? (
                         <Chip size="small" variant="outlined" label={t.members.deletedBadge} data-testid="member-deleted-badge" />
+                      ) : member.bannedAt !== null ? (
+                        <Chip size="small" color="warning" label={t.members.bannedBadge} data-testid="member-banned-badge" />
                       ) : (
                         member.displayName ?? '—'
                       )}

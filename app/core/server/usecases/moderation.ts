@@ -19,7 +19,7 @@ import {
 
 import type { Ctx } from '../context.js';
 import type { MemberRepository, PostReportRepository } from '../ports.js';
-import { lessonContextAccess, requireActor, requireMemberOrStaff, spaceContextAccess } from './community-access.js';
+import { lessonContextAccess, requireActor, requireUnbannedMember, spaceContextAccess } from './community-access.js';
 import { deletePost, type CommunityDeps } from './community.js';
 
 export interface ModerationDeps extends CommunityDeps {
@@ -42,7 +42,7 @@ export const reportPost = async (
   input: unknown,
   deps: ModerationDeps,
 ): Promise<Result<PostReport, AppError>> => {
-  const actor = requireMemberOrStaff(ctx, 'community:report');
+  const actor = requireUnbannedMember(ctx, 'community:report');
   if (!actor.ok) return actor;
   const parsed = reportPostInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid report payload', parsed.error.flatten()));

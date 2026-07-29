@@ -16,6 +16,7 @@ import type {
   TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
+  MemberEvent,
   MemberGrant,
   MemberCourseProgress,
   MemberSubscription,
@@ -344,6 +345,16 @@ export interface MemberRepository {
   listWithProductIds(tenantId: string, now: string): Promise<MemberWithProductIds[]>;
   create(tenantId: string, member: Member): Promise<void>;
   updateEmail(tenantId: string, memberId: string, email: string): Promise<Member | null>;
+  setBanned(
+    tenantId: string,
+    input: {
+      memberId: string;
+      bannedAt: string | null;
+      reason: string | null;
+      actorUserId: string;
+    },
+    event: MemberEvent,
+  ): Promise<Member | null>;
 }
 
 export interface MemberPseudonymization {

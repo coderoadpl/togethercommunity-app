@@ -69,6 +69,22 @@ Requests are handled case by case:
 - Third-party personal data inside another member's post follows the
   `community:moderate` moderation path, not member erasure.
 
+## Bans are not erasure
+
+A ban (`members.banned_at`) is reversible moderation state. The person keeps
+their account, sign-in, grants, orders, authored posts, and full read access.
+Only community writes are refused with the `banned` error code. Every
+transition is recorded in `member_events`, and staff can lift the ban.
+
+Erasure (`memberTombstone`) is irreversible pseudonymization for a
+data-subject request. It severs the user id, tombstones the e-mail, ends
+grants, cancels subscriptions, and relabels authored content. A tombstoned
+identity cannot authenticate.
+
+Never implement a ban in terms of erasure or ban a member as a step of
+erasure. The UI hides ban controls for members whose `deletedAt` is set, and
+`setMemberBanned` returns `not_found` for those members.
+
 ## Out of scope and known gaps
 
 Report rows retain `post_reports.reporter_user_id` after erasure, matching the

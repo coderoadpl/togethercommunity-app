@@ -12,7 +12,7 @@ import {
   Select,
   TextField,
 } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '#core/client/index.js';
 import type { PostReportReason } from '#core/domain/index.js';
@@ -26,6 +26,8 @@ export const ReportPostButton = ({ postId, disabled = false }: { postId: string;
   const [reason, setReason] = useState<PostReportReason>('spam');
   const [note, setNote] = useState('');
   const [sent, setSent] = useState(false);
+  const me = useQuery(actions.me);
+  const unavailable = disabled || me.data?.tenant?.banned === true;
   const report = useMutation({
     ...actions.reportPost,
     onSuccess: () => setSent(true),
@@ -38,7 +40,7 @@ export const ReportPostButton = ({ postId, disabled = false }: { postId: string;
 
   return (
     <>
-      <Button size="small" variant="text" disabled={disabled} onClick={() => setOpen(true)}>
+      <Button size="small" variant="text" disabled={unavailable} onClick={() => setOpen(true)}>
         {t.community.report}
       </Button>
       <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm">

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { publicPostSchema } from './community.js';
+import { MAX_MEMBER_BAN_REASON_LENGTH } from './tenant.js';
 
 export const postReportReasonSchema = z.enum(['spam', 'harassment', 'off-topic', 'illegal', 'other']);
 export const postReportSourceSchema = z.enum(['member', 'heuristic']);
@@ -86,8 +87,20 @@ export type ResolveReportInput = z.input<typeof resolveReportInputSchema>;
 export const setMemberBannedInputSchema = z.object({
   memberId: z.string().min(1),
   banned: z.boolean(),
-  reason: z.string().trim().max(500).optional(),
+  reason: z.string().trim().max(MAX_MEMBER_BAN_REASON_LENGTH).optional(),
 });
+
+export const memberEventSchema = z.object({
+  id: z.string().min(1),
+  tenantId: z.string().min(1),
+  memberId: z.string().min(1),
+  type: z.enum(['banned', 'unbanned']),
+  reason: z.string().nullable(),
+  actorUserId: z.string().min(1),
+  occurredAt: z.string().datetime(),
+});
+
+export type MemberEvent = z.output<typeof memberEventSchema>;
 
 export type SetMemberBannedInput = z.input<typeof setMemberBannedInputSchema>;
 

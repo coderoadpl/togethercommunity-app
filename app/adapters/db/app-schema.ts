@@ -202,6 +202,9 @@ export const members = pgTable(
       .default({}),
     createdAt: text('created_at').notNull(),
     deletedAt: text('deleted_at'),
+    bannedAt: text('banned_at'),
+    bannedReason: text('banned_reason'),
+    bannedByUserId: text('banned_by_user_id'),
   },
   (table) => [
     index('members_tenantId_idx').on(table.tenantId),
@@ -210,6 +213,27 @@ export const members = pgTable(
     uniqueIndex('members_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
       .where(sql`${table.legacyId} is not null`),
+    index('members_tenant_banned_idx')
+      .on(table.tenantId, table.bannedAt)
+      .where(sql`${table.bannedAt} is not null`),
+  ],
+);
+
+export const memberEvents = pgTable(
+  'member_events',
+  {
+    id: text('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }),
+    tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id').notNull().references(() => members.id, { onDelete: 'restrict' }),
+    type: text('type', { enum: ['banned', 'unbanned'] }).notNull(),
+    reason: text('reason'),
+    actorUserId: text('actor_user_id').notNull(),
+    occurredAt: text('occurred_at').notNull(),
+  },
+  (table) => [
+    index('member_events_tenant_member_occurred_idx')
+      .on(table.tenantId, table.memberId, table.occurredAt, table.sequence),
   ],
 );
 

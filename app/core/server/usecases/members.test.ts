@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DELETED_MEMBER_DISPLAY, memberTombstone, type Identity, type Member, type MemberWithProductIds } from '#core/domain/index.js';
 
 import type { MemberErasurePort, MemberPseudonymization, MemberRepository } from '../ports.js';
-import { exportMembers, listMembers, removeMember } from './members.js';
+import { exportMembers, listMembers, removeMember, setMemberBanned } from './members.js';
 
 const staff = (tenantId: string | null, tenantSlug: string | null): Identity => ({
   userId: 'u-staff',
@@ -14,6 +14,7 @@ const staff = (tenantId: string | null, tenantSlug: string | null): Identity => 
   tenantName: tenantSlug ? 'Acme' : null,
   staffRole: tenantId ? 'owner' : null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const plainMember = (tenantId: string): Identity => ({
@@ -25,6 +26,7 @@ const plainMember = (tenantId: string): Identity => ({
   tenantName: 'Acme',
   staffRole: null,
   memberId: 'member-1',
+  memberBannedAt: null,
 });
 
 const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): MemberWithProductIds => ({
@@ -36,6 +38,8 @@ const memberRow = (input: Partial<MemberWithProductIds> & { id: string }): Membe
   externalCustomerIds: input.externalCustomerIds ?? {},
   createdAt: input.createdAt ?? '2026-07-12T00:00:00.000Z',
   deletedAt: input.deletedAt ?? null,
+  bannedAt: input.bannedAt ?? null,
+  bannedReason: input.bannedReason ?? null,
   productIds: input.productIds ?? [],
   activeProductIds: input.activeProductIds ?? [],
 });
@@ -48,6 +52,7 @@ const membersFor = (byTenant: Record<string, MemberWithProductIds[]>): MemberRep
   create: async () => undefined,
   listWithProductIds: async (tenantId) => byTenant[tenantId] ?? [],
   updateEmail: async () => null,
+  setBanned: async () => null,
 });
 
 const erasureFor = (
@@ -77,6 +82,7 @@ const depsFor = (
   members: membersFor(byTenant),
   memberErasure: erasureFor(byTenant, calls),
   clock,
+  ids: { nextId: () => 'event-1' },
 });
 
 describe('listMembers', () => {
@@ -116,6 +122,102 @@ describe('listMembers', () => {
 
     expect(acme).toMatchObject({ ok: true, value: [{ id: 'acme-1' }] });
     expect(globex).toMatchObject({ ok: true, value: [{ id: 'globex-1' }] });
+  });
+});
+
+describe('setMemberBanned', () => {
+  const member: Member = {
+    id: 'm1',
+    tenantId: 't-acme',
+    userId: 'u1',
+    email: 'member@together.dev',
+    displayName: 'Member',
+    tags: [],
+    marketingConsents: {},
+    externalCustomerIds: {},
+    createdAt: '2026-07-01T00:00:00.000Z',
+    deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
+  };
+
+  it('writes the projection and event and is idempotent', async () => {
+    const events: Array<{ type: 'banned' | 'unbanned'; actorUserId: string; reason: string | null }> = [];
+    let stored = member;
+    const repository: MemberRepository = {
+      findById: async () => stored,
+      findByEmail: async () => stored,
+      listWithProductIds: async () => [],
+      create: async () => undefined,
+      updateEmail: async () => stored,
+      setBanned: async (_tenantId, input, event) => {
+        events.push({ type: event.type, actorUserId: event.actorUserId, reason: event.reason });
+        stored = {
+          ...stored,
+          bannedAt: input.bannedAt,
+          bannedReason: input.reason,
+          bannedByUserId: input.bannedAt === null ? null : input.actorUserId,
+        };
+        return stored;
+      },
+    };
+    const deps = {
+      members: repository,
+      memberErasure: erasureFor({}),
+      clock,
+      ids: { nextId: () => 'event-1' },
+    };
+    const first = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: true, reason: 'spam' },
+      deps,
+    );
+    const second = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: true, reason: 'ignored' },
+      deps,
+    );
+    const unbanned = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: false, reason: 'not retained' },
+      deps,
+    );
+    expect(first).toMatchObject({ ok: true, value: { bannedReason: 'spam' } });
+    expect(second).toMatchObject({ ok: true, value: { bannedReason: 'spam' } });
+    expect(unbanned).toMatchObject({
+      ok: true,
+      value: { bannedAt: null, bannedReason: null, bannedByUserId: null },
+    });
+    expect(events).toEqual([
+      { type: 'banned', actorUserId: 'u-staff', reason: 'spam' },
+      { type: 'unbanned', actorUserId: 'u-staff', reason: null },
+    ]);
+  });
+
+  it.each([
+    ['unknown', null],
+    ['tombstoned', { ...member, deletedAt: clock.nowIso() }],
+  ])('does not ban %s members', async (_label, found) => {
+    const repository: MemberRepository = {
+      findById: async () => found,
+      findByEmail: async () => null,
+      listWithProductIds: async () => [],
+      create: async () => undefined,
+      updateEmail: async () => null,
+      setBanned: async () => null,
+    };
+    const result = await setMemberBanned(
+      { identity: staff('t-acme', 'acme') },
+      { memberId: 'm1', banned: true },
+      {
+        members: repository,
+        memberErasure: erasureFor({}),
+        clock,
+        ids: { nextId: () => 'event-1' },
+      },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });
 

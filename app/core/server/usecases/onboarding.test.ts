@@ -27,6 +27,7 @@ const ctx = (staffRole: StaffRole | null = 'owner', tenantId: string | null = 't
     tenantName: tenantId ? 'Acme' : null,
     staffRole,
     memberId: null,
+  memberBannedAt: null,
   } satisfies Identity,
 });
 
@@ -84,6 +85,8 @@ const member = (id: string): MemberWithProductIds => ({
   externalCustomerIds: {},
   createdAt: NOW,
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
   productIds: [],
   activeProductIds: [],
 });

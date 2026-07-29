@@ -1,3 +1,4 @@
+import { transactionalSesConfigurationSetName } from '#core/domain/index.js';
 import type {
   EmailPort,
   MarketingSesCredentialResolver,
@@ -33,7 +34,9 @@ export const createTenantSesTransactionalResolver = (
         accessKeyId: resolved.value.accessKeyId,
         secretAccessKey: resolved.value.secretAccessKey,
       },
-      configurationSet: null,
+      configurationSet: tenantSettings.configurationSet === null
+        ? null
+        : transactionalSesConfigurationSetName(tenantSettings.configurationSet),
     });
   },
 });

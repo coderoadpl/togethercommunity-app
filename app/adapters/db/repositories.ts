@@ -91,6 +91,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { uniqueViolation } from './pg-errors.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
   consents,
@@ -109,6 +110,8 @@ import {
   entityVersions,
   invoices,
   memberCourseProgress,
+  memberErasureRequestEvents,
+  memberErasureRequests,
   members,
   memberSubscriptions,
   notifications,
@@ -719,6 +722,14 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const row = rows[0];
     return row ? parsePost(row) : null;
   },
+  listByAuthor: async (tenantId, authorUserId) =>
+    (
+      await db
+        .select()
+        .from(posts)
+        .where(and(eq(posts.tenantId, tenantId), eq(posts.authorUserId, authorUserId)))
+        .orderBy(asc(posts.createdAt), asc(posts.id))
+    ).map(parsePost),
   listThreadsForContext: async (tenantId, query) => {
     const descending = query.order === 'desc';
     const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);
@@ -1290,7 +1301,24 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .limit(1);
       const member = rows[0];
       if (!member) return null;
-      if (member.deletedAt !== null) return { alreadyDeleted: true, authUserErased: false };
+      if (member.deletedAt !== null) {
+        return {
+          alreadyDeleted: true,
+          authUserErased: false,
+          erasureRequestId: null,
+        };
+      }
+      const [openErasureRequest] = await tx
+        .select({ id: memberErasureRequests.id })
+        .from(memberErasureRequests)
+        .where(
+          and(
+            eq(memberErasureRequests.tenantId, tenantId),
+            eq(memberErasureRequests.memberId, input.memberId),
+            eq(memberErasureRequests.status, 'open'),
+          ),
+        )
+        .limit(1);
 
       await tx.insert(erasedMemberImports).values({
         memberId: member.id,
@@ -1401,10 +1429,47 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .from(tenantAdmins)
         .where(eq(tenantAdmins.userId, member.userId));
       const linked = (memberLinks[0]?.value ?? 0) + (staffLinks[0]?.value ?? 0);
-      if (linked > 0) return { alreadyDeleted: false, authUserErased: false };
+      if (openErasureRequest !== undefined) {
+        await tx
+          .update(memberErasureRequests)
+          .set({
+            status: 'completed',
+            resolvedAt: input.deletedAt,
+            resolvedByUserId: null,
+            resolutionNote: null,
+          })
+          .where(
+            and(
+              eq(memberErasureRequests.tenantId, tenantId),
+              eq(memberErasureRequests.id, openErasureRequest.id),
+              eq(memberErasureRequests.status, 'open'),
+            ),
+          );
+        await tx.insert(memberErasureRequestEvents).values({
+          id: sql`gen_random_uuid()::text`,
+          tenantId,
+          requestId: openErasureRequest.id,
+          type: 'completed',
+          actorUserId: null,
+          meta: null,
+          occurredAt: input.deletedAt,
+          createdAt: input.deletedAt,
+        });
+      }
+      if (linked > 0) {
+        return {
+          alreadyDeleted: false,
+          authUserErased: false,
+          erasureRequestId: openErasureRequest?.id ?? null,
+        };
+      }
 
       await tx.delete(user).where(eq(user.id, member.userId));
-      return { alreadyDeleted: false, authUserErased: true };
+      return {
+        alreadyDeleted: false,
+        authUserErased: true,
+        erasureRequestId: openErasureRequest?.id ?? null,
+      };
     }),
 });
 
@@ -2074,18 +2139,61 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
 });
 
 export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => ({
-  claim: async (tenantId, event) => {
-    const rows = await db
-      .insert(processedPaymentEvents)
-      .values({ ...event, tenantId })
-      .onConflictDoNothing()
-      .returning({ id: processedPaymentEvents.id });
-    return rows.length > 0;
+  claim: async (tenantId, event, lease) => {
+    try {
+      const rows = await db
+        .insert(processedPaymentEvents)
+        .values({
+          ...event,
+          tenantId,
+          status: 'processing',
+          workerId: lease.workerId,
+          claimedAt: lease.now,
+          leaseExpiresAt: lease.leaseExpiresAt,
+        })
+        .onConflictDoUpdate({
+          target: processedPaymentEvents.id,
+          set: {
+            status: 'processing',
+            workerId: lease.workerId,
+            claimedAt: lease.now,
+            leaseExpiresAt: lease.leaseExpiresAt,
+          },
+          setWhere: sql`${processedPaymentEvents.status} = 'processing'
+            and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
+        })
+        .returning({ id: processedPaymentEvents.id });
+      return rows.length > 0 ? 'claimed' : 'duplicate';
+    } catch (cause) {
+      if (uniqueViolation(cause)) return 'duplicate';
+      throw cause;
+    }
   },
-  release: async (tenantId, eventId) => {
+  finalize: async (tenantId, eventId, workerId, processedAt) => {
+    await db
+      .update(processedPaymentEvents)
+      .set({
+        status: 'processed',
+        processedAt,
+        workerId: null,
+        claimedAt: null,
+        leaseExpiresAt: null,
+      })
+      .where(and(
+        eq(processedPaymentEvents.tenantId, tenantId),
+        eq(processedPaymentEvents.id, eventId),
+        eq(processedPaymentEvents.workerId, workerId),
+        eq(processedPaymentEvents.status, 'processing'),
+      ));
+  },
+  release: async (tenantId, eventId, workerId) => {
     await db
       .delete(processedPaymentEvents)
-      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)));
+      .where(and(
+        eq(processedPaymentEvents.tenantId, tenantId),
+        eq(processedPaymentEvents.id, eventId),
+        eq(processedPaymentEvents.workerId, workerId),
+      ));
   },
 });
 

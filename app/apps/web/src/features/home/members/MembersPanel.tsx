@@ -25,6 +25,7 @@ import { matchesQuery, SearchField, useDebouncedValue } from '../../../component
 import { localizeError, localizeErrorCode, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
+import { ErasureRequestsSection } from './ErasureRequestsSection.js';
 
 const errorMessage = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.members.exportFailed;
@@ -122,6 +123,7 @@ export const MembersPanel = () => {
         </Stack>
       }
     >
+      <ErasureRequestsSection />
       <ListSection
         toolbar={{
           search: (

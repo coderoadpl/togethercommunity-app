@@ -804,10 +804,70 @@ export const processedPaymentEvents = pgTable(
     type: text('type').notNull(),
     objectId: text('object_id').notNull(),
     processedAt: text('processed_at').notNull(),
+    status: text('status').notNull().default('processed'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'string' }),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true, mode: 'string' }),
+    workerId: text('worker_id'),
   },
   (table) => [
     index('processed_events_tenantId_idx').on(table.tenantId),
     uniqueIndex('processed_events_object_type_uidx').on(table.objectId, table.type),
+    index('processed_events_lease_idx').on(table.status, table.leaseExpiresAt),
+  ],
+);
+
+export const memberErasureRequests = pgTable(
+  'member_erasure_requests',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['open', 'cancelled', 'completed', 'rejected'] }).notNull(),
+    reason: text('reason'),
+    requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'string' }).notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true, mode: 'string' }).notNull(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'string' }),
+    resolvedByUserId: text('resolved_by_user_id'),
+    resolutionNote: text('resolution_note'),
+  },
+  (table) => [
+    uniqueIndex('member_erasure_requests_open_uidx')
+      .on(table.tenantId, table.memberId)
+      .where(sql`${table.status} = 'open'`),
+    index('member_erasure_requests_tenant_status_idx').on(
+      table.tenantId,
+      table.status,
+      table.requestedAt,
+    ),
+  ],
+);
+
+export const memberErasureRequestEvents = pgTable(
+  'member_erasure_request_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => memberErasureRequests.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['requested', 'cancelled', 'completed', 'rejected'] }).notNull(),
+    actorUserId: text('actor_user_id'),
+    meta: jsonb('meta'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
+  },
+  (table) => [
+    index('member_erasure_request_events_request_idx').on(
+      table.tenantId,
+      table.requestId,
+      table.occurredAt,
+    ),
   ],
 );
 
@@ -1366,6 +1426,8 @@ export const tenantSesSettings = pgTable(
     fromName: text('from_name').notNull(),
     identity: text('identity').notNull(),
     identityVerifiedAt: timestamp('identity_verified_at', { withTimezone: true, mode: 'string' }),
+    identityCheckedAt: timestamp('identity_checked_at', { withTimezone: true, mode: 'string' }),
+    identityCheckError: text('identity_check_error'),
     configurationSet: text('configuration_set'),
     snsTopicArn: text('sns_topic_arn'),
     trackingEnabled: boolean('tracking_enabled').notNull().default(false),
@@ -1380,6 +1442,13 @@ export const tenantSesSettings = pgTable(
     footerLegalName: text('footer_legal_name').notNull().default(''),
     footerAddress: text('footer_address').notNull().default(''),
     broadcastsEnabled: boolean('broadcasts_enabled').notNull().default(false),
+    reputationAlertStatus: text('reputation_alert_status', {
+      enum: ['insufficient_data', 'ok', 'warn', 'critical'],
+    }),
+    reputationAlertedAt: timestamp('reputation_alerted_at', {
+      withTimezone: true,
+      mode: 'string',
+    }),
   },
   (table) => [uniqueIndex('tenant_ses_settings_webhook_token_uidx').on(table.webhookToken)],
 );

@@ -289,14 +289,14 @@ Architecture is enforced by configuration and executable probes:
 
 | Gate | Guarantee |
 |---|---|
-| `npm run check` | Type safety, ESLint boundaries, lockfile consistency, dependency graph, dead-code/dependency drift, documentation cross-checks, and tests. |
-| `npm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
-| `npm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
-| `npm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
-| `npm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` is the browser-driven suite). |
-| `npm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
-| `npm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
-| `npm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
+| `pnpm run check` | Type safety, ESLint boundaries, lockfile consistency, dependency graph, dead-code/dependency drift, documentation cross-checks, and tests. |
+| `pnpm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
+| `pnpm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
+| `pnpm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
+| `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` is the browser-driven suite). |
+| `pnpm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
+| `pnpm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
+| `pnpm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
 
 CI runs `check`, `smoke`, the quickstart probe, and the auth, PoC, subscription,
 and marketing e2e suites on pushes and pull requests to `poc-together`. KSeF

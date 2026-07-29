@@ -26,7 +26,7 @@ import { assertSafeBundleSlug } from './import-bundle-slug.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const USAGE = `Usage: pnpm run import -- --bundle <dir> --tenant <bundleSlug>=<targetTenantIdOrSlug> [--tenant ...] \\
+const USAGE = `Usage: pnpm run import --bundle <dir> --tenant <bundleSlug>=<targetTenantIdOrSlug> [--tenant ...] \\
   [--dry-run | --apply] [--create-tenants --owner-email <email>] [--database-url <url>]
 
 The bundle directory is a legacy-export output (contains tenants/<slug>/*.json).

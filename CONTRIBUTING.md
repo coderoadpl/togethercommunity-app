@@ -8,10 +8,10 @@ Thank you for helping improve Together.
    agreed on.
 2. Fork the repository and create a focused branch from the current default
    branch.
-3. Use Node.js 24 and run `npm ci` from `app/`.
+3. Use Node.js 24 and run `pnpm install --frozen-lockfile` from `app/`.
 4. Make the change, add or update tests and documentation, and keep commits
    focused.
-5. Run `npm run check` from `app/`.
+5. Run `pnpm run check` from `app/`.
 6. Open a pull request that explains the problem, the solution, and how it was
    verified.
 7. Address review feedback and keep the branch current until all required

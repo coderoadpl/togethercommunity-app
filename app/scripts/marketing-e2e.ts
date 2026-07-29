@@ -524,9 +524,28 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
       assert(messageId !== null && messageId !== undefined, `Missing provider MessageId for ${sendId}`);
       return messageId;
     };
+    const transactionalOutboxId = `outbox-${crypto.randomUUID()}`;
+    const transactionalMessageId = `transactional-${crypto.randomUUID()}`;
+    const transactionalRecipient = 'transactional-bounce@marketing.test';
+    await db.query(
+      "insert into email_outbox (id, tenant_id, kind, \"to\", payload, status, attempts, next_attempt_at, created_at, sent_at, ses_message_id, transport) values ($1, $2, 'magic-link', $3, $4, 'sent', 1, now(), now(), now(), $5, 'tenant-ses')",
+      [
+        transactionalOutboxId,
+        tenant.id,
+        transactionalRecipient,
+        {
+          kind: 'magic-link',
+          language: 'en',
+          tenantName: 'Marketing Verify',
+          url: 'https://marketing.test/sign-in',
+        },
+        transactionalMessageId,
+      ],
+    );
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('hard', messageIdFor(hardSendId))));
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('complaint', messageIdFor(complaintSendId))));
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('soft', messageIdFor(softSendId))));
+    await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, topicArn, sesMessage('hard', transactionalMessageId)));
     const updatedDelivery = sendRowsSchema.parse((await db.query(
       'select id, email, status, skip_reason, consent_row_id, ses_message_id, delivery_status from campaign_sends where id = any($1::text[])',
       [[hardSendId, softSendId, complaintSendId]],
@@ -537,6 +556,9 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
     assert(await queryCount(db, "select count(*) from suppressions where tenant_id = $1 and reason = 'hard_bounce' and source_ref = $2", [tenant.id, hardSendId]) === 1, 'E3 hard-bounce suppression missing');
     assert(await queryCount(db, "select count(*) from suppressions where tenant_id = $1 and reason = 'complaint' and source_ref = $2", [tenant.id, complaintSendId]) === 1, 'E3 complaint suppression missing');
     assert(await queryCount(db, 'select count(*) from suppressions where tenant_id = $1 and source_ref = $2', [tenant.id, softSendId]) === 0, 'E3 soft bounce must not suppress');
+    assert(await queryCount(db, "select count(*) from email_outbox where id = $1 and delivery_status = 'bounced'", [transactionalOutboxId]) === 1, 'E3 transactional bounce status missing');
+    assert(await queryCount(db, "select count(*) from suppressions where tenant_id = $1 and reason = 'hard_bounce' and source_ref = $2 and email = $3", [tenant.id, transactionalOutboxId, transactionalRecipient]) === 1, 'E3 transactional bounce suppression missing');
+    assert(await queryCount(db, "select count(*) from email_events where tenant_id = $1 and mail_kind = 'transactional' and ref_id = $2 and type = 'suppressed_written'", [tenant.id, transactionalOutboxId]) === 1, 'E3 transactional suppression event missing');
     const beforeMismatch = await queryCount(db, 'select count(*) from suppressions where tenant_id = $1', [tenant.id]);
     await postSns(baseUrl, settings.webhookToken, signedSnsEnvelope(privateKey, `${topicArn}-wrong`, sesMessage('hard', messageIdFor(softSendId))));
     assert(await queryCount(db, 'select count(*) from suppressions where tenant_id = $1', [tenant.id]) === beforeMismatch, 'E3 TopicArn mismatch changed state');

@@ -1273,7 +1273,7 @@ export const en: Messages = {
     smtpHint: 'SMTP is used only for transactional notifications. Campaigns always require tenant SES.',
     smtpHostLabel: 'SMTP host', smtpPortLabel: 'port', smtpUserLabel: 'user',
     smtpPasswordLabel: 'password', smtpSecureLabel: 'secure TLS connection',
-    smtpTrackingNote: 'Limited tracking: relay acceptance is recorded, without delivery, bounce, or complaint events.',
+    smtpNoFeedback: 'SMTP records relay acceptance only. Delivery, bounce, and complaint events are not tracked, so reputation metrics under-report failures.',
     platformPool: ({ used, limit }) => `Starter pool: ${used}/${limit}`,
     platformPoolChecklist: 'Transactional starter pool',
     platformPoolNudge: 'Your starter pool is running low. Configure tenant SES or SMTP.',

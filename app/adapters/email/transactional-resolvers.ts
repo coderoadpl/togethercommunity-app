@@ -33,7 +33,7 @@ export const createTenantSesTransactionalResolver = (
         accessKeyId: resolved.value.accessKeyId,
         secretAccessKey: resolved.value.secretAccessKey,
       },
-      configurationSet: null,
+      configurationSet: tenantSettings.configurationSet,
     });
   },
 });

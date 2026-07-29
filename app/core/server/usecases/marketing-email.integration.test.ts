@@ -677,7 +677,32 @@ describe('marketing e-mail use-case integration', () => {
       .filter((event) => event.type === 'opened' || event.type === 'clicked')).toEqual([]);
   });
 
-  it('correlates transactional SNS complaints without writing marketing suppression', async () => {
+  it.each([
+    {
+      name: 'hard bounce',
+      kind: 'bounce',
+      bounceType: 'Permanent',
+      status: '5.1.1',
+      deliveryStatus: 'bounced',
+      suppressionReason: 'hard_bounce',
+    },
+    {
+      name: 'soft bounce',
+      kind: 'bounce',
+      bounceType: 'Transient',
+      status: '4.2.2',
+      deliveryStatus: 'bounced',
+      suppressionReason: null,
+    },
+    {
+      name: 'complaint',
+      kind: 'complaint',
+      deliveryStatus: 'complained',
+      suppressionReason: 'complaint',
+    },
+  ] as const)(
+    'correlates a transactional SNS $name',
+    async (input) => {
     const deps = await setup();
     await deps.outbox.enqueue({
       id: 'outbox-transactional',
@@ -706,31 +731,61 @@ describe('marketing e-mail use-case integration', () => {
       trigger: 'manual',
     });
 
-    expect(await applyVerifiedSesEvent(ctx, {
-      topicArn: settings.snsTopicArn ?? '',
-      messageId: 'transactional-ses-id',
-      kind: 'complaint',
-      occurredAt: NOW,
-      raw: { complaint: true },
-    }, deps)).toEqual(ok({ processed: true }));
+      const common = {
+        topicArn: settings.snsTopicArn ?? '',
+        messageId: 'transactional-ses-id',
+        occurredAt: NOW,
+        raw: { event: input.name },
+      };
+      const applied =
+        input.kind === 'bounce'
+          ? await applyVerifiedSesEvent(
+              ctx,
+              {
+                ...common,
+                kind: 'bounce',
+                bounceType: input.bounceType,
+                status: input.status,
+              },
+              deps,
+            )
+          : await applyVerifiedSesEvent(
+              ctx,
+              { ...common, kind: 'complaint' },
+              deps,
+            );
+      expect(applied).toEqual(ok({ processed: true }));
     expect(await deps.suppressions.isSuppressed(
       'tenant-1',
       deps.hmac.compute('tenant-1', 'transactional@example.test'),
-    )).toBe(false);
-    expect((await deps.events.listByRef(
+      )).toBe(input.suppressionReason !== null);
+      const events = await deps.events.listByRef(
       'tenant-1',
       'transactional',
       'outbox-transactional',
-    )).map((event) => event.type)).toEqual([
+      );
+      expect(events.map((event) => event.type)).toEqual([
       'queued',
       'claimed',
       'rendered',
       'accepted',
-      'complained',
-    ]);
+        input.deliveryStatus,
+        ...(input.suppressionReason === null ? [] : ['suppressed_written']),
+      ]);
+      if (input.suppressionReason !== null) {
+        expect(events.at(-1)).toMatchObject({
+          mailKind: 'transactional',
+          type: 'suppressed_written',
+          meta: { reason: input.suppressionReason },
+        });
+      }
     expect(await deps.outbox.correlateBySesMessageId?.('tenant-1', 'transactional-ses-id'))
-      .toMatchObject({ deliveryStatus: 'complained', deliveryOccurredAt: NOW });
-  });
+        .toMatchObject({
+          deliveryStatus: input.deliveryStatus,
+          deliveryOccurredAt: NOW,
+        });
+    },
+  );
 
   it('I10 erasure atomically keeps an HMAC tombstone, pseudonymizes sends, and preserves counters', async () => {
     const deps = await setup();

@@ -108,6 +108,12 @@ export const stripeSubscriptionObjectSchema = z.object({
     .optional(),
 });
 
+export const stripeCancelErrorSchema = z.object({
+  code: z.string().optional(),
+  statusCode: z.number().optional(),
+  message: z.string().optional(),
+});
+
 export const processedPaymentEventSchema = z.object({
   id: z.string().min(1),
   tenantId: z.string().min(1),

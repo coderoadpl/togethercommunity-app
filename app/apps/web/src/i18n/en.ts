@@ -706,6 +706,11 @@ export const en: Messages = {
           lessonNoun: completedLessons === 1 ? 'lesson' : 'lessons',
         },
       ),
+    removeCancellationWarning: ({ providerSubscriptionIds }) =>
+      format(
+        'Member data was removed, but these subscriptions still need to be canceled in Stripe: {providerSubscriptionIds}.',
+        { providerSubscriptionIds },
+      ),
     deletedBadge: 'Account removed',
     tombstoneNotice: 'Account removed — granting and renewing access is unavailable.',
     exportFailed: 'Export failed',

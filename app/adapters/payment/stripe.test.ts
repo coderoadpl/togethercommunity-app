@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
-import { stripeCheckoutSessionParams, stripeCouponParams } from './stripe.js';
+import {
+  stripeCancelAlreadySettled,
+  stripeCheckoutSessionParams,
+  stripeCouponParams,
+} from './stripe.js';
+
+describe('stripeCancelAlreadySettled', () => {
+  it.each([
+    [{ code: 'resource_missing', statusCode: 404 }, true],
+    [
+      {
+        statusCode: 400,
+        message: 'A canceled subscription can only update its cancellation_details.',
+      },
+      true,
+    ],
+    [{ statusCode: 500, message: 'Stripe is down' }, false],
+    [undefined, false],
+    ['resource_missing', false],
+  ])('maps %j to %s', (cause, expected) => {
+    expect(stripeCancelAlreadySettled(cause)).toBe(expected);
+  });
+});
 
 describe('stripeCheckoutSessionParams', () => {
   it('maps checkout intent into hosted payment fields and fulfillment metadata', () => {

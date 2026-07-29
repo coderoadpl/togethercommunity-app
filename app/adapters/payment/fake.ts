@@ -45,6 +45,7 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
     if (!key.ok) return key;
     return ok({ expired: true });
   },
+  cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
   verifyWebhookEvent: async (input) => {
     if (!signatureIsValid(input.payloadRaw, input.signatureHeader, input.webhookSecret))
       return err(validation('Stripe webhook signature verification failed'));

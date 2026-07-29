@@ -373,6 +373,13 @@ const notificationsListOptionsSchema = z.object({
 const notificationReadOptionsSchema = z.object({
   all: z.boolean().optional(),
 });
+const memberBanOptionsSchema = z.object({
+  member: z.string().min(1),
+  reason: z.string().max(500).optional(),
+});
+const memberUnbanOptionsSchema = z.object({
+  member: z.string().min(1),
+});
 
 const hmacSha256 = async (secret: string, value: string): Promise<string> => {
   const encoder = new TextEncoder();
@@ -2254,6 +2261,39 @@ program
   );
 
 const member = program.command('member').description('Members of the active tenant (staff only)');
+
+member
+  .command('ban')
+  .description('Ban a member from community writes')
+  .requiredOption('--member <id>')
+  .option('--reason <text>')
+  .action(
+    withInput(z.tuple([memberBanOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.setMemberBanned({
+          memberId: options.member,
+          banned: true,
+          ...(options.reason === undefined ? {} : { reason: options.reason }),
+        }),
+        ctx.json,
+        (data) => `banned member ${data.member.id}`,
+      );
+    }),
+  );
+
+member
+  .command('unban')
+  .description('Lift a member ban')
+  .requiredOption('--member <id>')
+  .action(
+    withInput(z.tuple([memberUnbanOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.setMemberBanned({ memberId: options.member, banned: false }),
+        ctx.json,
+        (data) => `unbanned member ${data.member.id}`,
+      );
+    }),
+  );
 
 member.command('list').description('List members and their granted product ids').action(
   withCtx(async (ctx) => {

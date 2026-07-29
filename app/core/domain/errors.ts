@@ -2,6 +2,7 @@ export const ERROR_CODES = [
   'unauthorized',
   'invalid_credentials',
   'forbidden',
+  'banned',
   'not_found',
   'validation',
   'conflict',
@@ -40,6 +41,8 @@ export const invalidCredentials = (message = 'Invalid credentials'): AppError =>
   appError('invalid_credentials', message);
 
 export const forbidden = (message = 'Not allowed'): AppError => appError('forbidden', message);
+export const banned = (message = 'This account is suspended in this community'): AppError =>
+  appError('banned', message);
 
 export const notFound = (message = 'Not found'): AppError => appError('not_found', message);
 

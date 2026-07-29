@@ -31,6 +31,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   tenantName: tenantId ? 'Acme' : null,
   staffRole,
   memberId: null,
+memberBannedAt: null,
 });
 
 const ctx = (tenantId: string | null, staffRole: StaffRole | null): Ctx => ({

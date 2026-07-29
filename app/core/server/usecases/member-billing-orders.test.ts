@@ -13,6 +13,7 @@ const ctx = {
     tenantName: 'Studio',
     staffRole: null,
     memberId: 'member-1',
+    memberBannedAt: null,
   },
 };
 

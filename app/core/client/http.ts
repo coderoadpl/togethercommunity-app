@@ -70,6 +70,7 @@ import {
   tenantSchedulerRunsOutputSchema,
   meOutputSchema,
   memberBillingOrdersOutputSchema,
+  memberBanOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
   memberProgressResetOutputSchema,
@@ -169,6 +170,7 @@ import {
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
   type MemberRemoveInput,
+  type MemberBanInput,
   type ModuleAttachInput,
   type ModuleDetachInput,
   type ModuleCreateInput,
@@ -804,6 +806,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.myProducts.method, API_ROUTES.myProducts.path, myProductsOutputSchema, undefined, signal),
   listMembers: (signal?: AbortSignal) =>
     request(options, API_ROUTES.members.method, API_ROUTES.members.path, membersListOutputSchema, undefined, signal),
+  setMemberBanned: (input: MemberBanInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberBan.method,
+      API_ROUTES.memberBan.path,
+      memberBanOutputSchema,
+      input,
+      signal,
+    ),
   exportMembers: (format: MemberExportFormat, signal?: AbortSignal) =>
     request(
       options,

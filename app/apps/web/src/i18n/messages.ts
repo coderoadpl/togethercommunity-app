@@ -51,6 +51,7 @@ export interface Messages {
     messageUnauthorized: string;
     messageInvalidCredentials: string;
     messageForbidden: string;
+    messageBanned: string;
     messageNotFound: string;
     messageValidation: string;
     messageConflict: string;
@@ -698,6 +699,15 @@ export interface Messages {
     emailsTab: string;
     emailsLoading: string;
     emailsEmpty: string;
+    bannedBadge: string;
+    moderationHeading: string;
+    ban: string;
+    unban: string;
+    banReasonLabel: string;
+    banConfirm: (params: { email: string }) => string;
+    unbanConfirm: (params: { email: string }) => string;
+    bannedSince: (params: { date: string }) => string;
+    banVsRemoval: string;
   };
   student: {
     myCourses: string;
@@ -890,6 +900,7 @@ export interface Messages {
     reportSubmit: string;
     reportSent: string;
     reportAlready: string;
+    bannedBanner: string;
   };
   spacesPanel: {
     loading: string;

@@ -109,6 +109,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me' || path === '/api/tenants') return 'tenant:list-own';
   if (path === '/api/me/billing-orders') return 'member:billing:read';
   if (path === '/api/my/products') return 'member:product:read';
+  if (path === '/api/members/ban') return 'member:ban';
   if (path === '/api/members') return 'member:read';
   if (path === '/api/members/export') return 'member:export';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
@@ -246,6 +247,7 @@ const AUTHORIZATION_UTILITIES = new Set([
   'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
+  'community-access.ts#requireUnbannedMember',
   'community-access.ts#requireTenant',
 ]);
 
@@ -256,6 +258,7 @@ const authorizationCallNames = new Set([
   'requireActor',
   'requireMember',
   'requireMemberOrStaff',
+  'requireUnbannedMember',
   'requireStaff',
   'requireStaffTenant',
   'requireTenant',

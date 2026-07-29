@@ -31,6 +31,7 @@ import type {
   LessonCreateInput,
   LessonUpdateInput,
   MemberProgressResetInput,
+  MemberBanInput,
   MemberRemoveInput,
   MarketingAudiencePreviewInput,
   MarketingCampaignActionInput,
@@ -1117,6 +1118,12 @@ export const productsInvalidates = () => ({ queryKey: productsScopes.all() });
 export const myProductsInvalidates = () => ({ queryKey: myProductsScopes.all() });
 
 export const membersInvalidates = () => ({ queryKey: membersScopes.all() });
+
+export const setMemberBannedMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...membersScopes.all(), 'ban'],
+    call: (input: MemberBanInput) => api.setMemberBanned(input),
+  });
 
 export const memberGrantsInvalidates = (memberId: string) => ({ queryKey: membersScopes.grants(memberId) });
 

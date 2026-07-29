@@ -60,7 +60,9 @@ import {
   memberGrantSchema,
   memberLearningSummarySchema,
   memberWithProductIdsSchema,
+  memberSchema,
   muteThreadInputSchema,
+  setMemberBannedInputSchema,
   revokeGrantInputSchema,
   membershipSchema,
   newCourseLessonSchema,
@@ -178,6 +180,7 @@ export const meOutputSchema = z.object({
       name: z.string(),
       staffRole: staffRoleSchema.nullable(),
       memberId: z.string().nullable(),
+      banned: z.boolean(),
     })
     .nullable(),
 });
@@ -323,6 +326,10 @@ export type MemberRemoveInput = z.input<typeof memberRemoveInputSchema>;
 export const memberRemoveOutputSchema = z.object({
   memberId: z.string(),
 });
+
+export const memberBanInputSchema = setMemberBannedInputSchema;
+export type MemberBanInput = z.input<typeof memberBanInputSchema>;
+export const memberBanOutputSchema = z.object({ member: memberSchema });
 
 export const memberGrantsOutputSchema = z.object({
   grants: z.array(memberGrantSchema),
@@ -1205,6 +1212,7 @@ export const API_ROUTES = {
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
+  memberBan: { method: 'POST', path: '/api/members/ban' },
   grantsCreate: { method: 'POST', path: '/api/grants' },
   grantRevoke: { method: 'DELETE', path: '/api/grants/:grantId' },
   devSimulatePurchase: { method: 'POST', path: '/api/dev/simulate-purchase' },
@@ -1376,6 +1384,7 @@ export const API_PATHS = {
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
+  memberBan: API_ROUTES.memberBan.path,
   memberEmailSends: API_ROUTES.memberEmailSends.path,
   grantsCreate: API_ROUTES.grantsCreate.path,
   grantRevoke: API_ROUTES.grantRevoke.path,

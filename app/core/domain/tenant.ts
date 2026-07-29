@@ -179,11 +179,22 @@ export const memberSchema = z.object({
   externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
+  bannedAt: z.string().datetime().nullable().default(null),
+  bannedReason: z.string().nullable().default(null),
+  bannedByUserId: z.string().nullable().default(null),
 });
 
 export type Member = z.infer<typeof memberSchema>;
 
 export const DELETED_MEMBER_DISPLAY = 'Konto usunięte';
+
+/**
+ * A ban is a reversible moderation state: the person keeps their account, their
+ * grants, their history and read access, and staff can lift it. Erasure
+ * (memberTombstone) is irreversible pseudonymization of an identity. Never
+ * implement one in terms of the other.
+ */
+export const MAX_MEMBER_BAN_REASON_LENGTH = 500;
 
 /**
  * Removal keeps the member row for order-history integrity (ustawa o
@@ -205,6 +216,8 @@ export const memberWithProductIdsSchema = z.object({
   externalCustomerIds: z.record(z.string()),
   createdAt: z.string(),
   deletedAt: z.string().nullable(),
+  bannedAt: z.string().datetime().nullable().default(null),
+  bannedReason: z.string().nullable().default(null),
   productIds: z.array(z.string()),
   activeProductIds: z.array(z.string()),
 });

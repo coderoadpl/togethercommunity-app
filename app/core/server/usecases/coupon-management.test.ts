@@ -14,6 +14,7 @@ const identity: Identity = {
   tenantName: 'Alpha',
   staffRole: 'owner',
   memberId: null,
+  memberBannedAt: null,
 };
 
 const baseCoupon: Coupon = {

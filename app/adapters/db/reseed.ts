@@ -12,6 +12,7 @@ import {
   coupons,
   entityVersions,
   memberCourseProgress,
+  memberEvents,
   members,
   memberSubscriptions,
   notifications,
@@ -183,6 +184,13 @@ record(
     .delete(tenantDomains)
     .where(inArray(tenantDomains.tenantId, DEMO_TENANT_IDS))
     .returning({ id: tenantDomains.id }),
+);
+record(
+  'member_events',
+  await db
+    .delete(memberEvents)
+    .where(inArray(memberEvents.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: memberEvents.id }),
 );
 record(
   'members',

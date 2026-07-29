@@ -59,6 +59,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  memberBannedAt: null,
   ...overrides,
 });
 
@@ -440,10 +441,10 @@ const deps = (
   staffUserIds: string[] = [],
 ): CommunityDeps => {
   const members: Member[] = [
-    { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-    { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-    { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
+    { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm3', tenantId: 't1', userId: 'u3', email: 'u3@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+    { id: 'm4', tenantId: 't1', userId: 'u4', email: 'u4@example.com', displayName: 'Kapitan Świt', tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
   ];
   const tenantAccess: TenantAccessReader = {
     listTenantsForStaff: async () => [],
@@ -840,5 +841,28 @@ describe('community guard and error branches', () => {
     const d = deps([], []);
     expect(await muteThread(memberCtx, { rootPostId: 'id-1' }, d)).toMatchObject({ ok: true });
     expect(await searchPosts(memberCtx, { query: 'anything' }, d)).toMatchObject({ ok: true, value: [] });
+  });
+
+  it('blocks banned member writes while staff remain unaffected', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    const postId = await seedPost(d);
+    const bannedMember = ctx({ memberBannedAt: NOW });
+    await expect(
+      createPost(bannedMember, { contextKind: 'lesson', contextId: 'l1', body: 'blocked' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'banned' } });
+    await expect(
+      editPost(bannedMember, { id: postId, body: 'blocked edit' }, d),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'banned' } });
+    await expect(deletePost(bannedMember, { id: postId }, d)).resolves.toMatchObject({ ok: true });
+    await expect(
+      createPost(
+        ctx({ staffRole: 'admin', memberId: null, memberBannedAt: NOW }),
+        { contextKind: 'lesson', contextId: 'l1', body: 'staff post' },
+        d,
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      createPost(ctx(), { contextKind: 'lesson', contextId: 'l1', body: 'restored' }, d),
+    ).resolves.toMatchObject({ ok: true });
   });
 });

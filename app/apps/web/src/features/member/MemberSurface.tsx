@@ -1,10 +1,12 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { Box, ButtonBase, Link, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Alert, Box, ButtonBase, Link, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
+import { useQuery } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';
 
 import { TenantLogo } from '../../branding.js';
+import { actions } from '../../api.js';
 import { MemberPage } from '../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { useTranslations } from '../../i18n/index.js';
@@ -108,9 +110,17 @@ export const MemberSurface = (props: Props) => {
   useSuppressGlobalChrome();
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const t = useTranslations();
+  const me = useQuery(actions.me);
   return (
     <MemberPage
       {...props}
+      children={(
+        <>
+          {me.data?.tenant?.banned === true ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
+          {props.children}
+        </>
+      )}
       logo={<TenantLogo />}
       nav={<HeaderNavigation liveNotifications={!mobile} />}
       bottomNav={<BottomNavigation liveNotifications={mobile} />}

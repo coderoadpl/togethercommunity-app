@@ -23,6 +23,7 @@ import {
   emailEvents,
   emailOutbox,
   memberCourseProgress,
+  memberEvents,
   members,
   memberSubscriptions,
   marketingConsents,
@@ -902,6 +903,28 @@ await db
     label: 'Chcę otrzymywać aktualności e-mailem',
     documentVersionRef: { mode: 'url', url: 'https://studio.example.test/privacy' },
     createdAt: relativeIso(-25), createdBy: null,
+  })
+  .onConflictDoNothing();
+
+const seededBanAt = relativeIso(-2);
+await db
+  .update(members)
+  .set({
+    bannedAt: seededBanAt,
+    bannedReason: 'Powtarzające się reklamy w społeczności',
+    bannedByUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+  })
+  .where(eq(members.id, 'member-studio-free'));
+await db
+  .insert(memberEvents)
+  .values({
+    id: 'member-event-studio-free-banned',
+    tenantId: 'tenant-studio',
+    memberId: 'member-studio-free',
+    type: 'banned',
+    reason: 'Powtarzające się reklamy w społeczności',
+    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    occurredAt: seededBanAt,
   })
   .onConflictDoNothing();
 

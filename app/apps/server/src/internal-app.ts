@@ -40,6 +40,7 @@ import {
   marketingSesSettingsUpdateInputSchema,
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
+  memberBanInputSchema,
   memberProgressResetInputSchema,
   memberRemoveInputSchema,
   moduleAttachInputSchema,
@@ -224,6 +225,7 @@ import {
   searchPosts,
   sendSesSimulatorTest,
   sendTransactionalSmtpTest,
+  setMemberBanned,
   setSpaceArchived,
   setPostPinned,
   sendSupportMessage,
@@ -322,6 +324,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   tenantName: null,
   staffRole: null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
@@ -333,6 +336,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   tenantName: tenant.name,
   staffRole: null,
   memberId: null,
+  memberBannedAt: null,
 });
 
 const checkoutConsentEvidence = (headers: Headers) => {
@@ -1192,6 +1196,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
               name: identity.tenantName,
               staffRole: identity.staffRole,
               memberId: identity.memberId,
+              banned: identity.memberBannedAt !== null,
             }
             : null,
       }),
@@ -1253,6 +1258,14 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       return respond(err(validation('Query parameter "format" must be "csv" or "json"')));
     }
     return respond(await exportMembers({ identity: c.get('identity') }, { format: format.data }, deps));
+  });
+
+  app.post(API_PATHS.memberBan, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = memberBanInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid member ban payload', parsed.error.flatten())));
+    const result = await setMemberBanned({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ member: result.value }) : result);
   });
 
   app.get(API_PATHS.memberGrants, async (c) => {

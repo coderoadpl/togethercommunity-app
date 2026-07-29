@@ -60,6 +60,7 @@ import {
   invoices,
   erasedMemberImports,
   memberCourseProgress,
+  memberEvents,
   members,
   orders,
   posts,
@@ -157,6 +158,9 @@ const member = (over: Partial<Member> & { id: string; tenantId: string; userId: 
   createdAt: NOW,
   deletedAt: null,
   ...over,
+  bannedAt: over.bannedAt ?? null,
+  bannedReason: over.bannedReason ?? null,
+  bannedByUserId: over.bannedByUserId ?? null,
 });
 
 beforeAll(async () => {
@@ -266,6 +270,58 @@ describe('member repository', () => {
     const rows = await repo.listWithProductIds(ACME, NOW);
     const acmeMember = rows.find((r) => r.id === 'mem-acme');
     expect(acmeMember?.activeProductIds).toContain('prod-acme');
+  });
+
+  it('updates ban state and appends its event atomically', async () => {
+    const repo = createMemberRepository(db);
+    const event = {
+      id: 'member-event-acme-ban',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      type: 'banned' as const,
+      reason: 'Repeated abuse',
+      actorUserId: 'user-acme-owner',
+      occurredAt: NOW,
+    };
+
+    await expect(repo.setBanned(
+      ACME,
+      {
+        memberId: 'mem-acme',
+        bannedAt: NOW,
+        reason: event.reason,
+        actorUserId: event.actorUserId,
+      },
+      { ...event, id: 'member-event-invalid', memberId: 'missing-member' },
+    )).rejects.toThrow();
+    expect(await repo.findById(ACME, 'mem-acme')).toMatchObject({ bannedAt: null });
+
+    await expect(repo.setBanned(
+      ACME,
+      {
+        memberId: 'mem-acme',
+        bannedAt: NOW,
+        reason: event.reason,
+        actorUserId: event.actorUserId,
+      },
+      event,
+    )).resolves.toMatchObject({
+      bannedAt: NOW,
+      bannedReason: event.reason,
+      bannedByUserId: event.actorUserId,
+    });
+    expect(await db.select().from(memberEvents).where(eq(memberEvents.id, event.id))).toMatchObject([
+      {
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        type: 'banned',
+        reason: event.reason,
+        actorUserId: event.actorUserId,
+      },
+    ]);
+    expect(
+      (await repo.listWithProductIds(ACME, NOW)).find((row) => row.id === 'mem-acme'),
+    ).toMatchObject({ bannedAt: NOW, bannedReason: event.reason });
   });
 });
 
@@ -1043,6 +1099,9 @@ describe('member erasure repository', () => {
       externalCustomerIds: {},
       legacyId: null,
       deletedAt: REMOVAL_AT,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
     });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-buyer'));

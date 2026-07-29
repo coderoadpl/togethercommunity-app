@@ -17,6 +17,7 @@ import {
 const identity = (
   staffRole: Identity['staffRole'],
   memberId: string | null = null,
+  memberBannedAt: string | null = null,
 ): Identity => ({
   userId: 'user-1',
   email: 'person@example.test',
@@ -26,6 +27,7 @@ const identity = (
   tenantName: staffRole === null && memberId === null ? null : 'Tenant',
   staffRole,
   memberId,
+  memberBannedAt,
 });
 
 describe('authorization contract', () => {

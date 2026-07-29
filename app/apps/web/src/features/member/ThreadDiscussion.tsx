@@ -84,6 +84,7 @@ export const PostComposer = ({
   initialValue = '',
   focusOnMount = false,
   busy,
+  disabled = false,
   onSubmit,
   onCancel,
   testId,
@@ -95,6 +96,7 @@ export const PostComposer = ({
   initialValue?: string;
   focusOnMount?: boolean;
   busy: boolean;
+  disabled?: boolean;
   onSubmit: (body: string, reset: () => void) => void;
   onCancel?: () => void;
   testId: string;
@@ -122,6 +124,7 @@ export const PostComposer = ({
         multiline
         minRows={3}
         value={body}
+        disabled={disabled}
         inputRef={inputRef}
         onChange={(event) => setBody(event.target.value)}
         slotProps={{ htmlInput: { 'data-testid': `${testId}-input` } }}
@@ -130,7 +133,7 @@ export const PostComposer = ({
         <Button
           type="submit"
           variant="contained"
-          disabled={busy || body.trim().length === 0}
+          disabled={disabled || busy || body.trim().length === 0}
           data-testid={`${testId}-submit`}
         >
           {busy ? pendingLabel : submitLabel}
@@ -158,6 +161,7 @@ interface ThreadActions {
   openSubthread: (id: string) => void;
   replyBusy: boolean;
   editBusy: boolean;
+  writeDisabled: boolean;
   pendingReply: { parentId: string; author: string; body: string } | null;
 }
 
@@ -206,6 +210,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             initialValue={post.body}
             focusOnMount
             busy={a.editBusy}
+            disabled={a.writeDisabled}
             onSubmit={(body, reset) => a.submitEdit(post, body, reset)}
             onCancel={() => a.setEditingId(null)}
             testId={`edit-composer-${post.id}`}
@@ -224,6 +229,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               size="small"
               variant="text"
               data-testid={`reply-button-${post.id}`}
+              disabled={a.writeDisabled}
               onClick={() => {
                 a.setEditingId(null);
                 a.setReplyingTo(post.id);
@@ -237,6 +243,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
               size="small"
               variant="text"
               data-testid={`edit-button-${post.id}`}
+              disabled={a.writeDisabled}
               onClick={() => {
                 a.setReplyingTo(null);
                 a.setEditingId(post.id);
@@ -267,6 +274,7 @@ const PostView = ({ post, depth, actions: a }: { post: DiscussionPost; depth: nu
             pendingLabel={t.discussion.sending}
             focusOnMount
             busy={a.replyBusy}
+            disabled={a.writeDisabled}
             onSubmit={(body, reset) => a.submitReply(post, body, reset)}
             onCancel={() => a.setReplyingTo(null)}
             testId={`reply-composer-${post.id}`}
@@ -380,6 +388,7 @@ export const ThreadDiscussion = ({
           name: me.data.name,
           canModerate: me.data.tenant !== null && me.data.tenant.staffRole !== null,
         };
+  const banned = me.data?.tenant?.banned === true;
 
   const threads = discussion.data?.discussion.threads ?? [];
   const viewerSubscriptions = discussion.data?.discussion.viewerSubscriptions ?? {};
@@ -455,6 +464,7 @@ export const ThreadDiscussion = ({
     openSubthread: setSubthreadRootId,
     replyBusy: create.isPending,
     editBusy: update.isPending,
+    writeDisabled: banned,
     pendingReply,
   };
 
@@ -561,6 +571,7 @@ export const ThreadDiscussion = ({
                 submitLabel={t.discussion.post}
                 pendingLabel={t.discussion.posting}
                 busy={create.isPending}
+                disabled={banned}
                 onSubmit={(body, reset) => {
                   create.mutate(
                     { contextKind: context.contextKind, contextId: context.contextId, body },

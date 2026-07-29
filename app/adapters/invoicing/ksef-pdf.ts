@@ -91,7 +91,9 @@ export const createKsefInvoicePdf = (): KsefInvoicePdf => ({
       vat: value(row, 'P_12'),
     }));
     const vatRate = rows[0]?.vat ?? '';
-    const vatSuffix = vatRate === '8' ? '2' : vatRate === '5' ? '3' : '1';
+    const exempt = vatRate === 'zw';
+    const vatSuffix = (): '1' | '2' | '3' =>
+      vatRate === '8' ? '2' : vatRate === '5' ? '3' : '1';
     const lines: TextLine[] = [
       { x: 45, y: 790, text: 'FAKTURA VAT', size: 20, bold: true },
       { x: 45, y: 765, text: `Numer: ${value(xml, 'P_2')}`, size: 11, bold: true },
@@ -117,14 +119,37 @@ export const createKsefInvoicePdf = (): KsefInvoicePdf => ({
           { x: 75, y, text: row.name.slice(0, 40) },
           { x: 315, y, text: `${row.quantity} ${row.unit}` },
           { x: 370, y, text: row.netUnit },
-          { x: 440, y, text: `${row.vat}%` },
+          { x: 440, y, text: row.vat === 'zw' ? 'zw' : `${row.vat}%` },
           { x: 495, y, text: row.net },
         ];
       }),
       { x: 330, y: 500, text: 'Podsumowanie VAT', size: 11, bold: true },
-      { x: 330, y: 478, text: `Netto: ${value(xml, `P_13_${vatSuffix}`)} PLN` },
-      { x: 330, y: 460, text: `VAT ${vatRate}%: ${value(xml, `P_14_${vatSuffix}`)} PLN` },
-      { x: 330, y: 436, text: `Razem brutto: ${value(xml, 'P_15')} PLN`, size: 12, bold: true },
+      {
+        x: 330,
+        y: 478,
+        text: exempt
+          ? `Wartosc sprzedazy zwolnionej: ${value(xml, 'P_13_7')} PLN`
+          : `Netto: ${value(xml, `P_13_${vatSuffix()}`)} PLN`,
+      },
+      {
+        x: 330,
+        y: 460,
+        text: exempt ? 'VAT: 0.00 PLN' : `VAT ${vatRate}%: ${value(xml, `P_14_${vatSuffix()}`)} PLN`,
+      },
+      {
+        x: 330,
+        y: 436,
+        text: `${exempt ? 'Razem' : 'Razem brutto'}: ${value(xml, 'P_15')} PLN`,
+        size: 12,
+        bold: true,
+      },
+      ...(exempt
+        ? [{
+            x: 45,
+            y: 395,
+            text: `Zwolnienie z VAT: ${value(xml, 'P_19A') || value(xml, 'P_19C')}`,
+          }]
+        : []),
       { x: 45, y: 365, text: 'NUMER KSeF', size: 9, bold: true },
       { x: 45, y: 343, text: invoice.ksef?.ksefNumber ?? 'Oczekuje na przyjecie w KSeF', size: 12, bold: true },
       { x: 45, y: 295, text: 'Weryfikacja', size: 9, bold: true },

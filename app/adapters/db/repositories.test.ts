@@ -4,7 +4,11 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
+import {
+  DELETED_MEMBER_DISPLAY,
+  invoiceVatTreatmentsEqual,
+  memberTombstone,
+} from '#core/domain/index.js';
 import type {
   CourseLesson,
   CourseModule,
@@ -596,6 +600,51 @@ describe('member subscription repository', () => {
   });
 });
 
+describe('invoice repository', () => {
+  it('compares an exempt VAT treatment after a jsonb round-trip', async () => {
+    const repo = createInvoiceRepository(db);
+    await repo.create(
+      ACME,
+      {
+        id: 'invoice-vat-jsonb',
+        tenantId: ACME,
+        orderId: 'order-acme-2',
+        status: 'failed',
+        provider: 'ifirma',
+        providerInvoiceId: null,
+        invoiceNumber: null,
+        pdfUrl: null,
+        error: 'integration_unavailable',
+        issuedAt: null,
+        createdAt: NOW,
+      },
+      {
+        id: 'invoice-event-vat-jsonb',
+        tenantId: ACME,
+        invoiceId: 'invoice-vat-jsonb',
+        orderId: 'order-acme-2',
+        type: 'requested',
+        error: null,
+        meta: {
+          vat: {
+            kind: 'exempt',
+            basisKind: 'art_113_1',
+            basis: 'art. 113 ust. 1',
+          },
+        },
+        occurredAt: NOW,
+      },
+    );
+
+    const event = await repo.findLatestRequestedEvent(ACME, 'invoice-vat-jsonb');
+    expect(invoiceVatTreatmentsEqual(event?.meta.vat, {
+      kind: 'exempt',
+      basisKind: 'art_113_1',
+      basis: 'art. 113 ust. 1',
+    })).toBe(true);
+  });
+});
+
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
     const repo = createTenantRepository(db);
@@ -614,9 +663,25 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       supportUrl: null,
       termsUrl: null,
       privacyUrl: null,
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
     expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
-    expect(await repo.findSettings(ACME)).toMatchObject({ bunnyStreamLibraryId: 'lib-1' });
+    expect(await repo.findSettings(ACME)).toMatchObject({
+      bunnyStreamLibraryId: 'lib-1',
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: 'other_statute',
+      invoiceExemptionBasis: '§ 1 rozporządzenia',
+    });
+  });
+
+  it('rejects unsupported persisted VAT modes', async () => {
+    await expect(db.execute(sql`
+      UPDATE tenants SET invoice_vat_mode = 'reverse_charge' WHERE id = ${ACME}
+    `)).rejects.toThrow();
   });
 
   it('exposes staff memberships and members through the access reader', async () => {

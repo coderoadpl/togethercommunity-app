@@ -12,7 +12,7 @@ Together can also submit FA(3) invoices directly to KSeF 2.0. Direct KSeF uses T
 4. In Together, open **Integrations → iFirma**.
 5. Save the iFirma username and the `faktura` API key. Both fields are write-only: after saving, Together displays only masked previews.
 6. Select **Test connection**. The test performs an authenticated, read-only invoice-list request and does not create a document.
-7. In **Settings → Automatic invoices**, select the tenant's applicable VAT rate. Together supports 5%, 8%, and 23% domestic invoices in v1 and refuses issuance until a rate is selected.
+7. In **Settings → Automatic invoices**, select 5%, 8%, or 23% VAT, or select VAT exemption and provide its legal basis.
 8. Complete a paid test order with billing data, open it in **Sales**, and select **Issue invoice**.
 
 If the connection test reports rejected credentials, verify the login, confirm that the saved key is the `faktura` key, and generate a replacement key in iFirma if necessary. A validation error means iFirma accepted authentication but rejected the account configuration or document data. An unavailable error indicates a network or iFirma technical failure and can be retried.
@@ -53,7 +53,7 @@ Paid-order billing snapshots are immutable. Invoices and their append-only lifec
 3. Copy the token when KSeF displays it. KSeF shows its secret value only once.
 4. In Together, open **Settings → Automatic invoices** and select **Direct KSeF**.
 5. Save the context NIP and KSeF token. Both are write-only tenant secrets; Together subsequently shows only masked previews.
-6. Save the seller name, seller address, and applicable VAT rate.
+6. Save the seller name, seller address, and applicable VAT rate or VAT exemption with its legal basis.
 7. Select **Test connection**. Together performs the real KSeF challenge, RSA-OAEP token encryption, asynchronous authentication poll, and one-shot token redemption. It does not create an invoice.
 
 Do not paste a KSeF access token or refresh token into Together. Those credentials are short-lived and remain in memory only. Do not upload a qualified certificate or private key; direct issuance uses the tenant-generated KSeF token.
@@ -100,13 +100,10 @@ Each run creates a fresh checksum-valid synthetic seller NIP, buyer NIP, TEST ce
 
 Direct KSeF currently supports online single-invoice submission only. Deferred work includes batch/TarGz sessions, inbound invoice synchronization, corrections, and every offline mode: offline24, outage handling, QR code I/II generation, offline certificate custody, post-outage deadlines, technical corrections, and attachments.
 
-## Known limitation: VAT-exempt sellers (v1)
+## VAT-exempt sellers
 
-Tenants exempt from VAT (zwolnienie podmiotowe/przedmiotowe, e.g. art. 113
-ust. 1) cannot issue invoices through iFirma or direct KSeF in Together yet:
-the tenant VAT setting accepts only 5/8/23% and issuance refuses loudly until a rate is set.
-This is the SAFE failure mode (no incorrect 23% documents are ever created),
-but the refusal message is the generic "set the VAT rate" one. Exempt-rate
-support ("zw" positions with the legal-basis annotation required on the
-invoice) is tracked as a dedicated follow-up; until it ships, exempt sellers
-should issue invoices outside Together in their configured accounting workflow.
+The direct KSeF path supports invoices whose only position is VAT-exempt (`zw`). The sale has no VAT amount, gross equals net, and the frozen FA(3) XML carries the materialized legal basis in `P_19A` or `P_19C`. The PDF visualization prints the same basis; its Polish diacritics are transliterated because the PDF uses standard fonts. The XML stored and submitted to KSeF is the fiscal document.
+
+The iFirma payload sends `TypStawkiVat: ZW`, a null rate, and `PodstawaPrawna`. It also mirrors the basis in `Uwagi`, which can produce cosmetic duplication. Real-account acceptance is still required before enabling this path for production: confirm that the owner's account preserves the basis on the PDF and in the document forwarded to KSeF, record the outcome here, and remove the `Uwagi` mirror if the structured field proves reliable without it.
+
+The setting applies one treatment to every invoice position: an invoice is entirely 5%, 8%, 23%, or `zw`. Together does not monitor the art. 113 ust. 1 turnover threshold because it sees only its own orders. The tenant is the seller of record, remains responsible for the cited provision and total turnover, and must change the setting when the exemption ends.

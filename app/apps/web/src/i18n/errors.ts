@@ -49,6 +49,8 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageIntegrationNotConfigured;
     case 'slug_reserved':
       return t.errors.messageSlugReservedGeneric;
+    case 'invoice_exemption_basis_missing':
+      return t.errors.messageInvoiceExemptionBasisMissing;
     case 'internal':
       return t.errors.messageInternal;
   }

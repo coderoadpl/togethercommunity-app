@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Identity, TenantSettings } from '#core/domain/index.js';
 
-import { getTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
+import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
 
 const settings: TenantSettings = {
   billingPortalUrl: null,
@@ -54,6 +54,91 @@ describe('getTenantSettings', () => {
     expect(await getTenantSettings({ identity: identity('admin') }, deps)).toEqual({
       ok: true,
       value: { ...settings, supportConfigured: true },
+    });
+  });
+});
+
+describe('updateTenantSettings', () => {
+  const adminCtx = {
+    identity: identity('admin'),
+    capabilities: ['tenant:settings:write' as const],
+  };
+
+  it('rejects an exempt mode without a legal basis', async () => {
+    expect(await updateTenantSettings(adminCtx, {
+      invoiceVatMode: 'exempt',
+      invoiceVatRatePercent: null,
+      invoiceExemptionBasisKind: null,
+      invoiceExemptionBasis: null,
+    }, deps)).toMatchObject({
+      ok: false,
+      error: { code: 'invoice_exemption_basis_missing' },
+    });
+  });
+
+  it('stores a coherent exempt treatment', async () => {
+    expect(await updateTenantSettings(adminCtx, {
+      invoiceVatMode: 'exempt',
+      invoiceExemptionBasisKind: 'art_113_1',
+      invoiceExemptionBasis: 'art. 113 ust. 1',
+    }, deps)).toMatchObject({
+      ok: true,
+      value: {
+        invoiceVatMode: 'exempt',
+        invoiceVatRatePercent: null,
+        invoiceExemptionBasisKind: 'art_113_1',
+        invoiceExemptionBasis: 'art. 113 ust. 1',
+      },
+    });
+  });
+
+  it('rejects clearing the basis through a partial update while exempt', async () => {
+    const exemptDeps: TenantSettingsDeps = {
+      tenants: {
+        ...deps.tenants,
+        findSettings: async () => ({
+          ...settings,
+          invoiceVatMode: 'exempt',
+          invoiceVatRatePercent: null,
+          invoiceExemptionBasisKind: 'art_113_1',
+          invoiceExemptionBasis: 'art. 113 ust. 1',
+        }),
+      },
+    };
+
+    expect(await updateTenantSettings(adminCtx, {
+      invoiceExemptionBasis: '',
+    }, exemptDeps)).toMatchObject({
+      ok: false,
+      error: { code: 'invoice_exemption_basis_missing' },
+    });
+  });
+
+  it('clears exemption fields when switching back to a VAT rate', async () => {
+    const exemptDeps: TenantSettingsDeps = {
+      tenants: {
+        ...deps.tenants,
+        findSettings: async () => ({
+          ...settings,
+          invoiceVatMode: 'exempt',
+          invoiceVatRatePercent: null,
+          invoiceExemptionBasisKind: 'art_113_1',
+          invoiceExemptionBasis: 'art. 113 ust. 1',
+        }),
+      },
+    };
+
+    expect(await updateTenantSettings(adminCtx, {
+      invoiceVatMode: 'rate',
+      invoiceVatRatePercent: 23,
+    }, exemptDeps)).toMatchObject({
+      ok: true,
+      value: {
+        invoiceVatMode: 'rate',
+        invoiceVatRatePercent: 23,
+        invoiceExemptionBasisKind: null,
+        invoiceExemptionBasis: null,
+      },
     });
   });
 });

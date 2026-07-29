@@ -56,7 +56,9 @@ Visual verification has zero retries.
 - `core/**` is pure TypeScript: no hono, react, drizzle, better-auth, pg, commander.
 - `core/domain` depends on zod only. `core/server` = use-cases + ports.
   `core/contract` = the only bridge between server and clients.
-  `core/client` = the only way any client talks HTTP.
+  `core/client` = the only way clients make request/response HTTP calls.
+- `apps/web/src/notifications-stream.ts` is the one streaming exception: it uses
+  native `EventSource` directly for SSE notifications.
 - `adapters/**` implement ports; only `apps/server/src/composition.ts` instantiates them.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.

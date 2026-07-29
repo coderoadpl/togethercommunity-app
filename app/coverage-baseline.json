@@ -1,6 +1,6 @@
 {
-  "note": "Per-layer coverage floors (rounded down from achieved). Enforced by `npm run coverage:check`. Raise a floor only after `npm run coverage` shows the layer safely above the new number.",
-  "generatedFrom": "npm run coverage",
+  "note": "Per-layer coverage floors (rounded down from achieved). Enforced by `pnpm run coverage:check`. Raise a floor only after `pnpm run coverage` shows the layer safely above the new number.",
+  "generatedFrom": "pnpm run coverage",
   "floors": {
     "core/domain": {
       "lines": 92,

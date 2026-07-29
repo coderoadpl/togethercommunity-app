@@ -8,18 +8,22 @@ marketing and integration surfaces across the web SPA, API and CLI.
 ## Quickstart (local demo)
 
 ```bash
-npm ci               # Node.js 24
-npm run db:up        # Postgres 16
-npm run db:migrate
-npm run db:seed      # creators, tenants, courses, tiered products, members with varied grants
-npm run build:web
-npm run dev:server   # API + SPA on http://localhost:48730
+pnpm install --frozen-lockfile               # Node.js 24
+pnpm run db:up        # Postgres 16
+pnpm run db:migrate
+pnpm run db:seed      # creators, tenants, courses, tiered products, members with varied grants
+pnpm run build:web
+pnpm run dev:server   # API + SPA on http://localhost:48730
 ```
 
+Dependencies live in this checkout's pnpm-linked `app/node_modules` tree. The
+former tracked symlink to another checkout's shared `node_modules` has been
+removed; run the frozen install separately in each checkout.
+
 The dev server serves the built SPA from `dist/web`, not directly from
-`apps/web/src`. `npm run dev:server` and `npm run db:reseed` compare mtimes and
+`apps/web/src`. `pnpm run dev:server` and `pnpm run db:reseed` compare mtimes and
 rebuild a stale bundle automatically. After pulling changes, run
-`npm run build:web` before starting the server if you use another entry point.
+`pnpm run build:web` before starting the server if you use another entry point.
 
 Transactional mail uses the database-backed development sink by default.
 To exercise the real SMTP adapter, select `EMAIL_PROVIDER=smtp` as described in
@@ -35,10 +39,10 @@ one session spans all tenant subdomains.
 
 ## Demo data
 
-`npm run db:seed` provisions a rich, idempotent demo dataset (deterministic ids
+`pnpm run db:seed` provisions a rich, idempotent demo dataset (deterministic ids
 throughout, e.g. `course-js`, `lesson-js-zmienne-1`) meant for manually testing
 feature parity. Re-running the seed never duplicates anything.
-`npm run db:reseed` restores a pristine demo before audits/demos: it wipes all
+`pnpm run db:reseed` restores a pristine demo before audits/demos: it wipes all
 data in the three demo tenants (studio/acme/akademia) — including any leftovers
 and mutated progress from previous sessions — and re-runs the seed, leaving
 exactly the canonical state. Other tenants (e.g. imported ones) are untouched.
@@ -93,12 +97,12 @@ entirely, while `student structure <courseId>` still resolves it as
 ## CLI — the agent feedback loop
 
 ```bash
-npm run --silent cli -- login --email creator2@together.dev --password demo1234
-npm run --silent cli -- tenant list
-npm run --silent cli -- tenant switch acme
-npm run --silent cli -- product list
-npm run --silent cli -- --tenant acme course list
-npm run --silent cli -- --json whoami        # single JSON document on stdout
+pnpm --silent run cli login --email creator2@together.dev --password demo1234
+pnpm --silent run cli tenant list
+pnpm --silent run cli tenant switch acme
+pnpm --silent run cli product list
+pnpm --silent run cli --tenant acme course list
+pnpm --silent run cli --json whoami        # single JSON document on stdout
 ```
 
 Every command supports `--json` and exits with a code mapped from the error
@@ -137,8 +141,8 @@ outside `adapters/`, and on any framework import inside `core/`. `any` and
 type assertions (`as`, except `as const`) are lint errors.
 
 ```bash
-npm run check   # typecheck + lint + dependency graph + tests — the static gate
-npm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
+pnpm run check   # typecheck + lint + dependency graph + tests — the static gate
+pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
 The Vitest projects currently discover <!--count:test-files-->212<!--/count-->
@@ -184,9 +188,9 @@ deleted-post placeholder, plus one unread notification for
 `kursant.aktywny@together.dev` — the bell shows a badge on first login.
 
 ```bash
-npm run --silent cli -- --tenant studio discussion list --lesson lesson-js-zmienne-1
-npm run --silent cli -- --tenant studio discussion search --query const
-npm run --silent cli -- --tenant studio notifications list
+pnpm --silent run cli --tenant studio discussion list --lesson lesson-js-zmienne-1
+pnpm --silent run cli --tenant studio discussion search --query const
+pnpm --silent run cli --tenant studio notifications list
 ```
 
 ## Realtime
@@ -213,9 +217,9 @@ Stripe test-mode restricted key and webhook signing secret without adding either
 value to an env file or Git:
 
 ```bash
-npm run --silent cli -- --tenant studio tenant-secret set stripe.restrictedKey '<restricted-test-key>'
-npm run --silent cli -- --tenant studio tenant-secret set stripe.webhookSecret '<webhook-signing-secret>'
-npm run --silent cli -- --tenant studio stripe test-connection
+pnpm --silent run cli --tenant studio tenant-secret set stripe.restrictedKey '<restricted-test-key>'
+pnpm --silent run cli --tenant studio tenant-secret set stripe.webhookSecret '<webhook-signing-secret>'
+pnpm --silent run cli --tenant studio stripe test-connection
 ```
 
 The restricted key needs write access to Checkout Sessions. In the Stripe

@@ -1,15 +1,3 @@
-/**
- * Visual regression harness (ux-layout-system §5.4).
- *
- * `npm run visual`        — capture the canonical screen set and pixel-diff it
- *                           against the committed goldens in tasks/visual-goldens;
- *                           diff images land in the gitignored out/visual/.
- * `npm run visual:update` — re-capture the goldens (reviewed artifact in the PR).
- *
- * Determinism: the seed runs with a pinned SEED_BASE_TIME, the browser clock is
- * frozen to the same instant, and all non-local requests are stubbed (images get
- * a flat placeholder), so a golden only changes when the UI changes.
- */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -601,7 +589,7 @@ interface ShotFailure {
 const comparePng = (name: string, currentPath: string): ShotFailure | null => {
   const goldenPath = join(goldenDir, name);
   if (!existsSync(goldenPath)) {
-    return { file: name, reason: 'baseline missing — run `npm run visual:update` and review it' };
+    return { file: name, reason: 'baseline missing — run `pnpm run visual:update` and review it' };
   }
   const golden = PNG.sync.read(readFileSync(goldenPath));
   const current = PNG.sync.read(readFileSync(currentPath));
@@ -740,7 +728,7 @@ try {
       console.error(`  ✗ ${failure.file}\n    ${failure.reason}`);
     }
     console.error(
-      '\nIntended change? Run `npm run visual:update`, review the baseline diffs and commit them.\nUnintended? That is a visual regression — fix it.',
+      '\nIntended change? Run `pnpm run visual:update`, review the baseline diffs and commit them.\nUnintended? That is a visual regression — fix it.',
     );
     process.exitCode = 1;
   } else {

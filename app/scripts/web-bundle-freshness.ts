@@ -25,7 +25,7 @@ const fileMtime = (path: string): number => {
 
 const rebuildWeb = (rootDir: string): Promise<void> =>
   new Promise((resolve, reject) => {
-    const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
     const child = spawn(command, ['run', 'build:web'], {
       cwd: rootDir,
       env: process.env,
@@ -34,7 +34,7 @@ const rebuildWeb = (rootDir: string): Promise<void> =>
     child.once('error', reject);
     child.once('close', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`npm run build:web exited with code ${String(code)}`));
+      else reject(new Error(`pnpm run build:web exited with code ${String(code)}`));
     });
   });
 
@@ -48,7 +48,7 @@ export const ensureWebBundleFresh = async (rootDir: string): Promise<void> => {
 
   const reason = bundle === 0 ? 'is missing' : 'is older than apps/web/src';
   console.warn(
-    `\n*** STALE WEB BUNDLE: dist/web/index.html ${reason}. Rebuilding with npm run build:web. ***\n`,
+    `\n*** STALE WEB BUNDLE: dist/web/index.html ${reason}. Rebuilding with pnpm run build:web. ***\n`,
   );
   await rebuildWeb(rootDir);
 

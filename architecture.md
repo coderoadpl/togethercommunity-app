@@ -290,16 +290,16 @@ Architecture is enforced by configuration and executable probes:
 
 | Gate | Guarantee |
 |---|---|
-| `npm run check` | Type safety, ESLint boundaries, lockfile consistency, dependency graph, dead-code/dependency drift, documentation cross-checks, and tests. |
-| `npm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
-| `npm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
-| `npm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
-| `npm run e2e:coupon` | The interactive checkout coupon flow in a real browser: reveal, invalid code, valid code, discounted breakdown. |
-| `npm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` and `e2e:coupon` are the browser-driven suites). |
-| `npm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
-| `npm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
-| `npm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
-| `npm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
+| `pnpm run check` | Type safety, ESLint boundaries, lockfile consistency, dependency graph, dead-code/dependency drift, documentation cross-checks, and tests. |
+| `pnpm run smoke` | A fresh isolated database, migrations and seed, real server boot, CLI contract, and representative runtime flows. |
+| `pnpm run quickstart:probe` | The documented fresh-database onboarding path, repeat seed, real server, and CLI hello. |
+| `pnpm run e2e:auth` | Registration, login, session, tenant resolution, and magic-link authentication. |
+| `pnpm run e2e:coupon` | The interactive checkout coupon flow in a real browser: reveal, invalid code, valid code, discounted breakdown. |
+| `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` and `e2e:coupon` are the browser-driven suites). |
+| `pnpm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
+| `pnpm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
+| `pnpm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
+| `pnpm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
 
 CI runs `check`, `smoke`, the quickstart probe, and the auth, coupon, PoC,
 subscription, and marketing e2e suites on pushes and pull requests to

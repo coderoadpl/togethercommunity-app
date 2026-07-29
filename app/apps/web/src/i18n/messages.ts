@@ -634,6 +634,11 @@ export interface Messages {
     deletedBadge: string;
     tombstoneNotice: string;
     exportFailed: string;
+    erasureRequestsHeading: string;
+    erasureRequestsEmpty: string;
+    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
+    erasureRejectNote: string;
+    erasureReject: string;
     allMembersBack: string;
     joined: string;
     grantProduct: string;
@@ -924,6 +929,18 @@ export interface Messages {
     invoiceDownload: string;
     preferencesHeading: string;
     preferencesIntro: string;
+    dataExportHeading: string;
+    dataExportIntro: string;
+    dataExportButton: string;
+    dataExportPreparing: string;
+    erasureHeading: string;
+    erasureIntro: string;
+    erasureConfirmLabel: string;
+    erasureRequestButton: string;
+    erasureOpen: (input: { dueAt: string }) => string;
+    erasureCancelButton: string;
+    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
+    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
   resetPassword: {
     title: string;
@@ -1301,7 +1318,7 @@ export interface Messages {
     smtpUserLabel: string;
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
-    smtpTrackingNote: string;
+    smtpNoFeedback: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;
@@ -1368,6 +1385,10 @@ export interface Messages {
     blocked: string;
     credentialsConfigured: string;
     identityVerified: string;
+    identityNeverChecked: string;
+    identityLastChecked: (input: { checkedAt: string }) => string;
+    identityCheckStale: (input: { checkedAt: string }) => string;
+    identityCheckFailed: (input: { message: string }) => string;
     configurationSetConfigured: string;
     webhookVerified: string;
     footerConfigured: string;

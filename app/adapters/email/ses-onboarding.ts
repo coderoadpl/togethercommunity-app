@@ -31,7 +31,8 @@ import type {
 } from '#core/server/index.js';
 
 const destinationName = 'together-events';
-const eventTypes = ['send', 'delivery', 'bounce', 'complaint', 'open', 'click'] as const;
+const marketingEventTypes = ['send', 'delivery', 'bounce', 'complaint', 'open', 'click'] as const;
+const transactionalEventTypes = ['send', 'delivery', 'bounce', 'complaint'] as const;
 
 const clientsFor = (credentials: SesMarketingCredentials) => {
   const input = {
@@ -232,15 +233,30 @@ export const createSesOnboardingControlPlane = (
       let configurationSetReady = false;
       let eventDestinationReady = false;
       try {
-        const configuration = await ses.send(new DescribeConfigurationSetCommand({
-          ConfigurationSetName: input.configurationSet,
-          ConfigurationSetAttributeNames: ['eventDestinations'],
-        }));
+        const [configuration, transactionalConfiguration] = await Promise.all([
+          ses.send(new DescribeConfigurationSetCommand({
+            ConfigurationSetName: input.configurationSet,
+            ConfigurationSetAttributeNames: ['eventDestinations'],
+          })),
+          ses.send(new DescribeConfigurationSetCommand({
+            ConfigurationSetName: input.transactionalConfigurationSet,
+            ConfigurationSetAttributeNames: ['eventDestinations'],
+          })),
+        ]);
         configurationSetReady = true;
         const destination = configuration.EventDestinations?.find((item) => item.Name === destinationName);
+        const transactionalDestination = transactionalConfiguration.EventDestinations
+          ?.find((item) => item.Name === destinationName);
         eventDestinationReady = destination?.Enabled === true
           && destination.SNSDestination?.TopicARN === input.topicArn
-          && eventTypes.every((eventType) => destination.MatchingEventTypes?.includes(eventType));
+          && marketingEventTypes.every((eventType) => destination.MatchingEventTypes?.includes(eventType))
+          && transactionalDestination?.Enabled === true
+          && transactionalDestination.SNSDestination?.TopicARN === input.topicArn
+          && transactionalEventTypes.every(
+            (eventType) => transactionalDestination.MatchingEventTypes?.includes(eventType),
+          )
+          && !transactionalDestination.MatchingEventTypes?.includes('open')
+          && !transactionalDestination.MatchingEventTypes?.includes('click');
       } catch (cause) {
         if (!isConfigurationSetMissing(cause)) throw cause;
       }
@@ -265,7 +281,9 @@ export const createSesOnboardingControlPlane = (
       const eventDestination = {
         Name: destinationName,
         Enabled: true,
-        MatchingEventTypes: [...eventTypes],
+        MatchingEventTypes: [
+          ...(input.engagementTracking ? marketingEventTypes : transactionalEventTypes),
+        ],
         SNSDestination: { TopicARN: input.topicArn },
       };
       const exists = configuration.EventDestinations?.some((item) => item.Name === destinationName) ?? false;

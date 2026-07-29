@@ -41,6 +41,9 @@ import {
   marketingSuppressionCreateInputSchema,
   memberBillingOrdersQuerySchema,
   memberProgressResetInputSchema,
+  memberErasureRequestCreateInputSchema,
+  memberErasureRejectInputSchema,
+  memberErasureRequestsQuerySchema,
   memberRemoveInputSchema,
   moduleAttachInputSchema,
   moduleCreateInputSchema,
@@ -134,6 +137,12 @@ import {
   exportCouponStats,
   exportEmailSends,
   exportMembers,
+  exportMyData,
+  requestMyErasure,
+  getMyErasureRequest,
+  cancelMyErasureRequest,
+  listErasureRequests,
+  rejectErasureRequest,
   exportOrders,
   followSpace,
   fulfillStripeWebhook,
@@ -1132,7 +1141,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid e-mail sends query', parsed.error.flatten())));
     return respond(await listEmailSends(
       { identity: c.get('identity') },
-      parsed.data,
+      parsed.data.status === undefined ? {} : { status: parsed.data.status },
       { sends: deps.marketing.emailSends },
     ));
   });
@@ -1203,6 +1212,112 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       { orders: deps.orders },
     ));
+  });
+
+  app.get(API_PATHS.memberDataExport, async (c) => {
+    if (deps.marketing === undefined) {
+      return respond(err(internal('Marketing repositories are not configured')));
+    }
+    return respond(
+      await exportMyData(
+        { identity: c.get('identity') },
+        {
+          members: deps.members,
+          grants: deps.grants,
+          subscriptions: deps.subscriptions,
+          orders: deps.orders,
+          invoices: deps.invoices,
+          progress: deps.progress,
+          posts: deps.posts,
+          consents: deps.consents,
+          marketingConsents: deps.marketing.marketingConsents,
+          clock: deps.clock,
+        },
+      ),
+    );
+  });
+
+  app.get(API_PATHS.memberErasureRequest, async (c) => {
+    const result = await getMyErasureRequest(
+      { identity: c.get('identity') },
+      {
+        members: deps.members,
+        erasureRequests: deps.erasureRequests,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.post(API_PATHS.memberErasureRequest, async (c) => {
+    const parsed = memberErasureRequestCreateInputSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return respond(err(validation('Invalid erasure request', parsed.error.flatten())));
+    }
+    const result = await requestMyErasure(
+      { identity: c.get('identity') },
+      {
+        confirmEmail: parsed.data.confirmEmail,
+        ...(parsed.data.reason === undefined ? {} : { reason: parsed.data.reason }),
+      },
+      {
+        members: deps.members,
+        erasureRequests: deps.erasureRequests,
+        ids: deps.ids,
+        clock: deps.clock,
+        notifications: {
+          tenants: deps.tenants,
+          tenantAccess: deps.tenantAccess,
+          emailOutbox: deps.emailOutbox,
+          appBaseUrl: deps.appBaseUrl,
+          baseDomain: deps.baseDomain,
+          dispatchEmail: deps.dispatchEmail,
+        },
+      },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.delete(API_PATHS.memberErasureRequest, async (c) => {
+    const result = await cancelMyErasureRequest(
+      { identity: c.get('identity') },
+      {
+        members: deps.members,
+        erasureRequests: deps.erasureRequests,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberErasureRequests, async (c) => {
+    const parsed = memberErasureRequestsQuerySchema.safeParse({
+      status: c.req.query('status'),
+    });
+    if (!parsed.success) {
+      return respond(err(validation('Invalid erasure request query', parsed.error.flatten())));
+    }
+    const result = await listErasureRequests(
+      { identity: c.get('identity') },
+      parsed.data.status === undefined ? {} : { status: parsed.data.status },
+      { erasureRequests: deps.erasureRequests },
+    );
+    return respond(result.ok ? ok({ requests: result.value }) : result);
+  });
+
+  app.post(API_PATHS.memberErasureReject, async (c) => {
+    const parsed = memberErasureRejectInputSchema.safeParse(await c.req.json());
+    if (!parsed.success) {
+      return respond(err(validation('Invalid erasure rejection', parsed.error.flatten())));
+    }
+    const result = await rejectErasureRequest(
+      { identity: c.get('identity') },
+      { requestId: c.req.param('requestId'), note: parsed.data.note },
+      { erasureRequests: deps.erasureRequests, ids: deps.ids, clock: deps.clock },
+    );
+    return respond(result.ok ? ok({ request: result.value }) : result);
   });
 
   app.get(API_PATHS.tenants, async (c) => {

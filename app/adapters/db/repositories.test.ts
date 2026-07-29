@@ -13,6 +13,7 @@ import type {
   MemberSubscription,
   Order,
   Post,
+  PostReport,
   ProcessedPaymentEvent,
   Product,
   ProductGrant,
@@ -34,6 +35,7 @@ import {
   createMemberSubscriptionRepository,
   createOrderRepository,
   createPostRepository,
+  createPostReportRepository,
   createProcessedPaymentEventRepository,
   createProductGrantRepository,
   createProductPriceRepository,
@@ -63,6 +65,8 @@ import {
   memberEvents,
   members,
   orders,
+  postReportEvents,
+  postReports,
   posts,
   productPriceHistory,
   productPrices,
@@ -322,6 +326,113 @@ describe('member repository', () => {
     expect(
       (await repo.listWithProductIds(ACME, NOW)).find((row) => row.id === 'mem-acme'),
     ).toMatchObject({ bannedAt: NOW, bannedReason: event.reason });
+  });
+});
+
+describe('post report repository', () => {
+  it('deduplicates member and heuristic reports and resolves a post queue atomically', async () => {
+    await db.insert(posts).values({
+      id: 'post-acme-report',
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId: 'space-acme',
+      parentPostId: null,
+      rootPostId: 'post-acme-report',
+      authorUserId: 'user-acme-owner',
+      authorDisplay: 'Acme Owner',
+      authorIsStaff: true,
+      body: 'Report target',
+      createdAt: NOW,
+    });
+
+    const repo = createPostReportRepository(db);
+    const memberReport = {
+      id: 'report-acme-member',
+      tenantId: ACME,
+      postId: 'post-acme-report',
+      reporterUserId: 'user-acme-member',
+      reporterDisplay: 'Acme Member',
+      source: 'member' as const,
+      reason: 'spam' as const,
+      note: null,
+      signals: null,
+      status: 'open' as const,
+      createdAt: NOW,
+      resolvedAt: null,
+      resolvedByUserId: null,
+    };
+    const openedEvent = {
+      id: 'report-event-acme-member-opened',
+      tenantId: ACME,
+      reportId: memberReport.id,
+      postId: memberReport.postId,
+      type: 'opened' as const,
+      occurredAt: NOW,
+    };
+
+    await expect(repo.open(
+      ACME,
+      { ...memberReport, id: 'report-acme-rollback' },
+      { ...openedEvent, id: 'report-event-acme-rollback', reportId: 'missing-report' },
+    )).rejects.toThrow();
+    await expect(repo.findById(ACME, 'report-acme-rollback')).resolves.toBeNull();
+
+    await expect(repo.open(ACME, memberReport, openedEvent)).resolves.toMatchObject({
+      id: memberReport.id,
+      source: 'member',
+    });
+    await expect(repo.open(
+      ACME,
+      { ...memberReport, id: 'report-acme-member-duplicate' },
+      { ...openedEvent, id: 'report-event-acme-member-duplicate', reportId: 'report-acme-member-duplicate' },
+    )).resolves.toBeNull();
+
+    const heuristicReport: PostReport = {
+      ...memberReport,
+      id: 'report-acme-heuristic',
+      reporterUserId: null,
+      reporterDisplay: null,
+      source: 'heuristic' as const,
+      signals: ['link-flood'],
+    };
+    await expect(repo.open(
+      ACME,
+      heuristicReport,
+      { ...openedEvent, id: 'report-event-acme-heuristic', reportId: heuristicReport.id },
+    )).resolves.toMatchObject({ id: heuristicReport.id, source: 'heuristic' });
+    await expect(repo.open(
+      ACME,
+      { ...heuristicReport, id: 'report-acme-heuristic-duplicate' },
+      {
+        ...openedEvent,
+        id: 'report-event-acme-heuristic-duplicate',
+        reportId: 'report-acme-heuristic-duplicate',
+      },
+    )).resolves.toBeNull();
+
+    await expect(repo.resolveAllForPost(
+      ACME,
+      {
+        postId: memberReport.postId,
+        resolvedAt: FUTURE,
+        resolvedByUserId: 'user-acme-owner',
+      },
+      (reportId) => ({
+        id: `report-event-${reportId}-removed`,
+        tenantId: ACME,
+        reportId,
+        postId: memberReport.postId,
+        type: 'post_removed',
+        occurredAt: FUTURE,
+      }),
+    )).resolves.toBe(2);
+    await expect(repo.countOpen(ACME)).resolves.toBe(0);
+    expect(
+      await db
+        .select()
+        .from(postReportEvents)
+        .where(eq(postReportEvents.postId, memberReport.postId)),
+    ).toHaveLength(4);
   });
 });
 
@@ -1021,6 +1132,21 @@ describe('member erasure repository', () => {
       body: 'Świetny kurs!',
       createdAt: NOW,
     });
+    await db.insert(postReports).values({
+      id: 'report-rodo',
+      tenantId: RODO,
+      postId: 'post-rodo',
+      reporterUserId: 'user-rodo-buyer',
+      reporterDisplay: 'Jan Kowalski',
+      source: 'member',
+      reason: 'spam',
+      note: null,
+      signals: null,
+      status: 'open',
+      createdAt: NOW,
+      resolvedAt: null,
+      resolvedByUserId: null,
+    });
     await createCourseRepository(db).create(RODO, {
       id: 'course-rodo',
       tenantId: RODO,
@@ -1152,6 +1278,12 @@ describe('member erasure repository', () => {
 
     const postRows = await db.select().from(posts).where(eq(posts.id, 'post-rodo'));
     expect(postRows[0]).toMatchObject({ authorDisplay: DELETED_MEMBER_DISPLAY, body: 'Świetny kurs!', deletedAt: null });
+
+    const reportRows = await db.select().from(postReports).where(eq(postReports.id, 'report-rodo'));
+    expect(reportRows[0]).toMatchObject({
+      reporterUserId: 'user-rodo-buyer',
+      reporterDisplay: DELETED_MEMBER_DISPLAY,
+    });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
     expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });

@@ -636,18 +636,19 @@ export const fulfillStripeWebhook = async (
         await transactionDeps.processedPaymentEvents.finalize(
           tenant.id,
           event.id,
+          workerId,
           deps.clock.nowIso(),
         );
       }
       return result;
     });
   } catch {
-    await deps.processedPaymentEvents.release(tenant.id, event.id);
+    await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
     return err(internal('Payment fulfillment failed'));
   }
 
   if (!applied.ok || !applied.value.processed) {
-    await deps.processedPaymentEvents.release(tenant.id, event.id);
+    await deps.processedPaymentEvents.release(tenant.id, event.id, workerId);
     return applied.ok ? ok({ processed: false }) : applied;
   }
   return ok({ processed: true });

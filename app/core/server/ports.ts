@@ -534,6 +534,7 @@ export interface InvoicingPort {
 export interface InvoiceRepository {
   findById(tenantId: string, id: string): Promise<Invoice | null>;
   findByIdForMember?(tenantId: string, memberId: string, id: string): Promise<Invoice | null>;
+  listForMember?(tenantId: string, memberId: string): Promise<Invoice[]>;
   findCurrentByOrder(tenantId: string, orderId: string): Promise<Invoice | null>;
   create(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
   claimRetry(tenantId: string, invoice: Invoice, event: InvoiceEvent): Promise<boolean>;
@@ -877,9 +878,14 @@ export interface ProcessedPaymentEventRepository {
     lease: { workerId: string; now: string; leaseExpiresAt: string },
   ): Promise<'claimed' | 'duplicate'>;
   /** Marks the claim terminal after its effects committed. */
-  finalize(tenantId: string, eventId: string, processedAt: string): Promise<void>;
+  finalize(
+    tenantId: string,
+    eventId: string,
+    workerId: string,
+    processedAt: string,
+  ): Promise<void>;
   /** Undoes a claim whose effects did not apply, so a later redelivery can reprocess it. */
-  release(tenantId: string, eventId: string): Promise<void>;
+  release(tenantId: string, eventId: string, workerId: string): Promise<void>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */
@@ -1138,7 +1144,7 @@ export interface MarketingJobRepository {
   listRunnableCampaigns(now: string): Promise<Array<{ tenantId: string; campaignId: string }>>;
   listRetentionTenantIds(): Promise<string[]>;
   listSesIdentityRefreshTenantIds(checkedBefore: string): Promise<string[]>;
-  listSesTenantIds(): Promise<string[]>;
+  listSesTenantIds(checkedBefore: string): Promise<string[]>;
 }
 
 export interface EmailLayoutRepository {
@@ -1258,11 +1264,20 @@ export interface SesOnboardingControlPlane {
   ): Promise<Result<{ confirmed: boolean; arn: string | null }, AppError>>;
   readInfrastructure(
     credentials: SesMarketingCredentials,
-    input: { configurationSet: string; topicArn: string; endpoint: string },
+    input: {
+      configurationSet: string;
+      transactionalConfigurationSet: string;
+      topicArn: string;
+      endpoint: string;
+    },
   ): Promise<Result<{ configurationSetReady: boolean; eventDestinationReady: boolean; subscriptionConfirmed: boolean }, AppError>>;
   ensureEventDestination(
     credentials: SesMarketingCredentials,
-    input: { configurationSet: string; topicArn: string },
+    input: {
+      configurationSet: string;
+      topicArn: string;
+      engagementTracking: boolean;
+    },
   ): Promise<Result<{ ready: true }, AppError>>;
   disableFeedbackForwarding(
     credentials: SesMarketingCredentials,

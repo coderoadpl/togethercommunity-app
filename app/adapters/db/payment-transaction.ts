@@ -22,7 +22,29 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
         const grants = createProductGrantRepository(tx);
         const emailOutbox = createEmailOutboxRepository(tx);
         const enrollmentTransaction: EnrollmentTransactionPort = {
-          run: async (nestedOperation) => nestedOperation({ members, grants, emailOutbox }),
+          run: async (nestedOperation) => {
+            let nestedRejected: Result<never, AppError> | null = null;
+            try {
+              return await tx.transaction(async (nestedTx) => {
+                const result = await nestedOperation({
+                  members: createMemberRepository(nestedTx),
+                  grants: createProductGrantRepository(nestedTx),
+                  emailOutbox: createEmailOutboxRepository(nestedTx),
+                });
+                if (!result.ok) {
+                  nestedRejected = result;
+                  nestedTx.rollback();
+                }
+                return result;
+              });
+            } catch (cause) {
+              if (nestedRejected !== null) return nestedRejected;
+              return {
+                ok: false,
+                error: internal(`Could not complete enrollment savepoint: ${String(cause)}`),
+              };
+            }
+          },
         };
         const result = await operation({
           members,

@@ -5,7 +5,7 @@ import { ok } from '#core/domain/index.js';
 import { createTenantSesTransactionalResolver } from './transactional-resolvers.js';
 
 describe('transactional e-mail transport resolvers', () => {
-  it('attaches the tenant configuration set to transactional SES', async () => {
+  it('attaches the non-engagement configuration set to transactional SES', async () => {
     const tenantSettings = {
       tenantId: 'tenant-1',
       fromAddress: 'mail@example.test',
@@ -53,7 +53,7 @@ describe('transactional e-mail transport resolvers', () => {
 
     await expect(resolver.resolve('tenant-1')).resolves.not.toBeNull();
     expect(emailFor).toHaveBeenCalledWith(expect.objectContaining({
-      configurationSet: 'marketing',
+      configurationSet: 'marketing-transactional',
     }));
   });
 

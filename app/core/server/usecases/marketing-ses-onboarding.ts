@@ -3,6 +3,7 @@ import {
   notFound,
   ok,
   tenantSesBroadcastsReady,
+  transactionalSesConfigurationSetName,
   type AppError,
   type Result,
   type TenantSesSettings,
@@ -130,6 +131,11 @@ export const provisionSesInfrastructure = async (
   let current = context.value.settings;
   const configurationSet = await deps.controlPlane.ensureConfigurationSet(context.value.credentials, current.configurationSet ?? name);
   if (!configurationSet.ok) return configurationSet;
+  const transactionalConfigurationSet = await deps.controlPlane.ensureConfigurationSet(
+    context.value.credentials,
+    transactionalSesConfigurationSetName(configurationSet.value.name),
+  );
+  if (!transactionalConfigurationSet.ok) return transactionalConfigurationSet;
   if (current.configurationSet !== configurationSet.value.name) {
     current = await store(deps, context.value.tenantId, current, { configurationSet: configurationSet.value.name });
   }
@@ -146,8 +152,18 @@ export const provisionSesInfrastructure = async (
   const destination = await deps.controlPlane.ensureEventDestination(context.value.credentials, {
     configurationSet: configurationSet.value.name,
     topicArn: topic.value.arn,
+    engagementTracking: true,
   });
   if (!destination.ok) return destination;
+  const transactionalDestination = await deps.controlPlane.ensureEventDestination(
+    context.value.credentials,
+    {
+      configurationSet: transactionalConfigurationSet.value.name,
+      topicArn: topic.value.arn,
+      engagementTracking: false,
+    },
+  );
+  if (!transactionalDestination.ok) return transactionalDestination;
   let feedbackForwardingDisabled = false;
   if (subscription.value.confirmed) {
     const feedback = await deps.controlPlane.disableFeedbackForwarding(
@@ -197,6 +213,9 @@ export const pollSesOnboarding = async (
   if (current.configurationSet !== null && current.snsTopicArn !== null) {
     const infrastructure = await deps.controlPlane.readInfrastructure(context.value.credentials, {
       configurationSet: current.configurationSet,
+      transactionalConfigurationSet: transactionalSesConfigurationSetName(
+        current.configurationSet,
+      ),
       topicArn: current.snsTopicArn,
       endpoint: context.value.webhookUrl,
     });
@@ -279,6 +298,9 @@ export const refreshSesIdentity = async (
       credentials.value,
       {
         configurationSet: settings.configurationSet,
+        transactionalConfigurationSet: transactionalSesConfigurationSetName(
+          settings.configurationSet,
+        ),
         topicArn: settings.snsTopicArn,
         endpoint: `${deps.webhookBaseUrl}/${settings.webhookToken}`,
       },

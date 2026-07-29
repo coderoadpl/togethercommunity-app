@@ -1,10 +1,10 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, err, memberTombstone, validation } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, err, memberTombstone, ok, validation } from '#core/domain/index.js';
 import type {
   CourseLesson,
   CourseModule,
@@ -58,14 +58,18 @@ import {
   coupons,
   devEmails,
   devMagicLinks,
+  emailOutbox,
   emailEvents,
   invoices,
   erasedMemberImports,
   memberCourseProgress,
+  memberSubscriptions,
   members,
   memberErasureRequestEvents,
   orders,
   posts,
+  processedPaymentEvents,
+  productGrants,
   productPriceHistory,
   productPrices,
   suppressions,
@@ -692,7 +696,10 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       leaseExpiresAt: '1998-07-14T10:11:00.000Z',
     };
     expect(await repo.claim(ACME, event, reclaimed)).toBe('claimed');
-    await repo.finalize(ACME, event.id, reclaimed.now);
+    await repo.finalize(ACME, event.id, lease.workerId, reclaimed.now);
+    await repo.release(ACME, event.id, lease.workerId);
+    expect(await repo.claim(ACME, event, reclaimed)).toBe('duplicate');
+    await repo.finalize(ACME, event.id, reclaimed.workerId, reclaimed.now);
     expect(
       await repo.claim(ACME, event, {
         ...reclaimed,
@@ -703,7 +710,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
 
     const releasable = { ...event, id: 'evt-3', objectId: 'in-3' };
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
-    await repo.release(ACME, releasable.id);
+    await repo.release(ACME, releasable.id, lease.workerId);
     expect(await repo.claim(ACME, releasable, lease)).toBe('claimed');
   });
 
@@ -727,6 +734,316 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       .from(orders)
       .where(and(eq(orders.tenantId, ACME), eq(orders.id, rolledBackOrder.id)));
     expect(rows).toEqual([]);
+  });
+
+  it('rolls back writes from every payment transaction repository', async () => {
+    await db.insert(coupons).values({
+      id: 'coupon-bundle-rollback',
+      tenantId: ACME,
+      code: 'BUNDLEROLLBACK',
+      kind: 'amount',
+      value: 100,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: null,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    const refundableOrder = order({
+      id: 'order-bundle-refundable',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+    await createOrderRepository(db).create(ACME, refundableOrder);
+    const claimedEvent: ProcessedPaymentEvent = {
+      id: 'evt-bundle-rollback',
+      tenantId: ACME,
+      type: 'invoice.paid',
+      objectId: 'invoice-bundle-rollback',
+      processedAt: NOW,
+    };
+    const claimLease = {
+      workerId: 'worker-bundle',
+      now: NOW,
+      leaseExpiresAt: '1998-07-14T10:05:00.000Z',
+    };
+    await createProcessedPaymentEventRepository(db).claim(
+      ACME,
+      claimedEvent,
+      claimLease,
+    );
+    const transaction = createPaymentTransactionPort(db);
+    const transactionMember = member({
+      id: 'mem-bundle-rollback',
+      tenantId: ACME,
+      userId: 'user-acme-owner',
+      email: 'owner-acme@together.dev',
+    });
+    const nestedMember = member({
+      id: 'mem-bundle-nested',
+      tenantId: ACME,
+      userId: 'user-globex-owner',
+      email: 'owner-globex@together.dev',
+    });
+    const transactionOrder = order({
+      id: 'order-bundle-rollback',
+      tenantId: ACME,
+      memberId: transactionMember.id,
+      productId: 'prod-acme',
+    });
+    const couponOrder = order({
+      id: 'order-bundle-coupon',
+      tenantId: ACME,
+      memberId: transactionMember.id,
+      productId: 'prod-acme',
+      couponId: 'coupon-bundle-rollback',
+      discountCents: 100,
+    });
+
+    const result = await transaction.run(async (transactionDeps) => {
+      await transactionDeps.members.create(ACME, transactionMember);
+      await transactionDeps.grants.createGrant(
+        ACME,
+        grant({
+          id: 'grant-bundle-rollback',
+          tenantId: ACME,
+          memberId: transactionMember.id,
+          productId: 'prod-acme',
+        }),
+      );
+      await transactionDeps.orders.create(ACME, transactionOrder);
+      await transactionDeps.subscriptions.create(
+        ACME,
+        subscription({
+          id: 'sub-bundle-rollback',
+          tenantId: ACME,
+          memberId: transactionMember.id,
+          productId: 'prod-acme',
+          priceId: 'price-acme',
+          providerSubscriptionId: 'psub-bundle-rollback',
+        }),
+      );
+      await transactionDeps.paymentRefunds.markOrderRefunded(
+        ACME,
+        refundableOrder.id,
+      );
+      await transactionDeps.couponRedemptions.createOrderAndClaim(ACME, {
+        order: couponOrder,
+        redemption: {
+          id: 'redemption-bundle-rollback',
+          tenantId: ACME,
+          couponId: 'coupon-bundle-rollback',
+          orderId: couponOrder.id,
+          memberId: transactionMember.id,
+          email: transactionMember.email,
+          discountCents: 100,
+          createdAt: NOW,
+        },
+        event: {
+          id: 'redemption-event-bundle-rollback',
+          tenantId: ACME,
+          redemptionId: 'redemption-bundle-rollback',
+          couponId: 'coupon-bundle-rollback',
+          orderId: couponOrder.id,
+          type: 'redeemed',
+          occurredAt: NOW,
+        },
+        maxRedemptions: null,
+        maxRedemptionsPerMember: null,
+      });
+      await transactionDeps.emailOutbox.enqueue({
+        id: 'outbox-bundle-rollback',
+        tenantId: ACME,
+        to: transactionMember.email,
+        payload: {
+          kind: 'reset-password',
+          language: 'pl',
+          actionUrl: 'https://acme.example.test/reset',
+        },
+        now: NOW,
+      });
+      await transactionDeps.processedPaymentEvents.finalize(
+        ACME,
+        claimedEvent.id,
+        claimLease.workerId,
+        NOW,
+      );
+      await transactionDeps.enrollmentTransaction.run(async (nestedDeps) => {
+        await nestedDeps.members.create(ACME, nestedMember);
+        await nestedDeps.grants.createGrant(
+          ACME,
+          grant({
+            id: 'grant-bundle-nested',
+            tenantId: ACME,
+            memberId: nestedMember.id,
+            productId: 'prod-acme',
+          }),
+        );
+        await nestedDeps.emailOutbox.enqueue({
+          id: 'outbox-bundle-nested',
+          tenantId: ACME,
+          to: nestedMember.email,
+          payload: {
+            kind: 'reset-password',
+            language: 'pl',
+            actionUrl: 'https://acme.example.test/reset',
+          },
+          now: NOW,
+        });
+        return ok(undefined);
+      });
+      return err(validation('reject full payment bundle'));
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(
+      await db
+        .select({ id: members.id })
+        .from(members)
+        .where(inArray(members.id, [transactionMember.id, nestedMember.id])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: productGrants.id })
+        .from(productGrants)
+        .where(inArray(productGrants.id, [
+          'grant-bundle-rollback',
+          'grant-bundle-nested',
+        ])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(inArray(orders.id, [transactionOrder.id, couponOrder.id])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: memberSubscriptions.id })
+        .from(memberSubscriptions)
+        .where(eq(memberSubscriptions.id, 'sub-bundle-rollback')),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: couponRedemptions.id })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.id, 'redemption-bundle-rollback')),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ id: emailOutbox.id })
+        .from(emailOutbox)
+        .where(inArray(emailOutbox.id, [
+          'outbox-bundle-rollback',
+          'outbox-bundle-nested',
+        ])),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ status: orders.status })
+        .from(orders)
+        .where(eq(orders.id, refundableOrder.id)),
+    ).toEqual([{ status: 'paid' }]);
+    expect(
+      await db
+        .select({
+          status: processedPaymentEvents.status,
+          workerId: processedPaymentEvents.workerId,
+        })
+        .from(processedPaymentEvents)
+        .where(eq(processedPaymentEvents.id, claimedEvent.id)),
+    ).toEqual([{ status: 'processing', workerId: claimLease.workerId }]);
+  });
+
+  it('keeps the outer payment transaction usable after a coupon savepoint fails', async () => {
+    await db.insert(coupons).values({
+      id: 'coupon-savepoint',
+      tenantId: ACME,
+      code: 'SAVEPOINT',
+      kind: 'amount',
+      value: 100,
+      scope: { kind: 'all' },
+      appliesTo: 'one_time',
+      recurringDuration: 'first_invoice',
+      startsAt: null,
+      endsAt: null,
+      maxRedemptions: null,
+      maxRedemptionsPerMember: null,
+      status: 'active',
+      partnerLabel: null,
+      stripeCouponId: null,
+      stripePromotionCodeId: null,
+      createdAt: NOW,
+    });
+    const transaction = createPaymentTransactionPort(db);
+    const nestedOrder = order({
+      id: 'order-savepoint-nested',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+      couponId: 'coupon-savepoint',
+      discountCents: 100,
+    });
+    const outerOrder = order({
+      id: 'order-savepoint-outer',
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      productId: 'prod-acme',
+    });
+
+    const result = await transaction.run(async (transactionDeps) => {
+      await expect(
+        transactionDeps.couponRedemptions.createOrderAndClaim(ACME, {
+          order: nestedOrder,
+          redemption: {
+            id: 'redemption-savepoint',
+            tenantId: ACME,
+            couponId: 'coupon-savepoint',
+            orderId: nestedOrder.id,
+            memberId: 'mem-acme',
+            email: 'member@together.dev',
+            discountCents: 100,
+            createdAt: NOW,
+          },
+          event: {
+            id: 'redemption-event-savepoint',
+            tenantId: ACME,
+            redemptionId: 'missing-redemption',
+            couponId: 'coupon-savepoint',
+            orderId: nestedOrder.id,
+            type: 'redeemed',
+            occurredAt: NOW,
+          },
+          maxRedemptions: null,
+          maxRedemptionsPerMember: null,
+        }),
+      ).rejects.toBeDefined();
+      await transactionDeps.orders.create(ACME, outerOrder);
+      return ok(undefined);
+    });
+
+    expect(result).toEqual(ok(undefined));
+    expect(
+      await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(inArray(orders.id, [nestedOrder.id, outerOrder.id]))
+        .orderBy(asc(orders.id)),
+    ).toEqual([{ id: outerOrder.id }]);
+    expect(
+      await db
+        .select({ id: couponRedemptions.id })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.id, 'redemption-savepoint')),
+    ).toEqual([]);
   });
 });
 
@@ -771,6 +1088,46 @@ describe('course/module/lesson repositories', () => {
 });
 
 describe('post repository', () => {
+  it('lists only posts for the requested tenant and author', async () => {
+    const repo = createPostRepository(db);
+    const authoredPost = (
+      id: string,
+      tenantId: string,
+      authorUserId: string,
+    ): Post => ({
+      id,
+      tenantId,
+      contextKind: 'space',
+      contextId: `space-${id}`,
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId,
+      authorDisplay: authorUserId,
+      authorIsStaff: false,
+      body: id,
+      createdAt: NOW,
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+    });
+    await repo.createPost(
+      ACME,
+      authoredPost('post-author-acme', ACME, 'user-acme-member'),
+    );
+    await repo.createPost(
+      ACME,
+      authoredPost('post-other-author', ACME, 'user-acme-owner'),
+    );
+    await repo.createPost(
+      GLOBEX,
+      authoredPost('post-author-globex', GLOBEX, 'user-acme-member'),
+    );
+
+    await expect(repo.listByAuthor(ACME, 'user-acme-member')).resolves.toEqual([
+      expect.objectContaining({ id: 'post-author-acme', tenantId: ACME }),
+    ]);
+  });
+
   it('clears a pin when soft-deleting a post', async () => {
     const repo = createPostRepository(db);
     const post: Post = {

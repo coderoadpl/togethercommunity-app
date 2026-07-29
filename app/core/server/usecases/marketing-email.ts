@@ -1481,12 +1481,9 @@ export const applyVerifiedSesEvent = async (
       }
       const outbox = await deps.outbox.correlateBySesMessageId(tenantId.value, event.messageId);
       if (outbox === null) return ok({ processed: false });
-      const classification =
-        event.kind === 'bounce'
-          ? classifySesEvent(event)
-          : event.kind === 'complaint'
-            ? 'complaint'
-            : null;
+      const classification = event.kind === 'delivery'
+        ? null
+        : classifySesEvent(event);
       const status = event.kind === 'delivery'
         ? 'delivered'
         : event.kind === 'complaint'
@@ -1715,17 +1712,18 @@ export const runScheduledMarketingJobs = async (
     });
     if (!retained.ok && firstError === null) firstError = retained.error;
   }
-  const identityTenantIds = await deps.jobs.listSesIdentityRefreshTenantIds(
-    new Date(
-      Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
-    ).toISOString(),
-  );
+  const checkedBefore = new Date(
+    Date.parse(input.now) - input.sesIdentityRefreshIntervalMs,
+  ).toISOString();
+  const [identityTenantIds, sesTenantIds] = await Promise.all([
+    deps.jobs.listSesIdentityRefreshTenantIds(checkedBefore),
+    deps.jobs.listSesTenantIds(checkedBefore),
+  ]);
   for (const tenantId of identityTenantIds) {
     const refreshed = await deps.refreshIdentity(tenantId);
     if (!refreshed.ok && firstError === null) firstError = refreshed.error;
   }
   let reputationAlertsSent = 0;
-  const sesTenantIds = await deps.jobs.listSesTenantIds();
   for (const tenantId of sesTenantIds) {
     const alerted = await deps.runReputationAlerts(tenantId);
     if (alerted.ok) reputationAlertsSent += alerted.value.sent;

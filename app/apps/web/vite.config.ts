@@ -3,7 +3,9 @@ import { defineConfig } from 'vite';
 
 import pkg from '../../package.json' with { type: 'json' };
 
-const commitSha = process.env['APP_COMMIT_SHA']?.slice(0, 7) || 'unknown';
+const commitSha =
+  (process.env['APP_COMMIT_SHA'] ?? process.env['VERCEL_GIT_COMMIT_SHA'])?.slice(0, 7) ||
+  'unknown';
 
 export default defineConfig({
   root: 'apps/web',

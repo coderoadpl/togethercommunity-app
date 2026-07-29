@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import { envSchema } from '../apps/server/src/env.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 const appRoot = join(import.meta.dirname, '..');
 const repoRoot = join(appRoot, '..');
@@ -69,6 +70,11 @@ const numericTestCountAllowlist = ['tasks/', 'app/tasks/'];
 const requiredCountTokens: Readonly<Record<string, readonly string[]>> = {
   'app/README.md': ['test-files'],
 };
+const checkChain = packageJson.scripts.check
+  .split('&&')
+  .map((stage) => stage.trim().replace(/^pnpm run /, ''));
+const checkClaimPattern =
+  /- `pnpm run check` = ([\s\S]*?) —\s+the \*\*static\*\* gate\./;
 
 const prose = trackedMarkdown.map((rel) => readFileSync(join(repoRoot, rel), 'utf8')).join('\n');
 const eslintSource = readFileSync(eslintConfigPath, 'utf8');
@@ -77,6 +83,26 @@ const depcruiseRuleNames = new Set(depcruiseModule.forbidden.map((rule) => rule.
 const problems: string[] = [];
 const countTokensByFile = new Map<string, Set<string>>();
 let countTokensSeen = 0;
+
+const claudeRules = readFileSync(join(appRoot, 'CLAUDE.md'), 'utf8');
+const checkClaim = checkClaimPattern.exec(claudeRules);
+if (checkClaim === null) {
+  problems.push('[check-chain] app/CLAUDE.md must enumerate the pnpm run check stages');
+} else {
+  const claimedStages = [...(checkClaim[1] ?? '').matchAll(/`([^`]+)`/g)].map(
+    (match) => match[1] ?? '',
+  );
+  const expected = [...checkChain].sort();
+  const claimed = [...claimedStages].sort();
+  if (
+    expected.length !== claimed.length ||
+    expected.some((stage, index) => stage !== claimed[index])
+  ) {
+    problems.push(
+      `[check-chain] app/CLAUDE.md claims [${claimedStages.join(', ')}], package.json defines [${checkChain.join(', ')}]`,
+    );
+  }
+}
 
 for (const rel of trackedMarkdown) {
   const text = readFileSync(join(repoRoot, rel), 'utf8');

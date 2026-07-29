@@ -5,8 +5,9 @@ architecture spec is normative).
 
 ## The two gates
 
-- `pnpm run check` = typecheck + ESLint (boundaries) + lock-lint + migration-lint + dependency-cruiser + knip + doc-lint +
-  vitest — the **static** gate.
+- `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +
+  `license-lint` + `migration-lint` + `depcruise` + `knip` + `doc-lint` + `test` —
+  the **static** gate.
 - `pnpm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `pnpm-lock.yaml`, drops+recreates an isolated
   `together_smoke` database (never touches your dev-seeded data), migrates
@@ -55,7 +56,9 @@ Visual verification has zero retries.
 - `core/**` is pure TypeScript: no hono, react, drizzle, better-auth, pg, commander.
 - `core/domain` depends on zod only. `core/server` = use-cases + ports.
   `core/contract` = the only bridge between server and clients.
-  `core/client` = the only way any client talks HTTP.
+  `core/client` = the only way clients make request/response HTTP calls.
+- `apps/web/src/notifications-stream.ts` is the one streaming exception: it uses
+  native `EventSource` directly for SSE notifications.
 - `adapters/**` implement ports; only `apps/server/src/composition.ts` instantiates them.
 - `apps/web` and `apps/cli` import `core/client` (+ auth client adapter), never
   `core/server`, never `adapters/db`.

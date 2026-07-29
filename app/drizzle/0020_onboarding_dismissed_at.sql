@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "onboarding_dismissed_at" text;

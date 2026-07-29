@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_ses_settings" ADD COLUMN "tracking_enabled" boolean DEFAULT false NOT NULL;

@@ -1,0 +1,182 @@
+import { useState } from 'react';
+import { Alert, Box, Button, Chip, Paper, Stack, Typography } from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+
+import type { StaffSpace } from '#core/domain/index.js';
+
+import { actions } from '../../../api.js';
+import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { DataValue } from '../../../theme.js';
+
+type SpaceFilter = 'all' | 'active' | 'archived';
+
+const SpaceRow = ({ space }: { space: StaffSpace }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const isArchived = space.archivedAt !== null;
+
+  const setArchived = useMutation({
+    ...actions.archiveSpace,
+    onSuccess: async () => {
+      setConfirmArchive(false);
+      await queryClient.invalidateQueries(actions.spacesInvalidates());
+    },
+  });
+
+  return (
+    <Paper elevation={1} sx={{ p: '1rem', display: 'grid', gap: '0.75rem' }} data-testid="space-row">
+      <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <Typography variant="h2" component="h2">
+          {space.name}
+        </Typography>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={space.visibility === 'members' ? t.spacesPanel.membersOnlyChip : t.spacesPanel.productGatedChip}
+        />
+        {isArchived ? (
+          <Chip size="small" color="warning" variant="outlined" label={t.spacesPanel.statusArchived} />
+        ) : null}
+        <Box sx={{ flex: 1 }} />
+        <Typography variant="body2" color="text.secondary" component="span">
+          {space.slug}
+        </Typography>
+      </Stack>
+
+      <Typography variant="body2" color="text.secondary" component="span">
+        <DataValue>{space.stats.posts}</DataValue> {t.spacesPanel.postsNoun({ count: space.stats.posts })} ·{' '}
+        <DataValue>{space.stats.followers}</DataValue> {t.spacesPanel.followersNoun({ count: space.stats.followers })}
+      </Typography>
+
+      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+        <Button
+          size="small"
+          variant="text"
+          component="a"
+          href={`/panel/spaces/${encodeURIComponent(space.id)}`}
+          data-testid={`space-manage-${space.id}`}
+        >
+          {t.spacesPanel.manage}
+        </Button>
+        {isArchived ? (
+          <Button
+            size="small"
+            variant="text"
+            disabled={setArchived.isPending}
+            onClick={() => setArchived.mutate({ id: space.id, archived: false })}
+            data-testid={`space-restore-${space.id}`}
+          >
+            {t.spacesPanel.restore}
+          </Button>
+        ) : (
+          <Button
+            size="small"
+            variant="text"
+            color="error"
+            onClick={() => setConfirmArchive(true)}
+            data-testid={`space-archive-${space.id}`}
+          >
+            {t.spacesPanel.archive}
+          </Button>
+        )}
+      </Stack>
+
+      {setArchived.isError ? <Alert>{localizeError(setArchived.error, t)}</Alert> : null}
+
+      <ConfirmDialog
+        open={confirmArchive}
+        title={t.spacesPanel.archiveConfirmTitle}
+        body={<Typography variant="body1">{t.spacesPanel.archiveConfirmBody}</Typography>}
+        confirmLabel={t.spacesPanel.archiveConfirmCta}
+        cancelLabel={t.common.cancel}
+        pending={setArchived.isPending}
+        onConfirm={() => setArchived.mutate({ id: space.id, archived: true })}
+        onClose={() => setConfirmArchive(false)}
+        confirmTestId={`space-archive-confirm-${space.id}`}
+      />
+    </Paper>
+  );
+};
+
+export const SpacesPanel = () => {
+  const t = useTranslations();
+  const spaces = useQuery(actions.staffSpaces);
+  const [filter, setFilter] = useState<SpaceFilter>('active');
+
+  const all = spaces.data?.spaces ?? [];
+  const visible = all.filter((space) =>
+    filter === 'all' ? true : filter === 'archived' ? space.archivedAt !== null : space.archivedAt === null,
+  );
+  const filterLabels: Record<SpaceFilter, string> = {
+    all: t.spacesPanel.filterAll,
+    active: t.spacesPanel.filterActive,
+    archived: t.spacesPanel.filterArchived,
+  };
+
+  return (
+    <PanelPage
+      title={t.sections.spaces}
+      action={
+        <Button component={Link} to="/panel/spaces/new" variant="contained">
+          + {t.common.add}
+        </Button>
+      }
+    >
+      <ListSection
+        toolbar={{
+          filters: (
+            <Stack direction="row" useFlexGap spacing="0.4rem" role="group" aria-label={t.spacesPanel.filterAria}>
+              {(['all', 'active', 'archived'] as const).map((value) => (
+                <Chip
+                  key={value}
+                  size="small"
+                  clickable
+                  variant={filter === value ? 'filled' : 'outlined'}
+                  color={filter === value ? 'primary' : 'default'}
+                  label={filterLabels[value]}
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value)}
+                />
+              ))}
+            </Stack>
+          ),
+        }}
+        isEmpty={spaces.isSuccess && all.length === 0}
+        empty={
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: t.spacesPanel.empty,
+              body: t.spacesPanel.emptyHint,
+              action: (
+                <Button component={Link} to="/panel/spaces/new">
+                  + {t.common.add}
+                </Button>
+              ),
+            }}
+          />
+        }
+        noMatches={
+          spaces.isSuccess && all.length > 0 && visible.length === 0 ? (
+            <Typography variant="body1">{t.spacesPanel.noMatches}</Typography>
+          ) : undefined
+        }
+      >
+        {spaces.isPending ? (
+          <StatusView state={{ kind: 'loading', label: t.spacesPanel.loading }} />
+        ) : spaces.isError ? (
+          <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t) }} />
+        ) : (
+          <Stack useFlexGap spacing="1rem">
+            {visible.map((space) => (
+              <SpaceRow key={space.id} space={space} />
+            ))}
+          </Stack>
+        )}
+      </ListSection>
+    </PanelPage>
+  );
+};

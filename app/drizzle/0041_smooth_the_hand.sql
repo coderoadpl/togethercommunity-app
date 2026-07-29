@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "checkout_consent_definition_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;

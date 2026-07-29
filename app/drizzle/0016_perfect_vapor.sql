@@ -1,0 +1,1 @@
+ALTER TABLE "posts" ADD COLUMN "author_is_staff" boolean DEFAULT false NOT NULL;

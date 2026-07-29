@@ -1090,7 +1090,6 @@ export const pl: Messages = {
     autoIssueScope: 'Zakres automatyzacji',
     b2bOnly: 'Tylko zamówienia z NIP',
     allBuyers: 'Wszystkie zamówienia',
-    vatRate: 'Stawka VAT na fakturach',
     vatRateUnset: 'Wybierz stawkę VAT albo zwolnienie przed wystawieniem',
     vatTreatment: 'Rozliczenie VAT',
     vatTreatmentRate: 'Stawka VAT',

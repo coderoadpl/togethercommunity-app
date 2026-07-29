@@ -1,3 +1,5 @@
+import type { InvoiceVatTreatment } from './tenant.js';
+
 export interface Fa3Party {
   nip: string;
   name: string;
@@ -100,12 +102,15 @@ export const validateFa3Structure = (
     if (bases.length === 0) errors.push('exemption-basis');
     if (bases.length > 1) errors.push('exemption-basis-choice');
     if (xml.includes('<P_19N>')) errors.push('exemption-both-branches');
+    if (!xml.includes('<P_12>zw</P_12>')) errors.push('exemption-line-rate');
     if (xml.includes('<P_14_')) errors.push('exemption-vat-amount');
     const exemptSummary = xml.match(/<P_13_7>([^<]+)<\/P_13_7>/u)?.[1];
     const total = xml.match(/<P_15>([^<]+)<\/P_15>/u)?.[1];
     if (exemptSummary === undefined) errors.push('exemption-summary');
     else if (exemptSummary !== total) errors.push('exemption-total-mismatch');
   }
+  if (xml.includes('<P_19N>') && xml.includes('<P_12>zw</P_12>')) {
+    errors.push('exemption-line-rate');
+  }
   return { ok: errors.length === 0, errors };
 };
-import type { InvoiceVatTreatment } from './tenant.js';

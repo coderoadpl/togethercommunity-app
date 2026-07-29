@@ -92,7 +92,8 @@ export const createKsefInvoicePdf = (): KsefInvoicePdf => ({
     }));
     const vatRate = rows[0]?.vat ?? '';
     const exempt = vatRate === 'zw';
-    const vatSuffix = vatRate === '8' ? '2' : vatRate === '5' ? '3' : '1';
+    const vatSuffix = (): '1' | '2' | '3' =>
+      vatRate === '8' ? '2' : vatRate === '5' ? '3' : '1';
     const lines: TextLine[] = [
       { x: 45, y: 790, text: 'FAKTURA VAT', size: 20, bold: true },
       { x: 45, y: 765, text: `Numer: ${value(xml, 'P_2')}`, size: 11, bold: true },
@@ -128,14 +129,20 @@ export const createKsefInvoicePdf = (): KsefInvoicePdf => ({
         y: 478,
         text: exempt
           ? `Wartosc sprzedazy zwolnionej: ${value(xml, 'P_13_7')} PLN`
-          : `Netto: ${value(xml, `P_13_${vatSuffix}`)} PLN`,
+          : `Netto: ${value(xml, `P_13_${vatSuffix()}`)} PLN`,
       },
       {
         x: 330,
         y: 460,
-        text: exempt ? 'VAT: 0.00 PLN' : `VAT ${vatRate}%: ${value(xml, `P_14_${vatSuffix}`)} PLN`,
+        text: exempt ? 'VAT: 0.00 PLN' : `VAT ${vatRate}%: ${value(xml, `P_14_${vatSuffix()}`)} PLN`,
       },
-      { x: 330, y: 436, text: `Razem: ${value(xml, 'P_15')} PLN`, size: 12, bold: true },
+      {
+        x: 330,
+        y: 436,
+        text: `${exempt ? 'Razem' : 'Razem brutto'}: ${value(xml, 'P_15')} PLN`,
+        size: 12,
+        bold: true,
+      },
       ...(exempt
         ? [{
             x: 45,

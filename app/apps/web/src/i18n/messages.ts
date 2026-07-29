@@ -972,7 +972,6 @@ export interface Messages {
     autoIssueScope: string;
     b2bOnly: string;
     allBuyers: string;
-    vatRate: string;
     vatRateUnset: string;
     vatTreatment: string;
     vatTreatmentRate: string;

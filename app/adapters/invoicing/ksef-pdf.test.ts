@@ -88,6 +88,7 @@ describe('KSeF invoice PDF', () => {
     expect(source).toContain('5555555555-20260728-ABCDEF-01');
     expect(source).toContain('Kurs specjalistyczny');
     expect(source).toContain('23%');
+    expect(source).toContain('Razem brutto: 123.00 PLN');
     expect(source).toContain('Wizualizacja');
   });
 
@@ -107,6 +108,7 @@ describe('KSeF invoice PDF', () => {
     expect(source).toContain('(zw)');
     expect(source).toContain('Wartosc sprzedazy zwolnionej: 123.45 PLN');
     expect(source).toContain('VAT: 0.00 PLN');
+    expect(source).toContain('Razem: 123.45 PLN');
     expect(source).toContain('Zwolnienie z VAT: art. 113 ust. 1 ustawy');
     expect(source).not.toContain('VAT zw%');
   });

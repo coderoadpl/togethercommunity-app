@@ -129,7 +129,7 @@ describe('LessonPlayerPage', () => {
             userId: 'u1',
             email: 'user@example.com',
             name: 'Jan Uczestnik',
-            tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1' },
+            tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'mem-1', banned: false },
           },
         }),
       ),

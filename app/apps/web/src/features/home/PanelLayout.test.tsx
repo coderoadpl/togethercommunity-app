@@ -29,7 +29,7 @@ const meWithTenant = {
   userId: 'u1',
   email: 'creator@together.dev',
   name: 'Demo',
-  tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null },
+  tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null, banned: false },
 };
 
 const stubViewport = (isDesktop: boolean) => {

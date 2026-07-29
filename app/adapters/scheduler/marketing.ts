@@ -5,6 +5,13 @@ export interface DevMarketingScheduler extends SchedulerPort {
   setCampaignHandler(handler: (tenantId: string, campaignId: string) => Promise<void>): void;
 }
 
+/**
+ * Production scheduling is pull-based: the Vercel cron calls
+ * `GET /api/internal/marketing/tick`, whose `dispatchScheduledMarketing` scan
+ * dispatches campaigns, retention, SES identity refreshes, and reputation
+ * alerts. These push-based port methods are no-ops because production does not
+ * enqueue per-job timers.
+ */
 export const createCronMarketingScheduler = (): SchedulerPort => ({
   enqueueCampaignTick: async () => ok(undefined),
   scheduleCampaignTick: async () => ok(undefined),

@@ -34,7 +34,7 @@ const PIXELMATCH_THRESHOLD = 0;
 const MAX_DIFF_RATIO = 0;
 const minPngBytes = 10 * 1024;
 
-const THEMES: ThemeMode[] = ['shadcn', 'material', 'scoreboard'];
+const THEMES: ThemeMode[] = ['shadcn'];
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },

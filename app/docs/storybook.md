@@ -13,8 +13,11 @@ four non-ready `PageState` branches in
 `ThemeShowcase.stories.tsx`, and presentational feature views backed by
 hand-written fixtures. `PageState` also contains `ready`, which renders no
 status view; loading, error, empty, and not-found are structurally unreachable
-through the populated seeded-route loop. Route goldens currently capture three
-of the seven themes.
+through the populated seeded-route loop. Route goldens capture only Shadcn,
+the one maintained base theme (see
+[ADR-0010](decisions/0010-shadcn-base-theme.md)); the Storybook toolbar still
+carries all seven so the other six remain reachable as unmaintained BYO-theme
+examples.
 
 Stories do not verify routing, data fetching, authentication, tenant
 resolution, content security policy, server-rendered public pages, island

@@ -6,6 +6,7 @@ interface EntryEnv {
   WEB_DIST_DIR: string;
   EMAIL_DISPATCH_INTERVAL_MS: number;
   KSEF_DISPATCH_INTERVAL_MS: number;
+  TOGETHER_VISUAL_CLOCK?: string;
 }
 
 const harness = vi.hoisted(() => {
@@ -27,7 +28,14 @@ const harness = vi.hoisted(() => {
     app,
     deps,
     buildApp: vi.fn(() => app),
-    createDeps: vi.fn(() => deps),
+    createDeps: vi.fn((
+      envArg: EntryEnv,
+      optionsArg?: { clock: { nowIso(): string } },
+    ) => {
+      void envArg;
+      void optionsArg;
+      return deps;
+    }),
     dispatchKsefInBackground: vi.fn(),
     loadEnv: vi.fn(() => env),
     serve: vi.fn(),
@@ -56,6 +64,7 @@ beforeEach(() => {
   harness.env.NODE_ENV = 'test';
   harness.env.PORT = 47100;
   harness.env.WEB_DIST_DIR = '/web-dist';
+  delete harness.env.TOGETHER_VISUAL_CLOCK;
 });
 
 afterEach(() => {
@@ -87,6 +96,15 @@ describe('entry.node composition', () => {
       { fetch: harness.app.fetch, port: 47100, hostname: '0.0.0.0' },
       expect.any(Function),
     );
+  });
+
+  it('injects the visual clock only when explicitly configured', async () => {
+    harness.env.TOGETHER_VISUAL_CLOCK = '2026-07-01T12:00:00.000Z';
+
+    await importEntry();
+
+    const options = harness.createDeps.mock.calls[0]?.[1];
+    expect(options?.clock.nowIso()).toBe('2026-07-01T12:00:00.000Z');
   });
 
   it('propagates listener startup failures', async () => {

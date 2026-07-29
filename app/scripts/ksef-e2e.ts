@@ -19,6 +19,7 @@ import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-r
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
+import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import {
   createFiscalArtifactRepository,
   createKsefNumberRepository,
@@ -38,7 +39,7 @@ import { dispatchKsefJob, requestInvoice } from '#core/server/index.js';
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const apiBaseUrl = 'https://api-test.ksef.mf.gov.pl/v2';
-const databaseName = 'together_ksef_e2e';
+const databaseName = uniqueTestDatabaseName('together_ksef_e2e');
 const authNamespace = 'http://ksef.mf.gov.pl/auth/token/2.1';
 const signatureNamespace = 'http://www.w3.org/2000/09/xmldsig#';
 const xadesNamespace = 'http://uri.etsi.org/01903/v1.3.2#';

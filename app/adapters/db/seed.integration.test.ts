@@ -3,7 +3,9 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-const TEST_DB = 'together_seed_integration_test';
+import { uniqueTestDatabaseName } from './test-database-name.js';
+
+const TEST_DB = uniqueTestDatabaseName('together_seed_integration_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testDatabaseUrl = (() => {
@@ -96,6 +98,15 @@ describe('demo seed lifecycle', () => {
     const creators = await client.query<{ email: string }>(
       `SELECT email FROM "user" WHERE email LIKE 'creator%@together.dev' ORDER BY email`,
     );
+    const creatorTimestamp = await client.query<{ created_at: string }>(
+      `SELECT created_at::text FROM "user" WHERE email = 'creator@together.dev'`,
+    );
+    const accountTimestamp = await client.query<{ created_at: string }>(
+      `SELECT a.created_at::text
+       FROM account a
+       JOIN "user" u ON u.id = a.user_id
+       WHERE u.email = 'creator@together.dev'`,
+    );
 
     expect(tenants.rows.map(({ id }) => id)).toEqual([
       'tenant-acme',
@@ -107,6 +118,8 @@ describe('demo seed lifecycle', () => {
       'creator3@together.dev',
       'creator@together.dev',
     ]);
+    expect(creatorTimestamp.rows[0]?.created_at).toBe('2026-07-15 08:00:00');
+    expect(accountTimestamp.rows[0]?.created_at).toBe('2026-07-15 08:00:00');
   }, 180_000);
 
   it('does not add rows when the seed is repeated', async () => {

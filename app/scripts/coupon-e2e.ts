@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 
+import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
+
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
 import {
   bootServer,
@@ -17,7 +19,8 @@ import {
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
-const E2E_DB = 'together_coupon_e2e';
+const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
+const E2E_DB = uniqueTestDatabaseName('together_coupon_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
@@ -38,6 +41,16 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     throw new E2eFailure(
       `Could not prepare the coupon-e2e database "${E2E_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
+  } finally {
+    await client.end();
+  }
+};
+
+const dropDatabase = async (adminUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    await client.query(`DROP DATABASE IF EXISTS ${E2E_DB} WITH (FORCE)`);
   } finally {
     await client.end();
   }
@@ -79,7 +92,11 @@ try {
     },
   });
 
-  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  browser = await chromium.launch(
+    chromeExecutablePath
+      ? { executablePath: chromeExecutablePath, headless: true }
+      : { channel: 'chrome', headless: true },
+  );
   const context = await browser.newContext();
   await context.addInitScript(() => {
     window.localStorage.setItem('together-language', 'pl');
@@ -139,4 +156,5 @@ try {
   if (server) await killServer(server);
   rmSync(webDistDir, { recursive: true, force: true });
   if (browser) await browser.close();
+  await dropDatabase(baseDatabaseUrl);
 }

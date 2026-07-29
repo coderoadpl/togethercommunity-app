@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { z } from 'zod';
 
+import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
+
 import {
   bootServer,
   ephemeralPort,
@@ -14,7 +16,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 
-const PROBE_DB = 'together_quickstart';
+const PROBE_DB = uniqueTestDatabaseName('together_quickstart');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ??
   'postgres://together:together@localhost:48912/together';

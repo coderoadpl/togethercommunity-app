@@ -20,6 +20,7 @@ const goldenDir = join(rootDir, 'tasks/visual-goldens');
 const currentDir = join(rootDir, 'out/visual/current');
 const diffDir = join(rootDir, 'out/visual/diff');
 const argosDir = join(rootDir, 'out/visual/argos');
+const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
 const updateMode = process.argv.includes('--update');
 const argosCaptureMode = process.argv.includes('--argos-capture');
@@ -413,6 +414,7 @@ const bootServer = async (
       WEB_DIST_DIR: webDistDir,
       SIMULATED_PAYMENTS: 'true',
       AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+      TOGETHER_VISUAL_CLOCK: SEED_BASE_TIME,
     },
   });
   let logs = '';
@@ -653,7 +655,11 @@ try {
   console.log(`visual: booting server on port ${port}...`);
   server = await bootServer(port, studioBaseUrl, connectUrl);
 
-  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  browser = await chromium.launch(
+    chromeExecutablePath
+      ? { executablePath: chromeExecutablePath, headless: true }
+      : { channel: 'chrome', headless: true },
+  );
 
   console.log('visual: signing in the member and creator fixtures...');
   const memberState = await bootstrapAuthState(browser, studioBaseUrl, signInMember);

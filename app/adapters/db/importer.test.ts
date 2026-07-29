@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { memberTombstone } from '#core/domain/index.js';
 import { createAuth, type Auth } from '#adapters/auth/create-auth.js';
@@ -12,7 +12,7 @@ import {
 } from '#adapters/auth/import-credential.js';
 import { deriveLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 
-import { createDb, type Db } from './client.js';
+import type { Db } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import { createMemberErasureRepository, createOrderRepository } from './repositories.js';
 import {
@@ -36,8 +36,10 @@ import {
   tenants,
   user,
 } from './schema.js';
+import * as dbSchema from './schema.js';
+import { uniqueTestDatabaseName } from './test-database-name.js';
 
-const TEST_DB = 'together_importer_test';
+const TEST_DB = uniqueTestDatabaseName('together_importer_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const testUrl = (() => {
@@ -184,6 +186,7 @@ const buildBundle = (): TenantBundle => ({
 });
 
 let db: Db;
+let dbPool: pg.Pool;
 let auth: Auth;
 let gateway: ImportAuthGateway;
 
@@ -202,6 +205,14 @@ const targets = (bundle: TenantBundle): ImportTarget[] => [
 
 const nowIso = (): string => new Date().toISOString();
 
+afterAll(async () => {
+  await dbPool.end();
+  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
+  await admin.connect();
+  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
+  await admin.end();
+});
+
 const reportByKind = (kinds: KindReport[], kind: string): KindReport => {
   const found = kinds.find((entry) => entry.kind === kind);
   if (found === undefined) throw new Error(`No report for kind ${kind}`);
@@ -219,7 +230,8 @@ beforeAll(async () => {
   await migrate(drizzle(migrationPool), { migrationsFolder: 'drizzle' });
   await migrationPool.end();
 
-  db = createDb('node-postgres', testUrl);
+  dbPool = new pg.Pool({ connectionString: testUrl });
+  db = drizzle(dbPool, { schema: dbSchema });
   auth = createAuth(db, {
     secret: 'importer-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',

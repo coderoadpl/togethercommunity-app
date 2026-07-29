@@ -8,6 +8,7 @@ import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
+import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 
 import {
   bootServer,
@@ -21,8 +22,9 @@ import { resolveE2eDatabaseUrl } from './e2e-config.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
+const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
 
-const E2E_DB = 'together_auth_e2e';
+const E2E_DB = uniqueTestDatabaseName('together_auth_e2e');
 const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
@@ -42,6 +44,16 @@ const setupDatabase = async (adminUrl: string): Promise<void> => {
     throw new E2eFailure(
       `Could not prepare the auth-e2e database "${E2E_DB}". Is the dev Postgres up (pnpm run db:up)?\n${String(cause)}`,
     );
+  } finally {
+    await client.end();
+  }
+};
+
+const dropDatabase = async (adminUrl: string): Promise<void> => {
+  const client = new pg.Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    await client.query(`DROP DATABASE IF EXISTS ${E2E_DB} WITH (FORCE)`);
   } finally {
     await client.end();
   }
@@ -105,7 +117,11 @@ const runTotpPath = async (transport: { connectUrl: string; origin: string }): P
 const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
-    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
     const context = await browser.newContext();
     const page = await context.newPage();
     page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
@@ -190,4 +206,5 @@ try {
 } finally {
   if (server) await killServer(server);
   rmSync(webDistDir, { recursive: true, force: true });
+  await dropDatabase(baseDatabaseUrl);
 }

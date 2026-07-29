@@ -134,6 +134,7 @@ import {
   exportCouponStats,
   exportEmailSends,
   exportMembers,
+  exportMyData,
   exportOrders,
   followSpace,
   fulfillStripeWebhook,
@@ -1203,6 +1204,28 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       parsed.data,
       { orders: deps.orders },
     ));
+  });
+
+  app.get(API_PATHS.memberDataExport, async (c) => {
+    if (deps.marketing === undefined) {
+      return respond(err(internal('Marketing repositories are not configured')));
+    }
+    return respond(
+      await exportMyData(
+        { identity: c.get('identity') },
+        {
+          members: deps.members,
+          grants: deps.grants,
+          subscriptions: deps.subscriptions,
+          orders: deps.orders,
+          progress: deps.progress,
+          posts: deps.posts,
+          consents: deps.consents,
+          marketingConsents: deps.marketing.marketingConsents,
+          clock: deps.clock,
+        },
+      ),
+    );
   });
 
   app.get(API_PATHS.tenants, async (c) => {

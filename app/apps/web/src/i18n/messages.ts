@@ -921,6 +921,10 @@ export interface Messages {
     invoiceDownload: string;
     preferencesHeading: string;
     preferencesIntro: string;
+    dataExportHeading: string;
+    dataExportIntro: string;
+    dataExportButton: string;
+    dataExportPreparing: string;
   };
   resetPassword: {
     title: string;

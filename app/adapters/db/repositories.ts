@@ -719,6 +719,14 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const row = rows[0];
     return row ? parsePost(row) : null;
   },
+  listByAuthor: async (tenantId, authorUserId) =>
+    (
+      await db
+        .select()
+        .from(posts)
+        .where(and(eq(posts.tenantId, tenantId), eq(posts.authorUserId, authorUserId)))
+        .orderBy(asc(posts.createdAt), asc(posts.id))
+    ).map(parsePost),
   listThreadsForContext: async (tenantId, query) => {
     const descending = query.order === 'desc';
     const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);

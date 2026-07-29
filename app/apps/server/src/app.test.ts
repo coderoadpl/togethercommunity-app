@@ -360,6 +360,7 @@ const deps = (input: {
     posts: {
       createPost: async (_tenantId, post) => post,
       findById: async () => null,
+      listByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
       listReplies: async () => [],
       updateBody: async () => null,
@@ -558,6 +559,7 @@ const scopedApp = (
       ...base.orders,
       listPaidWithoutGrant: async () => [],
     },
+    marketing: marketingDeps(),
   });
 };
 
@@ -1295,6 +1297,18 @@ describe('new route authorization', () => {
     });
 
     expect(response.status).toBe(409);
+  });
+
+  it('allows only a member to export their own data', async () => {
+    expect(
+      (await scopedApp('member').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(200);
+    expect(
+      (await scopedApp('staff').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await scopedApp('none').request(API_PATHS.memberDataExport, { headers })).status,
+    ).toBe(403);
   });
 
   it('denies support messages from a session without member or staff scope', async () => {

@@ -73,6 +73,36 @@ describe('MemberAccountPage', () => {
     expect(await screen.findByTestId('account-reset-sent')).toHaveTextContent(pl.account.resetSent);
   });
 
+  it('downloads the authenticated member data export', async () => {
+    let requested = false;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.get('*/api/me/data-export', () => {
+        requested = true;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            filename: 'moje-dane-studio-2026-07-29.json',
+            mimeType: 'application/json; charset=utf-8',
+            content: '{}',
+          },
+        });
+      }),
+    );
+    const createObjectUrl = URL.createObjectURL;
+    const revokeObjectUrl = URL.revokeObjectURL;
+    URL.createObjectURL = () => 'blob:member-export';
+    URL.revokeObjectURL = () => undefined;
+    await renderAccount();
+
+    await userEvent.click(await screen.findByTestId('account-data-export'));
+    await waitFor(() => expect(requested).toBe(true));
+    URL.createObjectURL = createObjectUrl;
+    URL.revokeObjectURL = revokeObjectUrl;
+  });
+
   it('renders only the narrow billing-order projection', async () => {
     server.use(
       stubMe(),

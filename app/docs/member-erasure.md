@@ -54,7 +54,7 @@ Revoke as a reducing corrective action. This is deliberately a UI-only guard:
 the server mutations are unchanged, and a tombstoned identity cannot
 authenticate because its user identifier has been severed.
 
-## Consent-evidence retention policy is backlog work
+## Consent-evidence retention policy
 
 Consent evidence rows currently retain their original `userId` and plaintext
 e-mail after member erasure. This implementation behavior is pinned in
@@ -63,11 +63,14 @@ under GDPR Article 7(1) to demonstrate that consent was given, read with
 Article 17(3)(b), which permits processing necessary for compliance with a
 legal obligation.
 
-Defining and approving a retention period remains part of backlog item B1. It
-must follow the limitation period for claims applicable to the underlying
-obligation and align with the accounting retention that already governs order
-records. Until that work is complete, this section records implementation
-behavior and legal context rather than a committed retention policy.
+Retention period (owner decision 2026-07-29): consent evidence is retained
+for **six years from consent withdrawal or member erasure, counted to the end
+of the calendar year** in which that six-year period elapses. This mirrors the
+general limitation period for property claims under art. 118 of the Polish
+Civil Code, so the proof of consent exists exactly as long as a claim about
+the underlying communication could be raised. A purge mechanism enforcing
+this horizon is follow-up work; until it ships, this section is the committed
+policy and the purge is tracked in the backlog.
 
 The marketing suppression path degrades the address to an HMAC, as pinned in
 `adapters/db/repositories.test.ts`; retained plaintext is confined to the

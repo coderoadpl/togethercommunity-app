@@ -204,12 +204,13 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
             settings.dispatchEmail();
           }
           if (settings.exposeMagicLinks) {
+            const createdAt = settings.clock.nowIso();
             await db
               .insert(devMagicLinks)
-              .values({ email: normalizedEmail, url: deliveredUrl, token, createdAt: new Date().toISOString() })
+              .values({ email: normalizedEmail, url: deliveredUrl, token, createdAt })
               .onConflictDoUpdate({
                 target: devMagicLinks.email,
-                set: { url: deliveredUrl, token, createdAt: new Date().toISOString() },
+                set: { url: deliveredUrl, token, createdAt },
               });
           }
         },

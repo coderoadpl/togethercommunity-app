@@ -96,3 +96,27 @@ describe('development sink policy', () => {
     expect(create).not.toHaveBeenCalled();
   });
 });
+
+describe('visual clock policy', () => {
+  it('accepts an explicit timestamp outside production', () => {
+    const parsed = envSchema.safeParse({
+      TOGETHER_VISUAL_CLOCK: '2026-07-01T12:00:00.000Z',
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects the override in production', () => {
+    const parsed = envSchema.safeParse({
+      NODE_ENV: 'production',
+      TOGETHER_VISUAL_CLOCK: '2026-07-01T12:00:00.000Z',
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.flatten().fieldErrors.TOGETHER_VISUAL_CLOCK).toContain(
+        'TOGETHER_VISUAL_CLOCK cannot be enabled in production',
+      );
+    }
+  });
+});

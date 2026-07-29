@@ -61,6 +61,7 @@ const identity = (overrides: Partial<Identity>): Identity => ({
   tenantName: 'Tenant',
   staffRole: null,
   memberId: 'm1',
+  memberBannedAt: null,
   ...overrides,
 });
 
@@ -184,6 +185,39 @@ class FakePosts implements PostRepository {
 
   async findById(tenantId: string, id: string): Promise<Post | null> {
     return this.rows.find((post) => post.tenantId === tenantId && post.id === id) ?? null;
+  }
+
+  async findByIds(tenantId: string, ids: string[]): Promise<Post[]> {
+    return this.rows.filter((post) => post.tenantId === tenantId && ids.includes(post.id));
+  }
+
+  async countByAuthorSince(
+    tenantId: string,
+    query: { authorUserId: string; since: string },
+  ): Promise<number> {
+    return this.rows.filter(
+      (post) =>
+        post.tenantId === tenantId &&
+        post.authorUserId === query.authorUserId &&
+        post.createdAt >= query.since &&
+        post.deletedAt === null,
+    ).length;
+  }
+
+  async listRecentBodiesByAuthor(
+    tenantId: string,
+    query: { authorUserId: string; since: string; limit: number },
+  ): Promise<string[]> {
+    return this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.authorUserId === query.authorUserId &&
+          post.createdAt >= query.since &&
+          post.deletedAt === null,
+      )
+      .slice(-query.limit)
+      .map((post) => post.body);
   }
 
   async listByAuthor(tenantId: string, authorUserId: string): Promise<Post[]> {
@@ -479,9 +513,9 @@ interface Fixture {
 }
 
 const MEMBERS: Member[] = [
-  { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-  { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
-  { id: 'm5', tenantId: 't1', userId: 'u5', email: 'u5@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null },
+  { id: 'm1', tenantId: 't1', userId: 'u1', email: 'u1@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+  { id: 'm2', tenantId: 't1', userId: 'u2', email: 'u2@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
+  { id: 'm5', tenantId: 't1', userId: 'u5', email: 'u5@example.com', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null, bannedAt: null, bannedReason: null, bannedByUserId: null },
 ];
 
 const fixture = (input: {
@@ -514,6 +548,15 @@ const fixture = (input: {
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
     posts,
+    reports: {
+      open: async () => null,
+      findById: async () => null,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpenByPost: async () => new Map(),
+      countOpen: async () => 0,
+      resolve: async () => null,
+      resolveAllForPost: async () => 0,
+    },
     reactions,
     spaceSubscriptions,
     threadSubscriptions: new FakeThreadSubscriptions(),

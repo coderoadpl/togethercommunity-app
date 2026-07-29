@@ -70,6 +70,7 @@ import {
   tenantSchedulerRunsOutputSchema,
   meOutputSchema,
   memberBillingOrdersOutputSchema,
+  memberBanOutputSchema,
   memberDataExportOutputSchema,
   memberErasureRequestOutputSchema,
   memberErasureRequestMutationOutputSchema,
@@ -101,6 +102,9 @@ import {
   discussionOutputSchema,
   postOutputSchema,
   postPinOutputSchema,
+  postReportOutputSchema,
+  reportResolveOutputSchema,
+  reportsListOutputSchema,
   postReactOutputSchema,
   postsSearchOutputSchema,
   spaceDeleteOutputSchema,
@@ -170,6 +174,7 @@ import {
   type EmailSendsQueryInput,
   type SchedulerRunsQueryInput,
   type MemberRemoveInput,
+  type MemberBanInput,
   type MemberErasureRequestCreateInput,
   type MemberErasureRequestsQueryInput,
   type ModuleAttachInput,
@@ -188,6 +193,9 @@ import {
   type PostCreateInput,
   type PostDeleteInput,
   type PostPinInput,
+  type PostReportInput,
+  type ReportResolveInput,
+  type ReportsListInput,
   type PostReactInput,
   type PostUpdateInput,
   type PostsSearchInput,
@@ -872,6 +880,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   listMembers: (signal?: AbortSignal) =>
     request(options, API_ROUTES.members.method, API_ROUTES.members.path, membersListOutputSchema, undefined, signal),
+  setMemberBanned: (input: MemberBanInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberBan.method,
+      API_ROUTES.memberBan.path,
+      memberBanOutputSchema,
+      input,
+      signal,
+    ),
   exportMembers: (format: MemberExportFormat, signal?: AbortSignal) =>
     request(
       options,
@@ -1124,6 +1141,39 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.postsPin.method,
       API_ROUTES.postsPin.path,
       postPinOutputSchema,
+      input,
+      signal,
+    ),
+  reportPost: (input: PostReportInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.postsReport.method,
+      API_ROUTES.postsReport.path,
+      postReportOutputSchema,
+      input,
+      signal,
+    ),
+  listReports: (input: ReportsListInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.status !== undefined) params.set('status', input.status);
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const query = params.size === 0 ? '' : `?${params.toString()}`;
+    return request(
+      options,
+      API_ROUTES.reports.method,
+      `${API_ROUTES.reports.path}${query}`,
+      reportsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  resolveReport: (input: ReportResolveInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.reportResolve.method,
+      API_ROUTES.reportResolve.path,
+      reportResolveOutputSchema,
       input,
       signal,
     ),

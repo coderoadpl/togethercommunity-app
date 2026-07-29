@@ -626,6 +626,9 @@ describe('importer', () => {
       marketingConsents: {},
       externalCustomerIds: {},
       deletedAt: removedAt,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
     });
     const restoredRows = await db
       .select()

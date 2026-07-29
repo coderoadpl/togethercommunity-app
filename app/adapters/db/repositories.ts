@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -17,6 +17,7 @@ import {
   paidWithoutGrantRowSchema,
   productPriceSchema,
   postSchema,
+  postReportSchema,
   REACTION_EMOJIS,
   reactionSummarySchema,
   spaceSchema,
@@ -40,6 +41,7 @@ import {
   type OrderListItem,
   type ProductPrice,
   type Post,
+  type PostReport,
   type Product,
   type ReactionSummary,
   type Space,
@@ -71,6 +73,7 @@ import type {
   PaymentRefundRepository,
   ProductPriceRepository,
   PostRepository,
+  PostReportRepository,
   PostSearchRow,
   PurchaseRepository,
   ProductGrantRepository,
@@ -112,11 +115,14 @@ import {
   memberCourseProgress,
   memberErasureRequestEvents,
   memberErasureRequests,
+  memberEvents,
   members,
   memberSubscriptions,
   notifications,
   orders,
   postReactions,
+  postReportEvents,
+  postReports,
   posts,
   productGrants,
   productPrices,
@@ -211,6 +217,8 @@ const parseProgress = (progress: MemberCourseProgress): MemberCourseProgress =>
 const parseMemberGrant = (grant: MemberGrant): MemberGrant => memberGrantSchema.parse(grant);
 
 const parsePost = (post: typeof posts.$inferSelect): Post => postSchema.parse(post);
+const parsePostReport = (report: typeof postReports.$inferSelect): PostReport =>
+  postReportSchema.parse(report);
 
 /**
  * Thread pagination cursors are `createdAt|id` tuples: a bare timestamp
@@ -722,6 +730,40 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const row = rows[0];
     return row ? parsePost(row) : null;
   },
+  findByIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.tenantId, tenantId), inArray(posts.id, ids)));
+    return rows.map(parsePost);
+  },
+  countByAuthorSince: async (tenantId, query) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(and(
+        eq(posts.tenantId, tenantId),
+        eq(posts.authorUserId, query.authorUserId),
+        gte(posts.createdAt, query.since),
+        isNull(posts.deletedAt),
+      ));
+    return rows[0]?.value ?? 0;
+  },
+  listRecentBodiesByAuthor: async (tenantId, query) =>
+    (
+      await db
+        .select({ body: posts.body })
+        .from(posts)
+        .where(and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.authorUserId, query.authorUserId),
+          gte(posts.createdAt, query.since),
+          isNull(posts.deletedAt),
+        ))
+        .orderBy(desc(posts.createdAt), desc(posts.id))
+        .limit(query.limit)
+    ).map((row) => row.body),
   listByAuthor: async (tenantId, authorUserId) =>
     (
       await db
@@ -881,6 +923,117 @@ export const createPostRepository = (db: Db): PostRepository => ({
       }),
     );
   },
+});
+
+export const createPostReportRepository = (db: Db): PostReportRepository => ({
+  open: async (tenantId, report, event) =>
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(postReports)
+        .values({ ...report, tenantId })
+        .onConflictDoNothing()
+        .returning();
+      const row = rows[0];
+      if (!row) return null;
+      await tx.insert(postReportEvents).values({ ...event, tenantId });
+      return parsePostReport(row);
+    }),
+  findById: async (tenantId, id) => {
+    const rows = await db
+      .select()
+      .from(postReports)
+      .where(and(eq(postReports.tenantId, tenantId), eq(postReports.id, id)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parsePostReport(row) : null;
+  },
+  listByStatus: async (tenantId, query) => {
+    const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);
+    const rows = await db
+      .select()
+      .from(postReports)
+      .where(and(
+        eq(postReports.tenantId, tenantId),
+        eq(postReports.status, query.status),
+        ...(cursor === null
+          ? []
+          : [sql`(${postReports.createdAt}, ${postReports.id}) < (${cursor.createdAt}, ${cursor.id})`]),
+      ))
+      .orderBy(desc(postReports.createdAt), desc(postReports.id))
+      .limit(query.limit + 1);
+    const page = rows.slice(0, query.limit);
+    const last = page.at(-1);
+    return {
+      reports: page.map(parsePostReport),
+      nextCursor: rows[query.limit] && last ? threadCursor(last) : null,
+    };
+  },
+  countOpenByPost: async (tenantId, postIds) => {
+    if (postIds.length === 0) return new Map();
+    const rows = await db
+      .select({ postId: postReports.postId, value: sql<number>`count(*)::int` })
+      .from(postReports)
+      .where(and(
+        eq(postReports.tenantId, tenantId),
+        eq(postReports.status, 'open'),
+        inArray(postReports.postId, postIds),
+      ))
+      .groupBy(postReports.postId);
+    return new Map(rows.map((row) => [row.postId, row.value]));
+  },
+  countOpen: async (tenantId) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(postReports)
+      .where(and(eq(postReports.tenantId, tenantId), eq(postReports.status, 'open')));
+    return rows[0]?.value ?? 0;
+  },
+  resolve: async (tenantId, input, event) =>
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .update(postReports)
+        .set({
+          status: input.status,
+          resolvedAt: input.resolvedAt,
+          resolvedByUserId: input.resolvedByUserId,
+        })
+        .where(and(
+          eq(postReports.tenantId, tenantId),
+          eq(postReports.id, input.id),
+          eq(postReports.status, 'open'),
+        ))
+        .returning();
+      const row = rows[0];
+      if (!row) return null;
+      await tx.insert(postReportEvents).values({ ...event, tenantId });
+      return parsePostReport(row);
+    }),
+  resolveAllForPost: async (tenantId, input, event) =>
+    db.transaction(async (tx) => {
+      const open = await tx
+        .select({ id: postReports.id })
+        .from(postReports)
+        .where(and(
+          eq(postReports.tenantId, tenantId),
+          eq(postReports.postId, input.postId),
+          eq(postReports.status, 'open'),
+        ));
+      if (open.length === 0) return 0;
+      await tx
+        .update(postReports)
+        .set({
+          status: 'resolved',
+          resolvedAt: input.resolvedAt,
+          resolvedByUserId: input.resolvedByUserId,
+        })
+        .where(and(
+          eq(postReports.tenantId, tenantId),
+          eq(postReports.postId, input.postId),
+          eq(postReports.status, 'open'),
+        ));
+      await tx.insert(postReportEvents).values(open.map(({ id }) => ({ ...event(id), tenantId })));
+      return open.length;
+    }),
 });
 
 export const createThreadSubscriptionRepository = (db: Db): ThreadSubscriptionRepository => ({
@@ -1240,6 +1393,8 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         externalCustomerIds: members.externalCustomerIds,
         createdAt: members.createdAt,
         deletedAt: members.deletedAt,
+        bannedAt: members.bannedAt,
+        bannedReason: members.bannedReason,
         productIds: sql<
           string[]
         >`coalesce(array_agg(${productGrants.productId}) filter (where ${productGrants.productId} is not null), '{}')`,
@@ -1262,6 +1417,8 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         members.externalCustomerIds,
         members.createdAt,
         members.deletedAt,
+        members.bannedAt,
+        members.bannedReason,
       )
       .orderBy(asc(members.createdAt)),
   create: async (tenantId, member) => {
@@ -1278,6 +1435,9 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         externalCustomerIds: member.externalCustomerIds,
         createdAt: member.createdAt,
         deletedAt: member.deletedAt,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
       })
       .onConflictDoNothing({ target: [members.tenantId, members.userId] });
   },
@@ -1289,6 +1449,26 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
       .returning();
     return rows[0] ?? null;
   },
+  setBanned: async (tenantId, input, event) =>
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .update(members)
+        .set({
+          bannedAt: input.bannedAt,
+          bannedReason: input.reason,
+          bannedByUserId: input.bannedAt === null ? null : input.actorUserId,
+        })
+        .where(and(
+          eq(members.tenantId, tenantId),
+          eq(members.id, input.memberId),
+          isNull(members.deletedAt),
+        ))
+        .returning();
+      const row = rows[0];
+      if (!row) return null;
+      await tx.insert(memberEvents).values({ ...event, tenantId });
+      return row;
+    }),
 });
 
 export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): MemberErasurePort => ({
@@ -1357,6 +1537,13 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         .update(posts)
         .set({ authorDisplay: input.postAuthorDisplay })
         .where(and(eq(posts.tenantId, tenantId), eq(posts.authorUserId, member.userId)));
+      await tx
+        .update(postReports)
+        .set({ reporterDisplay: input.postAuthorDisplay })
+        .where(and(
+          eq(postReports.tenantId, tenantId),
+          eq(postReports.reporterUserId, member.userId),
+        ));
 
       await tx
         .update(members)
@@ -1369,6 +1556,9 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           externalCustomerIds: {},
           legacyId: null,
           deletedAt: input.deletedAt,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
         })
         .where(and(eq(members.tenantId, tenantId), eq(members.id, input.memberId)));
 

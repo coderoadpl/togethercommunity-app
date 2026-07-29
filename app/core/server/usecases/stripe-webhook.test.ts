@@ -196,6 +196,7 @@ const harness = (
         members.set(`${tenantId}:${member.id}`, member);
       },
       updateEmail: async () => null,
+    setBanned: async () => null,
     },
     products: {
       listByTenant: async () => [],

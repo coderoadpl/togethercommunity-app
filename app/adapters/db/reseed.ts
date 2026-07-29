@@ -12,11 +12,14 @@ import {
   coupons,
   entityVersions,
   memberCourseProgress,
+  memberEvents,
   members,
   memberSubscriptions,
   notifications,
   orders,
   posts,
+  postReportEvents,
+  postReports,
   processedPaymentEvents,
   productGrants,
   products,
@@ -127,6 +130,20 @@ record(
     .returning({ rootPostId: threadSubscriptions.rootPostId }),
 );
 record(
+  'post_report_events',
+  await db
+    .delete(postReportEvents)
+    .where(inArray(postReportEvents.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: postReportEvents.id }),
+);
+record(
+  'post_reports',
+  await db
+    .delete(postReports)
+    .where(inArray(postReports.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: postReports.id }),
+);
+record(
   'posts',
   await db
     .delete(posts)
@@ -167,6 +184,13 @@ record(
     .delete(tenantDomains)
     .where(inArray(tenantDomains.tenantId, DEMO_TENANT_IDS))
     .returning({ id: tenantDomains.id }),
+);
+record(
+  'member_events',
+  await db
+    .delete(memberEvents)
+    .where(inArray(memberEvents.tenantId, DEMO_TENANT_IDS))
+    .returning({ id: memberEvents.id }),
 );
 record(
   'members',

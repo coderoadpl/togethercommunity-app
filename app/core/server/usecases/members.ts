@@ -2,13 +2,17 @@ import {
   DELETED_MEMBER_DISPLAY,
   err,
   memberTombstone,
+  memberEventSchema,
   appError,
   notFound,
   ok,
+  setMemberBannedInputSchema,
+  validation,
   type AppError,
   type MemberExportFile,
   type MemberExportFormat,
   type MemberWithProductIds,
+  type Member,
   type MemberErasureRequest,
   type MemberErasureRequestStatus,
   type MemberErasureRequestWithMember,
@@ -29,6 +33,7 @@ export interface MembersDeps {
   members: MemberRepository;
   memberErasure: MemberErasurePort;
   clock: Clock;
+  ids: IdGenerator;
 }
 
 const neutralizeFormula = (value: string): string =>
@@ -166,4 +171,40 @@ export const rejectErasureRequest = async (
   return resolved === null
     ? err(appError('conflict', 'The erasure request is no longer open'))
     : ok(resolved);
+};
+
+export const setMemberBanned = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: MembersDeps,
+): Promise<Result<Member, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:ban');
+  if (!tenant.ok) return tenant;
+  const parsed = setMemberBannedInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid member ban payload', parsed.error.flatten()));
+  const member = await deps.members.findById(tenant.value, parsed.data.memberId);
+  if (member === null || member.deletedAt !== null) {
+    return err(notFound(`No member "${parsed.data.memberId}" in this tenant`));
+  }
+  if ((member.bannedAt !== null) === parsed.data.banned) return ok(member);
+  const now = deps.clock.nowIso();
+  const reason = parsed.data.banned ? parsed.data.reason?.trim() || null : null;
+  const event = memberEventSchema.parse({
+    id: deps.ids.nextId(),
+    tenantId: tenant.value,
+    memberId: member.id,
+    type: parsed.data.banned ? 'banned' : 'unbanned',
+    reason,
+    actorUserId: ctx.identity.userId,
+    occurredAt: now,
+  });
+  const updated = await deps.members.setBanned(tenant.value, {
+    memberId: member.id,
+    bannedAt: parsed.data.banned ? now : null,
+    reason,
+    actorUserId: ctx.identity.userId,
+  }, event);
+  return updated === null
+    ? err(notFound(`No member "${parsed.data.memberId}" in this tenant`))
+    : ok(updated);
 };

@@ -62,6 +62,17 @@ export interface InvoiceDeps {
   };
 }
 
+const invoiceStatusRank: Record<Invoice['status'], number> = {
+  requested: 0,
+  queued: 1,
+  submitting: 2,
+  processing: 3,
+  issued: 4,
+  delivered: 5,
+  failed: 6,
+  conflict: 7,
+};
+
 const eventFor = (
   deps: Pick<InvoiceDeps, 'ids' | 'clock'>,
   tenantId: string,
@@ -553,6 +564,7 @@ export const refreshInvoiceStatus = async (
     config: config.value,
   });
   if (!status.ok) return status;
+  if (invoiceStatusRank[status.value] < invoiceStatusRank[invoice.status]) return ok(invoice);
   const refreshed: Invoice = {
     ...invoice,
     status: status.value,

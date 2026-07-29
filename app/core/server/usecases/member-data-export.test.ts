@@ -104,6 +104,7 @@ const deps = (
     findByIdForMember: async () => null,
     listForMember: async () => [invoice],
     findCurrentByOrder: async () => null,
+    findLatestRequestedEvent: async () => null,
     create: async () => false,
     claimRetry: async () => false,
     update: async () => null,

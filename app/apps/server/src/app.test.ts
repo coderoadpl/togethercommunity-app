@@ -186,6 +186,7 @@ const deps = (input: {
     invoices: {
       findById: async () => null,
       findCurrentByOrder: async () => null,
+      findLatestRequestedEvent: async () => null,
       create: async () => true,
       claimRetry: async () => true,
       update: async () => null,

@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-import { invoiceSchema } from '#core/domain/index.js';
+import { invoiceEventSchema, invoiceSchema } from '#core/domain/index.js';
 import type { InvoiceRepository, KsefSubmissionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -52,6 +52,21 @@ export const createInvoiceRepository = (
         .limit(1)
     )[0];
     return row === undefined ? null : invoiceSchema.parse(row);
+  },
+  findLatestRequestedEvent: async (tenantId, invoiceId) => {
+    const row = (
+      await db
+        .select()
+        .from(invoiceEvents)
+        .where(and(
+          eq(invoiceEvents.tenantId, tenantId),
+          eq(invoiceEvents.invoiceId, invoiceId),
+          eq(invoiceEvents.type, 'requested'),
+        ))
+        .orderBy(desc(invoiceEvents.occurredAt))
+        .limit(1)
+    )[0];
+    return row === undefined ? null : invoiceEventSchema.parse(row);
   },
   create: async (tenantId, invoice, event) =>
     db.transaction(async (tx) => {

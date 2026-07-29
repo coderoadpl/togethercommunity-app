@@ -727,6 +727,14 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const row = rows[0];
     return row ? parsePost(row) : null;
   },
+  findByIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    const rows = await db
+      .select()
+      .from(posts)
+      .where(and(eq(posts.tenantId, tenantId), inArray(posts.id, ids)));
+    return rows.map(parsePost);
+  },
   countByAuthorSince: async (tenantId, query) => {
     const rows = await db
       .select({ value: sql<number>`count(*)::int` })

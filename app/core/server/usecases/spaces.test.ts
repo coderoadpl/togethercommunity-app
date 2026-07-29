@@ -187,6 +187,10 @@ class FakePosts implements PostRepository {
     return this.rows.find((post) => post.tenantId === tenantId && post.id === id) ?? null;
   }
 
+  async findByIds(tenantId: string, ids: string[]): Promise<Post[]> {
+    return this.rows.filter((post) => post.tenantId === tenantId && ids.includes(post.id));
+  }
+
   async countByAuthorSince(
     tenantId: string,
     query: { authorUserId: string; since: string },

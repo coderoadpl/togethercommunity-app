@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   postReportSchema,
@@ -207,6 +207,8 @@ const makeDeps = (
       createPost: async (_tenantId, value) => value,
       findById: async (tenantId: string, id: string) =>
         posts.find((row) => row.tenantId === tenantId && row.id === id) ?? null,
+      findByIds: async (tenantId: string, ids: string[]) =>
+        posts.filter((row) => row.tenantId === tenantId && ids.includes(row.id)),
       countByAuthorSince: async () => 0,
       listRecentBodiesByAuthor: async () => [],
       listThreadsForContext: async () => ({ threads: [], nextCursor: null }),
@@ -389,6 +391,46 @@ describe('moderation use-cases', () => {
         items: [{ openReportsForPost: 0 }],
       },
     });
+  });
+
+  it('batch-loads posts and spaces for the moderation queue', async () => {
+    const reports = new FakeReports();
+    reports.rows.push(
+      report(),
+      report({ id: 'report-2', postId: 'post-2', reporterUserId: 'member-user-2' }),
+    );
+    const deps = makeDeps(
+      reports,
+      [
+        post(),
+        post({ id: 'post-2', rootPostId: 'post-2', contextId: 'space-2' }),
+      ],
+      [
+        space(),
+        space({ id: 'space-2', name: 'Support' }),
+      ],
+    );
+    const findPosts = vi.spyOn(deps.posts, 'findByIds');
+    const findPost = vi.spyOn(deps.posts, 'findById');
+    const listSpaces = vi.spyOn(deps.spaces, 'list');
+    const findSpace = vi.spyOn(deps.spaces, 'findById');
+
+    await expect(
+      listReports(ctx({ staffRole: 'admin', memberId: null }), {}, deps),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        items: [
+          { spaceName: 'General' },
+          { spaceName: 'Support' },
+        ],
+      },
+    });
+    expect(findPosts).toHaveBeenCalledTimes(1);
+    expect(findPosts).toHaveBeenCalledWith('tenant-1', ['post-1', 'post-2']);
+    expect(findPost).not.toHaveBeenCalled();
+    expect(listSpaces).toHaveBeenCalledTimes(1);
+    expect(findSpace).not.toHaveBeenCalled();
   });
 
   it('dismisses a report without deleting the post', async () => {

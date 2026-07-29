@@ -96,29 +96,32 @@ export const listReports = async (
     limit: parsed.data.limit,
     ...(parsed.data.cursor === undefined ? {} : { cursor: parsed.data.cursor }),
   });
-  const posts = await Promise.all(
-    listed.reports.map((report) => deps.posts.findById(actor.value.tenantId, report.postId)),
-  );
-  const counts = await deps.reports.countOpenByPost(
-    actor.value.tenantId,
-    listed.reports.map((report) => report.postId),
-  );
-  const items = await Promise.all(listed.reports.flatMap((report, index) => {
-    const post = posts[index];
-    if (post === null || post === undefined) return [];
-    return [async () => ({
+  const postIds = [...new Set(listed.reports.map((report) => report.postId))];
+  const [posts, spaces, counts, openCount] = await Promise.all([
+    deps.posts.findByIds(actor.value.tenantId, postIds),
+    deps.spaces.list(actor.value.tenantId),
+    deps.reports.countOpenByPost(actor.value.tenantId, postIds),
+    deps.reports.countOpen(actor.value.tenantId),
+  ]);
+  const postsById = new Map(posts.map((post) => [post.id, post]));
+  const spacesById = new Map(spaces.map((space) => [space.id, space]));
+  const items = [];
+  for (const report of listed.reports) {
+    const post = postsById.get(report.postId);
+    if (post === undefined) continue;
+    items.push({
       report,
       post: toPublicPost(renderPost(post), actor.value.userId),
       spaceName: post.contextKind === 'space'
-        ? (await deps.spaces.findById(actor.value.tenantId, post.contextId))?.name ?? null
+        ? spacesById.get(post.contextId)?.name ?? null
         : null,
       openReportsForPost: counts.get(post.id) ?? 0,
-    })];
-  }).map((hydrate) => hydrate()));
+    });
+  }
   return ok({
     items,
     nextCursor: listed.nextCursor,
-    openCount: await deps.reports.countOpen(actor.value.tenantId),
+    openCount,
   });
 };
 

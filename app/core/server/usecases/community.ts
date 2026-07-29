@@ -387,7 +387,7 @@ export const createPost = async (
   const created = await deps.posts.createPost(actor.value.tenantId, post);
   const signals = heuristicSignalsFor({ body: created.body, recentBodies });
   if (signals.length > 0) {
-    await openHeuristicReport(actor.value.tenantId, created, signals, deps);
+    await openHeuristicReport(actor.value.tenantId, created, signals, deps).catch(() => undefined);
   }
   await deps.threadSubscriptions.upsert(actor.value.tenantId, {
     userId: actor.value.userId,

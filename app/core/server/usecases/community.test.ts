@@ -690,6 +690,28 @@ describe('community use-cases', () => {
     expect(d.reports.rows.filter((report) => report.postId === linked.value.id)).toHaveLength(1);
   });
 
+  it('keeps a created post successful when heuristic report persistence fails', async () => {
+    const d = deps([allAccess], [grant('m1', 'all')]);
+    d.reports.open = async () => {
+      throw new Error('report repository unavailable');
+    };
+
+    const created = await createPost(
+      ctx(),
+      {
+        contextKind: 'lesson',
+        contextId: 'l1',
+        body: 'https://one.test https://two.test https://three.test',
+      },
+      d,
+    );
+
+    expect(created).toMatchObject({ ok: true });
+    expect(d.posts).toBeInstanceOf(FakePosts);
+    if (!(d.posts instanceof FakePosts)) return;
+    expect(d.posts.rows).toHaveLength(1);
+  });
+
   it('projects posts to a public shape: isOwn per viewer, never the raw author id', async () => {
     const d = deps([allAccess], [grant('m1', 'all'), grant('m2', 'all')]);
     const mine = await createPost(

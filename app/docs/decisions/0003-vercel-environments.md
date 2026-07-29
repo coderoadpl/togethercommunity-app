@@ -31,8 +31,10 @@ production deployment.
 The Vercel project root is `app`. `api/index.ts` delegates to
 `apps/server/src/entry.vercel.ts`, while local and smoke processes keep using
 `entry.node.ts`. `NODEJS_HELPERS=0` is mandatory because the Hono node-style
-handler owns request-body consumption. The platform entry maps
-`VERCEL_GIT_COMMIT_SHA` to the neutral `APP_COMMIT_SHA` used by health
+handler owns request-body consumption. Vercel provisions this as a project-level
+environment setting through the dashboard or CLI; its per-function
+`vercel.json` schema cannot express environment variables. The platform entry
+maps `VERCEL_GIT_COMMIT_SHA` to the neutral `APP_COMMIT_SHA` used by health
 attestation.
 
 The build runs append-only migrations against the environment database before
@@ -65,6 +67,8 @@ pnpm run smoke:remote
 
 The gate checks the health/database/SHA attestation, the public offer API using
 the tenant header, and the public web page. It does not mutate deployed data.
+Before deployment, confirm `NODEJS_HELPERS=0` is set for every target Vercel
+environment.
 The first platform login, project linkage, environment provisioning, and first
 deployment remain owner actions.
 

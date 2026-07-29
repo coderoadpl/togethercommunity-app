@@ -14,6 +14,9 @@ import {
   looseEnvelopeSchema,
   meOutputSchema,
   memberDataExportOutputSchema,
+  memberErasureRequestMutationOutputSchema,
+  memberErasureRequestsOutputSchema,
+  memberRemoveOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
   ordersReconciliationOutputSchema,
@@ -417,6 +420,70 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     'member export forbidden',
     EXIT_CODE_BY_ERROR_CODE.forbidden,
     'forbidden',
+  );
+  const erasureRequest = expectOk(
+    await cli(
+      [
+        '--tenant',
+        'alfa',
+        'my',
+        'erasure-request',
+        'create',
+        '--confirm-email',
+        exportedMemberData.profile.email,
+      ],
+      buyerHome,
+    ),
+    'member erasure request',
+    memberErasureRequestMutationOutputSchema,
+  );
+  const openErasureRequests = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'member', 'erasure-requests', '--status', 'open'],
+      alfaHome,
+    ),
+    'staff open erasure requests',
+    memberErasureRequestsOutputSchema,
+  );
+  assert(
+    openErasureRequests.requests.some(
+      (request) => request.id === erasureRequest.request.id,
+    ),
+    'staff should see the member erasure request',
+  );
+  const removal = expectOk(
+    await cli(
+      [
+        '--tenant',
+        'alfa',
+        'member',
+        'remove',
+        exportedMemberData.profile.memberId,
+      ],
+      alfaHome,
+    ),
+    'staff executes member erasure',
+    memberRemoveOutputSchema,
+  );
+  assert(
+    removal.erasureRequestId === erasureRequest.request.id,
+    'member removal should report the completed request',
+  );
+  const completedErasureRequests = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'member', 'erasure-requests', '--status', 'completed'],
+      alfaHome,
+    ),
+    'staff completed erasure requests',
+    memberErasureRequestsOutputSchema,
+  );
+  assert(
+    completedErasureRequests.requests.some(
+      (request) =>
+        request.id === erasureRequest.request.id &&
+        request.status === 'completed',
+    ),
+    'member erasure request should be completed',
   );
   steps += 1;
 

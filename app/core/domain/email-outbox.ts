@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { emailMessageSchema, magicLink, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, magicLink, memberErasureRequestEmail, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({ logoUrl: z.string().url().nullable(), accentColor: z.string().nullable() });
 
@@ -15,6 +15,7 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('subscription-payment-failed'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), billingPortalUrl: z.string().url().nullable(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('subscription-ended'), language: z.string(), tenantName: z.string(), productTitle: z.string(), accessEndsAt: z.string().datetime(), offerUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('support-message'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), memberDisplay: z.string(), subject: z.string(), body: z.string(), branding: brandingSchema.optional() }),
+  z.object({ kind: z.literal('member-erasure-request'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), requestedAt: z.string().datetime(), dueAt: z.string().datetime(), panelUrl: z.string().url() }),
   z.object({ kind: z.literal('marketing-consent-confirmation'), wording: z.string().min(1), confirmationUrl: z.string().url() }),
 ]);
 
@@ -61,6 +62,8 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
                         body: value.body,
                         ...(value.branding === undefined ? {} : { branding: value.branding }),
                       })
-                    : marketingConsentConfirmation(value);
+                    : value.kind === 'member-erasure-request'
+                      ? memberErasureRequestEmail(value.language, value)
+                      : marketingConsentConfirmation(value);
   return { success: true as const, data: emailMessageSchema.parse(message) };
 };

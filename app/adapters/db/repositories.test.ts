@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
@@ -50,6 +50,7 @@ import {
 } from './coupon-repositories.js';
 import { createInvoiceRepository } from './invoice-repositories.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
+import { createMemberErasureRequestRepository } from './member-erasure-requests.js';
 import {
   consents,
   couponRedemptions,
@@ -62,6 +63,7 @@ import {
   erasedMemberImports,
   memberCourseProgress,
   members,
+  memberErasureRequestEvents,
   orders,
   posts,
   productPriceHistory,
@@ -1075,7 +1077,11 @@ describe('member erasure repository', () => {
 
   it('erases PII, revokes access, and deletes the orphaned auth user in one pass', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
-    expect(result).toEqual({ alreadyDeleted: false, authUserErased: true });
+    expect(result).toEqual({
+      alreadyDeleted: false,
+      authUserErased: true,
+      erasureRequestId: null,
+    });
 
     const rows = await db.select().from(members).where(eq(members.id, 'mem-rodo'));
     expect(rows).toHaveLength(1);
@@ -1215,7 +1221,11 @@ describe('member erasure repository', () => {
 
   it('reports an already pseudonymized member without touching it again', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo'));
-    expect(result).toEqual({ alreadyDeleted: true, authUserErased: false });
+    expect(result).toEqual({
+      alreadyDeleted: true,
+      authUserErased: false,
+      erasureRequestId: null,
+    });
   });
 
   it('returns null for a member of another tenant', async () => {
@@ -1225,7 +1235,11 @@ describe('member erasure repository', () => {
 
   it('keeps the auth user when other tenant memberships still reference it', async () => {
     const result = await createMemberErasureRepository(db, emailHmac).pseudonymize(RODO, pseudonymizationInput('mem-rodo-shared'));
-    expect(result).toEqual({ alreadyDeleted: false, authUserErased: false });
+    expect(result).toEqual({
+      alreadyDeleted: false,
+      authUserErased: false,
+      erasureRequestId: null,
+    });
 
     const authRows = await db.select().from(user).where(eq(user.id, 'user-rodo-shared'));
     expect(authRows).toHaveLength(1);
@@ -1233,6 +1247,70 @@ describe('member erasure repository', () => {
       email: 'anna.shared@together.dev',
       deletedAt: null,
     });
+  });
+
+  it('writes request events atomically and completes an open request during erasure', async () => {
+    await db.insert(user).values({
+      id: 'user-erasure-request',
+      name: 'Request Member',
+      email: 'request.member@together.dev',
+    });
+    await createMemberRepository(db).create(
+      RODO,
+      member({
+        id: 'mem-erasure-request',
+        tenantId: RODO,
+        userId: 'user-erasure-request',
+        email: 'request.member@together.dev',
+      }),
+    );
+    const repository = createMemberErasureRequestRepository(db);
+    const request = {
+      id: 'erasure-request-1',
+      tenantId: RODO,
+      memberId: 'mem-erasure-request',
+      status: 'open' as const,
+      reason: null,
+      requestedAt: NOW,
+      dueAt: '1998-08-13T10:00:00.000Z',
+      resolvedAt: null,
+      resolvedByUserId: null,
+      resolutionNote: null,
+    };
+    const event = {
+      id: 'erasure-event-1',
+      tenantId: RODO,
+      requestId: request.id,
+      type: 'requested' as const,
+      actorUserId: 'user-erasure-request',
+      meta: null,
+      occurredAt: NOW,
+      createdAt: NOW,
+    };
+    expect(await repository.create(RODO, request, event)).toBe('created');
+    expect(
+      await repository.create(
+        RODO,
+        { ...request, id: 'erasure-request-2' },
+        { ...event, id: 'erasure-event-2', requestId: 'erasure-request-2' },
+      ),
+    ).toBe('already-open');
+
+    const erased = await createMemberErasureRepository(db, emailHmac).pseudonymize(
+      RODO,
+      pseudonymizationInput('mem-erasure-request'),
+    );
+    expect(erased).toMatchObject({ erasureRequestId: request.id });
+    expect(await repository.findLatestForMember(RODO, request.memberId)).toMatchObject({
+      id: request.id,
+      status: 'completed',
+    });
+    const events = await db
+      .select({ type: memberErasureRequestEvents.type })
+      .from(memberErasureRequestEvents)
+      .where(eq(memberErasureRequestEvents.requestId, request.id))
+      .orderBy(asc(memberErasureRequestEvents.occurredAt));
+    expect(events).toEqual([{ type: 'requested' }, { type: 'completed' }]);
   });
 
   it('blocks a hard member delete while order history exists', async () => {

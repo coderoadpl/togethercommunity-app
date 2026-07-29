@@ -740,7 +740,11 @@ describe('marketing e-mail use-case integration', () => {
       pseudonymize: async (tenantId: string, input: { memberId: string; tombstoneEmail: string }) => {
         await deps.sends.pseudonymizeMember(tenantId, { memberId: input.memberId, email: member.email, tombstoneEmail: input.tombstoneEmail });
         await deps.suppressions.record(tenantId, { id: ids.nextId(), tenantId, email: null, emailHmac: deps.hmac.compute(tenantId, member.email), reason: 'erasure', sourceRef: input.memberId, meta: null, createdAt: NOW, liftedAt: null, liftedBy: null });
-        return { alreadyDeleted: false, authUserErased: true };
+        return {
+          alreadyDeleted: false,
+          authUserErased: true,
+          erasureRequestId: null,
+        };
       },
     };
     const member = { id: 'member-1', tenantId: 'tenant-1', userId: 'user-1', email: 'member@example.test', displayName: null, tags: [], marketingConsents: {}, externalCustomerIds: {}, createdAt: NOW, deletedAt: null };

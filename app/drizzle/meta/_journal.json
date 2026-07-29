@@ -407,6 +407,13 @@
       "when": 1785278760872,
       "tag": "0057_webhook_claim_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785279549869,
+      "tag": "0058_member_erasure_requests",
+      "breakpoints": true
     }
   ]
 }

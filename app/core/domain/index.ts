@@ -32,3 +32,4 @@ export * from './fa3.js';
 export * from './ksef.js';
 export * from './versioning.js';
 export * from './member-data-export.js';
+export * from './member-erasure-request.js';

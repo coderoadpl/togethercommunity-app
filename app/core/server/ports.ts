@@ -19,6 +19,10 @@ import type {
   MemberGrant,
   MemberCourseProgress,
   MemberSubscription,
+  MemberErasureRequest,
+  MemberErasureRequestEvent,
+  MemberErasureRequestStatus,
+  MemberErasureRequestWithMember,
   MemberWithProductIds,
   Membership,
   Order,
@@ -329,6 +333,7 @@ export interface MemberPseudonymization {
 export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
+  erasureRequestId: string | null;
 }
 
 /**
@@ -341,6 +346,39 @@ export interface MemberErasurePort {
     tenantId: string,
     input: MemberPseudonymization,
   ): Promise<MemberPseudonymizationResult | null>;
+}
+
+export interface MemberErasureRequestRepository {
+  /** Projection row and requested event commit together; the partial unique index rejects a second open request. */
+  create(
+    tenantId: string,
+    request: MemberErasureRequest,
+    event: MemberErasureRequestEvent,
+  ): Promise<'created' | 'already-open'>;
+  findOpenForMember(
+    tenantId: string,
+    memberId: string,
+  ): Promise<MemberErasureRequest | null>;
+  findLatestForMember(
+    tenantId: string,
+    memberId: string,
+  ): Promise<MemberErasureRequest | null>;
+  list(
+    tenantId: string,
+    query: { status?: MemberErasureRequestStatus },
+  ): Promise<MemberErasureRequestWithMember[]>;
+  /** Terminal transition and its event commit together; returns null when the request is no longer open. */
+  resolve(
+    tenantId: string,
+    input: {
+      id: string;
+      status: Exclude<MemberErasureRequestStatus, 'open'>;
+      resolvedAt: string;
+      resolvedByUserId: string | null;
+      resolutionNote: string | null;
+    },
+    event: MemberErasureRequestEvent,
+  ): Promise<MemberErasureRequest | null>;
 }
 
 export interface ProductGrantRepository {

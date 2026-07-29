@@ -186,6 +186,16 @@ const memberExportOptionsSchema = z.object({
 const myDataExportOptionsSchema = z.object({
   out: z.string().min(1).optional(),
 });
+const erasureRequestCreateOptionsSchema = z.object({
+  confirmEmail: z.string().email(),
+  reason: z.string().trim().min(1).optional(),
+});
+const erasureRequestsListOptionsSchema = z.object({
+  status: z.enum(['open', 'cancelled', 'completed', 'rejected']).optional(),
+});
+const erasureRejectOptionsSchema = z.object({
+  note: z.string().trim().min(1),
+});
 const noOptionsSchema = z.object({});
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
@@ -2219,6 +2229,40 @@ member
   );
 
 member
+  .command('erasure-requests')
+  .option('--status <status>', 'open, cancelled, completed, or rejected')
+  .action(
+    withInput(z.tuple([erasureRequestsListOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.listErasureRequests(options), ctx.json, (data) =>
+        data.requests.length === 0
+          ? 'no erasure requests'
+          : data.requests
+              .map(
+                (request) =>
+                  `${request.id}\t${request.member.email}\t${request.status}\t${request.dueAt}`,
+              )
+              .join('\n'),
+      );
+    }),
+  );
+
+member
+  .command('erasure-reject <requestId>')
+  .requiredOption('--note <text>', 'rejection note')
+  .action(
+    withInput(
+      z.tuple([z.string().min(1), erasureRejectOptionsSchema]),
+      async (ctx, [requestId, options]) => {
+        emit(
+          await ctx.api.rejectErasureRequest(requestId, options.note),
+          ctx.json,
+          (data) => `rejected ${data.request.id}`,
+        );
+      },
+    ),
+  );
+
+member
   .command('learning <memberId>')
   .description('Learning summary: last activity plus per-course progress and latest completed lesson')
   .action(
@@ -2557,6 +2601,39 @@ my.command('data-export')
       );
     }),
   );
+
+const myErasureRequest = my
+  .command('erasure-request')
+  .description('View or manage your erasure request')
+  .action(
+    withCtx(async (ctx) => {
+      emit(await ctx.api.getMyErasureRequest(), ctx.json, (data) =>
+        data.request === null
+          ? 'no erasure request'
+          : `${data.request.status}\tdue ${data.request.dueAt}`,
+      );
+    }),
+  );
+
+myErasureRequest
+  .command('create')
+  .requiredOption('--confirm-email <email>', 'retype your account e-mail')
+  .option('--reason <text>', 'optional reason')
+  .action(
+    withInput(z.tuple([erasureRequestCreateOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.requestMyErasure(options), ctx.json, (data) =>
+        `created ${data.request.id}`,
+      );
+    }),
+  );
+
+myErasureRequest.command('cancel').action(
+  withCtx(async (ctx) => {
+    emit(await ctx.api.cancelMyErasureRequest(), ctx.json, (data) =>
+      `cancelled ${data.request.id}`,
+    );
+  }),
+);
 
 const wantsJson = process.argv.includes('--json');
 try {

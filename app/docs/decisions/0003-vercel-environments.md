@@ -20,11 +20,12 @@ the migration path to another driver are defined in
 |---|---|---|---|
 | Development | local worktree | local Node entry | local Docker Postgres |
 | Preview | pull request | automatic Preview | disposable Neon preview branch |
-| Staging | `poc-together` | stable Preview alias | Neon staging branch |
+| Staging | `main` | stable Preview alias | Neon staging branch |
 | Production | `production` | Vercel Production Branch | Neon production branch |
 
-`poc-together` is trunk and staging. A production release is an owner-approved
-pull request from `poc-together` to `production`. Vercel Production Branch
+`main` is trunk and staging (graduated from the `poc-together` PoC branch on
+2026-07-29). A production release is an owner-approved pull request from
+`main` to `production`. Vercel Production Branch
 Tracking must point to `production`; merges to trunk must never create a
 production deployment.
 

@@ -303,7 +303,7 @@ Architecture is enforced by configuration and executable probes:
 
 CI runs `check`, `smoke`, the quickstart probe, and the auth, coupon, PoC,
 subscription, and marketing e2e suites on pushes and pull requests to
-`poc-together`. KSeF
+`main`. KSeF
 e2e is excluded because it targets an external shared test network. Visual
 comparison remains local until platform-scoped CI baselines and a platform
 guard land. Third-party GitHub Actions are pinned to full commit SHAs.

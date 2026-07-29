@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createDb } from '#adapters/db/client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
+import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -131,6 +132,7 @@ import type {
   ConsentConfirmationTokenRepository,
   ConsentDefinitionRepository,
   EnrollmentTransactionPort,
+  PaymentTransactionPort,
   DevMagicLinkReader,
   DevSinkPurge,
   FileUrlSigner,
@@ -277,6 +279,7 @@ export interface AppDeps {
   email: EmailPort;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
+  paymentTransaction: PaymentTransactionPort;
   dispatchEmails(trigger: 'cron' | 'dev' | 'manual'): Promise<Result<DispatchEmailBatchResult, AppError>>;
   dispatchEmail(): void;
   emailDispatchSecret: string;
@@ -689,6 +692,7 @@ export const createDeps = (env: Env): AppDeps => {
     email,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
+    paymentTransaction: createPaymentTransactionPort(db),
     dispatchEmails,
     dispatchEmail,
     emailDispatchSecret: env.EMAIL_DISPATCH_SECRET,

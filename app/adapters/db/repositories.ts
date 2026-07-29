@@ -2074,13 +2074,54 @@ export const createTenantSecretRepository = (db: Db): TenantSecretRepository => 
 });
 
 export const createProcessedPaymentEventRepository = (db: Db): ProcessedPaymentEventRepository => ({
-  claim: async (tenantId, event) => {
-    const rows = await db
-      .insert(processedPaymentEvents)
-      .values({ ...event, tenantId })
-      .onConflictDoNothing()
-      .returning({ id: processedPaymentEvents.id });
-    return rows.length > 0;
+  claim: async (tenantId, event, lease) => {
+    try {
+      const rows = await db
+        .insert(processedPaymentEvents)
+        .values({
+          ...event,
+          tenantId,
+          status: 'processing',
+          workerId: lease.workerId,
+          claimedAt: lease.now,
+          leaseExpiresAt: lease.leaseExpiresAt,
+        })
+        .onConflictDoUpdate({
+          target: processedPaymentEvents.id,
+          set: {
+            status: 'processing',
+            workerId: lease.workerId,
+            claimedAt: lease.now,
+            leaseExpiresAt: lease.leaseExpiresAt,
+          },
+          setWhere: sql`${processedPaymentEvents.status} = 'processing'
+            and ${processedPaymentEvents.leaseExpiresAt} <= ${lease.now}`,
+        })
+        .returning({ id: processedPaymentEvents.id });
+      return rows.length > 0 ? 'claimed' : 'duplicate';
+    } catch (cause) {
+      const record = (value: unknown): Record<string, unknown> | null =>
+        typeof value === 'object' && value !== null && !Array.isArray(value)
+          ? Object.fromEntries(Object.entries(value))
+          : null;
+      const uniqueViolation =
+        record(cause)?.['code'] === '23505' ||
+        record(record(cause)?.['cause'])?.['code'] === '23505';
+      if (uniqueViolation) return 'duplicate';
+      throw cause;
+    }
+  },
+  finalize: async (tenantId, eventId, processedAt) => {
+    await db
+      .update(processedPaymentEvents)
+      .set({
+        status: 'processed',
+        processedAt,
+        workerId: null,
+        claimedAt: null,
+        leaseExpiresAt: null,
+      })
+      .where(and(eq(processedPaymentEvents.tenantId, tenantId), eq(processedPaymentEvents.id, eventId)));
   },
   release: async (tenantId, eventId) => {
     await db

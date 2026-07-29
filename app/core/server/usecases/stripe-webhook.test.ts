@@ -308,18 +308,36 @@ const harness = (options: { prices?: ProductPrice[] } = {}) => {
     },
     processedPaymentEvents: {
       claim: async (tenantId, event) => {
-        if (events.has(event.id)) return false;
+        if (events.has(event.id)) return 'duplicate';
         for (const existing of events.values()) {
           if (existing.tenantId === tenantId && existing.objectId === event.objectId && existing.type === event.type) {
-            return false;
+            return 'duplicate';
           }
         }
         events.set(event.id, { ...event, tenantId });
-        return true;
+        return 'claimed';
       },
+      finalize: async () => undefined,
       release: async (_tenantId, eventId) => {
         events.delete(eventId);
       },
+    },
+    paymentTransaction: {
+      run: async (operation) =>
+        operation({
+          members: deps.members,
+          grants: deps.grants,
+          orders: deps.orders,
+          subscriptions: deps.subscriptions,
+          paymentRefunds: deps.paymentRefunds,
+          couponRedemptions: deps.couponRedemptions ?? {
+            counts: async () => ({ total: 0, member: 0 }),
+            createOrderAndClaim: async () => false,
+          },
+          emailOutbox: deps.emailOutbox,
+          processedPaymentEvents: deps.processedPaymentEvents,
+          enrollmentTransaction: deps.enrollmentTransaction,
+        }),
     },
     enrollmentTransaction: {
       run: async (operation) => operation({

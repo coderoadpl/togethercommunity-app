@@ -502,6 +502,11 @@ const deps = (input: {
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '2026-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
+    deferredEffects: {
+      schedule: (effect) => {
+        queueMicrotask(() => { void effect(); });
+      },
+    },
     baseDomain: 'localhost',
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
@@ -2110,6 +2115,9 @@ describe('checkout consent ordering', () => {
     let orderResult: Order | null = order;
     const orderLookups: Record<string, string>[] = [];
     const logger = { error: vi.fn() };
+    const deferredEffects: Array<() => Promise<void>> = [];
+    let invoiceRequests = 0;
+    let deferredLookupFails = false;
     const app = buildApp({
       ...base,
       marketing,
@@ -2131,8 +2139,36 @@ describe('checkout consent ordering', () => {
                 supportUrl: null,
                 termsUrl: 'https://acme.example/terms-v2',
                 privacyUrl: 'https://acme.example/privacy-v3',
+                autoIssueInvoices: true,
+                autoIssueInvoiceScope: 'all',
+                invoiceVatRatePercent: 23,
+                invoicingProvider: 'ifirma',
+                invoiceSellerName: 'Acme',
+                invoiceSellerAddress: 'Warsaw',
               }
             : null,
+      },
+      orderDetails: {
+        findById: async () => ({
+          ...order,
+          billing: null,
+          memberEmail: 'webhook-buyer@together.dev',
+          memberName: 'Webhook Buyer',
+          productTitle: attached.title,
+          couponCode: null,
+        }),
+      },
+      invoices: {
+        ...base.invoices,
+        create: async () => {
+          invoiceRequests += 1;
+          return true;
+        },
+      },
+      deferredEffects: {
+        schedule: (effect) => {
+          deferredEffects.push(effect);
+        },
       },
       consents: {
         ...base.consents,
@@ -2171,6 +2207,7 @@ describe('checkout consent ordering', () => {
       paymentRefunds: {
         ...base.paymentRefunds,
         findOrderByProviderObjectIds: async (_tenantId, providerObjectIds) => {
+          if (deferredLookupFails) throw new Error('invoice lookup failed');
           orderLookups.push(providerObjectIds);
           return orderResult;
         },
@@ -2202,8 +2239,15 @@ describe('checkout consent ordering', () => {
       });
 
     expect((await deliver()).status).toBe(200);
-    expect((await deliver()).status).toBe(200);
+    expect(invoiceRequests).toBe(0);
     expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    orderLookups.length = 0;
+    expect(deferredEffects).toHaveLength(1);
+    await deferredEffects.shift()?.();
+    expect(invoiceRequests).toBe(1);
+    expect(orderLookups).toEqual([{ checkoutSession: 'cs_webhook' }]);
+    orderLookups.length = 0;
+    expect((await deliver()).status).toBe(200);
     expect(recorded).toEqual([
       expect.objectContaining({
         email: 'webhook-buyer@together.dev',
@@ -2275,6 +2319,13 @@ describe('checkout consent ordering', () => {
     expect(
       await marketing.marketingConsents.listByEmail(acme.id, 'webhook-buyer@together.dev'),
     ).toEqual(grantedBefore);
+    deferredLookupFails = true;
+    const failingEffect = deferredEffects.at(-1);
+    if (failingEffect === undefined) throw new Error('Deferred invoice effect is missing');
+    await expect(failingEffect()).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith(
+      '[invoice-auto] tenant=t-acme unexpected=Error: invoice lookup failed',
+    );
   });
 
   it('captures checkout consent evidence, suppresses repeated DOI mail, and logs non-blocking failures', async () => {

@@ -66,7 +66,7 @@ Owner setup checklist:
    integration.
 3. Copy the project token into the repository Actions secret named
    `ARGOS_TOKEN`.
-4. In the Argos project settings, set the reference branch to `poc-together`.
+4. In the Argos project settings, set the reference branch to `main` (the repository default).
 5. Re-run the `ci` workflow or push a commit to produce the first build.
 6. In Argos, open the project, select the build from the Builds list, review its
    screenshot changes, and open the review control in the build header to choose

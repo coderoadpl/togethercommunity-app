@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -727,6 +727,32 @@ export const createPostRepository = (db: Db): PostRepository => ({
     const row = rows[0];
     return row ? parsePost(row) : null;
   },
+  countByAuthorSince: async (tenantId, query) => {
+    const rows = await db
+      .select({ value: sql<number>`count(*)::int` })
+      .from(posts)
+      .where(and(
+        eq(posts.tenantId, tenantId),
+        eq(posts.authorUserId, query.authorUserId),
+        gte(posts.createdAt, query.since),
+        isNull(posts.deletedAt),
+      ));
+    return rows[0]?.value ?? 0;
+  },
+  listRecentBodiesByAuthor: async (tenantId, query) =>
+    (
+      await db
+        .select({ body: posts.body })
+        .from(posts)
+        .where(and(
+          eq(posts.tenantId, tenantId),
+          eq(posts.authorUserId, query.authorUserId),
+          gte(posts.createdAt, query.since),
+          isNull(posts.deletedAt),
+        ))
+        .orderBy(desc(posts.createdAt), desc(posts.id))
+        .limit(query.limit)
+    ).map((row) => row.body),
   listThreadsForContext: async (tenantId, query) => {
     const descending = query.order === 'desc';
     const cursor = query.cursor === undefined ? null : parseThreadCursor(query.cursor);

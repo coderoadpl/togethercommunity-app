@@ -165,6 +165,7 @@ export const pl: Messages = {
     sourceHeuristic: 'Oznaczone automatycznie',
     signalLinkFlood: 'Dużo linków',
     signalDuplicateBody: 'Powtarzana treść',
+    heuristicInfo: 'Uczestnik może opublikować 10 wpisów w ciągu 10 minut. Wpisy z co najmniej 3 linkami lub treścią powtórzoną w ciągu 60 minut trafiają do weryfikacji, ale nigdy nie są automatycznie ukrywane ani usuwane.',
     reportedBy: ({ name }) => `Zgłoszone przez ${name}`,
     otherReports: ({ count }) => `Zgłoszenia tego wpisu: ${count}`,
     dismiss: 'Odrzuć',
@@ -1014,6 +1015,7 @@ export const pl: Messages = {
     reportSent: 'Dzięki — zespół to sprawdzi.',
     reportAlready: 'Ten wpis został już przez Ciebie zgłoszony.',
     bannedBanner: 'Twoje konto jest zawieszone w tej społeczności. Nadal możesz wszystko czytać, ale nie możesz pisać, odpowiadać ani zgłaszać.',
+    postTooFast: 'Piszesz bardzo szybko — zrób krótką przerwę i spróbuj ponownie.',
   },
   spacesPanel: {
     loading: 'ładowanie stref…',

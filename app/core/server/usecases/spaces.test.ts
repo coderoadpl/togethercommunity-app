@@ -187,6 +187,35 @@ class FakePosts implements PostRepository {
     return this.rows.find((post) => post.tenantId === tenantId && post.id === id) ?? null;
   }
 
+  async countByAuthorSince(
+    tenantId: string,
+    query: { authorUserId: string; since: string },
+  ): Promise<number> {
+    return this.rows.filter(
+      (post) =>
+        post.tenantId === tenantId &&
+        post.authorUserId === query.authorUserId &&
+        post.createdAt >= query.since &&
+        post.deletedAt === null,
+    ).length;
+  }
+
+  async listRecentBodiesByAuthor(
+    tenantId: string,
+    query: { authorUserId: string; since: string; limit: number },
+  ): Promise<string[]> {
+    return this.rows
+      .filter(
+        (post) =>
+          post.tenantId === tenantId &&
+          post.authorUserId === query.authorUserId &&
+          post.createdAt >= query.since &&
+          post.deletedAt === null,
+      )
+      .slice(-query.limit)
+      .map((post) => post.body);
+  }
+
   async listThreadsForContext(
     tenantId: string,
     query: {
@@ -509,6 +538,15 @@ const fixture = (input: {
   const deps: SpacesDeps & CommunityDeps = {
     spaces: new FakeSpaces(input.spaces),
     posts,
+    reports: {
+      open: async () => null,
+      findById: async () => null,
+      listByStatus: async () => ({ reports: [], nextCursor: null }),
+      countOpenByPost: async () => new Map(),
+      countOpen: async () => 0,
+      resolve: async () => null,
+      resolveAllForPost: async () => 0,
+    },
     reactions,
     spaceSubscriptions,
     threadSubscriptions: new FakeThreadSubscriptions(),

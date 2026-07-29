@@ -42,6 +42,7 @@ export const ReportsPanel = () => {
 
   return (
     <PanelPage title={t.reports.heading}>
+      <Alert severity="info">{t.reports.heuristicInfo}</Alert>
       <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.5rem' }}>
         {STATUSES.map((value) => (
           <Chip

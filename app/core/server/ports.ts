@@ -171,6 +171,14 @@ export interface PostSearchRow {
 export interface PostRepository {
   createPost(tenantId: string, post: Post): Promise<Post>;
   findById(tenantId: string, id: string): Promise<Post | null>;
+  countByAuthorSince(
+    tenantId: string,
+    query: { authorUserId: string; since: string },
+  ): Promise<number>;
+  listRecentBodiesByAuthor(
+    tenantId: string,
+    query: { authorUserId: string; since: string; limit: number },
+  ): Promise<string[]>;
   listThreadsForContext(
     tenantId: string,
     query: {

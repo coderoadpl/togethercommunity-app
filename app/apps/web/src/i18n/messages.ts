@@ -156,6 +156,7 @@ export interface Messages {
     sourceHeuristic: string;
     signalLinkFlood: string;
     signalDuplicateBody: string;
+    heuristicInfo: string;
     reportedBy: (params: { name: string }) => string;
     otherReports: (params: { count: number }) => string;
     dismiss: string;
@@ -901,6 +902,7 @@ export interface Messages {
     reportSent: string;
     reportAlready: string;
     bannedBanner: string;
+    postTooFast: string;
   };
   spacesPanel: {
     loading: string;

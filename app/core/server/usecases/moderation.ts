@@ -21,6 +21,7 @@ import type { Ctx } from '../context.js';
 import type { MemberRepository, PostReportRepository } from '../ports.js';
 import { lessonContextAccess, requireActor, requireUnbannedMember, spaceContextAccess } from './community-access.js';
 import { deletePost, type CommunityDeps } from './community.js';
+export { openHeuristicReport } from './moderation-heuristics.js';
 
 export interface ModerationDeps extends CommunityDeps {
   reports: PostReportRepository;

@@ -780,6 +780,42 @@ describe('course/module/lesson repositories', () => {
 });
 
 describe('post repository', () => {
+  it('counts and lists only recent non-deleted posts by the tenant author', async () => {
+    const repo = createPostRepository(db);
+    const postAt = (id: string, createdAt: string, deletedAt: string | null = null): Post => ({
+      id,
+      tenantId: ACME,
+      contextKind: 'space',
+      contextId: 'space-spam-window',
+      parentPostId: null,
+      rootPostId: id,
+      authorUserId: 'user-acme-member',
+      authorDisplay: 'Acme Member',
+      authorIsStaff: false,
+      body: `Body ${id}`,
+      createdAt,
+      editedAt: null,
+      deletedAt,
+      pinnedAt: null,
+    });
+    await repo.createPost(ACME, postAt('post-spam-old', '1998-07-14T08:00:00.000Z'));
+    await repo.createPost(ACME, postAt('post-spam-recent-a', '1998-07-14T09:50:00.000Z'));
+    await repo.createPost(ACME, postAt('post-spam-recent-b', '1998-07-14T09:55:00.000Z'));
+    await repo.createPost(
+      ACME,
+      postAt('post-spam-deleted', '1998-07-14T09:59:00.000Z', '1998-07-14T10:00:00.000Z'),
+    );
+
+    const query = {
+      authorUserId: 'user-acme-member',
+      since: '1998-07-14T09:45:00.000Z',
+    };
+    await expect(repo.countByAuthorSince(ACME, query)).resolves.toBe(2);
+    await expect(repo.countByAuthorSince(GLOBEX, query)).resolves.toBe(0);
+    await expect(repo.listRecentBodiesByAuthor(ACME, { ...query, limit: 1 }))
+      .resolves.toEqual(['Body post-spam-recent-b']);
+  });
+
   it('clears a pin when soft-deleting a post', async () => {
     const repo = createPostRepository(db);
     const post: Post = {

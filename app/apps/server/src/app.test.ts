@@ -515,7 +515,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
 
 const scopedApp = (
   scope: 'none' | 'member' | 'banned-member' | 'staff',
-  options: { memberDeletedAt?: string } = {},
+  options: { memberDeletedAt?: string; marketing?: MarketingAppDeps } = {},
 ) => {
   const base = deps();
   const member: Member = {
@@ -643,7 +643,7 @@ const scopedApp = (
       ...base.orders,
       listPaidWithoutGrant: async () => [],
     },
-    marketing: marketingDeps(),
+    marketing: options.marketing ?? marketingDeps(),
   });
 };
 
@@ -811,6 +811,67 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
 };
 
 describe('marketing HTTP surfaces', () => {
+  it('rejects staff sessions on machine-only marketing edges', async () => {
+    const marketing = marketingDeps();
+    const app = scopedApp('staff', { marketing });
+    const tenantHeaders = { host: 'acme.localhost:48730' };
+
+    expect((await app.request('/api/internal/marketing/tick', {
+      method: 'GET',
+      headers: tenantHeaders,
+    })).status).toBe(401);
+    expect((await app.request('/api/internal/marketing/tick', {
+      method: 'POST',
+      headers: { ...tenantHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ tenantId: 't-acme', campaignId: 'campaign-1' }),
+    })).status).toBe(401);
+    expect((await app.request('/api/m2m/marketing/messages', {
+      method: 'GET',
+      headers: tenantHeaders,
+    })).status).toBe(401);
+    expect((await app.request('/api/m2m/marketing/messages', {
+      method: 'POST',
+      headers: { ...tenantHeaders, 'content-type': 'application/json' },
+      body: '{}',
+    })).status).toBe(401);
+  });
+
+  it('returns the same SES webhook response regardless of session scope', async () => {
+    const request = async (scope: 'none' | 'member' | 'staff') => {
+      const marketing = marketingDeps();
+      marketing.sesSettings = new InMemoryTenantSesSettingsRepository([{
+        tenantId: 't-acme', fromAddress: 'news@acme.test', fromName: 'Acme', identity: 'acme.test',
+        identityVerifiedAt: '2026-07-22T00:00:00.000Z', identityCheckedAt: null,
+        identityCheckError: null, configurationSet: null, snsTopicArn: 'topic',
+        trackingEnabled: false, autoPauseOnCritical: false, webhookToken: 'webhook-token',
+        quotaRatePerSec: 10, quotaDaily: 1000, quotaSentLast24Hours: 0,
+        quotaRefreshedAt: '2026-07-22T00:00:00.000Z', inSandbox: false,
+        webhookVerifiedAt: null, footerLegalName: 'Acme', footerAddress: 'Warsaw',
+        broadcastsEnabled: true, reputationAlertStatus: null, reputationAlertedAt: null,
+      }]);
+      const response = await scopedApp(scope, { marketing }).request(
+        '/api/webhooks/ses/webhook-token',
+        { method: 'POST', headers: { host: 'acme.localhost:48730' }, body: '{}' },
+      );
+      return { status: response.status, body: await response.json() };
+    };
+
+    const [anonymous, member, staff] = await Promise.all([
+      request('none'),
+      request('member'),
+      request('staff'),
+    ]);
+    expect(anonymous).toEqual({
+      status: 400,
+      body: {
+        ok: false,
+        error: expect.objectContaining({ code: 'validation' }),
+      },
+    });
+    expect(member).toEqual(anonymous);
+    expect(staff).toEqual(anonymous);
+  });
+
   it('denies staff-only capabilities to an authenticated API-key context', async () => {
     const configured = deps();
     configured.tenantApiKeys = {
@@ -880,6 +941,14 @@ describe('marketing HTTP surfaces', () => {
     const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it.each([
+    [{ host: 'globex.localhost:48730', 'x-api-key': 'marketing-key' }],
+    [{ host: 'localhost:48730', 'x-tenant': 'globex', 'x-api-key': 'marketing-key' }],
+  ])('rejects a tenant A API key resolved against tenant B', async (headers) => {
+    const response = await marketingApp().request('/api/m2m/marketing/messages', { headers });
+    expect(response.status).toBe(401);
   });
 
   it('exposes active consent definitions and ordered message events to API clients', async () => {

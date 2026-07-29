@@ -906,28 +906,6 @@ await db
   })
   .onConflictDoNothing();
 
-const seededBanAt = relativeIso(-2);
-await db
-  .update(members)
-  .set({
-    bannedAt: seededBanAt,
-    bannedReason: 'Powtarzające się reklamy w społeczności',
-    bannedByUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
-  })
-  .where(eq(members.id, 'member-studio-free'));
-await db
-  .insert(memberEvents)
-  .values({
-    id: 'member-event-studio-free-banned',
-    tenantId: 'tenant-studio',
-    memberId: 'member-studio-free',
-    type: 'banned',
-    reason: 'Powtarzające się reklamy w społeczności',
-    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
-    occurredAt: seededBanAt,
-  })
-  .onConflictDoNothing();
-
 await db
   .insert(marketingConsents)
   .values([
@@ -1195,6 +1173,28 @@ await db
       createdAt: nextIso(),
     })),
   )
+  .onConflictDoNothing();
+
+const seededBanAt = relativeIso(-2);
+await db
+  .update(members)
+  .set({
+    bannedAt: seededBanAt,
+    bannedReason: 'Powtarzające się reklamy w społeczności',
+    bannedByUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+  })
+  .where(eq(members.id, 'member-studio-free'));
+await db
+  .insert(memberEvents)
+  .values({
+    id: 'member-event-studio-free-banned',
+    tenantId: 'tenant-studio',
+    memberId: 'member-studio-free',
+    type: 'banned',
+    reason: 'Powtarzające się reklamy w społeczności',
+    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    occurredAt: seededBanAt,
+  })
   .onConflictDoNothing();
 
 await db

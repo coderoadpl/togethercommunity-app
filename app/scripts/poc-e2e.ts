@@ -13,6 +13,7 @@ import {
   healthOutputSchema,
   looseEnvelopeSchema,
   meOutputSchema,
+  memberBanOutputSchema,
   membersExportOutputSchema,
   myProductsOutputSchema,
   ordersReconciliationOutputSchema,
@@ -21,6 +22,7 @@ import {
   productsPublishOutputSchema,
   publicOfferOutputSchema,
   simulatePurchaseOutputSchema,
+  spaceOutputSchema,
   supportMessageOutputSchema,
   tenantCreateOutputSchema,
   tenantListOutputSchema,
@@ -186,6 +188,14 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     tenantCreateOutputSchema,
   );
   assert(alfaTenant.tenant.slug === 'alfa' && alfaTenant.tenant.name === 'Alfa Academy', 'alfa tenant mismatch');
+  const alfaSpace = expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'space', 'create', '--slug', 'community', '--name', 'Community', '--visibility', 'members'],
+      alfaHome,
+    ),
+    'alfa space create',
+    spaceOutputSchema,
+  ).space;
   const kursAlfa = expectOk(
     await cli(
       ['--tenant', 'alfa', 'product', 'create', '--title', 'Kurs Alfa', '--price-cents', '19900', '--currency', 'PLN'],
@@ -311,6 +321,30 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   assert(whoami.tenant?.slug === 'alfa', 'whoami should resolve alfa tenant');
   assert(whoami.tenant.memberId !== null, 'whoami should include memberId');
   assert(whoami.tenant.staffRole === null, 'member should not have a staff role');
+  steps += 1;
+
+  expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'member', 'ban', '--member', whoami.tenant.memberId, '--reason', 'PoC taxonomy probe'],
+      alfaHome,
+    ),
+    'staff bans member',
+    memberBanOutputSchema,
+  );
+  expectError(
+    await cli(
+      ['--tenant', 'alfa', 'space', 'post', '--space', alfaSpace.id, '--body', 'This post must be refused while banned.'],
+      buyerHome,
+    ),
+    'banned member post',
+    EXIT_CODE_BY_ERROR_CODE.banned,
+    'banned',
+  );
+  expectOk(
+    await cli(['--tenant', 'alfa', 'member', 'unban', '--member', whoami.tenant.memberId], alfaHome),
+    'staff lifts member ban',
+    memberBanOutputSchema,
+  );
   steps += 1;
 
   const db = new pg.Client({ connectionString: verifyDatabaseUrl });

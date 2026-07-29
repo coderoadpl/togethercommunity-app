@@ -246,13 +246,13 @@ const autoIssueFulfilledOrder = async (
   tenantId: string,
   event: PaymentWebhookEvent,
 ): Promise<void> => {
-  if (event.objectId === null || deps.orderDetails === undefined) return;
-  const providerObjectIds = event.type === 'invoice.paid'
-    ? { invoice: event.objectId }
-    : { checkoutSession: event.objectId };
-  const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, providerObjectIds);
-  if (order === null) return;
   try {
+    if (event.objectId === null || deps.orderDetails === undefined) return;
+    const providerObjectIds = event.type === 'invoice.paid'
+      ? { invoice: event.objectId }
+      : { checkoutSession: event.objectId };
+    const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, providerObjectIds);
+    if (order === null) return;
     await autoIssueOnPayment(tenantId, order, {
       invoices: deps.invoices,
       invoicing: deps.invoicing,
@@ -266,7 +266,7 @@ const autoIssueFulfilledOrder = async (
     });
     dispatchKsefInBackground(deps.ksef, deps.logger, 'payment fulfilment');
   } catch (cause) {
-    deps.logger.error(`[invoice-auto] tenant=${tenantId} order=${order.id} unexpected=${String(cause)}`);
+    deps.logger.error(`[invoice-auto] tenant=${tenantId} unexpected=${String(cause)}`);
   }
 };
 
@@ -566,9 +566,8 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     });
     if (fulfilled.ok && fulfilled.value.processed) {
       await recordFulfilledCheckoutConsents(deps, tenant, event.value);
-      queueMicrotask(() => {
-        void autoIssueFulfilledOrder(deps, tenant.id, event.value);
-      });
+      const effect = () => autoIssueFulfilledOrder(deps, tenant.id, event.value);
+      deps.deferredEffects.schedule(effect);
     }
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });

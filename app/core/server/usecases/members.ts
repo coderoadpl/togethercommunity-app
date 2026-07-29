@@ -2,12 +2,20 @@ import {
   DELETED_MEMBER_DISPLAY,
   err,
   memberTombstone,
+  memberEventSchema,
+  appError,
   notFound,
   ok,
+  setMemberBannedInputSchema,
+  validation,
   type AppError,
   type MemberExportFile,
   type MemberExportFormat,
   type MemberWithProductIds,
+  type Member,
+  type MemberErasureRequest,
+  type MemberErasureRequestStatus,
+  type MemberErasureRequestWithMember,
   type Result,
 } from '#core/domain/index.js';
 
@@ -15,7 +23,9 @@ import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
+  IdGenerator,
   MemberErasurePort,
+  MemberErasureRequestRepository,
   MemberRepository,
   MemberSubscriptionRepository,
   PaymentProvider,
@@ -25,6 +35,7 @@ export interface MembersDeps {
   members: MemberRepository;
   memberErasure: MemberErasurePort;
   clock: Clock;
+  ids: IdGenerator;
 }
 
 export interface MemberRemovalDeps extends MembersDeps {
@@ -114,6 +125,7 @@ export const removeMember = async (
 ): Promise<Result<{
   memberId: string;
   subscriptionCancellations: MemberSubscriptionCancellation[];
+  erasureRequestId: string | null;
 }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'member:remove');
   if (!tenant.ok) return tenant;
@@ -165,5 +177,92 @@ export const removeMember = async (
     postAuthorDisplay: DELETED_MEMBER_DISPLAY,
   });
   if (result === null) return err(notFound(`No member "${input.memberId}" in this tenant`));
-  return ok({ memberId: input.memberId, subscriptionCancellations });
+  return ok({
+    memberId: input.memberId,
+    subscriptionCancellations,
+    erasureRequestId: result.erasureRequestId,
+  });
+};
+
+export const listErasureRequests = async (
+  ctx: Ctx,
+  input: { status?: MemberErasureRequestStatus },
+  deps: { erasureRequests: MemberErasureRequestRepository },
+): Promise<Result<MemberErasureRequestWithMember[], AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:erasure:read');
+  if (!tenant.ok) return tenant;
+  return ok(await deps.erasureRequests.list(tenant.value, input));
+};
+
+export const rejectErasureRequest = async (
+  ctx: Ctx,
+  input: { requestId: string; note: string },
+  deps: {
+    erasureRequests: MemberErasureRequestRepository;
+    ids: IdGenerator;
+    clock: Clock;
+  },
+): Promise<Result<MemberErasureRequest, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:remove');
+  if (!tenant.ok) return tenant;
+  const resolvedAt = deps.clock.nowIso();
+  const resolved = await deps.erasureRequests.resolve(
+    tenant.value,
+    {
+      id: input.requestId,
+      status: 'rejected',
+      resolvedAt,
+      resolvedByUserId: ctx.identity.userId,
+      resolutionNote: input.note,
+    },
+    {
+      id: deps.ids.nextId(),
+      tenantId: tenant.value,
+      requestId: input.requestId,
+      type: 'rejected',
+      actorUserId: ctx.identity.userId,
+      meta: { note: input.note },
+      occurredAt: resolvedAt,
+      createdAt: resolvedAt,
+    },
+  );
+  return resolved === null
+    ? err(appError('conflict', 'The erasure request is no longer open'))
+    : ok(resolved);
+};
+
+export const setMemberBanned = async (
+  ctx: Ctx,
+  input: unknown,
+  deps: MembersDeps,
+): Promise<Result<Member, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'member:ban');
+  if (!tenant.ok) return tenant;
+  const parsed = setMemberBannedInputSchema.safeParse(input);
+  if (!parsed.success) return err(validation('Invalid member ban payload', parsed.error.flatten()));
+  const member = await deps.members.findById(tenant.value, parsed.data.memberId);
+  if (member === null || member.deletedAt !== null) {
+    return err(notFound(`No member "${parsed.data.memberId}" in this tenant`));
+  }
+  if ((member.bannedAt !== null) === parsed.data.banned) return ok(member);
+  const now = deps.clock.nowIso();
+  const reason = parsed.data.banned ? parsed.data.reason?.trim() || null : null;
+  const event = memberEventSchema.parse({
+    id: deps.ids.nextId(),
+    tenantId: tenant.value,
+    memberId: member.id,
+    type: parsed.data.banned ? 'banned' : 'unbanned',
+    reason,
+    actorUserId: ctx.identity.userId,
+    occurredAt: now,
+  });
+  const updated = await deps.members.setBanned(tenant.value, {
+    memberId: member.id,
+    bannedAt: parsed.data.banned ? now : null,
+    reason,
+    actorUserId: ctx.identity.userId,
+  }, event);
+  return updated === null
+    ? err(notFound(`No member "${parsed.data.memberId}" in this tenant`))
+    : ok(updated);
 };

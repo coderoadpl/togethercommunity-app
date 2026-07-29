@@ -97,6 +97,7 @@ const harness = (options: {
       members.push(m);
     },
     updateEmail: async () => null,
+  setBanned: async () => null,
   };
 
   const authPort: AuthPort = {
@@ -194,6 +195,9 @@ const seedMember = async (deps: M2mEnrollDeps): Promise<void> => {
     externalCustomerIds: {},
     createdAt: PAST,
     deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
   });
 };
 

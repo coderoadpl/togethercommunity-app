@@ -34,6 +34,7 @@ const staff = (tenantId: string | null): Ctx => ({
     tenantName: tenantId ? 'Acme' : null,
     staffRole: tenantId ? 'owner' : null,
     memberId: null,
+    memberBannedAt: null,
   },
 });
 
@@ -47,6 +48,7 @@ const plainMember = (tenantId: string): Ctx => ({
     tenantName: 'Acme',
     staffRole: null,
     memberId: 'member-1',
+    memberBannedAt: null,
   },
 });
 
@@ -61,6 +63,9 @@ const member = (id: string, tenantId: string): Member => ({
   externalCustomerIds: {},
   createdAt: PAST,
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
+    bannedByUserId: null,
 });
 
 const product = (id: string, tenantId: string): Product => ({
@@ -105,6 +110,7 @@ const harness = (options: { members?: Member[]; products?: Product[]; grants?: P
     listWithProductIds: async () => [],
     create: async () => undefined,
     updateEmail: async () => null,
+  setBanned: async () => null,
   };
 
   const productsRepo: ProductRepository = {
@@ -191,6 +197,18 @@ describe('listMemberGrants', () => {
     const result = await listMemberGrants(staff('t-acme'), 'm1', h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
+
+  it('rejects granting access to an erased member', async () => {
+    const erased = { ...member('m1', 't-acme'), deletedAt: NOW };
+    const h = harness({ members: [erased], products: [product('p1', 't-acme')] });
+    const result = await grantProductToMember(
+      staff('t-acme'),
+      { memberId: 'm1', productId: 'p1' },
+      h.deps,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(h.grants).toEqual([]);
+  });
 });
 
 describe('grantProductToMember', () => {
@@ -249,6 +267,15 @@ describe('grantProductToMember', () => {
 });
 
 describe('revokeGrant', () => {
+  it('still revokes an erased member grant', async () => {
+    const h = harness({
+      members: [{ ...member('m1', 't-acme'), deletedAt: NOW }],
+      grants: [grantRow({ id: 'g1', memberId: 'm1' })],
+    });
+    const result = await revokeGrant(staff('t-acme'), { grantId: 'g1' }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { grantId: 'g1' } });
+  });
+
   it('sets expiresAt to now, mirroring cancelEnrollment', async () => {
     const h = harness({ grants: [grantRow({ id: 'g1' })] });
     const result = await revokeGrant(staff('t-acme'), { grantId: 'g1' }, h.deps);

@@ -42,6 +42,8 @@ const member = (id: string, createdAt: string, activeProductIds: string[]): Memb
   externalCustomerIds: {},
   createdAt,
   deletedAt: null,
+    bannedAt: null,
+    bannedReason: null,
   productIds: activeProductIds,
   activeProductIds,
 });

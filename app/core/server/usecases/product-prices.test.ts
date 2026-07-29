@@ -14,6 +14,7 @@ const identity = (staffRole: 'owner' | 'admin' | null): Identity => ({
   tenantName: 'Alpha',
   staffRole,
   memberId: null,
+memberBannedAt: null,
 });
 
 const product: Product = {

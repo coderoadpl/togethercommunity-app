@@ -28,7 +28,7 @@ const okMe = () =>
         userId: 'u1',
         email: 'user@example.com',
         name: 'Jan Uczestnik',
-        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1' },
+        tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
       },
     }),
   );

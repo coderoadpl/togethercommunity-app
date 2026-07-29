@@ -36,6 +36,7 @@ const NOW = '2026-07-22T10:00:00.000Z';
 const ctx: Ctx = { identity: {
   userId: 'staff-1', email: 'staff@example.test', name: 'Staff', tenantId: 'tenant-1',
   tenantSlug: 'tenant', tenantName: 'Tenant', staffRole: 'owner', memberId: null,
+memberBannedAt: null,
 } satisfies Identity };
 const clock = { nowIso: () => NOW };
 const sequence = () => {
@@ -182,13 +183,15 @@ describe('marketing management use-cases', () => {
   it('derives readiness from credentials and onboarding state instead of persisted flags', async () => {
     const settings: TenantSesSettings = {
       tenantId: 'tenant-1', fromAddress: 'news@tenant.test', fromName: 'Tenant', identity: 'tenant.test',
-      identityVerifiedAt: NOW, configurationSet: null, snsTopicArn: 'arn:topic',
+      identityVerifiedAt: NOW, identityCheckedAt: NOW, identityCheckError: null,
+      configurationSet: null, snsTopicArn: 'arn:topic',
       trackingEnabled: false,
       autoPauseOnCritical: false,
       webhookToken: 'webhook_token_123456789012345', quotaRatePerSec: 10, quotaDaily: 1000,
       quotaSentLast24Hours: 0,
       quotaRefreshedAt: NOW, inSandbox: false, webhookVerifiedAt: NOW, footerLegalName: 'Tenant Ltd',
       footerAddress: 'Street 1, Warsaw', broadcastsEnabled: false,
+      reputationAlertStatus: null, reputationAlertedAt: null,
     };
     const repository = new InMemoryTenantSesSettingsRepository([settings]);
     const secrets = secretRepository(['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region']);
@@ -209,7 +212,7 @@ describe('marketing management use-cases', () => {
 
     const sandboxed = await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
-      identityVerified: true, configurationSet: 'marketing', snsTopicArn: settings.snsTopicArn,
+      configurationSet: 'marketing', snsTopicArn: settings.snsTopicArn,
       trackingEnabled: true,
       autoPauseOnCritical: true,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
@@ -223,9 +226,38 @@ describe('marketing management use-cases', () => {
     expect(sandboxed.ok && sandboxed.value.settings?.trackingEnabled).toBe(true);
     expect(sandboxed.ok && sandboxed.value.settings?.autoPauseOnCritical).toBe(true);
 
+    const changedIdentity = await updateTenantSesMarketingSettings(ctx, {
+      fromAddress: settings.fromAddress,
+      fromName: settings.fromName,
+      identity: 'new-identity.tenant.test',
+      configurationSet: null,
+      snsTopicArn: settings.snsTopicArn,
+      trackingEnabled: false,
+      autoPauseOnCritical: false,
+      footerLegalName: settings.footerLegalName,
+      footerAddress: settings.footerAddress,
+    }, {
+      settings: new InMemoryTenantSesSettingsRepository([settings]),
+      secrets,
+      tokens: { nextToken: () => 'webhook_token_123456789012345' },
+      clock,
+      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      pool,
+    });
+    expect(changedIdentity).toMatchObject({
+      ok: true,
+      value: {
+        settings: {
+          identityVerifiedAt: null,
+          identityCheckedAt: null,
+          broadcastsEnabled: false,
+        },
+      },
+    });
+
     expect(await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
-      identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
+      configurationSet: null, snsTopicArn: settings.snsTopicArn,
       trackingEnabled: true,
       autoPauseOnCritical: false,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
@@ -238,7 +270,7 @@ describe('marketing management use-cases', () => {
 
     const unrefreshed = await updateTenantSesMarketingSettings(ctx, {
       fromAddress: settings.fromAddress, fromName: settings.fromName, identity: settings.identity,
-      identityVerified: true, configurationSet: null, snsTopicArn: settings.snsTopicArn,
+      configurationSet: null, snsTopicArn: settings.snsTopicArn,
       trackingEnabled: false,
       autoPauseOnCritical: false,
       footerLegalName: settings.footerLegalName, footerAddress: settings.footerAddress,
@@ -250,7 +282,14 @@ describe('marketing management use-cases', () => {
     });
     expect(unrefreshed).toMatchObject({
       ok: true,
-      value: { settings: { inSandbox: true, quotaRefreshedAt: null, broadcastsEnabled: false } },
+      value: {
+        settings: {
+          identityVerifiedAt: null,
+          inSandbox: true,
+          quotaRefreshedAt: null,
+          broadcastsEnabled: false,
+        },
+      },
     });
   });
 });

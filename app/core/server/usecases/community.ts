@@ -2,17 +2,21 @@ import {
   createPostInputSchema,
   DEFAULT_LANGUAGE,
   deletePostInputSchema,
+  DUPLICATE_BODY_WINDOW_MINUTES,
   err,
   forbidden,
+  heuristicSignalsFor,
   internal,
   listDiscussionInputSchema,
   muteThreadInputSchema,
   notificationListInputSchema,
   notificationMarkReadInputSchema,
   ok,
+  POST_RATE_LIMIT,
   postSchema,
   postSnippet,
   renderPost,
+  rateLimited,
   searchPostsInputSchema,
   subscribeThreadInputSchema,
   toPublicPost,
@@ -41,6 +45,7 @@ import type {
   NotificationChannelPort,
   NotificationRepository,
   PostRepository,
+  PostReportRepository,
   ProductGrantRepository,
   SpaceRepository,
   SpaceSubscriptionRepository,
@@ -60,10 +65,12 @@ import {
   spaceVisibleToMemberScope,
 } from './community-access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
+import { openHeuristicReport } from './moderation-heuristics.js';
 import { notifySpaceFollowers } from './spaces.js';
 
 export interface CommunityDeps {
   posts: PostRepository;
+  reports: PostReportRepository;
   threadSubscriptions: ThreadSubscriptionRepository;
   spaceSubscriptions: SpaceSubscriptionRepository;
   spaces: SpaceRepository;
@@ -78,6 +85,9 @@ export interface CommunityDeps {
   ids: IdGenerator;
   clock: Clock;
 }
+
+const minutesBefore = (iso: string, minutes: number): string =>
+  new Date(Date.parse(iso) - minutes * 60_000).toISOString();
 
 interface DisplayNameIdentity {
   name?: string | null;
@@ -340,6 +350,23 @@ export const createPost = async (
     }
     rootPostId = parentPost.rootPostId;
   }
+  const now = deps.clock.nowIso();
+  if (ctx.identity.staffRole === null) {
+    const rateWindowStart = minutesBefore(now, POST_RATE_LIMIT.windowMinutes);
+    const recentCount = await deps.posts.countByAuthorSince(actor.value.tenantId, {
+      authorUserId: actor.value.userId,
+      since: rateWindowStart,
+    });
+    if (recentCount >= POST_RATE_LIMIT.maxPosts) {
+      return err(rateLimited('You are posting too quickly — take a short break'));
+    }
+  }
+  const duplicateWindowStart = minutesBefore(now, DUPLICATE_BODY_WINDOW_MINUTES);
+  const recentBodies = await deps.posts.listRecentBodiesByAuthor(actor.value.tenantId, {
+    authorUserId: actor.value.userId,
+    since: duplicateWindowStart,
+    limit: 20,
+  });
   const postRecord = postSchema.safeParse({
     id: parentPost === null ? rootPostId : deps.ids.nextId(),
     tenantId: actor.value.tenantId,
@@ -351,13 +378,17 @@ export const createPost = async (
     authorDisplay: await resolvePostAuthorDisplay(ctx, deps),
     authorIsStaff: ctx.identity.staffRole !== null,
     body,
-    createdAt: deps.clock.nowIso(),
+    createdAt: now,
     editedAt: null,
     deletedAt: null,
   });
   if (!postRecord.success) return err(internal('Could not create a valid discussion post'));
   const post = postRecord.data;
   const created = await deps.posts.createPost(actor.value.tenantId, post);
+  const signals = heuristicSignalsFor({ body: created.body, recentBodies });
+  if (signals.length > 0) {
+    await openHeuristicReport(actor.value.tenantId, created, signals, deps);
+  }
   await deps.threadSubscriptions.upsert(actor.value.tenantId, {
     userId: actor.value.userId,
     rootPostId: created.rootPostId,

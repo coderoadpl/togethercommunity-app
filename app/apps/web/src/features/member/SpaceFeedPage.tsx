@@ -272,7 +272,17 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           />
         </Paper>
 
-        {create.isError && <StatusView surface={false} state={{ kind: 'error', message: localizeError(create.error, t) }} />}
+        {create.isError && (
+          <StatusView
+            surface={false}
+            state={{
+              kind: 'error',
+              message: create.error instanceof ApiError && create.error.appError.code === 'rate_limited'
+                ? t.community.postTooFast
+                : localizeError(create.error, t),
+            }}
+          />
+        )}
         {pin.isError ? (
           <StatusView surface={false} state={{ kind: 'error', message: localizeError(pin.error, t) }} />
         ) : null}

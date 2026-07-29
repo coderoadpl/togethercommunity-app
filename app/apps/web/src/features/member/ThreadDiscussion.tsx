@@ -470,6 +470,11 @@ export const ThreadDiscussion = ({
 
   const forbidden = isForbidden(discussion.error);
   const mutationError = [create, update, remove].find((mutation) => mutation.isError)?.error ?? null;
+  const mutationErrorMessage = mutationError instanceof ApiError && mutationError.appError.code === 'rate_limited'
+    ? t.community.postTooFast
+    : mutationError === null
+      ? null
+      : localizeError(mutationError, t);
 
   const goBack = () => {
     if (focus === undefined) {
@@ -544,7 +549,7 @@ export const ThreadDiscussion = ({
               {backLabel}
             </Button>
           </Box>
-          {mutationError !== null && <Alert>{localizeError(mutationError, t)}</Alert>}
+          {mutationErrorMessage !== null && <Alert>{mutationErrorMessage}</Alert>}
           <DiscussionThread
             sx={{ p: '1rem 1.25rem' }}
             data-testid={`discussion-subthread-${subthreadRoot.id}`}
@@ -583,7 +588,7 @@ export const ThreadDiscussion = ({
             </Paper>
           )}
 
-          {mutationError !== null && <Alert>{localizeError(mutationError, t)}</Alert>}
+          {mutationErrorMessage !== null && <Alert>{mutationErrorMessage}</Alert>}
 
           {threads.length === 0 && pendingThread === null ? (
             <Typography variant="body1" data-testid="discussion-empty">

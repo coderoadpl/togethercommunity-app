@@ -159,6 +159,7 @@ export const en: Messages = {
     sourceHeuristic: 'Flagged automatically',
     signalLinkFlood: 'Many links',
     signalDuplicateBody: 'Repeated content',
+    heuristicInfo: 'Members can post 10 times per 10 minutes. Posts with 3 or more links or repeated content within 60 minutes are flagged for review, never hidden or deleted automatically.',
     reportedBy: ({ name }) => `Reported by ${name}`,
     otherReports: ({ count }) => `${count} reports on this post`,
     dismiss: 'Dismiss',
@@ -995,6 +996,7 @@ export const en: Messages = {
     reportSent: 'Thanks — the team will take a look.',
     reportAlready: 'You have already reported this post.',
     bannedBanner: 'Your account is suspended in this community. You can still read everything, but you cannot post, reply or report.',
+    postTooFast: 'You are posting very quickly — take a short break and try again.',
   },
   spacesPanel: {
     loading: 'loading spaces…',

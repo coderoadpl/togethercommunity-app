@@ -11,6 +11,11 @@ export const buildStampText = (): string =>
     ? `v${BUILD_VERSION}`
     : `v${BUILD_VERSION} (${BUILD_SHA})`;
 
+export const hasKnownShaMismatch = (serverSha: string, buildSha = BUILD_SHA): boolean =>
+  serverSha !== UNKNOWN_SHA &&
+  buildSha !== UNKNOWN_SHA &&
+  shortSha(serverSha) !== buildSha;
+
 export const isBuildMismatch = (server: { version: string; sha: string }): boolean =>
   server.version !== BUILD_VERSION ||
-  shortSha(server.sha) !== BUILD_SHA;
+  hasKnownShaMismatch(server.sha);

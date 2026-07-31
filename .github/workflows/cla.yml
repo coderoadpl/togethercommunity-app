@@ -32,3 +32,4 @@ jobs:
           branch: cla-signatures
           path-to-signatures: signatures/version1/cla.json
           path-to-document: https://github.com/coderoadpl/together/blob/main/CLA.md
+          allowlist: chomamateusz,chomamateusz-agent,bot*

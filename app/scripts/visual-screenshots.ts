@@ -71,7 +71,6 @@ const SCREENS: ScreenSpec[] = [
     auth: 'public',
     path: '/login',
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
-    mask: (page) => [page.getByTestId('build-stamp')],
   },
   {
     name: 'checkout',
@@ -589,6 +588,11 @@ const screenUrl = (studioBaseUrl: string, screen: ScreenSpec): string => {
   return `${url.origin}${screen.path}`;
 };
 
+const stableMasks = (page: Page, screen: ScreenSpec): Locator[] => [
+  page.getByTestId('build-stamp'),
+  ...(screen.mask?.(page) ?? []),
+];
+
 interface ShotFailure {
   file: string;
   reason: string;
@@ -710,7 +714,7 @@ try {
             animations: 'disabled',
             caret: 'hide',
             scale: 'css',
-            mask: screen.mask?.(page) ?? [],
+            mask: stableMasks(page, screen),
           });
           const { size } = statSync(shotPath);
           assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);

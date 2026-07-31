@@ -125,8 +125,11 @@ browser/server mismatch through the existing health endpoint. All version
 surfaces derive from one manifest, and deployed build identity continues to use
 the commit SHA already carried by the health attestation.
 
-Because the browser version appears in committed visual baselines, every
-release version bump requires a full `visual:update` on the macOS renderer.
+Browser build stamps are masked in committed visual baselines, so ordinary
+release version bumps do not require baseline regeneration. If a version
+surface changes layout or presence, the affected goldens still require
+`visual:update` on the macOS renderer and the baseline evidence required by
+[Visual regression](../visual-regression.md).
 
 Together remains honestly pre-release: version visibility does not create a
 public support contract, an API v1 promise, a release automation claim, a

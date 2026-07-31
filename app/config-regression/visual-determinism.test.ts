@@ -31,6 +31,8 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("animations: 'disabled'");
     expect(harness).toContain("caret: 'hide'");
     expect(harness).toContain("scale: 'css'");
+    expect(harness).toContain('mask: stableMasks(page, screen)');
+    expect(harness).toContain("page.getByTestId('build-stamp')");
     expect(harness).toContain('const PIXELMATCH_THRESHOLD = 0;');
     expect(harness).toContain('const MAX_DIFF_RATIO = 0;');
     expect(harness).toContain('includeAA: false');

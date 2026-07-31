@@ -545,7 +545,7 @@ program.command('version').description('This CLI build identity').action(() => {
   emit(
     ok({ name: 'together', version: CLI_VERSION }),
     currentJsonFlag(),
-    ({ name, version }) => `${name}/${version}`,
+    ({ version }) => version,
   );
 });
 

@@ -24,7 +24,7 @@ describe('build info', () => {
 
   it('detects version and known commit mismatches', () => {
     expect(isBuildMismatch({ version: '999.0.0', sha: 'unknown' })).toBe(true);
-    expect(isBuildMismatch({ version: BUILD_VERSION, sha: 'different' })).toBe(false);
+    expect(isBuildMismatch({ version: BUILD_VERSION, sha: 'different' })).toBe(true);
     expect(isBuildMismatch({ version: BUILD_VERSION, sha: BUILD_SHA })).toBe(false);
   });
 });

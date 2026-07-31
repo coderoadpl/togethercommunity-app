@@ -25,6 +25,7 @@ import {
   BUILD_SHA,
   BUILD_VERSION,
   isBuildMismatch,
+  shortSha,
 } from '../../../lib/build-info.js';
 import { BrandSwatch, Eyebrow } from '../../../theme.js';
 import { deriveBrandPalette } from '../../../theme-branding.js';
@@ -798,7 +799,7 @@ const BuildInfoPanel = () => {
         {health.data === undefined ? null : (
           <>
             <Typography variant="body2">{t.buildInfo.serverVersion}: {health.data.version}</Typography>
-            <Typography variant="body2">{t.buildInfo.serverSha}: {health.data.sha}</Typography>
+            <Typography variant="body2">{t.buildInfo.serverSha}: {shortSha(health.data.sha)}</Typography>
           </>
         )}
       </Stack>

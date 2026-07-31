@@ -169,6 +169,14 @@ describe('version identity', () => {
     expect(h.health).not.toHaveBeenCalled();
   });
 
+  it('prints the manifest version for the version command without calling health', async () => {
+    await run('version');
+
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith(pkg.version);
+    expect(h.health).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
   it('prints the manifest version for --version without calling health', async () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 

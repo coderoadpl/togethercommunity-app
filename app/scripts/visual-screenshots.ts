@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -49,6 +49,7 @@ interface ScreenSpec {
   path: string;
   tenantSlug?: string;
   ready: (page: Page) => Promise<void>;
+  mask?: (page: Page) => Locator[];
 }
 
 const visible = { state: 'visible', timeout: 20000 } as const;
@@ -70,6 +71,7 @@ const SCREENS: ScreenSpec[] = [
     auth: 'public',
     path: '/login',
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
+    mask: (page) => [page.getByTestId('build-stamp')],
   },
   {
     name: 'checkout',
@@ -708,6 +710,7 @@ try {
             animations: 'disabled',
             caret: 'hide',
             scale: 'css',
+            mask: screen.mask?.(page) ?? [],
           });
           const { size } = statSync(shotPath);
           assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);

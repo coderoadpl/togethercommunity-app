@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   statuses: write
 
 concurrency:
@@ -31,5 +32,5 @@ jobs:
         with:
           branch: cla-signatures
           path-to-signatures: signatures/version1/cla.json
-          path-to-document: https://github.com/coderoadpl/together/blob/main/CLA.md
+          path-to-document: https://github.com/coderoadpl/togethercommunity-app/blob/main/CLA.md
           allowlist: chomamateusz,chomamateusz-agent,bot*

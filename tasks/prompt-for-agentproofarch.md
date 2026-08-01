@@ -11,7 +11,7 @@ i e-mail marketing. Hosted na Vercelu + darmowy self-host (docker compose).
 Publiczne strony sprzedażowe produktów to główny kanał ruchu twórców.
 Dwie populacje użytkowników: twórcy z zespołami (pasują do obecnego modelu
 organizacji) oraz kursanci/członkowie — klienci końcowi każdego tenanta.
-PRD produktu: repo coderoadpl/together, tasks/prd-together.md (przeczytaj,
+PRD produktu: repo coderoadpl/togethercommunity-app, tasks/prd-together.md (przeczytaj,
 jeśli masz dostęp; kluczowy kontekst jest też poniżej).
 
 Mam dwa tematy architektoniczne do rozstrzygnięcia i wprowadzenia do PRD

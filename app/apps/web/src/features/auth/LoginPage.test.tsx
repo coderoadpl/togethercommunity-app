@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import pkg from '../../../../../package.json' with { type: 'json' };
+
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -48,7 +50,7 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText(pl.auth.emailLabel)).toBeInTheDocument();
     expect(screen.getByLabelText(pl.auth.passwordLabel)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: pl.auth.signInIdle })).toBeInTheDocument();
-    expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
+    expect(screen.getByTestId('build-stamp')).toHaveTextContent(`v${pkg.version}`);
     expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
   });
 

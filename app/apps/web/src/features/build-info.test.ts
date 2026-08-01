@@ -6,6 +6,7 @@ import {
   BUILD_SHA,
   BUILD_VERSION,
   buildStampText,
+  hasKnownShaMismatch,
   isBuildMismatch,
   shortSha,
 } from '../lib/build-info.js';
@@ -24,7 +25,20 @@ describe('build info', () => {
 
   it('detects version and known commit mismatches', () => {
     expect(isBuildMismatch({ version: '999.0.0', sha: 'unknown' })).toBe(true);
-    expect(isBuildMismatch({ version: BUILD_VERSION, sha: 'different' })).toBe(false);
+    expect(isBuildMismatch({
+      version: BUILD_VERSION,
+      sha: '1234567890abcdef1234567890abcdef12345678',
+    })).toBe(false);
     expect(isBuildMismatch({ version: BUILD_VERSION, sha: BUILD_SHA })).toBe(false);
+  });
+
+  it('compares only known browser and server commit identities', () => {
+    const serverSha = 'abcdef1234567890abcdef1234567890abcdef12';
+
+    expect(isBuildMismatch({ version: BUILD_VERSION, sha: serverSha })).toBe(false);
+    expect(hasKnownShaMismatch('unknown', 'abcdef1')).toBe(false);
+    expect(hasKnownShaMismatch(serverSha, 'unknown')).toBe(false);
+    expect(hasKnownShaMismatch(serverSha, 'abcdef1')).toBe(false);
+    expect(hasKnownShaMismatch(serverSha, '1234567')).toBe(true);
   });
 });

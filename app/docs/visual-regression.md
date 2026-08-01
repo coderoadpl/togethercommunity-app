@@ -18,7 +18,9 @@ and zero mismatch budget.
 Only stable surfaces belong in the screen list. A route needs deterministic seed
 data, controlled external resources, and an explicit readiness condition for its
 last asynchronous rendering input. Dynamic or ambiguously ordered content must
-be stabilized, scoped out, or omitted.
+be stabilized, masked, scoped out, or omitted. Masks are reserved for present
+but intentionally variable pixels such as build identity text; they do not
+replace readiness checks or allow absent UI to pass unnoticed.
 
 ## Platform guard
 

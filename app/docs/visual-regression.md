@@ -48,6 +48,29 @@ reviewed migration that switches the authoring platform guard and regenerates
 the complete golden set on the pinned Linux renderer. Until then, CI continues
 to run the existing non-visual gates.
 
+## Pull request gallery
+
+Pull requests targeting `main` that change committed PNGs in
+`tasks/visual-goldens/` receive one sticky Before/After comment from
+`.github/workflows/visual-golden-gallery.yml`. Added, removed, renamed, and
+modified baselines use URLs pinned to the pull request's merge base and head
+commits. The gallery caps its rows and points reviewers to the Files tab when
+further changes are omitted. When a pull request reverts all baseline changes,
+an existing sticky comment reports that none remain.
+
+The parity map's upstream public-repository design uses
+`raw.githubusercontent.com` image URLs. This private repository instead uses
+authenticated `github.com` raw URLs and wraps each preview in a commit-pinned
+blob link so the baseline remains directly accessible if an inline preview does
+not render. Treat inline rendering as unverified until it is checked from a
+signed-in reviewer session on a scratch pull request; until then, use the pinned
+blob links for gallery review.
+
+The publisher runs only trusted base-ref workflow code, never checks out or
+executes pull-request head code, and is the only gallery job with
+`pull-requests: write`. It supplements the required exact-commit review evidence
+and remains separate from the advisory Linux Argos capture.
+
 ## Argos parallel track (evaluation)
 
 Argos is a second, advisory-only visual track that runs in Linux CI. It captures

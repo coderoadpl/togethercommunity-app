@@ -10,16 +10,19 @@ import {
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 
+import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
+
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { FinePrint, Wordmark } from '../../theme.js';
-
-const MIN_PASSWORD_LENGTH = 8;
 
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
+
+const invalidTokenFromLocation = (): boolean =>
+  new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
 
 export const ResetPasswordPage = () => {
   const t = useTranslations();
@@ -27,8 +30,10 @@ export const ResetPasswordPage = () => {
   const [confirm, setConfirm] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const token = tokenFromLocation();
+  const invalidToken = invalidTokenFromLocation();
 
   const resetPassword = useMutation(actions.resetPassword);
+  const providerRejectedToken = providerCodeOf(resetPassword.error) === 'INVALID_TOKEN';
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -37,8 +42,8 @@ export const ResetPasswordPage = () => {
       setLocalError(t.resetPassword.missingToken);
       return;
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setLocalError(t.resetPassword.tooShort({ min: MIN_PASSWORD_LENGTH }));
+    if (!passwordMeetsMinimumLength(password)) {
+      setLocalError(t.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }));
       return;
     }
     if (password !== confirm) {
@@ -50,19 +55,19 @@ export const ResetPasswordPage = () => {
 
   return (
     <FocusCard eyebrow={t.resetPassword.eyebrow({ host: window.location.hostname })}>
-        {!token ? (
+        {!token || invalidToken || providerRejectedToken ? (
           <StatusView
             state={{
               kind: 'not-found',
               title: t.resetPassword.missingTokenTitle,
               body: t.resetPassword.missingToken,
               action: (
-                <Button component="a" href="/login" variant="contained">
-                  {t.resetPassword.goToLogin}
+                <Button component="a" href="/forgot-password" variant="contained">
+                  {t.resetPassword.requestNewLink}
                 </Button>
               ),
             }}
-            data-testid="reset-missing-token"
+            data-testid="reset-invalid-token"
           />
         ) : resetPassword.isSuccess ? (
           <Stack useFlexGap spacing="0.8rem" data-testid="reset-success">

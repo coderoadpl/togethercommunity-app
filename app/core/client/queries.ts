@@ -1218,13 +1218,25 @@ export const requestMagicLinkMutation = (auth: AuthClientPort) =>
 export const requestPasswordResetMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'request-password-reset'],
-    call: (input: { email: string; language?: string }) => auth.requestPasswordReset(input),
+    call: (input: Parameters<AuthClientPort['requestPasswordReset']>[0]) => auth.requestPasswordReset(input),
   });
 
 export const resetPasswordMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, { token: string; newPassword: string }> =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'reset-password'],
     call: (input: { token: string; newPassword: string }) => auth.resetPassword(input),
+  });
+
+export const changePasswordMutation = (
+  auth: AuthClientPort,
+): MutationDescriptor<void, {
+  currentPassword: string;
+  newPassword: string;
+  revokeOtherSessions: boolean;
+}> =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'change-password'],
+    call: (input) => auth.changePassword(input),
   });
 
 export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>

@@ -11,6 +11,8 @@ interface Hoisted {
   loadError: Error | null;
   saved: CliConfig[];
   health: ReturnType<typeof vi.fn>;
+  changePassword: ReturnType<typeof vi.fn>;
+  requestPasswordReset: ReturnType<typeof vi.fn>;
   signOut: ReturnType<typeof vi.fn>;
 }
 
@@ -27,6 +29,8 @@ const h = vi.hoisted(
     loadError: null,
     saved: [],
     health: vi.fn(),
+    changePassword: vi.fn(),
+    requestPasswordReset: vi.fn(),
     signOut: vi.fn(),
   }),
 );
@@ -78,6 +82,8 @@ vi.mock('#core/client/index.js', () => ({
 
 vi.mock('#adapters/auth/client-adapter.js', () => ({
   createCliAuthAdapter: () => ({
+    changePassword: h.changePassword,
+    requestPasswordReset: h.requestPasswordReset,
     signOut: h.signOut,
   }),
 }));
@@ -109,6 +115,10 @@ beforeEach(() => {
   }));
   h.signOut.mockReset();
   h.signOut.mockResolvedValue(ok(undefined));
+  h.changePassword.mockReset();
+  h.changePassword.mockResolvedValue(ok(undefined));
+  h.requestPasswordReset.mockReset();
+  h.requestPasswordReset.mockResolvedValue(ok(undefined));
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   process.exitCode = 0;
@@ -247,5 +257,102 @@ describe('origin profiles', () => {
     });
     expect(h.saved.at(-1)?.profiles['https://one.example']?.token).toBeNull();
     expect(process.exitCode).toBe(10);
+  });
+});
+
+describe('change-password', () => {
+  it('emits the documented JSON result without exposing transport state', async () => {
+    await run(
+      '--json',
+      'change-password',
+      '--current-password',
+      'old-password',
+      '--new-password',
+      'new-password',
+      '--sign-out-other-sessions',
+    );
+
+    expect(h.changePassword).toHaveBeenCalledExactlyOnceWith({
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+      revokeOtherSessions: true,
+    });
+    const output = soleJson();
+    expect(output).toEqual({
+      ok: true,
+      data: { changed: true, revokedOtherSessions: true },
+    });
+    expect(JSON.stringify(output)).not.toContain('secret-one');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('returns exit 2 when the current password is rejected', async () => {
+    h.changePassword.mockResolvedValue(err(appError('validation', 'Invalid password')));
+
+    await run(
+      '--json',
+      'change-password',
+      '--current-password',
+      'wrong-password',
+      '--new-password',
+      'new-password',
+    );
+
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('returns exit 3 when there is no authenticated session', async () => {
+    h.changePassword.mockResolvedValue(err(appError('unauthorized', 'Authentication required')));
+
+    await run(
+      '--json',
+      'change-password',
+      '--current-password',
+      'old-password',
+      '--new-password',
+      'new-password',
+    );
+
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+    expect(process.exitCode).toBe(3);
+  });
+
+  it('rejects a new password below the shared minimum before calling the adapter', async () => {
+    await run(
+      '--json',
+      'change-password',
+      '--current-password',
+      'old-password',
+      '--new-password',
+      'short',
+    );
+
+    expect(h.changePassword).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('request-password-reset', () => {
+  it('derives redirectTo from the API URL origin', async () => {
+    await run(
+      '--json',
+      '--api-url',
+      'https://studio.example/api-prefix',
+      'request-password-reset',
+      '--email',
+      'member@example.com',
+      '--language',
+      'en',
+    );
+
+    expect(h.requestPasswordReset).toHaveBeenCalledExactlyOnceWith({
+      email: 'member@example.com',
+      redirectTo: 'https://studio.example/reset-password',
+      language: 'en',
+    });
+    expect(soleJson()).toEqual({ ok: true });
+    expect(process.exitCode).toBe(0);
   });
 });

@@ -193,7 +193,7 @@ export const LoginPage = () => {
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '0.6rem' }} data-testid="forgot-password">
-          {t.auth.forgotPassword}
+          {t.auth.forgotPassword} <Link href="/forgot-password">{t.auth.forgotPasswordLink}</Link>
         </FinePrint>
         <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
           <FormControl fullWidth>

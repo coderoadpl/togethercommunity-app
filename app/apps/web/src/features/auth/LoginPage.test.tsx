@@ -52,6 +52,10 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: pl.auth.signInIdle })).toBeInTheDocument();
     expect(screen.getByTestId('build-stamp')).toHaveTextContent(`v${pkg.version}`);
     expect(screen.queryByText('creator@together.dev')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.auth.forgotPasswordLink })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
   });
 
   it('shows demo credentials only when dev magic-link exposure is enabled', async () => {

@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import {
   normalizeEmail,
+  PASSWORD_MIN_LENGTH,
   type AppError,
   type EmailBranding,
   type Result,
@@ -49,6 +50,10 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
 export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset';
+
+export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
+
+export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
 
 const signUpConsentSchema = z.object({
   email: z.string().email(),
@@ -92,7 +97,7 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
 
 export interface ResetPasswordDeliveryContext {
   language: string;
-  /** Host-derived base URL: the reset page link is built on this so it lands on the requesting domain. */
+  /** Host-derived base URL: the provider callback is rebased onto this so it lands on the requesting domain. */
   baseUrl?: string;
 }
 
@@ -100,12 +105,6 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
   const resetPasswordContexts = new Map<string, ResetPasswordDeliveryContext>();
   const capturedLinks = new Map<string, { url: string; token: string }>();
-
-  const resetPasswordUrl = (base: string, token: string): string => {
-    const url = new URL('/reset-password', base);
-    url.searchParams.set('token', token);
-    return url.toString();
-  };
 
   const auth = betterAuth({
     database: drizzleAdapter(db, { provider: 'pg' }),
@@ -120,6 +119,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       customRules: {
         '/sign-in/magic-link': { window: 60, max: 20 },
         '/request-password-reset': { window: 60, max: 20 },
+        '/change-password': { window: 60, max: 20 },
         '/magic-link/verify': { window: 60, max: 20 },
         '/sign-in/email': { window: 60, max: 20 },
       },
@@ -151,12 +151,15 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     },
     emailAndPassword: {
       enabled: true,
+      minPasswordLength: PASSWORD_MIN_LENGTH,
+      resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
+      revokeSessionsOnPasswordReset: true,
       password: { verify: verifyPasswordWithLegacyFallback },
-      sendResetPassword: async ({ user, token }) => {
+      sendResetPassword: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
         const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'pl' };
         resetPasswordContexts.delete(normalizedEmail);
-        const actionUrl = resetPasswordUrl(context.baseUrl ?? settings.baseUrl, token);
+        const actionUrl = context.baseUrl ? rebaseUrl(url, context.baseUrl) : url;
         const queued = await settings.emailOutbox.enqueue({
           id: settings.ids.nextId(),
           tenantId: null,
@@ -233,7 +236,14 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       deliveryContexts.set(normalizeEmail(email), context);
     },
     setResetPasswordDeliveryContext: (email: string, context: ResetPasswordDeliveryContext) => {
-      resetPasswordContexts.set(normalizeEmail(email), context);
+      const normalizedEmail = normalizeEmail(email);
+      resetPasswordContexts.delete(normalizedEmail);
+      while (resetPasswordContexts.size >= RESET_PASSWORD_CONTEXT_MAX_ENTRIES) {
+        const oldest = resetPasswordContexts.keys().next();
+        if (oldest.done) break;
+        resetPasswordContexts.delete(oldest.value);
+      }
+      resetPasswordContexts.set(normalizedEmail, context);
     },
     consumeCapturedMagicLink: (email: string) => {
       const normalizedEmail = normalizeEmail(email);

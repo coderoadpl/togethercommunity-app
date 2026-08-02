@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 
 import { err, normalizeEmail, ok, validation } from '#core/domain/index.js';
 import { createDb } from '#adapters/db/client.js';
+import { account, user, verification } from '#adapters/db/schema.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader } from '#adapters/db/repositories.js';
 import { createEmailOutboxRepository } from '#adapters/db/email-outbox.js';
@@ -9,7 +11,13 @@ import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { dispatchEmailBatch } from '#core/server/index.js';
 import { InMemorySchedulerRunRepository } from '#core/server/testing/marketing-fakes.js';
 
-import { createAuth, createAuthPort } from './create-auth.js';
+import {
+  createAuth,
+  createAuthPort,
+  PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
+  RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
+} from './create-auth.js';
+import { deriveLegacyPasswordHash } from './legacy-password.js';
 
 const connectionString =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -258,14 +266,20 @@ describe('reset password email', () => {
       baseUrl: 'http://studio.localhost:48730',
     });
     await auth.api.requestPasswordReset({
-      body: { email, redirectTo: '/reset-password' },
+      body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
       headers: new Headers(),
     });
     await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Reset your password');
-    expect(message?.html).toContain('http://studio.localhost:48730/reset-password?token=');
+    const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    const parsedActionUrl = new URL(actionUrl);
+    expect(parsedActionUrl.host).toBe('studio.localhost:48730');
+    expect(parsedActionUrl.pathname).toMatch(/^\/api\/auth\/reset-password\/[^/]+$/);
+    expect(parsedActionUrl.searchParams.get('callbackURL')).toBe(
+      'http://studio.localhost:48730/reset-password',
+    );
   });
 
   it('sends a Polish email when the requested language is pl', async () => {
@@ -278,15 +292,298 @@ describe('reset password email', () => {
       baseUrl: 'http://studio.localhost:48730',
     });
     await auth.api.requestPasswordReset({
-      body: { email, redirectTo: '/reset-password' },
+      body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
       headers: new Headers(),
     });
     await flushEmails();
 
     const message = await emails.findByRecipient(normalizeEmail(email));
     expect(message?.subject).toBe('Zresetuj hasło');
-    expect(message?.html).toContain('/reset-password?token=');
+    expect(message?.html).toContain('/api/auth/reset-password/');
   });
+
+  it('returns indistinguishable responses for known and unknown addresses and emails only the known one', async () => {
+    const { auth, authPort, emails, flushEmails } = buildAuth();
+    const knownEmail = `reset-known-${Date.now()}@together.dev`;
+    const unknownEmail = `reset-unknown-${Date.now()}@together.dev`;
+    await authPort.ensureUser(knownEmail);
+    const request = (email: string, ip: string) => auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': ip,
+        },
+        body: JSON.stringify({
+          email,
+          redirectTo: 'http://studio.localhost:48730/reset-password',
+        }),
+      }),
+    );
+
+    const knownResponse = await request(knownEmail, '198.51.100.220');
+    const unknownResponse = await request(unknownEmail, '198.51.100.221');
+    const knownBody = await knownResponse.json();
+    const unknownBody = await unknownResponse.json();
+    await flushEmails();
+
+    expect(knownResponse.status).toBe(200);
+    expect(unknownResponse.status).toBe(knownResponse.status);
+    expect(unknownBody).toEqual(knownBody);
+    expect(await emails.findByRecipient(normalizeEmail(knownEmail))).not.toBeNull();
+    expect(await emails.findByRecipient(normalizeEmail(unknownEmail))).toBeNull();
+  });
+
+  it('caps pending delivery contexts created by address enumeration', async () => {
+    const { auth, authPort, emails, flushEmails } = buildAuth();
+    const email = `reset-context-cap-${Date.now()}@together.dev`;
+    await authPort.ensureUser(email);
+    auth.setResetPasswordDeliveryContext(email, {
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    for (let index = 0; index < RESET_PASSWORD_CONTEXT_MAX_ENTRIES; index += 1) {
+      auth.setResetPasswordDeliveryContext(`enumerated-${index}@together.dev`, {
+        language: 'en',
+        baseUrl: 'http://studio.localhost:48730',
+      });
+    }
+
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
+      headers: new Headers(),
+    });
+    await flushEmails();
+
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Zresetuj hasło');
+    const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    expect(new URL(actionUrl).host).toBe('localhost:48730');
+  });
+
+  it('expires reset tokens after one hour and revokes existing sessions on one-time completion', async () => {
+    const { auth } = buildAuth();
+    const db = createDb('node-postgres', connectionString);
+    const passwordOptions = (await auth.$context).options.emailAndPassword;
+    expect(passwordOptions?.resetPasswordTokenExpiresIn).toBe(PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS);
+    expect(passwordOptions?.revokeSessionsOnPasswordReset).toBe(true);
+    const email = `reset-session-${Date.now()}@together.dev`;
+    const signedUp = await signUp(auth, email, { password: 'old-password' });
+    const sessionToken = signedUp.headers.get('set-auth-token');
+    const requestedAt = Date.now();
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
+      headers: new Headers(),
+    });
+    const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
+    const tokens = await db
+      .select({ identifier: verification.identifier, expiresAt: verification.expiresAt })
+      .from(verification)
+      .where(eq(verification.value, users[0]?.id ?? ''));
+    const resetToken = tokens.find((row) => row.identifier.startsWith('reset-password:'));
+    const expiresIn = (resetToken?.expiresAt.getTime() ?? 0) - requestedAt;
+
+    expect(expiresIn).toBeGreaterThanOrEqual(
+      PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS * 1000 - 2000,
+    );
+    expect(expiresIn).toBeLessThanOrEqual(
+      PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS * 1000 + 2000,
+    );
+    const token = resetToken?.identifier.slice('reset-password:'.length) ?? '';
+    const reset = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/reset-password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.222',
+        },
+        body: JSON.stringify({ token, newPassword: 'new-password' }),
+      }),
+    );
+    const consumed = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/reset-password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.223',
+        },
+        body: JSON.stringify({ token, newPassword: 'another-password' }),
+      }),
+    );
+
+    expect(reset.status).toBe(200);
+    expect(await auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${sessionToken ?? ''}` }),
+    })).toBeNull();
+    expect(consumed.status).toBe(400);
+  });
+});
+
+describe('change password', () => {
+  it('rotates the caller token, revokes the other session, and replaces the accepted password', async () => {
+    const { auth } = buildAuth();
+    const email = `change-password-${Date.now()}@together.dev`;
+    const first = await signUp(auth, email, { password: 'old-password' });
+    const firstToken = first.headers.get('set-auth-token');
+    const second = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.210',
+        },
+        body: JSON.stringify({ email, password: 'old-password' }),
+      }),
+    );
+    const secondToken = second.headers.get('set-auth-token');
+
+    expect(firstToken).not.toBeNull();
+    expect(secondToken).not.toBeNull();
+    const changed = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${firstToken ?? ''}`,
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.211',
+        },
+        body: JSON.stringify({
+          currentPassword: 'old-password',
+          newPassword: 'new-password',
+          revokeOtherSessions: true,
+        }),
+      }),
+    );
+    const replacementToken = changed.headers.get('set-auth-token');
+
+    expect(changed.status).toBe(200);
+    expect(replacementToken).not.toBeNull();
+    expect(replacementToken).not.toBe(firstToken);
+    expect(await auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${replacementToken ?? ''}` }),
+    })).not.toBeNull();
+    expect(await auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${secondToken ?? ''}` }),
+    })).toBeNull();
+
+    const oldPassword = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.212',
+        },
+        body: JSON.stringify({ email, password: 'old-password' }),
+      }),
+    );
+    const newPassword = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.213',
+        },
+        body: JSON.stringify({ email, password: 'new-password' }),
+      }),
+    );
+
+    expect(oldPassword.status).toBe(401);
+    expect(newPassword.status).toBe(200);
+  }, 30000);
+
+  it('accepts and migrates an imported Payload PBKDF2 credential', async () => {
+    const { auth } = buildAuth();
+    const db = createDb('node-postgres', connectionString);
+    const email = `change-legacy-${Date.now()}@together.dev`;
+    const signedUp = await signUp(auth, email, { password: 'temporary-password' });
+    const token = signedUp.headers.get('set-auth-token');
+    const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
+    const legacyPassword = deriveLegacyPasswordHash('legacy-password', 'legacy-change-password-salt');
+    await db
+      .update(account)
+      .set({ password: legacyPassword })
+      .where(and(
+        eq(account.userId, users[0]?.id ?? ''),
+        eq(account.providerId, 'credential'),
+      ));
+
+    const changed = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token ?? ''}`,
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.214',
+        },
+        body: JSON.stringify({
+          currentPassword: 'legacy-password',
+          newPassword: 'native-password',
+          revokeOtherSessions: false,
+        }),
+      }),
+    );
+    const credentials = await db
+      .select({ password: account.password })
+      .from(account)
+      .where(and(
+        eq(account.userId, users[0]?.id ?? ''),
+        eq(account.providerId, 'credential'),
+      ));
+
+    expect(changed.status).toBe(200);
+    expect(credentials[0]?.password).not.toBeNull();
+    expect(credentials[0]?.password).not.toContain('payload-pbkdf2$');
+    const signedIn = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.215',
+        },
+        body: JSON.stringify({ email, password: 'native-password' }),
+      }),
+    );
+    expect(signedIn.status).toBe(200);
+  }, 30000);
+
+  it('allows twenty attempts per minute before rate limiting the endpoint', async () => {
+    const { auth } = buildAuth();
+    const email = `change-rate-limit-${Date.now()}@together.dev`;
+    const signedUp = await signUp(auth, email, { password: 'current-password' });
+    const token = signedUp.headers.get('set-auth-token');
+    const attempt = () =>
+      auth.handler(
+        new Request('http://studio.localhost:48730/api/auth/change-password', {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token ?? ''}`,
+            'content-type': 'application/json',
+            origin: 'http://studio.localhost:48730',
+            'x-forwarded-for': '198.51.100.216',
+          },
+          body: JSON.stringify({
+            currentPassword: 'wrong-password',
+            newPassword: 'new-password',
+            revokeOtherSessions: false,
+          }),
+        }),
+      );
+
+    const statuses: number[] = [];
+    for (let count = 0; count < 21; count += 1) statuses.push((await attempt()).status);
+
+    expect(statuses.slice(0, 20)).not.toContain(429);
+    expect(statuses[20]).toBe(429);
+  }, 30000);
 });
 
 describe('email-endpoint rate limiting', () => {

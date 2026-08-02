@@ -417,7 +417,7 @@ export default tseslint.config(
             },
             {
               from: ['web-ui'],
-              allow: ['web-ui', 'web-lib', 'web-theme', 'web-i18n'],
+              allow: ['web-ui', 'web-lib', 'web-theme', 'web-i18n', 'core-domain'],
             },
             {
               from: ['web-lib'],
@@ -541,6 +541,7 @@ export default tseslint.config(
                 'msw',
                 'react',
                 'vitest',
+                'zod',
               ],
             },
             {

@@ -67,16 +67,77 @@ describe('MemberAccountPage', () => {
   });
 
   it('requests a password reset email', async () => {
+    let body: unknown;
     server.use(
       stubMe(),
       stubSettings(null),
       stubBillingOrders(),
-      http.post('*', () => HttpResponse.json({ status: true })),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
     );
     await renderAccount();
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
     expect(await screen.findByTestId('account-reset-sent')).toHaveTextContent(pl.account.resetSent);
+    expect(body).toEqual({
+      email: 'member@together.dev',
+      redirectTo: 'http://localhost:3000/reset-password',
+    });
+  });
+
+  it('changes the member password and sends the revocation choice', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    await renderAccount();
+
+    await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), 'new-password');
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'new-password');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(await screen.findByTestId('change-password-success')).toHaveTextContent(
+      pl.changePassword.success,
+    );
+    expect(body).toEqual({
+      currentPassword: 'current-password',
+      newPassword: 'new-password',
+      revokeOtherSessions: false,
+    });
+    expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
+  });
+
+  it('keeps the reset path available when the provider reports a passwordless account', async () => {
+    server.use(
+      stubMe(),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', () =>
+        HttpResponse.json(
+          { code: 'CREDENTIAL_ACCOUNT_NOT_FOUND', message: 'Credential account not found' },
+          { status: 400 },
+        )),
+    );
+    await renderAccount();
+
+    await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), 'new-password');
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'new-password');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(await screen.findByTestId('change-password-remote-error')).toHaveTextContent(
+      pl.changePassword.credentialAccountMissing,
+    );
+    expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
   });
 
   it('downloads the authenticated member data export', async () => {

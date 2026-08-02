@@ -325,6 +325,10 @@ export interface Messages {
   };
   security: {
     heading: string;
+    setOrResetPasswordHeading: string;
+    setOrResetPassword: string;
+    resetSending: string;
+    resetSent: string;
     passkeys: string;
     passkeyNameLabel: string;
     defaultPasskeyName: string;
@@ -996,6 +1000,7 @@ export interface Messages {
     newPasswordLabel: string;
     confirmPasswordLabel: string;
     revokeOtherSessions: string;
+    revokeOtherSessionsHelp: string;
     submitIdle: string;
     submitPending: string;
     success: string;

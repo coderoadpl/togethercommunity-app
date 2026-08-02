@@ -53,6 +53,8 @@ export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset
 
 export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
+export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
+
 const signUpConsentSchema = z.object({
   email: z.string().email(),
   termsAccepted: z.boolean().optional(),
@@ -234,7 +236,14 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       deliveryContexts.set(normalizeEmail(email), context);
     },
     setResetPasswordDeliveryContext: (email: string, context: ResetPasswordDeliveryContext) => {
-      resetPasswordContexts.set(normalizeEmail(email), context);
+      const normalizedEmail = normalizeEmail(email);
+      resetPasswordContexts.delete(normalizedEmail);
+      while (resetPasswordContexts.size >= RESET_PASSWORD_CONTEXT_MAX_ENTRIES) {
+        const oldest = resetPasswordContexts.keys().next();
+        if (oldest.done) break;
+        resetPasswordContexts.delete(oldest.value);
+      }
+      resetPasswordContexts.set(normalizedEmail, context);
     },
     consumeCapturedMagicLink: (email: string) => {
       const normalizedEmail = normalizeEmail(email);

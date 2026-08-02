@@ -15,6 +15,7 @@ import {
   createAuth,
   createAuthPort,
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
+  RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
 import { deriveLegacyPasswordHash } from './legacy-password.js';
 
@@ -332,6 +333,33 @@ describe('reset password email', () => {
     expect(unknownBody).toEqual(knownBody);
     expect(await emails.findByRecipient(normalizeEmail(knownEmail))).not.toBeNull();
     expect(await emails.findByRecipient(normalizeEmail(unknownEmail))).toBeNull();
+  });
+
+  it('caps pending delivery contexts created by address enumeration', async () => {
+    const { auth, authPort, emails, flushEmails } = buildAuth();
+    const email = `reset-context-cap-${Date.now()}@together.dev`;
+    await authPort.ensureUser(email);
+    auth.setResetPasswordDeliveryContext(email, {
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    for (let index = 0; index < RESET_PASSWORD_CONTEXT_MAX_ENTRIES; index += 1) {
+      auth.setResetPasswordDeliveryContext(`enumerated-${index}@together.dev`, {
+        language: 'en',
+        baseUrl: 'http://studio.localhost:48730',
+      });
+    }
+
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
+      headers: new Headers(),
+    });
+    await flushEmails();
+
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Zresetuj hasło');
+    const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    expect(new URL(actionUrl).host).toBe('localhost:48730');
   });
 
   it('expires reset tokens after one hour and revokes existing sessions on one-time completion', async () => {

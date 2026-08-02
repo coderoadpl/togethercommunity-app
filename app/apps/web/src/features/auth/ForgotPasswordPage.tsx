@@ -9,16 +9,14 @@ import {
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
+import { z } from 'zod';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { FinePrint, Wordmark } from '../../theme.js';
 
-const validEmail = (value: string): string | null => {
-  const email = value.trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
-};
+const emailSchema = z.string().email();
 
 export const ForgotPasswordPage = () => {
   const t = useTranslations();
@@ -30,8 +28,8 @@ export const ForgotPasswordPage = () => {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setLocalError(null);
-    const normalizedEmail = validEmail(email);
-    if (normalizedEmail === null) {
+    const normalizedEmail = email.trim();
+    if (!emailSchema.safeParse(normalizedEmail).success) {
       setLocalError(t.forgotPassword.invalidEmail);
       return;
     }

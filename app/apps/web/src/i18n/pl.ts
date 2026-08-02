@@ -357,6 +357,10 @@ export const pl: Messages = {
   },
   security: {
     heading: 'Bezpieczeństwo',
+    setOrResetPasswordHeading: 'Ustaw lub zresetuj hasło',
+    setOrResetPassword: 'Wyślij mi link do hasła',
+    resetSending: 'Wysyłanie…',
+    resetSent: 'Wysłaliśmy e-mail z linkiem do ustawienia hasła. Sprawdź swoją skrzynkę.',
     passkeys: 'Klucze dostępu',
     passkeyNameLabel: 'nazwa klucza dostępu',
     defaultPasskeyName: 'Mój klucz dostępu',
@@ -1108,7 +1112,7 @@ export const pl: Messages = {
     back: '← wróć do moich kursów',
     passwordHeading: 'Hasło',
     passwordIntro:
-      'Ustaw lub zmień hasło do konta. Wyślemy Ci e-mail z linkiem do ustawienia nowego hasła. Logowanie magicznym linkiem będzie działać dalej.',
+      'Zmień hasło tutaj, podając obecne hasło. Jeśli nie masz jeszcze hasła, użyj linku e-mail poniżej, aby je ustawić. Logowanie magicznym linkiem będzie działać dalej.',
     setOrResetPassword: 'Ustaw / zresetuj hasło',
     resetSending: 'wysyłanie…',
     resetSent: 'Wysłaliśmy e-mail z linkiem do ustawienia hasła. Sprawdź swoją skrzynkę.',
@@ -1128,6 +1132,7 @@ export const pl: Messages = {
     newPasswordLabel: 'nowe hasło',
     confirmPasswordLabel: 'powtórz nowe hasło',
     revokeOtherSessions: 'Wyloguj inne sesje',
+    revokeOtherSessionsHelp: 'Wyloguje Cię to na każdym innym urządzeniu i w każdej innej domenie.',
     submitIdle: 'Zmień hasło',
     submitPending: 'Zmienianie…',
     success: 'Hasło zostało zmienione.',
@@ -1139,7 +1144,7 @@ export const pl: Messages = {
   },
   forgotPassword: {
     eyebrow: ({ host }) => format('odzyskiwanie hasła · przestrzeń {host}', { host }),
-    intro: 'Wpisz e-mail konta. Wyślemy godzinny link do ustawienia nowego hasła.',
+    intro: 'Wpisz e-mail konta. Wyślemy link do ustawienia nowego hasła — będzie ważny przez godzinę.',
     emailLabel: 'e-mail',
     invalidEmail: 'Wpisz prawidłowy adres e-mail.',
     submitIdle: 'Wyślij link do resetowania',

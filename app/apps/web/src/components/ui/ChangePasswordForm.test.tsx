@@ -2,18 +2,19 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PASSWORD_MIN_LENGTH } from '#core/domain/password.js';
+
 import { LanguageProvider } from '../../i18n/index.js';
 import { pl } from '../../i18n/pl.js';
 import { ChangePasswordForm } from './ChangePasswordForm.js';
 
-const renderForm = (onSubmit = vi.fn()) => {
+const renderForm = (onSubmit = vi.fn(), error: Error | null = null) => {
   render(
     <LanguageProvider>
       <ChangePasswordForm
-        minPasswordLength={8}
         pending={false}
         success={false}
-        error={null}
+        error={error}
         onSubmit={onSubmit}
       />
     </LanguageProvider>,
@@ -34,7 +35,7 @@ describe('ChangePasswordForm', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await screen.findByTestId('change-password-local-error')).toHaveTextContent(
-      pl.changePassword.tooShort({ min: 8 }),
+      pl.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
     );
     expect(onSubmit).not.toHaveBeenCalled();
   });
@@ -50,7 +51,19 @@ describe('ChangePasswordForm', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('submits every password-change option', async () => {
+  it('submits false when the revocation checkbox is untouched', async () => {
+    const onSubmit = renderForm();
+    await fillPasswordChange('current-password', 'new-password', 'new-password');
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
+      currentPassword: 'current-password',
+      newPassword: 'new-password',
+      revokeOtherSessions: false,
+    });
+  });
+
+  it('submits true when the user checks the revocation checkbox', async () => {
     const onSubmit = renderForm();
     await fillPasswordChange('current-password', 'new-password', 'new-password');
     await userEvent.click(screen.getByTestId('change-revoke-sessions'));
@@ -59,7 +72,22 @@ describe('ChangePasswordForm', () => {
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith({
       currentPassword: 'current-password',
       newPassword: 'new-password',
-      revokeOtherSessions: false,
+      revokeOtherSessions: true,
     });
+  });
+
+  it('maps provider INVALID_PASSWORD to the localized current-password error', async () => {
+    const providerError = Object.assign(new Error('Invalid password'), {
+      appError: {
+        code: 'validation',
+        message: 'Invalid password',
+        details: { providerCode: 'INVALID_PASSWORD' },
+      },
+    });
+    renderForm(vi.fn(), providerError);
+
+    expect(screen.getByTestId('change-password-remote-error')).toHaveTextContent(
+      pl.changePassword.invalidCurrentPassword,
+    );
   });
 });

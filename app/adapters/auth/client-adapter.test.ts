@@ -186,6 +186,38 @@ describe('CLI password reset request', () => {
 });
 
 describe('CLI password change', () => {
+  it('omits authorization when no session token exists', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const auth = createCliAuthAdapter('https://api.example/path', () => undefined);
+
+    expect(await auth.changePassword({
+      currentPassword: 'old-password',
+      newPassword: 'new-password',
+      revokeOtherSessions: false,
+    })).toEqual({ ok: true, value: undefined });
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      new URL('https://api.example/api/auth/change-password'),
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'https://api.example',
+        },
+        body: JSON.stringify({
+          currentPassword: 'old-password',
+          newPassword: 'new-password',
+          revokeOtherSessions: false,
+        }),
+      },
+    );
+  });
+
   it('persists the replacement token when other sessions are revoked', async () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: true }), {

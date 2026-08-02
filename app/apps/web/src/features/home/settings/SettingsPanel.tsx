@@ -709,7 +709,11 @@ const SecurityPanel = () => {
               variant="outlined"
               data-testid="security-reset-password"
               disabled={requestPasswordReset.isPending}
-              onClick={() => requestPasswordReset.mutate({ email, language })}
+              onClick={() => requestPasswordReset.mutate({
+                email,
+                redirectTo: new URL('/reset-password', window.location.origin).toString(),
+                language,
+              })}
             >
               {requestPasswordReset.isPending
                 ? t.account.resetSending

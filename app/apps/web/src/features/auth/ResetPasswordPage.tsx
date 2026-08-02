@@ -21,14 +21,28 @@ import { FinePrint, Wordmark } from '../../theme.js';
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
 
+const invalidTokenFromLocation = (): boolean =>
+  new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
+
+const providerCodeOf = (error: Error | null): string | null => {
+  if (error === null || !('appError' in error)) return null;
+  const { appError } = error;
+  if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
+  const { details } = appError;
+  if (typeof details !== 'object' || details === null || !('providerCode' in details)) return null;
+  return typeof details.providerCode === 'string' ? details.providerCode : null;
+};
+
 export const ResetPasswordPage = () => {
   const t = useTranslations();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const token = tokenFromLocation();
+  const invalidToken = invalidTokenFromLocation();
 
   const resetPassword = useMutation(actions.resetPassword);
+  const providerRejectedToken = providerCodeOf(resetPassword.error) === 'INVALID_TOKEN';
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -50,19 +64,19 @@ export const ResetPasswordPage = () => {
 
   return (
     <FocusCard eyebrow={t.resetPassword.eyebrow({ host: window.location.hostname })}>
-        {!token ? (
+        {!token || invalidToken || providerRejectedToken ? (
           <StatusView
             state={{
               kind: 'not-found',
               title: t.resetPassword.missingTokenTitle,
               body: t.resetPassword.missingToken,
               action: (
-                <Button component="a" href="/login" variant="contained">
-                  {t.resetPassword.goToLogin}
+                <Button component="a" href="/forgot-password" variant="contained">
+                  {t.resetPassword.requestNewLink}
                 </Button>
               ),
             }}
-            data-testid="reset-missing-token"
+            data-testid="reset-invalid-token"
           />
         ) : resetPassword.isSuccess ? (
           <Stack useFlexGap spacing="0.8rem" data-testid="reset-success">

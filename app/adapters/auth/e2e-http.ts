@@ -41,6 +41,7 @@ const requestJson = async (
 
 export interface AuthE2eClient {
   signUpEmail(input: { name: string; email: string; password: string }): Promise<AuthHttpResult>;
+  signInEmail(input: { email: string; password: string }): Promise<AuthHttpResult>;
   enableTwoFactor(token: string, password: string): Promise<AuthHttpResult>;
   verifyTotp(token: string, code: string): Promise<AuthHttpResult>;
   getSession(token: string): Promise<AuthHttpResult>;
@@ -48,6 +49,7 @@ export interface AuthE2eClient {
 
 export const createAuthE2eClient = (transport: AuthE2eTransport): AuthE2eClient => ({
   signUpEmail: (input) => requestJson(transport, '/api/auth/sign-up/email', { method: 'POST', body: input }),
+  signInEmail: (input) => requestJson(transport, '/api/auth/sign-in/email', { method: 'POST', body: input }),
   enableTwoFactor: (token, password) =>
     requestJson(transport, '/api/auth/two-factor/enable', { method: 'POST', token, body: { password } }),
   verifyTotp: (token, code) =>

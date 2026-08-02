@@ -80,6 +80,7 @@ export interface Messages {
     passkeyPending: string;
     continueWithGoogle: string;
     forgotPassword: string;
+    forgotPasswordLink: string;
     magicLinkEmailLabel: string;
     magicLinkIdle: string;
     magicLinkPending: string;
@@ -1003,6 +1004,17 @@ export interface Messages {
     invalidCurrentPassword: string;
     credentialAccountMissing: string;
   };
+  forgotPassword: {
+    eyebrow: (params: { host: string }) => string;
+    intro: string;
+    emailLabel: string;
+    invalidEmail: string;
+    submitIdle: string;
+    submitPending: string;
+    successTitle: string;
+    successBody: string;
+    backToLogin: string;
+  };
   resetPassword: {
     title: string;
     eyebrow: (params: { host: string }) => string;
@@ -1018,6 +1030,7 @@ export interface Messages {
     successTitle: string;
     successBody: string;
     goToLogin: string;
+    requestNewLink: string;
   };
   support: {
     heading: string;

@@ -148,12 +148,12 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
           )
         ).error,
       ),
-    requestPasswordReset: async ({ email, language }) =>
+    requestPasswordReset: async ({ email, redirectTo, language }) =>
       toResult(
         undefined,
         (
           await client.requestPasswordReset(
-            { email, redirectTo: '/reset-password' },
+            { email, redirectTo },
             language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
           )
         ).error,
@@ -219,7 +219,7 @@ const verifyMagicLinkToken = async (
 
 const postCliPasswordReset = async (
   baseUrl: string,
-  input: { email: string; language?: string },
+  input: Parameters<AuthClientPort['requestPasswordReset']>[0],
 ): Promise<Result<void, AppError>> => {
   let response: Response;
   try {
@@ -227,10 +227,10 @@ const postCliPasswordReset = async (
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        origin: baseUrl,
+        origin: new URL(baseUrl).origin,
         ...(input.language ? { [MAGIC_LINK_LANGUAGE_HEADER]: input.language } : {}),
       },
-      body: JSON.stringify({ email: input.email, redirectTo: '/reset-password' }),
+      body: JSON.stringify({ email: input.email, redirectTo: input.redirectTo }),
     });
   } catch (cause) {
     return err(appError('internal', `Network error requesting password reset: ${String(cause)}`));

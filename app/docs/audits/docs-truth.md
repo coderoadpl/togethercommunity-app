@@ -21,7 +21,8 @@
 | --- | --- |
 | `pnpm run doc-lint` | Detects broken local Markdown links, stale counted test-file claims, missing documented enforcers, leaked delimiters, and environment/example drift covered by the script. It does not validate prose claims. |
 | `pnpm run check` and `pnpm run smoke` | Prove the current static and runtime gates only; they do not prove that a document describes those gates accurately. |
-| `pnpm run permissions:check` | Detects drift in the generated authorization inventories; it does not judge whether surrounding explanations are sufficient. |
+| `pnpm run test` | Includes generated [route table](../route-table.md) drift detection; passing tests do not validate surrounding prose. |
+| `pnpm run permissions:check` | Detects drift in the generated [permission table](../permission-table.md); it does not judge whether surrounding explanations are sufficient. |
 
 ## Manual checks
 

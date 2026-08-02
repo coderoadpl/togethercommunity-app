@@ -9,9 +9,11 @@
 - **Output format:** a Markdown audit record using the fields required by the
   [roster doctrine](README.md), with URL, referring file, HTTP outcome, content
   match, replacement or exception, owner, and due date.
-- **Standard anchor:** no external standard is asserted. The repository-defined
-  requirement is that a link resolves to the content the surrounding claim
-  describes, not merely to a successful HTTP response.
+- **Standard anchor:** no external standard is asserted. At the audited commit,
+  [`scripts/doc-lint.ts`](../../scripts/doc-lint.ts) defines the versioned
+  relative-target contract. For external URLs, this specification requires that
+  a link resolve to the content the surrounding claim describes, not merely to
+  a successful HTTP response.
 
 ## Tool-performed checks
 
@@ -35,4 +37,3 @@
    because Markdown link extraction may not see them.
 5. Record authentication walls, bot blocks, geographic variance, and links not
    sampled as blind spots. Do not report a status-only scan as content truth.
-

@@ -21,8 +21,8 @@
 | Check | Evidence and limit |
 | --- | --- |
 | `pnpm run typecheck`, `pnpm run typecheck:islands`, and `pnpm run depcruise` | Detect type and layer drift across compiled paths. They do not prove semantic parity or that every surface exposes the feature. |
-| `pnpm run permissions:check` | Compares generated route and use-case authorization inventories represented by the [route table](../route-table.md) and [permission table](../permission-table.md). It does not decide whether a role assignment is correct. |
-| `pnpm run test` and `pnpm run smoke` | Prove covered descriptors, transports, commands, UI behavior, and runtime paths. Missing assertions remain invisible. |
+| `pnpm run permissions:check` | Checks the generated use-case authorization inventory represented by the [permission table](../permission-table.md). It does not decide whether a role assignment is correct. |
+| `pnpm run test` and `pnpm run smoke` | `pnpm run test` includes generated [route table](../route-table.md) drift detection. Together the commands prove covered descriptors, transports, commands, UI behavior, and runtime paths. Missing assertions remain invisible. |
 | `pnpm run doc-lint` | Detects structural documentation drift only, not contract accuracy. |
 
 ## Manual checks

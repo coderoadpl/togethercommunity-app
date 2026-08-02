@@ -5,6 +5,8 @@ full-stack TypeScript foundation. The implemented PoC includes auth, tenant
 resolution, course delivery, products and grants, checkout, community,
 marketing and integration surfaces across the web SPA, API and CLI.
 
+Recurring repository reviews are defined in the [audit roster](docs/audits/README.md).
+
 ## Quickstart (local demo)
 
 ```bash

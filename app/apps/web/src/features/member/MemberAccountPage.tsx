@@ -12,9 +12,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
+import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -57,6 +59,7 @@ export const MemberAccountPage = () => {
   }, [navigate, unauthorized]);
 
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
+  const changePassword = useMutation(actions.changePassword);
 
   if (me.isPending) {
     return (
@@ -202,6 +205,13 @@ export const MemberAccountPage = () => {
         </SectionCard>
 
         <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
+            <ChangePasswordForm
+              minPasswordLength={PASSWORD_MIN_LENGTH}
+              pending={changePassword.isPending}
+              success={changePassword.isSuccess}
+              error={changePassword.error}
+              onSubmit={(input) => changePassword.mutate(input)}
+            />
             <Box>
               <Button
                 variant="outlined"

@@ -605,6 +605,66 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   );
 };
 
+const proveCliPasswordRotation = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const firstHome = mkdtempSync(join(tmpdir(), 'smoke-password-a-'));
+  const secondHome = mkdtempSync(join(tmpdir(), 'smoke-password-b-'));
+  homes.push(firstHome, secondHome);
+  const cli = (args: string[], home: string): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
+  const email = 'password-rotation-smoke@together.dev';
+  const oldPassword = 'old-password';
+  const newPassword = 'new-password';
+
+  expectOk(
+    await cli([
+      'register',
+      '--name',
+      'Password Rotation Smoke',
+      '--email',
+      email,
+      '--password',
+      oldPassword,
+    ], firstHome),
+    'password rotation: register session A',
+  );
+  expectOk(
+    await cli(['login', '--email', email, '--password', oldPassword], secondHome),
+    'password rotation: login session B',
+  );
+  expectOk(
+    await cli([
+      'change-password',
+      '--current-password',
+      oldPassword,
+      '--new-password',
+      newPassword,
+      '--sign-out-other-sessions',
+    ], firstHome),
+    'password rotation: change through session A',
+  );
+  expectOk(
+    await cli(['whoami'], firstHome),
+    'password rotation: session A replacement token remains usable',
+  );
+  expectError(
+    await cli(['whoami'], secondHome),
+    'password rotation: session B is revoked',
+    3,
+    'unauthorized',
+  );
+  expectError(
+    await cli(['login', '--email', email, '--password', oldPassword], secondHome),
+    'password rotation: old password is rejected',
+    3,
+    'invalid_credentials',
+  );
+  expectOk(
+    await cli(['login', '--email', email, '--password', newPassword], secondHome),
+    'password rotation: new password is accepted',
+  );
+};
+
 const driveStudentFlow = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
   const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-creator-'));
@@ -1166,6 +1226,8 @@ try {
   await driveCommunityFlow(port, homes);
   console.log('smoke: driving the spaces surface...');
   await driveSpacesFlow(port, homes);
+  console.log('smoke: proving password rotation with two isolated CLI homes...');
+  await proveCliPasswordRotation(port, homes);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

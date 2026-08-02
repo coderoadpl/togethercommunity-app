@@ -27,6 +27,7 @@ const twoFactorEnrollmentSchema = z.object({
 type SignUpInput = Parameters<AuthClientPort['signUp']>[0];
 type SignInInput = Parameters<AuthClientPort['signIn']>[0];
 type MagicLinkInput = Parameters<AuthClientPort['requestMagicLink']>[0];
+type ChangePasswordInput = Parameters<AuthClientPort['changePassword']>[0];
 type AuthPath = '/api/auth/sign-up/email' | '/api/auth/sign-in/email';
 
 const authErrorSchema = z.object({
@@ -36,7 +37,7 @@ const authErrorSchema = z.object({
 
 const toResult = <T>(
   value: T,
-  error: { message?: string | undefined; status: number } | null,
+  error: { code?: string | undefined; message?: string | undefined; status: number } | null,
   unauthorizedCode: 'unauthorized' | 'invalid_credentials' = 'unauthorized',
 ): Result<T, AppError> => {
   if (!error) return ok(value);
@@ -50,15 +51,22 @@ const toResult = <T>(
           : error.status === 429
             ? 'rate_limited'
             : 'internal';
-  return err(appError(code, error.message ?? 'Authentication failed'));
+  return err(appError(
+    code,
+    error.message ?? 'Authentication failed',
+    error.code === undefined ? undefined : { providerCode: error.code },
+  ));
 };
 
-const readAuthError = async (response: Response): Promise<{ message?: string | undefined; status: number }> => {
+const readAuthError = async (
+  response: Response,
+): Promise<{ code?: string | undefined; message?: string | undefined; status: number }> => {
   try {
     const payload: unknown = await response.json();
     const parsed = authErrorSchema.safeParse(payload);
     return {
       status: response.status,
+      code: parsed.success ? parsed.data.code : undefined,
       message: parsed.success ? (parsed.data.message ?? parsed.data.code) : response.statusText,
     };
   } catch {
@@ -152,6 +160,8 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       ),
     resetPassword: async ({ token, newPassword }) =>
       toResult({ token: null }, (await client.resetPassword({ newPassword, token })).error),
+    changePassword: async (input) =>
+      toResult(undefined, (await client.changePassword(input)).error),
     signOut: async () => toResult(undefined, (await client.signOut()).error),
     registerPasskey: async (name) =>
       toResult(undefined, (await client.passkey.addPasskey({ name })).error),
@@ -291,6 +301,32 @@ const postCliSignOut = async (
   return ok(undefined);
 };
 
+const postCliChangePassword = async (
+  baseUrl: string,
+  input: ChangePasswordInput,
+  currentToken: string | null,
+  onToken: (token: string) => void,
+): Promise<Result<void, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/change-password', baseUrl), {
+      method: 'POST',
+      headers: {
+        ...(currentToken === null ? {} : { authorization: `Bearer ${currentToken}` }),
+        'content-type': 'application/json',
+        origin: new URL(baseUrl).origin,
+      },
+      body: JSON.stringify(input),
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error changing password: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult(undefined, await readAuthError(response));
+  const replacementToken = response.headers.get('set-auth-token');
+  if (replacementToken) onToken(replacementToken);
+  return ok(undefined);
+};
+
 const notSupportedInCli = validation('This authentication method is not supported in the CLI');
 
 export const createCliAuthAdapter = (
@@ -303,6 +339,7 @@ export const createCliAuthAdapter = (
   requestMagicLink: (input) => postCliMagicLink(baseUrl, input),
   requestPasswordReset: (input) => postCliPasswordReset(baseUrl, input),
   resetPassword: (input) => postCliResetPassword(baseUrl, input),
+  changePassword: (input) => postCliChangePassword(baseUrl, input, token(), onToken),
   signOut: async () => {
     const currentToken = token();
     return currentToken === null ? ok(undefined) : postCliSignOut(baseUrl, currentToken);

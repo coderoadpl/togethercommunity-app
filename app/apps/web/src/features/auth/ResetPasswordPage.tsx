@@ -10,13 +10,13 @@ import {
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 
+import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
+
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { FinePrint, Wordmark } from '../../theme.js';
-
-const MIN_PASSWORD_LENGTH = 8;
 
 const tokenFromLocation = (): string | null =>
   new URLSearchParams(window.location.search).get('token');
@@ -37,8 +37,8 @@ export const ResetPasswordPage = () => {
       setLocalError(t.resetPassword.missingToken);
       return;
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setLocalError(t.resetPassword.tooShort({ min: MIN_PASSWORD_LENGTH }));
+    if (!passwordMeetsMinimumLength(password)) {
+      setLocalError(t.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }));
       return;
     }
     if (password !== confirm) {

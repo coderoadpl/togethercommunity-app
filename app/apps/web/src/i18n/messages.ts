@@ -25,6 +25,11 @@ export interface Messages {
     open: string;
     status: string;
   };
+  bootSplash: {
+    opening: string;
+    tenant: (params: { host: string }) => string;
+    warming: string;
+  };
   pagination: {
     rowsPerPage: string;
     displayedRows: (params: { from: number; to: number; count: number }) => string;

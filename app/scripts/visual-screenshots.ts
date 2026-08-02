@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+  type Route,
+} from 'playwright-core';
 
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -48,12 +55,41 @@ interface ScreenSpec {
   auth: AuthKind;
   path: string;
   tenantSlug?: string;
+  prepare?: (page: Page) => Promise<() => Promise<void>>;
   ready: (page: Page) => Promise<void>;
   settled?: (page: Page) => Promise<void>;
+  waitForNetworkIdle?: boolean;
+  minBytes?: number;
   mask?: (page: Page) => Locator[];
 }
 
 const visible = { state: 'visible', timeout: 20000 } as const;
+
+const blockMeResponse = async (page: Page): Promise<() => Promise<void>> => {
+  let release = (): void => undefined;
+  let complete = (): void => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const done = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  const handler = async (route: Route): Promise<void> => {
+    try {
+      await gate;
+      await route.continue();
+    } finally {
+      complete();
+    }
+  };
+
+  await page.route('**/api/me', handler);
+  return async () => {
+    release();
+    await done;
+    await page.unroute('**/api/me', handler);
+  };
+};
 
 // The unread badge lives on the header bell on sm+ and on the bottom
 // tab-bar bell on xs (decision D4) — wait on the instance this viewport
@@ -212,6 +248,15 @@ const SCREENS: ScreenSpec[] = [
       await page.getByTestId('space-follow-toggle').waitFor(visible);
       await waitForUnreadBadge(page);
     },
+  },
+  {
+    name: 'boot-splash',
+    auth: 'creator',
+    path: '/panel',
+    prepare: blockMeResponse,
+    ready: (page) => page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor(visible),
+    waitForNetworkIdle: false,
+    minBytes: 4 * 1024,
   },
   {
     name: 'panel-spaces',
@@ -538,8 +583,8 @@ const applyChrome = async (context: BrowserContext, mode: ThemeMode): Promise<vo
   );
 };
 
-const settlePage = async (page: Page): Promise<void> => {
-  await page.waitForLoadState('networkidle');
+const settlePage = async (page: Page, waitForNetworkIdle = true): Promise<void> => {
+  if (waitForNetworkIdle) await page.waitForLoadState('networkidle');
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
@@ -732,35 +777,41 @@ try {
 
         for (const screen of screens) {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;
-          await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
-          await screen.ready(page);
-          await settlePage(page);
-          if (screen.settled) {
-            await screen.settled(page);
-            await page.evaluate(
-              () =>
-                new Promise<void>((resolve) => {
-                  requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-                }),
+          const cleanup = screen.prepare === undefined ? undefined : await screen.prepare(page);
+          try {
+            await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
+            await screen.ready(page);
+            await settlePage(page, screen.waitForNetworkIdle ?? true);
+            if (screen.settled) {
+              await screen.settled(page);
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolve) => {
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                  }),
+              );
+            }
+            const shotPath = join(
+              argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
+              file,
             );
-          }
-          const shotPath = join(
-            argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
-            file,
-          );
-          await page.screenshot({
-            path: shotPath,
-            animations: 'disabled',
-            caret: 'hide',
-            scale: 'css',
-            mask: stableMasks(page, screen),
-          });
-          const { size } = statSync(shotPath);
-          assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);
-          captured += 1;
-          if (!updateMode && !argosCaptureMode) {
-            const failure = comparePng(file, shotPath);
-            if (failure !== null) failures.push(failure);
+            await page.screenshot({
+              path: shotPath,
+              animations: 'disabled',
+              caret: 'hide',
+              scale: 'css',
+              mask: stableMasks(page, screen),
+            });
+            const { size } = statSync(shotPath);
+            const minBytes = screen.minBytes ?? minPngBytes;
+            assert(size > minBytes, `${file} is only ${size} bytes (expected > ${minBytes})`);
+            captured += 1;
+            if (!updateMode && !argosCaptureMode) {
+              const failure = comparePng(file, shotPath);
+              if (failure !== null) failures.push(failure);
+            }
+          } finally {
+            if (cleanup !== undefined) await cleanup();
           }
         }
 

@@ -72,6 +72,7 @@ export interface Messages {
     createAccountEyebrow: (params: { host: string }) => string;
     emailLabel: string;
     passwordLabel: string;
+    passwordTooShort: (params: { min: number }) => string;
     nameLabel: string;
     signInIdle: string;
     signInPending: string;
@@ -79,6 +80,7 @@ export interface Messages {
     passkeyPending: string;
     continueWithGoogle: string;
     forgotPassword: string;
+    forgotPasswordLink: string;
     magicLinkEmailLabel: string;
     magicLinkIdle: string;
     magicLinkPending: string;
@@ -323,6 +325,10 @@ export interface Messages {
   };
   security: {
     heading: string;
+    setOrResetPasswordHeading: string;
+    setOrResetPassword: string;
+    resetSending: string;
+    resetSent: string;
     passkeys: string;
     passkeyNameLabel: string;
     defaultPasskeyName: string;
@@ -987,6 +993,33 @@ export interface Messages {
     erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureResolved: (input: { status: string; resolvedAt: string }) => string;
   };
+  changePassword: {
+    heading: string;
+    intro: string;
+    currentPasswordLabel: string;
+    newPasswordLabel: string;
+    confirmPasswordLabel: string;
+    revokeOtherSessions: string;
+    revokeOtherSessionsHelp: string;
+    submitIdle: string;
+    submitPending: string;
+    success: string;
+    mismatch: string;
+    tooShort: (params: { min: number }) => string;
+    invalidCurrentPassword: string;
+    credentialAccountMissing: string;
+  };
+  forgotPassword: {
+    eyebrow: (params: { host: string }) => string;
+    intro: string;
+    emailLabel: string;
+    invalidEmail: string;
+    submitIdle: string;
+    submitPending: string;
+    successTitle: string;
+    successBody: string;
+    backToLogin: string;
+  };
   resetPassword: {
     title: string;
     eyebrow: (params: { host: string }) => string;
@@ -1002,6 +1035,7 @@ export interface Messages {
     successTitle: string;
     successBody: string;
     goToLogin: string;
+    requestNewLink: string;
   };
   support: {
     heading: string;

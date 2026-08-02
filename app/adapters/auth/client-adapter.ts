@@ -27,7 +27,13 @@ const twoFactorEnrollmentSchema = z.object({
 type SignUpInput = Parameters<AuthClientPort['signUp']>[0];
 type SignInInput = Parameters<AuthClientPort['signIn']>[0];
 type MagicLinkInput = Parameters<AuthClientPort['requestMagicLink']>[0];
+type ChangePasswordInput = Parameters<AuthClientPort['changePassword']>[0];
 type AuthPath = '/api/auth/sign-up/email' | '/api/auth/sign-in/email';
+
+interface CliEndpoint {
+  baseUrl: URL;
+  origin: string;
+}
 
 const authErrorSchema = z.object({
   code: z.string().optional(),
@@ -36,7 +42,7 @@ const authErrorSchema = z.object({
 
 const toResult = <T>(
   value: T,
-  error: { message?: string | undefined; status: number } | null,
+  error: { code?: string | undefined; message?: string | undefined; status: number } | null,
   unauthorizedCode: 'unauthorized' | 'invalid_credentials' = 'unauthorized',
 ): Result<T, AppError> => {
   if (!error) return ok(value);
@@ -50,15 +56,22 @@ const toResult = <T>(
           : error.status === 429
             ? 'rate_limited'
             : 'internal';
-  return err(appError(code, error.message ?? 'Authentication failed'));
+  return err(appError(
+    code,
+    error.message ?? 'Authentication failed',
+    error.code === undefined ? undefined : { providerCode: error.code },
+  ));
 };
 
-const readAuthError = async (response: Response): Promise<{ message?: string | undefined; status: number }> => {
+const readAuthError = async (
+  response: Response,
+): Promise<{ code?: string | undefined; message?: string | undefined; status: number }> => {
   try {
     const payload: unknown = await response.json();
     const parsed = authErrorSchema.safeParse(payload);
     return {
       status: response.status,
+      code: parsed.success ? parsed.data.code : undefined,
       message: parsed.success ? (parsed.data.message ?? parsed.data.code) : response.statusText,
     };
   } catch {
@@ -67,18 +80,18 @@ const readAuthError = async (response: Response): Promise<{ message?: string | u
 };
 
 const postCliAuth = async (
-  baseUrl: string,
+  endpoint: CliEndpoint,
   path: AuthPath,
   body: SignUpInput | SignInInput,
   onToken: (token: string) => void,
 ): Promise<Result<{ token: string | null }, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL(path, baseUrl), {
+    response = await fetch(new URL(path, endpoint.baseUrl), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        origin: baseUrl,
+        origin: endpoint.origin,
       },
       body: JSON.stringify(body),
       credentials: 'include',
@@ -140,18 +153,20 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
           )
         ).error,
       ),
-    requestPasswordReset: async ({ email, language }) =>
+    requestPasswordReset: async ({ email, redirectTo, language }) =>
       toResult(
         undefined,
         (
           await client.requestPasswordReset(
-            { email, redirectTo: '/reset-password' },
+            { email, redirectTo },
             language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
           )
         ).error,
       ),
     resetPassword: async ({ token, newPassword }) =>
       toResult({ token: null }, (await client.resetPassword({ newPassword, token })).error),
+    changePassword: async (input) =>
+      toResult(undefined, (await client.changePassword(input)).error),
     signOut: async () => toResult(undefined, (await client.signOut()).error),
     registerPasskey: async (name) =>
       toResult(undefined, (await client.passkey.addPasskey({ name })).error),
@@ -170,14 +185,14 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
 };
 
 const postCliMagicLink = async (
-  baseUrl: string,
+  endpoint: CliEndpoint,
   input: MagicLinkInput,
 ): Promise<Result<void, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL('/api/auth/sign-in/magic-link', baseUrl), {
+    response = await fetch(new URL('/api/auth/sign-in/magic-link', endpoint.baseUrl), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: baseUrl },
+      headers: { 'content-type': 'application/json', origin: endpoint.origin },
       body: JSON.stringify(input),
     });
   } catch (cause) {
@@ -188,15 +203,15 @@ const postCliMagicLink = async (
 };
 
 const verifyMagicLinkToken = async (
-  baseUrl: string,
+  endpoint: CliEndpoint,
   token: string,
   onToken: (token: string) => void,
 ): Promise<Result<AuthSessionResult, AppError>> => {
-  const url = new URL('/api/auth/magic-link/verify', baseUrl);
+  const url = new URL('/api/auth/magic-link/verify', endpoint.baseUrl);
   url.searchParams.set('token', token);
   let response: Response;
   try {
-    response = await fetch(url, { headers: { origin: baseUrl }, redirect: 'manual' });
+    response = await fetch(url, { headers: { origin: endpoint.origin }, redirect: 'manual' });
   } catch (cause) {
     return err(appError('internal', `Network error verifying magic link: ${String(cause)}`));
   }
@@ -208,19 +223,19 @@ const verifyMagicLinkToken = async (
 };
 
 const postCliPasswordReset = async (
-  baseUrl: string,
-  input: { email: string; language?: string },
+  endpoint: CliEndpoint,
+  input: Parameters<AuthClientPort['requestPasswordReset']>[0],
 ): Promise<Result<void, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL('/api/auth/request-password-reset', baseUrl), {
+    response = await fetch(new URL('/api/auth/request-password-reset', endpoint.baseUrl), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        origin: baseUrl,
+        origin: endpoint.origin,
         ...(input.language ? { [MAGIC_LINK_LANGUAGE_HEADER]: input.language } : {}),
       },
-      body: JSON.stringify({ email: input.email, redirectTo: '/reset-password' }),
+      body: JSON.stringify({ email: input.email, redirectTo: input.redirectTo }),
     });
   } catch (cause) {
     return err(appError('internal', `Network error requesting password reset: ${String(cause)}`));
@@ -230,14 +245,14 @@ const postCliPasswordReset = async (
 };
 
 const postCliResetPassword = async (
-  baseUrl: string,
+  endpoint: CliEndpoint,
   input: { token: string; newPassword: string },
 ): Promise<Result<AuthSessionResult, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL('/api/auth/reset-password', baseUrl), {
+    response = await fetch(new URL('/api/auth/reset-password', endpoint.baseUrl), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: baseUrl },
+      headers: { 'content-type': 'application/json', origin: endpoint.origin },
       body: JSON.stringify({ token: input.token, newPassword: input.newPassword }),
     });
   } catch (cause) {
@@ -248,15 +263,15 @@ const postCliResetPassword = async (
 };
 
 const verifyTotpCli = async (
-  baseUrl: string,
+  endpoint: CliEndpoint,
   code: string,
   onToken: (token: string) => void,
 ): Promise<Result<AuthSessionResult, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL('/api/auth/two-factor/verify-totp', baseUrl), {
+    response = await fetch(new URL('/api/auth/two-factor/verify-totp', endpoint.baseUrl), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: baseUrl },
+      headers: { 'content-type': 'application/json', origin: endpoint.origin },
       body: JSON.stringify({ code }),
       credentials: 'include',
     });
@@ -270,17 +285,17 @@ const verifyTotpCli = async (
 };
 
 const postCliSignOut = async (
-  baseUrl: string,
+  endpoint: CliEndpoint,
   token: string,
 ): Promise<Result<void, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL('/api/auth/sign-out', baseUrl), {
+    response = await fetch(new URL('/api/auth/sign-out', endpoint.baseUrl), {
       method: 'POST',
       headers: {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',
-        origin: new URL(baseUrl).origin,
+        origin: endpoint.origin,
       },
       body: '{}',
     });
@@ -291,26 +306,57 @@ const postCliSignOut = async (
   return ok(undefined);
 };
 
+const postCliChangePassword = async (
+  endpoint: CliEndpoint,
+  input: ChangePasswordInput,
+  currentToken: string | null,
+  onToken: (token: string) => void,
+): Promise<Result<void, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/change-password', endpoint.baseUrl), {
+      method: 'POST',
+      headers: {
+        ...(currentToken === null ? {} : { authorization: `Bearer ${currentToken}` }),
+        'content-type': 'application/json',
+        origin: endpoint.origin,
+      },
+      body: JSON.stringify(input),
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error changing password: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult(undefined, await readAuthError(response));
+  const replacementToken = response.headers.get('set-auth-token');
+  if (replacementToken) onToken(replacementToken);
+  return ok(undefined);
+};
+
 const notSupportedInCli = validation('This authentication method is not supported in the CLI');
 
 export const createCliAuthAdapter = (
   baseUrl: string,
   onToken: (token: string) => void,
   token: () => string | null = () => null,
-): CliAuthAdapter => ({
-  signUp: (input) => postCliAuth(baseUrl, '/api/auth/sign-up/email', input, onToken),
-  signIn: (input) => postCliAuth(baseUrl, '/api/auth/sign-in/email', input, onToken),
-  requestMagicLink: (input) => postCliMagicLink(baseUrl, input),
-  requestPasswordReset: (input) => postCliPasswordReset(baseUrl, input),
-  resetPassword: (input) => postCliResetPassword(baseUrl, input),
-  signOut: async () => {
-    const currentToken = token();
-    return currentToken === null ? ok(undefined) : postCliSignOut(baseUrl, currentToken);
-  },
-  registerPasskey: async () => err(notSupportedInCli),
-  signInWithPasskey: async () => err(notSupportedInCli),
-  enableTwoFactor: async () => err(notSupportedInCli),
-  verifyTotp: (code) => verifyTotpCli(baseUrl, code, onToken),
-  signInWithGoogle: async () => err(notSupportedInCli),
-  verifyMagicLinkToken: (token) => verifyMagicLinkToken(baseUrl, token, onToken),
-});
+): CliAuthAdapter => {
+  const normalizedBaseUrl = new URL(baseUrl);
+  const endpoint = { baseUrl: normalizedBaseUrl, origin: normalizedBaseUrl.origin };
+  return {
+    signUp: (input) => postCliAuth(endpoint, '/api/auth/sign-up/email', input, onToken),
+    signIn: (input) => postCliAuth(endpoint, '/api/auth/sign-in/email', input, onToken),
+    requestMagicLink: (input) => postCliMagicLink(endpoint, input),
+    requestPasswordReset: (input) => postCliPasswordReset(endpoint, input),
+    resetPassword: (input) => postCliResetPassword(endpoint, input),
+    changePassword: (input) => postCliChangePassword(endpoint, input, token(), onToken),
+    signOut: async () => {
+      const currentToken = token();
+      return currentToken === null ? ok(undefined) : postCliSignOut(endpoint, currentToken);
+    },
+    registerPasskey: async () => err(notSupportedInCli),
+    signInWithPasskey: async () => err(notSupportedInCli),
+    enableTwoFactor: async () => err(notSupportedInCli),
+    verifyTotp: (code) => verifyTotpCli(endpoint, code, onToken),
+    signInWithGoogle: async () => err(notSupportedInCli),
+    verifyMagicLinkToken: (token) => verifyMagicLinkToken(endpoint, token, onToken),
+  };
+};

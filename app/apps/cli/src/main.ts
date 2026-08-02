@@ -18,6 +18,7 @@ import {
   newCourseModuleSchema,
   notFound,
   ok,
+  PASSWORD_MIN_LENGTH,
   priceMajorSchema,
   reactionEmojiSchema,
   spaceVisibilitySchema,
@@ -99,9 +100,20 @@ const centsSchema = z
 
 const emailOptionSchema = z.object({ email: z.string().email() });
 const authPasswordOptionsSchema = emailOptionSchema.extend({ password: z.string().min(1) });
-const registerOptionsSchema = authPasswordOptionsSchema.extend({ name: z.string().min(1) });
+const registerOptionsSchema = authPasswordOptionsSchema.extend({
+  name: z.string().min(1),
+  password: z.string().min(PASSWORD_MIN_LENGTH),
+});
 const passwordResetRequestOptionsSchema = emailOptionSchema.extend({ language: z.string().min(1).optional() });
-const resetPasswordOptionsSchema = z.object({ token: z.string().min(1), password: z.string().min(1) });
+const resetPasswordOptionsSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(PASSWORD_MIN_LENGTH),
+});
+const changePasswordOptionsSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(PASSWORD_MIN_LENGTH),
+  signOutOtherSessions: z.boolean().default(false),
+});
 const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() });
 const tenantSettingsOptionsSchema = z.object({
   billingPortalUrl: z.string().url().optional(),
@@ -2227,6 +2239,30 @@ dev
   );
 
 program
+  .command('change-password')
+  .description('Change the current account password')
+  .requiredOption('--current-password <password>')
+  .requiredOption('--new-password <password>')
+  .option('--sign-out-other-sessions', 'revoke every other session', false)
+  .action(
+    withInput(z.tuple([changePasswordOptionsSchema]), async (ctx, [options]) => {
+      const revokedOtherSessions = options.signOutOtherSessions;
+      const result = await ctx.auth.changePassword({
+        currentPassword: options.currentPassword,
+        newPassword: options.newPassword,
+        revokeOtherSessions: revokedOtherSessions,
+      });
+      emit(
+        result.ok ? ok({ changed: true, revokedOtherSessions }) : result,
+        ctx.json,
+        () => revokedOtherSessions
+          ? 'password changed and other sessions signed out'
+          : 'password changed',
+      );
+    }),
+  );
+
+program
   .command('request-password-reset')
   .description('Send a password-reset email (to the requesting tenant host)')
   .requiredOption('--email <email>')
@@ -2236,6 +2272,7 @@ program
       emit(
         await ctx.auth.requestPasswordReset({
           email: options.email,
+          redirectTo: new URL('/reset-password', ctx.apiUrl).toString(),
           ...(options.language === undefined ? {} : { language: options.language }),
         }),
         ctx.json,

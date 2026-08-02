@@ -111,6 +111,7 @@ import {
   SpaceThreadRoute,
 } from './routes/member.js';
 import { RegisterRoute } from './routes/register.js';
+import { ForgotPasswordRoute } from './routes/forgot-password.js';
 import { ResetPasswordRoute } from './routes/reset-password.js';
 import { ThemeModeProvider } from './theme-mode.js';
 
@@ -175,6 +176,11 @@ const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
   component: RegisterRoute,
+});
+const forgotPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordRoute,
 });
 const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -425,6 +431,7 @@ const router = createRouter({
     courseStructureRoute,
     lessonPlayerRoute,
     registerRoute,
+    forgotPasswordRoute,
     resetPasswordRoute,
     accountRoute,
     communityRoute,

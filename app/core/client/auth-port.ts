@@ -9,6 +9,12 @@ export interface TwoFactorEnrollment {
   backupCodes: string[];
 }
 
+export interface PasswordResetRequest {
+  email: string;
+  redirectTo: string;
+  language?: string;
+}
+
 /**
  * Client-side auth port. Web (and future mobile/Electron) programs against
  * this interface; the Better Auth client adapter implements it.
@@ -25,9 +31,14 @@ export interface AuthClientPort {
   signIn(input: { email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   requestMagicLink(input: { email: string; callbackURL: string; language?: string }): Promise<WriteResult<void>>;
   /** Send a password-reset email (used by members to set or reset their password). */
-  requestPasswordReset(input: { email: string; language?: string }): Promise<WriteResult<void>>;
+  requestPasswordReset(input: PasswordResetRequest): Promise<WriteResult<void>>;
   /** Consume a reset token and set a new password. */
   resetPassword(input: { token: string; newPassword: string }): Promise<WriteResult<AuthSessionResult>>;
+  changePassword(input: {
+    currentPassword: string;
+    newPassword: string;
+    revokeOtherSessions: boolean;
+  }): Promise<WriteResult<void>>;
   signOut(): Promise<WriteResult<void>>;
   registerPasskey(name: string): Promise<WriteResult<void>>;
   signInWithPasskey(): Promise<WriteResult<AuthSessionResult>>;

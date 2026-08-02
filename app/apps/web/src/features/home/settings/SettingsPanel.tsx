@@ -20,7 +20,8 @@ import type { ExemptionBasisKind, TenantSecretKey } from '#core/domain/index.js'
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
+import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
   BUILD_VERSION,
@@ -665,6 +666,8 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
 
 const SecurityPanel = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
+  const { email } = usePanelContext();
   const [passkeyName, setPasskeyName] = useState('');
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
@@ -672,6 +675,8 @@ const SecurityPanel = () => {
   const registerPasskey = useMutation(actions.registerPasskey);
   const enableTwoFactor = useMutation(actions.enableTwoFactor);
   const verifyTotp = useMutation(actions.verifyTotp);
+  const changePassword = useMutation(actions.changePassword);
+  const requestPasswordReset = useMutation(actions.requestPasswordReset);
 
   const addPasskey = (event: FormEvent) => {
     event.preventDefault();
@@ -689,8 +694,44 @@ const SecurityPanel = () => {
   };
 
   return (
-    <SectionCard title={t.security.heading}>
+    <SectionCard title={t.security.heading} data-testid="security-settings">
       <Stack useFlexGap spacing="1.75rem">
+        <Box sx={{ display: 'grid', gap: '0.8rem' }}>
+          <ChangePasswordForm
+            pending={changePassword.isPending}
+            success={changePassword.isSuccess}
+            error={changePassword.error}
+            onSubmit={(input) => changePassword.mutate(input)}
+          />
+          <Box sx={{ display: 'grid', gap: '0.8rem' }}>
+            <Eyebrow variant="overline" component="h3">
+              {t.security.setOrResetPasswordHeading}
+            </Eyebrow>
+            <Button
+              variant="outlined"
+              data-testid="security-reset-password"
+              disabled={requestPasswordReset.isPending}
+              onClick={() => requestPasswordReset.mutate({
+                email,
+                redirectTo: new URL('/reset-password', window.location.origin).toString(),
+                language,
+              })}
+            >
+              {requestPasswordReset.isPending
+                ? t.security.resetSending
+                : t.security.setOrResetPassword}
+            </Button>
+            {requestPasswordReset.isSuccess ? (
+              <Typography variant="caption" component="p" data-testid="security-reset-sent">
+                {t.security.resetSent}
+              </Typography>
+            ) : null}
+            {requestPasswordReset.isError ? (
+              <Alert>{localizeError(requestPasswordReset.error, t)}</Alert>
+            ) : null}
+          </Box>
+        </Box>
+
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <Eyebrow variant="overline" component="h3">
             {t.security.passkeys}

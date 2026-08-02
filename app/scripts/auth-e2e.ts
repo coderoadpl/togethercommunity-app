@@ -9,9 +9,11 @@ import { z } from 'zod';
 
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
+import { API_PATHS } from '#core/contract/index.js';
 
 import {
   bootServer,
+  delay,
   ephemeralPort,
   killServer,
   rootDir,
@@ -78,6 +80,77 @@ const enrollmentSchema = z.object({
 const sessionSchema = z.object({
   user: z.object({ email: z.string(), twoFactorEnabled: z.boolean().nullish() }),
 });
+const devEmailSchema = z.object({
+  ok: z.literal(true),
+  data: z.object({ email: z.object({ text: z.string() }).nullable() }),
+});
+
+const runPasswordResetPath = async (
+  transport: { connectUrl: string; origin: string },
+  webBaseUrl: string,
+): Promise<void> => {
+  const email = 'password-reset-e2e@together.dev';
+  const oldPassword = 'old-password';
+  const newPassword = 'new-password';
+  const auth = createAuthE2eClient(transport);
+  const signUp = await auth.signUpEmail({ name: 'Password Reset E2E', email, password: oldPassword });
+  assert(signUp.status < 400, `reset sign-up failed (HTTP ${signUp.status}): ${JSON.stringify(signUp.json)}`);
+  const priorSession = signUp.token;
+  assert(priorSession !== null, 'reset sign-up did not return a session token');
+
+  let browser: Browser | null = null;
+  try {
+    browser = await chromium.launch(
+      chromeExecutablePath
+        ? { executablePath: chromeExecutablePath, headless: true }
+        : { channel: 'chrome', headless: true },
+    );
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${webBaseUrl}/forgot-password`, { waitUntil: 'networkidle' });
+    await page.getByTestId('forgot-password-email').fill(email);
+    await page.getByTestId('forgot-password-submit').click();
+    await page.getByTestId('forgot-password-success').waitFor({ state: 'visible', timeout: 15000 });
+
+    let actionUrl = '';
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline && actionUrl === '') {
+      const response = await fetch(
+        new URL(`${API_PATHS.devEmail}?to=${encodeURIComponent(email)}`, transport.connectUrl),
+      );
+      const parsed = devEmailSchema.parse(await response.json());
+      actionUrl = parsed.data.email?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+      if (actionUrl === '') await delay(100);
+    }
+    assert(actionUrl !== '', 'reset email did not reach the dev sink');
+    assert(new URL(actionUrl).host === new URL(webBaseUrl).host, 'reset provider callback used the wrong host');
+
+    await page.goto(actionUrl, { waitUntil: 'networkidle' });
+    await page.getByTestId('reset-password').fill(newPassword);
+    await page.getByTestId('reset-password-confirm').fill(newPassword);
+    await page.getByTestId('reset-submit').click();
+    await page.getByTestId('reset-success').waitFor({ state: 'visible', timeout: 15000 });
+    await context.close();
+  } finally {
+    if (browser) await browser.close();
+  }
+
+  const oldSignIn = await auth.signInEmail({ email, password: oldPassword });
+  const newSignIn = await auth.signInEmail({ email, password: newPassword });
+  const priorSessionResponse = await fetch(new URL(API_PATHS.me, transport.connectUrl), {
+    headers: {
+      authorization: `Bearer ${priorSession}`,
+      origin: transport.origin,
+    },
+  });
+  assert(oldSignIn.status === 401, `old password remained valid after reset (HTTP ${oldSignIn.status})`);
+  assert(newSignIn.status < 400, `new password was rejected after reset (HTTP ${newSignIn.status})`);
+  assert(
+    priorSessionResponse.status === 401,
+    `prior session was not unauthorized after reset (HTTP ${priorSessionResponse.status})`,
+  );
+  console.log('auth-e2e: password reset path OK');
+};
 
 const runTotpPath = async (transport: { connectUrl: string; origin: string }): Promise<void> => {
   const email = 'totp-e2e@together.dev';
@@ -194,8 +267,12 @@ try {
       APP_BASE_URL: webBaseUrl,
       APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: 'dist/web',
+      AUTH_DEV_EXPOSE_MAGIC_LINKS: 'true',
+      EMAIL_PROVIDER: 'dev',
+      SIMULATED_PAYMENTS: 'true',
     },
   });
+  await runPasswordResetPath({ connectUrl, origin: webBaseUrl }, webBaseUrl);
   await runTotpPath({ connectUrl, origin: webBaseUrl });
   await runPasskeyPath(webBaseUrl);
   console.log(`\nauth-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

@@ -118,6 +118,36 @@ describe('SettingsPanel build information', () => {
   });
 });
 
+describe('SettingsPanel security', () => {
+  it('changes the creator password and keeps the reset path mounted', async () => {
+    let body: unknown;
+    server.use(
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    renderPanel();
+
+    await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), 'new-password');
+    await userEvent.type(screen.getByTestId('change-confirm-password'), 'new-password');
+    await userEvent.click(screen.getByTestId('change-revoke-sessions'));
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+
+    expect(await screen.findByTestId('change-password-success')).toHaveTextContent(
+      pl.changePassword.success,
+    );
+    expect(body).toEqual({
+      currentPassword: 'current-password',
+      newPassword: 'new-password',
+      revokeOtherSessions: true,
+    });
+    expect(screen.getByText(pl.security.setOrResetPasswordHeading)).toBeInTheDocument();
+    expect(screen.getByTestId('security-reset-password')).toBeInTheDocument();
+  });
+});
+
 describe('SettingsPanel legal documents', () => {
   it('saves terms and privacy urls through the settings endpoint', async () => {
     const { updates } = renderPanel();

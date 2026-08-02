@@ -16,6 +16,9 @@ jobs:
     permissions:
       contents: read
       actions: read
+      issues: read
+      pull-requests: read
+      checks: read
       security-events: write
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
@@ -30,7 +33,8 @@ jobs:
         with:
           name: scorecard-results
           path: results.sarif
-          retention-days: 7
-      - uses: github/codeql-action/upload-sarif@dfbc6164313353db46c80e2fcfd38820bd2c3c46
+          retention-days: 30
+      - uses: github/codeql-action/upload-sarif@a2983b8bed1923f44751c5c43237f479442827b3
+        continue-on-error: true
         with:
           sarif_file: results.sarif

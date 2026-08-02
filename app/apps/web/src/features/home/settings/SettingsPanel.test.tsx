@@ -141,8 +141,9 @@ describe('SettingsPanel security', () => {
     expect(body).toEqual({
       currentPassword: 'current-password',
       newPassword: 'new-password',
-      revokeOtherSessions: false,
+      revokeOtherSessions: true,
     });
+    expect(screen.getByText(pl.security.setOrResetPasswordHeading)).toBeInTheDocument();
     expect(screen.getByTestId('security-reset-password')).toBeInTheDocument();
   });
 });

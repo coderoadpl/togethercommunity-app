@@ -12,7 +12,6 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
-import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
@@ -206,7 +205,6 @@ export const MemberAccountPage = () => {
 
         <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
             <ChangePasswordForm
-              minPasswordLength={PASSWORD_MIN_LENGTH}
               pending={changePassword.isPending}
               success={changePassword.isSuccess}
               error={changePassword.error}

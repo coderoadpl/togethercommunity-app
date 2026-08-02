@@ -111,7 +111,7 @@ describe('MemberAccountPage', () => {
     expect(body).toEqual({
       currentPassword: 'current-password',
       newPassword: 'new-password',
-      revokeOtherSessions: true,
+      revokeOtherSessions: false,
     });
     expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
   });

@@ -335,27 +335,24 @@ describe('change-password', () => {
 });
 
 describe('request-password-reset', () => {
-  it.each(['known@example.com', 'random-unknown@example.com'])(
-    'returns the same neutral success for %s',
-    async (email) => {
-      await run(
-        '--json',
-        '--api-url',
-        'https://studio.example/api-prefix',
-        'request-password-reset',
-        '--email',
-        email,
-        '--language',
-        'en',
-      );
+  it('derives redirectTo from the API URL origin', async () => {
+    await run(
+      '--json',
+      '--api-url',
+      'https://studio.example/api-prefix',
+      'request-password-reset',
+      '--email',
+      'member@example.com',
+      '--language',
+      'en',
+    );
 
-      expect(h.requestPasswordReset).toHaveBeenCalledExactlyOnceWith({
-        email,
-        redirectTo: 'https://studio.example/reset-password',
-        language: 'en',
-      });
-      expect(soleJson()).toEqual({ ok: true });
-      expect(process.exitCode).toBe(0);
-    },
-  );
+    expect(h.requestPasswordReset).toHaveBeenCalledExactlyOnceWith({
+      email: 'member@example.com',
+      redirectTo: 'https://studio.example/reset-password',
+      language: 'en',
+    });
+    expect(soleJson()).toEqual({ ok: true });
+    expect(process.exitCode).toBe(0);
+  });
 });

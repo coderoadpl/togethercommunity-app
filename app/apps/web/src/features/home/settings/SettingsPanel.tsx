@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { accentColorSchema, PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+import { accentColorSchema } from '#core/domain/index.js';
 import type { ExemptionBasisKind, TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -694,17 +694,19 @@ const SecurityPanel = () => {
   };
 
   return (
-    <SectionCard title={t.security.heading}>
+    <SectionCard title={t.security.heading} data-testid="security-settings">
       <Stack useFlexGap spacing="1.75rem">
         <Box sx={{ display: 'grid', gap: '0.8rem' }}>
           <ChangePasswordForm
-            minPasswordLength={PASSWORD_MIN_LENGTH}
             pending={changePassword.isPending}
             success={changePassword.isSuccess}
             error={changePassword.error}
             onSubmit={(input) => changePassword.mutate(input)}
           />
-          <Box>
+          <Box sx={{ display: 'grid', gap: '0.8rem' }}>
+            <Eyebrow variant="overline" component="h3">
+              {t.security.setOrResetPasswordHeading}
+            </Eyebrow>
             <Button
               variant="outlined"
               data-testid="security-reset-password"
@@ -716,18 +718,18 @@ const SecurityPanel = () => {
               })}
             >
               {requestPasswordReset.isPending
-                ? t.account.resetSending
-                : t.account.setOrResetPassword}
+                ? t.security.resetSending
+                : t.security.setOrResetPassword}
             </Button>
+            {requestPasswordReset.isSuccess ? (
+              <Typography variant="caption" component="p" data-testid="security-reset-sent">
+                {t.security.resetSent}
+              </Typography>
+            ) : null}
+            {requestPasswordReset.isError ? (
+              <Alert>{localizeError(requestPasswordReset.error, t)}</Alert>
+            ) : null}
           </Box>
-          {requestPasswordReset.isSuccess ? (
-            <Typography variant="caption" component="p" data-testid="security-reset-sent">
-              {t.account.resetSent}
-            </Typography>
-          ) : null}
-          {requestPasswordReset.isError ? (
-            <Alert>{localizeError(requestPasswordReset.error, t)}</Alert>
-          ) : null}
         </Box>
 
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>

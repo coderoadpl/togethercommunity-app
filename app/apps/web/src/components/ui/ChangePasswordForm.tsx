@@ -10,20 +10,12 @@ import {
   OutlinedInput,
   Typography,
 } from '@mui/material';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/password.js';
+
+import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { Eyebrow } from '../../theme.js';
 
-const providerCodeOf = (error: Error | null): string | null => {
-  if (error === null || !('appError' in error)) return null;
-  const { appError } = error;
-  if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
-  const { details } = appError;
-  if (typeof details !== 'object' || details === null || !('providerCode' in details)) return null;
-  return typeof details.providerCode === 'string' ? details.providerCode : null;
-};
-
 interface ChangePasswordFormProps {
-  minPasswordLength: number;
   pending: boolean;
   success: boolean;
   error: Error | null;
@@ -35,7 +27,6 @@ interface ChangePasswordFormProps {
 }
 
 export const ChangePasswordForm = ({
-  minPasswordLength,
   pending,
   success,
   error,
@@ -45,7 +36,7 @@ export const ChangePasswordForm = ({
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [revokeOtherSessions, setRevokeOtherSessions] = useState(true);
+  const [revokeOtherSessions, setRevokeOtherSessions] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   useEffect(() => {
     if (success) {
@@ -58,8 +49,8 @@ export const ChangePasswordForm = ({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setLocalError(null);
-    if (newPassword.length < minPasswordLength) {
-      setLocalError(t.changePassword.tooShort({ min: minPasswordLength }));
+    if (!passwordMeetsMinimumLength(newPassword)) {
+      setLocalError(t.changePassword.tooShort({ min: PASSWORD_MIN_LENGTH }));
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -132,6 +123,9 @@ export const ChangePasswordForm = ({
         )}
         label={t.changePassword.revokeOtherSessions}
       />
+      <Typography variant="caption" component="p">
+        {t.changePassword.revokeOtherSessionsHelp}
+      </Typography>
       <Button
         type="submit"
         variant="outlined"

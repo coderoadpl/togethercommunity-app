@@ -49,6 +49,7 @@ interface ScreenSpec {
   path: string;
   tenantSlug?: string;
   ready: (page: Page) => Promise<void>;
+  settled?: (page: Page) => Promise<void>;
   mask?: (page: Page) => Locator[];
 }
 
@@ -229,6 +230,17 @@ const SCREENS: ScreenSpec[] = [
       await page.getByTestId('onboarding-checklist').waitFor(visible);
       await page.getByTestId('dashboard-tile-revenue').waitFor(visible);
       await page.getByTestId('dashboard-member-row').first().waitFor(visible);
+    },
+  },
+  {
+    name: 'panel-settings-security',
+    auth: 'creator',
+    path: '/panel/settings',
+    ready: (page) => page.getByTestId('security-reset-password').waitFor(visible),
+    settled: async (page) => {
+      await page
+        .getByTestId('security-settings')
+        .evaluate((element) => element.scrollIntoView({ block: 'start' }));
     },
   },
   {
@@ -723,6 +735,15 @@ try {
           await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
           await screen.ready(page);
           await settlePage(page);
+          if (screen.settled) {
+            await screen.settled(page);
+            await page.evaluate(
+              () =>
+                new Promise<void>((resolve) => {
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                }),
+            );
+          }
           const shotPath = join(
             argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
             file,

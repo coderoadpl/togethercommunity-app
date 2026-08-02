@@ -13,6 +13,15 @@ const errorCodeOf = (error: unknown): ErrorCode | null => {
   return typeof code === 'string' && isErrorCode(code) ? code : null;
 };
 
+export const providerCodeOf = (error: unknown): string | null => {
+  if (typeof error !== 'object' || error === null || !('appError' in error)) return null;
+  const { appError } = error;
+  if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
+  const { details } = appError;
+  if (typeof details !== 'object' || details === null || !('providerCode' in details)) return null;
+  return typeof details.providerCode === 'string' ? details.providerCode : null;
+};
+
 export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
   switch (code) {
     case 'unauthorized':

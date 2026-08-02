@@ -351,6 +351,10 @@ export const en: Messages = {
   },
   security: {
     heading: 'Security',
+    setOrResetPasswordHeading: 'Set or reset password',
+    setOrResetPassword: 'Email me a password link',
+    resetSending: 'Sending…',
+    resetSent: 'We sent you an email with a link to set your password. Check your inbox.',
     passkeys: 'Passkeys',
     passkeyNameLabel: 'passkey name',
     defaultPasskeyName: 'My passkey',
@@ -1088,7 +1092,7 @@ export const en: Messages = {
     back: '← back to my courses',
     passwordHeading: 'Password',
     passwordIntro:
-      'Set or change your account password. We will email you a link to set a new password. Magic-link sign-in keeps working.',
+      'Change your password here using your current password. If you do not have a password yet, use the email link below to set one. Magic-link sign-in keeps working.',
     setOrResetPassword: 'Set / reset password',
     resetSending: 'sending…',
     resetSent: 'We sent you an email with a link to set your password. Check your inbox.',
@@ -1108,6 +1112,7 @@ export const en: Messages = {
     newPasswordLabel: 'new password',
     confirmPasswordLabel: 'repeat new password',
     revokeOtherSessions: 'Sign out other sessions',
+    revokeOtherSessionsHelp: 'This signs you out of every other device and domain.',
     submitIdle: 'Change password',
     submitPending: 'Changing…',
     success: 'Password changed.',
@@ -1119,7 +1124,7 @@ export const en: Messages = {
   },
   forgotPassword: {
     eyebrow: ({ host }) => format('password recovery · space {host}', { host }),
-    intro: 'Enter your account email. We will send a one-hour link to set a new password.',
+    intro: 'Enter your account email. We will send a link that expires in one hour to set a new password.',
     emailLabel: 'email',
     invalidEmail: 'Enter a valid email address.',
     submitIdle: 'Send reset link',

@@ -15,7 +15,7 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/in
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { localizeError, providerCodeOf, useTranslations } from '../../i18n/index.js';
 import { FinePrint, Wordmark } from '../../theme.js';
 
 const tokenFromLocation = (): string | null =>
@@ -23,15 +23,6 @@ const tokenFromLocation = (): string | null =>
 
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
-
-const providerCodeOf = (error: Error | null): string | null => {
-  if (error === null || !('appError' in error)) return null;
-  const { appError } = error;
-  if (typeof appError !== 'object' || appError === null || !('details' in appError)) return null;
-  const { details } = appError;
-  if (typeof details !== 'object' || details === null || !('providerCode' in details)) return null;
-  return typeof details.providerCode === 'string' ? details.providerCode : null;
-};
 
 export const ResetPasswordPage = () => {
   const t = useTranslations();

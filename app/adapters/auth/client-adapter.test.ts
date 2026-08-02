@@ -101,6 +101,90 @@ describe('browser password change', () => {
   });
 });
 
+describe('browser password reset request', () => {
+  it('sends the absolute provider callback and language header', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const auth = createBetterAuthClientAdapter('https://studio.example');
+
+    expect(await auth.requestPasswordReset({
+      email: 'member@example.com',
+      redirectTo: 'https://studio.example/reset-password',
+      language: 'en',
+    })).toEqual({ ok: true, value: undefined });
+
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toEqual(new URL('https://studio.example/api/auth/request-password-reset'));
+    expect(init).toMatchObject({ method: 'POST' });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      email: 'member@example.com',
+      redirectTo: 'https://studio.example/reset-password',
+    });
+    expect(new Headers(init?.headers).get('x-together-language')).toBe('en');
+  });
+
+  it('maps provider failures without changing their code', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 'RESET_PASSWORD_DISABLED', message: 'Unavailable' }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ));
+    const auth = createBetterAuthClientAdapter('https://studio.example');
+
+    expect(await auth.requestPasswordReset({
+      email: 'member@example.com',
+      redirectTo: 'https://studio.example/reset-password',
+    })).toEqual({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: 'Unavailable',
+        details: { providerCode: 'RESET_PASSWORD_DISABLED' },
+      },
+    });
+  });
+});
+
+describe('CLI password reset request', () => {
+  it('preserves the absolute callback and uses the canonical API origin', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const auth = createCliAuthAdapter('https://api.example/path', () => undefined);
+
+    expect(await auth.requestPasswordReset({
+      email: 'member@example.com',
+      redirectTo: 'https://api.example/reset-password',
+      language: 'pl',
+    })).toEqual({ ok: true, value: undefined });
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      new URL('https://api.example/api/auth/request-password-reset'),
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'https://api.example',
+          'x-together-language': 'pl',
+        },
+        body: JSON.stringify({
+          email: 'member@example.com',
+          redirectTo: 'https://api.example/reset-password',
+        }),
+      },
+    );
+  });
+});
+
 describe('CLI password change', () => {
   it('persists the replacement token when other sessions are revoked', async () => {
     const fetch = vi.fn().mockResolvedValue(

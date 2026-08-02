@@ -51,6 +51,8 @@ export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
 export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset';
 
+export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
+
 const signUpConsentSchema = z.object({
   email: z.string().email(),
   termsAccepted: z.boolean().optional(),
@@ -93,7 +95,7 @@ const rebaseUrl = (rawUrl: string, base: string): string => {
 
 export interface ResetPasswordDeliveryContext {
   language: string;
-  /** Host-derived base URL: the reset page link is built on this so it lands on the requesting domain. */
+  /** Host-derived base URL: the provider callback is rebased onto this so it lands on the requesting domain. */
   baseUrl?: string;
 }
 
@@ -101,12 +103,6 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
   const resetPasswordContexts = new Map<string, ResetPasswordDeliveryContext>();
   const capturedLinks = new Map<string, { url: string; token: string }>();
-
-  const resetPasswordUrl = (base: string, token: string): string => {
-    const url = new URL('/reset-password', base);
-    url.searchParams.set('token', token);
-    return url.toString();
-  };
 
   const auth = betterAuth({
     database: drizzleAdapter(db, { provider: 'pg' }),
@@ -154,12 +150,14 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD_MIN_LENGTH,
+      resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
+      revokeSessionsOnPasswordReset: true,
       password: { verify: verifyPasswordWithLegacyFallback },
-      sendResetPassword: async ({ user, token }) => {
+      sendResetPassword: async ({ user, url }) => {
         const normalizedEmail = normalizeEmail(user.email);
         const context = resetPasswordContexts.get(normalizedEmail) ?? { language: 'pl' };
         resetPasswordContexts.delete(normalizedEmail);
-        const actionUrl = resetPasswordUrl(context.baseUrl ?? settings.baseUrl, token);
+        const actionUrl = context.baseUrl ? rebaseUrl(url, context.baseUrl) : url;
         const queued = await settings.emailOutbox.enqueue({
           id: settings.ids.nextId(),
           tenantId: null,

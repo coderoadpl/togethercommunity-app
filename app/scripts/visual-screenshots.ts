@@ -73,6 +73,24 @@ const SCREENS: ScreenSpec[] = [
     ready: (page) => page.getByTestId('login-email').waitFor(visible),
   },
   {
+    name: 'forgot-password',
+    auth: 'public',
+    path: '/forgot-password',
+    ready: (page) => page.getByTestId('forgot-password-email').waitFor(visible),
+  },
+  {
+    name: 'reset-password',
+    auth: 'public',
+    path: '/reset-password?token=visual-reset-token',
+    ready: (page) => page.getByTestId('reset-password').waitFor(visible),
+  },
+  {
+    name: 'reset-password-invalid',
+    auth: 'public',
+    path: '/reset-password?error=INVALID_TOKEN',
+    ready: (page) => page.getByTestId('reset-invalid-token').waitFor(visible),
+  },
+  {
     name: 'checkout',
     auth: 'public',
     path: '/checkout/product-studio-kurs-101',

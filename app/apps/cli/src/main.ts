@@ -2272,6 +2272,7 @@ program
       emit(
         await ctx.auth.requestPasswordReset({
           email: options.email,
+          redirectTo: new URL('/reset-password', ctx.apiUrl).toString(),
           ...(options.language === undefined ? {} : { language: options.language }),
         }),
         ctx.json,

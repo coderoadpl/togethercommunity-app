@@ -67,16 +67,24 @@ describe('MemberAccountPage', () => {
   });
 
   it('requests a password reset email', async () => {
+    let body: unknown;
     server.use(
       stubMe(),
       stubSettings(null),
       stubBillingOrders(),
-      http.post('*', () => HttpResponse.json({ status: true })),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
     );
     await renderAccount();
 
     await userEvent.click(await screen.findByTestId('account-reset-password'));
     expect(await screen.findByTestId('account-reset-sent')).toHaveTextContent(pl.account.resetSent);
+    expect(body).toEqual({
+      email: 'member@together.dev',
+      redirectTo: 'http://localhost:3000/reset-password',
+    });
   });
 
   it('changes the member password and sends the revocation choice', async () => {

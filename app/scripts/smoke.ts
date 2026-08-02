@@ -665,6 +665,82 @@ const proveCliPasswordRotation = async (port: number, homes: string[]): Promise<
   );
 };
 
+const provePasswordReset = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const home = mkdtempSync(join(tmpdir(), 'smoke-password-reset-'));
+  homes.push(home);
+  const cli = (args: string[]): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
+  const email = 'password-reset-smoke@together.dev';
+  const unknownEmail = 'password-reset-unknown-smoke@together.dev';
+  const oldPassword = 'old-password';
+  const newPassword = 'new-password';
+
+  expectOk(
+    await cli(['register', '--name', 'Password Reset Smoke', '--email', email, '--password', oldPassword]),
+    'password reset: register known address',
+  );
+  expectOk(
+    await cli(['request-password-reset', '--email', email, '--language', 'en']),
+    'password reset: request known address',
+  );
+  expectOk(
+    await cli(['request-password-reset', '--email', unknownEmail, '--language', 'en']),
+    'password reset: request unknown address',
+  );
+
+  let delivered: z.infer<typeof devEmailResultSchema>['email'] = null;
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && delivered === null) {
+    delivered = devEmailResultSchema.parse(
+      expectOk(
+        await cli(['dev', 'email', '--to', email]),
+        'password reset: inspect known delivery',
+      ),
+    ).email;
+    if (delivered === null) await delay(100);
+  }
+  assert(delivered !== null, 'password reset: known address did not receive an email');
+  const unknownDelivery = devEmailResultSchema.parse(
+    expectOk(
+      await cli(['dev', 'email', '--to', unknownEmail]),
+      'password reset: inspect unknown delivery',
+    ),
+  ).email;
+  assert(unknownDelivery === null, 'password reset: unknown address received an email');
+
+  const actionUrl = delivered.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+  assert(actionUrl !== '', 'password reset: delivery did not contain a provider callback URL');
+  const callbackUrl = new URL(actionUrl);
+  assert(callbackUrl.host === `localhost:${port}`, 'password reset: provider callback used the wrong host');
+  assert(
+    /^\/api\/auth\/reset-password\/[^/]+$/.test(callbackUrl.pathname),
+    'password reset: delivery bypassed the provider callback',
+  );
+  const callback = await fetch(actionUrl, { redirect: 'manual' });
+  const redirect = callback.headers.get('location');
+  assert(callback.status === 302 && redirect !== null, 'password reset: provider callback did not redirect');
+  const resetPageUrl = new URL(redirect);
+  assert(resetPageUrl.host === callbackUrl.host, 'password reset: completion redirect changed host');
+  const token = resetPageUrl.searchParams.get('token');
+  assert(token !== null && token.length > 0, 'password reset: completion redirect omitted the token');
+
+  expectOk(
+    await cli(['reset-password', '--token', token, '--password', newPassword]),
+    'password reset: complete reset',
+  );
+  expectError(
+    await cli(['login', '--email', email, '--password', oldPassword]),
+    'password reset: old password is rejected',
+    3,
+    'invalid_credentials',
+  );
+  expectOk(
+    await cli(['login', '--email', email, '--password', newPassword]),
+    'password reset: new password is accepted',
+  );
+};
+
 const driveStudentFlow = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
   const creatorHome = mkdtempSync(join(tmpdir(), 'smoke-creator-'));
@@ -1228,6 +1304,8 @@ try {
   await driveSpacesFlow(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');
   await proveCliPasswordRotation(port, homes);
+  console.log('smoke: proving provider-validated password reset...');
+  await provePasswordReset(port, homes);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

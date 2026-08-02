@@ -13,6 +13,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
+import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
+
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
@@ -30,6 +32,7 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [registeredOnTenant, setRegisteredOnTenant] = useState(false);
   const queryClient = useQueryClient();
@@ -54,6 +57,11 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    setLocalError(null);
+    if (!passwordMeetsMinimumLength(password)) {
+      setLocalError(t.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH }));
+      return;
+    }
     signUp.mutate({
       name,
       email,
@@ -144,6 +152,7 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
             {localizeError(signUp.error, t)}
           </Alert>
         ) : null}
+        {localError ? <Alert sx={{ mt: '0.6rem' }}>{localError}</Alert> : null}
     </FocusCard>
   );
 };

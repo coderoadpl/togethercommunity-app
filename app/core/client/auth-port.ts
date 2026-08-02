@@ -28,6 +28,11 @@ export interface AuthClientPort {
   requestPasswordReset(input: { email: string; language?: string }): Promise<WriteResult<void>>;
   /** Consume a reset token and set a new password. */
   resetPassword(input: { token: string; newPassword: string }): Promise<WriteResult<AuthSessionResult>>;
+  changePassword(input: {
+    currentPassword: string;
+    newPassword: string;
+    revokeOtherSessions: boolean;
+  }): Promise<WriteResult<void>>;
   signOut(): Promise<WriteResult<void>>;
   registerPasskey(name: string): Promise<WriteResult<void>>;
   signInWithPasskey(): Promise<WriteResult<AuthSessionResult>>;

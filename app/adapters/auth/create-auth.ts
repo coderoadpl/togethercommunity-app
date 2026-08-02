@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import {
   normalizeEmail,
+  PASSWORD_MIN_LENGTH,
   type AppError,
   type EmailBranding,
   type Result,
@@ -120,6 +121,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       customRules: {
         '/sign-in/magic-link': { window: 60, max: 20 },
         '/request-password-reset': { window: 60, max: 20 },
+        '/change-password': { window: 60, max: 20 },
         '/magic-link/verify': { window: 60, max: 20 },
         '/sign-in/email': { window: 60, max: 20 },
       },
@@ -151,6 +153,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     },
     emailAndPassword: {
       enabled: true,
+      minPasswordLength: PASSWORD_MIN_LENGTH,
       password: { verify: verifyPasswordWithLegacyFallback },
       sendResetPassword: async ({ user, token }) => {
         const normalizedEmail = normalizeEmail(user.email);

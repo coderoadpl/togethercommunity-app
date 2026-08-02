@@ -45,6 +45,23 @@ const tenantOffer = (legal: { termsUrl: string | null; privacyUrl: string | null
 });
 
 describe('RegisterPage', () => {
+  it('blocks a password below the shared minimum', async () => {
+    let requested = false;
+    server.use(http.post('*', () => {
+      requested = true;
+      return HttpResponse.json({ user: { id: 'u1' } });
+    }));
+
+    await renderRegisterPage();
+    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'short');
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+
+    expect(await screen.findByText(pl.auth.passwordTooShort({ min: 8 }))).toBeInTheDocument();
+    expect(requested).toBe(false);
+  });
+
   it('creates an account and lands on home', async () => {
     server.use(http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })));
 

@@ -72,6 +72,7 @@ export interface Messages {
     createAccountEyebrow: (params: { host: string }) => string;
     emailLabel: string;
     passwordLabel: string;
+    passwordTooShort: (params: { min: number }) => string;
     nameLabel: string;
     signInIdle: string;
     signInPending: string;
@@ -986,6 +987,21 @@ export interface Messages {
     erasureCancelButton: string;
     erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
     erasureResolved: (input: { status: string; resolvedAt: string }) => string;
+  };
+  changePassword: {
+    heading: string;
+    intro: string;
+    currentPasswordLabel: string;
+    newPasswordLabel: string;
+    confirmPasswordLabel: string;
+    revokeOtherSessions: string;
+    submitIdle: string;
+    submitPending: string;
+    success: string;
+    mismatch: string;
+    tooShort: (params: { min: number }) => string;
+    invalidCurrentPassword: string;
+    credentialAccountMissing: string;
   };
   resetPassword: {
     title: string;

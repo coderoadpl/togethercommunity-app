@@ -1227,6 +1227,18 @@ export const resetPasswordMutation = (auth: AuthClientPort): MutationDescriptor<
     call: (input: { token: string; newPassword: string }) => auth.resetPassword(input),
   });
 
+export const changePasswordMutation = (
+  auth: AuthClientPort,
+): MutationDescriptor<void, {
+  currentPassword: string;
+  newPassword: string;
+  revokeOtherSessions: boolean;
+}> =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'change-password'],
+    call: (input) => auth.changePassword(input),
+  });
+
 export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-out'],

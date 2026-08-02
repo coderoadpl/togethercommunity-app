@@ -15,12 +15,13 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { accentColorSchema } from '#core/domain/index.js';
+import { accentColorSchema, PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 import type { ExemptionBasisKind, TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
-import { localizeError, useTranslations } from '../../../i18n/index.js';
+import { ChangePasswordForm } from '../../../components/ui/ChangePasswordForm.js';
+import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import {
   BUILD_SHA,
   BUILD_VERSION,
@@ -665,6 +666,8 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
 
 const SecurityPanel = () => {
   const t = useTranslations();
+  const { language } = useLanguage();
+  const { email } = usePanelContext();
   const [passkeyName, setPasskeyName] = useState('');
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
@@ -672,6 +675,8 @@ const SecurityPanel = () => {
   const registerPasskey = useMutation(actions.registerPasskey);
   const enableTwoFactor = useMutation(actions.enableTwoFactor);
   const verifyTotp = useMutation(actions.verifyTotp);
+  const changePassword = useMutation(actions.changePassword);
+  const requestPasswordReset = useMutation(actions.requestPasswordReset);
 
   const addPasskey = (event: FormEvent) => {
     event.preventDefault();
@@ -691,6 +696,36 @@ const SecurityPanel = () => {
   return (
     <SectionCard title={t.security.heading}>
       <Stack useFlexGap spacing="1.75rem">
+        <Box sx={{ display: 'grid', gap: '0.8rem' }}>
+          <ChangePasswordForm
+            minPasswordLength={PASSWORD_MIN_LENGTH}
+            pending={changePassword.isPending}
+            success={changePassword.isSuccess}
+            error={changePassword.error}
+            onSubmit={(input) => changePassword.mutate(input)}
+          />
+          <Box>
+            <Button
+              variant="outlined"
+              data-testid="security-reset-password"
+              disabled={requestPasswordReset.isPending}
+              onClick={() => requestPasswordReset.mutate({ email, language })}
+            >
+              {requestPasswordReset.isPending
+                ? t.account.resetSending
+                : t.account.setOrResetPassword}
+            </Button>
+          </Box>
+          {requestPasswordReset.isSuccess ? (
+            <Typography variant="caption" component="p" data-testid="security-reset-sent">
+              {t.account.resetSent}
+            </Typography>
+          ) : null}
+          {requestPasswordReset.isError ? (
+            <Alert>{localizeError(requestPasswordReset.error, t)}</Alert>
+          ) : null}
+        </Box>
+
         <Box component="form" onSubmit={addPasskey} sx={{ display: 'grid', gap: '0.8rem' }}>
           <Eyebrow variant="overline" component="h3">
             {t.security.passkeys}

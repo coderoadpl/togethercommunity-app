@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -43,6 +45,17 @@ describe('ResetPasswordPage', () => {
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(pl.resetPassword.mismatch);
+  });
+
+  it('blocks a password below the shared minimum', async () => {
+    await renderResetPage('?token=valid-token');
+    await userEvent.type(screen.getByTestId('reset-password'), 'short');
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), 'short');
+    await userEvent.click(screen.getByTestId('reset-submit'));
+
+    expect(await screen.findByTestId('reset-local-error')).toHaveTextContent(
+      pl.resetPassword.tooShort({ min: PASSWORD_MIN_LENGTH }),
+    );
   });
 
   it('guards a missing token before showing the password form', async () => {

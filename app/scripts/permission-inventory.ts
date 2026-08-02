@@ -248,7 +248,6 @@ export interface CollectedUseCase {
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
-  'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
   'community-access.ts#requireUnbannedMember',
@@ -391,7 +390,6 @@ const marketingTenantContextUseCases = new Set([
   'confirmMarketingConsent',
   'getMarketingEligibility',
   'getUnsubscribePreferences',
-  'purgeStalePendingConsents',
   'recordCheckoutMarketingConsents',
   'recordMarketingConsent',
   'saveMarketingConsentPreferences',

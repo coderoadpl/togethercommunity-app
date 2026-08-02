@@ -18,7 +18,7 @@ const linearChannel = (value: number): number => {
   return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
 };
 
-export const relativeLuminance = (hex: string): number =>
+const relativeLuminance = (hex: string): number =>
   0.2126 * linearChannel(hexChannel(hex, 0)) +
   0.7152 * linearChannel(hexChannel(hex, 2)) +
   0.0722 * linearChannel(hexChannel(hex, 4));

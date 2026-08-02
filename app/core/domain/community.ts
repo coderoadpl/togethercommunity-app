@@ -41,27 +41,19 @@ export const createPostInputSchema = z.object({
   body: z.string().min(1).max(5000),
 });
 
-export type CreatePostInput = z.input<typeof createPostInputSchema>;
-
 export const updatePostInputSchema = z.object({
   id: z.string().min(1),
   body: z.string().min(1).max(5000),
 });
 
-export type UpdatePostInput = z.input<typeof updatePostInputSchema>;
-
 export const deletePostInputSchema = z.object({
   id: z.string().min(1),
 });
-
-export type DeletePostInput = z.input<typeof deletePostInputSchema>;
 
 export const pinPostInputSchema = z.object({
   postId: z.string().min(1),
   pinned: z.boolean(),
 });
-
-export type PinPostInput = z.input<typeof pinPostInputSchema>;
 
 export const MAX_PINNED_POSTS_PER_SPACE = 5;
 
@@ -72,19 +64,13 @@ export const listDiscussionInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(20),
 });
 
-export type ListDiscussionInput = z.input<typeof listDiscussionInputSchema>;
-
 export const subscribeThreadInputSchema = z.object({
   rootPostId: z.string().min(1),
 });
 
-export type SubscribeThreadInput = z.input<typeof subscribeThreadInputSchema>;
-
 export const muteThreadInputSchema = z.object({
   rootPostId: z.string().min(1),
 });
-
-export type MuteThreadInput = z.input<typeof muteThreadInputSchema>;
 
 export const searchPostsInputSchema = z.object({
   query: z.string().trim().min(1),
@@ -93,18 +79,14 @@ export const searchPostsInputSchema = z.object({
   limit: z.number().int().min(1).max(50).default(20),
 });
 
-export type SearchPostsInput = z.input<typeof searchPostsInputSchema>;
-
-export const notificationKindSchema = z.enum(['thread-reply', 'space-post', 'lesson-question']);
-
-export type NotificationKind = z.output<typeof notificationKindSchema>;
+const notificationKindSchema = z.enum(['thread-reply', 'space-post', 'lesson-question']);
 
 /**
  * One payload shape for every notification kind so clients render without
  * narrowing: `lessonName` holds the lesson name for lesson contexts and the
  * space name for space contexts (courseId stays null there).
  */
-export const notificationPayloadSchema = z.object({
+const notificationPayloadSchema = z.object({
   rootPostId: z.string().min(1),
   postId: z.string().min(1),
   contextKind: postContextKindSchema,
@@ -115,8 +97,6 @@ export const notificationPayloadSchema = z.object({
   authorDisplay: z.string().trim().min(1),
   snippet: z.string(),
 });
-
-export type NotificationPayload = z.output<typeof notificationPayloadSchema>;
 
 export const notificationSchema = z.object({
   id: z.string().min(1),
@@ -135,13 +115,9 @@ export const notificationListInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(20),
 });
 
-export type NotificationListInput = z.input<typeof notificationListInputSchema>;
-
 export const notificationMarkReadInputSchema = z.object({
   id: z.string().min(1),
 });
-
-export type NotificationMarkReadInput = z.input<typeof notificationMarkReadInputSchema>;
 
 export type DiscussionPost = PublicPost & {
   replies: DiscussionPost[];
@@ -153,13 +129,13 @@ type DiscussionPostInput = z.input<typeof publicPostSchema> & {
   replyCount: number;
 };
 
-export const discussionPostSchema: z.ZodType<DiscussionPost, z.ZodTypeDef, DiscussionPostInput> =
+const discussionPostSchema: z.ZodType<DiscussionPost, z.ZodTypeDef, DiscussionPostInput> =
   publicPostSchema.extend({
     replies: z.lazy(() => z.array(discussionPostSchema)),
     replyCount: z.number().int().nonnegative(),
   });
 
-export const threadSubscriptionStateSchema = z.enum(['subscribed', 'muted']);
+const threadSubscriptionStateSchema = z.enum(['subscribed', 'muted']);
 
 export type ThreadSubscriptionState = z.output<typeof threadSubscriptionStateSchema>;
 
@@ -181,7 +157,7 @@ export const postSearchHitSchema = z.object({
 
 export type PostSearchHit = z.output<typeof postSearchHitSchema>;
 
-export const DELETED_POST_PLACEHOLDER = 'Wpis usunięty';
+const DELETED_POST_PLACEHOLDER = 'Wpis usunięty';
 
 /** Soft-deleted posts keep the thread shape but never leak their body. */
 export const renderPost = (post: Post): Post =>

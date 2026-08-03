@@ -82,6 +82,7 @@ import type {
   TenantCreateInput,
   TenantSecretDeleteInput,
   IntegrationTestInput,
+  StripeConfigureInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
@@ -1093,10 +1094,26 @@ export const deleteTenantSecretMutation = (api: ApiClient) =>
     call: (input: TenantSecretDeleteInput) => api.deleteTenantSecret(input),
   });
 
+export const deleteStripeSecretsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'delete-stripe'],
+    call: async () => {
+      const webhookSecret = await api.deleteTenantSecret({ key: 'stripe.webhookSecret' });
+      if (!webhookSecret.ok) return webhookSecret;
+      return api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+    },
+  });
+
 export const testIntegrationMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantSecretsScopes.all(), 'provider-test'],
     call: (input: IntegrationTestInput) => api.testIntegration(input),
+  });
+
+export const configureStripeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'configure-stripe'],
+    call: (input: StripeConfigureInput) => api.configureStripe(input),
   });
 
 export const testIfirmaConnectionMutation = (api: ApiClient) =>

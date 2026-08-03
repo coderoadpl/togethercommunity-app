@@ -12,7 +12,7 @@ The `member` and `authenticated` matrix rows carried historically derived edge c
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-Closed capability count: 92. Route rows: 198. Exported `Ctx` use-case rows: 174.
+Closed capability count: 92. Route rows: 199. Exported `Ctx` use-case rows: 175.
 
 ## Human-readable diff
 
@@ -141,6 +141,7 @@ no changes
 | `GET /api/onboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ifirma/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ksef/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/integrations/bunny/videos` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -245,6 +246,7 @@ no changes
 | `community.ts#markNotificationRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#markAllNotificationsRead` | notification:write | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
 | `community.ts#unreadNotificationCount` | notification:read | owner, admin, member | owner, admin, member | yes | core/server/usecases/community.ts authorization call |
+| `configure-stripe.ts#configureStripe` | tenant:secret:write | owner | owner | yes | core/server/usecases/configure-stripe.ts authorization call |
 | `content-history.ts#getContentHistory` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `content-history.ts#getContentVersion` | course:history:read | owner, admin | owner, admin | yes | core/server/usecases/content-history.ts authorization call |
 | `coupon-management.ts#createCoupon` | coupon:write | owner, admin | owner, admin | yes | core/server/usecases/coupon-management.ts authorization call |
@@ -407,11 +409,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:111` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:758` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:760` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1202` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1202` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:112` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:760` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:762` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1204` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1204` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

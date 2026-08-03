@@ -46,5 +46,6 @@ layout or presence changes.
 
 Release-cut procedure is deferred to the first public release and tracked in
 the backlog. That procedure includes reviewed version bumps, changelog markers,
-and release tags. Until that decision is made, the version remains `0.1.0` and
-only these surfaces ship.
+and release tags. Until that decision is made, the version remains
+<!--release-version-->`0.1.0`<!--/release-version-->
+and only these surfaces ship.

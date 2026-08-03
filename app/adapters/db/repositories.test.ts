@@ -118,8 +118,11 @@ afterAll(async () => {
 });
 
 const product = (over: Partial<Product> & { id: string; tenantId: string }): Product => ({
+  type: 'course',
+  slug: over.id,
   title: 'Course',
   description: 'desc',
+  coverUrl: null,
   priceCents: 4900,
   currency: 'PLN',
   published: true,
@@ -283,6 +286,15 @@ describe('product repository', () => {
     const repo = createProductRepository(db);
     expect(await repo.findById(ACME, 'prod-acme')).toMatchObject({ id: 'prod-acme', title: 'Acme Course' });
     expect(await repo.findById(GLOBEX, 'prod-acme')).toBeNull();
+  });
+
+  it('returns slug_taken for the tenant slug unique constraint', async () => {
+    const repo = createProductRepository(db);
+    await expect(repo.create(ACME, product({
+      id: 'prod-acme-duplicate-slug',
+      tenantId: ACME,
+      slug: 'prod-acme',
+    }))).resolves.toBe('slug_taken');
   });
 });
 

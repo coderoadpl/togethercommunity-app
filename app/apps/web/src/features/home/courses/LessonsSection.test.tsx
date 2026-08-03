@@ -178,16 +178,16 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     const editor = await screen.findByLabelText(pl.lessons.htmlLabel);
     await userEvent.type(editor, '<p>Safe body</p><script>window.__xss=1</script>');
 
-    await userEvent.click(screen.getByRole('button', { name: pl.lessons.htmlToolbarBold }));
+    await userEvent.click(screen.getByRole('button', { name: pl.htmlEditor.toolbarBold }));
     expect(editor).toHaveValue(
-      `<p>Safe body</p><script>window.__xss=1</script><strong>${pl.lessons.htmlPlaceholderBold}</strong>`,
+      `<p>Safe body</p><script>window.__xss=1</script><strong>${pl.htmlEditor.placeholderBold}</strong>`,
     );
 
-    await userEvent.click(screen.getByRole('tab', { name: pl.lessons.htmlPreviewTab }));
+    await userEvent.click(screen.getByRole('tab', { name: pl.htmlEditor.previewTab }));
 
     const preview = await screen.findByTestId('html-preview');
     expect(preview).toHaveTextContent('Safe body');
-    expect(preview).toHaveTextContent(pl.lessons.htmlPlaceholderBold);
+    expect(preview).toHaveTextContent(pl.htmlEditor.placeholderBold);
     expect(container.querySelector('[data-testid="html-preview"] script')).toBeNull();
     expect(screen.queryByText('window.__xss=1')).not.toBeInTheDocument();
   });

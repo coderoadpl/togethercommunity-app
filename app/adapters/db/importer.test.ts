@@ -140,7 +140,7 @@ const buildBundle = (): TenantBundle => ({
     },
     {
       legacyId: ids.p2,
-      title: 'Single lesson access',
+      title: 'Full course access',
       accessItems: [{ level: 'lessons', courseId: ids.c1, lessonIds: [ids.l2] }],
     },
   ],
@@ -402,6 +402,10 @@ describe('importer', () => {
     const productRows = await db.select().from(products).where(eq(products.tenantId, TENANT_ID));
     expect(productRows).toHaveLength(2);
     expect(productRows.every((row) => !row.published)).toBe(true);
+    expect(productRows.map(({ legacyId, slug }) => ({ legacyId, slug }))).toEqual([
+      { legacyId: ids.p1, slug: 'full-course-access' },
+      { legacyId: ids.p2, slug: 'full-course-access-3aa10f02' },
+    ]);
 
     expect(result.verification?.pass).toBe(true);
     const spotChecks = result.verification?.tenants[0]?.spotChecks ?? [];

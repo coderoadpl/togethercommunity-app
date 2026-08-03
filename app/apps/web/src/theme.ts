@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, Link, ListItemButton, ListItemText, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -2576,6 +2576,33 @@ export const SearchHighlight = styled('mark')(({ theme }) => ({
 export const TreeModuleTitle = styled(Typography)<AsElement>({ fontSize: '1.02rem', fontWeight: 700 });
 
 export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92rem', fontWeight: 600 });
+
+export const ReorderCard = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'dropTarget',
+})<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
+  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+}));
+
+export const ReorderRow = styled(ListItem, {
+  shouldForwardProp: (prop) => prop !== 'dropTarget',
+})<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+}));
+
+export const ReorderDragHandle = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'pending',
+})<{ pending?: boolean }>(({ theme, pending }) => ({
+  alignItems: 'center',
+  color: theme.palette.text.secondary,
+  cursor: pending === true ? 'default' : 'grab',
+  display: 'inline-flex',
+  justifyContent: 'center',
+  minHeight: '2rem',
+  minWidth: '2rem',
+  opacity: pending === true ? 0.38 : 1,
+  userSelect: 'none',
+}));
 
 export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.15rem',

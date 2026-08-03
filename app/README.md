@@ -235,8 +235,8 @@ secret, open a published product's `/checkout/<product-id>` page, and pay with a
 Stripe test card. The browser return page only shows status; the signed webhook
 creates or renews access and sends the welcome magic link.
 
-Checkout is one-time payment only. Recurring payments and subscriptions remain
-deferred under FR-33.
+Checkout supports one-time and recurring prices. Stripe subscription webhooks
+renew access, handle payment failures, and end grants when subscriptions are canceled.
 
 ## Ports
 

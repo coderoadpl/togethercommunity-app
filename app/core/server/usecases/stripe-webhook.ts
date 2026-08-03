@@ -37,6 +37,7 @@ import {
   failSubscriptionPayment,
   renewSubscriptionPeriod,
   startSubscription,
+  syncGrantToSubscription,
   updateSubscriptionFromProvider,
   type SubscriptionLifecycleDeps,
 } from './subscription-lifecycle.js';
@@ -59,6 +60,7 @@ const enqueueSubscriptionNotice = async (
   tenant: Tenant,
   subscription: MemberSubscription | null,
   kind: 'subscription-payment-failed' | 'subscription-ended',
+  accessEndsAt: string,
   deps: StripeWebhookDeps,
 ): Promise<Result<void, AppError>> => {
   if (subscription === null) return ok(undefined);
@@ -79,7 +81,7 @@ const enqueueSubscriptionNotice = async (
           language: DEFAULT_LANGUAGE,
           tenantName: tenant.name,
           productTitle: product.title,
-          accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
+          accessEndsAt,
           billingPortalUrl: settings?.billingPortalUrl ?? null,
           ...(branding === undefined ? {} : { branding }),
         }
@@ -88,7 +90,7 @@ const enqueueSubscriptionNotice = async (
           language: DEFAULT_LANGUAGE,
           tenantName: tenant.name,
           productTitle: product.title,
-          accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
+          accessEndsAt,
           offerUrl: tenantBaseUrl.toString(),
           ...(branding === undefined ? {} : { branding }),
         };
@@ -427,6 +429,7 @@ const applyInvoiceEvent = async (
     ...(event.invoice?.currency == null ? {} : { currency: event.invoice.currency.toUpperCase() }),
   };
   if (event.type === 'invoice.paid') {
+    if (subscription.status === 'canceled') return ok({ processed: true });
     const existingOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
       invoice: event.objectId,
     });
@@ -485,6 +488,7 @@ const applyInvoiceEvent = async (
       tenant,
       subscription,
       'subscription-payment-failed',
+      graceExpiresAt(subscription.currentPeriodEnd),
       deps,
     );
     if (!notified.ok) return notified;
@@ -578,18 +582,28 @@ const applySubscriptionEvent = async (
 
   const canceled =
     event.type === 'customer.subscription.deleted' || event.subscription?.status === 'canceled';
+  const periodEnd = event.subscription?.currentPeriodEnd ?? subscription.currentPeriodEnd;
+  const endedAt = event.subscription?.endedAt ?? null;
+  const paidThrough = canceled && endedAt !== null && endedAt < periodEnd ? endedAt : periodEnd;
   const updated = await updateSubscriptionFromProvider(
     tenant.id,
     {
       subscription,
       cancelAtPeriodEnd: event.subscription?.cancelAtPeriodEnd ?? subscription.cancelAtPeriodEnd,
-      currentPeriodEnd: event.subscription?.currentPeriodEnd ?? null,
+      currentPeriodEnd: periodEnd,
       canceled,
     },
     deps,
   );
-  if (event.type === 'customer.subscription.deleted') {
-    const notified = await enqueueSubscriptionNotice(tenant, updated, 'subscription-ended', deps);
+  const accessEndsAt = await syncGrantToSubscription(tenant.id, updated, paidThrough, deps);
+  if (event.type === 'customer.subscription.deleted' && accessEndsAt !== null) {
+    const notified = await enqueueSubscriptionNotice(
+      tenant,
+      updated,
+      'subscription-ended',
+      accessEndsAt,
+      deps,
+    );
     if (!notified.ok) return notified;
   }
   return ok({ processed: true });

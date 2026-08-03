@@ -373,7 +373,12 @@ export interface Messages {
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
-    webhookSecretLabel: string;
+    stripeConfigure: string;
+    stripeConfiguring: string;
+    stripeConfigured: string;
+    stripeTestMode: string;
+    stripeLiveMode: string;
+    stripeRestrictedPermissions: string;
     configured: string;
     notConfigured: string;
     valuePlaceholder: string;
@@ -391,6 +396,7 @@ export interface Messages {
     saveKeysFirst: string;
     webhookUrlLabel: string;
     webhookUrlHint: string;
+    webhookActiveHint: string;
     loading: string;
     emailHeading: string;
     emailDescription: string;

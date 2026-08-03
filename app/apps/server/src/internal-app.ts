@@ -78,6 +78,7 @@ import {
   spaceFeedGetInputSchema,
   spaceFollowInputSchema,
   spaceUpdateInputSchema,
+  stripeConfigureInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
   TENANT_HEADER,
@@ -113,6 +114,7 @@ import {
   authorizeRequiredTenant,
   authorizeTenant,
   cancelCampaign,
+  configureStripe,
   createCampaign,
   createCoupon,
   createCourse,
@@ -1450,10 +1452,9 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
   });
 
-  app.get(API_PATHS.tenantSecrets, async (c) => {
-    const result = await getTenantSecretsMasked({ identity: c.get('identity') }, deps);
-    return respond(result.ok ? ok({ secrets: result.value }) : result);
-  });
+  app.get(API_PATHS.tenantSecrets, async (c) =>
+    respond(await getTenantSecretsMasked({ identity: c.get('identity') }, deps)),
+  );
 
   app.post(API_PATHS.tenantSecrets, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
@@ -1507,6 +1508,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         emailTransports: deps.emailTransports,
         payment: deps.payment,
         storage: deps.storage,
+      },
+    ));
+  });
+
+  app.post(API_PATHS.stripeConfigure, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = stripeConfigureInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid Stripe configuration', parsed.error.flatten())));
+    return respond(await configureStripe(
+      { identity: c.get('identity') },
+      parsed.data,
+      {
+        appBaseUrl: deps.appBaseUrl,
+        payment: deps.payment,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
       },
     ));
   });

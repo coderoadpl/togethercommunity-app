@@ -524,6 +524,15 @@ export interface PaymentWebhookEvent {
 }
 
 export interface PaymentProvider {
+  configureWebhook?(input: {
+    tenantId: string;
+    restrictedKey: string;
+    webhookUrl: string;
+  }): Promise<Result<{ webhookEndpointId: string; webhookSecret: string }, AppError>>;
+  deleteWebhookEndpoint?(input: {
+    restrictedKey: string;
+    webhookEndpointId: string;
+  }): Promise<Result<{ deleted: true }, AppError>>;
   createCheckoutSession(input: {
     tenantId: string;
     productId: string;

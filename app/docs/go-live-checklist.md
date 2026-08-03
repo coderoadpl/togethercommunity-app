@@ -73,9 +73,15 @@ production validation branch does not check it
 `https://fake.checkout.local/...` checkout URLs
 (`adapters/payment/fake.ts:41`).
 
-Set `PAYMENT_PROVIDER=stripe`, store the tenant credentials, and run:
+Set `PAYMENT_PROVIDER=stripe`. As the tenant owner, open **Integrations →
+Stripe** and save an `rk_test_…` or `rk_live_…` restricted key with write access
+to Checkout Sessions, Coupons, Promotion Codes, Subscriptions, and Webhook
+Endpoints. Alternatively, configure a headless deployment with the CLI.
+Together registers the webhook, stores its signing secret, and derives the mode
+from the stored key prefix. Then run:
 
 ```sh
+pnpm --silent run cli --tenant <slug> stripe configure rk_test_…
 pnpm --silent run cli --tenant <slug> stripe test-connection
 ```
 
@@ -226,15 +232,13 @@ Only `PAYMENT_PROVIDER=fake` has been exercised end to end. Run this procedure
 against a Stripe test-mode account on staging with `PAYMENT_PROVIDER=stripe`.
 Repeat the signature and refund checks once in live mode with a 1 PLN product.
 
-Store `stripe.restrictedKey` and `stripe.webhookSecret` with `tenant-secret set`.
-In Stripe, add
-`https://<tenant-domain>/api/webhooks/stripe/<tenantId>` as a webhook endpoint
-(`core/contract/routes.ts:1214`,
-`apps/server/src/public-app.ts:548-571`). Enable exactly
+Save the restricted key through **Integrations → Stripe** or `stripe configure`.
+Confirm that the panel shows the expected test/live badge and that Stripe
+contains the generated tenant endpoint. Together enables exactly
 `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
 `customer.subscription.updated`, `customer.subscription.deleted`,
 `charge.refunded`, and `charge.dispute.created`
-(`core/server/usecases/stripe-webhook.ts:103-111`).
+(`core/server/usecases/stripe-webhook.ts`).
 
 Confirm credentials with:
 

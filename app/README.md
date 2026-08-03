@@ -147,7 +147,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->229<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->230<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -214,28 +214,30 @@ is toggled with `NOTIFY_EMAIL` (see `.env.example`).
 
 ## Stripe test mode
 
-Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, and store that tenant's
-Stripe test-mode restricted key and webhook signing secret without adding either
-value to an env file or Git:
+Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, open **Integrations →
+Stripe**, and save the tenant's `rk_test_…` restricted key. Together detects the
+mode from the prefix, registers the tenant webhook through Stripe, and stores
+the returned signing secret encrypted without adding either credential to an
+env file or Git. Headless deployments can perform the same setup through the
+CLI. Then verify the connection:
 
 ```bash
-pnpm --silent run cli --tenant studio tenant-secret set stripe.restrictedKey '<restricted-test-key>'
-pnpm --silent run cli --tenant studio tenant-secret set stripe.webhookSecret '<webhook-signing-secret>'
+pnpm --silent run cli --tenant studio stripe configure rk_test_…
 pnpm --silent run cli --tenant studio stripe test-connection
 ```
 
-The restricted key needs write access to Checkout Sessions. In the Stripe
-Dashboard, register `/api/webhooks/stripe/<tenant-id>` for
-`checkout.session.completed`. For localhost, the Stripe CLI can forward events:
+The restricted key needs write access to Checkout Sessions, Coupons, Promotion
+Codes, Subscriptions, and Webhook Endpoints. Together enables the event set it
+handles when creating the endpoint. For localhost without a public callback,
+the Stripe CLI can still forward events:
 
 ```bash
 stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
 ```
 
-Store the `whsec_…` value printed by `stripe listen` as the tenant webhook
-secret, open a published product's `/checkout/<product-id>` page, and pay with a
-Stripe test card. The browser return page only shows status; the signed webhook
-creates or renews access and sends the welcome magic link.
+Open a published product's `/checkout/<product-id>` page and pay with a Stripe
+test card. The browser return page only shows status; the signed webhook creates
+or renews access and sends the welcome magic link.
 
 Checkout is one-time payment only. Recurring payments and subscriptions remain
 deferred under FR-33.

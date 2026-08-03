@@ -4,8 +4,15 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { PNG } from 'pngjs';
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+  type Route,
+} from 'playwright-core';
 
 import { API_PATHS } from '#core/contract/index.js';
 
@@ -46,12 +53,62 @@ interface ScreenSpec {
   auth: AuthKind;
   path: string;
   tenantSlug?: string;
+  prepare?: (page: Page) => Promise<ScreenPreparation>;
   ready: (page: Page) => Promise<void>;
   settled?: (page: Page) => Promise<void>;
+  waitForNetworkIdle?: boolean;
+  minBytes?: number;
   mask?: (page: Page) => Locator[];
 }
 
+interface ScreenPreparation {
+  renderingInputsReady: Promise<void>;
+  cleanup: () => Promise<void>;
+}
+
 const visible = { state: 'visible', timeout: 20000 } as const;
+
+const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
+  let release = (): void => undefined;
+  let complete = (): void => undefined;
+  let routed = false;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const done = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  const handler = async (route: Route): Promise<void> => {
+    routed = true;
+    try {
+      await gate;
+      await route.continue().catch(() => undefined);
+    } finally {
+      complete();
+    }
+  };
+
+  await page.route('**/api/me', handler);
+  const renderingInputsReady = page
+    .waitForResponse(
+      (response) => new URL(response.url()).pathname === API_PATHS.publicOffer,
+      { timeout: visible.timeout },
+    )
+    .then(async (response) => {
+      await response.body();
+      assert(response.ok(), `public offer failed with HTTP ${response.status()}`);
+    });
+  void renderingInputsReady.catch(() => undefined);
+
+  return {
+    renderingInputsReady,
+    cleanup: async () => {
+      release();
+      await page.unroute('**/api/me', handler);
+      if (routed) await done;
+    },
+  };
+};
 
 // The unread badge lives on the header bell on sm+ and on the bottom
 // tab-bar bell on xs (decision D4) — wait on the instance this viewport
@@ -212,6 +269,15 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
+    name: 'boot-splash',
+    auth: 'creator',
+    path: '/panel',
+    prepare: prepareBootSplash,
+    ready: (page) => page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor(visible),
+    waitForNetworkIdle: false,
+    minBytes: 7 * 1024,
+  },
+  {
     name: 'panel-spaces',
     auth: 'creator',
     path: '/panel/spaces',
@@ -335,7 +401,13 @@ const SCREENS: ScreenSpec[] = [
     name: 'member-detail',
     auth: 'creator',
     path: '/panel/members/member-studio-aktywny',
-    ready: (page) => page.getByTestId('grant-row').first().waitFor(visible),
+    ready: async (page) => {
+      await page.getByTestId('member-purchase-row').first().waitFor(visible);
+      await page.getByTestId('member-subscription-row').first().waitFor(visible);
+      await page.getByTestId('member-timeline-row').first().waitFor(visible);
+      await page.getByTestId('grant-row').first().waitFor(visible);
+      await page.getByTestId('learning-summary-row').first().waitFor(visible);
+    },
   },
   {
     name: 'member-email-timeline',
@@ -536,8 +608,8 @@ const applyChrome = async (context: BrowserContext, mode: ThemeMode): Promise<vo
   );
 };
 
-const settlePage = async (page: Page): Promise<void> => {
-  await page.waitForLoadState('networkidle');
+const settlePage = async (page: Page, waitForNetworkIdle = true): Promise<void> => {
+  if (waitForNetworkIdle) await page.waitForLoadState('networkidle');
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
@@ -697,42 +769,49 @@ try {
 
         for (const screen of screens) {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;
-          await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
-          await screen.ready(page);
-          await settlePage(page);
-          if (screen.settled) {
-            await screen.settled(page);
-            await page.evaluate(
-              () =>
-                new Promise<void>((resolve) => {
-                  requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-                }),
-            );
-          }
-          const shotPath = join(
-            argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
-            file,
-          );
-          await page.screenshot({
-            path: shotPath,
-            animations: 'disabled',
-            caret: 'hide',
-            scale: 'css',
-            mask: stableMasks(page, screen),
-          });
-          const { size } = statSync(shotPath);
-          assert(size > minPngBytes, `${file} is only ${size} bytes (expected > ${minPngBytes})`);
-          captured += 1;
-          if (!updateMode && !argosCaptureMode) {
-            const failure = comparePng({
+          const preparation = screen.prepare === undefined ? undefined : await screen.prepare(page);
+          try {
+            await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
+            await screen.ready(page);
+            await preparation?.renderingInputsReady;
+            await settlePage(page, screen.waitForNetworkIdle ?? true);
+            if (screen.settled) {
+              await screen.settled(page);
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolve) => {
+                    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                  }),
+              );
+            }
+            const shotPath = join(
+              argosCaptureMode ? argosDir : updateMode ? goldenDir : currentDir,
               file,
-              baselinePath: join(goldenDir, file),
-              currentPath: shotPath,
-              diffPath: join(diffDir, file),
-              missingBaselineReason:
-                'baseline missing — run `pnpm run visual:update` and review it',
+            );
+            await page.screenshot({
+              path: shotPath,
+              animations: 'disabled',
+              caret: 'hide',
+              scale: 'css',
+              mask: stableMasks(page, screen),
             });
-            if (failure !== null) failures.push(failure);
+            const { size } = statSync(shotPath);
+            const minBytes = screen.minBytes ?? minPngBytes;
+            assert(size > minBytes, `${file} is only ${size} bytes (expected > ${minBytes})`);
+            captured += 1;
+            if (!updateMode && !argosCaptureMode) {
+              const failure = comparePng({
+                file,
+                baselinePath: join(goldenDir, file),
+                currentPath: shotPath,
+                diffPath: join(diffDir, file),
+                missingBaselineReason:
+                  'baseline missing — run `pnpm run visual:update` and review it',
+              });
+              if (failure !== null) failures.push(failure);
+            }
+          } finally {
+            if (preparation !== undefined) await preparation.cleanup();
           }
         }
 

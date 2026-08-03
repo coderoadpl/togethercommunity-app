@@ -1,5 +1,6 @@
 import { transactionalSesConfigurationSetName } from '#core/domain/index.js';
 import type {
+  EmailIntegrationTransportResolver,
   EmailPort,
   MarketingSesCredentialResolver,
   TenantSecretResolver,
@@ -9,6 +10,7 @@ import type {
 
 import { createSesEmailPort } from './ses.js';
 import { createSmtpEmailPort, type SmtpEmailSettings } from './smtp.js';
+import { createResendEmailPort, type ResendEmailSettings } from './resend.js';
 
 const fromLine = (name: string, address: string): string => `${name} <${address}>`;
 
@@ -81,4 +83,30 @@ export const createSmtpTransactionalResolver = (
       from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),
     });
   },
+});
+
+export const createResendTransactionalResolver = (
+  settings: TenantSesSettingsRepository,
+  secrets: TenantSecretResolver,
+  emailFor: (input: ResendEmailSettings) => EmailPort = createResendEmailPort,
+): TransactionalEmailTransportResolver => ({
+  resolve: async (tenantId) => {
+    const [tenantSettings, apiKey] = await Promise.all([
+      settings.findByTenant(tenantId),
+      secrets.resolve(tenantId, 'resend.apiKey'),
+    ]);
+    if (tenantSettings === null || !apiKey.ok) return null;
+    return emailFor({
+      apiKey: apiKey.value,
+      from: fromLine(tenantSettings.fromName, tenantSettings.fromAddress),
+    });
+  },
+});
+
+export const createEmailIntegrationTransportResolver = (input: {
+  smtp: TransactionalEmailTransportResolver;
+  ses: TransactionalEmailTransportResolver;
+  resend: TransactionalEmailTransportResolver;
+}): EmailIntegrationTransportResolver => ({
+  resolve: (tenantId, transport) => input[transport].resolve(tenantId),
 });

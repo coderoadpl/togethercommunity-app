@@ -54,7 +54,14 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
     http.get('/api/tenant-secrets', () =>
-      HttpResponse.json({ ok: true, data: { secrets } })),
+      HttpResponse.json({
+        ok: true,
+        data: {
+          secrets,
+          stripeMode: null,
+          stripeWebhookUrl: 'https://app.example.test/api/webhooks/stripe/tenant-1',
+        },
+      })),
     http.post('/api/tenant-secrets', async ({ request }) => {
       const body = await request.json();
       const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';

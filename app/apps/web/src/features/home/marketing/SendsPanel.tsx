@@ -54,14 +54,16 @@ const isDeliveryStatus = (value: string): value is EmailDeliveryStatus =>
   value === 'delivered' || value === 'bounced' || value === 'complained';
 
 const isTransport = (value: string): value is TransactionalEmailTransport =>
-  value === 'tenant-ses' || value === 'smtp' || value === 'platform';
+  value === 'tenant-ses' || value === 'smtp' || value === 'resend' || value === 'platform';
 
 const transportLabel = (transport: TransactionalEmailTransport, t: ReturnType<typeof useTranslations>) =>
   transport === 'tenant-ses'
     ? t.marketing.transportTenantSes
     : transport === 'smtp'
       ? t.marketing.transportSmtp
-      : t.marketing.transportPlatform;
+      : transport === 'resend'
+        ? t.marketing.transportResend
+        : t.marketing.transportPlatform;
 
 const SendCampaign = ({ send }: { send: EmailSendProjection }) => {
   const t = useTranslations();
@@ -220,7 +222,7 @@ export const SendsPanel = () => {
                   }}
                 >
                   <MenuItem value="all">{t.marketing.all}</MenuItem>
-                  {(['tenant-ses', 'smtp', 'platform'] as const).map((value) => (
+                  {(['tenant-ses', 'smtp', 'resend', 'platform'] as const).map((value) => (
                     <MenuItem key={value} value={value}>{transportLabel(value, t)}</MenuItem>
                   ))}
                 </Select>

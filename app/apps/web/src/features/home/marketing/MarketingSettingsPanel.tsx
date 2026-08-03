@@ -163,6 +163,7 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
   const [secretAccessKey, setSecretAccessKey] = useState('');
   const [region, setRegion] = useState('');
   const save = useMutation(actions.setTenantSecret);
+  const test = useMutation(actions.testIntegration);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const values = [
@@ -182,7 +183,14 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
       title={t.marketing.credentials}
       description={t.marketing.credentialsHint}
       onSubmit={(event) => void submit(event)}
-      actions={<Button type="submit" variant="contained" disabled={save.isPending || [accessKeyId, secretAccessKey, region].every((value) => value.trim() === '')}>{save.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
+      actions={(
+        <>
+          <Button type="submit" variant="contained" disabled={save.isPending || [accessKeyId, secretAccessKey, region].every((value) => value.trim() === '')}>{save.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>
+          <Button type="button" variant="outlined" disabled={!configured || test.isPending} onClick={() => test.mutate({ provider: 'email', emailTransport: 'ses' })}>
+            {test.isPending ? t.marketing.testing : t.marketing.testSend}
+          </Button>
+        </>
+      )}
     >
       <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
       <Typography variant="body2">{t.marketing.writeOnlyHint}</Typography>
@@ -199,6 +207,8 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
         <OutlinedInput id="marketing-ses-region" value={region} onChange={(event) => setRegion(event.target.value)} />
       </FormControl>
       {save.isError ? <Alert>{localizeError(save.error, t)}</Alert> : null}
+      {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
+      {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
     </SectionCard>
   );
 };
@@ -212,7 +222,7 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
   const [password, setPassword] = useState('');
   const [secure, setSecure] = useState(true);
   const save = useMutation(actions.setTenantSecret);
-  const test = useMutation(actions.testMarketingSmtp);
+  const test = useMutation(actions.testIntegration);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const values = [
@@ -238,7 +248,7 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
       actions={(
         <>
           <Button type="submit" variant="contained" disabled={save.isPending}>{save.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>
-          <Button type="button" variant="outlined" disabled={!configured || test.isPending} onClick={() => test.mutate(undefined)}>
+          <Button type="button" variant="outlined" disabled={!configured || test.isPending} onClick={() => test.mutate({ provider: 'email', emailTransport: 'smtp' })}>
             {test.isPending ? t.marketing.testing : t.marketing.testSend}
           </Button>
         </>
@@ -265,7 +275,51 @@ const SmtpForm = ({ configured }: { configured: boolean }) => {
       <FormControlLabel control={<Switch checked={secure} onChange={(event) => setSecure(event.target.checked)} />} label={t.marketing.smtpSecureLabel} />
       {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
       {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
-      {test.isSuccess ? <Alert severity="success">{t.marketing.ready}</Alert> : null}
+      {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
+    </SectionCard>
+  );
+};
+
+const ResendForm = ({ configured }: { configured: boolean }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [apiKey, setApiKey] = useState('');
+  const save = useMutation(actions.setTenantSecret);
+  const test = useMutation(actions.testIntegration);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (apiKey.trim() === '') return;
+    await save.mutateAsync({ key: 'resend.apiKey', value: apiKey });
+    setApiKey('');
+    await queryClient.invalidateQueries(actions.marketingInvalidates());
+    await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
+  };
+  return (
+    <SectionCard
+      title={t.marketing.resendTitle}
+      description={t.marketing.resendHint}
+      onSubmit={(event) => void submit(event)}
+      actions={(
+        <>
+          <Button type="submit" variant="contained" disabled={save.isPending || apiKey.trim() === ''}>
+            {save.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}
+          </Button>
+          <Button type="button" variant="outlined" disabled={!configured || test.isPending} onClick={() => test.mutate({ provider: 'email', emailTransport: 'resend' })}>
+            {test.isPending ? t.marketing.testing : t.marketing.testSend}
+          </Button>
+        </>
+      )}
+    >
+      <Chip size="small" variant="outlined" color={configured ? 'success' : 'warning'} label={configured ? t.marketing.ready : t.marketing.blocked} />
+      <Typography variant="body2">{t.marketing.writeOnlyHint}</Typography>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="marketing-resend-api-key">{t.marketing.resendApiKeyLabel}</FormLabel>
+        <OutlinedInput id="marketing-resend-api-key" type="password" autoComplete="off" value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
+      </FormControl>
+      <Alert severity="info">{t.marketing.resendDomainHint}</Alert>
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
+      {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
+      {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
     </SectionCard>
   );
 };
@@ -355,7 +409,7 @@ export const MarketingSettingsPanel = () => {
           { label: t.marketing.wizardProductionAccess, ready: liveChecklist?.productionAccess ?? (settings?.quotaRefreshedAt !== null && settings?.quotaRefreshedAt !== undefined && settings?.inSandbox === false) },
           {
             label: `${t.marketing.platformPoolChecklist}: ${pool.used}/${pool.limit}`,
-            ready: pool.used < pool.limit || credentialsConfigured || result.data.smtpConfigured,
+            ready: pool.used < pool.limit || credentialsConfigured || result.data.smtpConfigured || result.data.resendConfigured,
           },
         ]}
       />
@@ -400,6 +454,7 @@ export const MarketingSettingsPanel = () => {
       </SectionCard>
       <SesOnboardingWizard enabled={credentialsConfigured && settings !== null} onChecklist={setLiveChecklist} />
       <SmtpForm configured={result.data.smtpConfigured} />
+      <ResendForm configured={result.data.resendConfigured} />
       <SectionCard
         title={t.marketing.reputationTitle}
         description={t.marketing.reputationDescription}

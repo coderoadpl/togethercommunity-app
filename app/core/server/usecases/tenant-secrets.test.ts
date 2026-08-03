@@ -28,7 +28,9 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   } satisfies Identity,
 });
 
-const harness = (rows: TenantSecret[] = []): { deps: TenantSecretDeps; rows: TenantSecret[] } => {
+type TestDeps = TenantSecretDeps & { appBaseUrl: string };
+
+const harness = (rows: TenantSecret[] = []): { deps: TestDeps; rows: TenantSecret[] } => {
   const store = [...rows];
   let seq = 0;
   const tenantSecrets: TenantSecretRepository = {
@@ -56,6 +58,7 @@ const harness = (rows: TenantSecret[] = []): { deps: TenantSecretDeps; rows: Ten
   return {
     rows: store,
     deps: {
+      appBaseUrl: 'https://app.example.test/base',
       tenantSecrets,
       secretCrypto,
       ids: { nextId: () => `secret-${(seq += 1)}` },
@@ -135,9 +138,35 @@ describe('getTenantSecretsMasked', () => {
     const result = await getTenantSecretsMasked(ctx('admin'), h.deps);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value).toHaveLength(2);
+    expect(result.value.secrets).toHaveLength(2);
     expect(JSON.stringify(result.value)).not.toContain('cipher:');
-    expect(Object.keys(result.value[0] ?? {}).sort()).toEqual(['key', 'maskedPreview', 'updatedAt']);
+    expect(Object.keys(result.value.secrets[0] ?? {}).sort()).toEqual([
+      'key',
+      'maskedPreview',
+      'updatedAt',
+    ]);
+  });
+
+  it('derives Stripe mode from every stored restricted key without a backfill', async () => {
+    const live = harness([{ ...row('stripe.restrictedKey'), ciphertext: 'cipher:rk_live_private' }]);
+    const test = harness([{ ...row('stripe.restrictedKey'), ciphertext: 'cipher:rk_test_private' }]);
+    const unconfigured = harness();
+
+    await expect(getTenantSecretsMasked(ctx('admin'), live.deps))
+      .resolves.toMatchObject({ ok: true, value: { stripeMode: 'live' } });
+    await expect(getTenantSecretsMasked(ctx('admin'), test.deps))
+      .resolves.toMatchObject({ ok: true, value: { stripeMode: 'test' } });
+    await expect(getTenantSecretsMasked(ctx('admin'), unconfigured.deps))
+      .resolves.toMatchObject({ ok: true, value: { stripeMode: null } });
+  });
+
+  it('returns the server-derived Stripe webhook URL including an application path prefix', async () => {
+    const h = harness();
+
+    await expect(getTenantSecretsMasked(ctx('admin'), h.deps)).resolves.toMatchObject({
+      ok: true,
+      value: { stripeWebhookUrl: 'https://app.example.test/base/api/webhooks/stripe/t1' },
+    });
   });
 
   it('forbids a non-staff caller', async () => {

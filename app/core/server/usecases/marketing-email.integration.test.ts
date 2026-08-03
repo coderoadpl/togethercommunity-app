@@ -826,6 +826,7 @@ describe('marketing e-mail use-case integration', () => {
         countActive: async () => 0,
       },
       payment: {
+        test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
         createCheckoutSession: async () => ok({ url: 'https://checkout.test', sessionId: 'cs_1' }),
         expireCheckoutSession: async () => ok({ expired: true }),
         cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),

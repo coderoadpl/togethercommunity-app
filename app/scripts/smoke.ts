@@ -128,7 +128,7 @@ const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
     [now],
   );
   await client.query(
-    `insert into products (id, tenant_id, title, description, price_cents, currency, created_at) values ('AUDYT-produkt', 'tenant-studio', 'AUDYT produkt', '', 12300, 'PLN', $1)`,
+    `insert into products (id, tenant_id, type, slug, title, description, price_cents, currency, created_at) values ('AUDYT-produkt', 'tenant-studio', 'course', 'audyt-produkt', 'AUDYT produkt', '', 12300, 'PLN', $1)`,
     [now],
   );
   await client.query(

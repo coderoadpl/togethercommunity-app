@@ -12,4 +12,3 @@ ignoredBuiltDependencies:
 auditConfig:
   ignoreGhsas:
     - GHSA-67mh-4wv8-2f99
-    - GHSA-frvp-7c67-39w9

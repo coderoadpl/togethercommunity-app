@@ -62,6 +62,7 @@ import {
   memberErasureRequestStatusSchema,
   memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
+  memberEventSchema,
   memberWithProductIdsSchema,
   memberSchema,
   muteThreadInputSchema,
@@ -377,6 +378,10 @@ export const memberGrantsOutputSchema = z.object({
 
 export const memberLearningSummaryOutputSchema = z.object({
   summary: memberLearningSummarySchema,
+});
+
+export const memberTimelineOutputSchema = z.object({
+  events: z.array(memberEventSchema),
 });
 
 export const memberProgressResetInputSchema = z.object({
@@ -1257,6 +1262,7 @@ export const API_ROUTES = {
   },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
+  memberTimeline: { method: 'GET', path: '/api/members/:memberId/timeline' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
@@ -1433,6 +1439,7 @@ export const API_PATHS = {
   memberErasureReject: API_ROUTES.memberErasureReject.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
+  memberTimeline: API_ROUTES.memberTimeline.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,

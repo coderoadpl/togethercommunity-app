@@ -90,18 +90,6 @@ export const setMemberBannedInputSchema = z.object({
   reason: z.string().trim().max(MAX_MEMBER_BAN_REASON_LENGTH).optional(),
 });
 
-export const memberEventSchema = z.object({
-  id: z.string().min(1),
-  tenantId: z.string().min(1),
-  memberId: z.string().min(1),
-  type: z.enum(['banned', 'unbanned']),
-  reason: z.string().nullable(),
-  actorUserId: z.string().min(1),
-  occurredAt: z.string().datetime(),
-});
-
-export type MemberEvent = z.output<typeof memberEventSchema>;
-
 export type SetMemberBannedInput = z.input<typeof setMemberBannedInputSchema>;
 
 export const POST_RATE_LIMIT = { maxPosts: 10, windowMinutes: 10 } as const;

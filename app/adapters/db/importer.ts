@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
 import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
-import { normalizeEmail } from '#core/domain/index.js';
+import { memberEventSchema, normalizeEmail } from '#core/domain/index.js';
 import { isLessonAccessible } from '#core/server/index.js';
 import type { EmailHmac } from '#core/server/index.js';
 import type {
@@ -11,6 +11,7 @@ import type {
 } from '#adapters/auth/import-credential.js';
 
 import type { Db } from './client.js';
+import { appendMemberEvent } from './member-events.js';
 import {
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -1375,7 +1376,25 @@ const importTenant = async (
       }
     });
     await db.transaction(async (tx) => {
-      for (const batch of chunk(grantCreates, 100)) await tx.insert(productGrants).values(batch);
+      for (const batch of chunk(grantCreates, 100)) {
+        const rows = await tx.insert(productGrants).values(batch).returning();
+        for (const row of rows) {
+          await appendMemberEvent(tx, memberEventSchema.parse({
+            id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+            tenantId,
+            memberId: row.memberId,
+            type: 'grant',
+            payload: {
+              grantId: row.id,
+              productId: row.productId,
+              source: row.source,
+              startsAt: row.startsAt,
+              expiresAt: row.expiresAt,
+            },
+            occurredAt: row.createdAt,
+          }));
+        }
+      }
       for (const update of grantUpdates) {
         await tx
           .update(productGrants)

@@ -131,7 +131,7 @@ export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
-  create(tenantId: string, product: Product): Promise<void>;
+  create(tenantId: string, product: Product): Promise<'created' | 'slug_taken'>;
   updateAccessItems(
     tenantId: string,
     id: string,

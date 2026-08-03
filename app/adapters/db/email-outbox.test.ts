@@ -27,7 +27,7 @@ beforeAll(async () => {
   db = testDatabase.db;
   closeTestDatabase = testDatabase.close;
   await db.insert(tenants).values({ id: 'tenant-outbox', slug: 'outbox', name: 'Outbox', createdAt: NOW });
-  await db.insert(products).values({ id: 'product-outbox', tenantId: 'tenant-outbox', title: 'Course', description: '', priceCents: 0, currency: 'PLN', published: true, accessItems: [], createdAt: NOW });
+  await db.insert(products).values({ id: 'product-outbox', tenantId: 'tenant-outbox', type: 'course', slug: 'course', title: 'Course', description: '', priceCents: 0, currency: 'PLN', published: true, accessItems: [], createdAt: NOW });
 }, 60000);
 
 beforeEach(async () => {

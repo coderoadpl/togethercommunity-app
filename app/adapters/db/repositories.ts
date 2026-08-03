@@ -305,19 +305,28 @@ export const createProductRepository = (db: Db): ProductRepository => ({
     return row ? parseProduct(row) : null;
   },
   create: async (tenantId, product) => {
-    await db.insert(products).values({
-      id: product.id,
-      tenantId,
-      title: product.title,
-      description: product.description,
-      priceCents: product.priceCents,
-      currency: product.currency,
-      published: product.published,
-      accessItems: product.accessItems,
-      checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
-      legacyId: product.legacyId,
-      createdAt: product.createdAt,
-    });
+    try {
+      await db.insert(products).values({
+        id: product.id,
+        tenantId,
+        type: product.type,
+        slug: product.slug,
+        title: product.title,
+        description: product.description,
+        coverUrl: product.coverUrl,
+        priceCents: product.priceCents,
+        currency: product.currency,
+        published: product.published,
+        accessItems: product.accessItems,
+        checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
+        legacyId: product.legacyId,
+        createdAt: product.createdAt,
+      });
+      return 'created';
+    } catch (cause) {
+      if (uniqueViolation(cause, 'products_tenant_slug_uidx')) return 'slug_taken';
+      throw cause;
+    }
   },
   updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const apply = async (executor: Db): Promise<Product | null> => {
@@ -1821,8 +1830,11 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         .select({
           id: products.id,
           tenantId: products.tenantId,
+          type: products.type,
+          slug: products.slug,
           title: products.title,
           description: products.description,
+          coverUrl: products.coverUrl,
           priceCents: products.priceCents,
           currency: products.currency,
           published: products.published,

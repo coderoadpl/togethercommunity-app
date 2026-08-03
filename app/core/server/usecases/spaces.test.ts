@@ -84,8 +84,11 @@ const space = (overrides: Partial<Space>): Space => ({
 const product = (id: string): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: id,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,

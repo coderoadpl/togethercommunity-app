@@ -116,6 +116,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
   if (path === '/api/members/export') return 'member:export';
+  if (path.endsWith('/commerce') && path.startsWith('/api/members/')) return 'member:commerce:read';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
   if (path.endsWith('/timeline') && path.startsWith('/api/members/')) return 'member:timeline:read';
   if (path.endsWith('/learning-summary')) return 'member:learning:read';
@@ -546,6 +547,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',
     '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
+    '',
+    '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

@@ -206,6 +206,7 @@ const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
   grants: (memberId: string) => ['members', 'grants', memberId] as const,
+  commerce: (memberId: string) => ['members', 'commerce', memberId] as const,
   timeline: (memberId: string) => ['members', 'timeline', memberId] as const,
   learningSummary: (memberId: string) => ['members', 'learning-summary', memberId] as const,
 };
@@ -682,6 +683,12 @@ export const memberGrantsQuery = (api: ApiClient, memberId: string) =>
   defineQuery({
     queryKey: membersScopes.grants(memberId),
     call: ({ signal }) => api.listMemberGrants(memberId, signal),
+  });
+
+export const memberCommerceQuery = (api: ApiClient, memberId: string) =>
+  defineQuery({
+    queryKey: membersScopes.commerce(memberId),
+    call: ({ signal }) => api.memberCommerce(memberId, signal),
   });
 
 export const memberTimelineQuery = (api: ApiClient, memberId: string) =>

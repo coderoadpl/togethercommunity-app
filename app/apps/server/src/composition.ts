@@ -170,6 +170,7 @@ import type {
   MarketingConsentRepository,
   MarketingThrottleRepository,
   MarketingSesCredentialResolver,
+  MemberOrderListReader,
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
@@ -178,6 +179,7 @@ import type {
   PostRepository,
   PostReportRepository,
   PurchaseRepository,
+  ProductBatchReader,
   ProductGrantRepository,
   ProductPriceRepository,
   ProductPriceHistoryRepository,
@@ -245,7 +247,7 @@ interface KsefAppDeps {
 export interface AppDeps {
   auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext'>;
   authPort: AuthPort;
-  products: ProductRepository;
+  products: ProductRepository & ProductBatchReader;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
@@ -269,7 +271,7 @@ export interface AppDeps {
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
-  orders: OrderRepository;
+  orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;

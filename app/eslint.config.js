@@ -1,6 +1,5 @@
 import js from '@eslint/js';
 import tanstackQuery from '@tanstack/eslint-plugin-query';
-import jsxA11y from 'eslint-plugin-jsx-a11y';
 import react from 'eslint-plugin-react';
 import reactCompiler from 'eslint-plugin-react-compiler';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -560,6 +559,7 @@ export default tseslint.config(
                 '@mui/material',
                 '@testing-library/react',
                 '@testing-library/user-event',
+                'dompurify',
                 'react',
                 'vitest',
               ],
@@ -760,6 +760,34 @@ export default tseslint.config(
     },
   },
   {
+    // Migration tests stage a partial `drizzle/` folder on disk so the schema
+    // can be replayed at the previous revision before the migration under test.
+    files: ['adapters/db/**/*-migration.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            {
+              from: ['adapter-db'],
+              allow: [
+                '@neondatabase/serverless',
+                'drizzle-orm',
+                'node:fs',
+                'node:os',
+                'node:path',
+                'pg',
+                'vitest',
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/cli/**/*.test.{ts,tsx}'],
     rules: {
       'boundaries/external': [
@@ -782,7 +810,6 @@ export default tseslint.config(
     plugins: {
       '@tanstack/query': tanstackQuery,
       together,
-      'jsx-a11y': jsxA11y,
       react,
       'react-compiler': reactCompiler,
       'react-hooks': reactHooks,
@@ -800,7 +827,6 @@ export default tseslint.config(
       },
     },
     rules: {
-      ...jsxA11y.flatConfigs.recommended.rules,
       '@tanstack/query/exhaustive-deps': 'error',
       '@tanstack/query/no-rest-destructuring': 'error',
       '@tanstack/query/stable-query-client': 'error',

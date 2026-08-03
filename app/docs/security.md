@@ -22,13 +22,11 @@ only successful public-offer responses opt into revalidated shared caching.
 ## Accepted dependency advisories
 
 `pnpm audit --prod --audit-level=moderate` is a blocking CI gate. Its allowlist
-contains only these reviewed advisories:
+contains only this reviewed advisory:
 
-- `GHSA-frvp-7c67-39w9` affects `@hono/node-server` static-file serving on
-  Windows through encoded backslashes. Together deploys to Linux/Vercel, so the
-  vulnerable path semantics are not present. Revisit this acceptance when the
-  `@hono/node-server` 2.x major upgrade lands.
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
-  audit reaches esbuild 0.18 through `better-auth` and `drizzle-kit`. Together
-  does not invoke esbuild's development server from application code. Revisit
-  when that dependency chain no longer resolves a vulnerable esbuild release.
+  audit reaches the old esbuild through `better-auth` and `drizzle-kit`; the
+  application does not invoke esbuild's development server. `drizzle-kit`
+  resolves esbuild 0.25 only from 1.0, which in turn requires `drizzle-orm` 1.0
+  while `better-auth` still declares a `drizzle-orm` 0.45 peer, so revisit when
+  `better-auth` supports `drizzle-orm` 1.0.

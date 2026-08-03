@@ -9,6 +9,7 @@ import {
   courseSchema,
   entityHistoryEntrySchema,
   memberCourseProgressSchema,
+  memberEventSchema,
   memberGrantSchema,
   memberSubscriptionSchema,
   notificationSchema,
@@ -95,6 +96,7 @@ import type {
 
 import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
+import { appendMemberEvent } from './member-events.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
   consents,
@@ -115,7 +117,6 @@ import {
   memberCourseProgress,
   memberErasureRequestEvents,
   memberErasureRequests,
-  memberEvents,
   members,
   memberSubscriptions,
   notifications,
@@ -304,19 +305,28 @@ export const createProductRepository = (db: Db): ProductRepository => ({
     return row ? parseProduct(row) : null;
   },
   create: async (tenantId, product) => {
-    await db.insert(products).values({
-      id: product.id,
-      tenantId,
-      title: product.title,
-      description: product.description,
-      priceCents: product.priceCents,
-      currency: product.currency,
-      published: product.published,
-      accessItems: product.accessItems,
-      checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
-      legacyId: product.legacyId,
-      createdAt: product.createdAt,
-    });
+    try {
+      await db.insert(products).values({
+        id: product.id,
+        tenantId,
+        type: product.type,
+        slug: product.slug,
+        title: product.title,
+        description: product.description,
+        coverUrl: product.coverUrl,
+        priceCents: product.priceCents,
+        currency: product.currency,
+        published: product.published,
+        accessItems: product.accessItems,
+        checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
+        legacyId: product.legacyId,
+        createdAt: product.createdAt,
+      });
+      return 'created';
+    } catch (cause) {
+      if (uniqueViolation(cause, 'products_tenant_slug_uidx')) return 'slug_taken';
+      throw cause;
+    }
   },
   updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const apply = async (executor: Db): Promise<Product | null> => {
@@ -675,8 +685,13 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       lastViewedChapterId: row.lastViewedChapterId ?? undefined,
     });
   },
-  update: async (tenantId, progress) => {
-    const rows = await db
+  update: async (tenantId, progress) => db.transaction(async (tx) => {
+    const [current] = await tx
+      .select({ completedLessonIds: memberCourseProgress.completedLessonIds })
+      .from(memberCourseProgress)
+      .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, progress.id)))
+      .for('update');
+    const rows = await tx
       .update(memberCourseProgress)
       .set({
         lastViewedLessonId: progress.lastViewedLessonId ?? null,
@@ -688,15 +703,26 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, progress.id)))
       .returning();
     const row = rows[0];
-    return row
-      ? parseProgress({
-          ...row,
-          lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-          lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-          lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-        })
-      : null;
-  },
+    if (row === undefined) return null;
+    const previous = new Set(current?.completedLessonIds ?? []);
+    for (const lessonId of progress.completedLessonIds) {
+      if (previous.has(lessonId)) continue;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `lesson-completion:${progress.id}:${lessonId}:${progress.updatedAt}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'lesson-completion',
+        payload: { courseId: progress.courseId, lessonId },
+        occurredAt: progress.updatedAt,
+      }));
+    }
+    return parseProgress({
+      ...row,
+      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+    });
+  }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db
       .select({ value: sql<number>`count(*)::int` })
@@ -1466,7 +1492,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         .returning();
       const row = rows[0];
       if (!row) return null;
-      await tx.insert(memberEvents).values({ ...event, tenantId });
+      await appendMemberEvent(tx, memberEventSchema.parse({ ...event, tenantId }));
       return row;
     }),
 });
@@ -1688,8 +1714,8 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     const row = rows[0];
     return row ? parseGrant(row) : null;
   },
-  createGrant: async (tenantId, grant) => {
-    const rows = await db
+  createGrant: async (tenantId, grant) => db.transaction(async (tx) => {
+    const rows = await tx
       .insert(productGrants)
       .values({
         id: grant.id,
@@ -1705,27 +1731,67 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
       .onConflictDoNothing({
         target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
       })
-      .returning({ id: productGrants.id });
-    return rows.length > 0;
-  },
-  setGrantWindow: async (tenantId, grantId, window) => {
-    const rows = await db
+      .returning();
+    const row = rows[0];
+    if (row === undefined) return false;
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+      tenantId,
+      memberId: row.memberId,
+      type: 'grant',
+      payload: {
+        grantId: row.id,
+        productId: row.productId,
+        source: row.source,
+        startsAt: row.startsAt,
+        expiresAt: row.expiresAt,
+      },
+      occurredAt: row.createdAt,
+    }));
+    return true;
+  }),
+  setGrantWindow: async (tenantId, grantId, window) => db.transaction(async (tx) => {
+    const rows = await tx
       .update(productGrants)
       .set({ startsAt: window.startsAt, expiresAt: window.expiresAt })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
-    return row ? parseGrant(row) : null;
-  },
-  revokeGrant: async (tenantId, grantId, expiresAt) => {
-    const rows = await db
+    if (row === undefined) return null;
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+      tenantId,
+      memberId: row.memberId,
+      type: 'grant',
+      payload: {
+        grantId: row.id,
+        productId: row.productId,
+        source: row.source,
+        startsAt: row.startsAt,
+        expiresAt: row.expiresAt,
+      },
+      occurredAt: window.occurredAt,
+    }));
+    return parseGrant(row);
+  }),
+  revokeGrant: async (tenantId, grantId, expiresAt) => db.transaction(async (tx) => {
+    const rows = await tx
       .update(productGrants)
       .set({ expiresAt })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
-    return row ? parseGrant(row) : null;
-  },
+    if (row === undefined) return null;
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `revoke:${row.id}:${expiresAt}`,
+      tenantId,
+      memberId: row.memberId,
+      type: 'revoke',
+      payload: { grantId: row.id, productId: row.productId, expiresAt },
+      occurredAt: expiresAt,
+    }));
+    return parseGrant(row);
+  }),
   listForMemberWithProductNames: async (tenantId, memberId, now) =>
     (
       await db
@@ -1764,8 +1830,11 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         .select({
           id: products.id,
           tenantId: products.tenantId,
+          type: products.type,
+          slug: products.slug,
           title: products.title,
           description: products.description,
+          coverUrl: products.coverUrl,
           priceCents: products.priceCents,
           currency: products.currency,
           published: products.published,
@@ -1866,8 +1935,8 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
   };
 
   return {
-    create: async (tenantId, order) => {
-      await db
+    create: async (tenantId, order) => db.transaction(async (tx) => {
+      const rows = await tx
         .insert(orders)
         .values({
           id: order.id,
@@ -1886,8 +1955,27 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           billing: order.billing ?? null,
           createdAt: order.createdAt,
         })
-        .onConflictDoNothing();
-    },
+        .onConflictDoNothing()
+        .returning();
+      const row = rows[0];
+      if (row === undefined) return;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `purchase:${row.id}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'purchase',
+        payload: {
+          orderId: row.id,
+          productId: row.productId,
+          kind: row.kind,
+          status: row.status,
+          amountCents: row.amountCents,
+          currency: row.currency,
+          provider: row.provider,
+        },
+        occurredAt: row.createdAt,
+      }));
+    }),
     findById: async (tenantId, id) => {
       const rows = await db
         .select({
@@ -2185,11 +2273,27 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
           .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.memberId, memberId)))
           .orderBy(asc(memberSubscriptions.createdAt))
       ).map(parseSubscription),
-    create: async (tenantId, subscription) => {
-      await db.insert(memberSubscriptions).values(toRow(tenantId, subscription));
-    },
-    update: async (tenantId, subscription) => {
-      const rows = await db
+    create: async (tenantId, subscription) => db.transaction(async (tx) => {
+      const [row] = await tx.insert(memberSubscriptions).values(toRow(tenantId, subscription)).returning();
+      if (row === undefined) return;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `subscription-change:${row.id}:${row.updatedAt}:${row.status}:${row.currentPeriodEnd}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'subscription-change',
+        payload: {
+          subscriptionId: row.id,
+          productId: row.productId,
+          status: row.status,
+          currentPeriodEnd: row.currentPeriodEnd,
+          cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+          provider: row.provider,
+        },
+        occurredAt: row.updatedAt,
+      }));
+    }),
+    update: async (tenantId, subscription) => db.transaction(async (tx) => {
+      const rows = await tx
         .update(memberSubscriptions)
         .set({
           status: subscription.status,
@@ -2201,8 +2305,24 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
         .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.id, subscription.id)))
         .returning();
       const row = rows[0];
-      return row ? parseSubscription(row) : null;
-    },
+      if (row === undefined) return null;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `subscription-change:${row.id}:${row.updatedAt}:${row.status}:${row.currentPeriodEnd}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'subscription-change',
+        payload: {
+          subscriptionId: row.id,
+          productId: row.productId,
+          status: row.status,
+          currentPeriodEnd: row.currentPeriodEnd,
+          cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+          provider: row.provider,
+        },
+        occurredAt: row.updatedAt,
+      }));
+      return parseSubscription(row);
+    }),
     countActive: async (tenantId, now) => {
       const graceCutoff = new Date(
         Date.parse(now) - SUBSCRIPTION_GRACE_DAYS * 24 * 60 * 60 * 1000,
@@ -2429,7 +2549,25 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
         .onConflictDoNothing({
           target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
         })
-        .returning({ id: productGrants.id });
+        .returning();
+
+      const grant = grantRows[0];
+      if (grant !== undefined) {
+        await appendMemberEvent(tx, memberEventSchema.parse({
+          id: `grant:${grant.id}:${grant.startsAt}:${grant.expiresAt ?? 'perpetual'}`,
+          tenantId: input.tenantId,
+          memberId: grant.memberId,
+          type: 'grant',
+          payload: {
+            grantId: grant.id,
+            productId: grant.productId,
+            source: grant.source,
+            startsAt: grant.startsAt,
+            expiresAt: grant.expiresAt,
+          },
+          occurredAt: grant.createdAt,
+        }));
+      }
 
       return { member, grantCreated: grantRows.length > 0 };
     }),

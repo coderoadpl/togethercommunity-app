@@ -7,11 +7,10 @@
 
 > **Retired implementation (2026-08-03).** This is a historical spike record,
 > not current operating guidance. Lost Pixel and `app/lostpixel.config.ts` were
-> removed after the spike. `pnpm run visual:stories` now builds static Storybook
-> and runs `app/scripts/visual-story-screenshots.ts`, which uses the repository's
-> Playwright browser and shared zero-diff `pixelmatch` comparator against the
-> preserved advisory baselines. `pnpm run visual:stories:update` updates only
-> those story baselines. See `app/docs/storybook.md` for current policy.
+> removed after the spike. The later in-house story-shot replacement and copied
+> baselines were also retired; Storybook now has module and static-build checks
+> but no screenshot comparison command. See `app/docs/storybook.md` for current
+> policy.
 
 ## TL;DR
 
@@ -84,9 +83,9 @@ machine but **will differ across machines/CI** — see Next steps.
 
 Excellent. Baselines are plain PNGs named
 `<story-id>__[w<width>px].png`, committed in-repo (owner requirement met).
-The historical update command was `npm run visual:stories:update`; the current
-pnpm command and authoring policy are documented in `app/docs/storybook.md`.
-Baseline PNG changes remain reviewable like any other artifact.
+The historical commands were `npm run visual:stories:update` and later
+`pnpm run visual:stories:update`; both implementations and their baselines are
+now retired. Baseline PNG changes were reviewable like any other artifact.
 
 ### Mobile + desktop matrix
 
@@ -160,14 +159,15 @@ fallbacks (Loki, storycap+reg-suit) are not needed — Lost Pixel cleared the ba
    not using Docker).
 3. **Grow the catalog**: extend stories to `components/ui/*` and the state
    primitives as the atomic-design catalog fills out (ux-decisions point 1).
-4. **A11y scan** (ux-decisions point 4, lowest priority): hook `axe-core` into
-   the Storybook pipeline once the catalog stabilises.
+4. **A11y scan** (ux-decisions point 4, lowest priority): extend the in-house
+   checks of `pnpm run a11y` to the Storybook pipeline once the catalog
+   stabilises. axe-core is MPL-2.0 and is out of the question.
 5. **Theme fan-out policy**: keep default single-theme + showcase; opt-in
    per-story `globals` for high-risk cross-theme screens; reconsider a global
    matrix only if regressions leak.
 6. **Historical CI recommendation (not adopted)**: the spike proposed running
-   `visual:stories` on PRs. The replacement remains advisory and is not a merge
-   gate; current policy lives in `app/docs/storybook.md`.
+   `visual:stories` on PRs. No story-shot replacement remains; current policy
+   lives in `app/docs/storybook.md`.
 ```
 
 ## Fallbacks (only if Lost Pixel had failed)

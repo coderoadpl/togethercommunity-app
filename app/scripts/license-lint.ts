@@ -46,16 +46,6 @@ const allowedLicenses = new Set([
 
 const exceptions = new Map<string, LicenseException>([
   [
-    'axe-core@*',
-    {
-      devOnly: true,
-      license: 'MPL-2.0',
-      packagePattern: /^axe-core$/,
-      reason: 'Dev-only accessibility tooling; owner-approved 2026-07-28.',
-      versionPattern: /^.+$/,
-    },
-  ],
-  [
     '@fontsource/*@*',
     {
       license: 'OFL-1.1',

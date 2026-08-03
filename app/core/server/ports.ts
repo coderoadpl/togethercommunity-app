@@ -10,6 +10,7 @@ import type {
   EmailLayout,
   EmailEvent,
   EmailEventMailKind,
+  EmailIntegrationTransport,
   EmailReputationCounts,
   EmailSendListQuery,
   EmailSendProjection,
@@ -45,6 +46,7 @@ import type {
   PostReport,
   PostReportEvent,
   PostReportStatus,
+  ProviderDiagnostic,
   ReactionEmoji,
   ReactionSummary,
   Space,
@@ -563,6 +565,10 @@ export interface PaymentProvider {
     signatureHeader: string;
     webhookSecret: string;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
+  test(input: {
+    tenantId: string;
+    appBaseUrl: string;
+  }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface InvoicingPort {
@@ -850,19 +856,26 @@ export interface BunnyEmbedTokenSigner {
   sign(input: { securityKey: string; videoId: string; expires: number }): string;
 }
 
-/**
- * Signs object-storage GET URLs (SigV4 presign in production) so imported
- * media on private buckets stays reachable. Credentials arrive per call so
- * the adapter stays stateless and the use-case controls which tenant secret
- * is decrypted.
- */
-export interface FileUrlSigner {
+export interface StorageProvider {
+  presignPut(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    expiresInSeconds: number;
+  }): Result<string, AppError>;
   presignGet(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
+  delete(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  }): Promise<Result<{ deleted: true }, AppError>>;
+  healthcheck(input: { tenantId: string }): Promise<Result<{ healthy: true }, AppError>>;
+  test(input: { tenantId: string }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface ProductPriceRepository {
@@ -976,6 +989,8 @@ export interface PurchaseRepository {
 
 export interface EmailPort {
   send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string }, AppError>>;
+  healthcheck(): Promise<Result<{ healthy: true }, AppError>>;
+  test(): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface TransactionalEmailSender {
@@ -989,6 +1004,10 @@ export interface TransactionalEmailSender {
 
 export interface TransactionalEmailTransportResolver {
   resolve(tenantId: string): Promise<EmailPort | null>;
+}
+
+export interface EmailIntegrationTransportResolver {
+  resolve(tenantId: string, transport: EmailIntegrationTransport): Promise<EmailPort | null>;
 }
 
 export interface PlatformTransactionalPool {

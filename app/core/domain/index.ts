@@ -3,6 +3,7 @@ export * from './errors.js';
 export * from './identity.js';
 export * from './authorization.js';
 export * from './email.js';
+export * from './integration.js';
 export * from './language.js';
 export * from './transactional-email.js';
 export * from './marketing-email.js';

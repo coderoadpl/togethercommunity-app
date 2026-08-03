@@ -52,7 +52,7 @@ export const memberEventRegistry = defineMemberEventRegistry({
     mailKind: z.enum(['transactional', 'marketing']),
     subject: z.string().min(1),
     source: z.string().min(1),
-    transport: z.enum(['tenant-ses', 'smtp', 'platform']),
+    transport: z.enum(['tenant-ses', 'smtp', 'resend', 'platform']),
   }).strict(),
 });
 

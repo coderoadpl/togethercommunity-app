@@ -369,10 +369,15 @@ export interface Messages {
     testConnection: string;
     testing: string;
     testFailed: string;
+    paymentAvailable: string;
+    emailAvailable: string;
+    storageAvailable: string;
     saveKeysFirst: string;
     webhookUrlLabel: string;
     webhookUrlHint: string;
     loading: string;
+    emailHeading: string;
+    emailDescription: string;
     ifirmaHeading: string;
     ifirmaDescription: string;
     ifirmaInvoiceApiKeyLabel: string;
@@ -396,6 +401,7 @@ export interface Messages {
     s3Description: string;
     s3AccessKeyIdLabel: string;
     s3SecretAccessKeyLabel: string;
+    s3SaveFirst: string;
   };
   products: {
     newProduct: string;
@@ -1232,6 +1238,7 @@ export interface Messages {
     transportLabel: string;
     transportTenantSes: string;
     transportSmtp: string;
+    transportResend: string;
     transportPlatform: string;
     limitedTracking: string;
     campaignLabel: string;
@@ -1419,6 +1426,11 @@ export interface Messages {
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
     smtpNoFeedback: string;
+    resendTitle: string;
+    resendHint: string;
+    resendApiKeyLabel: string;
+    resendDomainHint: string;
+    testEmailSent: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;

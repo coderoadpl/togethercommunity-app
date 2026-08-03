@@ -74,6 +74,9 @@ import {
   notificationMarkReadInputSchema,
   notificationSchema,
   pinPostInputSchema,
+  emailIntegrationTransportSchema,
+  integrationProviderSchema,
+  providerDiagnosticSchema,
   postReportSchema,
   reportPostInputSchema,
   reportQueueSchema,
@@ -922,9 +925,23 @@ export type SupportMessageInput = z.input<typeof supportMessageInputSchema>;
 
 export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 
-export const stripeTestConnectionOutputSchema = z.object({
-  ok: z.literal(true),
-  diagnostic: z.string(),
+export const integrationTestInputSchema = z.object({
+  provider: integrationProviderSchema,
+  emailTransport: emailIntegrationTransportSchema.optional(),
+}).superRefine((input, ctx) => {
+  if (input.emailTransport !== undefined && input.provider !== 'email') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'An email transport can only be selected for the email provider',
+      path: ['emailTransport'],
+    });
+  }
+});
+
+export type IntegrationTestInput = z.input<typeof integrationTestInputSchema>;
+
+export const integrationTestOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
 });
 
 export const ifirmaTestConnectionOutputSchema = z.object({
@@ -1028,6 +1045,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
   smtpConfigured: z.boolean(),
+  resendConfigured: z.boolean(),
   platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
 });
@@ -1043,7 +1061,6 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   footerLegalName: z.string(),
   footerAddress: z.string(),
 });
-export const marketingSmtpTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingSesIdentityStartInputSchema = z.object({
   kind: z.enum(['domain', 'email']),
 });
@@ -1261,7 +1278,7 @@ export const API_ROUTES = {
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
-  stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
+  integrationTest: { method: 'POST', path: '/api/integrations/test' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
@@ -1302,7 +1319,6 @@ export const API_ROUTES = {
   marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
   marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
   marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
-  marketingSmtpTest: { method: 'POST', path: '/api/marketing/smtp/test' },
   marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
@@ -1437,7 +1453,7 @@ export const API_PATHS = {
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
-  stripeTestConnection: API_ROUTES.stripeTestConnection.path,
+  integrationTest: API_ROUTES.integrationTest.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,
@@ -1473,7 +1489,6 @@ export const API_PATHS = {
   marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
   marketingSesProvision: API_ROUTES.marketingSesProvision.path,
   marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,
-  marketingSmtpTest: API_ROUTES.marketingSmtpTest.path,
   marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   emailSends: API_ROUTES.emailSends.path,

@@ -86,7 +86,6 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/marketing/ses-onboarding/identity` | authenticated | mutating | marketing ses identity start |
 | `POST /api/marketing/ses-onboarding/infrastructure` | authenticated | mutating | marketing ses provision |
 | `POST /api/marketing/ses-onboarding/simulator` | authenticated | mutating | marketing ses simulator |
-| `POST /api/marketing/smtp/test` | authenticated | mutating | marketing smtp test |
 | `GET /api/marketing/suppressions` | authenticated | read | marketing staff suppressions |
 | `GET /api/marketing/sends/export` | authenticated | read | email sends export |
 | `GET /api/marketing/sends` | authenticated | read | email sends |
@@ -124,7 +123,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
-| `POST /api/integrations/stripe/test` | authenticated | mutating | stripe test connection |
+| `POST /api/integrations/test` | authenticated | mutating | integration test |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |
 | `GET /api/integrations/bunny/videos` | authenticated | read | bunny videos |

@@ -78,6 +78,7 @@ import type {
   SimulatePurchaseInput,
   TenantCreateInput,
   TenantSecretDeleteInput,
+  IntegrationTestInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
@@ -385,11 +386,6 @@ export const marketingReputationQuery = (api: ApiClient) => defineQuery({
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
 });
-export const testMarketingSmtpMutation = (api: ApiClient) => defineMutation({
-  mutationKey: [...marketingScopes.settings(), 'smtp-test'],
-  call: api.testMarketingSmtp,
-});
-
 export const emailSendsQuery = (api: ApiClient, input: EmailSendsQueryInput) => defineQuery({
   queryKey: marketingScopes.sends(input), call: ({ signal }) => api.listEmailSends(input, signal),
 });
@@ -1052,10 +1048,10 @@ export const deleteTenantSecretMutation = (api: ApiClient) =>
     call: (input: TenantSecretDeleteInput) => api.deleteTenantSecret(input),
   });
 
-export const testStripeConnectionMutation = (api: ApiClient) =>
+export const testIntegrationMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
-    call: () => api.testStripeConnection(),
+    mutationKey: [...tenantSecretsScopes.all(), 'provider-test'],
+    call: (input: IntegrationTestInput) => api.testIntegration(input),
   });
 
 export const testIfirmaConnectionMutation = (api: ApiClient) =>

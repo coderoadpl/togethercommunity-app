@@ -233,7 +233,7 @@ describe('verifyWebhookEvent', () => {
       subscription: 'sub_1',
       charge: 'ch_1',
       payment_intent: 'pi_1',
-      period_end: 1_800_000_000,
+      period_end: 916_387_200,
     }, { invoice: { subscriptionId: 'sub_1', amountCents: 4900, currency: 'PLN' } }],
     ['invoice.payment_failed', {
       id: 'in_2',
@@ -245,13 +245,25 @@ describe('verifyWebhookEvent', () => {
       id: 'sub_1',
       status: 'active',
       cancel_at_period_end: false,
-      current_period_end: 1_800_000_000,
+      current_period_end: 916_387_200,
     }, { subscription: { id: 'sub_1', status: 'active', cancelAtPeriodEnd: false } }],
     ['customer.subscription.deleted', {
       id: 'sub_2',
       status: 'canceled',
       cancel_at_period_end: true,
-    }, { subscription: { id: 'sub_2', status: 'canceled', cancelAtPeriodEnd: true } }],
+      current_period_end: 916_387_200,
+      ended_at: 916_387_200,
+      canceled_at: 1_700_000_000,
+    }, {
+      subscription: {
+        id: 'sub_2',
+        status: 'canceled',
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: '1999-01-15T08:00:00.000Z',
+        endedAt: '1999-01-15T08:00:00.000Z',
+        canceledAt: '1995-11-14T22:13:20.000Z',
+      },
+    }],
     ['charge.refunded', {
       id: 'ch_1',
       payment_intent: 'pi_1',

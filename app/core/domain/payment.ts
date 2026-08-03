@@ -51,6 +51,8 @@ export const stripeWebhookPayloadSchema = z.object({
       period_end: z.number().nullable().optional(),
       cancel_at_period_end: z.boolean().optional(),
       current_period_end: z.number().nullable().optional(),
+      ended_at: z.number().nullable().optional(),
+      canceled_at: z.number().nullable().optional(),
       status: z.string().optional(),
     }),
   }),
@@ -101,6 +103,8 @@ export const stripeSubscriptionObjectSchema = z.object({
   status: z.string().optional(),
   cancel_at_period_end: z.boolean().optional(),
   current_period_end: z.number().nullable().optional(),
+  ended_at: z.number().nullable().optional(),
+  canceled_at: z.number().nullable().optional(),
   items: z
     .object({
       data: z.array(z.object({ current_period_end: z.number().optional() })),

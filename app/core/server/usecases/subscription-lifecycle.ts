@@ -248,3 +248,37 @@ export const updateSubscriptionFromProvider = async (
   await deps.subscriptions.update(tenantId, subscription);
   return subscription;
 };
+
+/** Grace only buys time for payment retries, which a cancellation will never make. */
+export const subscriptionGrantExpiry = (
+  subscription: MemberSubscription,
+  paidThrough: string | null,
+): string => {
+  if (subscription.status === 'canceled') return paidThrough ?? subscription.currentPeriodEnd;
+  if (subscription.cancelAtPeriodEnd) return subscription.currentPeriodEnd;
+  return graceExpiresAt(subscription.currentPeriodEnd);
+};
+
+export const syncGrantToSubscription = async (
+  tenantId: string,
+  subscription: MemberSubscription,
+  paidThrough: string | null,
+  deps: Pick<SubscriptionLifecycleDeps, 'grants' | 'clock'>,
+): Promise<string | null> => {
+  const grant = await deps.grants.findGrant(tenantId, subscription.memberId, subscription.productId);
+  if (grant === null) return null;
+  const { expiresAt } = grant;
+  const grantsLifetimeAccess = expiresAt === null;
+  if (grantsLifetimeAccess) return null;
+  const now = deps.clock.nowIso();
+  const alreadyExpired = expiresAt < now;
+  if (alreadyExpired) return null;
+  const computedExpiry = subscriptionGrantExpiry(subscription, paidThrough);
+  const cancellation = subscription.status === 'canceled' || subscription.cancelAtPeriodEnd;
+  const appliedExpiry = cancellation || computedExpiry > expiresAt ? computedExpiry : expiresAt;
+  await deps.grants.setGrantWindow(tenantId, grant.id, {
+    startsAt: grant.startsAt,
+    expiresAt: appliedExpiry,
+  });
+  return appliedExpiry;
+};

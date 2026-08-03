@@ -135,6 +135,8 @@ const subscriptionEvent = (input: {
   cancelAtPeriodEnd?: boolean;
   status?: string;
   currentPeriodEnd?: string | null;
+  endedAt?: string | null;
+  canceledAt?: string | null;
 }): PaymentWebhookEvent => ({
   id: input.id,
   type: input.type,
@@ -145,6 +147,8 @@ const subscriptionEvent = (input: {
     status: input.status ?? null,
     cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
     currentPeriodEnd: input.currentPeriodEnd ?? null,
+    endedAt: input.endedAt ?? null,
+    canceledAt: input.canceledAt ?? null,
   },
 });
 
@@ -1046,7 +1050,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.queued).toEqual([]);
   });
 
-  it('flags cancelAtPeriodEnd on customer.subscription.updated and cancels on deleted without cutting the grant', async () => {
+  it('expires the grant at the paid period end when cancellation is scheduled', async () => {
     const h = await subscribedHarness();
 
     await fulfillStripeWebhook(
@@ -1057,15 +1061,17 @@ describe('fulfillStripeWebhook', () => {
         subscriptionId: 'sub-1',
         cancelAtPeriodEnd: true,
         status: 'active',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
       }),
       h.deps,
     );
     expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
       status: 'active',
       cancelAtPeriodEnd: true,
+      currentPeriodEnd: '1998-08-20T10:00:00.000Z',
     });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-20T10:00:00.000Z');
 
-    const expiresBefore = Array.from(h.grants.values())[0]?.expiresAt;
     await fulfillStripeWebhook(
       tenantA,
       subscriptionEvent({
@@ -1077,17 +1083,124 @@ describe('fulfillStripeWebhook', () => {
       h.deps,
     );
     expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
-    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(expiresBefore);
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-20T10:00:00.000Z');
     expect(h.orders).toHaveLength(1);
     expect(h.queued).toEqual([
       {
         to: 'buyer@example.com',
         payload: expect.objectContaining({
           kind: 'subscription-ended',
-          accessEndsAt: '1998-08-23T10:00:00.000Z',
+          accessEndsAt: '1998-08-20T10:00:00.000Z',
         }),
       },
     ]);
+  });
+
+  it('revokes the grant at ended_at for an immediate cancellation with a future period end', async () => {
+    const h = await subscribedHarness();
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-immediate-cancel',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+        canceledAt: now,
+      }),
+      h.deps,
+    );
+
+    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.queued).toEqual([
+      {
+        to: 'buyer@example.com',
+        payload: expect.objectContaining({
+          kind: 'subscription-ended',
+          accessEndsAt: now,
+        }),
+      },
+    ]);
+  });
+
+  it('uses the stored period end when a canceled event omits current_period_end', async () => {
+    const h = await subscribedHarness();
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-without-period',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: null,
+      }),
+      h.deps,
+    );
+
+    expect(h.subscriptions.get(h.subscription.id)?.currentPeriodEnd).toBe(
+      h.subscription.currentPeriodEnd,
+    );
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(h.subscription.currentPeriodEnd);
+  });
+
+  it('does not send an access-end date when a lifetime grant is unchanged', async () => {
+    const h = await subscribedHarness();
+    const grant = Array.from(h.grants.values())[0];
+    if (grant === undefined) throw new Error('checkout did not create a grant');
+    h.grants.set(`${tenantA.id}:${grant.id}`, { ...grant, expiresAt: null });
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-lifetime-grant',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBeNull();
+    expect(h.queued).toEqual([]);
+  });
+
+  it('does not let invoice.paid revive a canceled subscription', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-before-invoice',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    const result = await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-final-invoice',
+        type: 'invoice.paid',
+        invoiceId: 'in-final',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-20T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(result).toEqual({ ok: true, value: { processed: true } });
+    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.orders).toHaveLength(1);
   });
 
   it('marks a refunded order and revokes its grant', async () => {

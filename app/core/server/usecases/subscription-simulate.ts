@@ -57,7 +57,9 @@ export const simulateSubscriptionCycle = async (
           id: found.value.providerSubscriptionId,
           status: 'canceled',
           cancelAtPeriodEnd: true,
-          currentPeriodEnd: null,
+          currentPeriodEnd: found.value.currentPeriodEnd,
+          endedAt: found.value.currentPeriodEnd,
+          canceledAt: found.value.currentPeriodEnd,
         },
       }
     : {

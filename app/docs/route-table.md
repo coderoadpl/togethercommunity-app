@@ -168,8 +168,14 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/lessons/update` | authenticated | mutating | lessons update |
 | `GET /api/lessons/references` | authenticated | read | lesson references |
 | `DELETE /api/lessons/:lessonId` | authenticated | mutating | lessons delete |
+| `GET /api/lessons/:lessonId/attachments` | authenticated | read | lesson attachments |
+| `POST /api/lessons/:lessonId/attachments/upload` | authenticated | mutating | lesson attachment upload |
+| `POST /api/lessons/:lessonId/attachments/:attachmentId/complete` | authenticated | mutating | lesson attachment complete |
+| `DELETE /api/lessons/:lessonId/attachments/:attachmentId` | authenticated | mutating | lesson attachment delete |
 | `GET /api/student/courses` | authenticated | read | student courses |
 | `GET /api/student/courses/:courseId/structure` | authenticated | read | student course structure |
+| `GET /api/student/lessons/:lessonId/attachments` | authenticated | read | student lesson attachments |
+| `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | authenticated | read | student lesson attachment download |
 | `POST /api/student/lessons/complete` | authenticated | mutating | student lesson complete |
 | `POST /api/student/lessons/uncomplete` | authenticated | mutating | student lesson uncomplete |
 | `POST /api/student/progress/last-viewed` | authenticated | mutating | student last viewed |

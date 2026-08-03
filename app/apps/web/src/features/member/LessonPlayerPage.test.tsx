@@ -139,6 +139,9 @@ describe('LessonPlayerPage', () => {
           data: { discussion: { threads: [], nextCursor: null, viewerSubscriptions: {} } },
         }),
       ),
+      http.get('/api/student/lessons/:lessonId/attachments', () =>
+        HttpResponse.json({ ok: true, data: { attachments: [] } }),
+      ),
     );
   });
 
@@ -327,6 +330,40 @@ describe('LessonPlayerPage', () => {
     await screen.findByTestId('mark-complete');
     expect(screen.queryByTestId('course-completed')).not.toBeInTheDocument();
     expect(await screen.findByTestId('course-end')).toHaveTextContent(pl.lesson.lastLesson);
+  });
+
+  it('renders an entitlement-backed attachment download', async () => {
+    server.use(
+      okNext(null),
+      okStructure(),
+      okProgress(),
+      okLesson(allBlocks),
+      http.get('/api/student/lessons/:lessonId/attachments', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            attachments: [{
+              id: 'attachment-1',
+              lessonId: 'l1',
+              fileName: 'worksheet.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 4096,
+              createdAt: '2026-08-03T12:00:00.000Z',
+              downloadPath: '/api/student/lessons/l1/attachments/attachment-1/download',
+            }],
+          },
+        }),
+      ),
+    );
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    const download = await screen.findByRole('link', {
+      name: pl.lesson.downloadAttachment({ name: 'worksheet.pdf' }),
+    });
+    expect(download).toHaveAttribute(
+      'href',
+      '/api/student/lessons/l1/attachments/attachment-1/download',
+    );
   });
 
   it('renders a SectionCard locked state inside the member skeleton without a paid CTA', async () => {

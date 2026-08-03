@@ -415,6 +415,7 @@ const beforeForUseCase = (
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }
   if (file === 'lesson-media.ts') return tenantActors;
+  if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;

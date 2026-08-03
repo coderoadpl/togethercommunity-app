@@ -635,6 +635,14 @@ export interface Messages {
     saving: string;
     saveLesson: string;
     createLesson: string;
+    attachmentsHeading: string;
+    attachmentsHelp: string;
+    attachmentsEmpty: string;
+    attachmentFileInput: string;
+    uploadAttachment: string;
+    uploadingAttachment: string;
+    attachmentSize: (params: { kilobytes: number }) => string;
+    deleteAttachment: (params: { name: string }) => string;
     invalidBlocks: string;
     blockNoun: (params: { count: number }) => string;
     typeVideo: string;
@@ -857,6 +865,8 @@ export interface Messages {
     videoTitle: string;
     embedTitle: string;
     pdfTitle: string;
+    attachmentsHeading: string;
+    downloadAttachment: (params: { name: string }) => string;
   };
   discussion: {
     heading: string;

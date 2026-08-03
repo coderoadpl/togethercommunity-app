@@ -19,6 +19,7 @@ import { recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
+const isPanelPath = (path: string): boolean => path === '/panel' || path.startsWith('/panel/');
 
 const routePathMatches = (routePath: string, requestPath: string): boolean => {
   const routeSegments = routePath.split('/');
@@ -37,14 +38,15 @@ const routePathMatches = (routePath: string, requestPath: string): boolean => {
 export const buildApp = (deps: AppDeps) => {
   const app = new Hono<Vars>();
 
-  app.use(
-    '*',
+  app.use('*', async (c, next) =>
     secureHeaders({
       contentSecurityPolicy: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'", 'https://*.sentry.io'],
+        connectSrc: isPanelPath(c.req.path)
+          ? ["'self'", 'https:']
+          : ["'self'", 'https://*.sentry.io'],
         fontSrc: ["'self'", 'data:'],
         imgSrc: ["'self'", 'data:', 'https:'],
         frameSrc: ['https:'],
@@ -53,8 +55,7 @@ export const buildApp = (deps: AppDeps) => {
         frameAncestors: ["'none'"],
       },
       referrerPolicy: 'strict-origin-when-cross-origin',
-    }),
-  );
+    })(c, next));
   app.use('*', async (c, next) => {
     const maxSize = requestBodyLimit(c.req.method, c.req.path);
     if (maxSize === undefined) {

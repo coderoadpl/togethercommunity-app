@@ -201,6 +201,7 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
   return {
     calls,
     signer: {
+      objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => {
@@ -208,6 +209,7 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
         return ok(`${input.url}?X-Amz-Signature=test`);
       },
       delete: async () => ok({ deleted: true }),
+      head: async () => ok({ sizeBytes: 1 }),
       healthcheck: async () => ok({ healthy: true }),
       test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
@@ -309,10 +311,12 @@ describe('getPlayableLesson', () => {
 
   it('keeps the original url when the signer fails', async () => {
     const failing: StorageProvider = {
+      objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => err(validation('bad url')),
       presignPut: () => err(validation('bad url')),
       presignGet: () => err(validation('bad url')),
       delete: async () => err(validation('bad url')),
+      head: async () => err(validation('bad url')),
       healthcheck: async () => err(validation('bad url')),
       test: async () => err(validation('bad url')),
     };

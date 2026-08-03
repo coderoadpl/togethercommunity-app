@@ -5,6 +5,7 @@ import {
   computeCourseModuleName,
   billingDataSchema,
   courseLessonSchema,
+  lessonAttachmentSchema,
   courseModuleSchema,
   courseSchema,
   entityHistoryEntrySchema,
@@ -30,6 +31,7 @@ import {
   termsConsentSchema,
   type Course,
   type CourseLesson,
+  type LessonAttachment,
   type CourseModule,
   type CheckoutConsentCapture,
   type MemberCourseProgress,
@@ -53,6 +55,7 @@ import {
 } from '#core/domain/index.js';
 import type {
   CourseLessonRepository,
+  LessonAttachmentRepository,
   CourseModuleRepository,
   CourseRepository,
   CheckoutConsentCaptureRepository,
@@ -104,6 +107,7 @@ import {
   couponRedemptions,
   coupons,
   courseLessons,
+  lessonAttachments,
   courseModules,
   courses,
   devEmails,
@@ -146,6 +150,9 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 };
 
 const parseProduct = (product: Product): Product => productSchema.parse(product);
+
+const parseLessonAttachment = (attachment: LessonAttachment): LessonAttachment =>
+  lessonAttachmentSchema.parse(attachment);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
 
@@ -534,6 +541,60 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
       .delete(courseLessons)
       .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, id)))
       .returning({ id: courseLessons.id });
+    return rows.length > 0;
+  },
+});
+
+export const createLessonAttachmentRepository = (db: Db): LessonAttachmentRepository => ({
+  create: async (tenantId, attachment) => {
+    await db.insert(lessonAttachments).values({ ...attachment, tenantId });
+  },
+  findById: async (tenantId, attachmentId) => {
+    const rows = await db
+      .select()
+      .from(lessonAttachments)
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseLessonAttachment(row) : null;
+  },
+  listByLesson: async (tenantId, lessonId) =>
+    (
+      await db
+        .select()
+        .from(lessonAttachments)
+        .where(and(
+          eq(lessonAttachments.tenantId, tenantId),
+          eq(lessonAttachments.lessonId, lessonId),
+        ))
+        .orderBy(asc(lessonAttachments.createdAt))
+    ).map(parseLessonAttachment),
+  listReadyByLesson: async (tenantId, lessonId) =>
+    (
+      await db
+        .select()
+        .from(lessonAttachments)
+        .where(and(
+          eq(lessonAttachments.tenantId, tenantId),
+          eq(lessonAttachments.lessonId, lessonId),
+          eq(lessonAttachments.status, 'ready'),
+        ))
+        .orderBy(asc(lessonAttachments.createdAt))
+    ).map(parseLessonAttachment),
+  markReady: async (tenantId, attachmentId, sizeBytes) => {
+    const rows = await db
+      .update(lessonAttachments)
+      .set({ status: 'ready', sizeBytes })
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseLessonAttachment(row) : null;
+  },
+  delete: async (tenantId, attachmentId) => {
+    const rows = await db
+      .delete(lessonAttachments)
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .returning({ id: lessonAttachments.id });
     return rows.length > 0;
   },
 });

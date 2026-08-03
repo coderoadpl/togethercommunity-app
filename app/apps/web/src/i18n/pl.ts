@@ -452,13 +452,13 @@ export const pl: Messages = {
     storageBack: 'Wstecz',
     storageInstructionsHeading: 'Skąd wziąć klucze',
     storageInstructionAws:
-      'Utwórz ograniczony klucz dostępu IAM z uprawnieniami PutObject, GetObject i DeleteObject do tego bucketu.',
+      'Utwórz ograniczony klucz dostępu IAM z uprawnieniami PutObject, GetObject i DeleteObject do tego bucketu. W CORS bucketu dodaj Content-Type do AllowedHeaders.',
     storageInstructionR2:
-      'Utwórz token API R2 z dostępem Object Read & Write ograniczonym do tego bucketu, a następnie skopiuj dane S3 i endpoint.',
+      'Utwórz token API R2 z dostępem Object Read & Write ograniczonym do tego bucketu, a następnie skopiuj dane S3 i endpoint. W CORS bucketu dodaj Content-Type do AllowedHeaders.',
     storageInstructionB2:
-      'Utwórz klucz aplikacji ograniczony do bucketu z uprawnieniami readFiles, writeFiles i deleteFiles. Identyfikatora klucza użyj jako access key ID.',
+      'Utwórz klucz aplikacji ograniczony do bucketu z uprawnieniami readFiles, writeFiles i deleteFiles. Identyfikatora klucza użyj jako access key ID. W CORS bucketu dodaj Content-Type do AllowedHeaders.',
     storageInstructionMinio:
-      'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie.',
+      'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie. W CORS bucketu dodaj Content-Type do AllowedHeaders.',
     storageInstructionLink: 'Otwórz instrukcję dostawcy',
     storageProbeDescription:
       'Together wyśle mały plik testowy, odczyta go bajt po bajcie i usunie. Na tym etapie nic nie zostanie zapisane.',
@@ -472,7 +472,7 @@ export const pl: Messages = {
       'Sprawdź access key, secret key oraz uprawnienia PutObject, GetObject i DeleteObject.',
     storageProbeBucket: 'Sprawdź dokładną nazwę bucketu i czy ten klucz ma do niego dostęp.',
     storageProbeCors:
-      'Zezwól temu originowi Together na żądania PUT, GET i DELETE w polityce CORS bucketu.',
+      'W CORS bucketu zezwól na ten origin Together i metody PUT, GET i DELETE oraz dodaj Content-Type do AllowedHeaders.',
     storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
@@ -714,6 +714,14 @@ export const pl: Messages = {
     saving: 'Zapisywanie…',
     saveLesson: 'Zapisz lekcję',
     createLesson: 'Utwórz lekcję',
+    attachmentsHeading: 'Prywatne załączniki',
+    attachmentsHelp: 'Pliki trafiają bezpośrednio do skonfigurowanego zasobnika i są dostępne tylko dla osób z dostępem do tej lekcji.',
+    attachmentsEmpty: 'Brak załączników.',
+    attachmentFileInput: 'Wybierz prywatny załącznik',
+    uploadAttachment: 'Dodaj załącznik',
+    uploadingAttachment: 'Przesyłanie…',
+    attachmentSize: ({ kilobytes }) => format('{kilobytes} KB', { kilobytes }),
+    deleteAttachment: ({ name }) => format('usuń załącznik {name}', { name }),
     invalidBlocks: 'Nieprawidłowe bloki lekcji',
     blockNoun: ({ count }) => plural(count, 'blok', 'bloki', 'bloków'),
     typeVideo: 'Wideo',
@@ -983,6 +991,8 @@ export const pl: Messages = {
     videoTitle: 'Wideo lekcji',
     embedTitle: 'Osadzona treść',
     pdfTitle: 'PDF lekcji',
+    attachmentsHeading: 'Pliki do pobrania',
+    downloadAttachment: ({ name }) => format('Pobierz {name}', { name }),
   },
   discussion: {
     heading: 'Dyskusja',

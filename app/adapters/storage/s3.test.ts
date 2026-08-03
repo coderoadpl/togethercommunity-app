@@ -24,6 +24,7 @@ const storageResponse = (
   responseHeaders: Record<string, string> = {
     'access-control-allow-origin': '*',
     'access-control-allow-methods': 'PUT',
+    'access-control-allow-headers': 'content-type',
   },
 ) => ({
   ok: status < 400,
@@ -35,7 +36,7 @@ const storageResponse = (
 });
 
 const fakeBucket = (failure?: {
-  method: 'DELETE' | 'GET' | 'OPTIONS' | 'PUT';
+  method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
   status: number;
   body: string;
   headers?: Record<string, string>;
@@ -45,7 +46,7 @@ const fakeBucket = (failure?: {
   const fetchStorage = async (
     url: string,
     init: {
-      method: 'DELETE' | 'GET' | 'OPTIONS' | 'PUT';
+      method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
       body?: string;
       headers?: Record<string, string>;
     },
@@ -65,6 +66,12 @@ const fakeBucket = (failure?: {
       return stored === undefined
         ? storageResponse(404, '<Error><Code>NoSuchKey</Code></Error>')
         : storageResponse(200, stored);
+    }
+    if (init.method === 'HEAD') {
+      const stored = objects.get(path);
+      return stored === undefined
+        ? storageResponse(404, '<Error><Code>NoSuchKey</Code></Error>')
+        : storageResponse(200, '', { 'content-length': String(Buffer.byteLength(stored)) });
     }
     objects.delete(path);
     return storageResponse(204, '');
@@ -139,6 +146,34 @@ describe('createS3StorageProvider', () => {
     if (!result.ok) expect(result.error.code).toBe('validation');
   });
 
+  it('presigns path-style S3-compatible URLs with the configured region', () => {
+    const signer = createS3StorageProvider(resolver, {
+      now: () => new Date('2026-08-03T12:00:00.000Z'),
+    });
+    const result = signer.presignPut({
+      url: 'http://127.0.0.1:19000/together-test/lesson-attachments/a/file.pdf',
+      accessKeyId: 'minio-access',
+      secretAccessKey: 'minio-secret',
+      region: 'us-east-1',
+      expiresInSeconds: 900,
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value).toContain('%2Fus-east-1%2Fs3%2Faws4_request');
+    expect(result.value).toContain('/together-test/lesson-attachments/a/file.pdf?');
+  });
+
+  it('builds one encoded object URL for probes and attachment operations', () => {
+    const storage = createS3StorageProvider(resolver);
+
+    expect(storage.objectUrl({
+      ...MINIO_CONFIGURATION,
+      endpoint: 'https://storage.example.test/tenant/prefix/',
+      bucket: 'creator-files',
+    }, 'lesson attachments/zażółć (1).pdf').toString()).toBe(
+      'https://storage.example.test/tenant/prefix/creator-files/lesson%20attachments/za%C5%BC%C3%B3%C5%82%C4%87%20%281%29.pdf',
+    );
+  });
+
   it('rejects unparsable URLs', () => {
     const signer = createS3StorageProvider(resolver);
     const result = signer.presignGet({
@@ -172,6 +207,25 @@ describe('createS3StorageProvider', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe('DELETE');
     expect(requests[0]?.url).toContain('X-Amz-Signature=');
+  });
+
+  it('reads the stored object size through a signed HEAD request', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(resolver, {
+      now: () => new Date('2026-08-03T12:00:00.000Z'),
+      fetchStorage: bucket.fetchStorage,
+    });
+    const target = storage.objectUrl(MINIO_CONFIGURATION, 'attachments/file.txt').toString();
+    await bucket.fetchStorage(target, { method: 'PUT', body: 'actual bytes' });
+
+    await expect(storage.head({
+      url: target,
+      accessKeyId: MINIO_CONFIGURATION.accessKeyId,
+      secretAccessKey: MINIO_CONFIGURATION.secretAccessKey,
+      region: MINIO_CONFIGURATION.region,
+    })).resolves.toEqual({ ok: true, value: { sizeBytes: 12 } });
+    expect(bucket.requests.at(-1)?.method).toBe('HEAD');
+    expect(bucket.requests.at(-1)?.url).toContain('X-Amz-Signature=');
   });
 
   it('uses the shared diagnostic contract after checking both stored credentials', async () => {
@@ -225,6 +279,7 @@ describe('createS3StorageProvider', () => {
     expect(bucket.requests[0]?.headers).toEqual({
       Origin: 'http://localhost:48730',
       'Access-Control-Request-Method': 'PUT',
+      'Access-Control-Request-Headers': 'content-type',
     });
     for (const request of bucket.requests) {
       expect(request.url).toContain('X-Amz-Signature=');
@@ -368,6 +423,7 @@ describe('createS3StorageProvider', () => {
     expect(bucket.requests[0]?.headers).toEqual({
       Origin: 'https://app.together.example',
       'Access-Control-Request-Method': 'PUT',
+      'Access-Control-Request-Headers': 'content-type',
     });
   });
 

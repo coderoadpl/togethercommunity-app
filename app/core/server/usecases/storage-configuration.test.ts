@@ -55,6 +55,7 @@ const harness = (probeFails = false) => {
     delete: async () => false,
   };
   const storage: StorageProvider = {
+    objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async (input) => {
       probes.push(input);
       return probeFails
@@ -64,6 +65,7 @@ const harness = (probeFails = false) => {
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(input.url),
     delete: async () => ok({ deleted: true }),
+    head: async () => ok({ sizeBytes: 1 }),
     healthcheck: async () => ok({ healthy: true }),
     test: async () => ok({ code: 'storage.available', message: 'probe complete' }),
   };

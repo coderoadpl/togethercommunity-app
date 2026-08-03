@@ -45,6 +45,7 @@ type StorageRequest = {
   url: string;
   accessKeyId: string;
   secretAccessKey: string;
+  region?: string;
   expiresInSeconds: number;
 };
 
@@ -58,7 +59,7 @@ interface StorageResponse {
 type FetchStorage = (
   url: string,
   init: {
-    method: 'DELETE' | 'GET' | 'OPTIONS' | 'PUT';
+    method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
     body?: string;
     headers?: Record<string, string>;
   },
@@ -187,6 +188,7 @@ const verifyCors = async (
       headers: {
         Origin: corsOrigin,
         'Access-Control-Request-Method': 'PUT',
+        'Access-Control-Request-Headers': 'content-type',
       },
     });
   } catch (cause) {
@@ -196,26 +198,32 @@ const verifyCors = async (
   const allowedMethods = response.headers.get('access-control-allow-methods')
     ?.split(',')
     .map((method) => method.trim().toUpperCase()) ?? [];
+  const allowedHeaders = response.headers.get('access-control-allow-headers')
+    ?.split(',')
+    .map((header) => header.trim().toLowerCase()) ?? [];
   if (
     !response.ok ||
     (allowedOrigin !== '*' && allowedOrigin !== corsOrigin) ||
-    (!allowedMethods.includes('*') && !allowedMethods.includes('PUT'))
+    (!allowedMethods.includes('*') && !allowedMethods.includes('PUT')) ||
+    (!allowedHeaders.includes('*') && !allowedHeaders.includes('content-type'))
   ) {
     return err(probeError('storage.cors', 'The bucket CORS policy rejected the probe.'));
   }
   return ok(undefined);
 };
 
-const probeObjectUrl = (configuration: StorageConfiguration, key: string): URL => {
+const objectUrl = (configuration: StorageConfiguration, key: string): URL => {
   const url = new URL(configuration.endpoint);
+  const keyPath = key.split('/').map(rfc3986).join('/');
   if (configuration.provider === 'aws_s3') {
     if (!url.hostname.startsWith(`${configuration.bucket}.`)) {
       url.hostname = `${configuration.bucket}.${url.hostname}`;
     }
-    url.pathname = `/${key}`;
+    url.pathname = `/${keyPath}`;
     return url;
   }
-  url.pathname = `/${configuration.bucket}/${key}`;
+  const prefix = url.pathname.replace(/\/$/, '');
+  url.pathname = `${prefix}/${rfc3986(configuration.bucket)}/${keyPath}`;
   return url;
 };
 
@@ -227,7 +235,7 @@ const liveProbe = async (
   corsOrigin: string,
 ): Promise<Result<ProviderDiagnostic, AppError>> => {
   const key = `together-probe/${keyFactory()}.txt`;
-  const url = probeObjectUrl(configuration, key);
+  const url = objectUrl(configuration, key);
   const expected = `together storage probe ${key}`;
   const signed = (method: 'DELETE' | 'GET' | 'PUT'): string =>
     signObjectUrl(method, url, {
@@ -262,7 +270,7 @@ const liveProbe = async (
 };
 
 const presign = (
-  method: 'DELETE' | 'GET' | 'PUT',
+  method: 'DELETE' | 'GET' | 'HEAD' | 'PUT',
   input: StorageRequest,
   now: () => Date,
 ) => {
@@ -273,21 +281,21 @@ const presign = (
     return err(validation(`Cannot presign "${input.url}": not a valid URL`));
   }
   const match = S3_HOST_PATTERN.exec(url.hostname);
-  if (match === null) {
+  if (match === null && input.region === undefined) {
     return err(validation(`Cannot presign "${input.url}": not a virtual-hosted S3 URL`));
   }
   return ok(
     signObjectUrl(method, url, {
       accessKeyId: input.accessKeyId,
       secretAccessKey: input.secretAccessKey,
-      region: match.groups?.['region'] ?? 'us-east-1',
+      region: input.region ?? match?.groups?.['region'] ?? 'us-east-1',
       expiresInSeconds: input.expiresInSeconds,
     }, now),
   );
 };
 
 const signObjectUrl = (
-  method: 'DELETE' | 'GET' | 'PUT',
+  method: 'DELETE' | 'GET' | 'HEAD' | 'PUT',
   target: URL,
   input: {
     accessKeyId: string;
@@ -391,7 +399,7 @@ export const createS3StorageProvider = (
   const corsOrigin = new URL(options.corsOrigin ?? 'http://localhost:48730').origin;
   const allowPrivateEndpoints = options.allowPrivateEndpoints ?? false;
   const probe = async (input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>> => {
-    const target = probeObjectUrl(input, 'together-probe');
+    const target = objectUrl(input, 'together-probe');
     const safeEndpoint = validateProbeEndpoint(input.endpoint, allowPrivateEndpoints);
     if (!safeEndpoint.ok) return safeEndpoint;
     const safeTarget = validateProbeEndpoint(target.origin, allowPrivateEndpoints);
@@ -401,6 +409,7 @@ export const createS3StorageProvider = (
   };
 
   return {
+    objectUrl,
     probe,
     presignPut: (input) => presign('PUT', input, now),
     presignGet: (input) => presign('GET', input, now),
@@ -412,6 +421,23 @@ export const createS3StorageProvider = (
         return response.ok
           ? ok({ deleted: true })
           : err(integrationUnavailable(`S3 rejected the delete request with status ${String(response.status)}`));
+      } catch (cause) {
+        return err(integrationUnavailable(`Could not reach S3: ${String(cause)}`));
+      }
+    },
+    head: async (input) => {
+      const signed = presign('HEAD', { ...input, expiresInSeconds: 60 }, now);
+      if (!signed.ok) return signed;
+      try {
+        const response = await fetchStorage(signed.value, { method: 'HEAD' });
+        if (!response.ok) {
+          return err(integrationUnavailable(`S3 rejected the object metadata request with status ${String(response.status)}`));
+        }
+        const contentLength = response.headers.get('content-length');
+        if (contentLength === null || !/^\d+$/.test(contentLength)) {
+          return err(integrationUnavailable('S3 returned invalid object size metadata.'));
+        }
+        return ok({ sizeBytes: Number(contentLength) });
       } catch (cause) {
         return err(integrationUnavailable(`Could not reach S3: ${String(cause)}`));
       }

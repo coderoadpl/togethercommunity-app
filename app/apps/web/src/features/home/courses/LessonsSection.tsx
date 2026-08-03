@@ -347,6 +347,91 @@ const BlockFields = ({
   }
 };
 
+const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const attachments = useQuery(actions.lessonAttachments(lessonId));
+  const refresh = async () => {
+    await queryClient.invalidateQueries(actions.lessonAttachmentsInvalidates(lessonId));
+  };
+  const upload = useMutation({
+    ...actions.uploadLessonAttachment,
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    ...actions.deleteLessonAttachment,
+    onSuccess: refresh,
+  });
+  const selectFile = (file: File | undefined) => {
+    if (file === undefined) return;
+    upload.mutate({
+      lessonId,
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      sizeBytes: file.size,
+      body: file,
+    });
+  };
+
+  return (
+    <Stack useFlexGap spacing="0.75rem" data-testid="lesson-attachments-editor">
+      <Box>
+        <Eyebrow variant="overline" component="h4">
+          {t.lessons.attachmentsHeading}
+        </Eyebrow>
+        <Typography variant="body2" color="text.secondary">
+          {t.lessons.attachmentsHelp}
+        </Typography>
+      </Box>
+      {attachments.isPending ? (
+        <Typography variant="caption">{t.common.loading}</Typography>
+      ) : attachments.isError ? (
+        <MutationError error={attachments.error} />
+      ) : attachments.data.attachments.length === 0 ? (
+        <Typography variant="caption" data-testid="lesson-attachments-empty">
+          {t.lessons.attachmentsEmpty}
+        </Typography>
+      ) : (
+        <List disablePadding>
+          {attachments.data.attachments.map((attachment) => (
+            <ListItem key={attachment.id} disableGutters>
+              <ListItemText
+                primary={attachment.fileName}
+                secondary={t.lessons.attachmentSize({ kilobytes: Math.max(1, Math.ceil(attachment.sizeBytes / 1024)) })}
+              />
+              <Button
+                size="small"
+                color="error"
+                aria-label={t.lessons.deleteAttachment({ name: attachment.fileName })}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate({ lessonId, attachmentId: attachment.id })}
+              >
+                {t.common.remove}
+              </Button>
+            </ListItem>
+          ))}
+        </List>
+      )}
+      <Box>
+        <Button component="label" variant="outlined" disabled={upload.isPending}>
+          {upload.isPending ? t.lessons.uploadingAttachment : t.lessons.uploadAttachment}
+          <input
+            hidden
+            type="file"
+            aria-label={t.lessons.attachmentFileInput}
+            onChange={(event) => {
+              selectFile(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+        </Button>
+      </Box>
+      {upload.isError ? <MutationError error={upload.error} /> : null}
+      {remove.isError ? <MutationError error={remove.error} /> : null}
+    </Stack>
+  );
+};
+
 const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved: (lessonId: string) => void }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -521,6 +606,13 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           {t.lessons.addBlock}
         </Button>
       </Stack>
+
+      {lesson === null ? null : (
+        <>
+          <Divider />
+          <LessonAttachmentsEditor lessonId={lesson.id} />
+        </>
+      )}
 
       <Stack direction="row" useFlexGap spacing="0.75rem">
         <Button type="submit" variant="contained" disabled={pending || name.trim().length === 0}>

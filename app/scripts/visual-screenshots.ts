@@ -255,6 +255,17 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-lesson-attachments',
+    auth: 'creator',
+    path: '/panel/lessons/lesson-js-zmienne-1',
+    ready: (page) => page.getByTestId('lesson-attachments-empty').waitFor(visible),
+    settled: async (page) => {
+      await page.getByTestId('lesson-attachments-editor').evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      );
+    },
+  },
+  {
     name: 'panel-products',
     auth: 'creator',
     path: '/panel/products',

@@ -24,6 +24,7 @@ import {
   storageProbeInputSchema,
   lastViewedInputSchema,
   lessonCompleteInputSchema,
+  lessonAttachmentUploadRequestSchema,
   lessonCreateInputSchema,
   lessonUncompleteInputSchema,
   lessonUpdateInputSchema,
@@ -101,6 +102,9 @@ import {
   validation,
   type EmailBranding,
   type Identity,
+  type LessonAttachment,
+  type LessonAttachmentMetadata,
+  type LessonAttachmentView,
   type MemberCourseProgress,
   type ProgressView,
   type Result,
@@ -110,6 +114,7 @@ import {
   addManualSuppression,
   archiveCoupon,
   attachModuleToCourse,
+  beginLessonAttachmentUpload,
   authenticateApiKey,
   autoIssueOnPayment,
   authorizeRequiredTenant,
@@ -129,8 +134,10 @@ import {
   createTenantApiKey,
   createTenantDocument,
   configureStorageConnection,
+  completeLessonAttachmentUpload,
   deactivateProductPrice,
   deleteLesson,
+  deleteLessonAttachment,
   deletePost,
   deleteSpace,
   deleteTenantSecret,
@@ -168,6 +175,7 @@ import {
   getNextLesson,
   getOrder,
   getPlayableLesson,
+  getLessonAttachmentDownload,
   getProgress,
   getSalesSummary,
   getSchedulerRunForTenant,
@@ -187,11 +195,13 @@ import {
   listEmailSends,
   listGlobalSchedulerRuns,
   listLessonReferences,
+  listLessonAttachments,
   listLessons,
   listMarketingConsentDefinitions,
   listMemberBillingOrders,
   listMemberEmailSends,
   listMemberGrants,
+  listMemberLessonAttachments,
   listMembers,
   listModules,
   listMyCourses,
@@ -327,6 +337,22 @@ const toProgressView = (progress: MemberCourseProgress): ProgressView => ({
   lastViewedLessonId: progress.lastViewedLessonId,
   lastViewedModuleId: progress.lastViewedModuleId,
   lastViewedChapterId: progress.lastViewedChapterId,
+});
+
+const lessonAttachmentMetadata = (attachment: LessonAttachment): LessonAttachmentMetadata => ({
+  id: attachment.id,
+  lessonId: attachment.lessonId,
+  fileName: attachment.fileName,
+  contentType: attachment.contentType,
+  sizeBytes: attachment.sizeBytes,
+  createdAt: attachment.createdAt,
+});
+
+const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentView => ({
+  ...lessonAttachmentMetadata(attachment),
+  downloadPath: API_PATHS.studentLessonAttachmentDownload
+    .replace(':lessonId', encodeURIComponent(attachment.lessonId))
+    .replace(':attachmentId', encodeURIComponent(attachment.id)),
 });
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -2009,6 +2035,58 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ references: result.value }) : result);
   });
 
+  app.get(API_PATHS.lessonAttachments, async (c) => {
+    const result = await listLessonAttachments(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      deps,
+    );
+    return respond(result.ok
+      ? ok({ attachments: result.value.map(lessonAttachmentView) })
+      : result);
+  });
+
+  app.post(API_PATHS.lessonAttachmentUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lessonAttachmentUploadRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid attachment payload', parsed.error.flatten())));
+    const result = await beginLessonAttachmentUpload(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok
+      ? ok({
+          attachment: lessonAttachmentMetadata(result.value.attachment),
+          upload: {
+            url: result.value.uploadUrl,
+            headers: { 'content-type': result.value.attachment.contentType },
+            expiresAt: result.value.expiresAt,
+          },
+        })
+      : result);
+  });
+
+  app.post(API_PATHS.lessonAttachmentComplete, async (c) => {
+    const result = await completeLessonAttachmentUpload(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      c.req.param('attachmentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ attachment: lessonAttachmentView(result.value) }) : result);
+  });
+
+  app.delete(API_PATHS.lessonAttachmentDelete, async (c) => {
+    return respond(await deleteLessonAttachment(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      c.req.param('attachmentId'),
+      deps,
+    ));
+  });
+
   app.get(API_PATHS.studentCourses, async (c) => {
     const result = await listMyCourses({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ courses: result.value }) : result);
@@ -2021,6 +2099,27 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       deps,
     );
     return respond(result.ok ? ok({ structure: result.value }) : result);
+  });
+
+  app.get(API_PATHS.studentLessonAttachments, async (c) => {
+    const result = await listMemberLessonAttachments(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      deps,
+    );
+    return respond(result.ok
+      ? ok({ attachments: result.value.map(lessonAttachmentView) })
+      : result);
+  });
+
+  app.get(API_PATHS.studentLessonAttachmentDownload, async (c) => {
+    const result = await getLessonAttachmentDownload(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      c.req.param('attachmentId'),
+      deps,
+    );
+    return result.ok ? c.redirect(result.value, 302) : respond(result);
   });
 
   app.post(API_PATHS.studentLessonComplete, async (c) => {

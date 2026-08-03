@@ -38,6 +38,7 @@ import {
 } from '#adapters/db/coupon-repositories.js';
 import {
   createCourseLessonRepository,
+  createLessonAttachmentRepository,
   createCourseModuleRepository,
   createCourseRepository,
   createCheckoutConsentCaptureRepository,
@@ -117,6 +118,7 @@ import type {
   TenantSecretRepository,
   TenantSecretResolver,
   CourseLessonRepository,
+  LessonAttachmentRepository,
   CourseModuleRepository,
   CourseRepository,
   DevEmailReader,
@@ -239,6 +241,7 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
+  attachments: LessonAttachmentRepository;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
@@ -679,6 +682,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
+    attachments: createLessonAttachmentRepository(db),
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),

@@ -77,6 +77,8 @@ import {
   pinPostInputSchema,
   integrationProviderSchema,
   providerDiagnosticSchema,
+  configureStripeInputSchema,
+  stripeModeSchema,
   postReportSchema,
   reportPostInputSchema,
   reportQueueSchema,
@@ -900,6 +902,8 @@ export const apiKeyRevokeOutputSchema = z.object({
 
 export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
+  stripeMode: stripeModeSchema.nullable(),
+  stripeWebhookUrl: z.string().url(),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
@@ -946,6 +950,15 @@ export type IntegrationTestInput = z.input<typeof integrationTestInputSchema>;
 
 export const integrationTestOutputSchema = z.object({
   diagnostic: providerDiagnosticSchema,
+});
+
+export const stripeConfigureInputSchema = configureStripeInputSchema;
+
+export type StripeConfigureInput = z.input<typeof stripeConfigureInputSchema>;
+
+export const stripeConfigureOutputSchema = z.object({
+  mode: stripeModeSchema,
+  webhookUrl: z.string().url(),
 });
 
 export const ifirmaTestConnectionOutputSchema = z.object({
@@ -1282,6 +1295,7 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   integrationTest: { method: 'POST', path: '/api/integrations/test' },
+  stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
@@ -1457,6 +1471,7 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,
+  stripeConfigure: API_ROUTES.stripeConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,

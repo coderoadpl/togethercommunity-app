@@ -28,6 +28,11 @@ const signatureIsValid = (payload: string, header: string, secret: string): bool
  * touches the network.
  */
 export const createFakePaymentProvider = (resolver: TenantSecretResolver): PaymentProvider => ({
+  configureWebhook: async () => ok({
+    webhookEndpointId: `we_fake_${randomUUID()}`,
+    webhookSecret: `whsec_fake_${randomUUID()}`,
+  }),
+  deleteWebhookEndpoint: async () => ok({ deleted: true }),
   test: async ({ tenantId }) => {
     const key = await resolver.resolve(tenantId, 'stripe.restrictedKey');
     return key.ok

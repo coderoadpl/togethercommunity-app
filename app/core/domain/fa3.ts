@@ -1,12 +1,12 @@
 import type { InvoiceVatTreatment } from './tenant.js';
 
-export interface Fa3Party {
+interface Fa3Party {
   nip: string;
   name: string;
   addressLine: string;
 }
 
-export interface Fa3Buyer {
+interface Fa3Buyer {
   nip: string | null;
   name: string;
   addressLine: string;

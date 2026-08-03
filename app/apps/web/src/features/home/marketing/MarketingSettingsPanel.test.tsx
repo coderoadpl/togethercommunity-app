@@ -9,14 +9,16 @@ import { MarketingSettingsPanel } from './MarketingSettingsPanel.js';
 
 const now = '2026-07-27T10:00:00.000Z';
 
-describe('SES onboarding wizard', () => {
-  it('polls provider state, shows DKIM rows, and surfaces verification regression', async () => {
+describe('email transport wizard', () => {
+  it('keeps SES onboarding and runs the shared SMTP, SES and Resend test-email flow', async () => {
+    const testedTransports: string[] = [];
     server.use(
       http.get('/api/marketing/ses-settings', () => HttpResponse.json({
         ok: true,
         data: {
           credentialsConfigured: true,
-          smtpConfigured: false,
+          smtpConfigured: true,
+          resendConfigured: true,
           platformPool: { used: 25, limit: 1000 },
           webhookUrl: 'https://app.test/api/webhooks/ses/webhook-token',
           settings: {
@@ -82,6 +84,16 @@ describe('SES onboarding wizard', () => {
           },
         },
       })),
+      http.post('/api/integrations/test', async ({ request }) => {
+        const body = await request.json();
+        if (typeof body === 'object' && body !== null && 'emailTransport' in body) {
+          testedTransports.push(String(body.emailTransport));
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: { diagnostic: { code: 'email.available', message: 'Test e-mail sent.' } },
+        });
+      }),
     );
     const user = userEvent.setup();
     renderWithProviders(<MarketingSettingsPanel />);
@@ -95,5 +107,12 @@ describe('SES onboarding wizard', () => {
     expect(await screen.findByText(/AWS nie zgłasza już tej tożsamości/)).toBeInTheDocument();
     expect(screen.getByText(/token\._domainkey\.tenant\.test/)).toBeInTheDocument();
     expect(screen.getByText(/Przekazywanie powiadomień tożsamości jest wyłączone/)).toBeInTheDocument();
-  });
+
+    const testButtons = screen.getAllByRole('button', { name: 'Wyślij test do siebie' });
+    expect(testButtons).toHaveLength(3);
+    for (const button of testButtons) await user.click(button);
+
+    expect(await screen.findAllByText(/Transport przeszedł diagnostykę/)).toHaveLength(3);
+    expect(testedTransports).toEqual(['ses', 'smtp', 'resend']);
+  }, 15_000);
 });

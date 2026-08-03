@@ -11,6 +11,9 @@ const output = (messageId: string | undefined): SendEmailCommandOutput => ({
 const recordingSender = (result: SendEmailCommandOutput | Error) => {
   const commands: SendEmailCommand[] = [];
   const sender: SesSender = {
+    healthcheck: async () => {
+      if (result instanceof Error) throw result;
+    },
     send: async (command) => {
       commands.push(command);
       if (result instanceof Error) throw result;
@@ -68,5 +71,16 @@ describe('createSesEmailPort', () => {
       expect(result.error.code).toBe('internal');
       expect(result.error.message).toContain('throttled');
     }
+  });
+
+  it('exposes healthcheck and test through the shared provider diagnostic contract', async () => {
+    const { sender } = recordingSender(output('unused'));
+    const port = createSesEmailPort({ from: 'Together <kontakt@together.dev>' }, sender);
+
+    await expect(port.healthcheck()).resolves.toEqual({ ok: true, value: { healthy: true } });
+    await expect(port.test()).resolves.toEqual({
+      ok: true,
+      value: { code: 'email.available', message: 'SES accepted the connection settings.' },
+    });
   });
 });

@@ -38,6 +38,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { appendEmailSentMemberEvents } from './member-events.js';
 import {
   campaigns,
   campaignSends,
@@ -140,7 +141,6 @@ export const createMarketingConsentRepository = (db: Db): MarketingConsentReposi
       eq(marketingConsents.status, 'granted'),
       lt(marketingConsents.occurredAt, olderThan),
       sql`not exists (select 1 from ${marketingConsents} newer where newer.tenant_id = ${marketingConsents.tenantId} and newer.previous_id = ${marketingConsents.id})`,
-      sql`not exists (select 1 from ${campaignSends} send where send.consent_row_id = ${marketingConsents.id})`,
     )).returning({ id: marketingConsents.id });
     return deleted.length;
   },
@@ -435,6 +435,18 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
         await tx.insert(emailEvents).values(events.map((event) =>
           emailEventSchema.parse({ ...event, tenantId })
         ));
+      }
+      if (row?.status === 'sent' && row.sentAt !== null) {
+        await appendEmailSentMemberEvents(tx, {
+          tenantId,
+          recipient: row.email,
+          sendId: row.id,
+          mailKind: 'marketing',
+          subject: row.subject,
+          source: row.source,
+          transport: 'tenant-ses',
+          occurredAt: new Date(row.sentAt).toISOString(),
+        });
       }
       return row === undefined ? null : parseSend(row);
     });

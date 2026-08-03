@@ -81,7 +81,7 @@ export const consents = pgTable(
   },
   (table) => [
     index('consents_tenant_email_idx').on(table.tenantId, table.email),
-    index('consents_retention_started_tenant_idx').on(table.retentionStartedAt, table.tenantId),
+    index('consents_tenant_retention_started_idx').on(table.tenantId, table.retentionStartedAt),
   ],
 );
 
@@ -173,8 +173,8 @@ export const marketingConsents = pgTable(
   (table) => [
     index('marketing_consents_tenant_email_definition_occurred_idx')
       .on(table.tenantId, table.email, table.definitionId, table.occurredAt.desc()),
-    index('marketing_consents_retention_started_tenant_idx')
-      .on(table.retentionStartedAt, table.tenantId),
+    index('marketing_consents_tenant_retention_started_idx')
+      .on(table.tenantId, table.retentionStartedAt),
   ],
 );
 
@@ -241,9 +241,8 @@ export const memberEvents = pgTable(
     sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id').notNull().references(() => members.id, { onDelete: 'restrict' }),
-    type: text('type', { enum: ['banned', 'unbanned'] }).notNull(),
-    reason: text('reason'),
-    actorUserId: text('actor_user_id').notNull(),
+    type: text('type').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     occurredAt: text('occurred_at').notNull(),
   },
   (table) => [
@@ -278,8 +277,11 @@ export const products = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['course', 'digital_download', 'membership'] }).notNull().default('course'),
+    slug: text('slug').notNull(),
     title: text('title').notNull(),
     description: text('description').notNull(),
+    coverUrl: text('cover_url'),
     priceCents: integer('price_cents').notNull(),
     currency: text('currency').notNull(),
     published: boolean('published').notNull().default(false),
@@ -291,6 +293,7 @@ export const products = pgTable(
   },
   (table) => [
     index('products_tenantId_idx').on(table.tenantId),
+    uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
       .where(sql`${table.legacyId} is not null`),
@@ -1257,7 +1260,7 @@ export const emailOutbox = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
     sesMessageId: text('ses_message_id'),
-    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'platform'] }),
+    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'resend', 'platform'] }),
     deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
     deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
   },
@@ -1355,6 +1358,7 @@ export const schedulerRunTenants = pgTable(
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     campaignsTouched: integer('campaigns_touched').notNull(),
     batchSize: integer('batch_size').notNull(),
+    purged: integer('purged'),
     sent: integer('sent').notNull(),
     failed: integer('failed').notNull(),
     skipped: integer('skipped').notNull(),
@@ -1428,6 +1432,7 @@ export const campaignSends = pgTable(
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
+    index('campaign_sends_consent_row_id_idx').on(table.consentRowId),
     index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),

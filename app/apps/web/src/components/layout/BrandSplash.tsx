@@ -31,6 +31,7 @@ export const BrandSplash = ({
     <Box
       role="status"
       aria-busy="true"
+      aria-atomic="false"
       aria-label={ariaLabel}
       sx={{ minHeight: '100vh', display: 'grid', gridTemplateRows: '1fr auto', p: '1.5rem' }}
     >

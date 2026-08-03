@@ -2631,6 +2631,17 @@ tenantSecret
 const stripe = program.command('stripe').description('Stripe payment integration (owner only)');
 
 stripe
+  .command('configure <restrictedKey>')
+  .description('Store a restricted key and register the tenant webhook')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [restrictedKey]) => {
+      emit(await ctx.api.configureStripe({ restrictedKey }), ctx.json, (data) =>
+        `configured Stripe in ${data.mode} mode\nwebhook ${data.webhookUrl}`,
+      );
+    }),
+  );
+
+stripe
   .command('test-connection')
   .description('Create and immediately expire a test checkout session via the port')
   .action(

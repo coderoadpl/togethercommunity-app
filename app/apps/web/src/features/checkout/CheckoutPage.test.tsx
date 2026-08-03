@@ -14,8 +14,11 @@ const offerBody = {
   products: [
     {
       id: 'course-1',
+      type: 'course',
+      slug: 'intro-course',
       title: 'Intro Course',
       description: 'Start here.',
+      coverUrl: null,
       priceCents: 4900,
       currency: 'PLN',
       prices: [],
@@ -28,7 +31,13 @@ describe('CheckoutPage', () => {
 
   it('loads the public offer and completes the simulated purchase flow', async () => {
     server.use(
-      http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offerBody })),
+      http.get('/api/public/offer', () => HttpResponse.json({
+        ok: true,
+        data: {
+          ...offerBody,
+          products: [{ ...offerBody.products[0], coverUrl: 'https://cdn.test/intro.jpg' }],
+        },
+      })),
       http.get('/api/public/payment-config', () =>
         HttpResponse.json({ ok: true, data: { stripeConfigured: false, simulatedPaymentsEnabled: true } }),
       ),
@@ -54,6 +63,7 @@ describe('CheckoutPage', () => {
     renderWithProviders(<CheckoutPage productId="course-1" />);
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-product-cover')).toHaveAttribute('src', 'https://cdn.test/intro.jpg');
     expect(screen.getByText('49,00 zł')).toBeInTheDocument();
 
     await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');

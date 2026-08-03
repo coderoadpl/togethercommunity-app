@@ -424,8 +424,11 @@ describe('LessonPlayerPage', () => {
             contentVersion: 1,
             products: [{
               id: 'prod-full',
+              type: 'course',
+              slug: 'pelny-kurs-javascript',
               title: 'Pełny kurs JavaScript',
               description: 'Wszystkie lekcje',
+              coverUrl: null,
               priceCents: 19900,
               currency: 'PLN',
               prices: [],

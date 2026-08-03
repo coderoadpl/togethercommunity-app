@@ -12,7 +12,7 @@ export interface SmtpEmailSettings {
   from: string;
 }
 
-export interface SmtpTransport {
+interface SmtpTransport {
   verify(): Promise<unknown>;
   sendMail(input: {
     from: string;

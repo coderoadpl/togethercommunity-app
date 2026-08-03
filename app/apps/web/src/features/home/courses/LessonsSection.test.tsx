@@ -1,9 +1,14 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { newCourseLessonSchema, type CourseLesson, type LessonBlock } from '#core/domain/index.js';
+import {
+  newCourseLessonSchema,
+  type CourseLesson,
+  type LessonBlock,
+  type TenantSecretMasked,
+} from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -11,7 +16,8 @@ import { server } from '../../../test/server.js';
 import { PanelLessonEditRoute } from '../panel-routes.js';
 import { LessonCreatePage, LessonsSection } from './LessonsSection.js';
 
-const renderLessonsAt = async (initialEntry = '/panel/lessons') => {
+const renderLessonsAt = async (initialEntry = '/panel/lessons', secrets: TenantSecretMasked[] = []) => {
+  server.use(http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets } })));
   const rootRoute = createRootRoute();
   const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons', component: LessonsSection });
   const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons/new', component: LessonCreatePage });
@@ -23,6 +29,25 @@ const renderLessonsAt = async (initialEntry = '/panel/lessons') => {
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
 };
+
+const privacyNoteScenarios: Array<{
+  name: string;
+  secrets: TenantSecretMasked[];
+  showBunnyNote: boolean;
+}> = [
+  { name: 'without Bunny security', secrets: [], showBunnyNote: true },
+  {
+    name: 'with Bunny security',
+    secrets: [
+      {
+        key: 'bunny.securityKey',
+        maskedPreview: 'se••••ey',
+        updatedAt: '2026-08-03T08:00:00.000Z',
+      },
+    ],
+    showBunnyNote: false,
+  },
+];
 
 describe('LessonsSection pagination', { timeout: 15000 }, () => {
   it('paginates the lesson pool and applies the type filter to the full set', async () => {
@@ -86,7 +111,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(screen.getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    await userEvent.type(await screen.findByLabelText('embedUrl'), 'https://example.com/embed');
+    const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
+    await userEvent.type(embedUrlInput, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
     expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual(['video', 'embed']);
 
@@ -99,7 +125,64 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await waitFor(() => {
       expect(submitted.map((block) => block.type)).toEqual(['embed', 'video']);
     });
+    expect(submitted[0]).toEqual({
+      type: 'embed',
+      embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+    });
     expect(await screen.findByText('Reordered Lesson')).toBeInTheDocument();
+  });
+
+  it('rejects malformed provider URLs with specific inline and submit messages', async () => {
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })));
+
+    await renderLessonsAt('/panel/lessons/new');
+
+    fireEvent.change(await screen.findByLabelText(pl.common.name), { target: { value: 'Provider validation' } });
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
+    fireEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
+    const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
+
+    fireEvent.change(embedUrlInput, { target: { value: 'https://youtube.com/watch?v=bad' } });
+    expect(screen.getByText(pl.lessons.embedInvalidYoutubeUrl)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+    expect(screen.getByRole('alert')).toHaveTextContent(pl.lessons.embedInvalidYoutubeUrl);
+
+    fireEvent.change(embedUrlInput, { target: { value: 'https://player.vimeo.com/video/not-a-number' } });
+    expect(screen.getByText(pl.lessons.embedInvalidVimeoUrl)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+    expect(screen.getByRole('alert')).toHaveTextContent(pl.lessons.embedInvalidVimeoUrl);
+  });
+
+  it.each(privacyNoteScenarios)('renders inline previews and applicable privacy notes $name', async ({ secrets, showBunnyNote }) => {
+    const lesson: CourseLesson = {
+      id: 'provider-lesson',
+      tenantId: 't1',
+      name: 'Provider lesson',
+      contents: [
+        { type: 'video', storageKey: 'video-1', streamVideoId: 'video-1' },
+        { type: 'embed', embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' },
+        { type: 'embed', embedUrl: 'https://player.vimeo.com/video/76979871' },
+      ],
+      legacyId: null,
+      createdAt: '2026-08-03T08:00:00.000Z',
+    };
+    server.use(http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [lesson] } })));
+
+    await renderLessonsAt('/panel/lessons/provider-lesson', secrets);
+
+    const expectedNotes = [
+      ...(showBunnyNote ? [pl.integrations.bunnySecurityHint] : []),
+      pl.lessons.youtubePrivacyNote,
+      pl.lessons.vimeoPrivacyNote,
+    ];
+    await waitFor(() => {
+      expect(screen.getAllByRole('note').map((note) => note.textContent)).toEqual(expectedNotes);
+    });
+    expect(screen.getAllByTestId('embed-preview').map((preview) => preview.getAttribute('src'))).toEqual([
+      'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+      'https://player.vimeo.com/video/76979871',
+    ]);
   });
 
   it('fills the video ids from the Bunny Stream picker', async () => {

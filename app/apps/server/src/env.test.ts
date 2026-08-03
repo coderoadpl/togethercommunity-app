@@ -126,6 +126,15 @@ describe('development sink policy', () => {
   });
 });
 
+describe('consent evidence purge policy', () => {
+  it('requires an explicit operator opt-in', () => {
+    expect(envSchema.parse({}).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(false);
+    expect(envSchema.parse({
+      CONSENT_EVIDENCE_PURGE_ENABLED: 'true',
+    }).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(true);
+  });
+});
+
 describe('visual clock policy', () => {
   it('accepts an explicit timestamp outside production', () => {
     const parsed = envSchema.safeParse({

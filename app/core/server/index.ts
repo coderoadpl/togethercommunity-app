@@ -60,6 +60,7 @@ export * from './usecases/layered-transactional-email.js';
 export * from './usecases/email-send-observability.js';
 export * from './usecases/email-reputation.js';
 export * from './usecases/scheduler-activity.js';
+export * from './usecases/purge-consent-evidence.js';
 export * from './usecases/marketing-email.js';
 export * from './usecases/marketing-management.js';
 export * from './usecases/marketing-ses-onboarding.js';

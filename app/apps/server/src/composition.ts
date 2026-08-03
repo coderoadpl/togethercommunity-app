@@ -199,7 +199,7 @@ import type {
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
-  TransactionalEmailTransportResolver,
+  TransactionalEmailSender,
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
@@ -290,6 +290,7 @@ export interface AppDeps {
   storage: StorageProvider;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
   email: EmailPort;
+  emailSender: TransactionalEmailSender;
   emailTransports: EmailIntegrationTransportResolver;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
@@ -335,7 +336,6 @@ export interface MarketingAppDeps {
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
   platformTransactionalPool: PlatformTransactionalPool;
-  smtpTest: TransactionalEmailTransportResolver;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
   marketingSes: SesMarketingSender;
@@ -759,6 +759,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
     storage: createS3StorageProvider(secretResolver),
     email,
+    emailSender: transactionalEmail,
     emailTransports,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
@@ -808,7 +809,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       unsubscribes,
       sesSettings,
       platformTransactionalPool,
-      smtpTest,
       documents,
       idempotency,
       marketingSes,

@@ -12,7 +12,7 @@ The `member` and `authenticated` matrix rows carried historically derived edge c
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-Closed capability count: 92. Route rows: 198. Exported `Ctx` use-case rows: 174.
+Closed capability count: 92. Route rows: 197. Exported `Ctx` use-case rows: 173.
 
 ## Human-readable diff
 
@@ -103,7 +103,6 @@ no changes
 | `POST /api/marketing/ses-onboarding/identity` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/infrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/marketing/ses-onboarding/simulator` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
-| `POST /api/marketing/smtp/test` | marketing:ses:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/suppressions` | marketing:suppression:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/sends/export` | marketing:delivery:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/sends` | marketing:delivery:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -336,7 +335,6 @@ no changes
 | `marketing-management.ts#updateMarketingCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#getTenantSesMarketingSettings` | marketing:ses:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-management.ts#updateTenantSesMarketingSettings` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
-| `marketing-management.ts#sendTransactionalSmtpTest` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-management.ts authorization call |
 | `marketing-ses-onboarding.ts#startSesIdentityVerification` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#provisionSesInfrastructure` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
 | `marketing-ses-onboarding.ts#pollSesOnboarding` | marketing:ses:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-ses-onboarding.ts authorization call |
@@ -408,10 +406,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:111` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:758` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:760` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1202` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1202` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:757` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:759` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1193` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1193` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -2,7 +2,6 @@ import {
   campaignCanEditContent,
   emailLayoutSchema,
   err,
-  integrationNotConfigured,
   notFound,
   ok,
   requiresConsentVersionBump,
@@ -34,7 +33,6 @@ import type {
   TenantDocumentRepository,
   TenantSecretRepository,
   TenantSesSettingsRepository,
-  TransactionalEmailTransportResolver,
   TokenGenerator,
 } from '../ports.js';
 
@@ -268,21 +266,13 @@ export const updateMarketingCampaign = async (
 
 const sesSecretKeys = ['ses.accessKeyId', 'ses.secretAccessKey', 'ses.region'] as const;
 const smtpSecretKeys = ['smtp.host', 'smtp.port', 'smtp.user', 'smtp.password', 'smtp.secure'] as const;
+const resendSecretKeys = ['resend.apiKey'] as const;
 
-const credentialsConfigured = async (tenantId: string, secrets: TenantSecretRepository): Promise<boolean> => {
-  const stored = await secrets.listByTenant(tenantId);
-  return sesSecretKeys.every((key) => stored.some((secret) => secret.key === key));
-};
+const hasSecrets = (stored: readonly { key: string }[], keys: readonly string[]): boolean =>
+  keys.every((key) => stored.some((secret) => secret.key === key));
 
-const smtpConfigured = async (tenantId: string, secrets: TenantSecretRepository): Promise<boolean> => {
-  const stored = await secrets.listByTenant(tenantId);
-  return smtpSecretKeys.every((key) => stored.some((secret) => secret.key === key));
-};
-
-const resendConfigured = async (tenantId: string, secrets: TenantSecretRepository): Promise<boolean> => {
-  const stored = await secrets.listByTenant(tenantId);
-  return stored.some((secret) => secret.key === 'resend.apiKey');
-};
+const senderIdentityConfigured = (settings: TenantSesSettings | null): boolean =>
+  settings !== null && settings.fromName.trim() !== '' && settings.fromAddress.trim() !== '';
 
 const broadcastsEnabled = (settings: TenantSesSettings, hasCredentials: boolean): boolean =>
   hasCredentials && tenantSesBroadcastsReady(settings);
@@ -307,17 +297,17 @@ export const getTenantSesMarketingSettings = async (
 ): Promise<Result<TenantSendingSettingsOutput, AppError>> => {
   const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:read');
   if (!tenantId.ok) return tenantId;
-  const settings = await deps.settings.findByTenant(tenantId.value);
-  const [hasCredentials, hasSmtp, hasResend, usage] = await Promise.all([
-    credentialsConfigured(tenantId.value, deps.secrets),
-    smtpConfigured(tenantId.value, deps.secrets),
-    resendConfigured(tenantId.value, deps.secrets),
+  const [settings, storedSecrets, usage] = await Promise.all([
+    deps.settings.findByTenant(tenantId.value),
+    deps.secrets.listByTenant(tenantId.value),
     deps.pool.usage(tenantId.value),
   ]);
+  const hasCredentials = hasSecrets(storedSecrets, sesSecretKeys);
+  const hasSenderIdentity = senderIdentityConfigured(settings);
   const transport = {
     credentialsConfigured: hasCredentials,
-    smtpConfigured: hasSmtp,
-    resendConfigured: hasResend,
+    smtpConfigured: hasSenderIdentity && hasSecrets(storedSecrets, smtpSecretKeys),
+    resendConfigured: hasSenderIdentity && hasSecrets(storedSecrets, resendSecretKeys),
     platformPool: { used: usage.sent, limit: 1000 as const },
   };
   if (settings === null) return ok({ settings: null, ...transport, webhookUrl: null });
@@ -356,11 +346,12 @@ export const updateTenantSesMarketingSettings = async (
   if (input.trackingEnabled && input.configurationSet === null) {
     return err(validation('Open and click tracking requires an SES configuration set'));
   }
-  const current = await deps.settings.findByTenant(tenantId.value);
-  const hasCredentials = await credentialsConfigured(tenantId.value, deps.secrets);
-  const hasSmtp = await smtpConfigured(tenantId.value, deps.secrets);
-  const hasResend = await resendConfigured(tenantId.value, deps.secrets);
-  const usage = await deps.pool.usage(tenantId.value);
+  const [current, storedSecrets, usage] = await Promise.all([
+    deps.settings.findByTenant(tenantId.value),
+    deps.secrets.listByTenant(tenantId.value),
+    deps.pool.usage(tenantId.value),
+  ]);
+  const hasCredentials = hasSecrets(storedSecrets, sesSecretKeys);
   const settings: TenantSesSettings = {
     tenantId: tenantId.value,
     fromAddress: input.fromAddress,
@@ -391,29 +382,13 @@ export const updateTenantSesMarketingSettings = async (
   };
   settings.broadcastsEnabled = broadcastsEnabled(settings, hasCredentials);
   const stored = await deps.settings.upsert(tenantId.value, settings);
+  const hasSenderIdentity = senderIdentityConfigured(stored);
   return ok({
     settings: stored,
     credentialsConfigured: hasCredentials,
-    smtpConfigured: hasSmtp,
-    resendConfigured: hasResend,
+    smtpConfigured: hasSenderIdentity && hasSecrets(storedSecrets, smtpSecretKeys),
+    resendConfigured: hasSenderIdentity && hasSecrets(storedSecrets, resendSecretKeys),
     platformPool: { used: usage.sent, limit: 1000 as const },
     webhookUrl: `${deps.webhookBaseUrl}/${stored.webhookToken}`,
   });
-};
-
-export const sendTransactionalSmtpTest = async (
-  ctx: Ctx,
-  deps: { smtp: TransactionalEmailTransportResolver },
-) => {
-  const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:write');
-  if (!tenantId.ok) return tenantId;
-  const smtp = await deps.smtp.resolve(tenantId.value);
-  if (smtp === null) return err(integrationNotConfigured('SMTP is not fully configured'));
-  const sent = await smtp.send({
-    to: ctx.identity.email,
-    subject: 'Together SMTP test',
-    html: '<p>Your transactional SMTP connection works.</p>',
-    text: 'Your transactional SMTP connection works.',
-  });
-  return sent.ok ? ok({ sent: true as const }) : sent;
 };

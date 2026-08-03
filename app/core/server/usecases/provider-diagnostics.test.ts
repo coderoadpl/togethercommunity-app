@@ -43,15 +43,12 @@ const fakePayment = (
 
 const fakeDeps = (
   tested: string[],
-  options: { testFails?: boolean } = {},
+  options: { emailMissing?: boolean; sendFails?: boolean; testFails?: boolean } = {},
 ): TestIntegrationDeps => ({
   appBaseUrl: 'https://acme.together.dev',
   payment: fakePayment(tested, options),
   email: {
-    send: async (message) => {
-      tested.push(`email-send:${message.to}`);
-      return ok({ messageId: 'message-1' });
-    },
+    send: async () => ok({ messageId: 'message-1' }),
     healthcheck: async () => ok({ healthy: true }),
     test: async () => {
       tested.push('email');
@@ -59,18 +56,28 @@ const fakeDeps = (
       return ok({ code: 'email.available', message: 'SMTP accepted the connection settings.' });
     },
   },
+  emailSender: {
+    send: async (message) => {
+      tested.push(`email-send:${message.tenantId}:${message.to}`);
+      return options.sendFails
+        ? err(notFound('Platform email send failed'))
+        : ok({ messageId: 'message-1', transport: 'platform' });
+    },
+  },
   emailTransports: {
-    resolve: async (_tenantId, transport) => ({
-      send: async (message) => {
-        tested.push(`${transport}-send:${message.to}`);
-        return ok({ messageId: `${transport}-message-1` });
-      },
-      healthcheck: async () => ok({ healthy: true }),
-      test: async () => {
-        tested.push(transport);
-        return ok({ code: 'email.available', message: `${transport} accepted the settings.` });
-      },
-    }),
+    resolve: async (_tenantId, transport) => options.emailMissing ? null : ({
+        send: async (message) => {
+          tested.push(`${transport}-send:${message.to}`);
+          return options.sendFails
+            ? err(notFound(`${transport} send failed`))
+            : ok({ messageId: `${transport}-message-1` });
+        },
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => {
+          tested.push(transport);
+          return ok({ code: 'email.available', message: `${transport} accepted the settings.` });
+        },
+      }),
   },
   storage: {
     presignPut: (input) => ok(input.url),
@@ -101,7 +108,7 @@ describe('testIntegration', () => {
       testIntegration(ctx('owner'), { provider: 'payment' }, deps),
     ).resolves.toMatchObject({ ok: true, value: { diagnostic: { code: 'payment.available' } } });
 
-    expect(tested).toEqual(['storage', 'email', 'email-send:owner@together.dev', 'payment']);
+    expect(tested).toEqual(['storage', 'email', 'email-send:t1:owner@together.dev', 'payment']);
   });
 
   it('tests SMTP, SES and Resend and delivers each test message to the creator', async () => {
@@ -125,6 +132,26 @@ describe('testIntegration', () => {
       'resend',
       'resend-send:owner@together.dev',
     ]);
+  });
+
+  it('reports an unconfigured selected email transport without attempting a test or send', async () => {
+    const tested: string[] = [];
+
+    await expect(
+      testIntegration(ctx('owner'), { provider: 'email', emailTransport: 'smtp' }, fakeDeps(tested, { emailMissing: true })),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+
+    expect(tested).toEqual([]);
+  });
+
+  it('returns a send failure after a selected email transport passes diagnostics', async () => {
+    const tested: string[] = [];
+
+    await expect(
+      testIntegration(ctx('owner'), { provider: 'email', emailTransport: 'resend' }, fakeDeps(tested, { sendFails: true })),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    expect(tested).toEqual(['resend', 'resend-send:owner@together.dev']);
   });
 
   it('returns a non-empty user-facing message for every provider', async () => {

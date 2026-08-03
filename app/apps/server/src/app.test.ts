@@ -275,6 +275,9 @@ const deps = (input: {
       test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
       send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
     },
+    emailSender: {
+      send: async () => ok({ messageId: 'test-message-id', transport: 'platform' }),
+    },
     emailTransports: {
       resolve: async () => ({
         healthcheck: async () => ok({ healthy: true }),
@@ -689,7 +692,6 @@ const marketingDeps = (): MarketingAppDeps => ({
     reserve: async () => true,
     settle: async () => undefined,
   },
-  smtpTest: { resolve: async () => null },
   documents: {
     create: async () => undefined,
     findById: async () => null,

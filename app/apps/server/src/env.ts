@@ -11,6 +11,7 @@ export const envSchema = z
     NODE_ENV: z.string().optional(),
     APP_ENV: z.string().optional(),
     PORT: z.coerce.number().int().positive().default(48730),
+    INTERNAL_PORT: z.coerce.number().int().positive().optional(),
     DATABASE_URL: z
       .string()
       .default('postgres://together:together@localhost:48912/together'),
@@ -91,13 +92,6 @@ export const envSchema = z
     }
     const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
     if (!production) return;
-    if (env.TENANT_CREATION !== 'closed') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TENANT_CREATION'],
-        message: 'TENANT_CREATION must be closed in production',
-      });
-    }
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

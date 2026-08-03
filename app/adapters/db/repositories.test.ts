@@ -845,6 +845,24 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
     expect(await repo.findSole()).toBeNull();
+    expect(await repo.hasAny()).toBe(true);
+    expect(await repo.createTenantWithOwnerGrant(
+      {
+        tenant: {
+          id: 'tenant-bootstrap-rejected',
+          slug: 'bootstrap-rejected',
+          name: 'Rejected',
+          createdAt: NOW,
+        },
+        ownerGrant: {
+          id: 'admin-bootstrap-rejected',
+          userId: 'user-acme-owner',
+          staffRole: 'owner',
+        },
+      },
+      { requireEmpty: true },
+    )).toBeNull();
+    expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
     const updated = await repo.updateSettings(ACME, {
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',

@@ -197,6 +197,7 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
+  TenantCreationMode,
 } from '#core/server/index.js';
 import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
@@ -300,7 +301,7 @@ export interface AppDeps {
   health: HealthPort;
   appVersion: string;
   commitSha: string;
-  tenantCreationMode: Env['TENANT_CREATION'];
+  tenantCreationMode: TenantCreationMode;
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void };
@@ -366,6 +367,13 @@ export const selectTenantRouting = (
   baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
   singleTenantMode: env.APP_BASE_DOMAIN === undefined,
 });
+
+export const selectTenantCreationMode = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
+): TenantCreationMode => {
+  if (env.TENANT_CREATION === 'closed') return 'closed';
+  return env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? 'bootstrap' : 'open';
+};
 
 /**
  * Composition root — the ONLY place where env decides which adapters run.
@@ -764,7 +772,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
-    tenantCreationMode: env.TENANT_CREATION,
+    tenantCreationMode: selectTenantCreationMode(env),
     ids,
     clock,
     logger,

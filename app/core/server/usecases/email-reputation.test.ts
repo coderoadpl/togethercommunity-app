@@ -180,6 +180,7 @@ describe('run reputation alerts', () => {
       findById: async () => tenant,
       findBySlug: async () => tenant,
       findSole: async () => tenant,
+      hasAny: async () => true,
       findSettings: async () =>
         tenantSettingsSchema.parse({
           billingPortalUrl: null,
@@ -254,6 +255,7 @@ describe('run reputation alerts', () => {
         findById: async () => null,
         findBySlug: async () => null,
         findSole: async () => null,
+        hasAny: async () => false,
         findSettings: async () => null,
         updateSettings: async (_tenantId, value) => value,
         createTenantWithOwnerGrant: async () => {
@@ -282,6 +284,7 @@ describe('tenant staff recipients', () => {
     findById: async () => null,
     findBySlug: async () => null,
     findSole: async () => null,
+    hasAny: async () => false,
     findSettings: async () =>
       tenantSettingsSchema.parse({
         billingPortalUrl: null,

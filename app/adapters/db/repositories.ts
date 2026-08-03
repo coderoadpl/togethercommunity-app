@@ -2611,8 +2611,13 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
-  createTenantWithOwnerGrant: async (input) =>
+  createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
+      if (options?.requireEmpty === true) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
+        const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
+        if (existing.length > 0) return null;
+      }
       await tx.insert(tenants).values(input.tenant);
       await tx.insert(tenantAdmins).values({
         id: input.ownerGrant.id,
@@ -2629,6 +2634,10 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         contentVersion: 1,
       };
     }),
+  hasAny: async () => {
+    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({

@@ -7,6 +7,8 @@ marketing and integration surfaces across the web SPA, API and CLI.
 
 ## Quickstart (local demo)
 
+For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24
 pnpm run db:up        # Postgres 16
@@ -145,7 +147,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->217<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->219<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

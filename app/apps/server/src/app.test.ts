@@ -470,6 +470,7 @@ const deps = (input: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
+      hasAny: async () => tenants.length > 0,
       findSettings: async (tenantId) =>
         tenants.some((tenant) => tenant.id === tenantId) ? {
           billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
@@ -1899,6 +1900,17 @@ describe('public auth-config route', () => {
     const body: unknown = await response.json();
 
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
+  });
+
+  it('reports bootstrap tenant creation only while no tenant exists', async () => {
+    const empty = buildApp({ ...deps({ tenants: [] }), tenantCreationMode: 'bootstrap' });
+    const populated = buildApp({ ...deps(), tenantCreationMode: 'bootstrap' });
+
+    const emptyBody: unknown = await (await empty.request(API_PATHS.authConfig)).json();
+    const populatedBody: unknown = await (await populated.request(API_PATHS.authConfig)).json();
+
+    expect(emptyBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: true } });
+    expect(populatedBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: false } });
   });
 });
 

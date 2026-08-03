@@ -4,7 +4,7 @@ import { languageSchema, type Language } from './language.js';
 
 export const transactionalLanguageSchema = languageSchema;
 
-export type TransactionalLanguage = Language;
+type TransactionalLanguage = Language;
 
 export const emailMessageSchema = z.object({
   subject: z.string().min(1),

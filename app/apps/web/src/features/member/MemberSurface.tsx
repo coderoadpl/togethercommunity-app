@@ -5,7 +5,7 @@ import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';
 
-import { TenantLogo } from '../../branding.js';
+import { TenantLogo, TenantSocialLinks } from '../../branding.js';
 import { actions } from '../../api.js';
 import { MemberPage } from '../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -119,6 +119,7 @@ export const MemberSurface = (props: Props) => {
         <>
           {me.data?.tenant?.banned === true ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
           {props.children}
+          <TenantSocialLinks />
         </>
       )}
       logo={<TenantLogo />}

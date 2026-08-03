@@ -150,6 +150,8 @@ const harness = (options: {
       findSole: async () => null,
       hasAny: async () => false,
       findSettings: async () => ({
+        name: 'Acme',
+        socialLinks: [],
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
         logoUrl: null,

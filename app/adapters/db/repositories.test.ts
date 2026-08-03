@@ -988,6 +988,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       plan: 'self_hosted',
     });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
+    const previousVersion = (await repo.findById(ACME))?.contentVersion;
     expect(await repo.findSole()).toBeNull();
     expect(await repo.hasAny()).toBe(true);
     expect(await repo.createTenantWithOwnerGrant(
@@ -1008,6 +1009,8 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     )).toBeNull();
     expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
     const updated = await repo.updateSettings(ACME, {
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       logoUrl: null,
@@ -1025,14 +1028,22 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
-    expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
+    expect(updated).toMatchObject({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      billingPortalUrl: 'https://billing.acme.test',
+      bunnyStreamLibraryId: 'lib-1',
+    });
     expect(await repo.findSettings(ACME)).toMatchObject({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
+    expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
   });
 
   it('rejects unsupported persisted VAT modes', async () => {

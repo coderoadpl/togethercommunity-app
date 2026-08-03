@@ -113,7 +113,11 @@ const magicLinkBaseUrl = (
 
 const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
   const settings = await deps.tenants.findSettings(tenantId);
-  return settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+  return settings === null ? undefined : {
+    logoUrl: settings.logoUrl,
+    accentColor: settings.accentColor,
+    socialLinks: settings.socialLinks,
+  };
 };
 
 const magicLinkRequestBodySchema = z.object({ email: z.string().email() });

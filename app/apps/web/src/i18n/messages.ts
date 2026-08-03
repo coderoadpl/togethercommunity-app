@@ -25,6 +25,11 @@ export interface Messages {
     open: string;
     status: string;
   };
+  bootSplash: {
+    opening: string;
+    tenant: (params: { host: string }) => string;
+    warming: string;
+  };
   pagination: {
     rowsPerPage: string;
     displayedRows: (params: { from: number; to: number; count: number }) => string;
@@ -638,6 +643,13 @@ export interface Messages {
     videoPickerPrevPage: string;
     videoPickerNextPage: string;
     videoPickerManualHint: string;
+    embedUrlLabel: string;
+    embedPreviewTitle: string;
+    embedInvalidUrl: string;
+    embedInvalidYoutubeUrl: string;
+    embedInvalidVimeoUrl: string;
+    youtubePrivacyNote: string;
+    vimeoPrivacyNote: string;
     allLessons: string;
   };
   members: {

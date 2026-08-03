@@ -79,6 +79,9 @@ const lessonEvent: MemberEvent = {
 const product: Product = {
   id: 'product-1',
   tenantId: 'tenant-1',
+  type: 'course',
+  slug: 'advanced-course',
+  coverUrl: null,
   title: 'Advanced course',
   description: '',
   priceCents: 4900,
@@ -124,7 +127,7 @@ const products: ProductRepository & ProductBatchReader = {
   listPublishedByTenant: async () => [product],
   findById: async (_tenantId, id) => id === product.id ? product : null,
   findByIds: async (_tenantId, ids) => ids.includes(product.id) ? [product] : [],
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,

@@ -24,7 +24,7 @@ export const appendEmailSentMemberEvents = async (
     mailKind: 'transactional' | 'marketing';
     subject: string;
     source: string;
-    transport: 'tenant-ses' | 'smtp' | 'platform';
+    transport: 'tenant-ses' | 'smtp' | 'resend' | 'platform';
     occurredAt: string;
   },
 ): Promise<void> => {

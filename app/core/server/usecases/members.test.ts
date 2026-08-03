@@ -151,6 +151,7 @@ const paymentFor = (
   cancelSubscription: PaymentProvider['cancelSubscription'] = async () =>
     ok({ canceled: true, alreadySettled: false }),
 ): PaymentProvider => ({
+  test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
   createCheckoutSession: async () => ok({ url: 'https://checkout.test', sessionId: 'cs_1' }),
   expireCheckoutSession: async () => ok({ expired: true }),
   cancelSubscription,

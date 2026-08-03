@@ -130,6 +130,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
+  if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
@@ -250,7 +251,6 @@ export interface CollectedUseCase {
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
-  'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
   'community-access.ts#requireUnbannedMember',
@@ -393,7 +393,6 @@ const marketingTenantContextUseCases = new Set([
   'confirmMarketingConsent',
   'getMarketingEligibility',
   'getUnsubscribePreferences',
-  'purgeStalePendingConsents',
   'recordCheckoutMarketingConsents',
   'recordMarketingConsent',
   'saveMarketingConsentPreferences',
@@ -420,6 +419,7 @@ const beforeForUseCase = (
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
+  if (file === 'configure-stripe.ts') return owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;

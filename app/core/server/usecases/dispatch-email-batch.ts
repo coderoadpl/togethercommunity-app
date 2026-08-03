@@ -38,7 +38,7 @@ const nextAttemptAt = (now: string, attempts: number, deps: DispatchEmailBatchDe
 const transportFromError = (details: unknown) => {
   if (typeof details !== 'object' || details === null) return null;
   const transport = Reflect.get(details, 'transport');
-  return transport === 'tenant-ses' || transport === 'smtp' || transport === 'platform'
+  return transport === 'tenant-ses' || transport === 'smtp' || transport === 'resend' || transport === 'platform'
     ? transport
     : null;
 };

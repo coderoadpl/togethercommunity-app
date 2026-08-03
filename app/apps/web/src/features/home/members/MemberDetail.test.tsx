@@ -62,8 +62,11 @@ const products: Product[] = [
   {
     id: 'p3',
     tenantId: 't1',
+    type: 'course',
+    slug: 'new-workshop',
     title: 'New Workshop',
     description: '',
+    coverUrl: null,
     priceCents: 0,
     currency: 'PLN',
     published: true,

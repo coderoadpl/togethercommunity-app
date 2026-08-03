@@ -10,8 +10,6 @@ import type {
 } from '@tanstack/query-core';
 
 import type {
-  ApiKeyCreateInput,
-  ApiKeyRevokeInput,
   CourseCreateInput,
   CheckoutSessionRequest,
   CouponCheckoutValidationRequest,
@@ -66,7 +64,6 @@ import type {
   PostsSearchInput,
   SpaceArchiveInput,
   SpaceCreateInput,
-  SpaceDeleteInput,
   SpaceFeedGetInput,
   SpaceFollowInput,
   SpaceUpdateInput,
@@ -81,10 +78,12 @@ import type {
   SimulatePurchaseInput,
   TenantCreateInput,
   TenantSecretDeleteInput,
+  IntegrationTestInput,
+  StripeConfigureInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
-import type { DevGrantInput, MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
+import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
@@ -115,7 +114,7 @@ type DefineQueryInput<TQueryFnData, TQueryKey extends QueryKey> = Omit<
   'queryFn'
 > & { call: ReadCall<TQueryFnData, TQueryKey> };
 
-export const defineQuery = <TQueryFnData, TQueryKey extends QueryKey>(
+const defineQuery = <TQueryFnData, TQueryKey extends QueryKey>(
   input: DefineQueryInput<TQueryFnData, TQueryKey>,
 ): QueryDescriptor<TQueryFnData, TQueryKey> => {
   const { call, ...rest } = input;
@@ -135,7 +134,7 @@ type DefineMutationInput<TData, TVariables> = Omit<
   'mutationFn'
 > & { call: WriteCall<TData, TVariables> };
 
-export const defineMutation = <TData, TVariables>(
+const defineMutation = <TData, TVariables>(
   input: DefineMutationInput<TData, TVariables>,
 ): MutationDescriptor<TData, TVariables> => {
   const { call, ...rest } = input;
@@ -146,42 +145,42 @@ export const defineMutation = <TData, TVariables>(
  * Query keys are the public API of each resource: general → specific, matched
  * by prefix for invalidation and per-prefix defaults. Never hand-copy a key.
  */
-export const meScopes = {
+const meScopes = {
   all: () => ['me'] as const,
 };
 
-export const healthScopes = {
+const healthScopes = {
   all: () => ['health'] as const,
 };
 
-export const tenantsScopes = {
+const tenantsScopes = {
   all: () => ['tenants'] as const,
 };
 
-export const publicOfferScopes = {
+const publicOfferScopes = {
   all: () => ['public-offer'] as const,
 };
 
-export const authConfigScopes = {
+const authConfigScopes = {
   all: () => ['auth-config'] as const,
 };
 
-export const memberBillingOrdersScopes = {
+const memberBillingOrdersScopes = {
   all: () => ['member-billing-orders'] as const,
 };
 
-export const productsScopes = {
+const productsScopes = {
   all: () => ['products'] as const,
   lists: () => ['products', 'list'] as const,
   issues: () => ['products', 'issues'] as const,
 };
 
-export const productPricesScopes = {
+const productPricesScopes = {
   all: () => ['product-prices'] as const,
   list: (productId: string) => ['product-prices', 'list', productId] as const,
 };
 
-export const salesScopes = {
+const salesScopes = {
   all: () => ['sales'] as const,
   orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
   order: (id: string) => ['sales', 'order', id] as const,
@@ -191,7 +190,7 @@ export const salesScopes = {
     ['sales', 'reconciliation', input] as const,
 };
 
-export const couponScopes = {
+const couponScopes = {
   all: () => ['coupons'] as const,
   options: () => ['coupons', 'options'] as const,
   list: (input: CouponStatsQueryInput) => ['coupons', 'list', input] as const,
@@ -199,11 +198,11 @@ export const couponScopes = {
   export: (input: CouponStatsExportQueryInput) => ['coupons', 'export', input] as const,
 };
 
-export const myProductsScopes = {
+const myProductsScopes = {
   all: () => ['my-products'] as const,
 };
 
-export const membersScopes = {
+const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
   grants: (memberId: string) => ['members', 'grants', memberId] as const,
@@ -212,55 +211,49 @@ export const membersScopes = {
   learningSummary: (memberId: string) => ['members', 'learning-summary', memberId] as const,
 };
 
-export const authScopes = {
+const authScopes = {
   all: () => ['auth'] as const,
   magicLink: (email: string) => ['auth', 'dev-magic-link', email] as const,
 };
 
-export const apiKeysScopes = {
-  all: () => ['api-keys'] as const,
-  lists: () => ['api-keys', 'list'] as const,
-};
-
-export const tenantSecretsScopes = {
+const tenantSecretsScopes = {
   all: () => ['tenant-secrets'] as const,
   lists: () => ['tenant-secrets', 'list'] as const,
 };
 
-export const bunnyScopes = {
+const bunnyScopes = {
   all: () => ['bunny'] as const,
   videos: (search: string, page: number) => ['bunny', 'videos', search, page] as const,
 };
 
-export const tenantSettingsScopes = {
+const tenantSettingsScopes = {
   all: () => ['tenant-settings'] as const,
 };
 
-export const onboardingScopes = {
+const onboardingScopes = {
   all: () => ['onboarding'] as const,
 };
 
-export const coursesScopes = {
+const coursesScopes = {
   all: () => ['courses'] as const,
   lists: () => ['courses', 'list'] as const,
 };
 
-export const modulesScopes = {
+const modulesScopes = {
   all: () => ['modules'] as const,
 };
 
-export const contentHistoryScopes = {
+const contentHistoryScopes = {
   all: () => ['content-history'] as const,
   list: (courseId: string) => ['content-history', 'list', courseId] as const,
-  version: (id: string) => ['content-history', 'version', id] as const,
 };
 
-export const lessonsScopes = {
+const lessonsScopes = {
   all: () => ['lessons'] as const,
   references: (lessonId: string) => ['lessons', 'references', lessonId] as const,
 };
 
-export const studentScopes = {
+const studentScopes = {
   all: () => ['student'] as const,
   courses: () => ['student', 'courses'] as const,
   courseStructure: (courseId: string) => ['student', 'course-structure', courseId] as const,
@@ -269,32 +262,32 @@ export const studentScopes = {
   progress: (courseId: string) => ['student', 'progress', courseId] as const,
 };
 
-export const discussionScopes = {
+const discussionScopes = {
   all: () => ['discussion'] as const,
   lesson: (lessonId: string, limit?: number) => ['discussion', 'lesson', lessonId, limit ?? null] as const,
   search: (query: string, lessonIds: readonly string[]) =>
     ['discussion', 'search', query, lessonIds.join(',')] as const,
 };
 
-export const spacesScopes = {
+const spacesScopes = {
   all: () => ['spaces'] as const,
   lists: () => ['spaces', 'list'] as const,
   staff: () => ['spaces', 'staff'] as const,
   feed: (spaceId: string, limit?: number) => ['spaces', 'feed', spaceId, limit ?? null] as const,
 };
 
-export const reportScopes = {
+const reportScopes = {
   all: () => ['reports'] as const,
   list: (input: ReportsListInput) => ['reports', 'list', input] as const,
 };
 
-export const notificationScopes = {
+const notificationScopes = {
   all: () => ['notifications'] as const,
   list: () => ['notifications', 'list'] as const,
   unread: () => ['notifications', 'unread'] as const,
 };
 
-export const marketingScopes = {
+const marketingScopes = {
   all: () => ['marketing'] as const,
   campaigns: () => ['marketing', 'campaigns'] as const,
   campaign: (id: string) => ['marketing', 'campaigns', id] as const,
@@ -395,11 +388,6 @@ export const marketingReputationQuery = (api: ApiClient) => defineQuery({
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
 });
-export const testMarketingSmtpMutation = (api: ApiClient) => defineMutation({
-  mutationKey: [...marketingScopes.settings(), 'smtp-test'],
-  call: api.testMarketingSmtp,
-});
-
 export const emailSendsQuery = (api: ApiClient, input: EmailSendsQueryInput) => defineQuery({
   queryKey: marketingScopes.sends(input), call: ({ signal }) => api.listEmailSends(input, signal),
 });
@@ -778,12 +766,6 @@ export const contentHistoryQuery = (
     call: ({ signal }) => api.listContentHistory(input, signal),
   });
 
-export const contentVersionQuery = (api: ApiClient, id: string) =>
-  defineQuery({
-    queryKey: contentHistoryScopes.version(id),
-    call: ({ signal }) => api.getContentVersion(id, signal),
-  });
-
 export const lessonsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: lessonsScopes.all(),
@@ -972,12 +954,6 @@ export const updateSpaceMutation = (api: ApiClient) =>
     call: (input: SpaceUpdateInput) => api.updateSpace(input),
   });
 
-export const deleteSpaceMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...spacesScopes.all(), 'delete'],
-    call: (input: SpaceDeleteInput) => api.deleteSpace(input),
-  });
-
 export const spaceFeedQuery = (api: ApiClient, input: SpaceFeedGetInput) =>
   defineQuery({
     queryKey: spacesScopes.feed(input.spaceId, input.limit),
@@ -1062,32 +1038,6 @@ export const markAllNotificationsReadMutation = (
     call: () => api.markAllNotificationsRead(),
   });
 
-export const devGrantMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: ['dev', 'grant'],
-    call: (input: DevGrantInput) => api.devGrant(input),
-  });
-
-export const apiKeysQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: apiKeysScopes.lists(),
-    call: ({ signal }) => api.listApiKeys(signal),
-  });
-
-export const createApiKeyMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...apiKeysScopes.all(), 'create'],
-    call: (input: ApiKeyCreateInput) => api.createApiKey(input),
-  });
-
-export const revokeApiKeyMutation = (api: ApiClient) =>
-  defineMutation({
-    mutationKey: [...apiKeysScopes.all(), 'revoke'],
-    call: (input: ApiKeyRevokeInput) => api.revokeApiKey(input),
-  });
-
-export const apiKeysInvalidates = () => ({ queryKey: apiKeysScopes.lists() });
-
 export const tenantSecretsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: tenantSecretsScopes.lists(),
@@ -1106,10 +1056,26 @@ export const deleteTenantSecretMutation = (api: ApiClient) =>
     call: (input: TenantSecretDeleteInput) => api.deleteTenantSecret(input),
   });
 
-export const testStripeConnectionMutation = (api: ApiClient) =>
+export const deleteStripeSecretsMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
-    call: () => api.testStripeConnection(),
+    mutationKey: [...tenantSecretsScopes.all(), 'delete-stripe'],
+    call: async () => {
+      const webhookSecret = await api.deleteTenantSecret({ key: 'stripe.webhookSecret' });
+      if (!webhookSecret.ok) return webhookSecret;
+      return api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+    },
+  });
+
+export const testIntegrationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'provider-test'],
+    call: (input: IntegrationTestInput) => api.testIntegration(input),
+  });
+
+export const configureStripeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'configure-stripe'],
+    call: (input: StripeConfigureInput) => api.configureStripe(input),
   });
 
 export const testIfirmaConnectionMutation = (api: ApiClient) =>

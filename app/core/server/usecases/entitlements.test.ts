@@ -93,8 +93,11 @@ const course = (id: string, moduleOrder: string[] = []): Course => ({
 const product = (id: string, accessItems: Product['accessItems']): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,
@@ -238,7 +241,7 @@ const productsRepo = (rows: Product[]): ProductRepository => ({
   listPublishedByTenant: async (tenantId) =>
     rows.filter((p) => p.tenantId === tenantId && p.published),
   findById: async (tenantId, id) => rows.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,

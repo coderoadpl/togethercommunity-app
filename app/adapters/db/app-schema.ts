@@ -1249,7 +1249,7 @@ export const emailOutbox = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
     sesMessageId: text('ses_message_id'),
-    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'platform'] }),
+    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'resend', 'platform'] }),
     deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
     deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
   },

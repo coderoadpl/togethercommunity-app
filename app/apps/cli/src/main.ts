@@ -2626,7 +2626,11 @@ stripe
   .description('Create and immediately expire a test checkout session via the port')
   .action(
     withCtx(async (ctx) => {
-      emit(await ctx.api.testStripeConnection(), ctx.json, (data) => data.diagnostic);
+      emit(
+        await ctx.api.testIntegration({ provider: 'payment' }),
+        ctx.json,
+        (data) => data.diagnostic.message,
+      );
     }),
   );
 

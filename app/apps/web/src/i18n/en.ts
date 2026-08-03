@@ -568,7 +568,8 @@ export const en: Messages = {
     uploadDownload: 'Add file',
     uploadingDownload: 'Uploading file…',
     deleteDownload: ({ name }) => `Delete ${name}`,
-    downloadSize: ({ kilobytes }) => `${kilobytes} KB`,
+    downloadStatusPending: 'Pending',
+    downloadStatusReady: 'Ready',
   },
   access: {
     loading: 'loading access data…',

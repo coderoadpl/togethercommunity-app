@@ -127,7 +127,7 @@ describe('member pages', () => {
     expect(screen.getAllByRole('link', { name: pl.student.manageSubscription })).toHaveLength(3);
   });
 
-  it('renders purchased digital-download buttons without a course link', async () => {
+  it('renders purchased digital-download buttons alongside the course link', async () => {
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({
         ok: true,
@@ -143,6 +143,7 @@ describe('member pages', () => {
               fileName: 'workbook.pdf',
               contentType: 'application/pdf',
               sizeBytes: 4096,
+              status: 'ready',
               createdAt: '1998-07-12T00:00:00.000Z',
               downloadPath: '/api/my/products/download-1/downloads/asset-1',
             }],
@@ -159,7 +160,8 @@ describe('member pages', () => {
 
     expect(await screen.findByRole('link', { name: pl.student.downloadFile({ name: 'workbook.pdf' }) }))
       .toHaveAttribute('href', '/api/my/products/download-1/downloads/asset-1');
-    expect(screen.queryByRole('link', { name: 'Creator workbook' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Creator workbook' }))
+      .toHaveAttribute('href', '/my/course/download-1');
   });
 
   it('renders the coming-soon stub when the member can access no course yet', async () => {

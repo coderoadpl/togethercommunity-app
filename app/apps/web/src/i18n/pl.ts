@@ -574,7 +574,8 @@ export const pl: Messages = {
     uploadDownload: 'Dodaj plik',
     uploadingDownload: 'Wysyłanie pliku…',
     deleteDownload: ({ name }) => `Usuń plik ${name}`,
-    downloadSize: ({ kilobytes }) => `${kilobytes} KB`,
+    downloadStatusPending: 'Oczekuje',
+    downloadStatusReady: 'Gotowy',
   },
   access: {
     loading: 'ładowanie danych o dostępie…',

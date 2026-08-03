@@ -337,7 +337,13 @@ const SCREENS: ScreenSpec[] = [
     name: 'member-detail',
     auth: 'creator',
     path: '/panel/members/member-studio-aktywny',
-    ready: (page) => page.getByTestId('grant-row').first().waitFor(visible),
+    ready: async (page) => {
+      await page.getByTestId('member-purchase-row').first().waitFor(visible);
+      await page.getByTestId('member-subscription-row').first().waitFor(visible);
+      await page.getByTestId('member-timeline-row').first().waitFor(visible);
+      await page.getByTestId('grant-row').first().waitFor(visible);
+      await page.getByTestId('learning-summary-row').first().waitFor(visible);
+    },
   },
   {
     name: 'member-email-timeline',

@@ -141,6 +141,10 @@ export interface ProductRepository {
   bumpContentVersion(tenantId: string): Promise<void>;
 }
 
+export interface ProductBatchReader {
+  findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
+}
+
 export interface CourseRepository {
   list(tenantId: string): Promise<Course[]>;
   findById(tenantId: string, id: string): Promise<Course | null>;
@@ -904,6 +908,10 @@ export interface OrderRepository {
     tenantId: string,
     query: { paidBefore: string; limit: number },
   ): Promise<PaidWithoutGrantRow[]>;
+}
+
+export interface MemberOrderListReader {
+  listForMember(tenantId: string, memberId: string): Promise<OrderListItem[]>;
 }
 
 export interface OrderDetailRepository {

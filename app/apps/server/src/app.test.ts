@@ -158,6 +158,7 @@ const deps = (input: {
     orders: {
       create: async () => undefined,
       list: async () => ({ orders: [], total: 0 }),
+      listForMember: async () => [],
       revenueSince: async () => [],
       countSince: async () => 0,
       listPaidWithoutGrant: async () => [],
@@ -340,6 +341,8 @@ const deps = (input: {
         products.filter((candidate) => candidate.tenantId === tenantId && candidate.published),
       findById: async (tenantId, id) =>
         products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
+      findByIds: async (tenantId, ids) =>
+        products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)),
       create: async () => undefined,
       updateAccessItems: async () => null,
       setPublished: async () => undefined,

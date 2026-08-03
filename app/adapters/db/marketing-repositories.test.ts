@@ -1,5 +1,3 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -23,35 +21,23 @@ import {
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
 import { emailOutbox, members, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
-import * as dbSchema from './schema.js';
-import { uniqueTestDatabaseName } from './test-database-name.js';
+import { createTestDatabase } from './test-database-name.js';
 
-const TEST_DB = uniqueTestDatabaseName('together_marketing_repositories_test');
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const testUrl = (() => { const url = new URL(baseUrl); url.pathname = `/${TEST_DB}`; return url.toString(); })();
 const NOW = '2026-07-22T00:00:00.000Z';
 let db: Db;
-let dbPool: pg.Pool;
+let testUrl: string;
+let closeTestDatabase: () => Promise<void>;
 
 afterAll(async () => {
-  await dbPool.end();
-  const admin = new pg.Client({ connectionString: baseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.end();
+  await closeTestDatabase();
 });
 
 beforeAll(async () => {
-  const admin = new pg.Client({ connectionString: baseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.query(`CREATE DATABASE ${TEST_DB}`);
-  await admin.end();
-  const pool = new pg.Pool({ connectionString: testUrl });
-  await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
-  await pool.end();
-  dbPool = new pg.Pool({ connectionString: testUrl });
-  db = drizzle(dbPool, { schema: dbSchema });
+  const testDatabase = await createTestDatabase('together_marketing_repositories_test', baseUrl);
+  db = testDatabase.db;
+  testUrl = testDatabase.url;
+  closeTestDatabase = testDatabase.close;
   await db.insert(tenants).values([
     { id: 'tenant-a', slug: 'tenant-a', name: 'A', createdAt: NOW },
     { id: 'tenant-b', slug: 'tenant-b', name: 'B', createdAt: NOW },
@@ -257,7 +243,12 @@ describe('marketing database repositories', () => {
     const second = campaigns.acquireLease('tenant-a', 'campaign-tenant-a', {
       workerId: 'worker-b', now: NOW, lockedUntil: '2026-07-22T00:01:00.000Z',
     });
-    expect(await Promise.all([first, second])).toEqual([true, false]);
+    const outcomes = await Promise.all([first, second]);
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+    expect(await campaigns.findById('tenant-a', 'campaign-tenant-a')).toMatchObject({
+      lockedBy: outcomes[0] ? 'worker-a' : 'worker-b',
+      lockedUntil: '2026-07-22T00:01:00.000Z',
+    });
     expect(await campaigns.findById('tenant-b', 'campaign-tenant-a')).toBeNull();
   });
 
@@ -553,19 +544,25 @@ describe('marketing database repositories', () => {
   it('indexes normalized exact recipient lookups for both send projections', async () => {
     const client = new pg.Client({ connectionString: testUrl });
     await client.connect();
-    const result = await client.query<{ indexname: string }>(`
-      select indexname
-      from pg_indexes
-      where schemaname = 'public'
-        and indexname in (
-          'campaign_sends_tenant_email_created_id_idx',
-          'email_outbox_tenant_normalized_to_created_id_idx'
-        )
-      order by indexname
-    `);
-    await client.end();
+    const rows = await (async () => {
+      try {
+        const result = await client.query<{ indexname: string }>(`
+          select indexname
+          from pg_indexes
+          where schemaname = 'public'
+            and indexname in (
+              'campaign_sends_tenant_email_created_id_idx',
+              'email_outbox_tenant_normalized_to_created_id_idx'
+            )
+          order by indexname
+        `);
+        return result.rows;
+      } finally {
+        await client.end();
+      }
+    })();
 
-    expect(result.rows.map((row) => row.indexname)).toEqual([
+    expect(rows.map((row) => row.indexname)).toEqual([
       'campaign_sends_tenant_email_created_id_idx',
       'email_outbox_tenant_normalized_to_created_id_idx',
     ]);

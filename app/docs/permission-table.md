@@ -300,7 +300,6 @@ no changes
 | `marketing-email.ts#recordCheckoutMarketingConsents` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#confirmMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#withdrawMarketingConsent` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#purgeStalePendingConsents` | marketing:consent:write | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#getMarketingEligibility` | marketing:consent:read | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#addManualSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#liftMarketingSuppression` | marketing:suppression:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -317,7 +316,6 @@ no changes
 | `marketing-email.ts#scheduleCampaign` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#pauseCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#cancelCampaign` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
-| `marketing-email.ts#updateCampaignContent` | marketing:campaign:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#sendMarketingMessages` | marketing:message:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#campaignTick` | marketing:campaign:dispatch | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#testSendCampaignToSelf` | marketing:campaign:send | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -427,12 +425,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/community-access.ts:61` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:61` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:73` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
-| member-scope | `core/server/usecases/community-access.ts:80` | `ctx.identity.tenantId && ctx.identity.memberId` |
-| member-scope | `core/server/usecases/community-access.ts:81` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
-| staff-role | `core/server/usecases/community-access.ts:98` | `if (ctx.identity.staffRole) return ok(undefined);` |
-| staff-role | `core/server/usecases/community-access.ts:132` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
-| staff-role | `core/server/usecases/community-access.ts:196` | `if (ctx.identity.staffRole) return ok(space);` |
-| staff-role | `core/server/usecases/community-access.ts:212` | `if (ctx.identity.staffRole) return ok(spaces);` |
+| member-scope | `core/server/usecases/community-access.ts:81` | `ctx.identity.tenantId && ctx.identity.memberId` |
+| member-scope | `core/server/usecases/community-access.ts:82` | `? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }` |
+| staff-role | `core/server/usecases/community-access.ts:99` | `if (ctx.identity.staffRole) return ok(undefined);` |
+| staff-role | `core/server/usecases/community-access.ts:133` | `if (ctx.identity.staffRole) return ok(new Set(lessons.map((lesson) => lesson.id)));` |
+| staff-role | `core/server/usecases/community-access.ts:197` | `if (ctx.identity.staffRole) return ok(space);` |
+| staff-role | `core/server/usecases/community-access.ts:213` | `if (ctx.identity.staffRole) return ok(spaces);` |
 | member-scope | `core/server/usecases/community.ts:323` | `if (tenantId !== null && ctx.identity.memberId !== null) {` |
 | staff-role | `core/server/usecases/community.ts:354` | `if (ctx.identity.staffRole === null) {` |
 | staff-role | `core/server/usecases/community.ts:489` | `if (post.authorUserId !== actor.value.userId && !ctx.identity.staffRole) {` |

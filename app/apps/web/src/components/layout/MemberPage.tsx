@@ -5,7 +5,7 @@ import { Eyebrow, LedgerHeader } from '../../theme.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
 
-export interface BreadcrumbItem {
+interface BreadcrumbItem {
   label: ReactNode;
   href?: string;
 }

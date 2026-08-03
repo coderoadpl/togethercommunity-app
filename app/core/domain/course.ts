@@ -2,15 +2,13 @@ import { z } from 'zod';
 
 const requiredNameSchema = z.string().trim().min(1);
 
-export const chapterContentSchema = z
+const chapterContentSchema = z
   .object({
     id: z.string().min(1),
     name: requiredNameSchema,
     lessonId: z.string().min(1),
   })
   .strict();
-
-export type ChapterContent = z.infer<typeof chapterContentSchema>;
 
 export const chapterSchema = z
   .object({
@@ -115,7 +113,7 @@ export const courseModuleSchema = z
 
 export type CourseModule = z.infer<typeof courseModuleSchema>;
 
-export const lessonDurationSchema = z.number().int().positive();
+const lessonDurationSchema = z.number().int().positive();
 
 export const courseLessonSchema = z.object({
   id: z.string(),
@@ -133,7 +131,7 @@ const playableVideoLessonBlockSchema = videoLessonBlockSchema.extend({
   embedUrl: z.string().url().optional(),
 });
 
-export const playableLessonBlockSchema = z.discriminatedUnion('type', [
+const playableLessonBlockSchema = z.discriminatedUnion('type', [
   playableVideoLessonBlockSchema,
   embedLessonBlockSchema,
   pdfLessonBlockSchema,
@@ -163,7 +161,7 @@ export const memberCourseProgressSchema = z.object({
 
 export type MemberCourseProgress = z.infer<typeof memberCourseProgressSchema>;
 
-export const memberCourseLearningSummarySchema = z.object({
+const memberCourseLearningSummarySchema = z.object({
   courseId: z.string(),
   courseName: z.string(),
   completedLessonCount: z.number().int().nonnegative(),
@@ -181,7 +179,7 @@ export const memberLearningSummarySchema = z.object({
 
 export type MemberLearningSummary = z.infer<typeof memberLearningSummarySchema>;
 
-export const accessStatusSchema = z.enum([
+const accessStatusSchema = z.enum([
   'not-accessible',
   'partially-accessible',
   'fully-accessible',
@@ -189,7 +187,7 @@ export const accessStatusSchema = z.enum([
 
 export type AccessStatus = z.infer<typeof accessStatusSchema>;
 
-export const completionStatusSchema = z.enum([
+const completionStatusSchema = z.enum([
   'not-completed',
   'partially-completed',
   'fully-completed',
@@ -197,7 +195,7 @@ export const completionStatusSchema = z.enum([
 
 export type CompletionStatus = z.infer<typeof completionStatusSchema>;
 
-export const courseStructureLessonSchema = z.object({
+const courseStructureLessonSchema = z.object({
   contentId: z.string(),
   lessonId: z.string(),
   name: z.string(),
@@ -209,7 +207,7 @@ export const courseStructureLessonSchema = z.object({
 
 export type CourseStructureLesson = z.infer<typeof courseStructureLessonSchema>;
 
-export const courseStructureChapterSchema = z.object({
+const courseStructureChapterSchema = z.object({
   id: z.string(),
   name: z.string(),
   accessStatus: accessStatusSchema,
@@ -219,7 +217,7 @@ export const courseStructureChapterSchema = z.object({
 
 export type CourseStructureChapter = z.infer<typeof courseStructureChapterSchema>;
 
-export const courseStructureModuleSchema = z.object({
+const courseStructureModuleSchema = z.object({
   id: z.string(),
   name: z.string(),
   accessStatus: accessStatusSchema,
@@ -258,18 +256,6 @@ export const progressViewSchema = z.object({
 
 export type ProgressView = z.infer<typeof progressViewSchema>;
 
-export const courseIdInputSchema = z.object({
-  courseId: z.string().min(1),
-});
-
-export type CourseIdInput = z.input<typeof courseIdInputSchema>;
-
-export const lessonIdInputSchema = z.object({
-  lessonId: z.string().min(1),
-});
-
-export type LessonIdInput = z.input<typeof lessonIdInputSchema>;
-
 export const updateLastViewedInputSchema = z.object({
   courseId: z.string().min(1),
   lessonId: z.string().min(1).optional(),
@@ -286,8 +272,6 @@ export const newCourseSchema = z.object({
   legacyId: z.string().nullable().default(null),
 });
 
-export type NewCourseInput = z.input<typeof newCourseSchema>;
-
 export const updateCourseInputSchema = z.object({
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
@@ -295,8 +279,6 @@ export const updateCourseInputSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
   moduleOrder: z.array(z.string().min(1)).optional(),
 });
-
-export type UpdateCourseInput = z.input<typeof updateCourseInputSchema>;
 
 export const newCourseModuleSchema = z.object({
   courseIds: z.array(z.string().min(1)).default([]),
@@ -306,16 +288,12 @@ export const newCourseModuleSchema = z.object({
   legacyId: z.string().nullable().default(null),
 });
 
-export type NewCourseModuleInput = z.input<typeof newCourseModuleSchema>;
-
 export const updateCourseModuleInputSchema = z.object({
   id: z.string().min(1),
   title: requiredNameSchema.optional(),
   prefix: z.string().nullable().optional(),
   chapters: z.array(chapterSchema).optional(),
 });
-
-export type UpdateCourseModuleInput = z.input<typeof updateCourseModuleInputSchema>;
 
 export const newCourseLessonSchema = z.object({
   name: requiredNameSchema,
@@ -324,8 +302,6 @@ export const newCourseLessonSchema = z.object({
   legacyId: z.string().nullable().default(null),
 });
 
-export type NewCourseLessonInput = z.input<typeof newCourseLessonSchema>;
-
 export const updateCourseLessonInputSchema = z.object({
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
@@ -333,29 +309,21 @@ export const updateCourseLessonInputSchema = z.object({
   durationMinutes: lessonDurationSchema.nullable().optional(),
 });
 
-export type UpdateCourseLessonInput = z.input<typeof updateCourseLessonInputSchema>;
-
 export const attachModuleToCourseInputSchema = z.object({
   courseId: z.string().min(1),
   moduleId: z.string().min(1),
 });
-
-export type AttachModuleToCourseInput = z.input<typeof attachModuleToCourseInputSchema>;
 
 export const detachModuleFromCourseInputSchema = z.object({
   courseId: z.string().min(1),
   moduleId: z.string().min(1),
 });
 
-export type DetachModuleFromCourseInput = z.input<typeof detachModuleFromCourseInputSchema>;
-
 export const deleteCourseLessonInputSchema = z.object({
   id: z.string().min(1),
 });
 
-export type DeleteCourseLessonInput = z.input<typeof deleteCourseLessonInputSchema>;
-
-export const lessonReferenceChapterSchema = z.object({
+const lessonReferenceChapterSchema = z.object({
   moduleId: z.string(),
   moduleName: z.string(),
   chapterId: z.string(),
@@ -366,7 +334,7 @@ export const lessonReferenceChapterSchema = z.object({
 
 export type LessonReferenceChapter = z.infer<typeof lessonReferenceChapterSchema>;
 
-export const lessonReferenceProductSchema = z.object({
+const lessonReferenceProductSchema = z.object({
   productId: z.string(),
   productTitle: z.string(),
 });

@@ -22,6 +22,11 @@ export const en: Messages = {
     open: 'Open',
     status: 'Status',
   },
+  bootSplash: {
+    opening: 'Opening the creator panel',
+    tenant: ({ host }) => format('space {host}', { host }),
+    warming: 'Warming up your space…',
+  },
   pagination: {
     rowsPerPage: 'Rows per page:',
     displayedRows: ({ from, to, count }) => format('{from}–{to} of {count}', { from, to, count }),

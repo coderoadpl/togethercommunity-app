@@ -34,7 +34,7 @@ export interface PublicOffer {
   products: PublicOfferProduct[];
 }
 
-export interface PublicOfferPrice {
+interface PublicOfferPrice {
   id: string;
   kind: PriceKind;
   interval: PriceInterval | null;
@@ -42,7 +42,7 @@ export interface PublicOfferPrice {
   currency: string;
 }
 
-export interface PublicOfferProduct {
+interface PublicOfferProduct {
   id: string;
   title: string;
   description: string;

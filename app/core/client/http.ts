@@ -77,6 +77,7 @@ import {
   memberErasureRequestsOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
+  memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
@@ -911,6 +912,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.memberGrants.method,
       API_ROUTES.memberGrants.path.replace(':memberId', encodeURIComponent(memberId)),
       memberGrantsOutputSchema,
+      undefined,
+      signal,
+    ),
+  memberTimeline: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberTimeline.method,
+      API_ROUTES.memberTimeline.path.replace(':memberId', encodeURIComponent(memberId)),
+      memberTimelineOutputSchema,
       undefined,
       signal,
     ),

@@ -117,6 +117,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
   if (path === '/api/members/export') return 'member:export';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
+  if (path.endsWith('/timeline') && path.startsWith('/api/members/')) return 'member:timeline:read';
   if (path.endsWith('/learning-summary')) return 'member:learning:read';
   if (path.endsWith('/progress-reset')) return 'member:progress:manage';
   if (path.startsWith('/api/members/') && method === 'DELETE') return 'member:remove';
@@ -248,7 +249,6 @@ export interface CollectedUseCase {
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
-  'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
   'community-access.ts#requireUnbannedMember',
@@ -391,7 +391,6 @@ const marketingTenantContextUseCases = new Set([
   'confirmMarketingConsent',
   'getMarketingEligibility',
   'getUnsubscribePreferences',
-  'purgeStalePendingConsents',
   'recordCheckoutMarketingConsents',
   'recordMarketingConsent',
   'saveMarketingConsentPreferences',
@@ -543,6 +542,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
+    '',
+    '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

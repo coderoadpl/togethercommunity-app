@@ -115,6 +115,10 @@ const deps = (input: {
       updateEmail: async () => null,
       setBanned: async () => null,
     },
+    memberEvents: {
+      append: async () => undefined,
+      listForMember: async () => [],
+    },
     memberErasure: {
       pseudonymize: async () => null,
     },

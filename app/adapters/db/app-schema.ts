@@ -234,9 +234,8 @@ export const memberEvents = pgTable(
     sequence: bigserial('sequence', { mode: 'number' }),
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     memberId: text('member_id').notNull().references(() => members.id, { onDelete: 'restrict' }),
-    type: text('type', { enum: ['banned', 'unbanned'] }).notNull(),
-    reason: text('reason'),
-    actorUserId: text('actor_user_id').notNull(),
+    type: text('type').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     occurredAt: text('occurred_at').notNull(),
   },
   (table) => [

@@ -5,6 +5,7 @@ import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPla
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
+import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -161,6 +162,7 @@ import type {
   MemberCourseProgressRepository,
   MemberErasureRequestRepository,
   MemberErasurePort,
+  MemberEventRepository,
   MemberRepository,
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
@@ -212,16 +214,16 @@ import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lesson
 import type { Env } from './env.js';
 import { APP_VERSION } from './version.js';
 
-export interface DevEndpoints {
+interface DevEndpoints {
   simulatedPayments: boolean;
   exposeMagicLinks: boolean;
 }
 
-export interface AuthConfig {
+interface AuthConfig {
   googleEnabled: boolean;
 }
 
-export interface KsefAppDeps {
+interface KsefAppDeps {
   environment: KsefEnvironment;
   credentials: KsefCredentialResolver;
   numbers: KsefNumberRepository;
@@ -249,6 +251,7 @@ export interface AppDeps {
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
+  memberEvents: MemberEventRepository;
   memberErasure: MemberErasurePort;
   erasureRequests: MemberErasureRequestRepository;
   emailHmac?: EmailHmac;
@@ -703,6 +706,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
+    memberEvents: createMemberEventRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
     erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,

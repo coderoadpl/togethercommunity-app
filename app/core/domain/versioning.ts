@@ -18,7 +18,7 @@ import { productSnapshotV2Schema } from './snapshots/product/v2.js';
 
 export const ENTITY_KINDS = ['course', 'course_module', 'course_lesson', 'product'] as const;
 
-export const entityKindSchema = z.enum(ENTITY_KINDS);
+const entityKindSchema = z.enum(ENTITY_KINDS);
 
 export type EntityKind = z.infer<typeof entityKindSchema>;
 
@@ -222,22 +222,11 @@ export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
 
 // --- read-surface DTOs -----------------------------------------------------
 
-export const entityHistoryQuerySchema = z.object({
-  entityKind: entityKindSchema,
-  entityId: z.string().min(1),
-  limit: z.coerce.number().int().positive().max(100).default(20),
-});
-
-export type EntityHistoryQuery = z.infer<typeof entityHistoryQuerySchema>;
-export type EntityHistoryQueryInput = z.input<typeof entityHistoryQuerySchema>;
-
 export const courseHistoryQuerySchema = z.object({
   courseId: z.string().min(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
-export type CourseHistoryQuery = z.infer<typeof courseHistoryQuerySchema>;
-export type CourseHistoryQueryInput = z.input<typeof courseHistoryQuerySchema>;
 
 export const entityHistoryEntrySchema = z.object({
   id: z.string(),

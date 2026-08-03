@@ -64,8 +64,6 @@
     "e2e:ksef": "tsx scripts/ksef-e2e.ts",
     "storybook": "storybook dev -p 9009 --no-open",
     "storybook:build": "storybook build -o storybook-static",
-    "visual:stories": "pnpm run storybook:build && tsx scripts/visual-story-screenshots.ts",
-    "visual:stories:update": "pnpm run storybook:build && tsx scripts/visual-story-screenshots.ts --update",
     "lock-lint": "tsx scripts/lock-lint.ts",
     "migration-lint": "tsx scripts/migration-lint.ts"
   },

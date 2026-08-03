@@ -113,16 +113,14 @@ empirically:
   its review-workflow documentation does not state a plan restriction.
 - The actual screenshot and build retention period. Argos did not document this
   period when this evaluation track was added.
-- The Hobby plan's screenshot quota. Each build captures 70 screenshots (35
+- The Hobby plan's screenshot quota. Each build captures 80 screenshots (40
   scenarios times the one maintained theme times two viewports), and every push
   to every open pull request can consume another build's allocation.
 
-## Story shots
+## Storybook
 
-Storybook keeps a separate advisory track in `tasks/lost-pixel-baselines/`.
-`pnpm run visual:stories` builds the static catalogue and uses Playwright plus
-the same zero-diff PNG comparator as the route harness. It reports unbaselined
-stories as additions. `pnpm run visual:stories:update` writes only story
-baselines and carries its own macOS authoring guard; it cannot overwrite the
-canonical route goldens. Storybook's scope and the story-shot policy are
+Storybook has no committed screenshot baseline or comparison command. Lost
+Pixel and its copied story baselines are retired. The catalogue is checked by
+its module tests and static build; all committed pixel comparison and baseline
+authoring use the canonical route workflow above. Storybook's scope is
 documented in [Storybook](storybook.md).

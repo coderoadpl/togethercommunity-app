@@ -7,10 +7,6 @@ const harness = readFileSync(
   join(import.meta.dirname, '..', 'scripts', 'visual-screenshots.ts'),
   'utf8',
 );
-const storyHarness = readFileSync(
-  join(import.meta.dirname, '..', 'scripts', 'visual-story-screenshots.ts'),
-  'utf8',
-);
 const comparator = readFileSync(
   join(import.meta.dirname, '..', 'scripts', 'visual-png-compare.ts'),
   'utf8',
@@ -44,15 +40,6 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("from './visual-png-compare.js'");
     expect(comparator).toContain('{ threshold: 0, includeAA: false }');
     expect(comparator).toContain('if (mismatched === 0) return null;');
-  });
-
-  it('reuses exact comparison for static Storybook captures', () => {
-    expect(storyHarness).toContain("from './visual-png-compare.js'");
-    expect(storyHarness).toContain("join(rootDir, 'storybook-static')");
-    expect(storyHarness).toContain('const viewports = [390, 1440] as const;');
-    expect(storyHarness).toContain('fullPage: true');
-    expect(storyHarness).toContain('await delay(settleMs)');
-    expect(storyHarness).toContain("join(rootDir, 'tasks/lost-pixel-baselines')");
   });
 
   it('restricts golden authoring to the declared platform', () => {

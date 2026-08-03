@@ -77,8 +77,12 @@ export const consents = pgTable(
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
     acceptedAt: text('accepted_at').notNull(),
+    retentionStartedAt: timestamp('retention_started_at', { withTimezone: true, mode: 'string' }),
   },
-  (table) => [index('consents_tenant_email_idx').on(table.tenantId, table.email)],
+  (table) => [
+    index('consents_tenant_email_idx').on(table.tenantId, table.email),
+    index('consents_retention_started_tenant_idx').on(table.retentionStartedAt, table.tenantId),
+  ],
 );
 
 export const tenantDocuments = pgTable(
@@ -164,10 +168,13 @@ export const marketingConsents = pgTable(
     source: text('source', { enum: ['checkout', 'panel', 'import', 'api', 'preference_page'] }).notNull(),
     evidence: jsonb('evidence').$type<ConsentEvidence>().notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    retentionStartedAt: timestamp('retention_started_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
     index('marketing_consents_tenant_email_definition_occurred_idx')
       .on(table.tenantId, table.email, table.definitionId, table.occurredAt.desc()),
+    index('marketing_consents_retention_started_tenant_idx')
+      .on(table.retentionStartedAt, table.tenantId),
   ],
 );
 
@@ -1408,7 +1415,7 @@ export const campaignSends = pgTable(
     memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
     email: text('email').notNull(),
     subject: text('subject').notNull(),
-    consentRowId: text('consent_row_id').notNull().references(() => marketingConsents.id, { onDelete: 'restrict' }),
+    consentRowId: text('consent_row_id').references(() => marketingConsents.id, { onDelete: 'set null' }),
     unsubscribeTokenId: text('unsubscribe_token_id'),
     status: text('status', { enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] }).notNull(),
     skipReason: text('skip_reason', { enum: ['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation'] }),

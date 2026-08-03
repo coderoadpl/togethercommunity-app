@@ -3,7 +3,7 @@ import { z } from 'zod';
 const nonNegativeInteger = z.number().int().nonnegative();
 const isoDateTime = z.string().datetime();
 
-export const schedulerRunKindSchema = z.enum(['marketing_tick', 'outbox_dispatch']);
+export const schedulerRunKindSchema = z.enum(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge']);
 export const schedulerRunTriggerSchema = z.enum(['cron', 'dev', 'manual']);
 export const schedulerRunStatusSchema = z.enum(['running', 'completed', 'failed']);
 

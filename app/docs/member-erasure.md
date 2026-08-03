@@ -68,9 +68,23 @@ for **six years from consent withdrawal or member erasure, counted to the end
 of the calendar year** in which that six-year period elapses. This mirrors the
 general limitation period for property claims under art. 118 of the Polish
 Civil Code, so the proof of consent exists exactly as long as a claim about
-the underlying communication could be raised. A purge mechanism enforcing
-this horizon is follow-up work; until it ships, this section is the committed
-policy and the purge is tracked in the backlog.
+the underlying communication could be raised. The scheduled
+`consent_evidence_purge` job in
+`core/server/usecases/purge-consent-evidence.ts` enforces this horizon against
+the `retention_started_at` stamp written by member erasure and consent
+withdrawal.
+
+Migration `0063_consent_evidence_retention.sql` cannot reconstruct the terms
+consent stamps for members erased before its deployment. Their surviving
+identity link is an e-mail HMAC, so those rows retain a null stamp and remain
+outside the scheduled purge until a secret-aware application backfill is run.
+The migration does backfill marketing evidence where a withdrawal or retained
+member tombstone supplies the start date.
+
+Campaign send rows survive evidence expiry for delivery auditing. Purging the
+referenced marketing-consent row sets `campaign_sends.consent_row_id` to null;
+the stale-pending cleanup leaves referenced evidence intact until the retention
+horizon is reached.
 
 The marketing suppression path degrades the address to an HMAC, as pinned in
 `adapters/db/repositories.test.ts`; retained plaintext is confined to the

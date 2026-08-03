@@ -118,6 +118,7 @@ import {
   memberEvents,
   members,
   memberSubscriptions,
+  marketingConsents,
   notifications,
   orders,
   postReactions,
@@ -1507,6 +1508,17 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         emailHmac: emailHmac.compute(tenantId, member.email),
         erasedAt: input.deletedAt,
       }).onConflictDoNothing({ target: erasedMemberImports.memberId });
+
+      await tx.update(consents).set({ retentionStartedAt: input.deletedAt }).where(and(
+        eq(consents.tenantId, tenantId),
+        or(eq(consents.userId, member.userId), eq(consents.email, member.email)),
+        isNull(consents.retentionStartedAt),
+      ));
+      await tx.update(marketingConsents).set({ retentionStartedAt: input.deletedAt }).where(and(
+        eq(marketingConsents.tenantId, tenantId),
+        or(eq(marketingConsents.memberId, member.id), eq(marketingConsents.email, member.email)),
+        isNull(marketingConsents.retentionStartedAt),
+      ));
 
       await tx
         .update(productGrants)

@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, Member, MemberEvent } from '#core/domain/index.js';
-import type { MemberEventRepository, MemberRepository } from '../ports.js';
+import type {
+  Course,
+  CourseLesson,
+  Identity,
+  Member,
+  MemberEvent,
+  Product,
+} from '#core/domain/index.js';
+import type {
+  CourseLessonRepository,
+  CourseRepository,
+  MemberEventRepository,
+  MemberRepository,
+  ProductBatchReader,
+  ProductRepository,
+} from '../ports.js';
 
 import { listMemberTimeline } from './member-events.js';
 
@@ -50,6 +64,51 @@ const event: MemberEvent = {
   occurredAt: '2026-08-02T10:00:00.000Z',
 };
 
+const lessonEvent: MemberEvent = {
+  id: 'lesson-completion:progress-1:lesson-1:2026-08-03T10:00:00.000Z',
+  tenantId: 'tenant-1',
+  memberId: member.id,
+  type: 'lesson-completion',
+  payload: {
+    courseId: 'course-1',
+    lessonId: 'lesson-1',
+  },
+  occurredAt: '2026-08-03T10:00:00.000Z',
+};
+
+const product: Product = {
+  id: 'product-1',
+  tenantId: 'tenant-1',
+  title: 'Advanced course',
+  description: '',
+  priceCents: 4900,
+  currency: 'PLN',
+  published: true,
+  accessItems: [],
+  legacyId: null,
+  createdAt: '2026-07-01T10:00:00.000Z',
+};
+
+const course: Course = {
+  id: 'course-1',
+  tenantId: 'tenant-1',
+  name: 'JavaScript foundations',
+  description: '',
+  imageUrl: null,
+  moduleOrder: [],
+  legacyId: null,
+  createdAt: '2026-07-01T10:00:00.000Z',
+};
+
+const lesson: CourseLesson = {
+  id: 'lesson-1',
+  tenantId: 'tenant-1',
+  name: 'Variables',
+  contents: [],
+  legacyId: null,
+  createdAt: '2026-07-01T10:00:00.000Z',
+};
+
 const members: MemberRepository = {
   findById: async (tenantId, memberId) =>
     tenantId === member.tenantId && memberId === member.id ? member : null,
@@ -60,6 +119,35 @@ const members: MemberRepository = {
   setBanned: async () => null,
 };
 
+const products: ProductRepository & ProductBatchReader = {
+  listByTenant: async () => [product],
+  listPublishedByTenant: async () => [product],
+  findById: async (_tenantId, id) => id === product.id ? product : null,
+  findByIds: async (_tenantId, ids) => ids.includes(product.id) ? [product] : [],
+  create: async () => undefined,
+  updateAccessItems: async () => null,
+  setPublished: async () => undefined,
+  bumpContentVersion: async () => undefined,
+};
+
+const courses: CourseRepository = {
+  list: async () => [course],
+  findById: async (_tenantId, id) => id === course.id ? course : null,
+  findByIds: async (_tenantId, ids) => ids.includes(course.id) ? [course] : [],
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+};
+
+const lessons: CourseLessonRepository = {
+  list: async () => [lesson],
+  findById: async (_tenantId, id) => id === lesson.id ? lesson : null,
+  findByIds: async (_tenantId, ids) => ids.includes(lesson.id) ? [lesson] : [],
+  create: async () => undefined,
+  update: async () => null,
+  delete: async () => false,
+};
+
 describe('listMemberTimeline', () => {
   it('returns the one tenant-scoped merged event stream', async () => {
     const calls: Array<[string, string]> = [];
@@ -67,16 +155,32 @@ describe('listMemberTimeline', () => {
       append: async () => undefined,
       listForMember: async (tenantId, memberId) => {
         calls.push([tenantId, memberId]);
-        return [event];
+        return [event, lessonEvent];
       },
     };
     const result = await listMemberTimeline(
       { identity: identity('tenant-1') },
       { memberId: member.id },
-      { members, memberEvents },
+      { members, memberEvents, products, courses, lessons },
     );
 
-    expect(result).toEqual({ ok: true, value: [event] });
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          ...event,
+          payload: { ...event.payload, productTitle: product.title },
+        },
+        {
+          ...lessonEvent,
+          payload: {
+            ...lessonEvent.payload,
+            courseTitle: course.name,
+            lessonTitle: lesson.name,
+          },
+        },
+      ],
+    });
     expect(calls).toEqual([['tenant-1', 'member-1']]);
   });
 
@@ -92,7 +196,7 @@ describe('listMemberTimeline', () => {
     const result = await listMemberTimeline(
       { identity: identity('tenant-2') },
       { memberId: member.id },
-      { members, memberEvents },
+      { members, memberEvents, products, courses, lessons },
     );
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });

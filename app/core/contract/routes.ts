@@ -43,6 +43,7 @@ import {
   listStreamVideosInputSchema,
   m2mEnrollInputSchema,
   memberSubscriptionSchema,
+  memberSubscriptionListItemSchema,
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
@@ -62,7 +63,7 @@ import {
   memberErasureRequestStatusSchema,
   memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
-  memberEventSchema,
+  memberTimelineEventSchema,
   memberWithProductIdsSchema,
   memberSchema,
   muteThreadInputSchema,
@@ -381,7 +382,12 @@ export const memberLearningSummaryOutputSchema = z.object({
 });
 
 export const memberTimelineOutputSchema = z.object({
-  events: z.array(memberEventSchema),
+  events: z.array(memberTimelineEventSchema),
+});
+
+export const memberCommerceOutputSchema = z.object({
+  purchases: z.array(orderListItemSchema),
+  activeSubscriptions: z.array(memberSubscriptionListItemSchema),
 });
 
 export const memberProgressResetInputSchema = z.object({
@@ -1262,6 +1268,7 @@ export const API_ROUTES = {
   },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
+  memberCommerce: { method: 'GET', path: '/api/members/:memberId/commerce' },
   memberTimeline: { method: 'GET', path: '/api/members/:memberId/timeline' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
@@ -1439,6 +1446,7 @@ export const API_PATHS = {
   memberErasureReject: API_ROUTES.memberErasureReject.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
+  memberCommerce: API_ROUTES.memberCommerce.path,
   memberTimeline: API_ROUTES.memberTimeline.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,

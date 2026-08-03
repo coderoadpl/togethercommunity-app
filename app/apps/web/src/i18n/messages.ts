@@ -1,3 +1,5 @@
+import type { MemberEventType } from '#core/domain/index.js';
+
 export type MessageParams = Record<string, string | number>;
 
 export const format = (template: string, params: MessageParams): string =>
@@ -669,6 +671,34 @@ export interface Messages {
     erasureReject: string;
     allMembersBack: string;
     joined: string;
+    accountHeading: string;
+    accountName: string;
+    accountEmail: string;
+    purchasesHeading: string;
+    commerceLoading: string;
+    purchasesEmpty: string;
+    subscriptionsHeading: string;
+    subscriptionsEmpty: string;
+    subscriptionProvider: string;
+    subscriptionPeriodEnd: string;
+    subscriptionWillCancel: string;
+    subscriptionStatuses: Record<'active' | 'past_due' | 'canceled', string>;
+    providerLabels: Record<'stripe' | 'simulated', string>;
+    timelineHeading: string;
+    timelineLoading: string;
+    timelineEmpty: string;
+    timelineEventLabels: Record<MemberEventType, string>;
+    timelinePurchase: (params: { product: string; amount: string; status: string }) => string;
+    timelineSubscription: (params: { product: string; status: string; date: string }) => string;
+    timelineGrant: (params: { product: string; date: string }) => string;
+    timelineRevoke: (params: { product: string; date: string }) => string;
+    timelineLesson: (params: { course: string; lesson: string }) => string;
+    timelineUnavailableProduct: string;
+    timelineUnavailableCourse: string;
+    timelineUnavailableLesson: string;
+    timelineEmail: (params: { subject: string }) => string;
+    timelineBan: (params: { reason: string }) => string;
+    timelineUnban: string;
     grantProduct: string;
     productLabel: string;
     selectProduct: string;

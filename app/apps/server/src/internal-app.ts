@@ -160,6 +160,7 @@ import {
   getEmailSend,
   getGlobalSchedulerRun,
   getMarketingConsentDefinition,
+  getMemberCommerceOverview,
   getMemberLearningSummary,
   getNextLesson,
   getOrder,
@@ -1387,6 +1388,15 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.memberGrants, async (c) => {
     const result = await listMemberGrants({ identity: c.get('identity') }, c.req.param('memberId'), deps);
     return respond(result.ok ? ok({ grants: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberCommerce, async (c) => {
+    const result = await getMemberCommerceOverview(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('memberId') },
+      deps,
+    );
+    return respond(result);
   });
 
   app.get(API_PATHS.memberTimeline, async (c) => {

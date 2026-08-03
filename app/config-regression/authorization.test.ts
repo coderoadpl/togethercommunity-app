@@ -182,12 +182,52 @@ describe('authorization fail-closed probes', () => {
     expect(audit.scoped.map((method) => method.method)).toEqual([
       'direct',
       'object',
-      'nullableObject',
     ]);
     expect(audit.violations.map((violation) => violation.method)).toEqual([
+      'nullableObject',
       'optional',
       'nullable',
       'optionalObject',
     ]);
+  });
+
+  it('resolves named tenant inputs and audits intersection type aliases', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{
+        file: 'synthetic.ts',
+        source: `
+          interface ScopedInput { tenantId: string; id: string }
+          type NullableInput = { tenantId: string | null };
+          interface NamedInputRepository {
+            scoped(input: ScopedInput): Promise<void>;
+            nullable(input: NullableInput): Promise<void>;
+          }
+          type IntersectionRepository = { marker: string } & {
+            scoped(input: ScopedInput): Promise<void>;
+            unscoped(id: string): Promise<void>;
+          };
+        `,
+      }],
+      {},
+      {},
+    );
+    expect(audit.scoped.map((method) => method.subject)).toEqual([
+      'NamedInputRepository.scoped',
+      'IntersectionRepository.scoped',
+    ]);
+    expect(audit.violations.map((method) => method.subject)).toEqual([
+      'NamedInputRepository.nullable',
+      'IntersectionRepository.unscoped',
+    ]);
+  });
+
+  it('keeps excluded ports current after their callable members are removed', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{ file: 'synthetic.ts', source: 'interface Clock { readonly now: string }' }],
+      {},
+      { Clock: 'Time source with no persistence access.' },
+    );
+    expect(audit.excludedPorts).toEqual(['Clock']);
+    expect(audit.staleExcludedPorts).toEqual([]);
   });
 });

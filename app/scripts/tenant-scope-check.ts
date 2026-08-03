@@ -29,6 +29,7 @@ export interface TenantScopeSource {
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',
   'EmailOutboxRepository.claimBatch': 'A platform dispatcher leases deliverable messages across all tenants.',
+  'EmailOutboxRepository.enqueue': 'The atomic input carries a nullable tenantId because platform email has no tenant.',
   'EmailOutboxRepository.markFailed': 'The dispatcher updates only the message held by its run lease.',
   'EmailOutboxRepository.markSent': 'The dispatcher updates only the message held by its run lease.',
   'EnrollmentTransactionPort.run': 'The transaction wrapper supplies atomic database execution without reading tenant data itself.',
@@ -133,17 +134,50 @@ const methodName = (member: ts.TypeElement, sourceFile: ts.SourceFile): string =
   return member.getText(sourceFile);
 };
 
-const hasRequiredTenantIdProperty = (type: ts.TypeNode | undefined): boolean =>
-  type !== undefined
-  && ts.isTypeLiteralNode(type)
-  && type.members.some(
-    (member) =>
-      ts.isPropertySignature(member)
-      && propertyName(member.name) === 'tenantId'
-      && member.questionToken === undefined,
-  );
+const hasRequiredTenantIdProperty = (
+  type: ts.TypeNode | undefined,
+  declarations: ReadonlyMap<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>,
+  seen = new Set<string>(),
+): boolean => {
+  if (type === undefined) return false;
+  if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
+    const name = type.typeName.text;
+    if (seen.has(name)) return false;
+    const declaration = declarations.get(name);
+    if (declaration === undefined) return false;
+    const nextSeen = new Set(seen).add(name);
+    if (ts.isInterfaceDeclaration(declaration)) {
+      return declaration.members.some(
+        (member) =>
+          ts.isPropertySignature(member)
+          && propertyName(member.name) === 'tenantId'
+          && member.questionToken === undefined
+          && member.type?.kind === ts.SyntaxKind.StringKeyword,
+      ) || declaration.heritageClauses?.some(
+        (clause) => clause.types.some(
+          (entry) => hasRequiredTenantIdProperty(entry, declarations, nextSeen),
+        ),
+      ) === true;
+    }
+    return hasRequiredTenantIdProperty(declaration.type, declarations, nextSeen);
+  }
+  if (ts.isIntersectionTypeNode(type)) {
+    return type.types.some((entry) => hasRequiredTenantIdProperty(entry, declarations, seen));
+  }
+  return ts.isTypeLiteralNode(type)
+    && type.members.some(
+      (member) =>
+        ts.isPropertySignature(member)
+        && propertyName(member.name) === 'tenantId'
+        && member.questionToken === undefined
+        && member.type?.kind === ts.SyntaxKind.StringKeyword,
+    );
+};
 
-const tenantScoped = (parameters: readonly ts.ParameterDeclaration[]): boolean => {
+const tenantScoped = (
+  parameters: readonly ts.ParameterDeclaration[],
+  declarations: ReadonlyMap<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>,
+): boolean => {
   const first = parameters[0];
   if (
     first === undefined
@@ -156,18 +190,25 @@ const tenantScoped = (parameters: readonly ts.ParameterDeclaration[]): boolean =
   return (
     propertyName(first.name) === 'tenantId'
       ? first.type?.kind === ts.SyntaxKind.StringKeyword
-      : hasRequiredTenantIdProperty(first.type)
+      : hasRequiredTenantIdProperty(first.type, declarations)
   );
+};
+
+const typeLiteralMembers = (type: ts.TypeNode): readonly ts.TypeElement[] => {
+  if (ts.isTypeLiteralNode(type)) return type.members;
+  if (ts.isIntersectionTypeNode(type)) return type.types.flatMap(typeLiteralMembers);
+  return [];
 };
 
 const declarationMembers = (
   statement: ts.Statement,
-): { members: ts.NodeArray<ts.TypeElement>; name: string } | null => {
+): { members: readonly ts.TypeElement[]; name: string } | null => {
   if (ts.isInterfaceDeclaration(statement)) {
     return { members: statement.members, name: statement.name.text };
   }
-  if (ts.isTypeAliasDeclaration(statement) && ts.isTypeLiteralNode(statement.type)) {
-    return { members: statement.type.members, name: statement.name.text };
+  if (ts.isTypeAliasDeclaration(statement)) {
+    const members = typeLiteralMembers(statement.type);
+    if (members.length > 0) return { members, name: statement.name.text };
   }
   return null;
 };
@@ -194,17 +235,22 @@ export const auditTenantRepositoryScopes = (
       true,
       ts.ScriptKind.TS,
     );
+    const declarations = new Map<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>();
+    for (const statement of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
+        declarations.set(statement.name.text, statement);
+      }
+    }
     for (const statement of sourceFile.statements) {
       const declaration = declarationMembers(statement);
       if (declaration === null) continue;
       seenDeclarations.add(declaration.name);
+      const excluded = declaration.name in excludedPorts;
+      if (excluded) seenExcludedPorts.add(declaration.name);
       for (const member of declaration.members) {
         const parameters = callableParameters(member);
         if (parameters === null) continue;
-        if (declaration.name in excludedPorts) {
-          seenExcludedPorts.add(declaration.name);
-          continue;
-        }
+        if (excluded) continue;
         const method = methodName(member, sourceFile);
         const subject = `${declaration.name}.${method}`;
         const location = sourceFile.getLineAndCharacterOfPosition(member.getStart(sourceFile));
@@ -216,7 +262,7 @@ export const auditTenantRepositoryScopes = (
           subject,
         };
         methods.push(found);
-        if (tenantScoped(parameters)) {
+        if (tenantScoped(parameters, declarations)) {
           scoped.push(found);
         } else if (subject in exceptions) {
           approved.push(found);

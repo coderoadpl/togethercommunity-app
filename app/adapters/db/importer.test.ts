@@ -23,6 +23,7 @@ import {
   account,
   courseModules,
   courses,
+  memberEvents,
   memberCourseProgress,
   members,
   orders,
@@ -366,6 +367,20 @@ describe('importer', () => {
     const winner = grantRowsAll.find((row) => row.legacyId === ids.g1);
     expect(winner?.expiresAt).toBeNull();
     expect(grantRowsAll.some((row) => row.legacyId === ids.g1dup)).toBe(false);
+    expect(
+      await db.select().from(memberEvents).where(eq(memberEvents.tenantId, TENANT_ID)),
+    ).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        memberId: ids.u1,
+        type: 'grant',
+        payload: expect.objectContaining({ grantId: ids.g1, source: 'manual' }),
+      }),
+      expect.objectContaining({
+        memberId: ids.u2,
+        type: 'grant',
+        payload: expect.objectContaining({ grantId: ids.g2, source: 'manual' }),
+      }),
+    ]));
 
     const progressRows = await db
       .select()

@@ -12,7 +12,9 @@ The `member` and `authenticated` matrix rows carried historically derived edge c
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-Closed capability count: 92. Route rows: 198. Exported `Ctx` use-case rows: 172.
+`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
+
+Closed capability count: 93. Route rows: 199. Exported `Ctx` use-case rows: 173.
 
 ## Human-readable diff
 
@@ -125,6 +127,7 @@ no changes
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/ban` | member:ban | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/:memberId/grants` | member:grant:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/members/:memberId/timeline` | member:timeline:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/:memberId/learning-summary` | member:learning:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/:memberId/progress-reset` | member:progress:manage | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/members/:memberId` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -345,6 +348,7 @@ no changes
 | `member-erasure-requests.ts#requestMyErasure` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-erasure-requests.ts#getMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
 | `member-erasure-requests.ts#cancelMyErasureRequest` | member:erasure:self-request | member | member | yes | core/server/usecases/member-erasure-requests.ts authorization call |
+| `member-events.ts#listMemberTimeline` | member:timeline:read | owner, admin | owner, admin | yes | core/server/usecases/member-events.ts authorization call |
 | `member-learning.ts#getMemberLearningSummary` | member:learning:read | owner, admin | owner, admin | yes | core/server/usecases/member-learning.ts authorization call |
 | `members.ts#listMembers` | member:read | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
 | `members.ts#exportMembers` | member:export | owner, admin | owner, admin | yes | core/server/usecases/members.ts authorization call |
@@ -406,10 +410,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:110` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:757` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:759` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1201` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1201` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:758` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:760` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1202` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1202` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

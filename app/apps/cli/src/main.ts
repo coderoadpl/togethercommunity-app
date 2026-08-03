@@ -2447,6 +2447,21 @@ member
   );
 
 member
+  .command('timeline <memberId>')
+  .description('Merged member event timeline: purchases, access, subscriptions, learning and e-mail')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [memberId]) => {
+      emit(await ctx.api.memberTimeline(memberId), ctx.json, (data) =>
+        data.events.length === 0
+          ? 'no events'
+          : data.events
+              .map((event) => `${event.occurredAt}\t${event.type}\t${JSON.stringify(event.payload)}`)
+              .join('\n'),
+      );
+    }),
+  );
+
+member
   .command('reset-progress <memberId>')
   .description('Clear a member completed lessons and resume position in one course (staff only)')
   .requiredOption('--course <courseId>')

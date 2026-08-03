@@ -7,8 +7,9 @@ import { dispatchEmailBatch } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformTransactionalPool } from './email-outbox.js';
 import { createEmailEventRepository } from './email-events.js';
+import { createMemberEventRepository } from './member-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
-import { emailOutbox, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
+import { emailOutbox, memberEvents, members, productGrants, products, schedulerRuns, tenantTransactionalEmailPools, tenants } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -34,6 +35,7 @@ beforeEach(async () => {
   await db.delete(tenantTransactionalEmailPools);
   await db.delete(schedulerRuns);
   await db.delete(productGrants);
+  await db.delete(memberEvents);
   await db.delete(members);
 });
 
@@ -57,6 +59,37 @@ const enqueue = async (id: string, now = NOW, tenantId: string | null = null) =>
 };
 
 describe('email outbox database adapter', () => {
+  it('emits a typed member event when a transactional email is sent', async () => {
+    await db.insert(members).values({
+      id: 'member-email-sent',
+      tenantId: 'tenant-outbox',
+      userId: 'user-email-sent',
+      email: 'email-sent@example.test',
+      createdAt: NOW,
+    });
+    await enqueue('email-sent', NOW, 'tenant-outbox');
+    await createEmailOutboxRepository(db).markSent({
+      id: 'email-sent',
+      sentAt: NOW,
+      sesMessageId: 'ses-email-sent',
+      transport: 'platform',
+      runId: 'run-email-sent',
+    });
+
+    expect(await createMemberEventRepository(db).listForMember(
+      'tenant-outbox',
+      'member-email-sent',
+    )).toContainEqual(expect.objectContaining({
+      type: 'email-sent',
+      payload: expect.objectContaining({
+        sendId: 'email-sent',
+        mailKind: 'transactional',
+        source: 'magic-link',
+        transport: 'platform',
+      }),
+    }));
+  });
+
   it('atomically reserves only the remaining platform pool capacity', async () => {
     await db.insert(tenantTransactionalEmailPools).values({
       tenantId: 'tenant-outbox',

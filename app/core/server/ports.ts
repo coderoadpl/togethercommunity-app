@@ -16,6 +16,7 @@ import type {
   TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
+  MemberBanEvent,
   MemberEvent,
   MemberGrant,
   MemberCourseProgress,
@@ -368,8 +369,16 @@ export interface MemberRepository {
       reason: string | null;
       actorUserId: string;
     },
-    event: MemberEvent,
+    event: MemberBanEvent,
   ): Promise<Member | null>;
+}
+
+export interface MemberEventRepository {
+  append(
+    tenantId: string,
+    event: Omit<MemberEvent, 'tenantId'>,
+  ): Promise<void>;
+  listForMember(tenantId: string, memberId: string): Promise<MemberEvent[]>;
 }
 
 export interface MemberPseudonymization {
@@ -439,7 +448,7 @@ export interface ProductGrantRepository {
   setGrantWindow(
     tenantId: string,
     grantId: string,
-    window: { startsAt: string; expiresAt: string | null },
+    window: { startsAt: string; expiresAt: string | null; occurredAt: string },
   ): Promise<ProductGrant | null>;
   revokeGrant(tenantId: string, grantId: string, expiresAt: string): Promise<ProductGrant | null>;
   listForMemberWithProductNames(tenantId: string, memberId: string, now: string): Promise<MemberGrant[]>;

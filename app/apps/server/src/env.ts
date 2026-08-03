@@ -22,7 +22,7 @@ export const envSchema = z
         }),
       })
       .default('node-postgres'),
-    APP_BASE_DOMAIN: z.string().default('localhost'),
+    APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: optionalNonEmptyString,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),

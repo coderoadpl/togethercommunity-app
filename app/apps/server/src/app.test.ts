@@ -51,8 +51,12 @@ import {
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
 
-const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
-const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };
+const acme: Tenant = {
+  id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 4,
+};
+const globex: Tenant = {
+  id: 't-globex', slug: 'globex', name: 'Globex', status: 'active', plan: 'hosted_pro', contentVersion: 2,
+};
 
 const product = (input: {
   id: string;
@@ -465,6 +469,7 @@ const deps = (input: {
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
+      findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
       findSettings: async (tenantId) =>
         tenants.some((tenant) => tenant.id === tenantId) ? {
           billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
@@ -477,6 +482,8 @@ const deps = (input: {
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,
         name: tenant.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       }),
     },
@@ -508,6 +515,7 @@ const deps = (input: {
       },
     },
     baseDomain: 'localhost',
+    singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
@@ -1707,6 +1715,45 @@ describe('social preview route', () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('single-tenant mode', () => {
+  const singleTenantApp = (tenant: Tenant) => {
+    const base = deps({ tenants: [tenant], authenticated: true });
+    return buildApp({
+      ...base,
+      singleTenantMode: true,
+      authPort: {
+        ...base.authPort,
+        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner' }),
+      },
+      tenantAccess: {
+        ...base.tenantAccess,
+        findStaffGrant: async () => ({ tenant, staffRole: 'owner' }),
+      },
+    });
+  };
+
+  it('serves the panel on the bare base host when no base domain is configured', async () => {
+    const response = await singleTenantApp(acme).request(API_PATHS.products, {
+      headers: { host: 'localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { products: [{ id: 'acme-published' }, { id: 'acme-draft' }] },
+    });
+  });
+
+  it('refuses a suspended sole tenant', async () => {
+    const response = await singleTenantApp({ ...acme, status: 'suspended' }).request(API_PATHS.products, {
+      headers: { host: 'localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });
 });
 

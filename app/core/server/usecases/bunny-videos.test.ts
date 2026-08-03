@@ -54,6 +54,7 @@ const harness = (options: HarnessOptions = {}): Harness => {
   const tenants: TenantRepository = {
     findById: async () => null,
     findBySlug: async () => null,
+    findSole: async () => null,
     findSettings: async () => settings,
     updateSettings: async (_tenantId, next) => next,
     createTenantWithOwnerGrant: async () => {

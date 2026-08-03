@@ -92,6 +92,7 @@ import {
   sendSupportMessageInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
+  storageConfigurationSchema,
   streamVideoPageSchema,
   subscribeThreadInputSchema,
   tenantApiKeyPublicSchema,
@@ -948,6 +949,23 @@ export const integrationTestOutputSchema = z.object({
   diagnostic: providerDiagnosticSchema,
 });
 
+export const storageProbeInputSchema = storageConfigurationSchema;
+
+export type StorageProbeInput = z.input<typeof storageProbeInputSchema>;
+
+export const storageProbeOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+});
+
+export const storageConfigureInputSchema = storageConfigurationSchema;
+
+export type StorageConfigureInput = z.input<typeof storageConfigureInputSchema>;
+
+export const storageConfigureOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+  secret: tenantSecretMaskedSchema,
+});
+
 export const ifirmaTestConnectionOutputSchema = z.object({
   ok: z.literal(true),
   diagnostic: z.string(),
@@ -1282,6 +1300,8 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   integrationTest: { method: 'POST', path: '/api/integrations/test' },
+  storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
+  storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
@@ -1457,6 +1477,8 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,
+  storageProbe: API_ROUTES.storageProbe.path,
+  storageConfigure: API_ROUTES.storageConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,

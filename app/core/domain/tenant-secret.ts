@@ -7,6 +7,7 @@ export const tenantSecretKeySchema = z.enum([
   'bunny.securityKey',
   's3.accessKeyId',
   's3.secretAccessKey',
+  's3.configuration',
   'ses.accessKeyId',
   'ses.secretAccessKey',
   'ses.region',

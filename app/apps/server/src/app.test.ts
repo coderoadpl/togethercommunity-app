@@ -239,6 +239,7 @@ const deps = (input: {
       sign: ({ videoId, expires }) => `${videoId}-${expires}`,
     },
     storage: {
+      probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
       delete: async () => ok({ deleted: true }),
@@ -526,7 +527,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
   app.request(API_PATHS.publicOffer, { headers });
 
 const scopedApp = (
-  scope: 'none' | 'member' | 'banned-member' | 'staff',
+  scope: 'none' | 'member' | 'banned-member' | 'staff' | 'owner',
   options: { memberDeletedAt?: string; marketing?: MarketingAppDeps } = {},
 ) => {
   const base = deps();
@@ -545,7 +546,7 @@ const scopedApp = (
     bannedReason: null,
     bannedByUserId: null,
   };
-  const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
+  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin' };
   const post: Post = {
     id: 'post-1',
     tenantId: acme.id,
@@ -574,7 +575,7 @@ const scopedApp = (
     },
     tenantAccess: {
       ...base.tenantAccess,
-      findStaffGrant: async () => (scope === 'staff' ? staffGrant : null),
+      findStaffGrant: async () => (scope === 'staff' || scope === 'owner' ? staffGrant : null),
       findMember: async () => (scope === 'member' || scope === 'banned-member' ? member : null),
     },
     members: {
@@ -1673,6 +1674,35 @@ describe('new route authorization', () => {
     expect(
       (await scopedApp('staff').request(API_PATHS.ordersReconciliation, { headers })).status,
     ).toBe(200);
+  });
+
+  it('restricts storage probing and configuration to an owner', async () => {
+    const body = JSON.stringify({
+      provider: 'minio',
+      endpoint: 'http://127.0.0.1:19000',
+      region: 'us-east-1',
+      bucket: 'together-test',
+      accessKeyId: 'minio-access',
+      secretAccessKey: 'minio-secret',
+    });
+    const request = { method: 'POST', headers, body };
+
+    expect((await scopedApp('staff').request(API_PATHS.storageProbe, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.storageConfigure, request)).status).toBe(403);
+    expect((await scopedApp('owner').request(API_PATHS.storageProbe, request)).status).toBe(200);
+
+    const configured = await scopedApp('owner').request(API_PATHS.storageConfigure, request);
+    expect(configured.status).toBe(200);
+    const payload = await configured.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      data: {
+        diagnostic: { code: 'storage.available' },
+        secret: { key: 's3.configuration', maskedPreview: '••••' },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('minio-access');
+    expect(JSON.stringify(payload)).not.toContain('minio-secret');
   });
 });
 

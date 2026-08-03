@@ -736,7 +736,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
-    storage: createS3StorageProvider(secretResolver),
+    storage: createS3StorageProvider(secretResolver, {
+      corsOrigin: env.APP_BASE_URL,
+      allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
+    }),
     email,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),

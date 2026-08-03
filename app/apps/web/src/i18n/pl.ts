@@ -430,12 +430,50 @@ export const pl: Messages = {
     bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
-    s3Heading: 'Dokumenty S3',
+    s3Heading: 'Storage zgodny z S3',
     s3Description:
-      'Podaj klucz AWS z uprawnieniem odczytu do bucketu z plikami PDF lekcji. Aplikacja podpisuje ich odnośniki na bieżąco, więc bucket może pozostać prywatny.',
+      'Podłącz własny prywatny bucket. Together sprawdzi zapis, odczyt i usuwanie, zanim zaszyfruje konfigurację.',
     s3AccessKeyIdLabel: 'identyfikator klucza (access key ID)',
     s3SecretAccessKeyLabel: 'tajny klucz (secret access key)',
-    s3SaveFirst: 'Zapisz najpierw identyfikator i tajny klucz storage, aby przetestować połączenie.',
+    s3SaveFirst: 'Najpierw ukończ kreator storage, aby przetestować zapisane połączenie.',
+    storageConfigured: 'Storage jest skonfigurowany. Uruchom kreator ponownie, aby zastąpić zaszyfrowane ustawienia.',
+    storageProviderStep: 'Dostawca',
+    storageConnectionStep: 'Połączenie',
+    storageProbeStep: 'Test na żywo',
+    storageProviderLabel: 'Wybierz dostawcę storage',
+    storageProviderAws: 'AWS S3',
+    storageProviderR2: 'Cloudflare R2',
+    storageProviderB2: 'Backblaze B2',
+    storageProviderMinio: 'MinIO',
+    storageEndpointLabel: 'URL endpointu S3',
+    storageRegionLabel: 'region',
+    storageBucketLabel: 'nazwa bucketu',
+    storageContinue: 'Dalej',
+    storageBack: 'Wstecz',
+    storageInstructionsHeading: 'Skąd wziąć klucze',
+    storageInstructionAws:
+      'Utwórz ograniczony klucz dostępu IAM z uprawnieniami PutObject, GetObject i DeleteObject do tego bucketu.',
+    storageInstructionR2:
+      'Utwórz token API R2 z dostępem Object Read & Write ograniczonym do tego bucketu, a następnie skopiuj dane S3 i endpoint.',
+    storageInstructionB2:
+      'Utwórz klucz aplikacji ograniczony do bucketu z uprawnieniami readFiles, writeFiles i deleteFiles. Identyfikatora klucza użyj jako access key ID.',
+    storageInstructionMinio:
+      'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie.',
+    storageInstructionLink: 'Otwórz instrukcję dostawcy',
+    storageProbeDescription:
+      'Together wyśle mały plik testowy, odczyta go bajt po bajcie i usunie. Na tym etapie nic nie zostanie zapisane.',
+    storageProbeStart: 'Uruchom test na żywo',
+    storageProbeSuccess: 'Zapis, odczyt i usunięcie powiodły się. Możesz teraz zapisać konfigurację.',
+    storageSave: 'Zapisz zaszyfrowaną konfigurację',
+    storageSaving: 'Testowanie i zapisywanie…',
+    storageSaved: 'Zapisano konfigurację storage.',
+    storageProbeWrongRegion: 'Użyj regionu i endpointu podanych dla tego bucketu przez dostawcę.',
+    storageProbeCredentials:
+      'Sprawdź access key, secret key oraz uprawnienia PutObject, GetObject i DeleteObject.',
+    storageProbeBucket: 'Sprawdź dokładną nazwę bucketu i czy ten klucz ma do niego dostęp.',
+    storageProbeCors:
+      'Zezwól temu originowi Together na żądania PUT, GET i DELETE w polityce CORS bucketu.',
+    storageProbeUnavailable: 'Sprawdź URL endpointu i dostęp sieciowy, a następnie ponów test.',
   },
   products: {
     newProduct: 'Nowy produkt',

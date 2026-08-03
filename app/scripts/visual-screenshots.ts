@@ -244,6 +244,17 @@ const SCREENS: ScreenSpec[] = [
     },
   },
   {
+    name: 'panel-storage-wizard',
+    auth: 'creator',
+    path: '/panel/integrations',
+    ready: (page) => page.getByTestId('storage-provider-step').waitFor(visible),
+    settled: async (page) => {
+      await page.getByTestId('storage-wizard').evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      );
+    },
+  },
+  {
     name: 'panel-products',
     auth: 'creator',
     path: '/panel/products',

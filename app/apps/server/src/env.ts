@@ -45,6 +45,10 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    STORAGE_ALLOW_PRIVATE_ENDPOINTS: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     TOGETHER_VISUAL_CLOCK: z.string().datetime({ offset: true }).optional(),
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
     EMAIL_FROM: optionalNonEmptyString,

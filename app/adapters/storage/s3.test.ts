@@ -1,10 +1,76 @@
 import { describe, expect, it } from 'vitest';
 
-import { err, notFound, ok } from '#core/domain/index.js';
+import { err, notFound, ok, type StorageConfiguration } from '#core/domain/index.js';
 
-import { createS3StorageProvider } from './s3.js';
+import { createS3StorageProvider, mapStorageProbeFailure } from './s3.js';
 
-const resolver = { resolve: async () => ok('configured') };
+const resolver = {
+  resolve: async (_tenantId: string, key: string) =>
+    key === 's3.configuration' ? err(notFound('not configured')) : ok('configured'),
+};
+
+const MINIO_CONFIGURATION: StorageConfiguration = {
+  provider: 'minio',
+  endpoint: 'http://127.0.0.1:19000',
+  region: 'us-east-1',
+  bucket: 'together-test',
+  accessKeyId: 'minio-access',
+  secretAccessKey: 'minio-secret',
+};
+
+const storageResponse = (
+  status: number,
+  body: string,
+  responseHeaders: Record<string, string> = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'PUT',
+  },
+) => ({
+  ok: status < 400,
+  status,
+  headers: {
+    get: (name: string) => responseHeaders[name.toLowerCase()] ?? null,
+  },
+  text: async () => body,
+});
+
+const fakeBucket = (failure?: {
+  method: 'DELETE' | 'GET' | 'OPTIONS' | 'PUT';
+  status: number;
+  body: string;
+  headers?: Record<string, string>;
+}) => {
+  const requests: Array<{ method: string; url: string; headers?: Record<string, string> }> = [];
+  const objects = new Map<string, string>();
+  const fetchStorage = async (
+    url: string,
+    init: {
+      method: 'DELETE' | 'GET' | 'OPTIONS' | 'PUT';
+      body?: string;
+      headers?: Record<string, string>;
+    },
+  ) => {
+    requests.push({ method: init.method, url, ...(init.headers === undefined ? {} : { headers: init.headers }) });
+    const path = new URL(url).pathname;
+    if (failure !== undefined && failure.method === init.method) {
+      return storageResponse(failure.status, failure.body, failure.headers);
+    }
+    if (init.method === 'OPTIONS') return storageResponse(204, '');
+    if (init.method === 'PUT') {
+      objects.set(path, init.body ?? '');
+      return storageResponse(200, '');
+    }
+    if (init.method === 'GET') {
+      const stored = objects.get(path);
+      return stored === undefined
+        ? storageResponse(404, '<Error><Code>NoSuchKey</Code></Error>')
+        : storageResponse(200, stored);
+    }
+    objects.delete(path);
+    return storageResponse(204, '');
+  };
+  return { fetchStorage, objects, requests };
+};
 
 const DOCS_EXAMPLE = {
   url: 'https://examplebucket.s3.amazonaws.com/test.txt',
@@ -15,7 +81,9 @@ const DOCS_EXAMPLE = {
 
 describe('createS3StorageProvider', () => {
   it('reproduces the AWS documentation presign example byte for byte', () => {
-    const signer = createS3StorageProvider(resolver, () => new Date('2013-05-24T00:00:00.000Z'));
+    const signer = createS3StorageProvider(resolver, {
+      now: () => new Date('2013-05-24T00:00:00.000Z'),
+    });
     const result = signer.presignGet(DOCS_EXAMPLE);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value).toBe(
@@ -30,7 +98,9 @@ describe('createS3StorageProvider', () => {
   });
 
   it('extracts the region from regional virtual-hosted hosts', () => {
-    const signer = createS3StorageProvider(resolver, () => new Date('2026-07-20T12:00:00.000Z'));
+    const signer = createS3StorageProvider(resolver, {
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    });
     const result = signer.presignGet({
       url: 'https://legacy-pdf-bucket-example.s3.eu-central-1.amazonaws.com/pdf-files/handout.pdf',
       accessKeyId: 'AKIA-TEST',
@@ -44,7 +114,9 @@ describe('createS3StorageProvider', () => {
   });
 
   it('percent-encodes path segments into the canonical URI', () => {
-    const signer = createS3StorageProvider(resolver, () => new Date('2026-07-20T12:00:00.000Z'));
+    const signer = createS3StorageProvider(resolver, {
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    });
     const result = signer.presignGet({
       url: 'https://bucket.s3.eu-central-1.amazonaws.com/pdf files/no(1)*.pdf',
       accessKeyId: 'AKIA-TEST',
@@ -83,10 +155,12 @@ describe('createS3StorageProvider', () => {
     const requests: Array<{ url: string; method: string }> = [];
     const storage = createS3StorageProvider(
       resolver,
-      () => new Date('2026-07-20T12:00:00.000Z'),
-      async (url, init) => {
-        requests.push({ url, method: init.method });
-        return { ok: true, status: 204 };
+      {
+        now: () => new Date('2026-07-20T12:00:00.000Z'),
+        fetchStorage: async (url, init) => {
+          requests.push({ url, method: init.method });
+          return storageResponse(204, '');
+        },
       },
     );
     const put = storage.presignPut({ ...DOCS_EXAMPLE, expiresInSeconds: 300 });
@@ -122,8 +196,222 @@ describe('createS3StorageProvider', () => {
     expect(keys).toEqual([
       's3.accessKeyId',
       's3.secretAccessKey',
+      's3.configuration',
       's3.accessKeyId',
       's3.secretAccessKey',
     ]);
+  });
+
+  it('writes, reads back and deletes one signed scratch object during the live probe', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(
+      resolver,
+      {
+        now: () => new Date('2026-08-03T12:00:00.000Z'),
+        fetchStorage: bucket.fetchStorage,
+        probeKey: () => 'probe-id',
+        allowPrivateEndpoints: true,
+      },
+    );
+
+    await expect(storage.probe(MINIO_CONFIGURATION)).resolves.toEqual({
+      ok: true,
+      value: {
+        code: 'storage.available',
+        message: 'Storage completed the write, read and delete probe.',
+      },
+    });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['OPTIONS', 'PUT', 'GET', 'DELETE']);
+    expect(bucket.requests[0]?.headers).toEqual({
+      Origin: 'http://localhost:48730',
+      'Access-Control-Request-Method': 'PUT',
+    });
+    for (const request of bucket.requests) {
+      expect(request.url).toContain('X-Amz-Signature=');
+      expect(request.url.startsWith(
+        'http://127.0.0.1:19000/together-test/together-probe/probe-id.txt?',
+      )).toBe(true);
+    }
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('probes AWS buckets on their virtual-hosted host', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(
+      resolver,
+      {
+        now: () => new Date('2026-08-03T12:00:00.000Z'),
+        fetchStorage: bucket.fetchStorage,
+        probeKey: () => 'probe-id',
+      },
+    );
+
+    await expect(
+      storage.probe({
+        provider: 'aws_s3',
+        endpoint: 'https://s3.eu-central-1.amazonaws.com',
+        region: 'eu-central-1',
+        bucket: 'together-docs',
+        accessKeyId: 'AKIA-TEST',
+        secretAccessKey: 'secret',
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(bucket.requests[0]?.url.startsWith(
+      'https://together-docs.s3.eu-central-1.amazonaws.com/together-probe/probe-id.txt?',
+    )).toBe(true);
+    expect(bucket.requests[0]?.url).toContain('%2Feu-central-1%2Fs3%2Faws4_request');
+  });
+
+  it('deletes the scratch object even when reading it back fails', async () => {
+    const bucket = fakeBucket({
+      method: 'GET',
+      status: 403,
+      body: '<Error><Code>SignatureDoesNotMatch</Code></Error>',
+    });
+    const storage = createS3StorageProvider(resolver, {
+      now: () => new Date(),
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probe(MINIO_CONFIGURATION)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_auth', details: { providerCode: 'storage.credentials' } },
+    });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['OPTIONS', 'PUT', 'GET', 'DELETE']);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('fails the probe when the bucket returns different content', async () => {
+    const bucket = fakeBucket({ method: 'GET', status: 200, body: 'someone else content' });
+    const storage = createS3StorageProvider(resolver, {
+      now: () => new Date(),
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probe(MINIO_CONFIGURATION)).resolves.toMatchObject({
+      ok: false,
+      error: { details: { providerCode: 'storage.unavailable' } },
+    });
+  });
+
+  it('maps an unreachable endpoint to the unavailable code', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      now: () => new Date(),
+      fetchStorage: async () => {
+        throw new Error('connect ECONNREFUSED 127.0.0.1:19000');
+      },
+      allowPrivateEndpoints: true,
+    });
+
+    await expect(storage.probe(MINIO_CONFIGURATION)).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable', details: { providerCode: 'storage.unavailable' } },
+    });
+  });
+
+  it('rejects private endpoint addresses before sending a probe request', async () => {
+    const requests: string[] = [];
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: async (url) => {
+        requests.push(url);
+        return storageResponse(204, '');
+      },
+    });
+
+    for (const endpoint of [
+      'http://127.0.0.1:9000',
+      'http://169.254.169.254',
+      'http://10.0.0.8',
+      'http://172.16.0.8',
+      'http://192.168.0.8',
+      'http://[::1]:9000',
+    ]) {
+      await expect(storage.probe({ ...MINIO_CONFIGURATION, endpoint })).resolves.toMatchObject({
+        ok: false,
+        error: { details: { providerCode: 'storage.unavailable' } },
+      });
+    }
+    await expect(storage.probe({
+      ...MINIO_CONFIGURATION,
+      provider: 'aws_s3',
+      endpoint: 'http://127.0.0.1:9000',
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { details: { providerCode: 'storage.unavailable' } },
+    });
+    expect(requests).toEqual([]);
+  });
+
+  it('maps a failed browser preflight to the CORS diagnostic', async () => {
+    const bucket = fakeBucket({
+      method: 'OPTIONS',
+      status: 204,
+      body: '',
+      headers: {
+        'access-control-allow-origin': 'https://another.example',
+        'access-control-allow-methods': 'GET',
+      },
+    });
+    const storage = createS3StorageProvider(resolver, {
+      fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
+      corsOrigin: 'https://app.together.example/path',
+    });
+
+    await expect(storage.probe(MINIO_CONFIGURATION)).resolves.toMatchObject({
+      ok: false,
+      error: { details: { providerCode: 'storage.cors' } },
+    });
+    expect(bucket.requests).toHaveLength(1);
+    expect(bucket.requests[0]?.headers).toEqual({
+      Origin: 'https://app.together.example',
+      'Access-Control-Request-Method': 'PUT',
+    });
+  });
+
+  it.each([
+    [301, '<Error><Code>PermanentRedirect</Code></Error>', 'storage.wrong_region'],
+    [400, '<Error><Code>AuthorizationHeaderMalformed</Code></Error>', 'storage.wrong_region'],
+    [404, '<Error><Code>NoSuchBucket</Code></Error>', 'storage.bucket'],
+    [403, '<Error><Code>InvalidAccessKeyId</Code></Error>', 'storage.credentials'],
+    [403, '<Error><Code>SignatureDoesNotMatch</Code></Error>', 'storage.credentials'],
+    [403, '<Error><Code>CORSForbidden</Code></Error>', 'storage.cors'],
+    [500, '<Error><Code>InternalError</Code></Error>', 'storage.unavailable'],
+  ])('maps status %i to an actionable machine code', (status, body, providerCode) => {
+    expect(mapStorageProbeFailure(status, body)).toMatchObject({ details: { providerCode } });
+  });
+
+  it('runs the live CRUD probe for the saved configuration diagnostic', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(
+      { resolve: async () => ok(JSON.stringify(MINIO_CONFIGURATION)) },
+      {
+        now: () => new Date(),
+        fetchStorage: bucket.fetchStorage,
+        probeKey: () => 'saved-probe',
+        allowPrivateEndpoints: true,
+      },
+    );
+
+    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toMatchObject({
+      ok: true,
+      value: { code: 'storage.available' },
+    });
+    await expect(storage.healthcheck({ tenantId: 'tenant-1' })).resolves.toEqual({
+      ok: true,
+      value: { healthy: true },
+    });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['OPTIONS', 'PUT', 'GET', 'DELETE']);
+  });
+
+  it('reports the stored configuration as invalid instead of leaking its content', async () => {
+    const storage = createS3StorageProvider({ resolve: async () => ok('{"provider":"minio"}') });
+
+    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured' },
+    });
   });
 });

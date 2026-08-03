@@ -22,6 +22,7 @@ const renderPanel = (
   let secrets = [...initial];
   let settings = { ...initialSettings };
   const testedProviders: string[] = [];
+  const storageSubmissions: unknown[] = [];
 
   server.use(
     http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets } })),
@@ -35,6 +36,7 @@ const renderPanel = (
           key === 'bunny.securityKey' ||
           key === 's3.accessKeyId' ||
           key === 's3.secretAccessKey' ||
+          key === 's3.configuration' ||
           key === 'ifirma.invoiceApiKey' ||
           key === 'ifirma.username'
             ? key
@@ -70,6 +72,29 @@ const renderPanel = (
           : 'payment.available';
       return HttpResponse.json({ ok: true, data: { diagnostic: { code, message: 'adapter message' } } });
     }),
+    http.post('/api/integrations/storage/probe', async ({ request }) => {
+      storageSubmissions.push(await request.json());
+      return HttpResponse.json({
+        ok: true,
+        data: { diagnostic: { code: 'storage.available', message: 'probe complete' } },
+      });
+    }),
+    http.post('/api/integrations/storage/configure', async ({ request }) => {
+      storageSubmissions.push(await request.json());
+      const secret: TenantSecretMasked = {
+        key: 's3.configuration',
+        maskedPreview: '••••',
+        updatedAt: '2026-08-03T12:00:00.000Z',
+      };
+      secrets = [...secrets.filter((item) => item.key !== secret.key), secret];
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          diagnostic: { code: 'storage.available', message: 'probe complete' },
+          secret,
+        },
+      });
+    }),
     http.post('/api/integrations/ifirma/test', () =>
       HttpResponse.json({
         ok: true,
@@ -84,7 +109,20 @@ const renderPanel = (
     ),
   );
 
-  return { ...renderWithProviders(<IntegrationsPanel tenantId="tenant-123" />), testedProviders };
+  return {
+    ...renderWithProviders(<IntegrationsPanel tenantId="tenant-123" />),
+    storageSubmissions,
+    testedProviders,
+  };
+};
+
+const fillMinioConfiguration = async () => {
+  await userEvent.click(await screen.findByTestId('storage-provider-minio'));
+  await userEvent.click(screen.getByTestId('storage-provider-continue'));
+  await userEvent.type(screen.getByTestId('storage-bucket'), 'together-test');
+  await userEvent.type(screen.getByTestId('storage-access-key'), 'minio-access');
+  await userEvent.type(screen.getByTestId('storage-secret-key'), 'minio-secret');
+  await userEvent.click(screen.getByTestId('storage-connection-continue'));
 };
 
 describe('IntegrationsPanel', () => {
@@ -149,6 +187,89 @@ describe('IntegrationsPanel', () => {
     expect(await screen.findByTestId('email-test-result')).toHaveTextContent(pl.integrations.emailAvailable);
     expect(await screen.findByTestId('storage-test-result')).toHaveTextContent(pl.integrations.storageAvailable);
     expect(testedProviders).toEqual(['payment', 'email', 'storage']);
+  });
+
+  it('probes MinIO before saving the encrypted storage configuration', async () => {
+    const { storageSubmissions } = renderPanel();
+    await fillMinioConfiguration();
+
+    expect(screen.getByText(pl.integrations.storageProbeDescription)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('storage-probe'));
+    expect(await screen.findByTestId('storage-probe-success')).toHaveTextContent(
+      pl.integrations.storageProbeSuccess,
+    );
+    expect(screen.getByTestId('storage-save')).toBeEnabled();
+
+    await userEvent.click(screen.getByTestId('storage-save'));
+    expect(await screen.findByTestId('storage-save-success')).toHaveTextContent(
+      pl.integrations.storageSaved,
+    );
+    expect(storageSubmissions).toEqual([
+      {
+        provider: 'minio',
+        endpoint: 'http://localhost:9000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      },
+      {
+        provider: 'minio',
+        endpoint: 'http://localhost:9000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      },
+    ]);
+  });
+
+  it.each([
+    ['aws_s3', pl.integrations.storageInstructionAws, 'docs.aws.amazon.com'],
+    ['cloudflare_r2', pl.integrations.storageInstructionR2, 'developers.cloudflare.com'],
+    ['backblaze_b2', pl.integrations.storageInstructionB2, 'backblaze.com'],
+    ['minio', pl.integrations.storageInstructionMinio, 'min.io'],
+  ])('shows scoped key instructions for %s', async (provider, instructions, host) => {
+    renderPanel();
+    await userEvent.click(await screen.findByTestId(`storage-provider-${provider}`));
+    await userEvent.click(screen.getByTestId('storage-provider-continue'));
+
+    expect(screen.getByText(instructions)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.integrations.storageInstructionLink })).toHaveAttribute(
+      'href',
+      expect.stringContaining(host),
+    );
+  });
+
+  it.each([
+    ['storage.wrong_region', pl.integrations.storageProbeWrongRegion],
+    ['storage.credentials', pl.integrations.storageProbeCredentials],
+    ['storage.bucket', pl.integrations.storageProbeBucket],
+    ['storage.cors', pl.integrations.storageProbeCors],
+    ['storage.unavailable', pl.integrations.storageProbeUnavailable],
+  ])('renders the mapped %s failure without raw SDK text', async (providerCode, message) => {
+    renderPanel();
+    server.use(
+      http.post('/api/integrations/storage/probe', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: {
+              code: 'integration_unavailable',
+              message: 'RAW SDK ERROR',
+              details: { providerCode },
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    await fillMinioConfiguration();
+    await userEvent.click(screen.getByTestId('storage-probe'));
+
+    const alert = await screen.findByTestId('storage-probe-error');
+    expect(alert).toHaveTextContent(message);
+    expect(alert).not.toHaveTextContent('RAW SDK ERROR');
   });
 
   it('guards the Bunny test button until the key and library id are stored', async () => {

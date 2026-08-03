@@ -18,6 +18,7 @@ import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { SecretField } from './SecretField.js';
+import { StorageWizard } from './StorageWizard.js';
 
 const previewFor = (
   secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
@@ -214,8 +215,9 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
     (settings.data?.settings.bunnyStreamLibraryId ?? null) !== null;
   const storageReady =
     storedSecrets !== undefined &&
-    previewFor(storedSecrets, 's3.accessKeyId') !== null &&
-    previewFor(storedSecrets, 's3.secretAccessKey') !== null;
+    (previewFor(storedSecrets, 's3.configuration') !== null ||
+      (previewFor(storedSecrets, 's3.accessKeyId') !== null &&
+        previewFor(storedSecrets, 's3.secretAccessKey') !== null));
 
   return (
     <PanelPage title={t.integrations.heading} description={t.integrations.intro}>
@@ -346,18 +348,7 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           ) : secrets.isError ? (
             <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
           ) : (
-            <Stack useFlexGap spacing="1.25rem">
-              <SecretField
-                secretKey="s3.accessKeyId"
-                label={t.integrations.s3AccessKeyIdLabel}
-                maskedPreview={previewFor(secrets.data.secrets, 's3.accessKeyId')}
-              />
-              <SecretField
-                secretKey="s3.secretAccessKey"
-                label={t.integrations.s3SecretAccessKeyLabel}
-                maskedPreview={previewFor(secrets.data.secrets, 's3.secretAccessKey')}
-              />
-            </Stack>
+            <StorageWizard configured={storageReady} />
           )}
           <ProviderTest provider="storage" ready={storageReady} hint={t.integrations.s3SaveFirst} />
         </SectionCard>

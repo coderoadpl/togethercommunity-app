@@ -62,8 +62,11 @@ const product = (input: {
 }): Product => ({
   id: input.id,
   tenantId: input.tenantId,
+  type: 'course',
+  slug: input.id,
   title: input.title,
   description: '',
+  coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
   published: input.published,
@@ -114,6 +117,10 @@ const deps = (input: {
       create: async () => undefined,
       updateEmail: async () => null,
       setBanned: async () => null,
+    },
+    memberEvents: {
+      append: async () => undefined,
+      listForMember: async () => [],
     },
     memberErasure: {
       pseudonymize: async () => null,
@@ -275,6 +282,16 @@ const deps = (input: {
       test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
       send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
     },
+    emailSender: {
+      send: async () => ok({ messageId: 'test-message-id', transport: 'platform' }),
+    },
+    emailTransports: {
+      resolve: async () => ({
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+        send: async () => ok({ messageId: 'transport-test-message-id' }),
+      }),
+    },
     emailOutbox: {
       enqueue: async (message) => ok({ id: message.id }),
       claimBatch: async () => ok([]),
@@ -343,7 +360,7 @@ const deps = (input: {
         products.filter((candidate) => candidate.tenantId === tenantId && candidate.published),
       findById: async (tenantId, id) =>
         products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
-      create: async () => undefined,
+      create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,
@@ -682,7 +699,6 @@ const marketingDeps = (): MarketingAppDeps => ({
     reserve: async () => true,
     settle: async () => undefined,
   },
-  smtpTest: { resolve: async () => null },
   documents: {
     create: async () => undefined,
     findById: async () => null,

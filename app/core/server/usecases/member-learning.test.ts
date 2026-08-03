@@ -103,8 +103,11 @@ const course = (id: string): Course => ({
 const product = (id: string, accessItems: Product['accessItems']): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,

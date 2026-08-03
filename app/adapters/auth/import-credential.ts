@@ -5,9 +5,9 @@ import { isLegacyPasswordHash } from './legacy-password.js';
 
 const CREDENTIAL_PROVIDER_ID = 'credential';
 
-export type ImportedCredentialAction = 'create' | 'update' | 'keep' | 'keep-native' | 'none';
+type ImportedCredentialAction = 'create' | 'update' | 'keep' | 'keep-native' | 'none';
 
-export interface ImportedUserInput {
+interface ImportedUserInput {
   email: string;
   name: string | null;
   passwordMarker: string | null;

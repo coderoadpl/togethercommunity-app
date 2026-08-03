@@ -24,7 +24,7 @@ export interface ResolvedTenant {
 
 const stripPort = (host: string): string => host.split(':')[0] ?? host;
 
-export const tenantNotFoundMessage = (slug: string): string =>
+const tenantNotFoundMessage = (slug: string): string =>
   `No tenant "${slug}" or you do not have access to it`;
 
 export const resolveTenant = async (

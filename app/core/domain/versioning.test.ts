@@ -70,6 +70,27 @@ describe('upcaster chain runner', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
+  it('repairs legacy provider embeds while preserving restorable snapshots', () => {
+    const payload = SNAPSHOT_FIXTURES.course_lesson[3];
+    const result = readSnapshot('course_lesson', { schemaVersion: 3, payload });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const lesson = SNAPSHOT_CURRENT_SCHEMAS.course_lesson.parse(result.value.payload);
+    expect(lesson.contents.filter((block: { type: string }) => block.type === 'embed')).toEqual([
+      { type: 'embed', embedUrl: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ' },
+      { type: 'embed', embedUrl: 'https://player.vimeo.com/video/76979871' },
+      { type: 'embed', embedUrl: 'https://www.youtube-nocookie.com/embed/jfKfPfyJRdk' },
+      { type: 'embed', embedUrl: 'https://player.vimeo.com/video/76979871' },
+      { type: 'embed', embedUrl: 'https://player.vimeo.com/video/76979871?h=abc123' },
+      {
+        type: 'embed',
+        embedUrl:
+          'https://legacy-embed.invalid/?url=https%3A%2F%2Fwww.youtube.com%2Fembed%2Fvideoseries%3Flist%3DPLabc',
+      },
+    ]);
+  });
+
   it('composes multiple registered upcasters in order (synthetic registry)', () => {
     type Step = (payload: unknown) => unknown;
     const registry: Record<number, Step> = {

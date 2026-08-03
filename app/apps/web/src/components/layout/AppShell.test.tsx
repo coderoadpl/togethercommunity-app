@@ -41,7 +41,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
 
-  it('renders page state inside the stable shell', () => {
+  it('renders a resolved error inside the stable shell', () => {
     render(
       <AppShell
         isDesktop
@@ -49,7 +49,7 @@ describe('AppShell', () => {
         onMobileNavigationClose={vi.fn()}
         header={<span>Acme header</span>}
         navigation={<nav><a href="/panel/products">Products</a></nav>}
-        state={{ kind: 'loading', label: 'Opening workspace' }}
+        state={{ kind: 'error', message: 'Could not open workspace' }}
       >
         <p>Panel content</p>
       </AppShell>,
@@ -57,7 +57,7 @@ describe('AppShell', () => {
 
     expect(screen.getByRole('banner')).toHaveTextContent('Acme header');
     expect(screen.getByRole('navigation')).toHaveTextContent('Products');
-    expect(screen.getByRole('main')).toHaveTextContent('Opening workspace');
+    expect(screen.getByRole('main')).toHaveTextContent('Could not open workspace');
     expect(screen.getByRole('main')).not.toHaveTextContent('Panel content');
   });
 });

@@ -191,6 +191,7 @@ import {
   listMemberBillingOrders,
   listMemberEmailSends,
   listMemberGrants,
+  listMemberTimeline,
   listMembers,
   listModules,
   listMyCourses,
@@ -236,7 +237,6 @@ import {
   scheduleCampaign,
   searchPosts,
   sendSesSimulatorTest,
-  sendTransactionalSmtpTest,
   setMemberBanned,
   setSpaceArchived,
   setPostPinned,
@@ -1104,14 +1104,6 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     }));
   });
 
-  app.post(API_PATHS.marketingSmtpTest, async (c) => {
-    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    return respond(await sendTransactionalSmtpTest(
-      { identity: c.get('identity') },
-      { smtp: deps.marketing.smtpTest },
-    ));
-  });
-
   app.get(API_PATHS.marketingStaffSuppressions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const identity = c.get('identity');
@@ -1391,6 +1383,15 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ grants: result.value }) : result);
   });
 
+  app.get(API_PATHS.memberTimeline, async (c) => {
+    const result = await listMemberTimeline(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('memberId') },
+      deps,
+    );
+    return respond(result.ok ? ok({ events: result.value }) : result);
+  });
+
   app.get(API_PATHS.memberLearningSummary, async (c) => {
     const result = await getMemberLearningSummary(
       { identity: c.get('identity') },
@@ -1503,6 +1504,8 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       {
         appBaseUrl: deps.appBaseUrl,
         email: deps.email,
+        emailSender: deps.emailSender,
+        emailTransports: deps.emailTransports,
         payment: deps.payment,
         storage: deps.storage,
       },

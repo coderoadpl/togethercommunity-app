@@ -4,6 +4,10 @@ export const integrationProviderSchema = z.enum(['storage', 'email', 'payment'])
 
 export type IntegrationProvider = z.infer<typeof integrationProviderSchema>;
 
+export const emailIntegrationTransportSchema = z.enum(['smtp', 'ses', 'resend']);
+
+export type EmailIntegrationTransport = z.infer<typeof emailIntegrationTransportSchema>;
+
 export const stripeModeSchema = z.enum(['test', 'live']);
 
 export type StripeMode = z.infer<typeof stripeModeSchema>;

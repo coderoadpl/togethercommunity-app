@@ -30,6 +30,7 @@ import {
   healthLiveOutputSchema,
   healthReadyOutputSchema,
   ifirmaTestConnectionOutputSchema,
+  integrationTestOutputSchema,
   ksefTestConnectionOutputSchema,
   emailDispatchOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
@@ -122,7 +123,6 @@ import {
   productsListOutputSchema,
   productsPublishOutputSchema,
   simulatePurchaseOutputSchema,
-  stripeTestConnectionOutputSchema,
   stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
@@ -149,6 +149,7 @@ import {
   type GrantCreateInput,
   type GrantRevokeInput,
   type HttpMethod,
+  type IntegrationTestInput,
   type LastViewedInput,
   type LessonCompleteInput,
   type LessonUncompleteInput,
@@ -1378,13 +1379,13 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  testStripeConnection: (signal?: AbortSignal) =>
+  testIntegration: (input: IntegrationTestInput, signal?: AbortSignal) =>
     request(
       options,
-      API_ROUTES.stripeTestConnection.method,
-      API_ROUTES.stripeTestConnection.path,
-      stripeTestConnectionOutputSchema,
-      {},
+      API_ROUTES.integrationTest.method,
+      API_ROUTES.integrationTest.path,
+      integrationTestOutputSchema,
+      input,
       signal,
     ),
   testIfirmaConnection: (signal?: AbortSignal) =>

@@ -89,7 +89,7 @@ import { createKsefInvoicePdf } from '#adapters/invoicing/ksef-pdf.js';
 import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
 import { createBunnyVideoLibrary } from '#adapters/video/bunny.js';
 import { createBunnyEmbedTokenSigner } from '#adapters/crypto/bunny-embed-token-signer.js';
-import { createS3UrlSigner } from '#adapters/storage/s3-url-signer.js';
+import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
@@ -137,7 +137,7 @@ import type {
   PaymentTransactionPort,
   DevMagicLinkReader,
   DevSinkPurge,
-  FileUrlSigner,
+  StorageProvider,
   BunnyEmbedTokenSigner,
   HealthPort,
   IdGenerator,
@@ -280,7 +280,7 @@ export interface AppDeps {
   priceHistory?: ProductPriceHistoryRepository;
   couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
-  fileUrlSigner: FileUrlSigner;
+  storage: StorageProvider;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
   email: EmailPort;
   emailOutbox: EmailOutboxRepository;
@@ -736,7 +736,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
-    fileUrlSigner: createS3UrlSigner(),
+    storage: createS3StorageProvider(secretResolver),
     email,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),

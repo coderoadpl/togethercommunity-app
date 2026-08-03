@@ -43,6 +43,8 @@ const port = (
   calls: string[],
   result: Result<{ messageId: string }, AppError> = ok({ messageId: `${name}-message` }),
 ): EmailPort => ({
+  healthcheck: async () => ok({ healthy: true }),
+  test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
   send: async () => {
     calls.push(name);
     return result;

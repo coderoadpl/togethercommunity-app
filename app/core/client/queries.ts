@@ -81,6 +81,7 @@ import type {
   SimulatePurchaseInput,
   TenantCreateInput,
   TenantSecretDeleteInput,
+  IntegrationTestInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
@@ -1092,10 +1093,10 @@ export const deleteTenantSecretMutation = (api: ApiClient) =>
     call: (input: TenantSecretDeleteInput) => api.deleteTenantSecret(input),
   });
 
-export const testStripeConnectionMutation = (api: ApiClient) =>
+export const testIntegrationMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
-    call: () => api.testStripeConnection(),
+    mutationKey: [...tenantSecretsScopes.all(), 'provider-test'],
+    call: (input: IntegrationTestInput) => api.testIntegration(input),
   });
 
 export const testIfirmaConnectionMutation = (api: ApiClient) =>

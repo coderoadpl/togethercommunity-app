@@ -391,10 +391,15 @@ export const en: Messages = {
     testConnection: 'Test connection',
     testing: 'Testing…',
     testFailed: 'The connection test failed.',
+    paymentAvailable: 'The payment provider accepted the credentials.',
+    emailAvailable: 'The email provider is available.',
+    storageAvailable: 'The storage credentials are available.',
     saveKeysFirst: 'Save your Stripe key and webhook secret first to test the connection.',
     webhookUrlLabel: 'Webhook URL for the Stripe dashboard',
     webhookUrlHint: 'Paste this into Stripe → Developers → Webhooks.',
     loading: 'loading integrations…',
+    emailHeading: 'Transactional email',
+    emailDescription: 'Check the connection to the active email provider configured for the application.',
     ifirmaHeading: 'iFirma',
     ifirmaDescription:
       'Connect iFirma with the faktura API key. Configure KSeF inside iFirma; its certificate never reaches Together.',
@@ -424,6 +429,7 @@ export const en: Messages = {
       'Enter an AWS key with read access to the bucket hosting your lesson PDF files. The app signs their links on the fly, so the bucket can stay private.',
     s3AccessKeyIdLabel: 'access key ID',
     s3SecretAccessKeyLabel: 'secret access key',
+    s3SaveFirst: 'Save the storage access key ID and secret key first to test the connection.',
   },
   products: {
     newProduct: 'New product',

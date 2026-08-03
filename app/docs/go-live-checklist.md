@@ -115,7 +115,7 @@ The legacy platform's read-capable AWS key was stored in the development
 database for `akademia-samouka` as `s3.accessKeyId` and `s3.secretAccessKey`
 (`tasks/import-rehearsal-audit.md:46`). The SigV4 presigner consumes those
 secrets through `core/server/usecases/lesson-media.ts` and
-`adapters/storage/s3-url-signer.ts`.
+`adapters/storage/s3.ts`.
 
 Create a fresh least-privilege IAM user limited to `s3:GetObject` on the media
 prefix. Store it on the production tenant:
@@ -244,7 +244,7 @@ pnpm --silent run cli --tenant <slug> stripe test-connection
 
 The command creates and immediately expires a session
 (`apps/cli/src/main.ts:2394-2401`,
-`core/server/usecases/payment-integrations.ts:7-30`).
+`core/server/usecases/provider-diagnostics.ts`).
 
 Use real signed Stripe deliveries. Do not use `stripe deliver-webhook`, which
 uses the CLI's own signer (`apps/cli/src/main.ts:2403-2419`).

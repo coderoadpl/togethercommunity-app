@@ -364,10 +364,15 @@ export interface Messages {
     testConnection: string;
     testing: string;
     testFailed: string;
+    paymentAvailable: string;
+    emailAvailable: string;
+    storageAvailable: string;
     saveKeysFirst: string;
     webhookUrlLabel: string;
     webhookUrlHint: string;
     loading: string;
+    emailHeading: string;
+    emailDescription: string;
     ifirmaHeading: string;
     ifirmaDescription: string;
     ifirmaInvoiceApiKeyLabel: string;
@@ -391,6 +396,7 @@ export interface Messages {
     s3Description: string;
     s3AccessKeyIdLabel: string;
     s3SecretAccessKeyLabel: string;
+    s3SaveFirst: string;
   };
   products: {
     newProduct: string;

@@ -196,6 +196,7 @@ const deps = (input: {
       resolve: async () => ok('plaintext'),
     },
     payment: {
+      test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
       createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
       expireCheckoutSession: async () => ok({ expired: true }),
       cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
@@ -237,8 +238,12 @@ const deps = (input: {
     bunnyEmbedTokenSigner: {
       sign: ({ videoId, expires }) => `${videoId}-${expires}`,
     },
-    fileUrlSigner: {
+    storage: {
+      presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
+      delete: async () => ok({ deleted: true }),
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
     processedPaymentEvents: {
       claim: async () => 'claimed',
@@ -266,6 +271,8 @@ const deps = (input: {
       }),
     },
     email: {
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
       send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
     },
     emailOutbox: {

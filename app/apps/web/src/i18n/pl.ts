@@ -397,10 +397,15 @@ export const pl: Messages = {
     testConnection: 'Testuj połączenie',
     testing: 'Testowanie…',
     testFailed: 'Test połączenia nie powiódł się.',
+    paymentAvailable: 'Dostawca płatności przyjął dane dostępowe.',
+    emailAvailable: 'Dostawca e-mail jest dostępny.',
+    storageAvailable: 'Dane dostępowe storage są dostępne.',
     saveKeysFirst: 'Zapisz najpierw klucz Stripe i sekret webhooka, aby przetestować połączenie.',
     webhookUrlLabel: 'URL webhooka dla panelu Stripe',
     webhookUrlHint: 'Wklej ten adres w panelu Stripe → Deweloperzy → Webhooki.',
     loading: 'ładowanie integracji…',
+    emailHeading: 'E-mail transakcyjny',
+    emailDescription: 'Sprawdź połączenie z aktywnym dostawcą e-mail skonfigurowanym dla aplikacji.',
     ifirmaHeading: 'iFirma',
     ifirmaDescription:
       'Podłącz iFirmę kluczem API „faktura”. KSeF skonfiguruj bezpośrednio w iFirmie — certyfikat nie trafia do Together.',
@@ -430,6 +435,7 @@ export const pl: Messages = {
       'Podaj klucz AWS z uprawnieniem odczytu do bucketu z plikami PDF lekcji. Aplikacja podpisuje ich odnośniki na bieżąco, więc bucket może pozostać prywatny.',
     s3AccessKeyIdLabel: 'identyfikator klucza (access key ID)',
     s3SecretAccessKeyLabel: 'tajny klucz (secret access key)',
+    s3SaveFirst: 'Zapisz najpierw identyfikator i tajny klucz storage, aby przetestować połączenie.',
   },
   products: {
     newProduct: 'Nowy produkt',

@@ -108,7 +108,7 @@ const enqueueSubscriptionNotice = async (
   return ok(undefined);
 };
 
-const HANDLED_EVENT_TYPES = new Set([
+export const STRIPE_WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
   'invoice.paid',
   'invoice.payment_failed',
@@ -116,7 +116,9 @@ const HANDLED_EVENT_TYPES = new Set([
   'customer.subscription.deleted',
   'charge.refunded',
   'charge.dispute.created',
-]);
+] as const;
+
+export const HANDLED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 
 interface CouponPaymentContext {
   coupon: Coupon;

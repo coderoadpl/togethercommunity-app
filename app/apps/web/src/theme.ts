@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, Link, ListItemButton, ListItemText, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, keyframes, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -43,6 +43,13 @@ const LINE = 'rgba(25, 21, 18, 0.14)';
 const LINE_STRONG = 'rgba(25, 21, 18, 0.55)';
 
 /**
+ * MUI picks `contrastText` against a 3:1 floor, which is WCAG AA for large text
+ * only; filled chips and buttons render at 12–13px. Raising the floor makes the
+ * automatic pick land on dark ink wherever white would fail AA.
+ */
+const CONTRAST_THRESHOLD = 4.5;
+
+/**
  * Shadcn is the only maintained base theme (owner decision 2026-07-29); the
  * other six stay compiled and selectable as unmaintained BYO-theme examples
  * for future tenant theming, with Steady Frame as the showcase reference.
@@ -68,10 +75,11 @@ export type ThemeMode = ThemeModeOption['id'];
  */
 const createPlainTheme = (accentHue?: number): Theme =>
   createTheme({
-    ...(accentHue === undefined
-      ? {}
-      : {
-          palette: {
+    palette: {
+      contrastThreshold: CONTRAST_THRESHOLD,
+      ...(accentHue === undefined
+        ? {}
+        : {
             // The accent doubles as button text on white and as the AppBar fill;
             // darkened to hsl 70%/28% so both directions clear AA (5.3:1 on white).
             // contrastText is pinned white — at this darkness MUI would otherwise
@@ -81,8 +89,8 @@ const createPlainTheme = (accentHue?: number): Theme =>
               dark: `hsl(${accentHue} 74% 22%)`,
               contrastText: '#ffffff',
             },
-          },
-        }),
+          }),
+    },
     typography: {
       h1: { fontSize: '2.125rem', fontWeight: 400 },
       h2: { fontSize: '1.25rem', fontWeight: 500 },
@@ -154,6 +162,7 @@ const createShadcnTheme = (): Theme =>
     focusRing: SHADCN_RING,
     palette: {
       mode: 'light',
+      contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: SHADCN_PRIMARY,
         light: SHADCN_PRIMARY_HOVER,
@@ -595,6 +604,7 @@ const createSignalMonoTheme = (): Theme =>
     statusAccent: SIGNAL_ACCENT,
     palette: {
       mode: 'light',
+      contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: SIGNAL_INK,
         dark: SIGNAL_INK,
@@ -829,6 +839,10 @@ const createSignalMonoTheme = (): Theme =>
           label: { padding: '0.22rem 0.55rem' },
           outlined: { border: `1px solid ${SIGNAL_DIVIDER}`, backgroundColor: SIGNAL_SURFACE },
           filled: {
+            // The `root` override above outranks MUI's own colour-variant rules,
+            // so a filled primary chip would paint SIGNAL_INK ink on a SIGNAL_INK
+            // fill; restate the declared contrastText here.
+            '&.MuiChip-colorPrimary': { color: SIGNAL_SURFACE },
             '&.MuiChip-colorSuccess': { backgroundColor: '#177049', color: SIGNAL_SURFACE },
             '&.MuiChip-colorError': { backgroundColor: SIGNAL_ERROR, color: SIGNAL_SURFACE },
           },
@@ -1050,6 +1064,7 @@ const createSteadyFrameTheme = (): Theme =>
     moneyColor: FRAME_ACCENT,
     palette: {
       mode: 'light',
+      contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: FRAME_PRIMARY,
         dark: FRAME_PRIMARY_DARK,
@@ -1415,6 +1430,7 @@ const createScoreboardTheme = (): Theme =>
     headerRule: `2px solid ${SCORE_DIVIDER}`,
     palette: {
       mode: 'light',
+      contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: SCORE_INK,
         dark: SCORE_INK,
@@ -1826,6 +1842,7 @@ const createQuietStudioTheme = (): Theme =>
     headerRule: `1px solid ${STUDIO_DIVIDER}`,
     palette: {
       mode: 'light',
+      contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: STUDIO_PRIMARY,
         dark: STUDIO_PRIMARY_DARK,
@@ -2116,6 +2133,7 @@ const createAppTheme = (accentHue = 24): Theme => {
   return createTheme({
     palette: {
       mode: 'light',
+      contrastThreshold: CONTRAST_THRESHOLD,
       primary: { main: accent, dark: accentInk, contrastText: PAPER },
       background: { default: PAPER, paper: PAPER_RAISED },
       text: { primary: INK, secondary: INK_SOFT },
@@ -2588,6 +2606,33 @@ export const SearchHighlight = styled('mark')(({ theme }) => ({
 export const TreeModuleTitle = styled(Typography)<AsElement>({ fontSize: '1.02rem', fontWeight: 700 });
 
 export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92rem', fontWeight: 600 });
+
+export const ReorderCard = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'dropTarget',
+})<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
+  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+}));
+
+export const ReorderRow = styled(ListItem, {
+  shouldForwardProp: (prop) => prop !== 'dropTarget',
+})<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+}));
+
+export const ReorderDragHandle = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'pending',
+})<{ pending?: boolean }>(({ theme, pending }) => ({
+  alignItems: 'center',
+  color: theme.palette.text.secondary,
+  cursor: pending === true ? 'default' : 'grab',
+  display: 'inline-flex',
+  justifyContent: 'center',
+  minHeight: '2rem',
+  minWidth: '2rem',
+  opacity: pending === true ? 0.38 : 1,
+  userSelect: 'none',
+}));
 
 export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.15rem',

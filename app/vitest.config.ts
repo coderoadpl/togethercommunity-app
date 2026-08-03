@@ -43,6 +43,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          hookTimeout: 60000,
           include: [
             'core/**/*.test.ts',
             'core/**/*.test.tsx',
@@ -63,6 +64,8 @@ export default defineConfig({
         test: {
           name: 'web',
           environment: 'jsdom',
+          hookTimeout: 60000,
+          testTimeout: 15000,
           include: ['apps/web/**/*.test.ts', 'apps/web/**/*.test.tsx'],
           setupFiles: ['apps/web/src/test/setup.ts'],
         },

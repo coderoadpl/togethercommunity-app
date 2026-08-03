@@ -566,7 +566,6 @@ their applicable notices in the distribution.
 - [arraybuffer.prototype.slice@1.0.4](https://github.com/es-shims/ArrayBuffer.prototype.slice#readme) - MIT
 - [asn1js@3.0.10](https://github.com/PeculiarVentures/ASN1.js#readme) - BSD-3-Clause
 - [assertion-error@2.0.1](https://github.com/chaijs/assertion-error#readme) - MIT
-- [ast-types-flow@0.0.8](https://github.com/kyldvs/ast-types-flow#readme) - MIT
 - [ast-types@0.16.1](http://github.com/benjamn/ast-types) - MIT
 - [ast-v8-to-istanbul@0.3.12](https://github.com/AriPerkkio/ast-v8-to-istanbul) - MIT
 - [async-function@1.0.0](https://github.com/ljharb/async-function#readme) - MIT
@@ -574,9 +573,7 @@ their applicable notices in the distribution.
 - [asynckit@0.4.0](https://github.com/alexindigo/asynckit#readme) - MIT
 - [atomically@2.1.1](https://github.com/fabiospampinato/atomically#readme) - MIT
 - [available-typed-arrays@1.0.7](https://github.com/inspect-js/available-typed-arrays#readme) - MIT
-- [axe-core@4.12.1](https://www.deque.com/axe/) - MPL-2.0
 - [axios@1.7.7](https://axios-http.com) - MIT
-- [axobject-query@4.1.0](https://github.com/A11yance/axobject-query#readme) - Apache-2.0
 - [babel-plugin-macros@3.1.0](https://github.com/kentcdodds/babel-plugin-macros#readme) - MIT
 - [balanced-match@1.0.2](https://github.com/juliangruber/balanced-match#readme) - MIT
 - [balanced-match@4.0.4](https://github.com/juliangruber/balanced-match#readme) - MIT
@@ -634,7 +631,6 @@ their applicable notices in the distribution.
 - [css-tree@3.2.1](https://github.com/csstree/csstree#readme) - MIT
 - [css.escape@1.5.1](https://mths.be/cssescape) - MIT
 - [csstype@3.2.3](https://github.com/frenic/csstype#readme) - MIT
-- [damerau-levenshtein@1.0.8](https://github.com/tad-lispy/node-damerau-levenshtein#readme) - BSD-2-Clause
 - [data-urls@7.0.0](https://github.com/jsdom/data-urls#readme) - MIT
 - [data-view-buffer@1.0.2](https://github.com/inspect-js/data-view-buffer#readme) - MIT
 - [data-view-byte-length@1.0.2](https://github.com/inspect-js/data-view-byte-length#readme) - MIT
@@ -697,7 +693,6 @@ their applicable notices in the distribution.
 - [eslint-import-resolver-typescript@4.4.5](https://github.com/import-js/eslint-import-resolver-typescript#readme) - ISC
 - [eslint-module-utils@2.12.1](https://github.com/import-js/eslint-plugin-import#readme) - MIT
 - [eslint-plugin-boundaries@5.4.0](https://github.com/javierbrea/eslint-plugin-boundaries#readme) - MIT
-- [eslint-plugin-jsx-a11y@6.10.2](https://github.com/jsx-eslint/eslint-plugin-jsx-a11y#readme) - MIT
 - [eslint-plugin-react-compiler@19.1.0-rc.2](https://github.com/facebook/react#readme) - MIT
 - [eslint-plugin-react-hooks@7.1.1](https://react.dev/) - MIT
 - [eslint-plugin-react@7.37.5](https://github.com/jsx-eslint/eslint-plugin-react) - MIT
@@ -870,8 +865,6 @@ their applicable notices in the distribution.
 - [knip@6.29.0](https://knip.dev) - ISC
 - [ky@1.14.3](https://github.com/sindresorhus/ky#readme) - MIT
 - [kysely@0.29.2](https://kysely.dev) - MIT
-- [language-subtag-registry@0.3.23](https://github.com/mattcg/language-subtag-registry) - CC0-1.0
-- [language-tags@1.0.9](https://github.com/mattcg/language-tags) - MIT
 - [latest-version@9.0.0](https://github.com/sindresorhus/latest-version#readme) - MIT
 - [levn@0.4.1](https://github.com/gkz/levn) - MIT
 - [lines-and-columns@1.2.4](https://github.com/eventualbuddha/lines-and-columns#readme) - MIT
@@ -990,7 +983,7 @@ their applicable notices in the distribution.
 - [pngjs@6.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [pngjs@7.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [possible-typed-array-names@1.1.0](https://github.com/ljharb/possible-typed-array-names#readme) - MIT
-- [postcss@8.5.22](https://postcss.org/) - MIT
+- [postcss@8.5.23](https://postcss.org/) - MIT
 - [postgres-array@2.0.0](https://github.com/bendrucker/postgres-array#readme) - MIT
 - [postgres-bytea@1.0.1](https://github.com/bendrucker/postgres-bytea#readme) - MIT
 - [postgres-date@1.0.7](https://github.com/bendrucker/postgres-date#readme) - MIT
@@ -1091,7 +1084,6 @@ their applicable notices in the distribution.
 - [string-width@5.1.2](https://github.com/sindresorhus/string-width#readme) - MIT
 - [string-width@7.2.0](https://github.com/sindresorhus/string-width#readme) - MIT
 - [string-width@8.2.2](https://github.com/sindresorhus/string-width#readme) - MIT
-- [string.prototype.includes@2.0.1](https://mths.be/includes) - MIT
 - [string.prototype.matchall@4.0.12](https://github.com/es-shims/String.prototype.matchAll#readme) - MIT
 - [string.prototype.repeat@1.0.0](https://mths.be/repeat) - MIT
 - [string.prototype.trim@1.2.11](https://github.com/es-shims/String.prototype.trim#readme) - MIT

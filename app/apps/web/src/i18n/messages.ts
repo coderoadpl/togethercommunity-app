@@ -1,3 +1,5 @@
+import type { MemberEventType } from '#core/domain/index.js';
+
 export type MessageParams = Record<string, string | number>;
 
 export const format = (template: string, params: MessageParams): string =>
@@ -29,6 +31,22 @@ export interface Messages {
     opening: string;
     tenant: (params: { host: string }) => string;
     warming: string;
+  };
+  htmlEditor: {
+    tabsAria: string;
+    editTab: string;
+    previewTab: string;
+    previewEmpty: string;
+    toolbarBold: string;
+    toolbarItalic: string;
+    toolbarHeading: string;
+    toolbarList: string;
+    toolbarCode: string;
+    placeholderBold: string;
+    placeholderItalic: string;
+    placeholderHeading: string;
+    placeholderList: string;
+    placeholderCode: string;
   };
   pagination: {
     rowsPerPage: string;
@@ -357,7 +375,12 @@ export interface Messages {
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
-    webhookSecretLabel: string;
+    stripeConfigure: string;
+    stripeConfiguring: string;
+    stripeConfigured: string;
+    stripeTestMode: string;
+    stripeLiveMode: string;
+    stripeRestrictedPermissions: string;
     configured: string;
     notConfigured: string;
     valuePlaceholder: string;
@@ -369,10 +392,16 @@ export interface Messages {
     testConnection: string;
     testing: string;
     testFailed: string;
+    paymentAvailable: string;
+    emailAvailable: string;
+    storageAvailable: string;
     saveKeysFirst: string;
     webhookUrlLabel: string;
     webhookUrlHint: string;
+    webhookActiveHint: string;
     loading: string;
+    emailHeading: string;
+    emailDescription: string;
     ifirmaHeading: string;
     ifirmaDescription: string;
     ifirmaInvoiceApiKeyLabel: string;
@@ -396,11 +425,20 @@ export interface Messages {
     s3Description: string;
     s3AccessKeyIdLabel: string;
     s3SecretAccessKeyLabel: string;
+    s3SaveFirst: string;
   };
   products: {
     newProduct: string;
     detailsHeading: string;
     titleLabel: string;
+    typeLabel: string;
+    typeCourse: string;
+    typeDigitalDownload: string;
+    typeMembership: string;
+    slugLabel: string;
+    slugHint: string;
+    coverUrlLabel: string;
+    coverUrlHint: string;
     priceLabel: string;
     priceHelper: string;
     priceInvalid: string;
@@ -435,6 +473,7 @@ export interface Messages {
     manage: string;
     pricesHeading: string;
     pricesDescription: string;
+    membershipPricesDescription: string;
     checkoutConsentsHeading: string;
     checkoutConsentsDescription: string;
     checkoutConsentsLabel: string;
@@ -584,21 +623,7 @@ export interface Messages {
     blockTypeLabel: string;
     durationLabel: string;
     durationHelper: string;
-    htmlEditTab: string;
-    htmlPreviewTab: string;
-    htmlTabsAria: string;
     htmlLabel: string;
-    htmlPreviewEmpty: string;
-    htmlToolbarBold: string;
-    htmlToolbarItalic: string;
-    htmlToolbarHeading: string;
-    htmlToolbarList: string;
-    htmlToolbarCode: string;
-    htmlPlaceholderBold: string;
-    htmlPlaceholderItalic: string;
-    htmlPlaceholderHeading: string;
-    htmlPlaceholderList: string;
-    htmlPlaceholderCode: string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -637,6 +662,13 @@ export interface Messages {
     videoPickerPrevPage: string;
     videoPickerNextPage: string;
     videoPickerManualHint: string;
+    embedUrlLabel: string;
+    embedPreviewTitle: string;
+    embedInvalidUrl: string;
+    embedInvalidYoutubeUrl: string;
+    embedInvalidVimeoUrl: string;
+    youtubePrivacyNote: string;
+    vimeoPrivacyNote: string;
     allLessons: string;
   };
   members: {
@@ -674,6 +706,34 @@ export interface Messages {
     erasureReject: string;
     allMembersBack: string;
     joined: string;
+    accountHeading: string;
+    accountName: string;
+    accountEmail: string;
+    purchasesHeading: string;
+    commerceLoading: string;
+    purchasesEmpty: string;
+    subscriptionsHeading: string;
+    subscriptionsEmpty: string;
+    subscriptionProvider: string;
+    subscriptionPeriodEnd: string;
+    subscriptionWillCancel: string;
+    subscriptionStatuses: Record<'active' | 'past_due' | 'canceled', string>;
+    providerLabels: Record<'stripe' | 'simulated', string>;
+    timelineHeading: string;
+    timelineLoading: string;
+    timelineEmpty: string;
+    timelineEventLabels: Record<MemberEventType, string>;
+    timelinePurchase: (params: { product: string; amount: string; status: string }) => string;
+    timelineSubscription: (params: { product: string; status: string; date: string }) => string;
+    timelineGrant: (params: { product: string; date: string }) => string;
+    timelineRevoke: (params: { product: string; date: string }) => string;
+    timelineLesson: (params: { course: string; lesson: string }) => string;
+    timelineUnavailableProduct: string;
+    timelineUnavailableCourse: string;
+    timelineUnavailableLesson: string;
+    timelineEmail: (params: { subject: string }) => string;
+    timelineBan: (params: { reason: string }) => string;
+    timelineUnban: string;
     grantProduct: string;
     productLabel: string;
     selectProduct: string;
@@ -1237,6 +1297,7 @@ export interface Messages {
     transportLabel: string;
     transportTenantSes: string;
     transportSmtp: string;
+    transportResend: string;
     transportPlatform: string;
     limitedTracking: string;
     campaignLabel: string;
@@ -1424,6 +1485,11 @@ export interface Messages {
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
     smtpNoFeedback: string;
+    resendTitle: string;
+    resendHint: string;
+    resendApiKeyLabel: string;
+    resendDomainHint: string;
+    testEmailSent: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;

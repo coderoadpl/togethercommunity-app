@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  emailTransportTest,
   lessonQuestion,
   magicLink,
   resetPassword,
@@ -62,6 +63,23 @@ describe('support message email', () => {
     const en = supportMessage('en', { ...input, branding });
     expect(en.html).toContain('Reply to: member@example.com');
     expect(en.text).not.toContain('youtube.com');
+  });
+});
+
+describe('email transport test message', () => {
+  it('names the tested transport in PL and EN', () => {
+    expect(emailTransportTest('pl', { transport: 'resend' })).toMatchObject({
+      subject: 'Together — wiadomość testowa (resend)',
+      text: expect.stringContaining('Transport resend jest poprawnie skonfigurowany.'),
+    });
+    expect(emailTransportTest('en', { transport: 'smtp' })).toMatchObject({
+      subject: 'Together test e-mail (smtp)',
+      text: expect.stringContaining('Your smtp transport is configured correctly.'),
+    });
+  });
+
+  it('falls back to Polish for unknown languages', () => {
+    expect(emailTransportTest('de', { transport: 'ses' }).subject).toBe('Together — wiadomość testowa (ses)');
   });
 });
 

@@ -33,7 +33,6 @@ export const purgeExpiredConsentEvidence = async (
     runs: SchedulerRunRepository;
     ids: IdGenerator;
     clock: Clock;
-    monotonicNowMs: () => number;
   },
 ): Promise<Result<{ purged: number; tenantsProcessed: number }, AppError>> => {
   let startedAt: string;
@@ -77,18 +76,17 @@ export const purgeExpiredConsentEvidence = async (
   const tenantMetrics: Array<{ tenantId: string; purged: number; errors: string[] }> = [];
   let result: Result<{ purged: number; tenantsProcessed: number }, AppError>;
   try {
-    const deadlineMs = deps.monotonicNowMs() + input.timeBudgetMs;
+    const deadlineMs = Date.now() + input.timeBudgetMs;
     const retentionStartedBefore = consentEvidenceRetentionCutoff(startedAt);
     const tenantIds = await deps.retention.listExpiredTenantIds(retentionStartedBefore);
     let purged = 0;
     let firstError: string | null = null;
     for (const tenantId of tenantIds) {
-      if (deps.monotonicNowMs() >= deadlineMs) break;
+      if (Date.now() >= deadlineMs) break;
       try {
         const tenantPurged = await deps.retention.purgeExpired(tenantId, retentionStartedBefore, {
           batchSize: input.batchSize,
           deadlineMs,
-          monotonicNowMs: deps.monotonicNowMs,
         });
         purged += tenantPurged;
         tenantMetrics.push({ tenantId, purged: tenantPurged, errors: [] });
@@ -118,8 +116,7 @@ export const purgeExpiredConsentEvidence = async (
         runId,
         tenantId: metrics.tenantId,
         campaignsTouched: 0,
-        batchSize: 0,
-        purged: metrics.purged,
+        batchSize: metrics.purged,
         sent: 0,
         failed: 0,
         skipped: 0,

@@ -143,10 +143,6 @@ export interface ProductRepository {
   bumpContentVersion(tenantId: string): Promise<void>;
 }
 
-export interface ProductBatchReader {
-  findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
-}
-
 export interface CourseRepository {
   list(tenantId: string): Promise<Course[]>;
   findById(tenantId: string, id: string): Promise<Course | null>;
@@ -935,10 +931,6 @@ export interface OrderRepository {
   ): Promise<PaidWithoutGrantRow[]>;
 }
 
-export interface MemberOrderListReader {
-  listForMember(tenantId: string, memberId: string): Promise<OrderListItem[]>;
-}
-
 export interface OrderDetailRepository {
   findById(tenantId: string, id: string): Promise<OrderListItem | null>;
 }
@@ -1188,7 +1180,7 @@ export interface ConsentEvidenceRetentionRepository {
   purgeExpired(
     tenantId: string,
     retentionStartedBefore: string,
-    options: { batchSize: number; deadlineMs: number; monotonicNowMs: () => number },
+    options: { batchSize: number; deadlineMs: number },
   ): Promise<number>;
 }
 

@@ -164,7 +164,6 @@ import type {
   MemberErasureRequestRepository,
   MemberErasurePort,
   MemberEventRepository,
-  MemberOrderListReader,
   MemberRepository,
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
@@ -184,7 +183,6 @@ import type {
   ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
-  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   RealtimeBusPort,
@@ -247,7 +245,7 @@ interface KsefAppDeps {
 export interface AppDeps {
   auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext'>;
   authPort: AuthPort;
-  products: ProductRepository & ProductBatchReader;
+  products: ProductRepository;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
@@ -271,7 +269,7 @@ export interface AppDeps {
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
-  orders: OrderRepository & MemberOrderListReader;
+  orders: OrderRepository;
   orderDetails?: OrderDetailRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
@@ -620,17 +618,19 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           },
         ),
     });
-    if (env.CONSENT_EVIDENCE_PURGE_ENABLED) {
-      await purgeExpiredConsentEvidence(
-        {
-          trigger,
-          minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS,
-          batchSize: CONSENT_EVIDENCE_PURGE_BATCH_SIZE,
-          timeBudgetMs: CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS,
-        },
-        { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock, monotonicNowMs: Date.now },
-      );
-    }
+    const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED
+      ? await purgeExpiredConsentEvidence(
+          {
+            trigger,
+            minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS,
+            batchSize: CONSENT_EVIDENCE_PURGE_BATCH_SIZE,
+            timeBudgetMs: CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS,
+          },
+          { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
+        )
+      : ok({ purged: 0, tenantsProcessed: 0 });
+    if (!marketing.ok) return marketing;
+    if (!purged.ok) return purged;
     return marketing;
   };
   const realtimeBus = createRealtimeBus();

@@ -1157,16 +1157,21 @@ export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 export interface TenantRepository {
   findById(tenantId: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
+  findSole(): Promise<Tenant | null>;
   findSettings(tenantId: string): Promise<TenantSettings | null>;
   updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
-  createTenantWithOwnerGrant(input: {
-    tenant: { id: string; slug: string; name: string; createdAt: string };
-    ownerGrant: {
-      id: string;
-      userId: string;
-      staffRole: Extract<StaffRole, 'owner'>;
-    };
-  }): Promise<Tenant>;
+  createTenantWithOwnerGrant(
+    input: {
+      tenant: { id: string; slug: string; name: string; createdAt: string };
+      ownerGrant: {
+        id: string;
+        userId: string;
+        staffRole: Extract<StaffRole, 'owner'>;
+      };
+    },
+    options?: { requireEmpty: boolean },
+  ): Promise<Tenant | null>;
+  hasAny(): Promise<boolean>;
 }
 
 /** Append-only: consent records are audit evidence and are never updated or deleted. */

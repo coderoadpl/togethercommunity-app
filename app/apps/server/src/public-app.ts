@@ -476,14 +476,16 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     return respondPublic(session);
   });
 
-  app.get(API_PATHS.authConfig, () =>
+  app.get(API_PATHS.authConfig, async () =>
     respondPublic(
       ok({
         googleEnabled: deps.authConfig.googleEnabled,
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
-        tenantCreationEnabled: deps.tenantCreationMode === 'open',
+        tenantCreationEnabled:
+          deps.tenantCreationMode === 'open' ||
+          (deps.tenantCreationMode === 'bootstrap' && !(await deps.tenants.hasAny())),
       }),
     ),
   );

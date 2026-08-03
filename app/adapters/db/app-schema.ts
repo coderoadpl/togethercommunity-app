@@ -29,6 +29,8 @@ export const tenants = pgTable(
     id: text('id').primaryKey(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
+    status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
+    plan: text('plan', { enum: ['self_hosted', 'hosted', 'hosted_pro'] }).notNull().default('self_hosted'),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
@@ -60,6 +62,8 @@ export const tenants = pgTable(
   },
   (table) => [
     uniqueIndex('tenants_slug_uidx').on(table.slug),
+    check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
+    check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
     check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
   ],
 );

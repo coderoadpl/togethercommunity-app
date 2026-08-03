@@ -21,7 +21,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 
-import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '#core/domain/index.js';
+import {
+  inspectVideoEmbedUrl,
+  lessonBlockSchema,
+  type CourseLesson,
+  type LessonBlock,
+  type VideoEmbedUrlInspection,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -30,7 +36,12 @@ import { ListPagination, usePagedList } from '../../../components/ui/ListPaginat
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
-import { Eyebrow } from '../../../theme.js';
+import {
+  Eyebrow,
+  LessonMediaClip,
+  LessonMediaFrame,
+  LessonMediaIframe,
+} from '../../../theme.js';
 import { BunnyVideoPickerDialog } from './BunnyVideoPickerDialog.js';
 import { errorMessage, MutationError } from './feedback.js';
 
@@ -119,12 +130,31 @@ const toBlock = (draft: BlockDraft): unknown => {
   }
 };
 
+const embedUrlErrorMessage = (inspection: VideoEmbedUrlInspection, t: Messages): string | null => {
+  switch (inspection.kind) {
+    case 'invalid-url':
+      return t.lessons.embedInvalidUrl;
+    case 'invalid-provider':
+      return inspection.provider === 'youtube'
+        ? t.lessons.embedInvalidYoutubeUrl
+        : t.lessons.embedInvalidVimeoUrl;
+    case 'supported':
+    case 'unsupported':
+      return null;
+  }
+};
+
 const parseBlocks = (
   drafts: BlockDraft[],
   t: Messages,
 ): { ok: true; blocks: LessonBlock[] } | { ok: false; message: string } => {
   const blocks: LessonBlock[] = [];
   for (const draft of drafts) {
+    if (draft.type === 'embed') {
+      const inspection = inspectVideoEmbedUrl(draft.embedUrl);
+      const message = embedUrlErrorMessage(inspection, t);
+      if (message !== null) return { ok: false, message };
+    }
     const parsed = lessonBlockSchema.safeParse(toBlock(draft));
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? t.lessons.invalidBlocks };
     blocks.push(parsed.data);
@@ -137,17 +167,24 @@ const VideoBlockFields = ({
   index,
   onChange,
   field,
+  showPrivacyNote,
 }: {
   draft: Extract<BlockDraft, { type: 'video' }>;
   index: number;
   onChange: (next: BlockDraft) => void;
   field: (label: string, key: string, value: string, update: (value: string) => void) => ReactElement;
+  showPrivacyNote: boolean;
 }) => {
   const t = useTranslations();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <Stack useFlexGap spacing="0.6rem">
+      {showPrivacyNote ? (
+        <Typography variant="caption" color="text.secondary" role="note">
+          {t.integrations.bunnySecurityHint}
+        </Typography>
+      ) : null}
       <Box>
         <Button
           size="small"
@@ -185,14 +222,62 @@ const VideoBlockFields = ({
   );
 };
 
-const BlockFields = ({
+const EmbedBlockFields = ({
   draft,
   index,
   onChange,
 }: {
+  draft: Extract<BlockDraft, { type: 'embed' }>;
+  index: number;
+  onChange: (next: BlockDraft) => void;
+}) => {
+  const t = useTranslations();
+  const inspection = inspectVideoEmbedUrl(draft.embedUrl);
+  const error = draft.embedUrl.length === 0 ? null : embedUrlErrorMessage(inspection, t);
+  return (
+    <Stack useFlexGap spacing="0.6rem">
+      <FormControl fullWidth size="small" error={error !== null}>
+        <FormLabel htmlFor={`block-${index}-embedUrl`}>{t.lessons.embedUrlLabel}</FormLabel>
+        <OutlinedInput
+          id={`block-${index}-embedUrl`}
+          size="small"
+          value={draft.embedUrl}
+          onChange={(event) => onChange({ ...draft, embedUrl: event.target.value })}
+        />
+        {error === null ? null : <FormHelperText>{error}</FormHelperText>}
+      </FormControl>
+      {inspection.kind === 'supported' ? (
+        <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
+          <LessonMediaClip>
+            <LessonMediaIframe
+              src={inspection.embedUrl}
+              title={t.lessons.embedPreviewTitle}
+              allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+              allowFullScreen
+              data-testid="embed-preview"
+            />
+          </LessonMediaClip>
+        </LessonMediaFrame>
+      ) : null}
+      {inspection.kind === 'supported' ? (
+        <Typography variant="caption" color="text.secondary" role="note">
+          {inspection.provider === 'youtube' ? t.lessons.youtubePrivacyNote : t.lessons.vimeoPrivacyNote}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+};
+
+const BlockFields = ({
+  draft,
+  index,
+  onChange,
+  showBunnyPrivacyNote,
+}: {
   draft: BlockDraft;
   index: number;
   onChange: (next: BlockDraft) => void;
+  showBunnyPrivacyNote: boolean;
 }) => {
   const t = useTranslations();
   const field = (label: string, key: string, value: string, update: (value: string) => void, multiline = false) => (
@@ -211,9 +296,17 @@ const BlockFields = ({
 
   switch (draft.type) {
     case 'video':
-      return <VideoBlockFields draft={draft} index={index} onChange={onChange} field={field} />;
+      return (
+        <VideoBlockFields
+          draft={draft}
+          index={index}
+          onChange={onChange}
+          field={field}
+          showPrivacyNote={showBunnyPrivacyNote}
+        />
+      );
     case 'embed':
-      return field('embedUrl', 'embedUrl', draft.embedUrl, (embedUrl) => onChange({ ...draft, embedUrl }));
+      return <EmbedBlockFields draft={draft} index={index} onChange={onChange} />;
     case 'pdf':
       return (
         <Stack useFlexGap spacing="0.6rem">
@@ -244,6 +337,7 @@ const BlockFields = ({
 const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved: (lessonId: string) => void }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const tenantSecrets = useQuery(actions.tenantSecrets);
   const [name, setName] = useState(lesson?.name ?? '');
   const [duration, setDuration] = useState(
     lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
@@ -252,6 +346,8 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const [addType, setAddType] = useState<BlockType>('video');
   const [validationError, setValidationError] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const showBunnyPrivacyNote =
+    tenantSecrets.isSuccess && !tenantSecrets.data.secrets.some((secret) => secret.key === 'bunny.securityKey');
 
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.lessonsInvalidates());
@@ -387,7 +483,12 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
                   {t.common.remove}
                 </Button>
               </Stack>
-              <BlockFields draft={block} index={index} onChange={(next) => changeBlock(index, next)} />
+              <BlockFields
+                draft={block}
+                index={index}
+                onChange={(next) => changeBlock(index, next)}
+                showBunnyPrivacyNote={showBunnyPrivacyNote}
+              />
             </Paper>
           ))}
         </Stack>

@@ -42,7 +42,7 @@ files.
 
 `addons: []` stays empty. Do not add a Storybook test runner, an accessibility
 addon, Chromatic, or another hosted comparison service. Accessibility already
-belongs to `pnpm run a11y` and `eslint-plugin-jsx-a11y`; hosted advisory pixels
+belongs to the in-house browser checks in `pnpm run a11y`; hosted advisory pixels
 belong to Argos. Any Storybook dependency or addon requires an owner decision
 and the licence review required by `CLAUDE.md`.
 

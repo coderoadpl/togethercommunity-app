@@ -983,7 +983,7 @@ their applicable notices in the distribution.
 - [pngjs@6.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [pngjs@7.0.0](https://github.com/lukeapage/pngjs) - MIT
 - [possible-typed-array-names@1.1.0](https://github.com/ljharb/possible-typed-array-names#readme) - MIT
-- [postcss@8.5.22](https://postcss.org/) - MIT
+- [postcss@8.5.23](https://postcss.org/) - MIT
 - [postgres-array@2.0.0](https://github.com/bendrucker/postgres-array#readme) - MIT
 - [postgres-bytea@1.0.1](https://github.com/bendrucker/postgres-bytea#readme) - MIT
 - [postgres-date@1.0.7](https://github.com/bendrucker/postgres-date#readme) - MIT

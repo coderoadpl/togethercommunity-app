@@ -385,7 +385,7 @@ export const PanelLayout = () => {
     [mode, tenant, branding],
   );
 
-  if (me.isPending || unauthorized) {
+  if (me.isPending || unauthorized || noTenant || memberOnly) {
     return (
       <ThemeProvider theme={theme}>
         <BrandSplash
@@ -398,7 +398,6 @@ export const PanelLayout = () => {
       </ThemeProvider>
     );
   }
-  if (noTenant || memberOnly) return null;
   if (me.isError) {
     return (
       <ThemeProvider theme={theme}>

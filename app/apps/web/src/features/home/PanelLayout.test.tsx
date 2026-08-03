@@ -68,7 +68,14 @@ const commonHandlers = () => {
   );
 };
 
-const renderPanelAt = async (initialPath: string, preventNavigation = false) => {
+interface RenderPanelOptions {
+  preventNavigation?: boolean;
+}
+
+const renderPanelAt = async (
+  initialPath: string,
+  { preventNavigation = false }: RenderPanelOptions = {},
+) => {
   const rootRoute = createRootRoute();
   const layoutRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: PanelLayout });
   const indexRoute = createRoute({ getParentRoute: () => layoutRoute, path: '/', component: DashboardPanel });
@@ -135,10 +142,32 @@ describe('Creator panel routing', () => {
       ),
     );
 
-    const { navigateSpy } = await renderPanelAt('/panel', true);
+    const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
 
     expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
     await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/login' }));
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'tenant-less visitor',
+      { ...meWithTenant, tenant: null },
+      '/',
+    ],
+    [
+      'member-only visitor',
+      { ...meWithTenant, tenant: { ...meWithTenant.tenant, staffRole: null } },
+      '/my',
+    ],
+  ])('keeps the branded splash visible while redirecting a %s', async (_label, me, destination) => {
+    server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: me })));
+
+    const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
+
+    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: destination }));
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });

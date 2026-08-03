@@ -55,7 +55,7 @@ interface ScreenSpec {
   auth: AuthKind;
   path: string;
   tenantSlug?: string;
-  prepare?: (page: Page) => Promise<() => Promise<void>>;
+  prepare?: (page: Page) => Promise<ScreenPreparation>;
   ready: (page: Page) => Promise<void>;
   settled?: (page: Page) => Promise<void>;
   waitForNetworkIdle?: boolean;
@@ -63,11 +63,17 @@ interface ScreenSpec {
   mask?: (page: Page) => Locator[];
 }
 
+interface ScreenPreparation {
+  renderingInputsReady: Promise<void>;
+  cleanup: () => Promise<void>;
+}
+
 const visible = { state: 'visible', timeout: 20000 } as const;
 
-const blockMeResponse = async (page: Page): Promise<() => Promise<void>> => {
+const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   let release = (): void => undefined;
   let complete = (): void => undefined;
+  let routed = false;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -75,6 +81,7 @@ const blockMeResponse = async (page: Page): Promise<() => Promise<void>> => {
     complete = resolve;
   });
   const handler = async (route: Route): Promise<void> => {
+    routed = true;
     try {
       await gate;
       await route.continue();
@@ -84,10 +91,24 @@ const blockMeResponse = async (page: Page): Promise<() => Promise<void>> => {
   };
 
   await page.route('**/api/me', handler);
-  return async () => {
-    release();
-    await done;
-    await page.unroute('**/api/me', handler);
+  const renderingInputsReady = page
+    .waitForResponse(
+      (response) => new URL(response.url()).pathname === API_PATHS.publicOffer,
+      { timeout: visible.timeout },
+    )
+    .then(async (response) => {
+      await response.body();
+      assert(response.ok(), `public offer failed with HTTP ${response.status()}`);
+    });
+  void renderingInputsReady.catch(() => undefined);
+
+  return {
+    renderingInputsReady,
+    cleanup: async () => {
+      release();
+      await page.unroute('**/api/me', handler);
+      if (routed) await done;
+    },
   };
 };
 
@@ -253,10 +274,10 @@ const SCREENS: ScreenSpec[] = [
     name: 'boot-splash',
     auth: 'creator',
     path: '/panel',
-    prepare: blockMeResponse,
+    prepare: prepareBootSplash,
     ready: (page) => page.getByRole('status', { name: 'Otwieranie panelu twórcy' }).waitFor(visible),
     waitForNetworkIdle: false,
-    minBytes: 4 * 1024,
+    minBytes: 7 * 1024,
   },
   {
     name: 'panel-spaces',
@@ -777,10 +798,11 @@ try {
 
         for (const screen of screens) {
           const file = `${screen.name}--${theme}--${viewport.name}.png`;
-          const cleanup = screen.prepare === undefined ? undefined : await screen.prepare(page);
+          const preparation = screen.prepare === undefined ? undefined : await screen.prepare(page);
           try {
             await page.goto(screenUrl(studioBaseUrl, screen), { waitUntil: 'load' });
             await screen.ready(page);
+            await preparation?.renderingInputsReady;
             await settlePage(page, screen.waitForNetworkIdle ?? true);
             if (screen.settled) {
               await screen.settled(page);
@@ -811,7 +833,7 @@ try {
               if (failure !== null) failures.push(failure);
             }
           } finally {
-            if (cleanup !== undefined) await cleanup();
+            if (preparation !== undefined) await preparation.cleanup();
           }
         }
 

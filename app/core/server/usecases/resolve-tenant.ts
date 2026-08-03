@@ -33,7 +33,7 @@ const resolvedIfActive = (
     ? ok({ tenant, source })
     : err(tenantNotFound());
 
-export const tenantNotFoundMessage = (slug: string): string =>
+const tenantNotFoundMessage = (slug: string): string =>
   `No tenant "${slug}" or you do not have access to it`;
 
 export const resolveTenant = async (

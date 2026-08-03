@@ -44,7 +44,8 @@ Marking member subscriptions canceled locally remains true only until a late
 `invoice.paid` flips a surviving provider subscription back to `active`.
 
 The transaction does not rewrite free text retained for moderation and audit:
-`member_events.reason` and `post_reports.note` keep their original values.
+the `reason` inside a `member_events.payload` and `post_reports.note` keep
+their original values.
 Pseudonymization changes the member projection and reporter display, but it
 does not minimize these event and report fields.
 

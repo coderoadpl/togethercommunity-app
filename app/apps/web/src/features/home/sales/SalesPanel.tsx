@@ -268,7 +268,14 @@ export const SalesPanel = () => {
                         {formatDateTime(order.createdAt, language)}
                       </MuiLink>
                     </TableCell>
-                    <TableCell>{order.memberName ?? order.memberEmail}</TableCell>
+                    <TableCell>
+                      <MuiLink
+                        component={Link}
+                        to={`/panel/members/${order.memberId}`}
+                      >
+                        {order.memberName ?? order.memberEmail}
+                      </MuiLink>
+                    </TableCell>
                     <TableCell>{order.productTitle}</TableCell>
                     <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>
                     <TableCell>{formatPrice(order.amountCents, order.currency, language)}</TableCell>

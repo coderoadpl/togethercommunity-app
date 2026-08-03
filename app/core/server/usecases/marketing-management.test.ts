@@ -292,4 +292,66 @@ describe('marketing management use-cases', () => {
       },
     });
   });
+
+  it('reads secrets once and requires sender identity for SMTP and Resend readiness', async () => {
+    const stored = secretRepository([
+      'smtp.host',
+      'smtp.port',
+      'smtp.user',
+      'smtp.password',
+      'smtp.secure',
+      'resend.apiKey',
+    ]);
+    let secretReads = 0;
+    const secrets: TenantSecretRepository = {
+      ...stored,
+      listByTenant: async (tenantId) => {
+        secretReads += 1;
+        return stored.listByTenant(tenantId);
+      },
+    };
+    const pool = {
+      usage: async () => ({ sent: 0, reserved: 0 }),
+      reserve: async () => true,
+      settle: async () => undefined,
+    };
+    const settings = new InMemoryTenantSesSettingsRepository();
+
+    const missingIdentity = await getTenantSesMarketingSettings(
+      ctx,
+      { webhookBaseUrl: 'https://tenant.test/api/webhooks/ses' },
+      { settings, secrets, pool },
+    );
+
+    expect(missingIdentity).toMatchObject({
+      ok: true,
+      value: { smtpConfigured: false, resendConfigured: false },
+    });
+    expect(secretReads).toBe(1);
+
+    const configured = await updateTenantSesMarketingSettings(ctx, {
+      fromAddress: 'news@tenant.test',
+      fromName: 'Tenant',
+      identity: 'tenant.test',
+      configurationSet: null,
+      snsTopicArn: null,
+      trackingEnabled: false,
+      autoPauseOnCritical: false,
+      footerLegalName: 'Tenant Ltd',
+      footerAddress: 'Street 1, Warsaw',
+    }, {
+      settings,
+      secrets,
+      tokens: { nextToken: () => 'webhook_token_123456789012345' },
+      clock,
+      webhookBaseUrl: 'https://tenant.test/api/webhooks/ses',
+      pool,
+    });
+
+    expect(configured).toMatchObject({
+      ok: true,
+      value: { smtpConfigured: true, resendConfigured: true },
+    });
+    expect(secretReads).toBe(2);
+  });
 });

@@ -446,8 +446,29 @@
     {
       "idx": 63,
       "version": "7",
-      "when": 1785740314033,
-      "tag": "0063_tenant_lifecycle",
+      "when": 1785720000000,
+      "tag": "0063_upcast_lesson_embed_urls",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785739795211,
+      "tag": "0064_member_domain_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1785781147307,
+      "tag": "0065_product_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1785795240941,
+      "tag": "0066_tenant_lifecycle",
       "breakpoints": true
     }
   ]

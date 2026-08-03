@@ -12,7 +12,6 @@ import { IntegrationsPanel } from './integrations/IntegrationsPanel.js';
 import { MemberDetail } from './members/MemberDetail.js';
 import { MembersPanel } from './members/MembersPanel.js';
 import { ReportsPanel } from './reports/ReportsPanel.js';
-import { usePanelContext } from './panel-context.js';
 import { ProductCreatePage } from './products/ProductCreatePage.js';
 import { ProductEditorPage } from './products/ProductEditorPage.js';
 import { ProductsPanel } from './products/ProductsPanel.js';
@@ -148,8 +147,7 @@ export const PanelSpaceDetailRoute = () => {
 };
 
 export const PanelIntegrationsRoute = () => {
-  const { tenant } = usePanelContext();
-  return <IntegrationsPanel tenantId={tenant.id} />;
+  return <IntegrationsPanel />;
 };
 
 export const PanelSalesRoute = () => <SalesPanel />;

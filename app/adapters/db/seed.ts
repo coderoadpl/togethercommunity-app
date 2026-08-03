@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
-import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
+import type { AccessItem, Chapter, LessonBlock, ProductType } from '#core/domain/index.js';
 
 import { createDb } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
@@ -583,6 +583,7 @@ const courseDefs: CourseDef[] = [
 interface ProductDef {
   id: string;
   tenantId: string;
+  type: ProductType;
   title: string;
   description: string;
   priceCents: number;
@@ -593,6 +594,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-js-full',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'Kurs JavaScript - pełny dostęp',
     description: 'Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.',
     priceCents: 39900,
@@ -601,6 +603,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-react-full',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'React w praktyce - pełny dostęp',
     description: 'Pełny dostęp do kursu React w praktyce.',
     priceCents: 49900,
@@ -609,6 +612,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-js-dom-module',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'Pakiet: moduł DOM',
     description: 'Dostęp wyłącznie do modułu DOM z kursu JavaScript.',
     priceCents: 9900,
@@ -617,6 +621,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-free-preview',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'Free preview',
     description: 'Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.',
     priceCents: 0,
@@ -636,6 +641,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-akademia-roczny',
     tenantId: 'tenant-akademia',
+    type: 'course',
     title: 'Akademia - dostęp roczny',
     description: 'Roczny dostęp do kursu Samodzielna nauka programowania.',
     priceCents: 29900,
@@ -644,6 +650,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-club',
     tenantId: 'tenant-studio',
+    type: 'membership',
     title: 'Klub Studio — subskrypcja',
     description: 'Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.',
     priceCents: 4900,
@@ -1078,6 +1085,8 @@ await db
     {
       id: 'product-studio-kurs-101',
       tenantId: 'tenant-studio',
+      type: 'course',
+      slug: 'kurs-together-101',
       title: 'Kurs Together 101',
       description: '',
       priceCents: 19900,
@@ -1089,6 +1098,8 @@ await db
     {
       id: 'product-studio-warsztat',
       tenantId: 'tenant-studio',
+      type: 'course',
+      slug: 'warsztat-scenariuszowy',
       title: 'Warsztat scenariuszowy',
       description: '',
       priceCents: 49900,
@@ -1100,6 +1111,8 @@ await db
     {
       id: 'product-acme-course',
       tenantId: 'tenant-acme',
+      type: 'course',
+      slug: 'acme-course',
       title: 'Acme Course',
       description: '',
       priceCents: 9900,
@@ -1117,6 +1130,8 @@ await db
     demoProducts.map((product) => ({
       id: product.id,
       tenantId: product.tenantId,
+      type: product.type,
+      slug: product.id.replace(/^product-/, ''),
       title: product.title,
       description: product.description,
       priceCents: product.priceCents,
@@ -1168,6 +1183,15 @@ for (const def of demoMemberDefs) {
   }
 }
 
+grantSpecs.push({
+  id: 'grant-studio-aktywny-club',
+  tenantId: 'tenant-studio',
+  memberId: 'member-studio-aktywny',
+  productId: 'product-club',
+  startsAt: relativeIso(-20),
+  expiresAt: relativeIso(40),
+});
+
 await db
   .insert(members)
   .values(
@@ -1198,8 +1222,10 @@ await db
     tenantId: 'tenant-studio',
     memberId: 'member-studio-free',
     type: 'banned',
-    reason: 'Powtarzające się reklamy w społeczności',
-    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    payload: {
+      reason: 'Powtarzające się reklamy w społeczności',
+      actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    },
     occurredAt: seededBanAt,
   })
   .onConflictDoNothing();
@@ -1398,6 +1424,20 @@ await db
       createdAt: relativeIso(-40),
       updatedAt: relativeIso(-10),
     },
+    {
+      id: 'subscription-studio-aktywny-club',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-aktywny',
+      productId: 'product-club',
+      priceId: 'price-club-monthly',
+      provider: 'stripe' as const,
+      providerSubscriptionId: 'sub_seed_aktywny_club',
+      status: 'active' as const,
+      currentPeriodEnd: relativeIso(10),
+      cancelAtPeriodEnd: false,
+      createdAt: relativeIso(-20),
+      updatedAt: relativeIso(-2),
+    },
   ])
   .onConflictDoNothing();
 
@@ -1408,6 +1448,7 @@ interface OrderDef {
   priceId: string;
   kind: 'one_time' | 'recurring';
   status: 'paid' | 'failed';
+  provider: 'stripe' | 'simulated';
   amountCents: number;
   providerObjectIds: Record<string, string>;
   createdAt: string;
@@ -1421,9 +1462,22 @@ const orderDefs: OrderDef[] = [
     priceId: 'price-product-js-full',
     kind: 'one_time',
     status: 'paid',
+    provider: 'simulated',
     amountCents: 39900,
     providerObjectIds: { checkoutSession: 'sim_cs_seed_aktywny' },
     createdAt: relativeIso(-30),
+  },
+  {
+    id: 'order-studio-aktywny-club',
+    memberId: 'member-studio-aktywny',
+    productId: 'product-club',
+    priceId: 'price-club-monthly',
+    kind: 'recurring',
+    status: 'paid',
+    provider: 'stripe',
+    amountCents: 4900,
+    providerObjectIds: { checkoutSession: 'cs_seed_aktywny_club', subscription: 'sub_seed_aktywny_club' },
+    createdAt: relativeIso(-20),
   },
   {
     id: 'order-studio-modul-dom',
@@ -1432,6 +1486,7 @@ const orderDefs: OrderDef[] = [
     priceId: 'price-product-js-dom-module',
     kind: 'one_time',
     status: 'paid',
+    provider: 'simulated',
     amountCents: 9900,
     providerObjectIds: { checkoutSession: 'sim_cs_seed_modul' },
     createdAt: relativeIso(-14),
@@ -1443,6 +1498,7 @@ const orderDefs: OrderDef[] = [
     priceId: 'price-club-monthly',
     kind: 'recurring',
     status: 'paid',
+    provider: 'simulated',
     amountCents: 4900,
     providerObjectIds: { checkoutSession: 'sim_cs_seed_abonent', subscription: 'sim_sub_seed_abonent' },
     createdAt: relativeIso(-40),
@@ -1454,6 +1510,7 @@ const orderDefs: OrderDef[] = [
     priceId: 'price-club-monthly',
     kind: 'recurring',
     status: 'paid',
+    provider: 'simulated',
     amountCents: 4900,
     providerObjectIds: { invoice: 'sim_in_seed_abonent_1', subscription: 'sim_sub_seed_abonent' },
     createdAt: relativeIso(-10),
@@ -1465,6 +1522,7 @@ const orderDefs: OrderDef[] = [
     priceId: 'price-club-monthly',
     kind: 'recurring',
     status: 'failed',
+    provider: 'simulated',
     amountCents: 4900,
     providerObjectIds: { invoice: 'sim_in_seed_abonent_fail', subscription: 'sim_sub_seed_abonent' },
     createdAt: relativeIso(-11),
@@ -1518,7 +1576,7 @@ await db
       status: order.status,
       amountCents: order.amountCents,
       currency: 'PLN',
-      provider: 'simulated' as const,
+      provider: order.provider,
       providerObjectIds: order.providerObjectIds,
       createdAt: order.createdAt,
     })),
@@ -1612,6 +1670,79 @@ if (progressSpecs.length > 0) {
       },
     });
 }
+
+await db
+  .insert(memberEvents)
+  .values([
+    {
+      id: 'member-event-studio-aktywny-email',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-aktywny',
+      type: 'email-sent',
+      payload: {
+        sendId: 'send-studio-marketing',
+        mailKind: 'marketing',
+        subject: 'Nowości w kursie JavaScript',
+        source: 'broadcast',
+        transport: 'tenant-ses',
+      },
+      occurredAt: relativeIso(-4),
+    },
+    {
+      id: 'member-event-studio-aktywny-lesson',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-aktywny',
+      type: 'lesson-completion',
+      payload: { courseId: 'course-js', lessonId: 'lesson-js-zmienne-2' },
+      occurredAt: relativeIso(-5),
+    },
+    {
+      id: 'member-event-studio-aktywny-subscription',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-aktywny',
+      type: 'subscription-change',
+      payload: {
+        subscriptionId: 'subscription-studio-aktywny-club',
+        productId: 'product-club',
+        status: 'active',
+        currentPeriodEnd: relativeIso(10),
+        cancelAtPeriodEnd: false,
+        provider: 'stripe',
+      },
+      occurredAt: relativeIso(-2),
+    },
+    {
+      id: 'member-event-studio-aktywny-club-purchase',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-aktywny',
+      type: 'purchase',
+      payload: {
+        orderId: 'order-studio-aktywny-club',
+        productId: 'product-club',
+        kind: 'recurring',
+        status: 'paid',
+        amountCents: 4900,
+        currency: 'PLN',
+        provider: 'stripe',
+      },
+      occurredAt: relativeIso(-20),
+    },
+    {
+      id: 'member-event-studio-aktywny-club-grant',
+      tenantId: 'tenant-studio',
+      memberId: 'member-studio-aktywny',
+      type: 'grant',
+      payload: {
+        grantId: 'grant-studio-aktywny-club',
+        productId: 'product-club',
+        source: 'stripe',
+        startsAt: relativeIso(-20),
+        expiresAt: relativeIso(40),
+      },
+      occurredAt: relativeIso(-20),
+    },
+  ])
+  .onConflictDoNothing();
 
 const studioCreatorUserId = creatorUserIds.get('tenant-studio') ?? '';
 const memberUserId = (memberId: string): string => {

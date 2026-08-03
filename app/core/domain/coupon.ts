@@ -2,23 +2,22 @@ import { z } from 'zod';
 
 import type { PriceKind } from './commerce.js';
 
-export const couponKindSchema = z.enum(['percent', 'amount']);
+const couponKindSchema = z.enum(['percent', 'amount']);
 export type CouponKind = z.infer<typeof couponKindSchema>;
 
-export const couponScopeSchema = z.discriminatedUnion('kind', [
+const couponScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('all') }),
   z.object({ kind: z.literal('products'), productIds: z.array(z.string().min(1)).min(1) }),
 ]);
 export type CouponScope = z.infer<typeof couponScopeSchema>;
 
-export const couponAppliesToSchema = z.enum(['one_time', 'recurring', 'both']);
+const couponAppliesToSchema = z.enum(['one_time', 'recurring', 'both']);
 export type CouponAppliesTo = z.infer<typeof couponAppliesToSchema>;
 
 export const couponRecurringDurationSchema = z.enum(['first_invoice', 'forever']);
 export type CouponRecurringDuration = z.infer<typeof couponRecurringDurationSchema>;
 
-export const couponStatusSchema = z.enum(['active', 'archived']);
-export type CouponStatus = z.infer<typeof couponStatusSchema>;
+const couponStatusSchema = z.enum(['active', 'archived']);
 
 export const couponSchema = z
   .object({
@@ -129,28 +128,26 @@ export const couponEventSchema = z.object({
 });
 export type CouponEvent = z.infer<typeof couponEventSchema>;
 
-export const couponRedemptionSchema = z.object({
-  id: z.string(),
-  tenantId: z.string(),
-  couponId: z.string(),
-  orderId: z.string(),
-  memberId: z.string(),
-  email: z.string().email(),
-  discountCents: z.number().int().nonnegative(),
-  createdAt: z.string().datetime(),
-});
-export type CouponRedemption = z.infer<typeof couponRedemptionSchema>;
+export type CouponRedemption = {
+  id: string;
+  tenantId: string;
+  couponId: string;
+  orderId: string;
+  memberId: string;
+  email: string;
+  discountCents: number;
+  createdAt: string;
+};
 
-export const couponRedemptionEventSchema = z.object({
-  id: z.string(),
-  tenantId: z.string(),
-  redemptionId: z.string(),
-  couponId: z.string(),
-  orderId: z.string(),
-  type: z.literal('redeemed'),
-  occurredAt: z.string().datetime(),
-});
-export type CouponRedemptionEvent = z.infer<typeof couponRedemptionEventSchema>;
+export type CouponRedemptionEvent = {
+  id: string;
+  tenantId: string;
+  redemptionId: string;
+  couponId: string;
+  orderId: string;
+  type: 'redeemed';
+  occurredAt: string;
+};
 
 export const couponCheckoutSessionSchema = z.object({
   id: z.string(),
@@ -185,12 +182,12 @@ export const couponCheckoutBreakdownSchema = z
   });
 export type CouponCheckoutBreakdown = z.infer<typeof couponCheckoutBreakdownSchema>;
 
-export const couponMoneyTotalSchema = z.object({
+const couponMoneyTotalSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
   amountCents: z.number().int().nonnegative(),
 });
 
-export const couponStatsPointSchema = z.object({
+const couponStatsPointSchema = z.object({
   date: z.string().date(),
   currency: z.string().regex(/^[A-Z]{3}$/),
   redemptions: z.number().int().nonnegative(),
@@ -215,33 +212,20 @@ export const couponOptionSchema = z.object({
 });
 export type CouponOption = z.infer<typeof couponOptionSchema>;
 
-export const couponStatsCursorSchema = z.object({
-  createdAt: z.string().datetime(),
-  id: z.string(),
-});
-export type CouponStatsCursor = z.infer<typeof couponStatsCursorSchema>;
+export type CouponStatsCursor = {
+  createdAt: string;
+  id: string;
+};
 
-export const productPriceHistorySchema = z.object({
-  id: z.number().int().positive(),
-  tenantId: z.string(),
-  productId: z.string(),
-  priceId: z.string().nullable(),
-  amountCents: z.number().int().nonnegative(),
-  effectiveFrom: z.string().datetime(),
-});
-export type ProductPriceHistory = z.infer<typeof productPriceHistorySchema>;
-
-export const couponValidationFailureSchema = z.enum([
-  'inactive',
-  'not_started',
-  'expired',
-  'scope',
-  'purchase_kind',
-  'currency',
-  'limit',
-  'member_limit',
-]);
-export type CouponValidationFailure = z.infer<typeof couponValidationFailureSchema>;
+type CouponValidationFailure =
+  | 'inactive'
+  | 'not_started'
+  | 'expired'
+  | 'scope'
+  | 'purchase_kind'
+  | 'currency'
+  | 'limit'
+  | 'member_limit';
 
 export type CouponValidationResult =
   | { valid: true }

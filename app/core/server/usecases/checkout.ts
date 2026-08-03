@@ -74,6 +74,10 @@ export const validateCheckoutSelection = async (
     }
   }
 
+  if (product.type === 'membership' && price?.kind !== 'recurring') {
+    return err(validation('Membership products require a recurring price'));
+  }
+
   return ok({ product, price });
 };
 

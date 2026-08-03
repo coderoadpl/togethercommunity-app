@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { handle } from '@hono/node-server/vercel';
+import { getRequestListener } from '@hono/node-server';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
@@ -10,7 +10,8 @@ import { startServerObservability } from './observability.js';
 process.env.APP_COMMIT_SHA ??= process.env.VERCEL_GIT_COMMIT_SHA;
 
 const flush = startServerObservability();
-const handler = handle(buildApp(createDeps(loadEnv())));
+const app = buildApp(createDeps(loadEnv()));
+const handler = getRequestListener(app.fetch);
 
 export default async function vercelHandler(
   request: IncomingMessage,

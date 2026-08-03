@@ -28,6 +28,11 @@ export const pl: Messages = {
     open: 'Otwórz',
     status: 'Status',
   },
+  bootSplash: {
+    opening: 'Otwieranie panelu twórcy',
+    tenant: ({ host }) => format('przestrzeń {host}', { host }),
+    warming: 'Uruchamiamy Twoją przestrzeń…',
+  },
   pagination: {
     rowsPerPage: 'Wierszy na stronę:',
     displayedRows: ({ from, to, count }) => format('{from}–{to} z {count}', { from, to, count }),

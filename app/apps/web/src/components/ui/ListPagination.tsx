@@ -5,7 +5,7 @@ import { useTranslations } from '../../i18n/index.js';
 
 const MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [MIN_PAGE_SIZE, 25, 50, 100];
-export const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
 
 export interface PagedList<T> {
   pageItems: T[];

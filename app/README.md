@@ -5,6 +5,8 @@ full-stack TypeScript foundation. The implemented PoC includes auth, tenant
 resolution, course delivery, products and grants, checkout, community,
 marketing and integration surfaces across the web SPA, API and CLI.
 
+Recurring repository reviews are defined in the [audit roster](docs/audits/README.md).
+
 ## Quickstart (local demo)
 
 ```bash
@@ -145,7 +147,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->218<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->223<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

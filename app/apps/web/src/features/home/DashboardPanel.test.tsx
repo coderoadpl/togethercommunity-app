@@ -12,8 +12,11 @@ import { DashboardPanel } from './DashboardPanel.js';
 const product = (id: string, published: boolean) => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
   published,

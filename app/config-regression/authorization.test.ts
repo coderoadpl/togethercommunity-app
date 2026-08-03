@@ -16,7 +16,6 @@ const internalAppPath = join(appRoot, 'apps', 'server', 'src', 'internal-app.ts'
 const exportedCtxUseCase = /export const (\w+)\s*=\s*(?:async\s*)?\(\s*ctx:\s*Ctx\b/g;
 const repositoryAccess = /\bdeps(?:\.\w+)+\s*\(/;
 const AUTH_ONLY: Record<string, string> = {
-  'community-access.ts#memberScope': 'identity narrowing utility with no repository access',
   'community-access.ts#requireActor': 'caller-supplied capability authorization utility',
   'community-access.ts#requireMemberOrStaff': 'caller-supplied capability authorization utility',
   'community-access.ts#requireUnbannedMember': 'caller-supplied capability authorization utility',

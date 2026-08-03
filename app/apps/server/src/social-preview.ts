@@ -8,7 +8,7 @@ import type { AppDeps } from './composition.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 
-export const SOCIAL_CRAWLER_PATTERN =
+const SOCIAL_CRAWLER_PATTERN =
   /facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Googlebot|redditbot|Applebot/i;
 
 const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, (character) => ({

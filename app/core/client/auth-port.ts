@@ -9,6 +9,7 @@ export interface TwoFactorEnrollment {
   backupCodes: string[];
 }
 
+/** @public */
 export interface PasswordResetRequest {
   email: string;
   redirectTo: string;

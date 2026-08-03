@@ -54,7 +54,7 @@ const emailTags = [
 
 const emailAttributes = ['align', 'alt', 'checked', 'disabled', 'href', 'src', 'title', 'type'];
 
-export const sanitizeCampaignHtml = (html: string): string => {
+const sanitizeCampaignHtml = (html: string): string => {
   const restrictImageSources = (node: Element, event: { attrName: string; attrValue: string; keepAttr: boolean }) => {
     if (node.tagName === 'IMG' && event.attrName === 'src' && !event.attrValue.startsWith('https://')) {
       event.keepAttr = false;

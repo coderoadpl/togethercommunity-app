@@ -59,14 +59,13 @@ export const newProductPriceSchema = z
   })
   .superRefine(requireIntervalMatchesKind);
 
-export type NewProductPrice = z.infer<typeof newProductPriceSchema>;
 export type NewProductPriceInput = z.input<typeof newProductPriceSchema>;
 
-export const orderStatusSchema = z.enum(['paid', 'pending', 'failed', 'refunded']);
+const orderStatusSchema = z.enum(['paid', 'pending', 'failed', 'refunded']);
 
 export type OrderStatus = z.infer<typeof orderStatusSchema>;
 
-export const orderProviderSchema = z.enum(['stripe', 'simulated']);
+const orderProviderSchema = z.enum(['stripe', 'simulated']);
 
 export type OrderProvider = z.infer<typeof orderProviderSchema>;
 
@@ -96,7 +95,6 @@ export const billingDataSchema = z.object({
 });
 
 export type BillingData = z.output<typeof billingDataSchema>;
-export type BillingDataInput = z.input<typeof billingDataSchema>;
 
 export const orderSchema = z.object({
   id: z.string(),
@@ -127,7 +125,7 @@ export const orderListItemSchema = orderSchema.extend({
 
 export type OrderListItem = z.infer<typeof orderListItemSchema>;
 
-export const orderExportFormatSchema = z.enum(['csv', 'json']);
+const orderExportFormatSchema = z.enum(['csv', 'json']);
 
 export type OrderExportFormat = z.infer<typeof orderExportFormatSchema>;
 
@@ -153,11 +151,6 @@ export const exportOrdersQuerySchema = listOrdersQuerySchema
   .omit({ page: true, pageSize: true })
   .extend({ format: orderExportFormatSchema });
 
-export type ExportOrdersQueryInput = z.input<typeof exportOrdersQuerySchema>;
-
-export type ListOrdersQuery = z.infer<typeof listOrdersQuerySchema>;
-export type ListOrdersQueryInput = z.input<typeof listOrdersQuerySchema>;
-
 export const paidWithoutGrantRowSchema = z.object({
   orderId: z.string(),
   createdAt: z.string().datetime(),
@@ -179,9 +172,7 @@ export const orderReconciliationQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });
 
-export type OrderReconciliationQuery = z.infer<typeof orderReconciliationQuerySchema>;
-
-export const subscriptionStatusSchema = z.enum(['active', 'past_due', 'canceled']);
+const subscriptionStatusSchema = z.enum(['active', 'past_due', 'canceled']);
 
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 
@@ -204,6 +195,12 @@ export const memberSubscriptionSchema = z.object({
 });
 
 export type MemberSubscription = z.infer<typeof memberSubscriptionSchema>;
+
+export const memberSubscriptionListItemSchema = memberSubscriptionSchema.extend({
+  productTitle: z.string(),
+});
+
+export type MemberSubscriptionListItem = z.infer<typeof memberSubscriptionListItemSchema>;
 
 export const memberSubscriptionSummarySchema = z.object({
   id: z.string(),

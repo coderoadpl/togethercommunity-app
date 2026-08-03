@@ -3,10 +3,12 @@ import {
   notFound,
   ok,
   setTenantSecretInputSchema,
+  stripeModeFromKey,
   validation,
   type AppError,
   type Result,
   type SetTenantSecretInput,
+  type StripeMode,
   type TenantSecret,
   type TenantSecretKey,
   type TenantSecretMasked,
@@ -55,13 +57,35 @@ export const setTenantSecret = async (
   return ok(masked(stored));
 };
 
+export interface TenantSecretsView {
+  secrets: TenantSecretMasked[];
+  stripeMode: StripeMode | null;
+  stripeWebhookUrl: string;
+}
+
+const readStripeMode = (rows: TenantSecret[], secretCrypto: SecretCrypto): StripeMode | null => {
+  const stored = rows.find((row) => row.key === 'stripe.restrictedKey');
+  if (stored === undefined) return null;
+  const decrypted = secretCrypto.decrypt(stored);
+  if (!decrypted.ok) return null;
+  return stripeModeFromKey(decrypted.value);
+};
+
+export const stripeWebhookUrl = (appBaseUrl: string, tenantId: string): string =>
+  `${appBaseUrl.replace(/\/$/, '')}/api/webhooks/stripe/${encodeURIComponent(tenantId)}`;
+
 export const getTenantSecretsMasked = async (
   ctx: Ctx,
-  deps: TenantSecretDeps,
-): Promise<Result<TenantSecretMasked[], AppError>> => {
+  deps: TenantSecretDeps & { appBaseUrl: string },
+): Promise<Result<TenantSecretsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
-  return ok((await deps.tenantSecrets.listByTenant(tenant.value)).map(masked));
+  const rows = await deps.tenantSecrets.listByTenant(tenant.value);
+  return ok({
+    secrets: rows.map(masked),
+    stripeMode: readStripeMode(rows, deps.secretCrypto),
+    stripeWebhookUrl: stripeWebhookUrl(deps.appBaseUrl, tenant.value),
+  });
 };
 
 export const deleteTenantSecret = async (

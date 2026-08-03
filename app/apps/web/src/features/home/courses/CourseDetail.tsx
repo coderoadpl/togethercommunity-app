@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type DragEvent, type FormEvent } from 'react';
 import {
   Box,
   Button,
@@ -6,7 +6,6 @@ import {
   FormControl,
   FormLabel,
   List,
-  ListItem,
   ListItemText,
   MenuItem,
   OutlinedInput,
@@ -24,9 +23,19 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
-import { Eyebrow, TreeChapterTitle, TreeModuleTitle } from '../../../theme.js';
+import {
+  Eyebrow,
+  ReorderCard,
+  ReorderDragHandle,
+  ReorderRow,
+  TreeChapterTitle,
+  TreeModuleTitle,
+} from '../../../theme.js';
 import { HistoryPanel } from './HistoryPanel.js';
 import { MutationError, newId } from './feedback.js';
+
+type ModulesData = Awaited<ReturnType<typeof actions.modules.queryFn>>;
+type CoursesData = Awaited<ReturnType<typeof actions.courses.queryFn>>;
 
 const lessonName = (lessons: CourseLesson[], lessonId: string, t: Messages): string =>
   lessons.find((lesson) => lesson.id === lessonId)?.name ?? t.courses.unknownLesson;
@@ -39,6 +48,7 @@ const ChapterEditor = ({
   onAddContent,
   onRemoveContent,
   onMoveContent,
+  onReorderContent,
   onMoveUp,
   onMoveDown,
   canMoveUp,
@@ -52,6 +62,7 @@ const ChapterEditor = ({
   onAddContent: (lessonId: string, name: string) => void;
   onRemoveContent: (contentId: string) => void;
   onMoveContent: (contentId: string, direction: -1 | 1) => void;
+  onReorderContent: (contentId: string, targetContentId: string) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   canMoveUp: boolean;
@@ -63,6 +74,23 @@ const ChapterEditor = ({
   const [contentName, setContentName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
   const [lessonId, setLessonId] = useState('');
+  const [draggedContentId, setDraggedContentId] = useState<string | null>(null);
+  const [contentDropTargetId, setContentDropTargetId] = useState<string | null>(null);
+
+  const startContentDrag = (event: DragEvent<HTMLSpanElement>, contentId: string) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', contentId);
+    setDraggedContentId(contentId);
+  };
+
+  const dropContent = (event: DragEvent<HTMLElement>, targetContentId: string) => {
+    event.preventDefault();
+    if (draggedContentId && draggedContentId !== targetContentId) {
+      onReorderContent(draggedContentId, targetContentId);
+    }
+    setDraggedContentId(null);
+    setContentDropTargetId(null);
+  };
 
   const selectLesson = (nextLessonId: string) => {
     setLessonId(nextLessonId);
@@ -141,51 +169,89 @@ const ChapterEditor = ({
       ) : (
         <List disablePadding dense>
           {chapter.contents.map((content, index) => (
-            <ListItem
+            <ReorderRow
               key={content.id}
+              data-testid={`lesson-content-${content.id}`}
               disableGutters
-              secondaryAction={
-                <Stack direction="row" useFlexGap spacing="0.25rem">
-                  <Tooltip title={t.courses.moveContentUp({ name: content.name })}>
-                    <span>
-                      <Button
-                        size="small"
-                        variant="text"
-                        disabled={pending || index === 0}
-                        aria-label={t.courses.moveContentUp({ name: content.name })}
-                        onClick={() => onMoveContent(content.id, -1)}
-                      >
-                        ↑
-                      </Button>
-                    </span>
-                  </Tooltip>
-                  <Tooltip title={t.courses.moveContentDown({ name: content.name })}>
-                    <span>
-                      <Button
-                        size="small"
-                        variant="text"
-                        disabled={pending || index === chapter.contents.length - 1}
-                        aria-label={t.courses.moveContentDown({ name: content.name })}
-                        onClick={() => onMoveContent(content.id, 1)}
-                      >
-                        ↓
-                      </Button>
-                    </span>
-                  </Tooltip>
-                  <Button
-                    size="small"
-                    variant="text"
-                    color="error"
-                    disabled={pending}
-                    onClick={() => onRemoveContent(content.id)}
-                  >
-                    {t.common.remove}
-                  </Button>
-                </Stack>
-              }
+              dropTarget={contentDropTargetId === content.id}
+              onDragOver={(event) => {
+                if (!draggedContentId || draggedContentId === content.id) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setContentDropTargetId(content.id);
+              }}
+              onDragLeave={(event) => {
+                if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+                setContentDropTargetId(null);
+              }}
+              onDrop={(event) => dropContent(event, content.id)}
+              sx={{
+                alignItems: { xs: 'stretch', sm: 'center' },
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: '0.5rem',
+              }}
             >
-              <ListItemText primary={content.name} secondary={lessonName(lessons, content.lessonId, t)} />
-            </ListItem>
+              <ListItemText
+                primary={content.name}
+                secondary={lessonName(lessons, content.lessonId, t)}
+                sx={{ minWidth: 0 }}
+              />
+              <Stack
+                direction="row"
+                useFlexGap
+                spacing="0.25rem"
+                sx={{ alignSelf: { xs: 'flex-end', sm: 'auto' }, flexWrap: 'wrap', justifyContent: 'flex-end' }}
+              >
+                <ReorderDragHandle
+                  aria-hidden
+                  data-testid={`lesson-drag-handle-${content.id}`}
+                  draggable={!pending}
+                  pending={pending}
+                  onDragStart={(event) => startContentDrag(event, content.id)}
+                  onDragEnd={() => {
+                    setDraggedContentId(null);
+                    setContentDropTargetId(null);
+                  }}
+                >
+                  ⠿
+                </ReorderDragHandle>
+                <Tooltip title={t.courses.moveContentUp({ name: content.name })}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={pending || index === 0}
+                      aria-label={t.courses.moveContentUp({ name: content.name })}
+                      onClick={() => onMoveContent(content.id, -1)}
+                    >
+                      ↑
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title={t.courses.moveContentDown({ name: content.name })}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={pending || index === chapter.contents.length - 1}
+                      aria-label={t.courses.moveContentDown({ name: content.name })}
+                      onClick={() => onMoveContent(content.id, 1)}
+                    >
+                      ↓
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Button
+                  size="small"
+                  variant="text"
+                  color="error"
+                  disabled={pending}
+                  onClick={() => onRemoveContent(content.id)}
+                >
+                  {t.common.remove}
+                </Button>
+              </Stack>
+            </ReorderRow>
           ))}
         </List>
       )}
@@ -239,15 +305,17 @@ const ChapterEditor = ({
   );
 };
 
-const move = <T,>(items: T[], index: number, direction: -1 | 1): T[] => {
-  const target = index + direction;
-  if (target < 0 || target >= items.length) return items;
+const moveTo = <T,>(items: T[], sourceIndex: number, targetIndex: number): T[] => {
+  if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= items.length || sourceIndex === targetIndex) return items;
   const next = [...items];
-  const [moved] = next.splice(index, 1);
+  const [moved] = next.splice(sourceIndex, 1);
   if (!moved) return items;
-  next.splice(target, 0, moved);
+  next.splice(targetIndex, 0, moved);
   return next;
 };
+
+const move = <T,>(items: T[], index: number, direction: -1 | 1): T[] =>
+  moveTo(items, index, index + direction);
 
 const ModuleCard = ({
   module,
@@ -255,6 +323,12 @@ const ModuleCard = ({
   onMoveUp,
   onMoveDown,
   onDetach,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  isDropTarget,
   canMoveUp,
   canMoveDown,
   reorderPending,
@@ -264,6 +338,12 @@ const ModuleCard = ({
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDetach: () => void;
+  onDragStart: (event: DragEvent<HTMLSpanElement>) => void;
+  onDragEnd: () => void;
+  onDragOver: (event: DragEvent<HTMLElement>) => void;
+  onDragLeave: (event: DragEvent<HTMLElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
+  isDropTarget: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
   reorderPending: boolean;
@@ -277,7 +357,33 @@ const ModuleCard = ({
 
   const updateModule = useMutation({
     ...actions.updateModule,
-    onSuccess: async () => {
+    onMutate: async ({ id, chapters }) => {
+      if (!chapters) return { previous: undefined };
+      await queryClient.cancelQueries(actions.modulesInvalidates());
+      const previous = queryClient.getQueryData<ModulesData>(actions.modules.queryKey);
+      queryClient.setQueryData<ModulesData>(actions.modules.queryKey, (current) =>
+        current
+          ? {
+              ...current,
+              modules: current.modules.map((entry) => (entry.id === id ? { ...entry, chapters } : entry)),
+            }
+          : current,
+      );
+      return { previous: previous?.modules.find((entry) => entry.id === id) };
+    },
+    onError: (_error, input, context) => {
+      if (!context?.previous) return;
+      const previous = context.previous;
+      queryClient.setQueryData<ModulesData>(actions.modules.queryKey, (current) =>
+        current
+          ? {
+              ...current,
+              modules: current.modules.map((entry) => (entry.id === input.id ? previous : entry)),
+            }
+          : current,
+      );
+    },
+    onSettled: async () => {
       await queryClient.invalidateQueries(actions.modulesInvalidates());
     },
   });
@@ -328,13 +434,41 @@ const ModuleCard = ({
       }),
     );
 
+  const reorderContent = (chapterId: string, contentId: string, targetContentId: string) =>
+    saveChapters(
+      module.chapters.map((chapter) => {
+        if (chapter.id !== chapterId) return chapter;
+        const sourceIndex = chapter.contents.findIndex((content) => content.id === contentId);
+        const targetIndex = chapter.contents.findIndex((content) => content.id === targetContentId);
+        return { ...chapter, contents: moveTo(chapter.contents, sourceIndex, targetIndex) };
+      }),
+    );
+
   const renameModule = () => updateModule.mutate({ id: module.id, title: title.trim(), prefix: prefix.trim() || null });
 
   return (
-    <Paper elevation={1} sx={{ p: '1.1rem', display: 'grid', gap: '1rem' }} data-testid="module-card">
-      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
+    <ReorderCard
+      elevation={1}
+      sx={{ p: '1.1rem', display: 'grid', gap: '1rem' }}
+      data-testid="module-card"
+      dropTarget={isDropTarget}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <TreeModuleTitle component="h3">{module.name}</TreeModuleTitle>
         <Box sx={{ flex: 1 }} />
+        <ReorderDragHandle
+          aria-hidden
+          data-testid={`module-drag-handle-${module.id}`}
+          draggable={!pending}
+          pending={pending}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        >
+          ⠿
+        </ReorderDragHandle>
         <Tooltip title={t.courses.moveModuleUp({ name: module.name })}>
           <span>
             <Button
@@ -417,6 +551,9 @@ const ModuleCard = ({
               onAddContent={(lessonId, name) => addContent(chapter.id, lessonId, name)}
               onRemoveContent={(contentId) => removeContent(chapter.id, contentId)}
               onMoveContent={(contentId, direction) => moveContent(chapter.id, contentId, direction)}
+              onReorderContent={(contentId, targetContentId) =>
+                reorderContent(chapter.id, contentId, targetContentId)
+              }
             />
           ))
         )}
@@ -472,7 +609,7 @@ const ModuleCard = ({
           confirmTestId="chapter-delete-confirm"
         />
       ) : null}
-    </Paper>
+    </ReorderCard>
   );
 };
 
@@ -546,6 +683,8 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const modules = useQuery(actions.modules);
   const lessons = useQuery(actions.lessons);
   const [moduleToDetach, setModuleToDetach] = useState<CourseModule | null>(null);
+  const [draggedModuleId, setDraggedModuleId] = useState<string | null>(null);
+  const [moduleDropTargetId, setModuleDropTargetId] = useState<string | null>(null);
 
   const invalidateTree = async () => {
     await Promise.all([
@@ -554,7 +693,36 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
     ]);
   };
 
-  const reorderModules = useMutation({ ...actions.updateCourse, onSuccess: invalidateTree });
+  const reorderModules = useMutation({
+    ...actions.updateCourse,
+    onMutate: async ({ id, moduleOrder }) => {
+      if (!moduleOrder) return { previous: undefined };
+      await queryClient.cancelQueries(actions.coursesInvalidates());
+      const previous = queryClient.getQueryData<CoursesData>(actions.courses.queryKey);
+      queryClient.setQueryData<CoursesData>(actions.courses.queryKey, (current) =>
+        current
+          ? {
+              ...current,
+              courses: current.courses.map((entry) => (entry.id === id ? { ...entry, moduleOrder } : entry)),
+            }
+          : current,
+      );
+      return { previous: previous?.courses.find((entry) => entry.id === id) };
+    },
+    onError: (_error, input, context) => {
+      if (!context?.previous) return;
+      const previous = context.previous;
+      queryClient.setQueryData<CoursesData>(actions.courses.queryKey, (current) =>
+        current
+          ? {
+              ...current,
+              courses: current.courses.map((entry) => (entry.id === input.id ? previous : entry)),
+            }
+          : current,
+      );
+    },
+    onSettled: invalidateTree,
+  });
   const detachModule = useMutation({ ...actions.detachModule, onSuccess: invalidateTree });
 
   if (modules.isPending || lessons.isPending) {
@@ -573,6 +741,18 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const moveModule = (index: number, direction: -1 | 1) => {
     const reordered = move(attached, index, direction);
     reorderModules.mutate({ id: course.id, moduleOrder: reordered.map((module) => module.id) });
+  };
+
+  const dropModule = (event: DragEvent<HTMLElement>, targetModuleId: string) => {
+    event.preventDefault();
+    if (draggedModuleId && draggedModuleId !== targetModuleId) {
+      const sourceIndex = attached.findIndex((module) => module.id === draggedModuleId);
+      const targetIndex = attached.findIndex((module) => module.id === targetModuleId);
+      const reordered = moveTo(attached, sourceIndex, targetIndex);
+      reorderModules.mutate({ id: course.id, moduleOrder: reordered.map((module) => module.id) });
+    }
+    setDraggedModuleId(null);
+    setModuleDropTargetId(null);
   };
 
   return (
@@ -622,6 +802,27 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
                 onMoveUp={() => moveModule(index, -1)}
                 onMoveDown={() => moveModule(index, 1)}
                 onDetach={() => setModuleToDetach(module)}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', module.id);
+                  setDraggedModuleId(module.id);
+                }}
+                onDragEnd={() => {
+                  setDraggedModuleId(null);
+                  setModuleDropTargetId(null);
+                }}
+                onDragOver={(event) => {
+                  if (!draggedModuleId || draggedModuleId === module.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  setModuleDropTargetId(module.id);
+                }}
+                onDragLeave={(event) => {
+                  if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+                  setModuleDropTargetId(null);
+                }}
+                onDrop={(event) => dropModule(event, module.id)}
+                isDropTarget={moduleDropTargetId === module.id}
               />
             ))}
           </Stack>

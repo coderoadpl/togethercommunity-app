@@ -102,3 +102,11 @@ Deferred by plan: pnpm migration (own PR, after CI bake-in); authz follow-ups
 (probe shapes, matrix rows at synthetic edges) and the coupon-UI browser e2e
 gap are in the Todoist backlog. Final gates at merge: check 1345 tests /
 smoke / visual 210 / e2e subs+marketing+auth+poc, CI green on every merge.
+
+## Follow-up (2026-08-03, from parity #102 deps PR)
+
+- Upgrade drizzle-kit to 1.x once better-auth supports drizzle-orm 1.0 (peer is
+  `drizzle-orm: ^0.45.2` at better-auth 1.6.25; drizzle-kit 1.x requires the
+  `drizzle-orm/_relations` export that only exists from 1.0). Unblocks esbuild
+  0.25 in the drizzle chain and lets GHSA-67mh-4wv8-2f99 leave the audit
+  allowlist. Details: app/docs/security.md.

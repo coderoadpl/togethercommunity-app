@@ -160,8 +160,9 @@ fallbacks (Loki, storycap+reg-suit) are not needed — Lost Pixel cleared the ba
    not using Docker).
 3. **Grow the catalog**: extend stories to `components/ui/*` and the state
    primitives as the atomic-design catalog fills out (ux-decisions point 1).
-4. **A11y scan** (ux-decisions point 4, lowest priority): hook `axe-core` into
-   the Storybook pipeline once the catalog stabilises.
+4. **A11y scan** (ux-decisions point 4, lowest priority): extend the in-house
+   checks of `pnpm run a11y` to the Storybook pipeline once the catalog
+   stabilises. axe-core is MPL-2.0 and is out of the question.
 5. **Theme fan-out policy**: keep default single-theme + showcase; opt-in
    per-story `globals` for high-risk cross-theme screens; reconsider a global
    matrix only if regressions leak.

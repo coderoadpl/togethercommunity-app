@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import {
   Alert,
+  Box,
   Button,
   Checkbox,
   FormControl,
@@ -22,6 +23,7 @@ import { actions } from '../../api.js';
 import { BrandMark } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
+import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
@@ -300,7 +302,16 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     >
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{product.title}</CardTitle>
-          <Typography variant="body1">{product.description}</Typography>
+          {product.coverUrl === null ? null : (
+            <Box
+              component="img"
+              src={product.coverUrl}
+              alt={product.title}
+              data-testid="checkout-product-cover"
+              sx={{ width: '100%', maxHeight: 360, objectFit: 'cover' }}
+            />
+          )}
+          <RichTextContent html={product.description} />
           {product.prices.length > 1 ? (
             <FormControl>
               <FormLabel id="checkout-price-choice">{t.checkout.priceChoiceLabel}</FormLabel>

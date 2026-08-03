@@ -722,7 +722,7 @@ their applicable notices in the distribution.
 - [hermes-estree@0.25.1](https://github.com/facebook/hermes#readme) - MIT
 - [hermes-parser@0.25.1](https://github.com/facebook/hermes#readme) - MIT
 - [hoist-non-react-statics@3.3.2](https://github.com/mridgway/hoist-non-react-statics#readme) - BSD-3-Clause
-- [hono@4.12.32](https://hono.dev) - MIT
+- [hono@4.12.34](https://hono.dev) - MIT
 - [html-encoding-sniffer@6.0.0](https://github.com/jsdom/html-encoding-sniffer#readme) - MIT
 - [html-escaper@2.0.2](https://github.com/WebReflection/html-escaper) - MIT
 - [ignore@5.3.2](https://github.com/kaelzhang/node-ignore#readme) - MIT
@@ -1057,7 +1057,7 @@ their applicable notices in the distribution.
 - [unbash@4.0.4](https://github.com/webpro-nl/unbash#readme) - ISC
 - [unbox-primitive@1.1.0](https://github.com/ljharb/unbox-primitive#readme) - MIT
 - [undici-types@7.18.2](https://undici.nodejs.org) - MIT
-- [undici@7.28.0](https://undici.nodejs.org) - MIT
+- [undici@7.29.0](https://undici.nodejs.org) - MIT
 - [unplugin@2.3.11](https://unplugin.unjs.io) - MIT
 - [unrs-resolver@1.12.2](https://github.com/unrs/unrs-resolver) - MIT
 - [until-async@3.0.2](https://github.com/kettanaito/until-async) - MIT

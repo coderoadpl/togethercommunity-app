@@ -48,7 +48,7 @@ describe('production self-host stack', () => {
     expect(compose.services.postgres.volumes).toContain('postgres_data:/var/lib/postgresql/data');
     expect(compose.services.app.build).toEqual({ context: '.', dockerfile: 'Dockerfile' });
     expect(compose.services.app.depends_on.postgres.condition).toBe('service_healthy');
-    expect(compose.services.app.env_file).toEqual(['${SELF_HOST_ENV_FILE:-.env}']);
+    expect(compose.services.app.env_file).toEqual(['.env']);
     expect(compose.services.app.environment.INTERNAL_PORT).toBe('48732');
     expect(compose.services.app.ports).toBeUndefined();
     expect(compose.services.caddy.depends_on.app.condition).toBe('service_healthy');
@@ -79,6 +79,8 @@ describe('production self-host stack', () => {
     expect(caddyfile).toContain('on_demand_tls');
     expect(caddyfile).toContain('ask http://app:48732/internal/domain-check');
     expect(caddyfile).toContain('on_demand');
+    expect(caddyfile).toContain('@local host localhost 127.0.0.1');
+    expect(caddyfile).toContain('redir https://{host}{uri} permanent');
     const publishedPorts = Object.values(compose.services).flatMap((service) => service.ports ?? []);
     const targets = publishedPorts.map((port) => {
       if (typeof port !== 'string') return port.target;

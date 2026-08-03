@@ -12,6 +12,11 @@ https:// {
 }
 
 http:// {
-	reverse_proxy app:48730
+	@local host localhost 127.0.0.1
+	handle @local {
+		reverse_proxy app:48730
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
 }
-

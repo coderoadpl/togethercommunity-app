@@ -3,10 +3,9 @@ import { createRequire } from 'node:module';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 
-import { z } from 'zod';
-
 import { envSchema } from '../apps/server/src/env.js';
 import packageJson from '../package.json' with { type: 'json' };
+import { collectReleaseVersionProblems } from './release-version-lint.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const repoRoot = join(appRoot, '..');
@@ -78,7 +77,10 @@ const checkChain = packageJson.scripts.check
 const checkClaimPattern =
   /- `pnpm run check` = ([\s\S]*?) —\s+the \*\*static\*\* gate\./;
 
-const prose = trackedMarkdown.map((rel) => readFileSync(join(repoRoot, rel), 'utf8')).join('\n');
+const markdownFiles = new Map(
+  trackedMarkdown.map((rel) => [rel, readFileSync(join(repoRoot, rel), 'utf8')]),
+);
+const prose = [...markdownFiles.values()].join('\n');
 const eslintSource = readFileSync(eslintConfigPath, 'utf8');
 const depcruiseModule: { forbidden: ReadonlyArray<{ name: string }> } = require(depcruiseConfigPath);
 const depcruiseRuleNames = new Set(depcruiseModule.forbidden.map((rule) => rule.name));
@@ -86,55 +88,14 @@ const problems: string[] = [];
 const countTokensByFile = new Map<string, Set<string>>();
 let countTokensSeen = 0;
 
-const semverCore = String.raw`(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)`;
-const semverPrerelease = String.raw`(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?`;
-const semverBuild = String.raw`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
-const strictSemverPattern = new RegExp(`^${semverCore}${semverPrerelease}${semverBuild}$`);
-const semverClaimPattern = new RegExp(
-  `(?<![0-9A-Za-z-])${semverCore}${semverPrerelease}${semverBuild}(?![0-9A-Za-z-])`,
-  'g',
-);
-const releaseVersionRegionPattern = /<!--release-version-->([\s\S]*?)<!--\/release-version-->/g;
 const requiredReleaseVersionRegions = ['app/docs/decisions/0011-version-surfaces.md'];
-const manifestVersionResult = z.string().regex(strictSemverPattern).safeParse(packageJson.version);
 const appVersion = packageJson.version;
-if (!manifestVersionResult.success) {
-  problems.push(`[version] package.json version "${appVersion}" is not strict SemVer`);
-}
-
-const releaseVersionRegionsByFile = new Map<string, number>();
-let releaseVersionClaimsSeen = 0;
-for (const rel of trackedMarkdown) {
-  const text = readFileSync(join(repoRoot, rel), 'utf8');
-  let regionsSeen = 0;
-  for (const match of text.matchAll(releaseVersionRegionPattern)) {
-    regionsSeen += 1;
-    const claims = [...(match[1] ?? '').matchAll(semverClaimPattern)].map(
-      (claim) => claim[0],
-    );
-    if (claims.length === 0) {
-      problems.push(`[version] ${rel}: release-version region contains no strict SemVer claim`);
-    }
-    releaseVersionClaimsSeen += claims.length;
-    for (const claim of claims) {
-      if (claim !== appVersion) {
-        problems.push(
-          `[version] ${rel}: release-version region claims ${claim} but package.json is ${appVersion}`,
-        );
-      }
-    }
-  }
-  releaseVersionRegionsByFile.set(rel, regionsSeen);
-}
-
-for (const rel of requiredReleaseVersionRegions) {
-  const regionsSeen = releaseVersionRegionsByFile.get(rel);
-  if (regionsSeen === undefined) {
-    problems.push(`[version] required release-version surface ${rel} is not tracked markdown`);
-  } else if (regionsSeen === 0) {
-    problems.push(`[version] ${rel} must carry a release-version region`);
-  }
-}
+const releaseVersionResult = collectReleaseVersionProblems(
+  markdownFiles,
+  appVersion,
+  requiredReleaseVersionRegions,
+);
+problems.push(...releaseVersionResult.problems);
 
 const claudeRules = readFileSync(join(appRoot, 'CLAUDE.md'), 'utf8');
 const checkClaim = checkClaimPattern.exec(claudeRules);
@@ -156,8 +117,7 @@ if (checkClaim === null) {
   }
 }
 
-for (const rel of trackedMarkdown) {
-  const text = readFileSync(join(repoRoot, rel), 'utf8');
+for (const [rel, text] of markdownFiles) {
   const seen = new Set<string>();
   countTokensByFile.set(rel, seen);
   for (const match of text.matchAll(countTokenPattern)) {
@@ -215,8 +175,7 @@ for (const enforcer of promisedEnforcers) {
 }
 
 const customRulePattern = /^together\/[a-z][a-z0-9-]*$/;
-for (const rel of trackedMarkdown) {
-  const text = readFileSync(join(repoRoot, rel), 'utf8');
+for (const [rel, text] of markdownFiles) {
   for (const match of text.matchAll(/`([^`]+)`/g)) {
     const token = match[1] ?? '';
     if (customRulePattern.test(token) && !eslintSource.includes(token)) {
@@ -247,8 +206,7 @@ for (const key of envKeys) {
 }
 
 const linkPattern = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-for (const rel of trackedMarkdown) {
-  const raw = readFileSync(join(repoRoot, rel), 'utf8');
+for (const [rel, raw] of markdownFiles) {
   for (const delimiter of leakedDelimiters) {
     if (raw.includes(delimiter)) problems.push(`[delimiter] "${delimiter}" leaked into ${rel}`);
   }
@@ -273,5 +231,5 @@ if (problems.length > 0) {
 }
 
 process.stdout.write(
-  `doc-lint: OK — ${String(promisedEnforcers.length)} promised enforcers, ${String(ruleFiles.length)} custom rules, ${String(countTokensSeen)} count tokens, ${String(releaseVersionClaimsSeen)} release-version claims at ${appVersion}, ${String(envKeys.length)} env keys, ${String(trackedMarkdown.length)} markdown files\n`,
+  `doc-lint: OK — ${String(promisedEnforcers.length)} promised enforcers, ${String(ruleFiles.length)} custom rules, ${String(countTokensSeen)} count tokens, ${String(releaseVersionResult.claimsSeen)} release-version claims at ${appVersion}, ${String(envKeys.length)} env keys, ${String(trackedMarkdown.length)} markdown files\n`,
 );

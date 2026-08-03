@@ -632,6 +632,13 @@ export interface Messages {
     videoPickerPrevPage: string;
     videoPickerNextPage: string;
     videoPickerManualHint: string;
+    embedUrlLabel: string;
+    embedPreviewTitle: string;
+    embedInvalidUrl: string;
+    embedInvalidYoutubeUrl: string;
+    embedInvalidVimeoUrl: string;
+    youtubePrivacyNote: string;
+    vimeoPrivacyNote: string;
     allLessons: string;
   };
   members: {

@@ -708,6 +708,16 @@ export const pl: Messages = {
     videoPickerPrevPage: 'poprzednia strona',
     videoPickerNextPage: 'następna strona',
     videoPickerManualHint: 'Możesz też wpisać identyfikatory ręcznie w polach poniżej.',
+    embedUrlLabel: 'adres wideo (YouTube, Vimeo lub inny adres osadzania)',
+    embedPreviewTitle: 'Podgląd wideo',
+    embedInvalidUrl: 'Podaj prawidłowy bezwzględny adres wideo lub osadzania.',
+    embedInvalidYoutubeUrl:
+      'Podaj prawidłowy adres filmu YouTube: do oglądania, skrócony, Shorts, transmisji na żywo lub do osadzenia.',
+    embedInvalidVimeoUrl: 'Podaj prawidłowy adres filmu, kanału, grupy lub odtwarzacza Vimeo.',
+    youtubePrivacyNote:
+      'Film niepubliczny w YouTube nie jest chroniony dostępem: każda osoba z linkiem może go udostępnić lub obejrzeć. Jako właściciel treści odpowiadasz za przestrzeganie Warunków korzystania z YouTube.',
+    vimeoPrivacyNote:
+      'Film niepubliczny w Vimeo nie jest chroniony dostępem przez Together: każda osoba z linkiem może móc go obejrzeć. Skonfiguruj prywatność osadzania i ograniczenia domen w Vimeo, jeśli pozwala na to Twój plan.',
     allLessons: '← Wszystkie lekcje',
   },
   members: {

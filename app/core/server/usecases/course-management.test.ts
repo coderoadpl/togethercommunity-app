@@ -327,7 +327,7 @@ describe('course management use-cases', () => {
     await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
-    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 3, 2]);
+    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 4, 2]);
     expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
     expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
     expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });

@@ -32,10 +32,118 @@ const videoLessonBlockSchema = z
   })
   .strict();
 
+export type VideoEmbedProvider = 'youtube' | 'vimeo';
+
+export const VIDEO_EMBED_URL_MESSAGE = {
+  url: 'Must be an absolute http(s) video or embed URL',
+  youtube: 'Must be a YouTube watch, youtu.be, Shorts, live or embed URL with an 11-character video id',
+  vimeo: 'Must be a Vimeo video, channel, group or player URL with a numeric video id',
+} as const;
+
+export type VideoEmbedUrlInspection =
+  | { kind: 'supported'; provider: VideoEmbedProvider; embedUrl: string }
+  | { kind: 'invalid-provider'; provider: VideoEmbedProvider }
+  | { kind: 'unsupported' }
+  | { kind: 'invalid-url' };
+
+const youtubeHosts = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'youtu.be',
+  'youtube-nocookie.com',
+  'www.youtube-nocookie.com',
+]);
+const vimeoHosts = new Set(['vimeo.com', 'www.vimeo.com', 'player.vimeo.com']);
+const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
+const vimeoVideoIdSchema = z.string().regex(/^\d+$/);
+const vimeoPrivacyHashSchema = z.string().regex(/^[A-Fa-f0-9]{6,16}$/);
+
+const youtubeVideoId = (url: URL): string | null => {
+  const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
+  if (url.hostname === 'youtu.be') return segments.length === 1 ? segments[0] ?? null : null;
+  if (segments.length === 0) return null;
+  if (segments[0] === 'watch') return segments.length === 1 ? url.searchParams.get('v') : null;
+  if (segments[0] === 'embed' || segments[0] === 'shorts' || segments[0] === 'live') {
+    const videoId = segments.length === 2 ? segments[1] ?? null : null;
+    return videoId === 'videoseries' ? null : videoId;
+  }
+  return null;
+};
+
+const inspectYoutubeUrl = (url: URL): VideoEmbedUrlInspection => {
+  const videoId = youtubeVideoId(url);
+  if (!youtubeVideoIdSchema.safeParse(videoId).success) {
+    return { kind: 'invalid-provider', provider: 'youtube' };
+  }
+  return {
+    kind: 'supported',
+    provider: 'youtube',
+    embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+  };
+};
+
+const inspectVimeoUrl = (url: URL): VideoEmbedUrlInspection => {
+  const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
+  const playerUrl = url.hostname === 'player.vimeo.com';
+  const channelUrl = segments[0] === 'channels' && segments.length === 3;
+  const groupUrl = segments[0] === 'groups' && segments[2] === 'videos' && segments.length === 4;
+  const videoId = playerUrl
+    ? segments[0] === 'video' && segments.length === 2
+      ? segments[1]
+      : undefined
+    : channelUrl
+      ? segments[2]
+      : groupUrl
+        ? segments[3]
+        : segments.length === 1 || segments.length === 2
+          ? segments[0]
+          : undefined;
+  const pathPrivacyHash = !playerUrl && segments.length === 2 ? segments[1] : undefined;
+  const privacyHash = url.searchParams.get('h') ?? pathPrivacyHash;
+  const validPrivacyHash =
+    privacyHash === null || privacyHash === undefined || vimeoPrivacyHashSchema.safeParse(privacyHash).success;
+  if (!vimeoVideoIdSchema.safeParse(videoId).success || !validPrivacyHash) {
+    return { kind: 'invalid-provider', provider: 'vimeo' };
+  }
+  const embedUrl = new URL(`https://player.vimeo.com/video/${videoId}`);
+  if (privacyHash !== null && privacyHash !== undefined) embedUrl.searchParams.set('h', privacyHash);
+  return { kind: 'supported', provider: 'vimeo', embedUrl: embedUrl.toString() };
+};
+
+/**
+ * `z.string().url()` accepts every parseable scheme, including `javascript:`,
+ * and embed URLs land in an iframe `src` — so schemes are pinned to http(s).
+ */
+export const inspectVideoEmbedUrl = (value: string): VideoEmbedUrlInspection => {
+  const parsed = z.string().url().safeParse(value);
+  if (!parsed.success) return { kind: 'invalid-url' };
+  const url = new URL(parsed.data);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { kind: 'invalid-url' };
+  const hostname = url.hostname.toLowerCase();
+  if (youtubeHosts.has(hostname)) return inspectYoutubeUrl(url);
+  if (vimeoHosts.has(hostname)) return inspectVimeoUrl(url);
+  return { kind: 'unsupported' };
+};
+
+const videoEmbedUrlSchema = z.string().url().transform((value, ctx) => {
+  const inspection = inspectVideoEmbedUrl(value);
+  if (inspection.kind === 'supported') return inspection.embedUrl;
+  if (inspection.kind === 'unsupported') return value;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message:
+      inspection.kind === 'invalid-url'
+        ? VIDEO_EMBED_URL_MESSAGE.url
+        : VIDEO_EMBED_URL_MESSAGE[inspection.provider],
+  });
+  return z.NEVER;
+});
+
 const embedLessonBlockSchema = z
   .object({
     type: z.literal('embed'),
-    embedUrl: z.string().url(),
+    embedUrl: videoEmbedUrlSchema,
   })
   .strict();
 

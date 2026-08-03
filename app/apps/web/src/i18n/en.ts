@@ -694,6 +694,15 @@ export const en: Messages = {
     videoPickerPrevPage: 'previous page',
     videoPickerNextPage: 'next page',
     videoPickerManualHint: 'You can also type the ids manually in the fields below.',
+    embedUrlLabel: 'Video URL (YouTube, Vimeo, or another embed)',
+    embedPreviewTitle: 'Video preview',
+    embedInvalidUrl: 'Enter a valid absolute video or embed URL.',
+    embedInvalidYoutubeUrl: 'Enter a valid YouTube watch, short, Shorts, live, or embed URL.',
+    embedInvalidVimeoUrl: 'Enter a valid Vimeo video, channel, group, or player URL.',
+    youtubePrivacyNote:
+      'YouTube unlisted videos are not access-protected: anyone with the link can share or watch them. As the content owner, you are responsible for complying with the YouTube Terms of Service.',
+    vimeoPrivacyNote:
+      'Vimeo unlisted videos are not access-protected by Together: anyone with the link may be able to watch them. Configure Vimeo embed privacy and domain restrictions when your plan supports them.',
     allLessons: '← All lessons',
   },
   members: {

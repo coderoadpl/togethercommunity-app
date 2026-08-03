@@ -26,8 +26,12 @@ const fakeRepo = (initial: Product[] = []) => {
       store.filter((p) => p.tenantId === tenantId && p.published),
     findById: async (tenantId, id) =>
       store.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
-    create: async (_tenantId, product) => {
+    create: async (tenantId, product) => {
+      if (store.some((candidate) => candidate.tenantId === tenantId && candidate.slug === product.slug)) {
+        return 'slug_taken';
+      }
       store.push(product);
+      return 'created';
     },
     updateAccessItems: async (tenantId, id, accessItems) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
@@ -61,8 +65,11 @@ const deps = (repo: ProductRepository, ids: string[] = ['product-1']) => ({
 const draft = (id: string, tenantId: string, published = false): Product => ({
   id,
   tenantId,
+  type: 'course',
+  slug: `product-${id}`,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
   published,
@@ -127,10 +134,59 @@ describe('products use-cases', () => {
     );
     expect(created).toMatchObject({
       ok: true,
-      value: { tenantId: 't-acme', title: 'Course', priceCents: 4900, currency: 'PLN', published: false },
+      value: {
+        tenantId: 't-acme',
+        type: 'course',
+        slug: 'course',
+        title: 'Course',
+        description: '',
+        coverUrl: null,
+        priceCents: 4900,
+        currency: 'PLN',
+        published: false,
+      },
     });
     expect(store).toHaveLength(1);
     expect(versions.has('t-acme')).toBe(false);
+  });
+
+  it('creates every product type and rejects a tenant-local duplicate slug', async () => {
+    const { repo, store } = fakeRepo();
+    const createDeps = deps(repo, ['course-id', 'download-id', 'membership-id', 'duplicate-id']);
+
+    for (const [type, slug] of [
+      ['course', 'video-course'],
+      ['digital_download', 'workbook'],
+      ['membership', 'creator-club'],
+    ] as const) {
+      expect(await createProduct(
+        { identity: identity('t-acme', 'owner') },
+        { type, slug, title: slug, description: '<p>Rich description</p>', coverUrl: 'https://cdn.test/cover.jpg', priceCents: 0 },
+        createDeps,
+      )).toMatchObject({ ok: true, value: { type, slug } });
+    }
+
+    expect(store.map(({ type, slug }) => ({ type, slug }))).toEqual([
+      { type: 'course', slug: 'video-course' },
+      { type: 'digital_download', slug: 'workbook' },
+      { type: 'membership', slug: 'creator-club' },
+    ]);
+    expect(await createProduct(
+      { identity: identity('t-acme', 'owner') },
+      { type: 'course', slug: 'workbook', title: 'Duplicate', priceCents: 0 },
+      createDeps,
+    )).toMatchObject({ ok: false, error: { code: 'slug_reserved' } });
+  });
+
+  it('maps an atomic duplicate insert to the slug-specific error', async () => {
+    const { repo } = fakeRepo();
+    repo.create = async () => 'slug_taken';
+
+    expect(await createProduct(
+      { identity: identity('t-acme', 'owner') },
+      { title: 'Same title', priceCents: 0 },
+      deps(repo),
+    )).toMatchObject({ ok: false, error: { code: 'slug_reserved' } });
   });
 
   it('publishes a draft product and bumps the version', async () => {

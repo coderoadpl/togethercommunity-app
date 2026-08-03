@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { marketingSesSettingsUpdateInputSchema } from './routes.js';
+import { integrationTestInputSchema, marketingSesSettingsUpdateInputSchema } from './routes.js';
 
 describe('marketing route contracts', () => {
   it('does not accept caller-owned SES identity verification state', () => {
@@ -18,5 +18,11 @@ describe('marketing route contracts', () => {
     });
 
     expect(parsed).not.toHaveProperty('identityVerified');
+  });
+
+  it('accepts email transports only for email provider diagnostics', () => {
+    expect(integrationTestInputSchema.safeParse({ provider: 'email', emailTransport: 'resend' }).success).toBe(true);
+    expect(integrationTestInputSchema.safeParse({ provider: 'storage', emailTransport: 'smtp' }).success).toBe(false);
+    expect(integrationTestInputSchema.safeParse({ provider: 'payment', emailTransport: 'ses' }).success).toBe(false);
   });
 });

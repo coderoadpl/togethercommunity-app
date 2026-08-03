@@ -25,6 +25,27 @@ export interface Messages {
     open: string;
     status: string;
   };
+  bootSplash: {
+    opening: string;
+    tenant: (params: { host: string }) => string;
+    warming: string;
+  };
+  htmlEditor: {
+    tabsAria: string;
+    editTab: string;
+    previewTab: string;
+    previewEmpty: string;
+    toolbarBold: string;
+    toolbarItalic: string;
+    toolbarHeading: string;
+    toolbarList: string;
+    toolbarCode: string;
+    placeholderBold: string;
+    placeholderItalic: string;
+    placeholderHeading: string;
+    placeholderList: string;
+    placeholderCode: string;
+  };
   pagination: {
     rowsPerPage: string;
     displayedRows: (params: { from: number; to: number; count: number }) => string;
@@ -408,6 +429,14 @@ export interface Messages {
     newProduct: string;
     detailsHeading: string;
     titleLabel: string;
+    typeLabel: string;
+    typeCourse: string;
+    typeDigitalDownload: string;
+    typeMembership: string;
+    slugLabel: string;
+    slugHint: string;
+    coverUrlLabel: string;
+    coverUrlHint: string;
     priceLabel: string;
     priceHelper: string;
     priceInvalid: string;
@@ -442,6 +471,7 @@ export interface Messages {
     manage: string;
     pricesHeading: string;
     pricesDescription: string;
+    membershipPricesDescription: string;
     checkoutConsentsHeading: string;
     checkoutConsentsDescription: string;
     checkoutConsentsLabel: string;
@@ -591,21 +621,7 @@ export interface Messages {
     blockTypeLabel: string;
     durationLabel: string;
     durationHelper: string;
-    htmlEditTab: string;
-    htmlPreviewTab: string;
-    htmlTabsAria: string;
     htmlLabel: string;
-    htmlPreviewEmpty: string;
-    htmlToolbarBold: string;
-    htmlToolbarItalic: string;
-    htmlToolbarHeading: string;
-    htmlToolbarList: string;
-    htmlToolbarCode: string;
-    htmlPlaceholderBold: string;
-    htmlPlaceholderItalic: string;
-    htmlPlaceholderHeading: string;
-    htmlPlaceholderList: string;
-    htmlPlaceholderCode: string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -644,6 +660,13 @@ export interface Messages {
     videoPickerPrevPage: string;
     videoPickerNextPage: string;
     videoPickerManualHint: string;
+    embedUrlLabel: string;
+    embedPreviewTitle: string;
+    embedInvalidUrl: string;
+    embedInvalidYoutubeUrl: string;
+    embedInvalidVimeoUrl: string;
+    youtubePrivacyNote: string;
+    vimeoPrivacyNote: string;
     allLessons: string;
   };
   members: {
@@ -1232,6 +1255,7 @@ export interface Messages {
     transportLabel: string;
     transportTenantSes: string;
     transportSmtp: string;
+    transportResend: string;
     transportPlatform: string;
     limitedTracking: string;
     campaignLabel: string;
@@ -1419,6 +1443,11 @@ export interface Messages {
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
     smtpNoFeedback: string;
+    resendTitle: string;
+    resendHint: string;
+    resendApiKeyLabel: string;
+    resendDomainHint: string;
+    testEmailSent: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;

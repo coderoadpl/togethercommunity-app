@@ -56,7 +56,6 @@ import {
   marketingSesOnboardingStatusSchema,
   marketingSesProvisionOutputSchema,
   marketingSesSimulatorOutputSchema,
-  marketingSmtpTestOutputSchema,
   marketingReputationOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
@@ -78,6 +77,7 @@ import {
   memberErasureRequestsOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
+  memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
@@ -370,8 +370,6 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingReputation.method, API_ROUTES.marketingReputation.path, marketingReputationOutputSchema, undefined, signal),
   updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettingsUpdate.method, API_ROUTES.marketingSesSettingsUpdate.path, marketingSesSettingsOutputSchema, input, signal),
-  testMarketingSmtp: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.marketingSmtpTest.method, API_ROUTES.marketingSmtpTest.path, marketingSmtpTestOutputSchema, {}, signal),
   listMarketingSuppressions: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressions.method, API_ROUTES.marketingStaffSuppressions.path, marketingSuppressionsOutputSchema, undefined, signal),
   addMarketingSuppression: (input: MarketingSuppressionCreateInput, signal?: AbortSignal) =>
@@ -916,6 +914,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.memberGrants.method,
       API_ROUTES.memberGrants.path.replace(':memberId', encodeURIComponent(memberId)),
       memberGrantsOutputSchema,
+      undefined,
+      signal,
+    ),
+  memberTimeline: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberTimeline.method,
+      API_ROUTES.memberTimeline.path.replace(':memberId', encodeURIComponent(memberId)),
+      memberTimelineOutputSchema,
       undefined,
       signal,
     ),

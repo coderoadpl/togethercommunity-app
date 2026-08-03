@@ -24,19 +24,16 @@ export const memberErasureRequestSchema = z.object({
 });
 export type MemberErasureRequest = z.output<typeof memberErasureRequestSchema>;
 
-export const memberErasureRequestEventSchema = z.object({
-  id: z.string(),
-  tenantId: z.string(),
-  requestId: z.string(),
-  type: z.enum(['requested', 'cancelled', 'completed', 'rejected']),
-  actorUserId: z.string().nullable(),
-  meta: z.unknown().nullable(),
-  occurredAt: z.string().datetime(),
-  createdAt: z.string().datetime(),
-});
-export type MemberErasureRequestEvent = z.output<
-  typeof memberErasureRequestEventSchema
->;
+export type MemberErasureRequestEvent = {
+  id: string;
+  tenantId: string;
+  requestId: string;
+  type: 'requested' | 'cancelled' | 'completed' | 'rejected';
+  actorUserId: string | null;
+  meta: unknown | null;
+  occurredAt: string;
+  createdAt: string;
+};
 
 export const memberErasureRequestWithMemberSchema =
   memberErasureRequestSchema.extend({

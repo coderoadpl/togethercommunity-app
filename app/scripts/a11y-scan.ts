@@ -1,27 +1,30 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { AxeResults, ImpactValue, Result as AxeViolation } from 'axe-core';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 
 import { API_PATHS } from '#core/contract/index.js';
 
 import { MODES, type ThemeMode } from '../apps/web/src/theme.js';
-
-declare global {
-  interface Window {
-    axe: { run: (context: Document, options: object) => Promise<AxeResults> };
-  }
-}
+import {
+  A11Y_CHECK_IDS,
+  CONTRAST_SKIP_REASONS,
+  type ContrastOutcome,
+  type ContrastSkipReason,
+  type ImpactValue,
+  type RawFinding,
+  runContrastChecksInDocument,
+  runSemanticChecksInDocument,
+  type SemanticOutcome,
+} from './a11y-checks.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
-const axeSourcePath = join(rootDir, 'node_modules/axe-core/axe.min.js');
 const outDir = join(rootDir, 'out/a11y');
 
 const themeStorageKey = 'together-theme-mode';
@@ -31,9 +34,20 @@ const SEED_BASE_TIME = '2026-07-01T12:00:00.000Z';
 
 const THEMES: ThemeMode[] = MODES.map((mode) => mode.id);
 
-const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
 const FAILING_IMPACTS: ImpactValue[] = ['serious', 'critical'];
 const IMPACT_ORDER: ImpactValue[] = ['critical', 'serious', 'moderate', 'minor'];
+const PER_RENDER_FLOOR_DERIVATION = {
+  verifiedMinimum: { contrast: 1, semantic: 8 },
+  ratio: 0.5,
+} as const;
+const MIN_CONTRAST_RUNS_FLOOR = 1;
+const MIN_CONTRAST_RUNS_PER_RENDER = Math.max(
+  MIN_CONTRAST_RUNS_FLOOR,
+  Math.floor(PER_RENDER_FLOOR_DERIVATION.verifiedMinimum.contrast * PER_RENDER_FLOOR_DERIVATION.ratio),
+);
+const MIN_SEMANTIC_CHECKS_PER_RENDER = Math.floor(
+  PER_RENDER_FLOOR_DERIVATION.verifiedMinimum.semantic * PER_RENDER_FLOOR_DERIVATION.ratio,
+);
 
 type AuthKind = 'public' | 'member' | 'member-free' | 'creator';
 type ViewportName = 'desktop' | 'mobile';
@@ -51,7 +65,8 @@ interface ScreenSpec {
   ready: (page: Page) => Promise<void>;
 }
 
-const visible = { state: 'visible', timeout: 20000 } as const;
+const READY_TIMEOUT_MS = 20000;
+const visible = { state: 'visible', timeout: READY_TIMEOUT_MS } as const;
 const memberViewports: ViewportName[] = ['desktop', 'mobile'];
 const desktopOnly: ViewportName[] = ['desktop'];
 
@@ -288,7 +303,7 @@ const bootServer = async (
   });
 
   const healthUrl = `${connectUrl}${API_PATHS.health}`;
-  const deadline = Date.now() + 20000;
+  const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (exitInfo !== null) {
       fail(`Server exited before becoming ready (${exitInfo}).\n--- server output ---\n${logs}`);
@@ -302,7 +317,7 @@ const bootServer = async (
     await delay(250);
   }
   throw new ScanFailure(
-    `Server did not become ready within 20s on port ${port}.\n--- server output ---\n${logs}`,
+    `Server did not become ready within ${String(READY_TIMEOUT_MS / 1000)}s on port ${port}.\n--- server output ---\n${logs}`,
   );
 };
 
@@ -324,6 +339,12 @@ const killServer = async (child: ChildProcess): Promise<void> => {
 
 const isLocalHost = (hostname: string): boolean =>
   hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
+
+const defineEsbuildNameHelper = async (context: BrowserContext): Promise<void> => {
+  await context.addInitScript({
+    content: 'globalThis.__name = globalThis.__name ?? ((target) => target);',
+  });
+};
 
 const stubNonDeterministicRequests = async (context: BrowserContext): Promise<void> => {
   await context.route('**/*', (route) => {
@@ -386,71 +407,30 @@ const bootstrapAuthState = async (
   return state;
 };
 
-interface ContrastDatum {
-  fg: string;
-  bg: string;
-  ratio: number;
-  expected: string;
-  fontSize: string;
-  fontWeight: string;
-  html: string;
-}
-
-interface ViolationRecord {
-  rule: string;
-  impact: ImpactValue;
-  help: string;
-  helpUrl: string;
+interface FindingRecord extends RawFinding {
   theme: ThemeMode;
   screen: string;
   viewport: ViewportName;
-  nodes: number;
-  targets: string[];
-  contrast: ContrastDatum[];
 }
 
-const readContrast = (node: AxeViolation['nodes'][number]): ContrastDatum[] => {
-  const out: ContrastDatum[] = [];
-  for (const check of node.any) {
-    const data = check.data;
-    if (
-      typeof data === 'object' &&
-      data !== null &&
-      'fgColor' in data &&
-      'bgColor' in data &&
-      'contrastRatio' in data
-    ) {
-      out.push({
-        fg: String(data.fgColor),
-        bg: String(data.bgColor),
-        ratio: Number(data.contrastRatio),
-        expected: 'expectedContrastRatio' in data ? String(data.expectedContrastRatio) : '',
-        fontSize: 'fontSize' in data ? String(data.fontSize) : '',
-        fontWeight: 'fontWeight' in data ? String(data.fontWeight) : '',
-        html: node.html.slice(0, 160),
-      });
-    }
-  }
-  return out;
-};
+interface RenderCoverage {
+  theme: ThemeMode;
+  screen: string;
+  viewport: ViewportName;
+  semanticChecked: number;
+  contrastChecked: number;
+}
 
 const impactRank = (impact: ImpactValue): number => {
   const index = IMPACT_ORDER.indexOf(impact);
   return index === -1 ? IMPACT_ORDER.length : index;
 };
 
-const runAxe = async (page: Page): Promise<AxeResults> => {
-  const axeSource = readFileSync(axeSourcePath, 'utf8');
-  await page.evaluate(axeSource);
-  return page.evaluate(
-    ([tags]) =>
-      window.axe.run(document, {
-        runOnly: { type: 'tag', values: tags },
-        resultTypes: ['violations'],
-      }),
-    [AXE_TAGS] as const,
-  );
-};
+const runSemanticChecks = (page: Page): Promise<SemanticOutcome> =>
+  page.evaluate<SemanticOutcome>(runSemanticChecksInDocument);
+
+const runContrastChecks = (page: Page): Promise<ContrastOutcome> =>
+  page.evaluate<ContrastOutcome>(runContrastChecksInDocument);
 
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
@@ -491,8 +471,23 @@ try {
     return undefined;
   };
 
-  const records: ViolationRecord[] = [];
+  const records: FindingRecord[] = [];
+  const renderCoverage: RenderCoverage[] = [];
   let scanned = 0;
+  let semanticChecked = 0;
+  let contrastChecked = 0;
+  let contrastSkipped = 0;
+  const contrastSkippedByReason: Record<ContrastSkipReason, number> = {
+    background: 0,
+    clipped: 0,
+    disabled: 0,
+    'form-option': 0,
+    placeholder: 0,
+    'pseudo-element': 0,
+    'text-fill': 0,
+    'text-shadow': 0,
+    transparency: 0,
+  };
 
   for (const theme of THEMES) {
     for (const viewportName of ['desktop', 'mobile'] satisfies ViewportName[]) {
@@ -508,6 +503,7 @@ try {
           ...(storageState === undefined ? {} : { storageState }),
         });
         await applyChrome(context, theme);
+        await defineEsbuildNameHelper(context);
         await stubNonDeterministicRequests(context);
         const page = await context.newPage();
 
@@ -515,25 +511,29 @@ try {
           await page.goto(`${studioBaseUrl}${screen.path}`, { waitUntil: 'load' });
           await screen.ready(page);
           await delay(600);
-          const results = await runAxe(page);
+          const semantic = await runSemanticChecks(page);
+          const contrast = await runContrastChecks(page);
+          const findings = [...semantic.findings, ...contrast.findings];
           scanned += 1;
-          for (const violation of results.violations) {
-            const impact: ImpactValue = violation.impact ?? 'minor';
+          semanticChecked += semantic.checked;
+          contrastChecked += contrast.checked;
+          contrastSkipped += contrast.skipped;
+          renderCoverage.push({
+            theme,
+            screen: screen.name,
+            viewport: viewportName,
+            semanticChecked: semantic.checked,
+            contrastChecked: contrast.checked,
+          });
+          for (const reason of CONTRAST_SKIP_REASONS) {
+            contrastSkippedByReason[reason] += contrast.skippedByReason[reason];
+          }
+          for (const finding of findings) {
             records.push({
-              rule: violation.id,
-              impact,
-              help: violation.help,
-              helpUrl: violation.helpUrl,
+              ...finding,
               theme,
               screen: screen.name,
               viewport: viewportName,
-              nodes: violation.nodes.length,
-              targets: violation.nodes
-                .flatMap((node: AxeViolation['nodes'][number]) => node.target.map(String))
-                .slice(0, 5),
-              contrast: violation.nodes.flatMap((node: AxeViolation['nodes'][number]) =>
-                readContrast(node),
-              ),
             });
           }
         }
@@ -549,8 +549,6 @@ try {
     {
       rule: string;
       impact: ImpactValue;
-      help: string;
-      helpUrl: string;
       themes: Set<string>;
       screens: Set<string>;
       viewports: Set<string>;
@@ -563,8 +561,6 @@ try {
       byRule.set(record.rule, {
         rule: record.rule,
         impact: record.impact,
-        help: record.help,
-        helpUrl: record.helpUrl,
         themes: new Set([record.theme]),
         screens: new Set([record.screen]),
         viewports: new Set([record.viewport]),
@@ -584,20 +580,47 @@ try {
   );
 
   const failing = records.filter((record) => FAILING_IMPACTS.includes(record.impact));
+  const contrastRuns = contrastChecked + contrastSkipped;
+  const contrastSkippedPercent =
+    contrastRuns === 0 ? 0 : Math.round((contrastSkipped / contrastRuns) * 1000) / 10;
+  assert(scanned > 0, 'Accessibility scan completed without scanning any screen renders.');
+  const contrastFloorFailures = renderCoverage.filter(
+    (render) => render.contrastChecked < MIN_CONTRAST_RUNS_PER_RENDER,
+  );
+  const semanticFloorFailures = renderCoverage.filter(
+    (render) => render.semanticChecked < MIN_SEMANTIC_CHECKS_PER_RENDER,
+  );
+  const minimumContrastChecked = Math.min(...renderCoverage.map((render) => render.contrastChecked));
+  const minimumSemanticChecked = Math.min(...renderCoverage.map((render) => render.semanticChecked));
 
   const jsonReport = {
     generatedAt: new Date().toISOString(),
     seedBaseTime: SEED_BASE_TIME,
     themes: THEMES,
-    axeTags: AXE_TAGS,
+    checks: A11Y_CHECK_IDS,
     screensScanned: scanned,
-    totalViolations: records.length,
-    failingViolations: failing.length,
+    semanticChecked,
+    contrastChecked,
+    contrastSkipped,
+    contrastRuns,
+    contrastSkippedPercent,
+    contrastSkippedByReason,
+    coverageFloors: {
+      contrastCheckedPerRender: MIN_CONTRAST_RUNS_PER_RENDER,
+      semanticCheckedPerRender: MIN_SEMANTIC_CHECKS_PER_RENDER,
+    },
+    minimumContrastCheckedPerRender: minimumContrastChecked,
+    minimumSemanticCheckedPerRender: minimumSemanticChecked,
+    floorFailures: {
+      contrast: contrastFloorFailures,
+      semantic: semanticFloorFailures,
+    },
+    renderCoverage,
+    totalFindings: records.length,
+    failingFindings: failing.length,
     rules: ruleSummary.map((rule) => ({
       rule: rule.rule,
       impact: rule.impact,
-      help: rule.help,
-      helpUrl: rule.helpUrl,
       occurrences: rule.occurrences,
       themes: [...rule.themes].sort(),
       screens: [...rule.screens].sort(),
@@ -608,7 +631,7 @@ try {
   writeFileSync(join(outDir, 'a11y-report.json'), `${JSON.stringify(jsonReport, null, 2)}\n`);
 
   const mdLines: string[] = [];
-  mdLines.push('# axe-core scan — raw aggregate');
+  mdLines.push('# In-house accessibility scan — raw aggregate');
   mdLines.push('');
   mdLines.push(`Generated: ${jsonReport.generatedAt}`);
   mdLines.push('');
@@ -616,10 +639,49 @@ try {
     `Scanned ${String(scanned)} screen renders (${String(THEMES.length)} themes; member screens at desktop 1440 + mobile 390, panel screens at desktop 1440).`,
   );
   mdLines.push('');
-  mdLines.push(`Tags: ${AXE_TAGS.join(', ')}`);
+  mdLines.push(
+    'Checks: image alternatives, accessible control names, main and region landmarks, heading order, table-header names, and WCAG AA text contrast.',
+  );
   mdLines.push('');
+  mdLines.push(
+    `Semantic checks: ${String(semanticChecked)} candidates inspected.`,
+  );
+  mdLines.push('');
+  mdLines.push(
+    `Contrast: ${String(contrastChecked)} of ${String(contrastRuns)} text runs measured; ${String(contrastSkipped)} skipped (${String(contrastSkippedPercent)}%).`,
+  );
+  mdLines.push('');
+  mdLines.push(
+    `Contrast skips by reason: ${Object.entries(contrastSkippedByReason)
+      .map(([reason, count]) => `${reason}=${String(count)}`)
+      .join(', ')}.`,
+  );
+  mdLines.push('');
+  mdLines.push(
+    `Per-render floors: contrast >= ${String(MIN_CONTRAST_RUNS_PER_RENDER)} measured text runs (observed minimum ${String(minimumContrastChecked)}); semantic >= ${String(MIN_SEMANTIC_CHECKS_PER_RENDER)} candidates (observed minimum ${String(minimumSemanticChecked)}).`,
+  );
+  mdLines.push('');
+  const floorFailures = renderCoverage.filter(
+    (render) =>
+      render.contrastChecked < MIN_CONTRAST_RUNS_PER_RENDER ||
+      render.semanticChecked < MIN_SEMANTIC_CHECKS_PER_RENDER,
+  );
+  if (floorFailures.length > 0) {
+    mdLines.push('| Floor failure | Theme | Screen | Viewport | Contrast | Semantic |');
+    mdLines.push('| --- | --- | --- | --- | --- | --- |');
+    for (const render of floorFailures) {
+      const failedChecks = [
+        ...(render.contrastChecked < MIN_CONTRAST_RUNS_PER_RENDER ? ['contrast'] : []),
+        ...(render.semanticChecked < MIN_SEMANTIC_CHECKS_PER_RENDER ? ['semantic'] : []),
+      ].join(', ');
+      mdLines.push(
+        `| ${failedChecks} | ${render.theme} | ${render.screen} | ${render.viewport} | ${String(render.contrastChecked)} | ${String(render.semanticChecked)} |`,
+      );
+    }
+    mdLines.push('');
+  }
   if (ruleSummary.length === 0) {
-    mdLines.push('No violations found. Clean pass.');
+    mdLines.push('No findings. Clean pass.');
   } else {
     mdLines.push('| Rule | Impact | Occurrences | Themes | Screens | Viewports |');
     mdLines.push('| --- | --- | --- | --- | --- | --- |');
@@ -634,13 +696,31 @@ try {
   mdLines.push('');
   writeFileSync(join(outDir, 'a11y-report.md'), `${mdLines.join('\n')}\n`);
 
+  const describeFloorFailures = (renders: RenderCoverage[]): string =>
+    renders
+      .map(
+        (render) =>
+          `${render.theme}/${render.screen}/${render.viewport} (contrast=${String(render.contrastChecked)}, semantic=${String(render.semanticChecked)})`,
+      )
+      .join(', ');
+  assert(
+    contrastFloorFailures.length === 0,
+    `Contrast inspected fewer than ${String(MIN_CONTRAST_RUNS_PER_RENDER)} text runs in: ${describeFloorFailures(contrastFloorFailures)}.`,
+  );
+  assert(
+    semanticFloorFailures.length === 0,
+    `Semantic checks inspected fewer than ${String(MIN_SEMANTIC_CHECKS_PER_RENDER)} candidates in: ${describeFloorFailures(semanticFloorFailures)}.`,
+  );
+
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log('');
   if (ruleSummary.length === 0) {
-    console.log(`a11y: PASS (${seconds}s) — ${String(scanned)} renders, 0 violations`);
+    console.log(`a11y: PASS (${seconds}s) — ${String(scanned)} renders, 0 findings`);
   } else {
     console.log(`a11y: ${String(scanned)} renders scanned in ${seconds}s`);
-    console.log(`a11y: ${String(records.length)} total violations across ${String(ruleSummary.length)} rules:\n`);
+    console.log(
+      `a11y: ${String(records.length)} total findings across ${String(ruleSummary.length)} rules:\n`,
+    );
     for (const rule of ruleSummary) {
       const scope =
         rule.themes.size === THEMES.length ? 'all themes' : `${String(rule.themes.size)} themes`;
@@ -651,11 +731,13 @@ try {
     console.log('');
     if (failing.length > 0) {
       console.error(
-        `a11y: FAIL — ${String(failing.length)} serious/critical violation instance(s) remain. See ${join(outDir, 'a11y-report.json')}`,
+        `a11y: FAIL — ${String(failing.length)} serious/critical finding(s) remain. See ${join(outDir, 'a11y-report.json')}`,
       );
       process.exitCode = 1;
     } else {
-      console.log(`a11y: PASS — no serious/critical violations (moderate/minor only). Report: ${join(outDir, 'a11y-report.md')}`);
+      console.log(
+        `a11y: PASS — no serious/critical findings (moderate/minor only). Report: ${join(outDir, 'a11y-report.md')}`,
+      );
     }
   }
 } catch (error) {

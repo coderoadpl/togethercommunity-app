@@ -1,6 +1,6 @@
 import type { RealtimeBusPort } from '#core/server/index.js';
 
-export const SSE_HEARTBEAT_MS = 25_000;
+const SSE_HEARTBEAT_MS = 25_000;
 
 export const SSE_HEADERS = {
   'content-type': 'text/event-stream',

@@ -11,7 +11,7 @@ export const tenantSchema = z.object({
 
 export type Tenant = z.infer<typeof tenantSchema>;
 
-export const RESERVED_TENANT_SLUGS = [
+const RESERVED_TENANT_SLUGS = [
   'admin',
   'api',
   'app',
@@ -41,7 +41,7 @@ export const isReservedTenantSlug = (slug: string): boolean =>
   RESERVED_TENANT_SLUGS.some((reserved) => reserved === slug);
 
 /** BYO pointer: an absolute URL or a root-relative path served by the app itself. */
-export const brandingAssetUrlSchema = z.union([z.string().url(), z.string().regex(/^\/\S+$/)]);
+const brandingAssetUrlSchema = z.union([z.string().url(), z.string().regex(/^\/\S+$/)]);
 
 export const accentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -68,18 +68,18 @@ const tenantSocialSchema = z.object({
   ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
-export const invoiceVatModeSchema = z.enum(['rate', 'exempt']);
-export const exemptionBasisKindSchema = z.enum([
+const invoiceVatModeSchema = z.enum(['rate', 'exempt']);
+const exemptionBasisKindSchema = z.enum([
   'art_113_1',
   'art_113_9',
   'art_43_1',
   'other_statute',
   'other',
 ]);
-export const EXEMPTION_BASIS_MAX_LENGTH = 256;
+const EXEMPTION_BASIS_MAX_LENGTH = 256;
 
 export type ExemptionBasisKind = z.infer<typeof exemptionBasisKindSchema>;
-export const invoiceVatTreatmentSchema = z.discriminatedUnion('kind', [
+const invoiceVatTreatmentSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('rate'),
     percent: z.union([z.literal(5), z.literal(8), z.literal(23)]),
@@ -307,12 +307,10 @@ export const memberExportFileSchema = z.object({
 
 export type MemberExportFile = z.infer<typeof memberExportFileSchema>;
 
-export const tenantDomainSchema = z.object({
-  id: z.string(),
-  tenantId: z.string(),
-  domain: z.string(),
-  kind: z.enum(['subdomain', 'custom']),
-  verified: z.boolean(),
-});
-
-export type TenantDomain = z.infer<typeof tenantDomainSchema>;
+export type TenantDomain = {
+  id: string;
+  tenantId: string;
+  domain: string;
+  kind: 'subdomain' | 'custom';
+  verified: boolean;
+};

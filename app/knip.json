@@ -20,6 +20,9 @@
     "config-regression/**/*.ts",
     ".storybook/**/*.{ts,tsx}"
   ],
+  "tags": [
+    "-@public"
+  ],
   "ignoreBinaries": [
     "openssl"
   ],
@@ -33,10 +36,10 @@
     "unresolved": "error",
     "binaries": "error",
     "duplicates": "error",
-    "exports": "warn",
-    "types": "warn",
-    "nsExports": "warn",
-    "nsTypes": "warn",
-    "enumMembers": "warn"
+    "exports": "error",
+    "types": "error",
+    "nsExports": "error",
+    "nsTypes": "error",
+    "enumMembers": "error"
   }
 }

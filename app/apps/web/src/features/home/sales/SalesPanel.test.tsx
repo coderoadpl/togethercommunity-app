@@ -21,8 +21,11 @@ describe('SalesPanel', () => {
             products: [{
               id: 'p1',
               tenantId: 't1',
+              type: 'course',
+              slug: 'workshop',
               title: 'Workshop',
               description: '',
+              coverUrl: null,
               priceCents: 4900,
               currency: 'PLN',
               published: true,

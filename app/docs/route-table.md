@@ -86,7 +86,6 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/marketing/ses-onboarding/identity` | authenticated | mutating | marketing ses identity start |
 | `POST /api/marketing/ses-onboarding/infrastructure` | authenticated | mutating | marketing ses provision |
 | `POST /api/marketing/ses-onboarding/simulator` | authenticated | mutating | marketing ses simulator |
-| `POST /api/marketing/smtp/test` | authenticated | mutating | marketing smtp test |
 | `GET /api/marketing/suppressions` | authenticated | read | marketing staff suppressions |
 | `GET /api/marketing/sends/export` | authenticated | read | email sends export |
 | `GET /api/marketing/sends` | authenticated | read | email sends |
@@ -108,6 +107,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/members/export` | authenticated | read | members export |
 | `POST /api/members/ban` | authenticated | mutating | member ban |
 | `GET /api/members/:memberId/grants` | authenticated | read | member grants |
+| `GET /api/members/:memberId/timeline` | authenticated | read | member timeline |
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |
 | `DELETE /api/members/:memberId` | authenticated | mutating | member remove |

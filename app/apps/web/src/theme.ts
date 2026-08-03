@@ -1,6 +1,6 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, Link, ListItemButton, ListItemText, MenuItem, Stack, SvgIcon, Typography } from '@mui/material';
-import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
+import { Box, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { alpha, createTheme, keyframes, styled, type Theme } from '@mui/material/styles';
 
 /**
  * The entire "engineer's logbook" visual language lives in this theme:
@@ -35,12 +35,12 @@ declare module '@mui/material/styles' {
   }
 }
 
-export const PAPER = '#f6f2ea';
-export const PAPER_RAISED = '#fdfbf6';
-export const INK = '#191512';
-export const INK_SOFT = '#5c5348';
-export const LINE = 'rgba(25, 21, 18, 0.14)';
-export const LINE_STRONG = 'rgba(25, 21, 18, 0.55)';
+const PAPER = '#f6f2ea';
+const PAPER_RAISED = '#fdfbf6';
+const INK = '#191512';
+const INK_SOFT = '#5c5348';
+const LINE = 'rgba(25, 21, 18, 0.14)';
+const LINE_STRONG = 'rgba(25, 21, 18, 0.55)';
 
 /**
  * MUI picks `contrastText` against a 3:1 floor, which is WCAG AA for large text
@@ -65,7 +65,7 @@ export const MODES = [
   { id: 'steady-frame', label: 'Steady Frame' },
 ] as const;
 
-export type ThemeModeOption = (typeof MODES)[number];
+type ThemeModeOption = (typeof MODES)[number];
 export type ThemeMode = ThemeModeOption['id'];
 
 /**
@@ -73,7 +73,7 @@ export type ThemeMode = ThemeModeOption['id'];
  * primary color; h1/h2 are scaled down to page-title sizes (raw MUI h1 is a
  * 6rem display size and would break the layout), everything else is default.
  */
-export const createPlainTheme = (accentHue?: number): Theme =>
+const createPlainTheme = (accentHue?: number): Theme =>
   createTheme({
     palette: {
       contrastThreshold: CONTRAST_THRESHOLD,
@@ -156,7 +156,7 @@ const SHADCN_SHADOW_XS = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
 const SHADCN_SHADOW_MD = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)';
 const SHADCN_SHADOW_LG = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)';
 
-export const createShadcnTheme = (): Theme =>
+const createShadcnTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${SHADCN_BORDER}`,
     focusRing: SHADCN_RING,
@@ -597,7 +597,7 @@ const SIGNAL_SUCCESS = '#1C8A5A';
 const SIGNAL_ERROR = '#B3261E';
 const SIGNAL_DIVIDER = '#DCDCD8';
 
-export const createSignalMonoTheme = (): Theme =>
+const createSignalMonoTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${SIGNAL_DIVIDER}`,
     numericFontFamily: SIGNAL_FONT_MONO,
@@ -1056,7 +1056,7 @@ const FRAME_DIVIDER = '#E3E0DA';
 const FRAME_SHADOW = '0 8px 24px rgba(28, 43, 51, 0.12)';
 const FRAME_PRIMARY_TINT = 'rgba(39, 76, 119, 0.1)';
 
-export const createSteadyFrameTheme = (): Theme =>
+const createSteadyFrameTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${FRAME_DIVIDER}`,
     numericFontFamily: FRAME_FONT_HEADING,
@@ -1425,7 +1425,7 @@ const SCORE_ERROR = '#B3261E';
 const SCORE_DIVIDER = '#111111';
 const SCORE_SHADOW = `3px 3px 0 ${SCORE_INK}`;
 
-export const createScoreboardTheme = (): Theme =>
+const createScoreboardTheme = (): Theme =>
   createTheme({
     headerRule: `2px solid ${SCORE_DIVIDER}`,
     palette: {
@@ -1837,7 +1837,7 @@ const STUDIO_INPUT_BORDER = '#D8D5CD';
 const STUDIO_SHADOW_REST = '0 1px 2px rgba(20, 18, 15, 0.04)';
 const STUDIO_SHADOW_FLOAT = '0 12px 28px rgba(20, 18, 15, 0.08)';
 
-export const createQuietStudioTheme = (): Theme =>
+const createQuietStudioTheme = (): Theme =>
   createTheme({
     headerRule: `1px solid ${STUDIO_DIVIDER}`,
     palette: {
@@ -2123,9 +2123,9 @@ export const createQuietStudioTheme = (): Theme =>
  * UI in logbook mode, keep vertical paddings + borders summing to GRID
  * multiples.
  */
-export const GRID = 24;
+const GRID = 24;
 
-export const createAppTheme = (accentHue = 24): Theme => {
+const createAppTheme = (accentHue = 24): Theme => {
   const accent = `hsl(${accentHue} 62% 42%)`;
   const accentInk = `hsl(${accentHue} 70% 28%)`;
   const accentWash = `hsl(${accentHue} 55% 50% / 0.09)`;
@@ -2413,16 +2413,32 @@ export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
-export const HeaderMeta = styled(Eyebrow)({ letterSpacing: '0.09em' });
-
-export const HeaderMetaBreak = styled(HeaderMeta)({ wordBreak: 'break-all' });
-
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
 
-export const EntryIndex = styled(Typography)(({ theme }) => ({
-  fontSize: '0.78rem',
-  color: theme.palette.primary.dark,
+const bootSweep = keyframes({
+  from: { transform: 'translateX(-100%)' },
+  to: { transform: 'translateX(400%)' },
+});
+
+export const BootIndicator = styled('div')(({ theme }) => ({
+  position: 'relative',
+  width: '100%',
+  height: '1px',
+  overflow: 'hidden',
+  backgroundColor: theme.palette.divider,
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    inset: 0,
+    width: '20%',
+    backgroundColor: theme.palette.primary.dark,
+    animation: `${bootSweep} 1.6s ease-in-out infinite`,
+  },
+  '@media (prefers-reduced-motion: reduce)': {
+    '&::after': { width: '100%', animation: 'none' },
+  },
 }));
+
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
   whiteSpace: 'nowrap',
@@ -2486,10 +2502,6 @@ export const BrandSwatch = styled(Box, {
   borderRadius: '0.4rem',
   border: `1px solid ${theme.palette.divider}`,
   backgroundColor: swatchColor ?? 'transparent',
-}));
-
-export const LedgerNav = styled(Stack)<AsElement>(({ theme }) => ({
-  borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
 export const AppBarTitle = styled(Typography)<AsElement>({
@@ -2594,6 +2606,33 @@ export const SearchHighlight = styled('mark')(({ theme }) => ({
 export const TreeModuleTitle = styled(Typography)<AsElement>({ fontSize: '1.02rem', fontWeight: 700 });
 
 export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92rem', fontWeight: 600 });
+
+export const ReorderCard = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'dropTarget',
+})<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
+  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+}));
+
+export const ReorderRow = styled(ListItem, {
+  shouldForwardProp: (prop) => prop !== 'dropTarget',
+})<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+}));
+
+export const ReorderDragHandle = styled('span', {
+  shouldForwardProp: (prop) => prop !== 'pending',
+})<{ pending?: boolean }>(({ theme, pending }) => ({
+  alignItems: 'center',
+  color: theme.palette.text.secondary,
+  cursor: pending === true ? 'default' : 'grab',
+  display: 'inline-flex',
+  justifyContent: 'center',
+  minHeight: '2rem',
+  minWidth: '2rem',
+  opacity: pending === true ? 0.38 : 1,
+  userSelect: 'none',
+}));
 
 export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.15rem',

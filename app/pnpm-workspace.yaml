@@ -8,7 +8,6 @@ onlyBuiltDependencies: []
 ignoredBuiltDependencies:
   - esbuild
   - msw
-  - odiff-bin
   - unrs-resolver
 auditConfig:
   ignoreGhsas:

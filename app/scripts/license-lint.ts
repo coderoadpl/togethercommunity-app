@@ -111,16 +111,6 @@ const exceptions = new Map<string, LicenseException>([
     },
   ],
   [
-    'rechoir@0.6.2',
-    {
-      devOnly: true,
-      license: 'MIT',
-      packagePattern: /^rechoir$/,
-      reason: 'The installed package manifest identifies 0.6.2 as MIT.',
-      versionPattern: /^0\.6\.2$/,
-    },
-  ],
-  [
     '@img/sharp-libvips-*@1.3.2',
     {
       devOnly: true,

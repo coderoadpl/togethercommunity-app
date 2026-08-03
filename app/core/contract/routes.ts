@@ -1075,7 +1075,6 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   footerLegalName: z.string(),
   footerAddress: z.string(),
 });
-export const marketingSmtpTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingSesIdentityStartInputSchema = z.object({
   kind: z.enum(['domain', 'email']),
 });
@@ -1333,7 +1332,6 @@ export const API_ROUTES = {
   marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
   marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
   marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
-  marketingSmtpTest: { method: 'POST', path: '/api/marketing/smtp/test' },
   marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
@@ -1503,7 +1501,6 @@ export const API_PATHS = {
   marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
   marketingSesProvision: API_ROUTES.marketingSesProvision.path,
   marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,
-  marketingSmtpTest: API_ROUTES.marketingSmtpTest.path,
   marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   emailSends: API_ROUTES.emailSends.path,

@@ -16,12 +16,14 @@ import type {
   EmailPort,
   PaymentProvider,
   StorageProvider,
+  TransactionalEmailSender,
 } from '../ports.js';
 import { authorizeTenant } from '../authorize.js';
 
 export interface TestIntegrationDeps {
   appBaseUrl: string;
   email: EmailPort;
+  emailSender: TransactionalEmailSender;
   emailTransports: EmailIntegrationTransportResolver;
   payment: PaymentProvider;
   storage: StorageProvider;
@@ -41,10 +43,13 @@ const testEmailTransport = async (
   }
   const diagnostic = await email.test();
   if (!diagnostic.ok) return diagnostic;
-  const sent = await email.send({
+  const message = {
     to: ctx.identity.email,
     ...emailTransportTest(DEFAULT_LANGUAGE, { transport: transport ?? 'platform' }),
-  });
+  };
+  const sent = transport === undefined
+    ? await deps.emailSender.send({ tenantId, ...message })
+    : await email.send(message);
   return sent.ok ? diagnostic : sent;
 };
 

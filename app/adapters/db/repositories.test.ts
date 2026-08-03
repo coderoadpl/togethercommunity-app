@@ -267,6 +267,8 @@ describe('product repository', () => {
     const repo = createProductRepository(db);
     expect(await repo.findById(ACME, 'prod-acme')).toMatchObject({ id: 'prod-acme', title: 'Acme Course' });
     expect(await repo.findById(GLOBEX, 'prod-acme')).toBeNull();
+    expect((await repo.findByIds(ACME, ['prod-acme', 'prod-globex'])).map((product) => product.id))
+      .toEqual(['prod-acme']);
   });
 
   it('returns slug_taken for the tenant slug unique constraint', async () => {
@@ -616,6 +618,14 @@ describe('order repository', () => {
 
     const globex = await repo.list(GLOBEX, { page: 1, pageSize: 20 });
     expect(globex.total).toBe(1);
+
+    const memberOrders = await repo.listForMember(ACME, 'mem-acme');
+    expect(memberOrders.map((entry) => entry.memberId)).toEqual(['mem-acme', 'mem-acme']);
+    expect(memberOrders[0]).toMatchObject({
+      memberEmail: 'buyer-acme@together.dev',
+      productTitle: 'Acme Course',
+    });
+    expect(await repo.listForMember(ACME, 'mem-globex')).toEqual([]);
   });
 
   it('sums paid revenue and counts every order since a cutoff', async () => {

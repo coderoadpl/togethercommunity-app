@@ -37,6 +37,8 @@ describe('transactional e-mail transport resolvers', () => {
       upsert: async () => tenantSettings,
     };
     const emailFor = vi.fn(() => ({
+      healthcheck: async () => ok({ healthy: true as const }),
+      test: async () => ok({ code: 'email.available' as const, message: 'Email is available.' }),
       send: async () => ok({ messageId: 'message-1', transport: 'tenant-ses' as const }),
     }));
     const resolver = createTenantSesTransactionalResolver(
@@ -84,6 +86,8 @@ describe('transactional e-mail transport resolvers', () => {
       reputationAlertedAt: null,
     };
     const emailFor = vi.fn(() => ({
+      healthcheck: async () => ok({ healthy: true as const }),
+      test: async () => ok({ code: 'email.available' as const, message: 'Email is available.' }),
       send: async () =>
         ok({ messageId: 'message-1', transport: 'tenant-ses' as const }),
     }));

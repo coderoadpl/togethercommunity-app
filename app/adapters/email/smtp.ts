@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-import { integrationUnavailable, ok } from '#core/domain/index.js';
+import { err, integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailPort } from '#core/server/index.js';
 
 export interface SmtpEmailSettings {
@@ -13,6 +13,7 @@ export interface SmtpEmailSettings {
 }
 
 export interface SmtpTransport {
+  verify(): Promise<unknown>;
   sendMail(input: {
     from: string;
     to: string;
@@ -42,7 +43,22 @@ export const createSmtpEmailPort = (
       ? {}
       : { auth: { user: settings.user, pass: settings.password } }),
   });
+  const healthcheck = async (): Promise<Result<{ healthy: true }, AppError>> => {
+    try {
+      await transport.verify();
+      return ok({ healthy: true });
+    } catch (cause) {
+      return err(integrationUnavailable(`Could not connect to SMTP: ${String(cause)}`));
+    }
+  };
   return {
+    healthcheck,
+    test: async () => {
+      const healthy = await healthcheck();
+      return healthy.ok
+        ? ok({ code: 'email.available', message: 'SMTP accepted the connection settings.' })
+        : healthy;
+    },
     send: async (message) => {
       try {
         const sent = await transport.sendMail({

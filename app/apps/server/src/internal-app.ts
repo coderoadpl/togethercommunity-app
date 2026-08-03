@@ -19,6 +19,7 @@ import {
   emailSendsQuerySchema,
   grantCreateInputSchema,
   grantRevokeInputSchema,
+  integrationTestInputSchema,
   lastViewedInputSchema,
   lessonCompleteInputSchema,
   lessonCreateInputSchema,
@@ -246,9 +247,9 @@ import {
   subscribeThread,
   testBunnyConnection,
   testIfirmaConnection,
+  testIntegration,
   testKsefConnection,
   testSendCampaignToSelf,
-  testStripeConnection,
   unfollowSpace,
   unmarkLessonCompleted,
   unreactToPost,
@@ -1491,13 +1492,20 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ onboarding: result.value }) : result);
   });
 
-  app.post(API_PATHS.stripeTestConnection, async (c) => {
-    const result = await testStripeConnection(
+  app.post(API_PATHS.integrationTest, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = integrationTestInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid integration test payload', parsed.error.flatten())));
+    return respond(await testIntegration(
       { identity: c.get('identity') },
-      { appBaseUrl: deps.appBaseUrl },
-      deps.payment,
-    );
-    return respond(result);
+      parsed.data,
+      {
+        appBaseUrl: deps.appBaseUrl,
+        email: deps.email,
+        payment: deps.payment,
+        storage: deps.storage,
+      },
+    ));
   });
 
   app.post(API_PATHS.ifirmaTestConnection, async (c) =>

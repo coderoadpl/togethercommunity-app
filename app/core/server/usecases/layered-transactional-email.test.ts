@@ -73,14 +73,23 @@ describe('layered transactional e-mail sender', () => {
       name: 'platform SES when tenant transports are unavailable',
       tenantSes: false,
       smtp: false,
+      resend: false,
       expected: 'platform',
     },
-  ])('$name', async ({ tenantSes, smtp, expected }) => {
+    {
+      name: 'Resend when tenant SES and SMTP are unavailable',
+      tenantSes: false,
+      smtp: false,
+      resend: true,
+      expected: 'resend',
+    },
+  ])('$name', async ({ tenantSes, smtp, resend = false, expected }) => {
     const calls: string[] = [];
     const pool = new MemoryPool();
     const sender = createLayeredTransactionalEmailSender({
       tenantSes: resolver(tenantSes ? port('tenant-ses', calls) : null),
       smtp: resolver(smtp ? port('smtp', calls) : null),
+      resend: resolver(resend ? port('resend', calls) : null),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -98,6 +107,7 @@ describe('layered transactional e-mail sender', () => {
     const sender = createLayeredTransactionalEmailSender({
       tenantSes: resolver(port('tenant-ses', calls, err(integrationUnavailable('SES rejected the send')))),
       smtp: resolver(port('smtp', calls)),
+      resend: resolver(port('resend', calls)),
       platform: port('platform', calls),
       pool: new MemoryPool(),
       platformLimit: 1000,
@@ -118,6 +128,7 @@ describe('layered transactional e-mail sender', () => {
     const sender = createLayeredTransactionalEmailSender({
       tenantSes: resolver(null),
       smtp: resolver(null),
+      resend: resolver(null),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -137,6 +148,7 @@ describe('layered transactional e-mail sender', () => {
     const sender = createLayeredTransactionalEmailSender({
       tenantSes: resolver(null),
       smtp: resolver(null),
+      resend: resolver(null),
       platform: port('platform', calls),
       pool,
       platformLimit: 1000,
@@ -157,6 +169,7 @@ describe('layered transactional e-mail sender', () => {
     const sender = createLayeredTransactionalEmailSender({
       tenantSes: resolver(null),
       smtp: resolver(null),
+      resend: resolver(null),
       platform: port('platform', calls, err(integrationUnavailable('Platform SES unavailable'))),
       pool,
       platformLimit: 1000,

@@ -129,11 +129,14 @@ const storageConfigurationOptionsSchema = z.object({
   secretAccessKey: z.string().min(1),
 });
 const productCreateOptionsSchema = z.object({
+  type: z.enum(['course', 'digital_download', 'membership']).optional(),
+  slug: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200),
   priceCents: centsSchema.optional(),
   price: priceMajorSchema.optional(),
   currency: currencySchema.optional(),
   description: z.string().optional(),
+  coverUrl: z.string().url().optional(),
   accessItems: z.string().optional(),
 });
 const simulatePurchaseOptionsSchema = z.object({
@@ -842,10 +845,13 @@ product
   .command('create')
   .description('Create a product in the active tenant')
   .requiredOption('--title <title>')
+  .option('--type <type>', 'course, digital_download or membership')
+  .option('--slug <slug>', 'tenant-unique product slug')
   .option('--price-cents <cents>', 'price in integer cents')
   .option('--price <amount>', 'price in currency units, e.g. 199 or 199.99')
   .option('--currency <currency>', '3-letter uppercase currency code')
   .option('--description <description>')
+  .option('--cover-url <url>', 'absolute cover image URL')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .action(
     withInput(z.tuple([productCreateOptionsSchema]), async (ctx, [options]) => {
@@ -880,8 +886,11 @@ product
         await ctx.api.createProduct({
           title: options.title,
           priceCents,
+          ...(options.type === undefined ? {} : { type: options.type }),
+          ...(options.slug === undefined ? {} : { slug: options.slug }),
           ...(options.currency === undefined ? {} : { currency: options.currency }),
           ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.coverUrl === undefined ? {} : { coverUrl: options.coverUrl }),
           ...(accessItems === undefined ? {} : { accessItems }),
         }),
         ctx.json,
@@ -2452,6 +2461,21 @@ member
         );
         return [header, ...rows].join('\n');
       });
+    }),
+  );
+
+member
+  .command('timeline <memberId>')
+  .description('Merged member event timeline: purchases, access, subscriptions, learning and e-mail')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [memberId]) => {
+      emit(await ctx.api.memberTimeline(memberId), ctx.json, (data) =>
+        data.events.length === 0
+          ? 'no events'
+          : data.events
+              .map((event) => `${event.occurredAt}\t${event.type}\t${JSON.stringify(event.payload)}`)
+              .join('\n'),
+      );
     }),
   );
 

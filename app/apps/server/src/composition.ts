@@ -5,6 +5,7 @@ import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPla
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
+import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -96,7 +97,13 @@ import { createEmailNotificationChannel } from '#adapters/notifications/email.js
 import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
-import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver } from '#adapters/email/transactional-resolvers.js';
+import { createResendEmailPort } from '#adapters/email/resend.js';
+import {
+  createEmailIntegrationTransportResolver,
+  createResendTransactionalResolver,
+  createSmtpTransactionalResolver,
+  createTenantSesTransactionalResolver,
+} from '#adapters/email/transactional-resolvers.js';
 import { createSesMarketingSender, readSesQuota } from '#adapters/email/marketing-ses.js';
 import { createDevMarketingSender } from '#adapters/email/dev-marketing.js';
 import { createMarketingSesCredentialResolver } from '#adapters/email/marketing-credentials.js';
@@ -127,6 +134,7 @@ import type {
   EmailPort,
   EmailOutboxRepository,
   EmailHmac,
+  EmailIntegrationTransportResolver,
   EmailEventRepository,
   EmailSendRepository,
   EmailLayoutRepository,
@@ -156,6 +164,7 @@ import type {
   MemberCourseProgressRepository,
   MemberErasureRequestRepository,
   MemberErasurePort,
+  MemberEventRepository,
   MemberRepository,
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
@@ -194,7 +203,7 @@ import type {
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
-  TransactionalEmailTransportResolver,
+  TransactionalEmailSender,
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
@@ -207,16 +216,16 @@ import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lesson
 import type { Env } from './env.js';
 import { APP_VERSION } from './version.js';
 
-export interface DevEndpoints {
+interface DevEndpoints {
   simulatedPayments: boolean;
   exposeMagicLinks: boolean;
 }
 
-export interface AuthConfig {
+interface AuthConfig {
   googleEnabled: boolean;
 }
 
-export interface KsefAppDeps {
+interface KsefAppDeps {
   environment: KsefEnvironment;
   credentials: KsefCredentialResolver;
   numbers: KsefNumberRepository;
@@ -245,6 +254,7 @@ export interface AppDeps {
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
+  memberEvents: MemberEventRepository;
   memberErasure: MemberErasurePort;
   erasureRequests: MemberErasureRequestRepository;
   emailHmac?: EmailHmac;
@@ -286,6 +296,8 @@ export interface AppDeps {
   storage: StorageProvider;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
   email: EmailPort;
+  emailSender: TransactionalEmailSender;
+  emailTransports: EmailIntegrationTransportResolver;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
   paymentTransaction: PaymentTransactionPort;
@@ -330,7 +342,6 @@ export interface MarketingAppDeps {
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
   platformTransactionalPool: PlatformTransactionalPool;
-  smtpTest: TransactionalEmailTransportResolver;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
   marketingSes: SesMarketingSender;
@@ -460,10 +471,23 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     secretResolver,
     production ? createSmtpEmailPort : () => email,
   );
+  const resendTransactional = createResendTransactionalResolver(
+    sesSettings,
+    secretResolver,
+    production ? createResendEmailPort : () => email,
+  );
+  const sesTest = createTenantSesTransactionalResolver(sesSettings, tenantMarketingCredentials);
   const smtpTest = createSmtpTransactionalResolver(sesSettings, secretResolver);
+  const resendTest = createResendTransactionalResolver(sesSettings, secretResolver);
+  const emailTransports = createEmailIntegrationTransportResolver({
+    smtp: smtpTest,
+    ses: sesTest,
+    resend: resendTest,
+  });
   const transactionalEmail = createLayeredTransactionalEmailSender({
     tenantSes: tenantSesTransactional,
     smtp: smtpTransactional,
+    resend: resendTransactional,
     platform: email,
     pool: platformTransactionalPool,
     platformLimit: 1000,
@@ -686,6 +710,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
+    memberEvents: createMemberEventRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
     erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,
@@ -745,6 +770,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
     }),
     email,
+    emailSender: transactionalEmail,
+    emailTransports,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
     paymentTransaction: createPaymentTransactionPort(db),
@@ -793,7 +820,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       unsubscribes,
       sesSettings,
       platformTransactionalPool,
-      smtpTest,
       documents,
       idempotency,
       marketingSes,

@@ -9,5 +9,3 @@ export const PAGE_WIDTH = {
   panel: '60rem',
   wide: '72rem',
 } as const;
-
-export type PageWidth = keyof typeof PAGE_WIDTH;

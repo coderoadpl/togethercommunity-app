@@ -16,6 +16,8 @@ import {
 
 import type {
   ConsentDefinitionRepository,
+  CourseLessonPreview,
+  CourseLessonRepository,
   ProductPriceRepository,
   ProductRepository,
   TenantDocumentRepository,
@@ -31,8 +33,11 @@ export interface PublicOffer {
     support: TenantSupportPublic;
   };
   contentVersion: number;
+  previewLessons: PublicOfferPreviewLesson[];
   products: PublicOfferProduct[];
 }
+
+export type PublicOfferPreviewLesson = CourseLessonPreview;
 
 export interface PublicOfferPrice {
   id: string;
@@ -58,6 +63,7 @@ export interface PublicOfferProduct {
 }
 
 export interface PublicOfferDeps {
+  lessons: Pick<CourseLessonRepository, 'listPreviews'>;
   products: ProductRepository;
   prices: ProductPriceRepository;
   tenants: TenantRepository;
@@ -69,7 +75,10 @@ export const getPublicOffer = async (
   tenant: Tenant,
   deps: PublicOfferDeps,
 ): Promise<Result<PublicOffer, AppError>> => {
-  const products = await deps.products.listPublishedByTenant(tenant.id);
+  const [products, lessons] = await Promise.all([
+    deps.products.listPublishedByTenant(tenant.id),
+    deps.lessons.listPreviews(tenant.id),
+  ]);
   const activePrices = await deps.prices.listActiveByProducts(
     tenant.id,
     products.map((product) => product.id),
@@ -96,6 +105,7 @@ export const getPublicOffer = async (
       support: { url: settings?.supportUrl ?? null },
     },
     contentVersion: tenant.contentVersion,
+    previewLessons: lessons,
     products: await Promise.all(products.map(async (product) => ({
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),

@@ -5,6 +5,7 @@ import {
   Chip,
   Divider,
   FormControl,
+  FormControlLabel,
   FormHelperText,
   FormLabel,
   List,
@@ -15,6 +16,7 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
   Tab,
   Tabs,
   Tooltip,
@@ -354,6 +356,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const [duration, setDuration] = useState(
     lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
   );
+  const [isPreview, setIsPreview] = useState(lesson?.isPreview ?? false);
   const [blocks, setBlocks] = useState<BlockDraft[]>(lesson ? lesson.contents.map(toDraft) : []);
   const [addType, setAddType] = useState<BlockType>('video');
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -407,10 +410,11 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
     const minutes = Number.parseInt(duration, 10);
     const durationMinutes = Number.isInteger(minutes) && minutes > 0 ? minutes : null;
     if (lesson) {
-      updateLesson.mutate({ id: lesson.id, name: name.trim(), contents: parsed.blocks, durationMinutes });
+      updateLesson.mutate({ id: lesson.id, name: name.trim(), isPreview, contents: parsed.blocks, durationMinutes });
     } else {
       createLesson.mutate({
         name: name.trim(),
+        isPreview,
         contents: parsed.blocks,
         ...(durationMinutes === null ? {} : { durationMinutes }),
       });
@@ -440,6 +444,13 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           inputProps={{ min: 1, step: 1, 'data-testid': 'lesson-duration-input' }}
         />
         <FormHelperText>{t.lessons.durationHelper}</FormHelperText>
+      </FormControl>
+      <FormControl>
+        <FormControlLabel
+          control={<Switch checked={isPreview} onChange={(event) => setIsPreview(event.target.checked)} />}
+          label={t.lessons.previewLabel}
+        />
+        <FormHelperText>{t.lessons.previewHelper}</FormHelperText>
       </FormControl>
 
       <Divider />

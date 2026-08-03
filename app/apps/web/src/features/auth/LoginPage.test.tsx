@@ -65,6 +65,27 @@ describe('LoginPage', () => {
     expect(screen.getByText('demo1234')).toBeInTheDocument();
   });
 
+  it('links public preview lessons to the registered player route', async () => {
+    server.use(
+      http.get('*/api/public/offer', () => HttpResponse.json({
+        ok: true,
+        data: {
+          tenant: { slug: 'acme', name: 'Acme' },
+          contentVersion: 1,
+          previewLessons: [{ id: 'lesson-1', name: 'Free introduction', courseId: 'course-1' }],
+          products: [],
+        },
+      })),
+    );
+
+    await renderLoginPage();
+
+    expect(await screen.findByRole('link', { name: 'Free introduction' })).toHaveAttribute(
+      'href',
+      '/my/courses/course-1/lessons/lesson-1',
+    );
+  });
+
   it('swaps the form for a magic-link confirmation after requesting a link', async () => {
     server.use(
       http.post('*', () => HttpResponse.json({ status: true })),

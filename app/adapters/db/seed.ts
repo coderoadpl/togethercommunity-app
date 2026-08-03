@@ -1011,6 +1011,7 @@ await db
       id: lesson.id,
       tenantId: lessonTenant[lesson.id] ?? 'tenant-studio',
       name: lesson.name,
+      isPreview: false,
       contents: lesson.contents,
       durationMinutes: lesson.durationMinutes,
       createdAt: nextIso(),
@@ -1020,6 +1021,7 @@ await db
     target: courseLessons.id,
     set: {
       name: sql`excluded.name`,
+      isPreview: sql`excluded.is_preview`,
       contents: sql`excluded.contents`,
       durationMinutes: sql`excluded.duration_minutes`,
     },

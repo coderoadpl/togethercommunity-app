@@ -91,6 +91,7 @@ export interface Messages {
     demoAccount: string;
     registerPrompt: string;
     registerLink: string;
+    previewLessons: string;
     creatingAccount: string;
     createAccount: string;
     alreadyHaveAccount: string;
@@ -579,6 +580,8 @@ export interface Messages {
     blockTypeLabel: string;
     durationLabel: string;
     durationHelper: string;
+    previewLabel: string;
+    previewHelper: string;
     htmlEditTab: string;
     htmlPreviewTab: string;
     htmlTabsAria: string;

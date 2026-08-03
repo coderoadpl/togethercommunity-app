@@ -63,6 +63,7 @@ const lesson = (id: string, tenantId: string): CourseLesson => ({
   id,
   tenantId,
   name: `Lesson ${id}`,
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: now,
@@ -143,6 +144,7 @@ const moduleRepo = (store: CourseModule[], versions: EntityVersionRecord[] = [])
 
 const lessonRepo = (store: CourseLesson[], versions: EntityVersionRecord[] = []): CourseLessonRepository => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
+  listPreviews: async () => [],
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
   findByIds: async (tenantId, ids) =>
@@ -327,7 +329,7 @@ describe('course management use-cases', () => {
     await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
-    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 3, 2]);
+    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 4, 2]);
     expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
     expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
     expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });
@@ -361,6 +363,27 @@ describe('course management use-cases', () => {
       d,
     );
     expect(result).toMatchObject({ ok: true, value: { contents: [{ type: 'html' }] } });
+  });
+
+  it('invalidates the public offer when preview lesson visibility or content changes', async () => {
+    const contentVersionBumps: string[] = [];
+    const lessons = [
+      { ...lesson('preview', 't-acme'), isPreview: true },
+      { ...lesson('paid', 't-acme'), isPreview: false },
+    ];
+    const d = deps({
+      lessons,
+      ids: ['created', 'preview-version', 'paid-version'],
+      contentVersionBumps,
+    });
+    const ctx = { identity: identity('t-acme', 'owner') };
+
+    await createLesson(ctx, { name: 'Created preview', isPreview: true }, d);
+    await updateLesson(ctx, { id: 'preview', name: 'Updated preview' }, d);
+    await updateLesson(ctx, { id: 'paid', name: 'Updated paid lesson', isPreview: true }, d);
+    await deleteLesson(ctx, { id: 'preview' }, d);
+
+    expect(contentVersionBumps).toEqual(['t-acme', 't-acme', 't-acme', 't-acme']);
   });
 
   it('creates and updates modules with computed names', async () => {

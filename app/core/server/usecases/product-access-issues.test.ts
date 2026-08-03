@@ -107,6 +107,7 @@ const repos = (
   } satisfies CourseModuleRepository,
   lessons: {
     list: async () => lessons,
+    listPreviews: async () => [],
     findById: async (_t, id) => lessons.find((l) => l.id === id) ?? null,
     findByIds: async (_t, ids) => lessons.filter((l) => ids.includes(l.id)),
     create: async () => undefined,
@@ -144,6 +145,7 @@ describe('listProductAccessIssues', () => {
       id,
       tenantId: 't1',
       name: `Lesson ${id}`,
+      isPreview: false,
       contents: [],
       legacyId: null,
       createdAt: '2026-01-01T00:00:00.000Z',

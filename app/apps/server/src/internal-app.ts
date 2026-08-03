@@ -163,7 +163,6 @@ import {
   getMemberLearningSummary,
   getNextLesson,
   getOrder,
-  getPlayableLesson,
   getProgress,
   getSalesSummary,
   getSchedulerRunForTenant,
@@ -2025,11 +2024,6 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (courseId === undefined) return respond(err(validation('Missing "courseId" query parameter')));
     const result = await getProgress({ identity: c.get('identity') }, courseId, deps);
     return respond(result.ok ? ok({ progress: result.value }) : result);
-  });
-
-  app.get(API_PATHS.studentLesson, async (c) => {
-    const result = await getPlayableLesson({ identity: c.get('identity') }, c.req.param('lessonId'), deps);
-    return respond(result.ok ? ok({ lesson: result.value }) : result);
   });
 
   app.post(API_PATHS.postsCreate, async (c) => {

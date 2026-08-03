@@ -193,6 +193,30 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
   };
 
   return {
+    test: async (input) => {
+      const client = await clientFor(input.tenantId);
+      if (!client.ok) return client;
+      try {
+        const session = await client.value.checkout.sessions.create(
+          stripeCheckoutSessionParams({
+            tenantId: input.tenantId,
+            productId: 'connection-test',
+            productName: 'Stripe connection test',
+            priceCents: 100,
+            currency: 'USD',
+            successUrl: `${input.appBaseUrl}/integrations/stripe/test/success`,
+            cancelUrl: `${input.appBaseUrl}/integrations/stripe/test/cancel`,
+          }),
+        );
+        await client.value.checkout.sessions.expire(session.id);
+        return ok({
+          code: 'payment.available',
+          message: 'Stripe accepted the credentials and the test session was expired.',
+        });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected the connection test', cause));
+      }
+    },
     ensureCouponPromotion: async (input) => {
       const client = await clientFor(input.tenantId);
       if (!client.ok) return client;

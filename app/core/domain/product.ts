@@ -89,7 +89,6 @@ export const newProductSchema = z.object({
   accessItems: z.array(accessItemSchema).default([]),
 });
 
-export type NewProduct = z.infer<typeof newProductSchema>;
 export type NewProductInput = z.input<typeof newProductSchema>;
 
 export const updateProductAccessItemsInputSchema = z.object({

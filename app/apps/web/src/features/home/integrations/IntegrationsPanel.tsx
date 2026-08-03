@@ -11,7 +11,8 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { TenantSecretKey } from '#core/domain/index.js';
+import type { IntegrationTestInput } from '#core/contract/index.js';
+import type { ProviderDiagnosticCode, TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -144,11 +145,55 @@ const IfirmaTestConnection = ({ ready }: { ready: boolean }) => {
   );
 };
 
+const ProviderTest = ({
+  provider,
+  ready,
+  hint,
+}: {
+  provider: IntegrationTestInput['provider'];
+  ready: boolean;
+  hint?: string;
+}) => {
+  const t = useTranslations();
+  const test = useMutation(actions.testIntegration);
+  const messageByCode: Record<ProviderDiagnosticCode, string> = {
+    'storage.available': t.integrations.storageAvailable,
+    'email.available': t.integrations.emailAvailable,
+    'payment.available': t.integrations.paymentAvailable,
+  };
+  return (
+    <Box sx={{ display: 'grid', gap: '0.5rem' }}>
+      <Button
+        type="button"
+        variant="contained"
+        data-testid={`${provider}-test-connection`}
+        disabled={test.isPending || !ready}
+        onClick={() => test.mutate({ provider })}
+        sx={{ justifySelf: 'start' }}
+      >
+        {test.isPending ? t.integrations.testing : t.integrations.testConnection}
+      </Button>
+      {!ready && hint !== undefined ? (
+        <Typography variant="caption" component="p" data-testid={`${provider}-test-hint`}>
+          {hint}
+        </Typography>
+      ) : null}
+      {test.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid={`${provider}-test-result`}>
+          {messageByCode[test.data.diagnostic.code]}
+        </Typography>
+      ) : null}
+      {test.isError ? (
+        <Alert data-testid={`${provider}-test-error`}>{localizeError(test.error, t)}</Alert>
+      ) : null}
+    </Box>
+  );
+};
+
 export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
   const t = useTranslations();
   const secrets = useQuery(actions.tenantSecrets);
   const settings = useQuery(actions.tenantSettings);
-  const testConnection = useMutation(actions.testStripeConnection);
 
   const webhookUrl = `${window.location.origin}/api/webhooks/stripe/${tenantId}`;
   const storedSecrets = secrets.data?.secrets;
@@ -167,6 +212,10 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'bunny.apiKey') !== null &&
     (settings.data?.settings.bunnyStreamLibraryId ?? null) !== null;
+  const storageReady =
+    storedSecrets !== undefined &&
+    previewFor(storedSecrets, 's3.accessKeyId') !== null &&
+    previewFor(storedSecrets, 's3.secretAccessKey') !== null;
 
   return (
     <PanelPage title={t.integrations.heading} description={t.integrations.intro}>
@@ -204,33 +253,11 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
             </Typography>
           </FormControl>
 
-          <Box sx={{ display: 'grid', gap: '0.5rem' }}>
-            <Button
-              type="button"
-              variant="contained"
-              data-testid="stripe-test-connection"
-              disabled={testConnection.isPending || !stripeReady}
-              onClick={() => testConnection.mutate(undefined)}
-              sx={{ justifySelf: 'start' }}
-            >
-              {testConnection.isPending ? t.integrations.testing : t.integrations.testConnection}
-            </Button>
-            {!stripeReady && !secrets.isPending && !secrets.isError ? (
-              <Typography variant="caption" component="p" data-testid="stripe-test-hint">
-                {t.integrations.saveKeysFirst}
-              </Typography>
-            ) : null}
-            {testConnection.isSuccess ? (
-              <Typography variant="caption" component="p" data-testid="stripe-test-result">
-                {testConnection.data.diagnostic}
-              </Typography>
-            ) : null}
-            {testConnection.isError ? (
-              <Alert data-testid="stripe-test-error">
-                {localizeError(testConnection.error, t)}
-              </Alert>
-            ) : null}
-          </Box>
+          <ProviderTest provider="payment" ready={stripeReady} hint={t.integrations.saveKeysFirst} />
+        </SectionCard>
+
+        <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
+          <ProviderTest provider="email" ready />
         </SectionCard>
 
         <SectionCard
@@ -332,6 +359,7 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
               />
             </Stack>
           )}
+          <ProviderTest provider="storage" ready={storageReady} hint={t.integrations.s3SaveFirst} />
         </SectionCard>
     </PanelPage>
   );

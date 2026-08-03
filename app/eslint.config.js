@@ -759,6 +759,34 @@ export default tseslint.config(
     },
   },
   {
+    // Migration tests stage a partial `drizzle/` folder on disk so the schema
+    // can be replayed at the previous revision before the migration under test.
+    files: ['adapters/db/**/*-migration.test.{ts,tsx}'],
+    rules: {
+      'boundaries/external': [
+        'error',
+        {
+          default: 'disallow',
+          message: '${file.type} is not allowed to import external package "${dependency.source}" (PRD §3.2)',
+          rules: [
+            {
+              from: ['adapter-db'],
+              allow: [
+                '@neondatabase/serverless',
+                'drizzle-orm',
+                'node:fs',
+                'node:os',
+                'node:path',
+                'pg',
+                'vitest',
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/cli/**/*.test.{ts,tsx}'],
     rules: {
       'boundaries/external': [

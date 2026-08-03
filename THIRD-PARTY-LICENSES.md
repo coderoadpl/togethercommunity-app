@@ -223,7 +223,7 @@ their applicable notices in the distribution.
 - [@fontsource/manrope@5.3.0](https://fontsource.org/fonts/manrope) - OFL-1.1
 - [@fontsource/space-grotesk@5.3.0](https://fontsource.org/fonts/space-grotesk) - OFL-1.1
 - [@hexagon/base64@1.1.28](https://base64.56k.guru) - MIT
-- [@hono/node-server@1.19.14](https://github.com/honojs/node-server) - MIT
+- [@hono/node-server@2.0.12](https://github.com/honojs/node-server) - MIT
 - [@humanfs/core@0.19.2](https://github.com/humanwhocodes/humanfs#readme) - Apache-2.0
 - [@humanfs/node@0.16.8](https://github.com/humanwhocodes/humanfs#readme) - Apache-2.0
 - [@humanfs/types@0.15.0](https://github.com/humanwhocodes/humanfs#readme) - Apache-2.0

@@ -442,6 +442,20 @@
       "when": 1785286000000,
       "tag": "0062_member_bans",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1785720000000,
+      "tag": "0063_upcast_lesson_embed_urls",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785739795211,
+      "tag": "0064_member_domain_events",
+      "breakpoints": true
     }
   ]
 }

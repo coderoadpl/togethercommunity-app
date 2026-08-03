@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ONBOARDING_STEP_IDS = [
+const ONBOARDING_STEP_IDS = [
   'course_with_lesson',
   'product_with_price',
   'published_product',
@@ -8,12 +8,12 @@ export const ONBOARDING_STEP_IDS = [
   'payments_configured',
 ] as const;
 
-export const onboardingStepIdSchema = z.enum(ONBOARDING_STEP_IDS);
+const onboardingStepIdSchema = z.enum(ONBOARDING_STEP_IDS);
 
 export type OnboardingStepId = z.infer<typeof onboardingStepIdSchema>;
 
 /** Panel route each step deep-links to; a UI hint owned by the domain so all clients agree. */
-export const ONBOARDING_STEP_TARGETS: Record<OnboardingStepId, string> = {
+const ONBOARDING_STEP_TARGETS: Record<OnboardingStepId, string> = {
   course_with_lesson: '/panel/courses',
   product_with_price: '/panel/products',
   published_product: '/panel/products',
@@ -21,13 +21,11 @@ export const ONBOARDING_STEP_TARGETS: Record<OnboardingStepId, string> = {
   payments_configured: '/panel/integrations',
 };
 
-export const onboardingStepSchema = z.object({
+const onboardingStepSchema = z.object({
   id: onboardingStepIdSchema,
   done: z.boolean(),
   target: z.string(),
 });
-
-export type OnboardingStep = z.infer<typeof onboardingStepSchema>;
 
 export const creatorOnboardingSchema = z.object({
   steps: z.array(onboardingStepSchema),

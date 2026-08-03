@@ -565,7 +565,7 @@ export const devEmailOutputSchema = z.object({
 
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
-  name: z.string(),
+  name: tenantSchema.shape.name,
 });
 
 export type TenantCreateInput = z.input<typeof tenantCreateInputSchema>;

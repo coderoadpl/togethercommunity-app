@@ -1125,6 +1125,7 @@ export interface Messages {
     socialLinkLabelPlaceholder: string;
     socialLinkUrl: string;
     socialLinkUrlPlaceholder: string;
+    socialLinkUrlInvalid: string;
     addSocialLink: string;
     removeSocialLink: string;
     socialLinksAria: string;

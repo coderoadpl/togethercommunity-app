@@ -50,10 +50,18 @@ describe('support message email', () => {
       subject: 'Help <now>',
       body: 'Please <script>alert(1)</script>',
     };
-    const pl = supportMessage('pl', input);
+    const branding = {
+      logoUrl: null,
+      accentColor: null,
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+    };
+    const pl = supportMessage('pl', { ...input, branding });
     expect(pl.html).toContain('Acme &lt;Studio&gt;');
     expect(pl.html).not.toContain('<script>');
-    expect(supportMessage('en', input).html).toContain('Reply to: member@example.com');
+    expect(pl.html).not.toContain('youtube.com');
+    const en = supportMessage('en', { ...input, branding });
+    expect(en.html).toContain('Reply to: member@example.com');
+    expect(en.text).not.toContain('youtube.com');
   });
 });
 

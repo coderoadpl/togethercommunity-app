@@ -331,18 +331,17 @@ export const supportMessage = (
   const subject = escapeHtml(input.subject);
   const body = escapeHtml(input.body);
   const header = brandHeader(input.branding);
-  const socialLinks = brandSocialLinks(input.branding);
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `[${input.tenantName}] ${input.subject}`,
-      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>${socialLinks.html}`,
-      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}${socialLinks.text}`,
+      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
     });
   }
   return emailMessageSchema.parse({
     subject: `[${input.tenantName}] ${input.subject}`,
-    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>${socialLinks.html}`,
-    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}${socialLinks.text}`,
+    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
+    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
   });
 };
 

@@ -5,6 +5,7 @@ import {
   isReservedTenantSlug,
   ok,
   slugReserved,
+  tenantSchema,
   validation,
   type AppError,
   type Result,
@@ -36,13 +37,13 @@ export const createTenant = async (
   }
 
   const slug = input.slug.trim().toLowerCase();
-  const name = input.name.trim();
+  const parsedName = tenantSchema.shape.name.safeParse(input.name);
 
   if (!slugPattern.test(slug)) {
     return errValidation('Tenant slug must be 3-63 lowercase letters, numbers or hyphens');
   }
   if (isReservedTenantSlug(slug)) return err(slugReserved(`Tenant slug "${slug}" is reserved`));
-  if (name.length === 0) return errValidation('Tenant name is required');
+  if (!parsedName.success) return errValidation('Tenant name must be 1-100 characters');
 
   const existing = await deps.tenants.findBySlug(slug);
   if (existing) return err(appError('conflict', `Tenant "${slug}" already exists`));
@@ -52,7 +53,7 @@ export const createTenant = async (
     tenant: {
       id: tenantId,
       slug,
-      name,
+      name: parsedName.data,
       createdAt: deps.clock.nowIso(),
     },
     ownerGrant: {

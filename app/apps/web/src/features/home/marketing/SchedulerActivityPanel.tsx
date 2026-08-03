@@ -28,7 +28,7 @@ import { SchedulerActivitySummary, SchedulerRunStatusChip } from './SchedulerAct
 const PAGE_SIZES = [10, 25, 50, 100];
 
 const isRunKind = (value: string): value is SchedulerRunKind =>
-  value === 'marketing_tick' || value === 'outbox_dispatch';
+  value === 'marketing_tick' || value === 'outbox_dispatch' || value === 'consent_evidence_purge';
 
 const isRunStatus = (value: string): value is SchedulerRunStatus =>
   value === 'running' || value === 'completed' || value === 'failed';
@@ -96,7 +96,7 @@ export const SchedulerActivityPanel = () => {
                   }}
                 >
                   <MenuItem value="all">{t.marketing.all}</MenuItem>
-                  {(['marketing_tick', 'outbox_dispatch'] as const).map((value) => (
+                  {(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge'] as const).map((value) => (
                     <MenuItem key={value} value={value}>{t.marketing.activity.kinds[value]}</MenuItem>
                   ))}
                 </Select>
@@ -183,7 +183,9 @@ export const SchedulerActivityPanel = () => {
                     <TableCell>{t.marketing.activity.triggers[run.trigger]}</TableCell>
                     <TableCell>{formatDateTime(run.startedAt, language)}</TableCell>
                     <TableCell>{run.durationMs === null ? '—' : t.marketing.activity.milliseconds({ value: run.durationMs })}</TableCell>
-                    <TableCell>{t.marketing.activity.counts(tenant)}</TableCell>
+                    <TableCell>{run.kind === 'consent_evidence_purge'
+                      ? t.marketing.activity.purgeCount({ purged: tenant.batchSize })
+                      : t.marketing.activity.counts(tenant)}</TableCell>
                     <TableCell><SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} /></TableCell>
                     <TableCell align="right">
                       <Button component="a" size="small" href={`/panel/marketing/activity/${encodeURIComponent(run.id)}`}>
@@ -247,12 +249,14 @@ export const SchedulerActivityDetailPage = () => {
       </SectionCard>
       <SectionCard title={t.marketing.activity.breakdown}>
         <Stack component="dl" useFlexGap spacing="0.75rem" sx={{ m: 0 }}>
-          {[
-            [t.marketing.activity.campaignsTouched, String(tenant.campaignsTouched)],
-            [t.marketing.activity.batchSize, String(tenant.batchSize)],
-            [t.marketing.activity.tenantCounts, t.marketing.activity.counts(tenant)],
-            [t.marketing.activity.budget, t.marketing.activity.budgetUsage({ computed: tenant.budgetComputed, used: tenant.budgetUsed })],
-          ].map(([label, value]) => (
+          {(run.kind === 'consent_evidence_purge'
+            ? [[t.marketing.activity.evidencePurged, String(tenant.batchSize)]]
+            : [
+                [t.marketing.activity.campaignsTouched, String(tenant.campaignsTouched)],
+                [t.marketing.activity.batchSize, String(tenant.batchSize)],
+                [t.marketing.activity.tenantCounts, t.marketing.activity.counts(tenant)],
+                [t.marketing.activity.budget, t.marketing.activity.budgetUsage({ computed: tenant.budgetComputed, used: tenant.budgetUsed })],
+              ]).map(([label, value]) => (
             <Stack key={label} direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.25rem">
               <Typography component="dt" variant="body2" color="text.secondary" sx={{ minWidth: { sm: '11rem' } }}>{label}</Typography>
               <Typography component="dd" variant="body2" sx={{ m: 0 }}>{value}</Typography>
@@ -268,9 +272,11 @@ export const SchedulerActivityDetailPage = () => {
             </Stack>
           )}
       </SectionCard>
-      <Button component="a" variant="outlined" href={`/panel/marketing/sends?runId=${encodeURIComponent(run.id)}`}>
-        {t.marketing.activity.viewSends}
-      </Button>
+      {run.kind === 'consent_evidence_purge' ? null : (
+        <Button component="a" variant="outlined" href={`/panel/marketing/sends?runId=${encodeURIComponent(run.id)}`}>
+          {t.marketing.activity.viewSends}
+        </Button>
+      )}
     </PanelPage>
   );
 };

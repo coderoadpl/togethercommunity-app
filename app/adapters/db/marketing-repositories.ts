@@ -101,7 +101,18 @@ const parseIdempotency = (row: typeof marketingIdempotencyKeys.$inferSelect) => 
 
 export const createMarketingConsentRepository = (db: Db): MarketingConsentRepository => ({
   record: async (tenantId, consent) => {
-    await db.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+    await db.transaction(async (tx) => {
+      await tx.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+      if (consent.status === 'withdrawn') {
+        await tx.update(marketingConsents).set({ retentionStartedAt: consent.occurredAt }).where(and(
+          eq(marketingConsents.tenantId, tenantId),
+          eq(marketingConsents.email, normalizeEmail(consent.email)),
+          eq(marketingConsents.definitionId, consent.definitionId),
+          isNull(marketingConsents.retentionStartedAt),
+          lte(marketingConsents.occurredAt, consent.occurredAt),
+        ));
+      }
+    });
   },
   listByEmail: async (tenantId, email, definitionId) => {
     const filters = [eq(marketingConsents.tenantId, tenantId), eq(marketingConsents.email, normalizeEmail(email))];
@@ -129,6 +140,7 @@ export const createMarketingConsentRepository = (db: Db): MarketingConsentReposi
       eq(marketingConsents.status, 'granted'),
       lt(marketingConsents.occurredAt, olderThan),
       sql`not exists (select 1 from ${marketingConsents} newer where newer.tenant_id = ${marketingConsents.tenantId} and newer.previous_id = ${marketingConsents.id})`,
+      sql`not exists (select 1 from ${campaignSends} send where send.consent_row_id = ${marketingConsents.id})`,
     )).returning({ id: marketingConsents.id });
     return deleted.length;
   },

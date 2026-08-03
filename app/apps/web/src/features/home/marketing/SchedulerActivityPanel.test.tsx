@@ -43,6 +43,36 @@ const tenant = {
   createdAt: '2026-07-26T09:00:00.250Z',
 };
 
+const purgeRun = {
+  ...run,
+  id: 'run-purge-1',
+  kind: 'consent_evidence_purge',
+  status: 'completed',
+  error: null,
+  totals: {
+    campaignsTouched: 0,
+    sendsAttempted: 0,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    reEnqueued: false,
+  },
+} as const;
+
+const purgeTenant = {
+  ...tenant,
+  id: 'run-tenant-purge-1',
+  runId: purgeRun.id,
+  campaignsTouched: 0,
+  batchSize: 6,
+  sent: 0,
+  failed: 0,
+  skipped: 0,
+  budgetComputed: 0,
+  budgetUsed: 0,
+  errors: [],
+};
+
 const renderRoute = async (path: string) => {
   const root = createRootRoute();
   const activityRoute = createRoute({ getParentRoute: () => root, path: '/panel/marketing/activity', component: SchedulerActivityPanel });
@@ -106,5 +136,29 @@ describe('scheduler activity panel', () => {
       'href',
       '/panel/marketing/sends?runId=run-marketing-1',
     );
+  });
+
+  it('labels deleted evidence instead of send metrics for purge runs', async () => {
+    server.use(
+      http.get('/api/marketing/scheduler-runs', () => HttpResponse.json({
+        ok: true,
+        data: {
+          items: [{ run: purgeRun, tenant: purgeTenant }],
+          summary: { runsLast24Hours: 1, sentLast24Hours: 0, failedLast24Hours: 0, lastRun: purgeRun },
+          nextCursor: null,
+        },
+      })),
+      http.get('/api/marketing/scheduler-runs/:id', () =>
+        HttpResponse.json({ ok: true, data: { run: purgeRun, tenant: purgeTenant } })),
+    );
+
+    const list = await renderRoute('/panel/marketing/activity');
+    expect(await screen.findByText('usunięte dowody zgody: 6')).toBeInTheDocument();
+    list.unmount();
+
+    await renderRoute('/panel/marketing/activity/run-purge-1');
+    expect(await screen.findByText('Usunięte dowody zgody')).toBeInTheDocument();
+    expect(screen.queryByText('Rozmiar partii')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Zobacz wysyłki z tego uruchomienia' })).not.toBeInTheDocument();
   });
 });

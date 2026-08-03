@@ -1,10 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import {
   chromium,
@@ -18,6 +17,7 @@ import {
 import { API_PATHS } from '#core/contract/index.js';
 
 import type { ThemeMode } from '../apps/web/src/theme.js';
+import { comparePng, type PngComparisonFailure } from './visual-png-compare.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
@@ -37,8 +37,6 @@ const themeStorageKey = 'together-theme-mode';
 const languageStorageKey = 'together-language';
 
 const SEED_BASE_TIME = '2026-07-01T12:00:00.000Z';
-const PIXELMATCH_THRESHOLD = 0;
-const MAX_DIFF_RATIO = 0;
 const minPngBytes = 10 * 1024;
 
 const THEMES: ThemeMode[] = ['shadcn'];
@@ -403,7 +401,13 @@ const SCREENS: ScreenSpec[] = [
     name: 'member-detail',
     auth: 'creator',
     path: '/panel/members/member-studio-aktywny',
-    ready: (page) => page.getByTestId('grant-row').first().waitFor(visible),
+    ready: async (page) => {
+      await page.getByTestId('member-purchase-row').first().waitFor(visible);
+      await page.getByTestId('member-subscription-row').first().waitFor(visible);
+      await page.getByTestId('member-timeline-row').first().waitFor(visible);
+      await page.getByTestId('grant-row').first().waitFor(visible);
+      await page.getByTestId('learning-summary-row').first().waitFor(visible);
+    },
   },
   {
     name: 'member-email-timeline',
@@ -689,39 +693,6 @@ const stableMasks = (page: Page, screen: ScreenSpec): Locator[] => [
   ...(screen.mask?.(page) ?? []),
 ];
 
-interface ShotFailure {
-  file: string;
-  reason: string;
-}
-
-const comparePng = (name: string, currentPath: string): ShotFailure | null => {
-  const goldenPath = join(goldenDir, name);
-  if (!existsSync(goldenPath)) {
-    return { file: name, reason: 'baseline missing — run `pnpm run visual:update` and review it' };
-  }
-  const golden = PNG.sync.read(readFileSync(goldenPath));
-  const current = PNG.sync.read(readFileSync(currentPath));
-  if (golden.width !== current.width || golden.height !== current.height) {
-    return {
-      file: name,
-      reason: `size mismatch: baseline ${golden.width}x${golden.height} vs current ${current.width}x${current.height}`,
-    };
-  }
-  const diff = new PNG({ width: golden.width, height: golden.height });
-  const mismatched = pixelmatch(golden.data, current.data, diff.data, golden.width, golden.height, {
-    threshold: PIXELMATCH_THRESHOLD,
-    includeAA: false,
-  });
-  const ratio = mismatched / (golden.width * golden.height);
-  if (ratio <= MAX_DIFF_RATIO) return null;
-  const diffPath = join(diffDir, name);
-  writeFileSync(diffPath, PNG.sync.write(diff));
-  return {
-    file: name,
-    reason: `${mismatched} px differ (${(ratio * 100).toFixed(3)}%, limit ${(MAX_DIFF_RATIO * 100).toFixed(3)}%) — diff: ${diffPath}`,
-  };
-};
-
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -774,7 +745,7 @@ try {
     return undefined;
   };
 
-  const failures: ShotFailure[] = [];
+  const failures: PngComparisonFailure[] = [];
   let captured = 0;
 
   for (const theme of THEMES) {
@@ -829,7 +800,14 @@ try {
             assert(size > minBytes, `${file} is only ${size} bytes (expected > ${minBytes})`);
             captured += 1;
             if (!updateMode && !argosCaptureMode) {
-              const failure = comparePng(file, shotPath);
+              const failure = comparePng({
+                file,
+                baselinePath: join(goldenDir, file),
+                currentPath: shotPath,
+                diffPath: join(diffDir, file),
+                missingBaselineReason:
+                  'baseline missing — run `pnpm run visual:update` and review it',
+              });
               if (failure !== null) failures.push(failure);
             }
           } finally {

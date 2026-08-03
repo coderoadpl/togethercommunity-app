@@ -46,16 +46,6 @@ const allowedLicenses = new Set([
 
 const exceptions = new Map<string, LicenseException>([
   [
-    'axe-core@*',
-    {
-      devOnly: true,
-      license: 'MPL-2.0',
-      packagePattern: /^axe-core$/,
-      reason: 'Dev-only accessibility tooling; owner-approved 2026-07-28.',
-      versionPattern: /^.+$/,
-    },
-  ],
-  [
     '@fontsource/*@*',
     {
       license: 'OFL-1.1',
@@ -108,16 +98,6 @@ const exceptions = new Map<string, LicenseException>([
       packagePattern: /^argparse$/,
       reason: 'Python-2.0 is a permissive legacy license and the package is dev-only.',
       versionPattern: /^.+$/,
-    },
-  ],
-  [
-    'rechoir@0.6.2',
-    {
-      devOnly: true,
-      license: 'MIT',
-      packagePattern: /^rechoir$/,
-      reason: 'The installed package manifest identifies 0.6.2 as MIT.',
-      versionPattern: /^0\.6\.2$/,
     },
   ],
   [

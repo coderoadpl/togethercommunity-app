@@ -28,12 +28,17 @@ export const createOrRenewGrant = async (
     await deps.grants.setGrantWindow(tenantId, existing.id, {
       startsAt: existing.startsAt,
       expiresAt: input.expiresAt,
+      occurredAt: now,
     });
     return { grantId: existing.id, renewed: true };
   }
 
   if (existing) {
-    await deps.grants.setGrantWindow(tenantId, existing.id, { startsAt: now, expiresAt: input.expiresAt });
+    await deps.grants.setGrantWindow(tenantId, existing.id, {
+      startsAt: now,
+      expiresAt: input.expiresAt,
+      occurredAt: now,
+    });
     return { grantId: existing.id, renewed: false };
   }
 

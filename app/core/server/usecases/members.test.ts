@@ -151,6 +151,7 @@ const paymentFor = (
   cancelSubscription: PaymentProvider['cancelSubscription'] = async () =>
     ok({ canceled: true, alreadySettled: false }),
 ): PaymentProvider => ({
+  test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
   createCheckoutSession: async () => ok({ url: 'https://checkout.test', sessionId: 'cs_1' }),
   expireCheckoutSession: async () => ok({ expired: true }),
   cancelSubscription,
@@ -244,7 +245,11 @@ describe('setMemberBanned', () => {
       create: async () => undefined,
       updateEmail: async () => stored,
       setBanned: async (_tenantId, input, event) => {
-        events.push({ type: event.type, actorUserId: event.actorUserId, reason: event.reason });
+        events.push({
+          type: event.type,
+          actorUserId: event.payload.actorUserId,
+          reason: event.type === 'banned' ? event.payload.reason : null,
+        });
         stored = {
           ...stored,
           bannedAt: input.bannedAt,

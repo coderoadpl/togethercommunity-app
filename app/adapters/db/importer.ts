@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
 import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
-import { normalizeEmail } from '#core/domain/index.js';
+import { memberEventSchema, normalizeEmail, productSlugFromTitle } from '#core/domain/index.js';
 import { isLessonAccessible } from '#core/server/index.js';
 import type { EmailHmac } from '#core/server/index.js';
 import type {
@@ -11,6 +11,7 @@ import type {
 } from '#adapters/auth/import-credential.js';
 
 import type { Db } from './client.js';
+import { appendMemberEvent } from './member-events.js';
 import {
   createCourseLessonRepository,
   createCourseModuleRepository,
@@ -1026,6 +1027,19 @@ const importTenant = async (
     };
   };
 
+  const takenProductSlugs = new Set(productRows.map((row) => row.slug));
+  const allocateProductSlug = (title: string, legacyId: string): string => {
+    const base = productSlugFromTitle(title).slice(0, 90).replace(/-+$/u, '') || 'product';
+    let candidate = base;
+    const discriminator = productSlugFromTitle(legacyId).slice(-8) || 'imported';
+    for (let suffix = 1; takenProductSlugs.has(candidate); suffix += 1) {
+      const ending = suffix === 1 ? `-${discriminator}` : `-${discriminator}-${suffix}`;
+      candidate = `${base.slice(0, 100 - ending.length).replace(/-+$/u, '')}${ending}`;
+    }
+    takenProductSlugs.add(candidate);
+    return candidate;
+  };
+
   const productPlan = planSimpleKind({
     kind: 'products',
     entries: bundle.products,
@@ -1040,8 +1054,11 @@ const importTenant = async (
     insert: (entry, patch) => ({
       id: maps.productIds.get(entry.legacyId) ?? entry.legacyId,
       tenantId,
+      type: 'course' as const,
+      slug: allocateProductSlug(entry.title, entry.legacyId),
       ...patch,
       description: '',
+      coverUrl: null,
       priceCents: 0,
       currency: 'PLN',
       published: false,
@@ -1375,7 +1392,25 @@ const importTenant = async (
       }
     });
     await db.transaction(async (tx) => {
-      for (const batch of chunk(grantCreates, 100)) await tx.insert(productGrants).values(batch);
+      for (const batch of chunk(grantCreates, 100)) {
+        const rows = await tx.insert(productGrants).values(batch).returning();
+        for (const row of rows) {
+          await appendMemberEvent(tx, memberEventSchema.parse({
+            id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+            tenantId,
+            memberId: row.memberId,
+            type: 'grant',
+            payload: {
+              grantId: row.id,
+              productId: row.productId,
+              source: row.source,
+              startsAt: row.startsAt,
+              expiresAt: row.expiresAt,
+            },
+            occurredAt: row.createdAt,
+          }));
+        }
+      }
       for (const update of grantUpdates) {
         await tx
           .update(productGrants)

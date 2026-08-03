@@ -46,6 +46,9 @@ export const createProductPrice = async (
 
   const product = await deps.products.findById(tenant.value, parsed.data.productId);
   if (!product) return err(notFound(`No product "${parsed.data.productId}" in this tenant`));
+  if (product.type === 'membership' && parsed.data.kind !== 'recurring') {
+    return err(validation('Membership products require recurring prices'));
+  }
 
   const price: ProductPrice = {
     id: deps.ids.nextId(),

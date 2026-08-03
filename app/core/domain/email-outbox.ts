@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
 import { marketingConsentConfirmation } from './marketing-email.js';
-import { tenantSocialLinkSchema } from './tenant.js';
+import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
 import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
   accentColor: z.string().nullable(),
-  socialLinks: z.array(tenantSocialLinkSchema).max(8).optional(),
+  socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
 });
 
 export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [

@@ -71,6 +71,7 @@ import type {
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
+  MemberOrderListReader,
   PaymentRefundRepository,
   ProductPriceRepository,
   PostRepository,
@@ -80,6 +81,7 @@ import type {
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   SpaceRepository,
@@ -283,9 +285,9 @@ const insertEntityVersion = async (executor: Db, tenantId: string, version: Enti
   });
 };
 
-export const createProductRepository = (db: Db): ProductRepository => ({
+export const createProductRepository = (db: Db): ProductRepository & ProductBatchReader => ({
   listByTenant: async (tenantId) =>
-    (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt))).map(
+    (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt), asc(products.id))).map(
       parseProduct,
     ),
   listPublishedByTenant: async (tenantId) =>
@@ -294,7 +296,7 @@ export const createProductRepository = (db: Db): ProductRepository => ({
         .select()
         .from(products)
         .where(and(eq(products.tenantId, tenantId), eq(products.published, true)))
-        .orderBy(asc(products.createdAt))
+        .orderBy(asc(products.createdAt), asc(products.id))
     ).map(parseProduct),
   findById: async (tenantId, id) => {
     const rows = await db
@@ -304,6 +306,15 @@ export const createProductRepository = (db: Db): ProductRepository => ({
       .limit(1);
     const row = rows[0];
     return row ? parseProduct(row) : null;
+  },
+  findByIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select()
+        .from(products)
+        .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
+    ).map(parseProduct);
   },
   create: async (tenantId, product) => {
     try {
@@ -1927,7 +1938,9 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
   },
 });
 
-export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepository => {
+export const createOrderRepository = (
+  db: Db,
+): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
@@ -2044,14 +2057,23 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
         total: totals[0]?.value ?? 0,
       };
     },
-    listForMember: async (tenantId, memberId) =>
-      (
-        await db
-          .select()
-          .from(orders)
-          .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
-          .orderBy(desc(orders.createdAt), desc(orders.id))
-      ).map(parseOrder),
+    listForMember: async (tenantId, memberId) => {
+      const rows = await db
+        .select({
+          order: orders,
+          memberEmail: members.email,
+          memberName: members.displayName,
+          productTitle: products.title,
+          couponCode: coupons.code,
+        })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
+        .orderBy(desc(orders.createdAt), desc(orders.id));
+      return rows.map((row) => orderListItemSchema.parse({ ...row.order, ...row }));
+    },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(
         eq(orders.tenantId, tenantId),

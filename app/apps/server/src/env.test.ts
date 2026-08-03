@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { selectDevSinkPurge, selectTenantRouting } from './composition.js';
+import { selectBaseTrustedOrigins, selectDevSinkPurge, selectTenantRouting } from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -46,6 +46,24 @@ describe('tenant routing mode', () => {
       APP_BASE_DOMAIN: 'together.com',
       APP_BASE_URL: 'https://together.com',
     }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false });
+  });
+
+  it('does not trust sibling subdomains in single-tenant mode', () => {
+    expect(selectBaseTrustedOrigins({
+      appBaseUrl: 'https://learn.example.com',
+      baseDomain: 'learn.example.com',
+      port: 48730,
+      singleTenantMode: true,
+    })).toEqual(['https://learn.example.com']);
+  });
+
+  it('trusts tenant subdomains when subdomain routing is configured', () => {
+    expect(selectBaseTrustedOrigins({
+      appBaseUrl: 'https://example.com',
+      baseDomain: 'example.com',
+      port: 48730,
+      singleTenantMode: false,
+    })).toContain('https://*.example.com');
   });
 });
 

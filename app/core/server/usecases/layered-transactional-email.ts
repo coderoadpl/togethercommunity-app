@@ -10,6 +10,7 @@ import type {
 export interface LayeredTransactionalEmailDeps {
   tenantSes: TransactionalEmailTransportResolver;
   smtp: TransactionalEmailTransportResolver;
+  resend: TransactionalEmailTransportResolver;
   platform: EmailPort;
   pool: PlatformTransactionalPool;
   platformLimit: number;
@@ -41,13 +42,15 @@ export const createLayeredTransactionalEmailSender = (
     if (tenantSes !== null) return sendWith('tenant-ses', tenantSes, message);
     const smtp = await deps.smtp.resolve(message.tenantId);
     if (smtp !== null) return sendWith('smtp', smtp, message);
+    const resend = await deps.resend.resolve(message.tenantId);
+    if (resend !== null) return sendWith('resend', resend, message);
     const reserved = await deps.pool.reserve(message.tenantId, deps.platformLimit);
     if (!reserved) {
       return {
         ok: false,
         error: appError(
           'transactional_platform_cap_reached',
-          'Transactional platform sending pool exhausted; configure tenant SES or SMTP',
+          'Transactional platform sending pool exhausted; configure tenant SES, SMTP or Resend',
         ),
       };
     }

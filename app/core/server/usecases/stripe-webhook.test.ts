@@ -30,8 +30,11 @@ const tenantA = {
 const product = (tenantId: string): Product => ({
   id: 'product-1',
   tenantId,
+  type: 'course',
+  slug: 'course-one',
   title: 'Course One',
   description: 'Learn.',
+  coverUrl: null,
   priceCents: 4900,
   currency: 'PLN',
   published: true,
@@ -205,7 +208,7 @@ const harness = (
       listByTenant: async () => [],
       listPublishedByTenant: async () => [],
       findById: async (tenantId, productId) => (productId === 'product-1' ? product(tenantId) : null),
-      create: async () => undefined,
+      create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,
@@ -433,6 +436,7 @@ const harness = (
     clock: { nowIso: () => clockNow },
     appBaseUrl: 'https://alpha.example.com',
     baseDomain: 'example.com',
+    singleTenantMode: false,
     exposeMagicLinks: false,
   };
 

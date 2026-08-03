@@ -4,7 +4,7 @@ import { emailEventMailKindSchema } from './email-event.js';
 import { ERROR_CODES } from './errors.js';
 import { normalizeEmail } from './email.js';
 
-export const emailSendStatusSchema = z.enum([
+const emailSendStatusSchema = z.enum([
   'queued',
   'pending',
   'sending',
@@ -13,10 +13,10 @@ export const emailSendStatusSchema = z.enum([
   'skipped',
 ]);
 
-export const emailDeliveryStatusSchema = z.enum(['delivered', 'bounced', 'complained']);
-export const transactionalEmailTransportSchema = z.enum(['tenant-ses', 'smtp', 'platform']);
+const emailDeliveryStatusSchema = z.enum(['delivered', 'bounced', 'complained']);
+const transactionalEmailTransportSchema = z.enum(['tenant-ses', 'smtp', 'resend', 'platform']);
 
-export const emailSendCursorSchema = z.string().min(1).superRefine((value, ctx) => {
+const emailSendCursorSchema = z.string().min(1).superRefine((value, ctx) => {
   const parts = value.split('~');
   try {
     if (
@@ -80,6 +80,4 @@ export type EmailDeliveryStatus = z.output<typeof emailDeliveryStatusSchema>;
 export type TransactionalEmailTransport = z.output<typeof transactionalEmailTransportSchema>;
 export type EmailSendProjection = z.output<typeof emailSendProjectionSchema>;
 export type EmailSendListQuery = z.output<typeof emailSendListQuerySchema>;
-export type EmailSendListQueryInput = z.input<typeof emailSendListQuerySchema>;
-export type EmailSendExportQueryInput = z.input<typeof emailSendExportQuerySchema>;
 export type EmailSendExportFile = z.output<typeof emailSendExportFileSchema>;

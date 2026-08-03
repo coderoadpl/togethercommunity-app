@@ -29,7 +29,7 @@ describe('TenantLogo', () => {
   it('renders the tenant logo in the member header slot', async () => {
     server.use(offerHandler(BRANDED));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo hostname="akademia.localhost" />} />,
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo />} />,
     );
 
     const logo = await screen.findByTestId('tenant-logo');
@@ -41,23 +41,28 @@ describe('TenantLogo', () => {
   it('renders nothing without branding', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo hostname="akademia.localhost" />} />,
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo />} />,
     );
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
     expect(screen.queryByTestId('tenant-logo')).not.toBeInTheDocument();
   });
 
-  it('renders nothing on the apex domain', () => {
-    renderWithProviders(<TenantLogo hostname="localhost" />);
-    expect(screen.queryByTestId('tenant-logo')).not.toBeInTheDocument();
+  it('renders the resolved tenant logo on a bare host', async () => {
+    server.use(offerHandler(BRANDED));
+    renderWithProviders(<TenantLogo />);
+
+    expect(await screen.findByTestId('tenant-logo')).toHaveAttribute(
+      'src',
+      '/assets/akademia-logo.svg',
+    );
   });
 });
 
 describe('BrandMark', () => {
   it('shows the tenant logo when branded', async () => {
     server.use(offerHandler(BRANDED));
-    renderWithProviders(<BrandMark hostname="akademia.localhost" />);
+    renderWithProviders(<BrandMark />);
 
     const logo = await screen.findByTestId('tenant-brand-logo');
     expect(logo).toHaveAttribute('src', '/assets/akademia-logo.svg');
@@ -66,7 +71,7 @@ describe('BrandMark', () => {
 
   it('falls back to the stock wordmark when unbranded', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
-    renderWithProviders(<BrandMark hostname="akademia.localhost" />);
+    renderWithProviders(<BrandMark />);
 
     expect(await screen.findByText('Together')).toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();

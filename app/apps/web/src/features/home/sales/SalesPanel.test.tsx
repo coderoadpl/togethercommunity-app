@@ -1,6 +1,13 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { describe, expect, it } from 'vitest';
 
 import { pl } from '../../../i18n/pl.js';
@@ -21,8 +28,11 @@ describe('SalesPanel', () => {
             products: [{
               id: 'p1',
               tenantId: 't1',
+              type: 'course',
+              slug: 'workshop',
               title: 'Workshop',
               description: '',
+              coverUrl: null,
               priceCents: 4900,
               currency: 'PLN',
               published: true,
@@ -81,10 +91,22 @@ describe('SalesPanel', () => {
       }),
     );
 
-    renderWithProviders(<SalesPanel />);
+    const rootRoute = createRootRoute();
+    const salesRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/panel/sales',
+      component: SalesPanel,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([salesRoute]),
+      history: createMemoryHistory({ initialEntries: ['/panel/sales'] }),
+    });
+    renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByTestId('sales-row')).toHaveTextContent('Workshop');
     expect(screen.getByTestId('sales-row')).toHaveTextContent('Ada');
+    expect(screen.getByRole('link', { name: 'Ada' }))
+      .toHaveAttribute('href', '/panel/members/m1');
 
     await userEvent.click(screen.getByLabelText(pl.sales.status));
     await userEvent.click(await screen.findByRole('option', { name: pl.sales.paid }));

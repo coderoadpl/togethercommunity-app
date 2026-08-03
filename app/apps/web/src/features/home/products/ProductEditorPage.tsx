@@ -63,7 +63,7 @@ const PricesSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const prices = useQuery(actions.productPrices(product.id));
-  const [kind, setKind] = useState<PriceKind>('one_time');
+  const [kind, setKind] = useState<PriceKind>(product.type === 'membership' ? 'recurring' : 'one_time');
   const [interval, setInterval] = useState<'month' | 'year'>('month');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<string>(product.currency);
@@ -106,7 +106,9 @@ const PricesSection = ({ product }: { product: Product }) => {
     <>
       <SectionCard
         title={t.products.pricesHeading}
-        description={t.products.pricesDescription}
+        description={product.type === 'membership'
+          ? t.products.membershipPricesDescription
+          : t.products.pricesDescription}
         onSubmit={submit}
         actions={
           <Button type="submit" variant="contained" disabled={createPrice.isPending}>
@@ -162,6 +164,7 @@ const PricesSection = ({ product }: { product: Product }) => {
             <Select
               id="price-kind"
               value={kind}
+              disabled={product.type === 'membership'}
               onChange={(event) => setKind(event.target.value === 'recurring' ? 'recurring' : 'one_time')}
               inputProps={{ 'aria-label': t.products.kindLabel }}
             >

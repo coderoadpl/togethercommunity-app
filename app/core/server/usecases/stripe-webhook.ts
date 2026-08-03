@@ -30,6 +30,7 @@ import type {
   EmailOutboxRepository,
   PaymentTransactionPort,
 } from '../ports.js';
+import { tenantUrl } from '../tenant-url.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import {
@@ -68,8 +69,7 @@ const enqueueSubscriptionNotice = async (
     deps.tenants.findSettings(tenant.id),
   ]);
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
-  const tenantBaseUrl = new URL(deps.appBaseUrl);
-  tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
+  const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
   const branding =
     settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
   const payload =
@@ -89,7 +89,7 @@ const enqueueSubscriptionNotice = async (
           tenantName: tenant.name,
           productTitle: product.title,
           accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
-          offerUrl: tenantBaseUrl.toString(),
+          offerUrl: tenantBaseUrl,
           ...(branding === undefined ? {} : { branding }),
         };
   const queued = await deps.emailOutbox.enqueue({
@@ -104,7 +104,7 @@ const enqueueSubscriptionNotice = async (
   return ok(undefined);
 };
 
-const HANDLED_EVENT_TYPES = new Set([
+export const STRIPE_WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
   'invoice.paid',
   'invoice.payment_failed',
@@ -112,7 +112,9 @@ const HANDLED_EVENT_TYPES = new Set([
   'customer.subscription.deleted',
   'charge.refunded',
   'charge.dispute.created',
-]);
+] as const;
+
+export const HANDLED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 
 interface CouponPaymentContext {
   coupon: Coupon;

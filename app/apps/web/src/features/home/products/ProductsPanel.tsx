@@ -27,6 +27,7 @@ import { matchesQuery, SearchField, useDebouncedValue } from '../../../component
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
+import { productTypeLabel } from './product-type.js';
 
 const AccessIssues = ({ issue }: { issue: ProductAccessIssues }) => {
   const t = useTranslations();
@@ -93,6 +94,12 @@ const ProductRow = ({
         <Typography variant="h2" component="h2">
           {product.title}
         </Typography>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={productTypeLabel(product.type, t)}
+          data-testid={`product-type-${product.id}`}
+        />
         {issue ? (
           <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
         ) : null}

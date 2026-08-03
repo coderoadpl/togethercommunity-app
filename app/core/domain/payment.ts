@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { languageSchema } from './language.js';
-import { billingDataSchema } from './commerce.js';
+import { billingDataSchema, type BillingData } from './commerce.js';
 
 export const checkoutSessionInputSchema = z.object({
   productId: z.string().min(1),
@@ -16,18 +16,16 @@ export const checkoutSessionInputSchema = z.object({
 
 export type CheckoutSessionInput = z.input<typeof checkoutSessionInputSchema>;
 
-export const checkoutConsentCaptureSchema = z.object({
-  termsAccepted: z.boolean(),
-  selectedDefinitionIds: z.array(z.string().min(1)),
-  attachedDefinitionIds: z.array(z.string().min(1)),
-  collectedAt: z.string().datetime(),
-  confirmationBaseUrl: z.string().url(),
-  ip: z.string().min(1).optional(),
-  userAgent: z.string().min(1).optional(),
-  billing: billingDataSchema.optional(),
-});
-
-export type CheckoutConsentCapture = z.infer<typeof checkoutConsentCaptureSchema>;
+export type CheckoutConsentCapture = {
+  termsAccepted: boolean;
+  selectedDefinitionIds: string[];
+  attachedDefinitionIds: string[];
+  collectedAt: string;
+  confirmationBaseUrl: string;
+  ip?: string;
+  userAgent?: string;
+  billing?: BillingData;
+};
 
 export const stripeWebhookPayloadSchema = z.object({
   id: z.string().min(1),
@@ -114,12 +112,10 @@ export const stripeCancelErrorSchema = z.object({
   message: z.string().optional(),
 });
 
-export const processedPaymentEventSchema = z.object({
-  id: z.string().min(1),
-  tenantId: z.string().min(1),
-  type: z.string().min(1),
-  objectId: z.string().min(1),
-  processedAt: z.string().datetime(),
-});
-
-export type ProcessedPaymentEvent = z.infer<typeof processedPaymentEventSchema>;
+export type ProcessedPaymentEvent = {
+  id: string;
+  tenantId: string;
+  type: string;
+  objectId: string;
+  processedAt: string;
+};

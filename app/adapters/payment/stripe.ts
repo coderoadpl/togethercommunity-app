@@ -12,7 +12,12 @@ import {
   type AppError,
   type Result,
 } from '#core/domain/index.js';
-import type { PaymentProvider, PaymentWebhookEvent, TenantSecretResolver } from '#core/server/index.js';
+import {
+  STRIPE_WEBHOOK_EVENT_TYPES,
+  type PaymentProvider,
+  type PaymentWebhookEvent,
+  type TenantSecretResolver,
+} from '#core/server/index.js';
 
 /**
  * Turns any thrown Stripe SDK error into a readable, non-leaky diagnostic (Z-3):
@@ -38,7 +43,10 @@ const localeFor = (language: string | undefined): Stripe.Checkout.SessionCreateP
 
 export interface StripePaymentProviderConfig {
   resolver: TenantSecretResolver;
+  clientFactory?: (restrictedKey: string) => Stripe;
 }
+
+export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readonly Stripe.WebhookEndpointCreateParams.EnabledEvent[];
 
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
@@ -186,13 +194,69 @@ const toSubscriptionEvent = (eventId: string, type: string, object: unknown): Pa
 };
 
 export const createStripePaymentProvider = (config: StripePaymentProviderConfig): PaymentProvider => {
+  const createClient = config.clientFactory ?? ((restrictedKey: string) => new Stripe(restrictedKey));
   const clientFor = async (tenantId: string): Promise<Result<Stripe, AppError>> => {
     const key = await config.resolver.resolve(tenantId, 'stripe.restrictedKey');
     if (!key.ok) return key;
-    return ok(new Stripe(key.value));
+    return ok(createClient(key.value));
   };
 
   return {
+    configureWebhook: async (input) => {
+      try {
+        const webhookEndpoints = createClient(input.restrictedKey).webhookEndpoints;
+        const registered = await webhookEndpoints.list({ limit: 100 });
+        const stale = registered.data.filter(
+          (endpoint) => endpoint.metadata?.tenantId === input.tenantId || endpoint.url === input.webhookUrl,
+        );
+        for (const endpoint of stale) await webhookEndpoints.del(endpoint.id);
+        const endpoint = await webhookEndpoints.create({
+          url: input.webhookUrl,
+          enabled_events: [...STRIPE_WEBHOOK_EVENTS],
+          description: 'Together payment fulfillment',
+          metadata: { tenantId: input.tenantId },
+        });
+        if (endpoint.secret === undefined || endpoint.secret === '') {
+          await webhookEndpoints.del(endpoint.id);
+          return err(validation('Stripe did not return a webhook signing secret'));
+        }
+        return ok({ webhookEndpointId: endpoint.id, webhookSecret: endpoint.secret });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected webhook registration', cause));
+      }
+    },
+    deleteWebhookEndpoint: async (input) => {
+      try {
+        await createClient(input.restrictedKey).webhookEndpoints.del(input.webhookEndpointId);
+        return ok({ deleted: true });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected webhook cleanup', cause));
+      }
+    },
+    test: async (input) => {
+      const client = await clientFor(input.tenantId);
+      if (!client.ok) return client;
+      try {
+        const session = await client.value.checkout.sessions.create(
+          stripeCheckoutSessionParams({
+            tenantId: input.tenantId,
+            productId: 'connection-test',
+            productName: 'Stripe connection test',
+            priceCents: 100,
+            currency: 'USD',
+            successUrl: `${input.appBaseUrl}/integrations/stripe/test/success`,
+            cancelUrl: `${input.appBaseUrl}/integrations/stripe/test/cancel`,
+          }),
+        );
+        await client.value.checkout.sessions.expire(session.id);
+        return ok({
+          code: 'payment.available',
+          message: 'Stripe accepted the credentials and the test session was expired.',
+        });
+      } catch (cause) {
+        return err(asDiagnostic('Stripe rejected the connection test', cause));
+      }
+    },
     ensureCouponPromotion: async (input) => {
       const client = await clientFor(input.tenantId);
       if (!client.ok) return client;

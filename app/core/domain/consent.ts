@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const consentSourceSchema = z.enum(['register', 'checkout']);
+const consentSourceSchema = z.enum(['register', 'checkout']);
 
 export type ConsentSource = z.infer<typeof consentSourceSchema>;
 

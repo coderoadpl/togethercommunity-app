@@ -184,7 +184,7 @@ export const SchedulerActivityPanel = () => {
                     <TableCell>{formatDateTime(run.startedAt, language)}</TableCell>
                     <TableCell>{run.durationMs === null ? '—' : t.marketing.activity.milliseconds({ value: run.durationMs })}</TableCell>
                     <TableCell>{run.kind === 'consent_evidence_purge'
-                      ? t.marketing.activity.purgeCount({ purged: tenant.batchSize })
+                      ? t.marketing.activity.purgeCount({ purged: tenant.purged ?? 0 })
                       : t.marketing.activity.counts(tenant)}</TableCell>
                     <TableCell><SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} /></TableCell>
                     <TableCell align="right">
@@ -250,7 +250,7 @@ export const SchedulerActivityDetailPage = () => {
       <SectionCard title={t.marketing.activity.breakdown}>
         <Stack component="dl" useFlexGap spacing="0.75rem" sx={{ m: 0 }}>
           {(run.kind === 'consent_evidence_purge'
-            ? [[t.marketing.activity.evidencePurged, String(tenant.batchSize)]]
+            ? [[t.marketing.activity.evidencePurged, String(tenant.purged ?? 0)]]
             : [
                 [t.marketing.activity.campaignsTouched, String(tenant.campaignsTouched)],
                 [t.marketing.activity.batchSize, String(tenant.batchSize)],

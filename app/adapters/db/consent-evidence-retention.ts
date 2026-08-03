@@ -1,9 +1,32 @@
-import { and, eq, lt } from 'drizzle-orm';
+import { lt, sql } from 'drizzle-orm';
 
 import type { ConsentEvidenceRetentionRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { consents, marketingConsents } from './schema.js';
+
+const rowCount = (result: unknown): number => {
+  if (typeof result !== 'object' || result === null || !('rowCount' in result)) {
+    throw new Error('Consent evidence purge query did not return a row count');
+  }
+  if (result.rowCount !== null && typeof result.rowCount !== 'number') {
+    throw new Error('Consent evidence purge query returned an invalid row count');
+  }
+  return result.rowCount ?? 0;
+};
+
+const purgeBatches = async (
+  options: { batchSize: number; deadlineMs: number; monotonicNowMs: () => number },
+  deleteBatch: () => Promise<number>,
+): Promise<number> => {
+  let purged = 0;
+  while (options.monotonicNowMs() < options.deadlineMs) {
+    const deleted = await deleteBatch();
+    purged += deleted;
+    if (deleted < options.batchSize) break;
+  }
+  return purged;
+};
 
 export const createConsentEvidenceRetentionRepository = (
   db: Db,
@@ -19,15 +42,37 @@ export const createConsentEvidenceRetentionRepository = (
     ]);
     return [...new Set([...termsTenants, ...marketingTenants].map((row) => row.tenantId))].sort();
   },
-  purgeExpired: async (tenantId, retentionStartedBefore) => db.transaction(async (tx) => {
-    const marketing = await tx.delete(marketingConsents).where(and(
-      eq(marketingConsents.tenantId, tenantId),
-      lt(marketingConsents.retentionStartedAt, retentionStartedBefore),
-    )).returning({ id: marketingConsents.id });
-    const terms = await tx.delete(consents).where(and(
-      eq(consents.tenantId, tenantId),
-      lt(consents.retentionStartedAt, retentionStartedBefore),
-    )).returning({ id: consents.id });
-    return marketing.length + terms.length;
-  }),
+  purgeExpired: async (tenantId, retentionStartedBefore, options) => {
+    const marketing = await purgeBatches(options, async () => {
+      const result = await db.execute(sql`
+        WITH batch AS (
+          SELECT ${marketingConsents.id} FROM ${marketingConsents}
+          WHERE ${marketingConsents.tenantId} = ${tenantId}
+            AND ${marketingConsents.retentionStartedAt} < ${retentionStartedBefore}
+          ORDER BY ${marketingConsents.occurredAt} ASC, ${marketingConsents.id} ASC
+          LIMIT ${options.batchSize}
+          FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM ${marketingConsents}
+        WHERE ${marketingConsents.id} IN (SELECT id FROM batch)
+      `);
+      return rowCount(result);
+    });
+    const terms = await purgeBatches(options, async () => {
+      const result = await db.execute(sql`
+        WITH batch AS (
+          SELECT ${consents.id} FROM ${consents}
+          WHERE ${consents.tenantId} = ${tenantId}
+            AND ${consents.retentionStartedAt} < ${retentionStartedBefore}
+          ORDER BY ${consents.acceptedAt} ASC, ${consents.id} ASC
+          LIMIT ${options.batchSize}
+          FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM ${consents}
+        WHERE ${consents.id} IN (SELECT id FROM batch)
+      `);
+      return rowCount(result);
+    });
+    return marketing + terms;
+  },
 });

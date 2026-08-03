@@ -521,6 +521,14 @@ export interface Messages {
     deactivateConfirm: string;
     creatingPrice: string;
     priceCreated: string;
+    downloadsHeading: string;
+    downloadsDescription: string;
+    downloadsEmpty: string;
+    downloadFileInput: string;
+    uploadDownload: string;
+    uploadingDownload: string;
+    deleteDownload: (params: { name: string }) => string;
+    downloadSize: (params: { kilobytes: number }) => string;
   };
   access: {
     loading: string;
@@ -826,6 +834,8 @@ export interface Messages {
     subscriptionAccessUntil: (params: { date: string }) => string;
     manageSubscription: string;
     coursesEmptyRenewHint: string;
+    downloadsHeading: string;
+    downloadFile: (params: { name: string }) => string;
   };
   courseTree: {
     lockedTooltip: string;

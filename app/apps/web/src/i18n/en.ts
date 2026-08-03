@@ -561,6 +561,14 @@ export const en: Messages = {
     deactivateConfirm: 'Deactivate price',
     creatingPrice: 'Adding…',
     priceCreated: 'Price added.',
+    downloadsHeading: 'Download files',
+    downloadsDescription: 'Add files buyers can download while their product access is active.',
+    downloadsEmpty: 'This product has no download files yet.',
+    downloadFileInput: 'Choose a product file',
+    uploadDownload: 'Add file',
+    uploadingDownload: 'Uploading file…',
+    deleteDownload: ({ name }) => `Delete ${name}`,
+    downloadSize: ({ kilobytes }) => `${kilobytes} KB`,
   },
   access: {
     loading: 'loading access data…',
@@ -935,6 +943,8 @@ export const en: Messages = {
     manageSubscription: 'Manage payments',
     coursesEmptyRenewHint:
       'Already have a product? Check its access status in your products — if it has expired, you can renew it there.',
+    downloadsHeading: 'Downloads',
+    downloadFile: ({ name }) => `Download ${name}`,
   },
   courseTree: {
     lockedTooltip: 'Content locked',

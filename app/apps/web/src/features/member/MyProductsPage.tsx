@@ -14,6 +14,8 @@ import { ApiError } from '#core/client/index.js';
 import type {
   GrantWindowStatus,
   MemberSubscriptionSummary,
+  ProductDownloadAssetView,
+  ProductType,
   SubscriptionStatus,
 } from '#core/domain/index.js';
 
@@ -33,6 +35,7 @@ const isForbidden = (error: Error | null) =>
 
 type GrantedProductRow = {
   id: string;
+  type: ProductType;
   title: string;
   description: string;
   priceCents: number;
@@ -41,6 +44,7 @@ type GrantedProductRow = {
   grantStartsAt: string;
   grantExpiresAt: string | null;
   subscription: MemberSubscriptionSummary | null;
+  downloads: ProductDownloadAssetView[];
 };
 
 const chipColor = (status: GrantWindowStatus): 'success' | 'warning' | 'default' =>
@@ -93,9 +97,15 @@ const ProductRow = ({
       sx={{ p: '1.1rem 1.25rem', display: 'grid', gap: '0.6rem' }}
     >
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.75rem', flexWrap: 'wrap' }}>
-        <MemberProductLink href={`/my/course/${product.id}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
-          {product.title}
-        </MemberProductLink>
+        {product.type === 'digital_download' ? (
+          <Typography variant="h2" component="h2" sx={{ opacity: inactive ? 0.72 : 1 }}>
+            {product.title}
+          </Typography>
+        ) : (
+          <MemberProductLink href={`/my/course/${product.id}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
+            {product.title}
+          </MemberProductLink>
+        )}
         <Chip
           size="small"
           variant={product.grantStatus === 'active' ? 'filled' : 'outlined'}
@@ -119,6 +129,29 @@ const ProductRow = ({
         <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
       </Typography>
       {product.description ? <RichTextContent html={product.description} /> : null}
+      {product.downloads.length > 0 ? (
+        <Stack useFlexGap spacing="0.5rem" data-testid={`product-downloads-${product.id}`}>
+          <Typography variant="overline" component="h3">
+            {t.student.downloadsHeading}
+          </Typography>
+          <Box>
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+              {product.downloads.map((download) => (
+                <Button
+                  key={download.id}
+                  variant="outlined"
+                  size="small"
+                  component="a"
+                  href={download.downloadPath}
+                  data-testid={`download-${download.id}`}
+                >
+                  {t.student.downloadFile({ name: download.fileName })}
+                </Button>
+              ))}
+            </Stack>
+          </Box>
+        </Stack>
+      ) : null}
       {product.grantStatus === 'upcoming' ? (
         <Typography variant="caption" color="text.secondary">
           {t.student.grantUpcomingNote({ date: formatDate(product.grantStartsAt, language) })}

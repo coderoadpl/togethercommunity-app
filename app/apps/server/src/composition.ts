@@ -40,6 +40,7 @@ import {
 import {
   createCourseLessonRepository,
   createLessonAttachmentRepository,
+  createProductDownloadAssetRepository,
   createCourseModuleRepository,
   createCourseRepository,
   createCheckoutConsentCaptureRepository,
@@ -126,6 +127,7 @@ import type {
   TenantSecretResolver,
   CourseLessonRepository,
   LessonAttachmentRepository,
+  ProductDownloadAssetRepository,
   CourseModuleRepository,
   CourseRepository,
   DevEmailReader,
@@ -251,6 +253,7 @@ export interface AppDeps {
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   attachments: LessonAttachmentRepository;
+  downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
@@ -707,6 +710,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
     attachments: createLessonAttachmentRepository(db),
+    downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),

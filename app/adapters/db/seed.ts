@@ -35,6 +35,7 @@ import {
   postReports,
   posts,
   productGrants,
+  productDownloadAssets,
   productPrices,
   products,
   schedulerRuns,
@@ -659,6 +660,15 @@ const demoProducts: ProductDef[] = [
       { level: 'course', courseId: 'course-react' },
     ],
   },
+  {
+    id: 'product-download-workbook',
+    tenantId: 'tenant-studio',
+    type: 'digital_download',
+    title: 'Workbook twórcy',
+    description: 'Ćwiczenia i checklisty do samodzielnej pracy po zakupie.',
+    priceCents: 7900,
+    accessItems: [],
+  },
 ];
 
 interface PriceDef {
@@ -1182,6 +1192,30 @@ for (const def of demoMemberDefs) {
     });
   }
 }
+
+grantSpecs.push({
+  id: 'grant-studio-aktywny-workbook',
+  tenantId: 'tenant-studio',
+  memberId: 'member-studio-aktywny',
+  productId: 'product-download-workbook',
+  startsAt: relativeIso(-12),
+  expiresAt: null,
+});
+
+await db
+  .insert(productDownloadAssets)
+  .values({
+    id: 'download-asset-workbook',
+    tenantId: 'tenant-studio',
+    productId: 'product-download-workbook',
+    fileName: 'workbook-tworcy.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 2_416_640,
+    storageKey: 'product-downloads/product-download-workbook/download-asset-workbook/workbook-tworcy.pdf',
+    status: 'ready',
+    createdAt: relativeIso(-12),
+  })
+  .onConflictDoNothing();
 
 await db
   .insert(members)

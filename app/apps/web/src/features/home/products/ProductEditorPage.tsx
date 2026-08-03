@@ -7,6 +7,9 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
   OutlinedInput,
   Select,
@@ -288,16 +291,102 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
   );
 };
 
+const DownloadAssetsSection = ({ productId }: { productId: string }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const assets = useQuery(actions.productDownloadAssets(productId));
+  const refresh = async () => {
+    await queryClient.invalidateQueries(actions.productDownloadAssetsInvalidates(productId));
+  };
+  const upload = useMutation({
+    ...actions.uploadProductDownload,
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    ...actions.deleteProductDownload,
+    onSuccess: refresh,
+  });
+  const selectFile = (file: File | undefined) => {
+    if (file === undefined) return;
+    upload.mutate({
+      productId,
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      sizeBytes: file.size,
+      body: file,
+    });
+  };
+
+  return (
+    <SectionCard
+      title={t.products.downloadsHeading}
+      description={t.products.downloadsDescription}
+      data-testid="product-download-assets"
+    >
+      {assets.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.common.loading }} surface={false} />
+      ) : assets.isError ? (
+        <Alert>{localizeError(assets.error, t)}</Alert>
+      ) : assets.data.assets.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" data-testid="product-download-assets-empty">
+          {t.products.downloadsEmpty}
+        </Typography>
+      ) : (
+        <List disablePadding>
+          {assets.data.assets.map((asset) => (
+            <ListItem key={asset.id} disableGutters>
+              <ListItemText
+                primary={asset.fileName}
+                secondary={t.products.downloadSize({
+                  kilobytes: Math.max(1, Math.ceil(asset.sizeBytes / 1024)),
+                })}
+              />
+              <Button
+                size="small"
+                color="error"
+                aria-label={t.products.deleteDownload({ name: asset.fileName })}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate({ productId, assetId: asset.id })}
+              >
+                {t.common.remove}
+              </Button>
+            </ListItem>
+          ))}
+        </List>
+      )}
+      <Box>
+        <Button component="label" variant="outlined" disabled={upload.isPending}>
+          {upload.isPending ? t.products.uploadingDownload : t.products.uploadDownload}
+          <input
+            hidden
+            type="file"
+            aria-label={t.products.downloadFileInput}
+            onChange={(event) => {
+              selectFile(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+        </Button>
+      </Box>
+      {upload.isError ? <Alert>{localizeError(upload.error, t)}</Alert> : null}
+      {remove.isError ? <Alert>{localizeError(remove.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 export const ProductEditorPage = ({ product }: { product: Product }) => {
   const t = useTranslations();
 
   return (
     <PanelPage title={product.title} backTo={{ label: t.products.allProducts, href: '/panel/products' }}>
       <PricesSection product={product} />
+      {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
       <CheckoutConsentsSection product={product} />
-      <SectionCard title={t.access.heading}>
-        <ProductAccessEditor product={product} />
-      </SectionCard>
+      {product.type === 'digital_download' ? null : (
+        <SectionCard title={t.access.heading}>
+          <ProductAccessEditor product={product} />
+        </SectionCard>
+      )}
     </PanelPage>
   );
 };

@@ -72,6 +72,7 @@ import {
   productsAccessItemsInputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
+  productDownloadUploadRequestSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   schedulerRunsQuerySchema,
   simulatePurchaseInputSchema,
@@ -105,6 +106,9 @@ import {
   type LessonAttachment,
   type LessonAttachmentMetadata,
   type LessonAttachmentView,
+  type ProductDownloadAsset,
+  type ProductDownloadAssetMetadata,
+  type ProductDownloadAssetView,
   type MemberCourseProgress,
   type ProgressView,
   type Result,
@@ -115,6 +119,7 @@ import {
   archiveCoupon,
   attachModuleToCourse,
   beginLessonAttachmentUpload,
+  beginProductDownloadUpload,
   authenticateApiKey,
   autoIssueOnPayment,
   authorizeRequiredTenant,
@@ -135,9 +140,11 @@ import {
   createTenantDocument,
   configureStorageConnection,
   completeLessonAttachmentUpload,
+  completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
   deleteLessonAttachment,
+  deleteProductDownloadAsset,
   deletePost,
   deleteSpace,
   deleteTenantSecret,
@@ -176,6 +183,7 @@ import {
   getOrder,
   getPlayableLesson,
   getLessonAttachmentDownload,
+  getProductDownload,
   getProgress,
   getSalesSummary,
   getSchedulerRunForTenant,
@@ -212,6 +220,7 @@ import {
   listOrders,
   listPaidOrdersWithoutGrant,
   listProductAccessIssues,
+  listProductDownloadAssets,
   listProductPrices,
   listReports,
   listProducts,
@@ -353,6 +362,22 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
   downloadPath: API_PATHS.studentLessonAttachmentDownload
     .replace(':lessonId', encodeURIComponent(attachment.lessonId))
     .replace(':attachmentId', encodeURIComponent(attachment.id)),
+});
+
+const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAssetMetadata => ({
+  id: asset.id,
+  productId: asset.productId,
+  fileName: asset.fileName,
+  contentType: asset.contentType,
+  sizeBytes: asset.sizeBytes,
+  createdAt: asset.createdAt,
+});
+
+const productDownloadView = (asset: ProductDownloadAsset): ProductDownloadAssetView => ({
+  ...productDownloadMetadata(asset),
+  downloadPath: API_PATHS.memberProductDownload
+    .replace(':productId', encodeURIComponent(asset.productId))
+    .replace(':assetId', encodeURIComponent(asset.id)),
 });
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -1364,6 +1389,58 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ products: result.value }) : result);
   });
 
+  app.get(API_PATHS.productDownloadAssets, async (c) => {
+    const result = await listProductDownloadAssets(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      deps,
+    );
+    return respond(result.ok
+      ? ok({ assets: result.value.map(productDownloadMetadata) })
+      : result);
+  });
+
+  app.post(API_PATHS.productDownloadUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productDownloadUploadRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid download payload', parsed.error.flatten())));
+    const result = await beginProductDownloadUpload(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok
+      ? ok({
+          asset: productDownloadMetadata(result.value.asset),
+          upload: {
+            url: result.value.uploadUrl,
+            headers: { 'content-type': result.value.asset.contentType },
+            expiresAt: result.value.expiresAt,
+          },
+        })
+      : result);
+  });
+
+  app.post(API_PATHS.productDownloadComplete, async (c) => {
+    const result = await completeProductDownloadUpload(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      c.req.param('assetId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ asset: productDownloadMetadata(result.value) }) : result);
+  });
+
+  app.delete(API_PATHS.productDownloadDelete, async (c) => {
+    return respond(await deleteProductDownloadAsset(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      c.req.param('assetId'),
+      deps,
+    ));
+  });
+
   app.get(API_PATHS.myProducts, async (c) => {
     const result = await listMyProducts({ identity: c.get('identity') }, deps);
     return respond(
@@ -1371,6 +1448,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         ? ok({
           products: result.value.map((product) => ({
             id: product.id,
+            type: product.type,
             title: product.title,
             description: product.description,
             priceCents: product.priceCents,
@@ -1379,10 +1457,21 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,
             subscription: product.subscription,
+            downloads: product.downloads.map(productDownloadView),
           })),
         })
         : result,
     );
+  });
+
+  app.get(API_PATHS.memberProductDownload, async (c) => {
+    const result = await getProductDownload(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      c.req.param('assetId'),
+      deps,
+    );
+    return result.ok ? c.redirect(result.value, 302) : respond(result);
   });
 
   app.get(API_PATHS.members, async (c) => {

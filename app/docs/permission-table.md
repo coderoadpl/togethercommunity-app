@@ -14,7 +14,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 93. Route rows: 206. Exported `Ctx` use-case rows: 183.
+Closed capability count: 93. Route rows: 211. Exported `Ctx` use-case rows: 186.
 
 ## Human-readable diff
 
@@ -121,7 +121,12 @@ no changes
 | `POST /api/members/erasure-requests/:requestId/reject` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | identity middleware + use-case guard |
 | `GET /api/products` | product:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/products/:productId/downloads` | product:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/products/:productId/downloads/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/products/:productId/downloads/:assetId/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `DELETE /api/products/:productId/downloads/:assetId` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/my/products` | member:product:read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | member | member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/ban` | member:ban | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -381,6 +386,11 @@ no changes
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
+| `product-downloads.ts#beginProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#completeProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#listProductDownloadAssets` | product:read | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#getProductDownload` | member:product:read | member | member | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#deleteProductDownloadAsset` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#deactivateProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
@@ -424,11 +434,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:118` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:788` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:790` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1232` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1232` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:123` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:813` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:815` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1249` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1249` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -463,7 +473,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:49` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:54` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/product-downloads.ts:187` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:77` | `staffRole: staffGrant?.staffRole ?? null,` |

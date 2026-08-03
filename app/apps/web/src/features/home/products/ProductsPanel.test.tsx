@@ -10,6 +10,7 @@ import {
   type Product,
   type ProductAccessIssues,
   type ProductPrice,
+  type ProductDownloadAssetMetadata,
 } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
@@ -45,6 +46,8 @@ const renderProductsPanel = async (
 ) => {
   let products = [...seededProducts];
   let prices: ProductPrice[] = [];
+  let assets: ProductDownloadAssetMetadata[] = [];
+  let directUploadCalled = false;
   const created: Product[] = [];
 
   server.use(
@@ -74,6 +77,45 @@ const renderProductsPanel = async (
     http.get('/api/products/:productId/prices', () =>
       HttpResponse.json({ ok: true, data: { prices } }),
     ),
+    http.get('/api/products/:productId/downloads', () =>
+      HttpResponse.json({ ok: true, data: { assets } }),
+    ),
+    http.post('/api/products/:productId/downloads/upload', () =>
+      HttpResponse.json({
+        ok: true,
+        data: {
+          asset: {
+            id: 'asset-1',
+            productId: 'download-1',
+            fileName: 'workbook.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 7,
+            createdAt: '2026-07-12T12:00:00.000Z',
+          },
+          upload: {
+            url: 'https://storage.example.test/product-download',
+            headers: { 'content-type': 'application/pdf' },
+            expiresAt: '2026-07-12T12:15:00.000Z',
+          },
+        },
+      }),
+    ),
+    http.put('https://storage.example.test/product-download', () => {
+      directUploadCalled = true;
+      return new HttpResponse(null, { status: 200 });
+    }),
+    http.post('/api/products/:productId/downloads/:assetId/complete', () => {
+      const asset: ProductDownloadAssetMetadata = {
+        id: 'asset-1',
+        productId: 'download-1',
+        fileName: 'workbook.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 7,
+        createdAt: '2026-07-12T12:00:00.000Z',
+      };
+      assets = [asset];
+      return HttpResponse.json({ ok: true, data: { asset } });
+    }),
     http.post('/api/products/prices', async ({ request }) => {
       const body = await request.json();
       const parsed = typeof body === 'object' && body !== null ? body : {};
@@ -132,7 +174,11 @@ const renderProductsPanel = async (
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
-  return { ...renderWithProviders(<RouterProvider router={router} />), created };
+  return {
+    ...renderWithProviders(<RouterProvider router={router} />),
+    created,
+    directUploadCalled: () => directUploadCalled,
+  };
 };
 
 describe('ProductsPanel', () => {
@@ -218,6 +264,26 @@ describe('ProductsPanel', () => {
       pl.products.recurring,
     );
     expect(screen.getByRole('combobox', { name: pl.products.intervalLabel })).toBeInTheDocument();
+  });
+
+  it('uploads an asset directly from a digital-download product editor', async () => {
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const download: Product = {
+      ...baseProduct,
+      id: 'download-1',
+      type: 'digital_download',
+      slug: 'creator-workbook',
+      title: 'Creator workbook',
+    };
+    const rendered = await renderProductsPanel([], '/panel/products/download-1', [download]);
+
+    const input = await screen.findByLabelText(pl.products.downloadFileInput);
+    await userEvent.upload(input, new File(['content'], 'workbook.pdf', { type: 'application/pdf' }));
+
+    await waitFor(() => expect(rendered.directUploadCalled()).toBe(true));
+    expect(await screen.findByText('workbook.pdf')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: pl.access.heading })).not.toBeInTheDocument();
   });
 
   it('shows the product type of every listed product', async () => {

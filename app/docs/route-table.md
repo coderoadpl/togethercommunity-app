@@ -102,7 +102,12 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/members/erasure-requests/:requestId/reject` | authenticated | mutating | member erasure reject |
 | `GET /api/tenants` | authenticated | read | tenants |
 | `GET /api/products` | authenticated | read | products |
+| `GET /api/products/:productId/downloads` | authenticated | read | product download assets |
+| `POST /api/products/:productId/downloads/upload` | authenticated | mutating | product download upload |
+| `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
+| `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
 | `GET /api/my/products` | authenticated | read | my products |
+| `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |
 | `POST /api/members/ban` | authenticated | mutating | member ban |

@@ -32,6 +32,9 @@ import {
   lessonAttachmentMetadataSchema,
   lessonAttachmentUploadInputSchema,
   lessonAttachmentViewSchema,
+  productDownloadAssetMetadataSchema,
+  productDownloadAssetViewSchema,
+  productDownloadUploadInputSchema,
   listDiscussionInputSchema,
   listReportsInputSchema,
   createApiKeyInputSchema,
@@ -311,6 +314,7 @@ export const myProductsOutputSchema = z.object({
   products: z.array(
     z.object({
       id: z.string(),
+      type: productTypeSchema,
       title: z.string(),
       description: z.string(),
       priceCents: z.number().int().nonnegative(),
@@ -319,6 +323,7 @@ export const myProductsOutputSchema = z.object({
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
       subscription: memberSubscriptionSummarySchema.nullable(),
+      downloads: z.array(productDownloadAssetViewSchema),
     }),
   ),
 });
@@ -707,9 +712,30 @@ export const lessonAttachmentDeleteOutputSchema = z.object({
   deleted: z.literal(true),
 });
 
-export const contentHistoryQuerySchema = courseHistoryQuerySchema;
+export const productDownloadUploadRequestSchema = productDownloadUploadInputSchema;
 
-export type ContentHistoryQueryInput = z.input<typeof contentHistoryQuerySchema>;
+export type ProductDownloadUploadRequest = z.input<typeof productDownloadUploadRequestSchema>;
+
+export const productDownloadUploadOutputSchema = z.object({
+  asset: productDownloadAssetMetadataSchema,
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const productDownloadCompleteOutputSchema = z.object({
+  asset: productDownloadAssetMetadataSchema,
+});
+
+export const productDownloadAssetsOutputSchema = z.object({
+  assets: z.array(productDownloadAssetMetadataSchema),
+});
+
+export const productDownloadDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
 
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
@@ -1275,6 +1301,10 @@ export const API_ROUTES = {
   lessonAttachmentUpload: { method: 'POST', path: '/api/lessons/:lessonId/attachments/upload' },
   lessonAttachmentComplete: { method: 'POST', path: '/api/lessons/:lessonId/attachments/:attachmentId/complete' },
   lessonAttachmentDelete: { method: 'DELETE', path: '/api/lessons/:lessonId/attachments/:attachmentId' },
+  productDownloadAssets: { method: 'GET', path: '/api/products/:productId/downloads' },
+  productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
+  productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
+  productDownloadDelete: { method: 'DELETE', path: '/api/products/:productId/downloads/:assetId' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
@@ -1314,6 +1344,7 @@ export const API_ROUTES = {
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   myProducts: { method: 'GET', path: '/api/my/products' },
+  memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
   memberErasureRequests: { method: 'GET', path: '/api/members/erasure-requests' },
   memberErasureReject: {
@@ -1463,6 +1494,10 @@ export const API_PATHS = {
   lessonAttachmentUpload: API_ROUTES.lessonAttachmentUpload.path,
   lessonAttachmentComplete: API_ROUTES.lessonAttachmentComplete.path,
   lessonAttachmentDelete: API_ROUTES.lessonAttachmentDelete.path,
+  productDownloadAssets: API_ROUTES.productDownloadAssets.path,
+  productDownloadUpload: API_ROUTES.productDownloadUpload.path,
+  productDownloadComplete: API_ROUTES.productDownloadComplete.path,
+  productDownloadDelete: API_ROUTES.productDownloadDelete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,
@@ -1501,6 +1536,7 @@ export const API_PATHS = {
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
   myProducts: API_ROUTES.myProducts.path,
+  memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,
   memberErasureRequests: API_ROUTES.memberErasureRequests.path,
   memberErasureReject: API_ROUTES.memberErasureReject.path,

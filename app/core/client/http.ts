@@ -44,6 +44,10 @@ import {
   lessonAttachmentDeleteOutputSchema,
   lessonAttachmentUploadOutputSchema,
   lessonAttachmentsOutputSchema,
+  productDownloadAssetsOutputSchema,
+  productDownloadCompleteOutputSchema,
+  productDownloadDeleteOutputSchema,
+  productDownloadUploadOutputSchema,
   m2mEnrollOutputSchema,
   marketingConsentDefinitionOutputSchema,
   marketingConsentDefinitionDetailOutputSchema,
@@ -165,6 +169,7 @@ import {
   type LessonCreateInput,
   type LessonUpdateInput,
   type LessonAttachmentUploadRequest,
+  type ProductDownloadUploadRequest,
   type M2mEnrollRequest,
   type MarketingConsentDefinitionCreateInput,
   type MarketingConsentDefinitionUpdateInput,
@@ -271,6 +276,11 @@ export interface ApiClientOptions {
 export interface LessonAttachmentFileUpload extends LessonAttachmentUploadRequest {
   lessonId: string;
   body: Blob;
+}
+
+export interface ProductDownloadFileUpload extends ProductDownloadUploadRequest {
+  productId: string;
+  body: BodyInit;
 }
 
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
@@ -1136,6 +1146,62 @@ export const createApiClient = (options: ApiClientOptions) => ({
         .replace(':lessonId', encodeURIComponent(input.lessonId))
         .replace(':attachmentId', encodeURIComponent(input.attachmentId)),
       lessonAttachmentDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  listProductDownloadAssets: (productId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productDownloadAssets.method,
+      API_ROUTES.productDownloadAssets.path.replace(':productId', encodeURIComponent(productId)),
+      productDownloadAssetsOutputSchema,
+      undefined,
+      signal,
+    ),
+  uploadProductDownload: async (input: ProductDownloadFileUpload, signal?: AbortSignal) => {
+    const started = await request(
+      options,
+      API_ROUTES.productDownloadUpload.method,
+      API_ROUTES.productDownloadUpload.path.replace(':productId', encodeURIComponent(input.productId)),
+      productDownloadUploadOutputSchema,
+      { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+      signal,
+    );
+    if (!started.ok) return started;
+    const fetchImpl = options.fetchImpl ?? fetch;
+    let uploaded: Response;
+    try {
+      uploaded = await fetchImpl(started.value.upload.url, {
+        method: 'PUT',
+        headers: started.value.upload.headers,
+        body: input.body,
+        signal: signal ?? null,
+      });
+    } catch (cause) {
+      return err(internal(`Network error uploading ${input.fileName}: ${String(cause)}`));
+    }
+    if (!uploaded.ok) {
+      return err(internal(`Storage rejected ${input.fileName} with HTTP ${String(uploaded.status)}`));
+    }
+    return request(
+      options,
+      API_ROUTES.productDownloadComplete.method,
+      API_ROUTES.productDownloadComplete.path
+        .replace(':productId', encodeURIComponent(input.productId))
+        .replace(':assetId', encodeURIComponent(started.value.asset.id)),
+      productDownloadCompleteOutputSchema,
+      {},
+      signal,
+    );
+  },
+  deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productDownloadDelete.method,
+      API_ROUTES.productDownloadDelete.path
+        .replace(':productId', encodeURIComponent(input.productId))
+        .replace(':assetId', encodeURIComponent(input.assetId)),
+      productDownloadDeleteOutputSchema,
       undefined,
       signal,
     ),

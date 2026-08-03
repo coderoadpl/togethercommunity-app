@@ -1,47 +1,15 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { uniqueTestDatabaseName } from './test-database-name.js';
+import { createTestDatabase } from './test-database-name.js';
 
-const TEST_DB = uniqueTestDatabaseName('together_seed_integration_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const testDatabaseUrl = (() => {
-  const url = new URL(baseDatabaseUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
-})();
 const { spawnSync } = process.getBuiltinModule('node:child_process');
 const { join } = process.getBuiltinModule('node:path');
 const tsxBin = join(process.cwd(), 'node_modules/.bin/tsx');
-const recreateDatabase = async (): Promise<void> => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  try {
-    await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-    await admin.query(`CREATE DATABASE ${TEST_DB}`);
-  } finally {
-    await admin.end();
-  }
-  const migrationPool = new pg.Pool({ connectionString: testDatabaseUrl });
-  try {
-    await migrate(drizzle(migrationPool), { migrationsFolder: 'drizzle' });
-  } finally {
-    await migrationPool.end();
-  }
-};
-
-const dropDatabase = async (): Promise<void> => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  try {
-    await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  } finally {
-    await admin.end();
-  }
-};
+let testDatabaseUrl: string;
+let closeTestDatabase: () => Promise<void>;
 
 const runDatabaseScript = (script: 'seed.ts' | 'reseed.ts'): void => {
   const result = spawnSync(tsxBin, [`adapters/db/${script}`], {
@@ -77,17 +45,16 @@ const rowCounts = async (client: pg.Client): Promise<Record<string, number>> => 
 let client: pg.Client;
 
 beforeEach(async () => {
-  await recreateDatabase();
+  const testDatabase = await createTestDatabase('together_seed_integration_test', baseDatabaseUrl);
+  testDatabaseUrl = testDatabase.url;
+  closeTestDatabase = testDatabase.close;
   client = new pg.Client({ connectionString: testDatabaseUrl });
   await client.connect();
 }, 60_000);
 
 afterEach(async () => {
   await client.end();
-});
-
-afterAll(async () => {
-  await dropDatabase();
+  await closeTestDatabase();
 }, 180_000);
 
 describe('demo seed lifecycle', () => {

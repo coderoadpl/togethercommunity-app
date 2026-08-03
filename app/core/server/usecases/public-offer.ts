@@ -8,6 +8,7 @@ import {
   type PriceKind,
   type Product,
   type ProductPrice,
+  type ProductType,
   type Result,
   type Tenant,
   type TenantBranding,
@@ -44,8 +45,11 @@ interface PublicOfferPrice {
 
 interface PublicOfferProduct {
   id: string;
+  type: ProductType;
+  slug: string;
   title: string;
   description: string;
+  coverUrl: string | null;
   priceCents: number;
   currency: string;
   prices: PublicOfferPrice[];
@@ -113,8 +117,11 @@ const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
 
 const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOfferProduct => ({
   id: product.id,
+  type: product.type,
+  slug: product.slug,
   title: product.title,
   description: product.description,
+  coverUrl: product.coverUrl,
   priceCents: product.priceCents,
   currency: product.currency,
   prices,

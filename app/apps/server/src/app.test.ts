@@ -62,8 +62,11 @@ const product = (input: {
 }): Product => ({
   id: input.id,
   tenantId: input.tenantId,
+  type: 'course',
+  slug: input.id,
   title: input.title,
   description: '',
+  coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
   published: input.published,
@@ -357,7 +360,7 @@ const deps = (input: {
         products.filter((candidate) => candidate.tenantId === tenantId && candidate.published),
       findById: async (tenantId, id) =>
         products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
-      create: async () => undefined,
+      create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,

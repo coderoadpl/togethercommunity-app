@@ -86,7 +86,10 @@ import {
   publicPostSchema,
   postSearchHitSchema,
   productAccessIssuesSchema,
+  productCoverUrlSchema,
+  productSlugSchema,
   productSchema,
+  productTypeSchema,
   progressViewSchema,
   searchPostsInputSchema,
   sendSupportMessageInputSchema,
@@ -238,8 +241,11 @@ export const publicOfferOutputSchema = z.object({
   products: z.array(
     z.object({
       id: z.string(),
+      type: productTypeSchema,
+      slug: productSlugSchema,
       title: z.string(),
       description: z.string(),
+      coverUrl: productCoverUrlSchema.nullable(),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),

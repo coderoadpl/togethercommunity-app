@@ -1,9 +1,10 @@
 import { and, eq, inArray, lt, lte, or, sql } from 'drizzle-orm';
 
-import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, type AppError, type Result } from '#core/domain/index.js';
+import { emailEventSchema, emailOutboxPayloadSchema, internal, ok, renderEmailOutboxPayload, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailOutboxItem, EmailOutboxRepository, EnrollmentTransactionPort, PlatformTransactionalPool } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { appendEmailSentMemberEvents } from './member-events.js';
 import { createMemberRepository, createProductGrantRepository } from './repositories.js';
 import { emailEvents, emailOutbox, tenantTransactionalEmailPools } from './schema.js';
 
@@ -173,7 +174,12 @@ export const createEmailOutboxRepository = (
           sesMessageId: input.sesMessageId,
           transport: input.transport,
           lastError: null,
-        }).where(eq(emailOutbox.id, input.id)).returning({ tenantId: emailOutbox.tenantId });
+        }).where(eq(emailOutbox.id, input.id)).returning({
+          tenantId: emailOutbox.tenantId,
+          recipient: emailOutbox.to,
+          source: emailOutbox.kind,
+          payload: emailOutbox.payload,
+        });
         if (row?.tenantId !== null && row?.tenantId !== undefined) {
           await tx.insert(emailEvents).values(emailEventSchema.parse({
             id: `${input.id}:accepted`,
@@ -185,6 +191,19 @@ export const createEmailOutboxRepository = (
             meta: { sesMessageId: input.sesMessageId, transport: input.transport, runId: input.runId },
             createdAt: input.sentAt,
           }));
+          const rendered = renderEmailOutboxPayload(row.payload);
+          if (rendered.success) {
+            await appendEmailSentMemberEvents(tx, {
+              tenantId: row.tenantId,
+              recipient: row.recipient,
+              sendId: input.id,
+              mailKind: 'transactional',
+              subject: rendered.data.subject,
+              source: row.source,
+              transport: input.transport,
+              occurredAt: input.sentAt,
+            });
+          }
         }
       });
       return ok(undefined);

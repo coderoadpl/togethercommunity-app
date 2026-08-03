@@ -8,6 +8,7 @@ import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinit
 import type { Db } from './client.js';
 import { createEmailEventRepository } from './email-events.js';
 import { createEmailSendRepository } from './email-sends.js';
+import { createMemberEventRepository } from './member-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
@@ -21,7 +22,7 @@ import {
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { emailOutbox, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
+import { emailOutbox, members, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
 import * as dbSchema from './schema.js';
 import { uniqueTestDatabaseName } from './test-database-name.js';
 
@@ -612,5 +613,77 @@ describe('marketing database repositories', () => {
       { version: 2, content: '# Revised second', publishedAt: null },
     ]);
     expect(await repository.findById('tenant-b', document.id)).toBeNull();
+  });
+
+  it('emits a typed member event when a marketing email is sent', async () => {
+    const tenantId = 'tenant-marketing-member-event';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Member event', createdAt: NOW });
+    await db.insert(members).values({
+      id: 'member-marketing-email',
+      tenantId,
+      userId: 'user-marketing-email',
+      email: 'member-marketing@example.test',
+      createdAt: NOW,
+    });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-marketing-member-event',
+      tenantId,
+      memberId: 'member-marketing-email',
+      email: 'member-marketing@example.test',
+      definitionId: `definition-${tenantId}`,
+      definitionVersion: 1,
+      wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
+      status: 'confirmed',
+      previousId: null,
+      source: 'api',
+      evidence: { collectedAt: NOW, proofRef: 'fixture' },
+      occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    const pending: CampaignSend = {
+      id: 'marketing-member-event',
+      tenantId,
+      campaignId: `campaign-${tenantId}`,
+      source: 'broadcast',
+      memberId: 'member-marketing-email',
+      email: consent.email,
+      subject: 'Campaign subject',
+      consentRowId: consent.id,
+      unsubscribeTokenId: null,
+      status: 'pending',
+      skipReason: null,
+      sesMessageId: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+      idempotencySource: null,
+      renderedBodyPurgedAt: null,
+      createdAt: NOW,
+      sentAt: null,
+    };
+    const sends = createCampaignSendRepository(db);
+    await sends.claimRecipient(tenantId, pending);
+    await sends.update(tenantId, {
+      ...pending,
+      status: 'sent',
+      sesMessageId: 'ses-marketing-member-event',
+      sentAt: NOW,
+    });
+
+    expect(await createMemberEventRepository(db).listForMember(
+      tenantId,
+      'member-marketing-email',
+    )).toContainEqual(expect.objectContaining({
+      type: 'email-sent',
+      payload: {
+        sendId: 'marketing-member-event',
+        mailKind: 'marketing',
+        subject: 'Campaign subject',
+        source: 'broadcast',
+        transport: 'tenant-ses',
+      },
+    }));
   });
 });

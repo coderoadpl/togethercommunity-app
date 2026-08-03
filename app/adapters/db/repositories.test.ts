@@ -37,6 +37,7 @@ import {
   createCheckoutConsentCaptureRepository,
   createDevSinkPurge,
   createHealthPort,
+  createMemberCourseProgressRepository,
   createMemberErasureRepository,
   createMemberRepository,
   createMemberSubscriptionRepository,
@@ -44,6 +45,7 @@ import {
   createPostRepository,
   createPostReportRepository,
   createProcessedPaymentEventRepository,
+  createPurchaseRepository,
   createProductGrantRepository,
   createProductPriceRepository,
   createProductRepository,
@@ -52,6 +54,7 @@ import {
   createTenantRepository,
   createTenantSecretRepository,
 } from './repositories.js';
+import { createMemberEventRepository } from './member-events.js';
 import {
   createCouponRedemptionRepository,
   createCouponStatsRepository,
@@ -65,6 +68,7 @@ import {
   couponRedemptions,
   couponCheckoutSessions,
   coupons,
+  courses,
   devEmails,
   devMagicLinks,
   emailOutbox,
@@ -309,8 +313,7 @@ describe('member repository', () => {
       tenantId: ACME,
       memberId: 'mem-acme',
       type: 'banned' as const,
-      reason: 'Repeated abuse',
-      actorUserId: 'user-acme-owner',
+      payload: { reason: 'Repeated abuse', actorUserId: 'user-acme-owner' },
       occurredAt: NOW,
     };
 
@@ -319,8 +322,8 @@ describe('member repository', () => {
       {
         memberId: 'mem-acme',
         bannedAt: NOW,
-        reason: event.reason,
-        actorUserId: event.actorUserId,
+        reason: event.payload.reason,
+        actorUserId: event.payload.actorUserId,
       },
       { ...event, id: 'member-event-invalid', memberId: 'missing-member' },
     )).rejects.toThrow();
@@ -331,27 +334,144 @@ describe('member repository', () => {
       {
         memberId: 'mem-acme',
         bannedAt: NOW,
-        reason: event.reason,
-        actorUserId: event.actorUserId,
+        reason: event.payload.reason,
+        actorUserId: event.payload.actorUserId,
       },
       event,
     )).resolves.toMatchObject({
       bannedAt: NOW,
-      bannedReason: event.reason,
-      bannedByUserId: event.actorUserId,
+      bannedReason: event.payload.reason,
+      bannedByUserId: event.payload.actorUserId,
     });
     expect(await db.select().from(memberEvents).where(eq(memberEvents.id, event.id))).toMatchObject([
       {
         tenantId: ACME,
         memberId: 'mem-acme',
         type: 'banned',
-        reason: event.reason,
-        actorUserId: event.actorUserId,
+        payload: event.payload,
       },
     ]);
     expect(
       (await repo.listWithProductIds(ACME, NOW)).find((row) => row.id === 'mem-acme'),
-    ).toMatchObject({ bannedAt: NOW, bannedReason: event.reason });
+    ).toMatchObject({ bannedAt: NOW, bannedReason: event.payload.reason });
+  });
+});
+
+describe('member event repository', () => {
+  it('merges commerce, access, subscription, and learning events newest-first', async () => {
+    await createCourseRepository(db).create(ACME, {
+      id: 'course-member-events',
+      tenantId: ACME,
+      name: 'Member events course',
+      description: '',
+      imageUrl: null,
+      moduleOrder: [],
+      legacyId: null,
+      createdAt: NOW,
+    });
+    const progress = createMemberCourseProgressRepository(db);
+    const row = await progress.findOrCreate(ACME, {
+      id: 'progress-member-events',
+      memberId: 'mem-acme',
+      courseId: 'course-member-events',
+      now: PAST,
+    });
+    await progress.update(ACME, {
+      ...row,
+      memberId: 'mem-globex',
+      completedLessonIds: ['lesson-member-events'],
+      updatedAt: FUTURE,
+    });
+
+    const events = await createMemberEventRepository(db).listForMember(ACME, 'mem-acme');
+    expect(events.map((event) => event.type)).toEqual(expect.arrayContaining([
+      'purchase',
+      'grant',
+      'subscription-change',
+      'lesson-completion',
+    ]));
+    expect(events[0]).toMatchObject({
+      type: 'lesson-completion',
+      payload: { courseId: 'course-member-events', lessonId: 'lesson-member-events' },
+    });
+    expect(events.every((event) => event.tenantId === ACME && event.memberId === 'mem-acme')).toBe(true);
+
+    await db.delete(memberCourseProgress).where(eq(memberCourseProgress.id, 'progress-member-events'));
+    await db.delete(courses).where(eq(courses.id, 'course-member-events'));
+  });
+
+  it('stores open event types and skips rows unsupported by the current registry', async () => {
+    await db.insert(memberEvents).values([
+      {
+        id: 'member-event-open-type',
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        type: 'community-post',
+        payload: { postId: 'post-1' },
+        occurredAt: NOW,
+      },
+      {
+        id: 'member-event-invalid-payload',
+        tenantId: ACME,
+        memberId: 'mem-acme',
+        type: 'purchase',
+        payload: { orderId: 'legacy-order' },
+        occurredAt: NOW,
+      },
+    ]);
+    const [stored] = await db.select({
+      type: memberEvents.type,
+      payload: memberEvents.payload,
+    }).from(memberEvents).where(eq(memberEvents.id, 'member-event-open-type'));
+    expect(stored).toEqual({ type: 'community-post', payload: { postId: 'post-1' } });
+    const visible = await createMemberEventRepository(db).listForMember(ACME, 'mem-acme');
+    expect(visible.map((event) => event.id)).not.toEqual(expect.arrayContaining([
+      'member-event-open-type',
+      'member-event-invalid-payload',
+    ]));
+    await db.delete(memberEvents).where(inArray(memberEvents.id, [
+      'member-event-open-type',
+      'member-event-invalid-payload',
+    ]));
+  });
+});
+
+describe('purchase repository', () => {
+  it('records the access change created by a simulated purchase', async () => {
+    await db.insert(user).values({
+      id: 'user-simulated-purchase',
+      name: 'Simulated Buyer',
+      email: 'simulated-buyer@together.dev',
+    });
+    const result = await createPurchaseRepository(db).createMemberGrant({
+      tenantId: ACME,
+      userId: 'user-simulated-purchase',
+      email: 'simulated-buyer@together.dev',
+      memberId: 'member-simulated-purchase',
+      grantId: 'grant-simulated-purchase',
+      productId: 'prod-acme',
+      createdAt: NOW,
+    });
+
+    expect(result.grantCreated).toBe(true);
+    expect(await createMemberEventRepository(db).listForMember(
+      ACME,
+      'member-simulated-purchase',
+    )).toContainEqual(expect.objectContaining({
+      type: 'grant',
+      payload: {
+        grantId: 'grant-simulated-purchase',
+        productId: 'prod-acme',
+        source: 'simulated',
+        startsAt: NOW,
+        expiresAt: null,
+      },
+    }));
+
+    await db.delete(memberEvents).where(eq(memberEvents.memberId, 'member-simulated-purchase'));
+    await db.delete(productGrants).where(eq(productGrants.memberId, 'member-simulated-purchase'));
+    await db.delete(members).where(eq(members.id, 'member-simulated-purchase'));
+    await db.delete(user).where(eq(user.id, 'user-simulated-purchase'));
   });
 });
 
@@ -481,7 +601,17 @@ describe('product grant repository', () => {
     const repo = createProductGrantRepository(db);
     const revoked = await repo.revokeGrant(ACME, 'grant-acme', NOW);
     expect(revoked?.expiresAt).toBe(NOW);
-    await repo.setGrantWindow(ACME, 'grant-acme', { startsAt: PAST, expiresAt: FUTURE });
+    expect(await createMemberEventRepository(db).listForMember(ACME, 'mem-acme')).toContainEqual(
+      expect.objectContaining({
+        type: 'revoke',
+        payload: { grantId: 'grant-acme', productId: 'prod-acme', expiresAt: NOW },
+      }),
+    );
+    await repo.setGrantWindow(ACME, 'grant-acme', {
+      startsAt: PAST,
+      expiresAt: FUTURE,
+      occurredAt: NOW,
+    });
   });
 });
 
@@ -626,6 +756,21 @@ describe('coupon redemption repository', () => {
         .from(couponRedemptions)
         .where(eq(couponRedemptions.couponId, 'coupon-race')),
     ).toHaveLength(1);
+    const [redemption] = await db
+      .select({ orderId: couponRedemptions.orderId })
+      .from(couponRedemptions)
+      .where(eq(couponRedemptions.couponId, 'coupon-race'));
+    expect(await db.select().from(memberEvents).where(
+      eq(memberEvents.id, `purchase:${redemption?.orderId ?? 'missing'}`),
+    )).toMatchObject([{
+      tenantId: ACME,
+      memberId: 'mem-acme',
+      type: 'purchase',
+      payload: expect.objectContaining({
+        orderId: redemption?.orderId,
+        amountCents: 2450,
+      }),
+    }]);
     await db.insert(couponCheckoutSessions).values({
       id: 'coupon-race-session',
       tenantId: ACME,

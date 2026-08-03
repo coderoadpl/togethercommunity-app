@@ -244,7 +244,11 @@ describe('setMemberBanned', () => {
       create: async () => undefined,
       updateEmail: async () => stored,
       setBanned: async (_tenantId, input, event) => {
-        events.push({ type: event.type, actorUserId: event.actorUserId, reason: event.reason });
+        events.push({
+          type: event.type,
+          actorUserId: event.payload.actorUserId,
+          reason: event.type === 'banned' ? event.payload.reason : null,
+        });
         stored = {
           ...stored,
           bannedAt: input.bannedAt,

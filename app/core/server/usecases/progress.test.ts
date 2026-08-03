@@ -90,8 +90,11 @@ const m1: CourseModule = {
 const pCourse: Product = {
   id: 'p-course',
   tenantId: 't1',
+  type: 'course',
+  slug: 'full-course',
   title: 'Full course',
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,

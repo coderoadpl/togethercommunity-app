@@ -46,5 +46,3 @@ export const memberDataExportSchema = z.object({
     }),
   ),
 });
-
-export type MemberDataExport = z.output<typeof memberDataExportSchema>;

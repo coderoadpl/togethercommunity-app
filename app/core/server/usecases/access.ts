@@ -165,7 +165,7 @@ export const locateLesson = (
  * The cheapest published product whose access items unlock the given lesson —
  * the one upsell target a locked row can honestly advertise.
  */
-export const cheapestUnlockingProduct = (
+const cheapestUnlockingProduct = (
   publishedProducts: Product[],
   location: { courseId: string; moduleId: string; lessonId: string },
 ): Product | null => {

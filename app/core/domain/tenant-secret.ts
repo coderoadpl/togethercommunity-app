@@ -15,6 +15,7 @@ export const tenantSecretKeySchema = z.enum([
   'smtp.user',
   'smtp.password',
   'smtp.secure',
+  'resend.apiKey',
   'ifirma.invoiceApiKey',
   'ifirma.username',
   'ksef.token',

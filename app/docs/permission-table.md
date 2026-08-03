@@ -14,7 +14,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 93. Route rows: 199. Exported `Ctx` use-case rows: 175.
+Closed capability count: 93. Route rows: 199. Exported `Ctx` use-case rows: 173.
 
 ## Human-readable diff
 

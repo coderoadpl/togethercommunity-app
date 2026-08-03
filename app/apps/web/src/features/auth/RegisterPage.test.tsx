@@ -18,7 +18,7 @@ import { RegisterPage } from './RegisterPage.js';
 
 const HomeAfterRegistration = () => <div>Home after registration</div>;
 
-const renderRegisterPage = async () => {
+const renderRegisterPage = async (hostname?: string) => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -28,7 +28,8 @@ const renderRegisterPage = async () => {
   const registerRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/register',
-    component: RegisterPage,
+    component: () =>
+      hostname === undefined ? <RegisterPage /> : <RegisterPage hostname={hostname} />,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, registerRoute]),
@@ -87,6 +88,23 @@ describe('RegisterPage', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
+  it('lands on home when a tenant offer resolves on the bare host', async () => {
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({ ok: true, data: tenantOffer({ termsUrl: null, privacyUrl: null }) }),
+      ),
+      http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
+    );
+
+    await renderRegisterPage('localhost');
+    await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
+    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo1234');
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
+
+    expect(await screen.findByText('Home after registration')).toBeInTheDocument();
+  });
+
   it('requires accepting configured documents and submits consent with signup', async () => {
     const signupBodies: unknown[] = [];
     server.use(
@@ -105,7 +123,7 @@ describe('RegisterPage', () => {
       }),
     );
 
-    await renderRegisterPage();
+    await renderRegisterPage('akademia.localhost');
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();

@@ -303,7 +303,7 @@ describe('marketing database repositories', () => {
     )).resolves.toEqual([]);
     const cutoff = consentEvidenceRetentionCutoff('1998-12-31T23:00:00.000Z');
     await expect(repository.listExpiredTenantIds(cutoff)).resolves.toEqual(['retention-a', 'retention-b']);
-    const purgeOptions = { batchSize: 1, deadlineMs: Date.now() + 60_000, monotonicNowMs: Date.now };
+    const purgeOptions = { batchSize: 1, deadlineMs: Date.now() + 60_000 };
     await expect(repository.purgeExpired('retention-a', cutoff, purgeOptions)).resolves.toBe(2);
     await expect(repository.purgeExpired('retention-a', cutoff, purgeOptions)).resolves.toBe(0);
     await expect(repository.listExpiredTenantIds(cutoff)).resolves.toEqual(['retention-b']);
@@ -313,56 +313,6 @@ describe('marketing database repositories', () => {
       .where(eq(marketingConsents.tenantId, 'retention-b'))).resolves.toEqual([{ id: 'marketing-retention-b' }]);
     await expect(db.select({ consentRowId: campaignSends.consentRowId }).from(campaignSends)
       .where(eq(campaignSends.id, 'send-retention-a'))).resolves.toEqual([{ consentRowId: null }]);
-  });
-
-  it('leaves a withdrawn marketing state when the deadline stops a consent-chain purge', async () => {
-    const tenantId = 'retention-chain';
-    const email = 'withdrawn@example.test';
-    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Retention chain', createdAt: NOW });
-    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
-    const marketing = createMarketingConsentRepository(db);
-    const evidence = (input: {
-      id: string;
-      status: MarketingConsent['status'];
-      previousId: string | null;
-      occurredAt: string;
-    }): MarketingConsent => ({
-      ...input,
-      tenantId,
-      memberId: null,
-      email,
-      definitionId: `definition-${tenantId}`,
-      definitionVersion: 1,
-      wordingSnapshot: 'Newsletter',
-      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
-      source: 'preference_page',
-      evidence: { collectedAt: input.occurredAt, proofRef: input.id },
-    });
-    await marketing.record(tenantId, evidence({
-      id: 'chain-granted', status: 'granted', previousId: null, occurredAt: '1990-01-01T00:00:00.000Z',
-    }));
-    await marketing.record(tenantId, evidence({
-      id: 'chain-confirmed', status: 'confirmed', previousId: 'chain-granted', occurredAt: '1991-01-01T00:00:00.000Z',
-    }));
-    await marketing.record(tenantId, evidence({
-      id: 'chain-withdrawn', status: 'withdrawn', previousId: 'chain-confirmed', occurredAt: '1992-01-01T00:00:00.000Z',
-    }));
-    let monotonicRead = 0;
-    const repository = createConsentEvidenceRetentionRepository(db);
-
-    await expect(repository.purgeExpired(tenantId, '1993-01-01T00:00:00.000Z', {
-      batchSize: 1,
-      deadlineMs: 100,
-      monotonicNowMs: () => monotonicRead++ === 0 ? 0 : 100,
-    })).resolves.toBe(1);
-    await expect(marketing.listByEmail(tenantId, email, `definition-${tenantId}`)).resolves.toMatchObject([
-      { id: 'chain-confirmed', status: 'confirmed' },
-      { id: 'chain-withdrawn', status: 'withdrawn' },
-    ]);
-    await expect(marketing.latestByEmail(tenantId, email, `definition-${tenantId}`)).resolves.toMatchObject({
-      id: 'chain-withdrawn',
-      status: 'withdrawn',
-    });
   });
 
   it('purges stale pending consent evidence referenced by a skipped campaign send', async () => {

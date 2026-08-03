@@ -16,11 +16,11 @@ const rowCount = (result: unknown): number => {
 };
 
 const purgeBatches = async (
-  options: { batchSize: number; deadlineMs: number; monotonicNowMs: () => number },
+  options: { batchSize: number; deadlineMs: number },
   deleteBatch: () => Promise<number>,
 ): Promise<number> => {
   let purged = 0;
-  while (options.monotonicNowMs() < options.deadlineMs) {
+  while (Date.now() < options.deadlineMs) {
     const deleted = await deleteBatch();
     purged += deleted;
     if (deleted < options.batchSize) break;
@@ -46,30 +46,28 @@ export const createConsentEvidenceRetentionRepository = (
     const marketing = await purgeBatches(options, async () => {
       const result = await db.execute(sql`
         WITH batch AS (
-          SELECT ${marketingConsents.id} FROM ${marketingConsents}
+          SELECT ctid FROM ${marketingConsents}
           WHERE ${marketingConsents.tenantId} = ${tenantId}
             AND ${marketingConsents.retentionStartedAt} < ${retentionStartedBefore}
-          ORDER BY ${marketingConsents.occurredAt} ASC, ${marketingConsents.id} ASC
           LIMIT ${options.batchSize}
           FOR UPDATE SKIP LOCKED
         )
         DELETE FROM ${marketingConsents}
-        WHERE ${marketingConsents.id} IN (SELECT id FROM batch)
+        WHERE ctid IN (SELECT ctid FROM batch)
       `);
       return rowCount(result);
     });
     const terms = await purgeBatches(options, async () => {
       const result = await db.execute(sql`
         WITH batch AS (
-          SELECT ${consents.id} FROM ${consents}
+          SELECT ctid FROM ${consents}
           WHERE ${consents.tenantId} = ${tenantId}
             AND ${consents.retentionStartedAt} < ${retentionStartedBefore}
-          ORDER BY ${consents.acceptedAt} ASC, ${consents.id} ASC
           LIMIT ${options.batchSize}
           FOR UPDATE SKIP LOCKED
         )
         DELETE FROM ${consents}
-        WHERE ${consents.id} IN (SELECT id FROM batch)
+        WHERE ctid IN (SELECT ctid FROM batch)
       `);
       return rowCount(result);
     });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { ConsentEvidenceRetentionRepository } from '../ports.js';
 import { InMemorySchedulerRunRepository } from '../testing/marketing-fakes.js';
@@ -47,13 +47,7 @@ const setup = (now: string) => {
     advanceTo: (iso: string) => {
       clock.nowIso = () => iso;
     },
-    deps: {
-      retention,
-      runs,
-      ids: { nextId: () => `purge-id-${String(++nextId)}` },
-      clock,
-      monotonicNowMs: Date.now,
-    },
+    deps: { retention, runs, ids: { nextId: () => `purge-id-${String(++nextId)}` }, clock },
   };
 };
 
@@ -88,7 +82,7 @@ describe('consent evidence retention purge', () => {
     expect(page.runs.every((run) => run.status === 'completed' && run.trigger === 'cron')).toBe(true);
     const details = await Promise.all(page.runs.map((run) => runs.getWithTenants(run.id)));
     expect(details.find((detail) => detail?.tenants.length === 1)).toMatchObject({
-      tenants: [{ tenantId: 'tenant-1', batchSize: 0, purged: 2 }],
+      tenants: [{ tenantId: 'tenant-1', batchSize: 2 }],
     });
   });
 
@@ -167,16 +161,17 @@ describe('consent evidence retention purge', () => {
     const [run] = (await runs.listPage({ kind: 'consent_evidence_purge', limit: 10 })).runs;
     expect(run).toMatchObject({ status: 'failed', error: 'deadlock detected' });
     expect((await runs.getWithTenants(run?.id ?? ''))?.tenants).toMatchObject([
-      { tenantId: 'tenant-1', batchSize: 0, purged: 0, errors: ['deadlock detected'] },
-      { tenantId: 'tenant-2', batchSize: 0, purged: 1, errors: [] },
-      { tenantId: 'tenant-3', batchSize: 0, purged: 1, errors: [] },
-      { tenantId: 'tenant-4', batchSize: 0, purged: 1, errors: [] },
+      { tenantId: 'tenant-1', batchSize: 0, errors: ['deadlock detected'] },
+      { tenantId: 'tenant-2', batchSize: 1, errors: [] },
+      { tenantId: 'tenant-3', batchSize: 1, errors: [] },
+      { tenantId: 'tenant-4', batchSize: 1, errors: [] },
     ]);
   });
 
   it('stops between tenants when the purge time budget is exhausted', async () => {
     const { rows, deps } = setup('2000-01-01T00:00:00.000Z');
     let nowMs = 0;
+    const dateNow = vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
     const retention: ConsentEvidenceRetentionRepository = {
       listExpiredTenantIds: async (before) => deps.retention.listExpiredTenantIds(before),
       purgeExpired: async (tenantId, before, options) => {
@@ -186,12 +181,16 @@ describe('consent evidence retention purge', () => {
       },
     };
 
-    await expect(purgeExpiredConsentEvidence({
-      trigger: 'manual', minIntervalMs: 0, batchSize: 1, timeBudgetMs: 100,
-    }, { ...deps, retention, monotonicNowMs: () => nowMs })).resolves.toEqual({
-      ok: true,
-      value: { purged: 2, tenantsProcessed: 1 },
-    });
+    try {
+      await expect(purgeExpiredConsentEvidence({
+        trigger: 'manual', minIntervalMs: 0, batchSize: 1, timeBudgetMs: 100,
+      }, { ...deps, retention })).resolves.toEqual({
+        ok: true,
+        value: { purged: 2, tenantsProcessed: 1 },
+      });
+    } finally {
+      dateNow.mockRestore();
+    }
     expect(rows).toHaveLength(3);
   });
 

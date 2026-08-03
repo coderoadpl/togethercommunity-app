@@ -19,7 +19,7 @@ const deps =
 const app = buildApp(deps);
 
 if (env.INTERNAL_PORT !== undefined) {
-  const caddyApp = buildCaddyDomainCheckApp(deps.tenantDomains, {
+  const caddyApp = buildCaddyDomainCheckApp(deps.tenantDomains, deps.tenants, {
     appBaseUrl: deps.appBaseUrl,
     baseDomain: deps.baseDomain,
     singleTenantMode: deps.singleTenantMode,

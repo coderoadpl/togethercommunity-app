@@ -35,10 +35,16 @@ Verify the deployed environment has `SIMULATED_PAYMENTS` unset or set to
 
 **STATUS:** done
 
-Production requires `TENANT_CREATION=closed`. The default and production guard
-are in `apps/server/src/env.ts:28` and `apps/server/src/env.ts:93-99`.
+`TENANT_CREATION=open` is interpreted as `bootstrap` in production
+(`apps/server/src/composition.ts:371-376`). In bootstrap mode, the tenant
+creation use-case allows the first workspace only while the tenant store is
+empty and rejects later attempts (`core/server/usecases/create-tenant.ts:36-42`).
+The repository also makes the first-workspace write atomic, so concurrent
+requests cannot create a second workspace.
 
-Verify the deployed environment explicitly sets `TENANT_CREATION=closed`.
+For a new installation, verify the first workspace can be created exactly once,
+then set `TENANT_CREATION=closed` for steady state. For an installation that is
+provisioned before launch, set it to `closed` before the first production boot.
 
 ### 4. Secrets that must not stay at development defaults
 

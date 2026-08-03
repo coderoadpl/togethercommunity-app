@@ -188,6 +188,7 @@ import {
   listMemberBillingOrders,
   listMemberEmailSends,
   listMemberGrants,
+  listMemberTimeline,
   listMembers,
   listModules,
   listMyCourses,
@@ -1386,6 +1387,15 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   app.get(API_PATHS.memberGrants, async (c) => {
     const result = await listMemberGrants({ identity: c.get('identity') }, c.req.param('memberId'), deps);
     return respond(result.ok ? ok({ grants: result.value }) : result);
+  });
+
+  app.get(API_PATHS.memberTimeline, async (c) => {
+    const result = await listMemberTimeline(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('memberId') },
+      deps,
+    );
+    return respond(result.ok ? ok({ events: result.value }) : result);
   });
 
   app.get(API_PATHS.memberLearningSummary, async (c) => {

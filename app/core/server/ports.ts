@@ -121,7 +121,7 @@ export interface EntityVersionRepository {
 }
 
 export interface UserDisplayReader {
-  findDisplayNames(userIds: string[]): Promise<Map<string, string>>;
+  findDisplayNames(tenantId: string, userIds: string[]): Promise<Map<string, string>>;
 }
 
 export interface ProductRepository {
@@ -1436,7 +1436,7 @@ export interface TenantAccessReader {
   listTenantsForStaff(userId: string): Promise<Membership[]>;
   listStaffForTenant(tenantId: string): Promise<Array<{ userId: string; email: string }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
-  findMember(userId: string, tenantId: string): Promise<Member | null>;
+  findMember(tenantId: string, userId: string): Promise<Member | null>;
 }
 
 /** Established authenticated session, before tenant resolution. */

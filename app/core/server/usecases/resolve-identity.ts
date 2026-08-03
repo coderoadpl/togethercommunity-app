@@ -58,7 +58,7 @@ export const resolveIdentity = async (
   if (!tenant.value) return ok(base);
 
   const staffGrant = await deps.tenantAccess.findStaffGrant(user.userId, { tenantId: tenant.value.tenant.id });
-  let member = await deps.tenantAccess.findMember(user.userId, tenant.value.tenant.id);
+  let member = await deps.tenantAccess.findMember(tenant.value.tenant.id, user.userId);
 
   if (member && member.email !== user.email) {
     const refreshedMember = await deps.members.updateEmail(tenant.value.tenant.id, member.id, user.email);

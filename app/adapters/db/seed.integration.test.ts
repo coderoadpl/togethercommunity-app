@@ -148,6 +148,51 @@ describe('demo seed lifecycle', () => {
            last_viewed_lesson_id = 'lesson-js-projekt-1'
        WHERE id = 'progress-member-studio-aktywny'`,
     );
+    await client.query(
+      `INSERT INTO tenants (id, slug, name, created_at)
+       VALUES ('AUDYT-tenant', 'audyt-tenant', 'AUDYT tenant', NOW()::text)`,
+    );
+    await client.query(
+      `INSERT INTO scheduler_runs (
+         id, kind, trigger, started_at, status, totals, created_at
+       ) VALUES
+         (
+           'AUDYT-scheduler-run', 'marketing_tick', 'manual', NOW(), 'completed', '{}'::jsonb, NOW()
+         ),
+         (
+           'AUDYT-shared-scheduler-run', 'marketing_tick', 'manual', NOW(), 'completed',
+           '{}'::jsonb, NOW()
+         ),
+         (
+           'AUDYT-tenantless-scheduler-run', 'outbox_dispatch', 'scheduled', NOW(), 'running',
+           '{}'::jsonb, NOW()
+         )`,
+    );
+    await client.query(
+      `INSERT INTO scheduler_run_tenants (
+         id, run_id, tenant_id, campaigns_touched, batch_size, sent, failed, skipped,
+         budget_computed, budget_used, errors, created_at
+       ) VALUES
+         (
+           'AUDYT-scheduler-run-tenant', 'AUDYT-scheduler-run', 'tenant-studio', 0, 0, 0, 0, 0,
+           0, 0, '[]'::jsonb, NOW()
+         ),
+         (
+           'AUDYT-shared-scheduler-run-demo-tenant', 'AUDYT-shared-scheduler-run',
+           'tenant-studio', 0, 0, 0, 0, 0, 0, 0, '[]'::jsonb, NOW()
+         ),
+         (
+           'AUDYT-shared-scheduler-run-non-demo-tenant', 'AUDYT-shared-scheduler-run',
+           'AUDYT-tenant', 0, 0, 0, 0, 0, 0, 0, '[]'::jsonb, NOW()
+         )`,
+    );
+    await client.query(
+      `INSERT INTO email_events (
+         id, tenant_id, mail_kind, ref_id, type, occurred_at, created_at
+       ) VALUES (
+         'AUDYT-email-event', 'tenant-studio', 'transactional', 'AUDYT-email', 'sent', NOW(), NOW()
+       )`,
+    );
 
     runDatabaseScript('reseed.ts');
 
@@ -165,6 +210,24 @@ describe('demo seed lifecycle', () => {
        FROM member_course_progress
        WHERE id = 'progress-member-studio-aktywny'`,
     );
+    const staleSchedulerRun = await client.query(
+      `SELECT id FROM scheduler_runs WHERE id = 'AUDYT-scheduler-run'`,
+    );
+    const tenantlessSchedulerRun = await client.query(
+      `SELECT id FROM scheduler_runs WHERE id = 'AUDYT-tenantless-scheduler-run'`,
+    );
+    const sharedSchedulerRun = await client.query(
+      `SELECT id FROM scheduler_runs WHERE id = 'AUDYT-shared-scheduler-run'`,
+    );
+    const sharedSchedulerRunTenants = await client.query<{ tenant_id: string }>(
+      `SELECT tenant_id
+       FROM scheduler_run_tenants
+       WHERE run_id = 'AUDYT-shared-scheduler-run'
+       ORDER BY tenant_id`,
+    );
+    const staleEmailEvent = await client.query(
+      `SELECT id FROM email_events WHERE id = 'AUDYT-email-event'`,
+    );
 
     expect(auditCourse.rowCount).toBe(0);
     expect(course.rows).toEqual([{ module_order: [] }]);
@@ -174,5 +237,10 @@ describe('demo seed lifecycle', () => {
         last_viewed_lesson_id: 'lesson-js-funkcje-1',
       },
     ]);
+    expect(staleSchedulerRun.rowCount).toBe(0);
+    expect(tenantlessSchedulerRun.rowCount).toBe(0);
+    expect(sharedSchedulerRun.rows).toEqual([{ id: 'AUDYT-shared-scheduler-run' }]);
+    expect(sharedSchedulerRunTenants.rows).toEqual([{ tenant_id: 'AUDYT-tenant' }]);
+    expect(staleEmailEvent.rowCount).toBe(0);
   }, 180_000);
 });

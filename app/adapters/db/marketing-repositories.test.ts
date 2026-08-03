@@ -257,7 +257,11 @@ describe('marketing database repositories', () => {
     const second = campaigns.acquireLease('tenant-a', 'campaign-tenant-a', {
       workerId: 'worker-b', now: NOW, lockedUntil: '2026-07-22T00:01:00.000Z',
     });
-    expect(await Promise.all([first, second])).toEqual([true, false]);
+    const outcomes = await Promise.all([first, second]);
+    expect(outcomes.toSorted()).toEqual([false, true]);
+    expect(await campaigns.findById('tenant-a', 'campaign-tenant-a')).toMatchObject({
+      lockedBy: outcomes[0] ? 'worker-a' : 'worker-b',
+    });
     expect(await campaigns.findById('tenant-b', 'campaign-tenant-a')).toBeNull();
   });
 

@@ -25,7 +25,7 @@ jobs:
             const marker = '<!-- visual-golden-gallery -->';
             const root = 'app/tasks/visual-goldens/';
             const baselinePath = /^app\/tasks\/visual-goldens\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\.png$/;
-            const maxRows = 40;
+            const maxRows = 100;
             const { owner, repo } = context.repo;
             const pullNumber = context.payload.pull_request.number;
             const baseTipSha = context.payload.pull_request.base.sha;
@@ -42,6 +42,7 @@ jobs:
               !path.split('/').includes('..');
             const relative = (path) => path.slice(root.length);
             const changes = files.flatMap((file) => {
+              if (file.status === 'unchanged') return [];
               const current = isBaseline(file.filename) ? file.filename : undefined;
               const previous = isBaseline(file.previous_filename)
                 ? file.previous_filename
@@ -83,13 +84,23 @@ jobs:
             let body = marker + '\n## Committed visual golden changes\n\n' +
               'This pull request has no committed visual baseline changes.';
             if (changes.length > 0) {
-              const comparison = await github.rest.repos.compareCommits({
-                owner,
-                repo,
-                base: baseTipSha,
-                head: headSha,
-              });
-              const baseSha = comparison.data.merge_base_commit.sha;
+              let baseSha = baseTipSha;
+              let baseDescription = 'merge base';
+              try {
+                const comparison = await github.rest.repos.compareCommits({
+                  owner,
+                  repo,
+                  base: baseTipSha,
+                  head: headSha,
+                });
+                baseSha = comparison.data.merge_base_commit.sha;
+              } catch (error) {
+                baseDescription = 'pull request base';
+                core.warning(
+                  'Could not resolve the merge base; using the pull request base commit: ' +
+                  (error instanceof Error ? error.message : String(error)),
+                );
+              }
               const rawUrl = (sha, path) =>
                 `https://github.com/${owner}/${repo}/raw/${sha}/` +
                 path.split('/').map(encodeURIComponent).join('/');
@@ -112,7 +123,8 @@ jobs:
                 ? `\n\n_${omitted} additional baseline change(s) omitted; review them in the Files tab._`
                 : '';
               body = marker + '\n## Committed visual golden changes\n\n' +
-                'Before and after images are pinned to this pull request’s merge base and head commits.\n\n' +
+                `Before and after images are pinned to this pull request’s ${baseDescription} ` +
+                'and head commits.\n\n' +
                 '<table><thead><tr><th>Baseline</th><th>Change</th><th>Before (base)</th>' +
                 '<th>After (head)</th></tr></thead><tbody>' + rows + '</tbody></table>' + omission;
             }

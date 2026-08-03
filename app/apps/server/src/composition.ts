@@ -5,6 +5,7 @@ import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPla
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
+import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -89,13 +90,19 @@ import { createKsefInvoicePdf } from '#adapters/invoicing/ksef-pdf.js';
 import { createFa3XsdValidator } from '#adapters/invoicing/fa3-validator.js';
 import { createBunnyVideoLibrary } from '#adapters/video/bunny.js';
 import { createBunnyEmbedTokenSigner } from '#adapters/crypto/bunny-embed-token-signer.js';
-import { createS3UrlSigner } from '#adapters/storage/s3-url-signer.js';
+import { createS3StorageProvider } from '#adapters/storage/s3.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createEmailNotificationChannel } from '#adapters/notifications/email.js';
 import { createInAppNotificationChannel, createRealtimeBus } from '#adapters/notifications/in-app.js';
 import { createSesEmailPort } from '#adapters/email/ses.js';
 import { createSmtpEmailPort } from '#adapters/email/smtp.js';
-import { createSmtpTransactionalResolver, createTenantSesTransactionalResolver } from '#adapters/email/transactional-resolvers.js';
+import { createResendEmailPort } from '#adapters/email/resend.js';
+import {
+  createEmailIntegrationTransportResolver,
+  createResendTransactionalResolver,
+  createSmtpTransactionalResolver,
+  createTenantSesTransactionalResolver,
+} from '#adapters/email/transactional-resolvers.js';
 import { createSesMarketingSender, readSesQuota } from '#adapters/email/marketing-ses.js';
 import { createDevMarketingSender } from '#adapters/email/dev-marketing.js';
 import { createMarketingSesCredentialResolver } from '#adapters/email/marketing-credentials.js';
@@ -125,6 +132,7 @@ import type {
   EmailPort,
   EmailOutboxRepository,
   EmailHmac,
+  EmailIntegrationTransportResolver,
   EmailEventRepository,
   EmailSendRepository,
   EmailLayoutRepository,
@@ -137,7 +145,7 @@ import type {
   PaymentTransactionPort,
   DevMagicLinkReader,
   DevSinkPurge,
-  FileUrlSigner,
+  StorageProvider,
   BunnyEmbedTokenSigner,
   HealthPort,
   IdGenerator,
@@ -154,6 +162,8 @@ import type {
   MemberCourseProgressRepository,
   MemberErasureRequestRepository,
   MemberErasurePort,
+  MemberEventRepository,
+  MemberOrderListReader,
   MemberRepository,
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
@@ -173,6 +183,7 @@ import type {
   ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   RealtimeBusPort,
@@ -192,29 +203,29 @@ import type {
   SuppressionRepository,
   TenantDocumentRepository,
   TenantSesSettingsRepository,
-  TransactionalEmailTransportResolver,
+  TransactionalEmailSender,
   UnsubscribeTokenRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
 import type { Env } from './env.js';
 import { APP_VERSION } from './version.js';
 
-export interface DevEndpoints {
+interface DevEndpoints {
   simulatedPayments: boolean;
   exposeMagicLinks: boolean;
 }
 
-export interface AuthConfig {
+interface AuthConfig {
   googleEnabled: boolean;
 }
 
-export interface KsefAppDeps {
+interface KsefAppDeps {
   environment: KsefEnvironment;
   credentials: KsefCredentialResolver;
   numbers: KsefNumberRepository;
@@ -235,13 +246,14 @@ export interface KsefAppDeps {
 export interface AppDeps {
   auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext'>;
   authPort: AuthPort;
-  products: ProductRepository;
+  products: ProductRepository & ProductBatchReader;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
+  memberEvents: MemberEventRepository;
   memberErasure: MemberErasurePort;
   erasureRequests: MemberErasureRequestRepository;
   emailHmac?: EmailHmac;
@@ -258,7 +270,7 @@ export interface AppDeps {
   progress: MemberCourseProgressRepository;
   grants: ProductGrantRepository;
   prices: ProductPriceRepository;
-  orders: OrderRepository;
+  orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
@@ -280,9 +292,11 @@ export interface AppDeps {
   priceHistory?: ProductPriceHistoryRepository;
   couponStats?: CouponStatsRepository;
   videoLibrary: VideoLibraryPort;
-  fileUrlSigner: FileUrlSigner;
+  storage: StorageProvider;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
   email: EmailPort;
+  emailSender: TransactionalEmailSender;
+  emailTransports: EmailIntegrationTransportResolver;
   emailOutbox: EmailOutboxRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
   paymentTransaction: PaymentTransactionPort;
@@ -328,7 +342,6 @@ export interface MarketingAppDeps {
   unsubscribes: UnsubscribeTokenRepository;
   sesSettings: TenantSesSettingsRepository;
   platformTransactionalPool: PlatformTransactionalPool;
-  smtpTest: TransactionalEmailTransportResolver;
   documents: TenantDocumentRepository;
   idempotency: AutomationIdempotencyRepository;
   marketingSes: SesMarketingSender;
@@ -367,6 +380,22 @@ export const selectTenantRouting = (
   singleTenantMode: env.APP_BASE_DOMAIN === undefined,
 });
 
+export const selectBaseTrustedOrigins = (input: {
+  appBaseUrl: string;
+  baseDomain: string;
+  port: number;
+  singleTenantMode: boolean;
+}): string[] => input.singleTenantMode
+  ? [input.appBaseUrl]
+  : [
+      input.appBaseUrl,
+      `http://*.${input.baseDomain}`,
+      `https://*.${input.baseDomain}`,
+      // Wildcard entries above don't match origins carrying an explicit port.
+      `http://*.${input.baseDomain}:${input.port}`,
+      `https://*.${input.baseDomain}:${input.port}`,
+    ];
+
 /**
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
@@ -375,7 +404,15 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const { baseDomain, singleTenantMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
-  const tenants = createTenantRepository(db);
+  const tenants = createTenantRepository(db, singleTenantMode
+    ? {
+        onMultipleTenants: () => {
+          process.stderr.write(
+            '[tenant-routing] single-tenant mode found multiple tenants; set APP_BASE_DOMAIN to enable tenant routing\n',
+          );
+        },
+      }
+    : undefined);
   const tenantAccess = createTenantAccessReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
@@ -466,10 +503,23 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     secretResolver,
     production ? createSmtpEmailPort : () => email,
   );
+  const resendTransactional = createResendTransactionalResolver(
+    sesSettings,
+    secretResolver,
+    production ? createResendEmailPort : () => email,
+  );
+  const sesTest = createTenantSesTransactionalResolver(sesSettings, tenantMarketingCredentials);
   const smtpTest = createSmtpTransactionalResolver(sesSettings, secretResolver);
+  const resendTest = createResendTransactionalResolver(sesSettings, secretResolver);
+  const emailTransports = createEmailIntegrationTransportResolver({
+    smtp: smtpTest,
+    ses: sesTest,
+    resend: resendTest,
+  });
   const transactionalEmail = createLayeredTransactionalEmailSender({
     tenantSes: tenantSesTransactional,
     smtp: smtpTransactional,
+    resend: resendTransactional,
     platform: email,
     pool: platformTransactionalPool,
     platformLimit: 1000,
@@ -551,10 +601,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
-    const url = new URL(env.APP_BASE_URL);
-    if (!singleTenantMode) url.hostname = `${tenantSlug}.${baseDomain}`;
-    url.pathname = '/panel/marketing';
-    return url.toString();
+    return tenantUrl(tenantSlug, '/panel/marketing', {
+      appBaseUrl: env.APP_BASE_URL,
+      baseDomain,
+      singleTenantMode,
+    });
   };
   const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
@@ -603,21 +654,17 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     });
   };
   const realtimeBus = createRealtimeBus();
-  const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
-    const url = new URL(env.APP_BASE_URL);
-    if (!singleTenantMode && tenantSlug !== null) url.hostname = `${tenantSlug}.${baseDomain}`;
-    url.pathname = pathname;
-    return url.toString();
-  };
+  const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
-      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId)),
+      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId), routing),
     spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
       tenantUrl(
         tenantSlug,
         rootPostId === undefined
           ? communitySpacePath(spaceId)
           : communityPostPath(spaceId, rootPostId),
+        routing,
       ),
   };
 
@@ -626,19 +673,18 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : null;
 
-  const baseTrustedOrigins = [
-    env.APP_BASE_URL,
-    `http://*.${baseDomain}`,
-    `https://*.${baseDomain}`,
-    // Wildcard entries above don't match origins carrying an explicit port.
-    `http://*.${baseDomain}:${env.PORT}`,
-    `https://*.${baseDomain}:${env.PORT}`,
-  ];
+  const baseTrustedOrigins = selectBaseTrustedOrigins({
+    appBaseUrl: env.APP_BASE_URL,
+    baseDomain,
+    port: env.PORT,
+    singleTenantMode,
+  });
 
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
     baseDomain,
+    singleTenantMode,
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     emailOutbox,
@@ -691,6 +737,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
+    memberEvents: createMemberEventRepository(db),
     memberErasure: createMemberErasureRepository(db, emailHmac),
     erasureRequests: createMemberErasureRequestRepository(db),
     emailHmac,
@@ -745,8 +792,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
-    fileUrlSigner: createS3UrlSigner(),
+    storage: createS3StorageProvider(secretResolver),
     email,
+    emailSender: transactionalEmail,
+    emailTransports,
     emailOutbox,
     enrollmentTransaction: createEnrollmentTransactionPort(db),
     paymentTransaction: createPaymentTransactionPort(db),
@@ -796,7 +845,6 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       unsubscribes,
       sesSettings,
       platformTransactionalPool,
-      smtpTest,
       documents,
       idempotency,
       marketingSes,

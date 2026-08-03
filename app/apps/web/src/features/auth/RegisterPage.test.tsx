@@ -18,7 +18,7 @@ import { RegisterPage } from './RegisterPage.js';
 
 const HomeAfterRegistration = () => <div>Home after registration</div>;
 
-const renderRegisterPage = async (hostname?: string) => {
+const renderRegisterPage = async () => {
   const rootRoute = createRootRoute({ component: Outlet });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -28,7 +28,7 @@ const renderRegisterPage = async (hostname?: string) => {
   const registerRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/register',
-    component: () => (hostname === undefined ? <RegisterPage /> : <RegisterPage hostname={hostname} />),
+    component: RegisterPage,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, registerRoute]),
@@ -44,13 +44,22 @@ const tenantOffer = (legal: { termsUrl: string | null; privacyUrl: string | null
   products: [],
 });
 
+const noTenantOffer = http.get('/api/public/offer', () =>
+  HttpResponse.json(
+    { ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } },
+    { status: 404 },
+  ));
+
 describe('RegisterPage', () => {
   it('blocks a password below the shared minimum', async () => {
     let requested = false;
-    server.use(http.post('*', () => {
-      requested = true;
-      return HttpResponse.json({ user: { id: 'u1' } });
-    }));
+    server.use(
+      noTenantOffer,
+      http.post('*', () => {
+        requested = true;
+        return HttpResponse.json({ user: { id: 'u1' } });
+      }),
+    );
 
     await renderRegisterPage();
     await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
@@ -63,7 +72,10 @@ describe('RegisterPage', () => {
   });
 
   it('creates an account and lands on home', async () => {
-    server.use(http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })));
+    server.use(
+      noTenantOffer,
+      http.post('*', () => HttpResponse.json({ user: { id: 'u1' } })),
+    );
 
     await renderRegisterPage();
     await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
@@ -93,7 +105,7 @@ describe('RegisterPage', () => {
       }),
     );
 
-    await renderRegisterPage('akademia.localhost');
+    await renderRegisterPage();
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();
@@ -130,7 +142,7 @@ describe('RegisterPage', () => {
       ),
     );
 
-    await renderRegisterPage('akademia.localhost');
+    await renderRegisterPage();
 
     expect(await screen.findByLabelText(pl.auth.nameLabel)).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();

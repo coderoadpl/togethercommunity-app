@@ -128,10 +128,48 @@ describe('resolveTenant', () => {
     expect(result).toEqual({ ok: true, value: null });
   });
 
+  it.each([
+    ['subdomain', 'missing.localhost', null],
+    ['tenant header', 'localhost', 'missing'],
+  ])('rejects an unknown %s instead of using the sole tenant', async (_source, host, header) => {
+    const result = await resolveTenant(host, header, {
+      tenantDomains: fakeDomains([]),
+      tenants: fakeTenants([acme]),
+      baseDomain: 'localhost',
+      singleTenantMode: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'tenant_not_found' },
+    });
+  });
+
   it('refuses suspended tenants during resolution', async () => {
     const suspended: Tenant = { ...acme, status: 'suspended' };
     const result = await resolveTenant('acme.localhost', null, {
       tenantDomains: fakeDomains([]),
+      tenants: fakeTenants([suspended]),
+      baseDomain: 'localhost',
+      singleTenantMode: false,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'tenant_not_found', message: 'Unknown tenant' },
+    });
+  });
+
+  it('refuses a suspended tenant resolved through a custom domain', async () => {
+    const suspended: Tenant = { ...acme, status: 'suspended' };
+    const result = await resolveTenant('learn.example.com', null, {
+      tenantDomains: fakeDomains([{
+        id: 'domain-acme',
+        tenantId: acme.id,
+        domain: 'learn.example.com',
+        kind: 'custom',
+        verified: true,
+      }]),
       tenants: fakeTenants([suspended]),
       baseDomain: 'localhost',
       singleTenantMode: false,

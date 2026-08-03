@@ -23,8 +23,11 @@ const TENANT = { id: 't1', name: 'Tenant One', slug: 'tenant-one' };
 const product = (id: string, published: boolean): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published,
@@ -50,6 +53,7 @@ const harness = (options: {
   products: Product[];
   grants?: ProductGrant[];
   exposeMagicLinks?: boolean;
+  singleTenantMode?: boolean;
 }): Harness => {
   const grants: ProductGrant[] = options.grants ? [...options.grants] : [];
   const members: Member[] = [];
@@ -62,7 +66,7 @@ const harness = (options: {
     listByTenant: async () => options.products,
     listPublishedByTenant: async () => options.products.filter((p) => p.published),
     findById: async (_t, id) => options.products.find((p) => p.id === id) ?? null,
-    create: async () => undefined,
+    create: async () => 'created',
     updateAccessItems: async () => null,
     setPublished: async () => undefined,
     bumpContentVersion: async () => undefined,
@@ -167,6 +171,7 @@ const harness = (options: {
       clock: { nowIso: () => NOW },
       appBaseUrl: 'https://tenant.example',
       baseDomain: 'example',
+      singleTenantMode: options.singleTenantMode ?? false,
       exposeMagicLinks: options.exposeMagicLinks ?? false,
     },
   };
@@ -286,6 +291,17 @@ describe('m2mEnroll', () => {
       baseUrl: 'https://tenant-one.example/',
     });
     expect(new URL(h.captured[0]?.baseUrl ?? '').host).not.toBe('tenant.example');
+  });
+
+  it('keeps the enrollment magic link on the app host in single-tenant mode', async () => {
+    const h = harness({ products: [product('p1', true)], singleTenantMode: true });
+
+    await m2mEnroll(TENANT, { email: 'fresh@together.dev', productId: 'p1' }, h.deps);
+
+    expect(h.captured[0]).toMatchObject({
+      callbackURL: 'https://tenant.example/',
+      baseUrl: 'https://tenant.example/',
+    });
   });
 
   it('is not found for an unpublished product', async () => {

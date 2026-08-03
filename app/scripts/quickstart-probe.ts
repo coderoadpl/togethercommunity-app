@@ -175,7 +175,6 @@ try {
     env: {
       DATABASE_URL: probeDatabaseUrl,
       APP_BASE_URL: `http://localhost:${String(port)}`,
-      APP_BASE_DOMAIN: 'localhost',
       WEB_DIST_DIR: temporaryDirectory,
       PAYMENT_PROVIDER: 'fake',
       EMAIL_PROVIDER: 'dev',

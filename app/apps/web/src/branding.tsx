@@ -6,28 +6,25 @@ import { useQuery } from '@tanstack/react-query';
 import type { TenantBranding } from '#core/domain/index.js';
 
 import { actions } from './api.js';
-import { hostHasTenantSubdomain } from './lib/tenant.js';
 import { applyBranding } from './theme-branding.js';
 import { Wordmark } from './theme.js';
 
 /**
  * Branding rides on the public offer the SPA already fetches at boot
- * (TenantGate), so reading it here costs no extra request. Off tenant
- * subdomains (the apex picker) there is no tenant and thus no branding.
+ * (TenantGate), so reading it here costs no extra request.
  */
-const useTenantOffer = (hostname?: string): { name: string; branding: TenantBranding } | null => {
-  const onSubdomain = hostHasTenantSubdomain(hostname ?? window.location.hostname);
-  const offer = useQuery({ ...actions.publicOffer, enabled: onSubdomain });
-  if (!onSubdomain || offer.data === undefined) return null;
+const useTenantOffer = (): { name: string; branding: TenantBranding } | null => {
+  const offer = useQuery(actions.publicOffer);
+  if (offer.data === undefined) return null;
   return { name: offer.data.tenant.name, branding: offer.data.tenant.branding };
 };
 
-export const useTenantBranding = (hostname?: string): TenantBranding | null =>
-  useTenantOffer(hostname)?.branding ?? null;
+export const useTenantBranding = (): TenantBranding | null =>
+  useTenantOffer()?.branding ?? null;
 
 /** Tenant logo for the member header (LedgerHeader slot); nothing without branding. */
-export const TenantLogo = ({ hostname }: { hostname?: string } = {}) => {
-  const tenant = useTenantOffer(hostname);
+export const TenantLogo = () => {
+  const tenant = useTenantOffer();
   if (tenant === null || tenant.branding.logoUrl === null) return null;
   return (
     <Box
@@ -48,8 +45,8 @@ export const TenantLogo = ({ hostname }: { hostname?: string } = {}) => {
 };
 
 /** FocusCard brand slot (login/checkout): tenant logo, or the stock wordmark. */
-export const BrandMark = ({ hostname }: { hostname?: string } = {}) => {
-  const tenant = useTenantOffer(hostname);
+export const BrandMark = () => {
+  const tenant = useTenantOffer();
   if (tenant === null || tenant.branding.logoUrl === null) {
     return (
       <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
@@ -82,12 +79,10 @@ export const BrandMark = ({ hostname }: { hostname?: string } = {}) => {
  */
 export const TenantBrandingBoundary = ({
   children,
-  hostname,
 }: {
   children: ReactNode;
-  hostname?: string;
 }) => {
-  const branding = useTenantBranding(hostname);
+  const branding = useTenantBranding();
   const faviconUrl = branding?.faviconUrl ?? null;
 
   useEffect(() => {

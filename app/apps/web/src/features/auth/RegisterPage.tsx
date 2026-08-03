@@ -19,7 +19,7 @@ import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
+import { appBaseDomain } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 
 const baseDomainUrl = (): string => {
@@ -27,7 +27,7 @@ const baseDomainUrl = (): string => {
   return `${protocol}//${appBaseDomain()}${port ? `:${port}` : ''}`;
 };
 
-export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
+export const RegisterPage = () => {
   const t = useTranslations();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -38,9 +38,9 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const onTenantHost = hostHasTenantSubdomain(hostname ?? window.location.hostname);
-  const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
-  const legal = onTenantHost ? offer.data?.tenant.legal ?? null : null;
+  const offer = useQuery(actions.publicOffer);
+  const onTenantHost = offer.data !== undefined;
+  const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
 
   const signUp = useMutation({
@@ -141,7 +141,7 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
             type="submit"
             variant="contained"
             fullWidth
-            disabled={signUp.isPending}
+            disabled={signUp.isPending || offer.isPending}
             sx={{ mt: '0.4rem' }}
           >
             {signUp.isPending ? t.auth.creatingAccount : t.auth.createAccount}

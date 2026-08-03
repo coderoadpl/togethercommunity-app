@@ -17,6 +17,12 @@ const deps =
     : createDeps(env, { clock: { nowIso: () => visualClockOverride } });
 const app = buildApp(deps);
 
+if (env.NODE_ENV !== 'test') {
+  process.stdout.write(
+    `[tenant-routing] mode=${deps.singleTenantMode ? 'single-tenant' : 'subdomain'} base-url=${deps.appBaseUrl}${deps.singleTenantMode ? '' : ` base-domain=${deps.baseDomain}`}\n`,
+  );
+}
+
 if (env.NODE_ENV !== 'test' && deps.devSinkPurge !== undefined) {
   try {
     const purged = await deps.devSinkPurge.purge();

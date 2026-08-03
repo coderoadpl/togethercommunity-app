@@ -19,6 +19,7 @@ import {
   emailSendsQuerySchema,
   grantCreateInputSchema,
   grantRevokeInputSchema,
+  integrationTestInputSchema,
   lastViewedInputSchema,
   lessonCompleteInputSchema,
   lessonCreateInputSchema,
@@ -77,6 +78,7 @@ import {
   spaceFeedGetInputSchema,
   spaceFollowInputSchema,
   spaceUpdateInputSchema,
+  stripeConfigureInputSchema,
   subscriptionSimulateInputSchema,
   supportMessageInputSchema,
   TENANT_HEADER,
@@ -112,6 +114,7 @@ import {
   authorizeRequiredTenant,
   authorizeTenant,
   cancelCampaign,
+  configureStripe,
   createCampaign,
   createCoupon,
   createCourse,
@@ -160,6 +163,7 @@ import {
   getEmailSend,
   getGlobalSchedulerRun,
   getMarketingConsentDefinition,
+  getMemberCommerceOverview,
   getMemberLearningSummary,
   getNextLesson,
   getOrder,
@@ -188,6 +192,7 @@ import {
   listMemberBillingOrders,
   listMemberEmailSends,
   listMemberGrants,
+  listMemberTimeline,
   listMembers,
   listModules,
   listMyCourses,
@@ -233,7 +238,6 @@ import {
   scheduleCampaign,
   searchPosts,
   sendSesSimulatorTest,
-  sendTransactionalSmtpTest,
   setMemberBanned,
   setSpaceArchived,
   setPostPinned,
@@ -246,9 +250,9 @@ import {
   subscribeThread,
   testBunnyConnection,
   testIfirmaConnection,
+  testIntegration,
   testKsefConnection,
   testSendCampaignToSelf,
-  testStripeConnection,
   unfollowSpace,
   unmarkLessonCompleted,
   unreactToPost,
@@ -1101,14 +1105,6 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     }));
   });
 
-  app.post(API_PATHS.marketingSmtpTest, async (c) => {
-    if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
-    return respond(await sendTransactionalSmtpTest(
-      { identity: c.get('identity') },
-      { smtp: deps.marketing.smtpTest },
-    ));
-  });
-
   app.get(API_PATHS.marketingStaffSuppressions, async (c) => {
     if (deps.marketing === undefined) return respond(err(internal('Marketing e-mail is not configured')));
     const identity = c.get('identity');
@@ -1283,6 +1279,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           emailOutbox: deps.emailOutbox,
           appBaseUrl: deps.appBaseUrl,
           baseDomain: deps.baseDomain,
+          singleTenantMode: deps.singleTenantMode,
           dispatchEmail: deps.dispatchEmail,
         },
       },
@@ -1388,6 +1385,24 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ grants: result.value }) : result);
   });
 
+  app.get(API_PATHS.memberCommerce, async (c) => {
+    const result = await getMemberCommerceOverview(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('memberId') },
+      deps,
+    );
+    return respond(result);
+  });
+
+  app.get(API_PATHS.memberTimeline, async (c) => {
+    const result = await listMemberTimeline(
+      { identity: c.get('identity') },
+      { memberId: c.req.param('memberId') },
+      deps,
+    );
+    return respond(result.ok ? ok({ events: result.value }) : result);
+  });
+
   app.get(API_PATHS.memberLearningSummary, async (c) => {
     const result = await getMemberLearningSummary(
       { identity: c.get('identity') },
@@ -1448,10 +1463,9 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ apiKey: result.value }) : result);
   });
 
-  app.get(API_PATHS.tenantSecrets, async (c) => {
-    const result = await getTenantSecretsMasked({ identity: c.get('identity') }, deps);
-    return respond(result.ok ? ok({ secrets: result.value }) : result);
-  });
+  app.get(API_PATHS.tenantSecrets, async (c) =>
+    respond(await getTenantSecretsMasked({ identity: c.get('identity') }, deps)),
+  );
 
   app.post(API_PATHS.tenantSecrets, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
@@ -1491,13 +1505,40 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ onboarding: result.value }) : result);
   });
 
-  app.post(API_PATHS.stripeTestConnection, async (c) => {
-    const result = await testStripeConnection(
+  app.post(API_PATHS.integrationTest, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = integrationTestInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid integration test payload', parsed.error.flatten())));
+    return respond(await testIntegration(
       { identity: c.get('identity') },
-      { appBaseUrl: deps.appBaseUrl },
-      deps.payment,
-    );
-    return respond(result);
+      parsed.data,
+      {
+        appBaseUrl: deps.appBaseUrl,
+        email: deps.email,
+        emailSender: deps.emailSender,
+        emailTransports: deps.emailTransports,
+        payment: deps.payment,
+        storage: deps.storage,
+      },
+    ));
+  });
+
+  app.post(API_PATHS.stripeConfigure, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = stripeConfigureInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid Stripe configuration', parsed.error.flatten())));
+    return respond(await configureStripe(
+      { identity: c.get('identity') },
+      parsed.data,
+      {
+        appBaseUrl: deps.appBaseUrl,
+        payment: deps.payment,
+        tenantSecrets: deps.tenantSecrets,
+        secretCrypto: deps.secretCrypto,
+        ids: deps.ids,
+        clock: deps.clock,
+      },
+    ));
   });
 
   app.post(API_PATHS.ifirmaTestConnection, async (c) =>

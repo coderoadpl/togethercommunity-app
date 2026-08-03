@@ -34,8 +34,11 @@ const ctx = (staffRole: StaffRole | null = 'owner', tenantId: string | null = 't
 const product = (id: string, published: boolean): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
   published,

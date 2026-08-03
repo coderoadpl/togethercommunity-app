@@ -15,8 +15,11 @@ import { simulatePurchase, type SimulatePurchaseDeps } from './simulate-purchase
 const product = (id: string, tenantId: string, published: boolean): Product => ({
   id,
   tenantId,
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: `Description ${id}`,
+  coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
   published,
@@ -43,7 +46,7 @@ const fakeProducts = (initial: Product[]): ProductRepository => ({
     initial.filter((p) => p.tenantId === tenantId && p.published),
   findById: async (tenantId, id) =>
     initial.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,

@@ -111,7 +111,7 @@ const renderProductsPanel = async (issues: ProductAccessIssues[] = [], initialEn
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
-describe('ProductsPanel', { timeout: 15000 }, () => {
+describe('ProductsPanel', () => {
   it('lists products, creates a product without the legacy price field, and publishes a draft', async () => {
     await renderProductsPanel();
 

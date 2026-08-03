@@ -9,11 +9,17 @@ is the only baseline-authoring command.
 
 The harness fixes the seed time, browser clock, locale, timezone, color scheme,
 device scale, and motion preference. It blocks non-local resources and persistent
-browser streams, waits for the screen's explicit ready condition, network idle,
-and loaded fonts, then freezes animations, transitions, and the caret before
-capture. Captures are sequential and comparison has no retry. Pixelmatch excludes
-pixels it classifies as anti-aliasing; every remaining pixel has a zero threshold
-and zero mismatch budget.
+browser streams, waits for the screen's explicit ready condition and loaded fonts,
+then freezes animations, transitions, and the caret before capture. By default it
+also waits for network idle and rejects captures at or below 10 KiB. A screen may
+set `waitForNetworkIdle: false` when an intentionally held request makes network
+idle unreachable, and may set `minBytes` when a legitimate stable capture is
+smaller than the global floor. The boot splash uses both exceptions because it
+holds `/api/me` open to preserve the pending state; it separately waits for the
+public-offer response that supplies its final branding input and retains a 7 KiB
+floor to reject blank output. Captures are sequential and comparison has no retry.
+Pixelmatch excludes pixels it classifies as anti-aliasing; every remaining pixel
+has a zero threshold and zero mismatch budget.
 
 Only stable surfaces belong in the screen list. A route needs deterministic seed
 data, controlled external resources, and an explicit readiness condition for its

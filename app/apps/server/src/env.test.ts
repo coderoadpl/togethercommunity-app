@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { selectDevSinkPurge } from './composition.js';
+import { selectDevSinkPurge, selectTenantRouting } from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -24,6 +24,28 @@ describe('tenant creation policy', () => {
         'TENANT_CREATION must be closed in production',
       );
     }
+  });
+});
+
+describe('tenant routing mode', () => {
+  it('defaults to single-tenant mode when APP_BASE_DOMAIN is absent or empty', () => {
+    expect(envSchema.parse({}).APP_BASE_DOMAIN).toBeUndefined();
+    expect(envSchema.parse({ APP_BASE_DOMAIN: '' }).APP_BASE_DOMAIN).toBeUndefined();
+    expect(envSchema.parse({ APP_BASE_DOMAIN: 'example.com' }).APP_BASE_DOMAIN).toBe('example.com');
+  });
+
+  it('falls back to the app host as base domain when none is configured', () => {
+    expect(selectTenantRouting(envSchema.parse({ APP_BASE_URL: 'https://learn.example.com' }))).toEqual({
+      baseDomain: 'learn.example.com',
+      singleTenantMode: true,
+    });
+  });
+
+  it('keeps subdomain routing when a base domain is configured', () => {
+    expect(selectTenantRouting(envSchema.parse({
+      APP_BASE_DOMAIN: 'together.com',
+      APP_BASE_URL: 'https://together.com',
+    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false });
   });
 });
 

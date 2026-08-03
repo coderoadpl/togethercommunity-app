@@ -22,6 +22,7 @@ const harness = (supportEmail: string | null) => {
     tenants: {
       findById: async () => null,
       findBySlug: async () => null,
+      findSole: async () => null,
       findSettings: async () => ({
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,

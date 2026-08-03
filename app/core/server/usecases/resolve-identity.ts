@@ -31,6 +31,7 @@ export interface ResolveIdentityDeps {
   tenants: TenantRepository;
   /** e.g. "localhost" in dev, "together.com" in prod. */
   baseDomain: string;
+  singleTenantMode: boolean;
 }
 
 export const resolveIdentity = async (

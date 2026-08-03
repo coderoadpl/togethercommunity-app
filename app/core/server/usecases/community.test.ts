@@ -565,7 +565,9 @@ const deps = (
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && staffUserIds.includes(userId)
         ? {
-            tenant: { id: 't1', slug: 'tenant', name: 'Tenant', contentVersion: 1 },
+            tenant: {
+              id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
+            },
             staffRole: 'admin',
           }
         : null,

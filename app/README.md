@@ -152,9 +152,9 @@ test files across the Node and browser suites.
 
 Per request: (1) exact custom-domain match in `tenant_domains`,
 (2) subdomain of `APP_BASE_DOMAIN` (subdomain = org slug),
-(3) `X-Tenant` header (CLI). Membership is verified in every case; every
-tenant-scoped use-case takes `ctx.identity` and every repository call requires
-`tenantId`.
+(3) `X-Tenant` header (CLI), (4) the sole tenant when `APP_BASE_DOMAIN` is
+unset. Membership is verified in every case; every tenant-scoped use-case takes
+`ctx.identity` and every repository call requires `tenantId`.
 
 ## Community
 

@@ -42,7 +42,9 @@ describe('member pages', () => {
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
       http.get('/api/tenant/settings', () => HttpResponse.json({
         ok: true,
-        data: { settings: { billingPortalUrl: null, bunnyStreamLibraryId: null } },
+        data: { settings: {
+          name: 'Akademia', socialLinks: [], billingPortalUrl: null, bunnyStreamLibraryId: null,
+        } },
       })),
       http.get('/api/me', () =>
         HttpResponse.json({
@@ -104,6 +106,8 @@ describe('member pages', () => {
         ok: true,
         data: {
           settings: {
+            name: 'Akademia',
+            socialLinks: [],
             billingPortalUrl: 'https://billing.stripe.com/p/login/example',
             bunnyStreamLibraryId: null,
           },

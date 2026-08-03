@@ -6,6 +6,8 @@ import type { TenantRepository, TermsConsentRepository } from '../ports.js';
 import { enforceTermsConsent, tenantLegalUrls, validateTermsConsent } from './terms-consent.js';
 
 const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
+  name: 'Acme',
+  socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   logoUrl: null,

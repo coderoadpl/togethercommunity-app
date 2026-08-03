@@ -279,4 +279,19 @@ describe('email branding header', () => {
     expect(message.html).toContain('<img src="https://x.dev/logo.svg?a=1&amp;b=2"');
     expect(message.html.startsWith('<div style="border-top:4px solid #191512;')).toBe(true);
   });
+
+  it('renders social profiles in HTML and plain-text transactional mail', () => {
+    const message = welcomeSetPassword('en', {
+      ...input,
+      branding: {
+        logoUrl: null,
+        accentColor: null,
+        socialLinks: [{ label: 'YouTube & more', url: 'https://youtube.com/@akademia?a=1&b=2' }],
+      },
+    });
+
+    expect(message.html).toContain('YouTube &amp; more');
+    expect(message.html).toContain('https://youtube.com/@akademia?a=1&amp;b=2');
+    expect(message.text).toContain('YouTube & more: https://youtube.com/@akademia?a=1&b=2');
+  });
 });

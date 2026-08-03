@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-router';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
@@ -65,10 +65,26 @@ const commonHandlers = () => {
     http.get('/api/orders', () =>
       HttpResponse.json({ ok: true, data: { orders: [], total: 0, page: 1, pageSize: 25 } }),
     ),
+    http.get('/api/coupons/options', () =>
+      HttpResponse.json({ ok: true, data: { coupons: [] } }),
+    ),
+    http.get('/api/orders/reconciliation', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { rows: [], checkedThrough: '2026-08-03T12:00:00.000Z' },
+      }),
+    ),
   );
 };
 
-const renderPanelAt = async (initialPath: string) => {
+interface RenderPanelOptions {
+  preventNavigation?: boolean;
+}
+
+const renderPanelAt = async (
+  initialPath: string,
+  { preventNavigation = false }: RenderPanelOptions = {},
+) => {
   const rootRoute = createRootRoute();
   const layoutRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: PanelLayout });
   const indexRoute = createRoute({ getParentRoute: () => layoutRoute, path: '/', component: DashboardPanel });
@@ -99,12 +115,72 @@ const renderPanelAt = async (initialPath: string) => {
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
   await router.load();
-  return { router, ...renderWithProviders(<RouterProvider router={router} />) };
+  const navigateSpy = preventNavigation ? vi.spyOn(router, 'navigate').mockResolvedValue() : null;
+  return { router, navigateSpy, ...renderWithProviders(<RouterProvider router={router} />) };
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('Creator panel routing', () => {
+  it('renders only the branded splash while the session is pending', async () => {
+    server.use(
+      http.get('/api/me', async () => {
+        await delay('infinite');
+        return HttpResponse.json({ ok: true, data: meWithTenant });
+      }),
+    );
+
+    await renderPanelAt('/panel');
+
+    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dashboard-tiles')).not.toBeInTheDocument();
+  });
+
+  it('keeps the branded splash visible while redirecting an unauthorized visitor', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'unauthorized', message: 'sign in' } },
+          { status: 401 },
+        ),
+      ),
+    );
+
+    const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
+
+    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: '/login' }));
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'tenant-less visitor',
+      { ...meWithTenant, tenant: null },
+      '/',
+    ],
+    [
+      'member-only visitor',
+      { ...meWithTenant, tenant: { ...meWithTenant.tenant, staffRole: null } },
+      '/my',
+    ],
+  ])('keeps the branded splash visible while redirecting a %s', async (_label, me, destination) => {
+    server.use(http.get('/api/me', () => HttpResponse.json({ ok: true, data: me })));
+
+    const { navigateSpy } = await renderPanelAt('/panel', { preventNavigation: true });
+
+    expect(await screen.findByRole('status', { name: pl.bootSplash.opening })).toBeInTheDocument();
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith({ to: destination }));
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
   it('renders every sidebar section and marks the active one from the URL', async () => {
     stubViewport(true);
     commonHandlers();
@@ -171,7 +247,7 @@ describe('Creator panel routing', () => {
 
     await renderPanelAt('/panel/sales');
 
-    expect(await screen.findByText(pl.sales.empty)).toBeInTheDocument();
+    expect(await screen.findByText(pl.sales.empty, {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(screen.getByTestId('section-sales')).toHaveAttribute('aria-current', 'page');
   });
 

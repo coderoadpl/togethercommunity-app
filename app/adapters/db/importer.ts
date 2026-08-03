@@ -47,13 +47,13 @@ export interface ImportAnomaly {
   detail: string;
 }
 
-export interface FieldChange {
+interface FieldChange {
   field: string;
   before: string;
   after: string;
 }
 
-export interface UpdateSample {
+interface UpdateSample {
   key: string;
   changes: FieldChange[];
 }
@@ -68,7 +68,7 @@ export interface KindReport {
   samples: UpdateSample[];
 }
 
-export interface BundleUser {
+interface BundleUser {
   legacyId: string;
   email: string;
   name: string | null;
@@ -76,7 +76,7 @@ export interface BundleUser {
   role: 'admin' | 'student';
 }
 
-export interface BundleCourse {
+interface BundleCourse {
   legacyId: string;
   name: string;
   description: string;
@@ -84,7 +84,7 @@ export interface BundleCourse {
   moduleOrder: string[];
 }
 
-export interface BundleModule {
+interface BundleModule {
   legacyId: string;
   courseLegacyIds: string[];
   title: string;
@@ -92,25 +92,25 @@ export interface BundleModule {
   chapters: Chapter[];
 }
 
-export interface BundleLesson {
+interface BundleLesson {
   legacyId: string;
   name: string;
   contents: LessonBlock[];
 }
 
-export interface BundleProduct {
+interface BundleProduct {
   legacyId: string;
   title: string;
   accessItems: AccessItem[];
 }
 
-export interface BundleMember {
+interface BundleMember {
   legacyId: string;
   email: string;
   displayName: string | null;
 }
 
-export interface BundleGrant {
+interface BundleGrant {
   legacyId: string;
   memberLegacyId: string;
   productLegacyId: string;
@@ -118,7 +118,7 @@ export interface BundleGrant {
   expiresAt: string | null;
 }
 
-export interface BundleProgress {
+interface BundleProgress {
   legacyId: string;
   userLegacyId: string;
   courseLegacyId: string;
@@ -164,7 +164,7 @@ export interface ImportRunOptions {
   emailHmac: EmailHmac;
 }
 
-export interface VerificationCount {
+interface VerificationCount {
   kind: string;
   bundle: number;
   expectedInDb: number;
@@ -173,7 +173,7 @@ export interface VerificationCount {
   pass: boolean;
 }
 
-export interface SpotCheck {
+interface SpotCheck {
   memberLegacyId: string;
   email: string;
   lessonLegacyId: string;
@@ -182,7 +182,7 @@ export interface SpotCheck {
   pass: boolean;
 }
 
-export interface TenantVerification {
+interface TenantVerification {
   bundleSlug: string;
   tenantId: string;
   counts: VerificationCount[];
@@ -197,7 +197,7 @@ export interface VerificationReport {
   pass: boolean;
 }
 
-export interface TenantImportResult {
+interface TenantImportResult {
   bundleSlug: string;
   tenantId: string;
   kinds: KindReport[];

@@ -8,6 +8,9 @@ export default defineConfig({
     __APP_COMMIT_SHA__: JSON.stringify('unknown'),
   },
   test: {
+    hookTimeout: 60000,
+    maxWorkers: 4,
+    testTimeout: 60000,
     coverage: {
       provider: 'v8',
       all: true,

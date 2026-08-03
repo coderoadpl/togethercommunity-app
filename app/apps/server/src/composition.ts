@@ -205,16 +205,16 @@ import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lesson
 import type { Env } from './env.js';
 import { APP_VERSION } from './version.js';
 
-export interface DevEndpoints {
+interface DevEndpoints {
   simulatedPayments: boolean;
   exposeMagicLinks: boolean;
 }
 
-export interface AuthConfig {
+interface AuthConfig {
   googleEnabled: boolean;
 }
 
-export interface KsefAppDeps {
+interface KsefAppDeps {
   environment: KsefEnvironment;
   credentials: KsefCredentialResolver;
   numbers: KsefNumberRepository;

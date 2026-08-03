@@ -467,6 +467,8 @@ const deps = (input: {
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
       findSettings: async (tenantId) =>
         tenants.some((tenant) => tenant.id === tenantId) ? {
+          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+          socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -1921,6 +1923,8 @@ const consentApp = (simulatedPayments: boolean) => {
       findSettings: async (tenantId) =>
         tenantId === acme.id
           ? {
+              name: acme.name,
+              socialLinks: [],
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
               logoUrl: null,
@@ -2127,6 +2131,8 @@ describe('checkout consent ordering', () => {
         findSettings: async (tenantId) =>
           tenantId === acme.id
             ? {
+                name: acme.name,
+                socialLinks: [],
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
                 logoUrl: null,

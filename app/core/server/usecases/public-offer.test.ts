@@ -37,6 +37,7 @@ const fakeTenants = (branding?: {
   logoUrl: string | null;
   accentColor: string | null;
   faviconUrl: string | null;
+  socialLinks?: Array<{ label: string; url: string }>;
 }): TenantRepository => ({
   findById: async () => null,
   findBySlug: async () => null,
@@ -44,6 +45,8 @@ const fakeTenants = (branding?: {
     branding === undefined
       ? null
       : {
+          name: 'Acme',
+          socialLinks: [],
           billingPortalUrl: null,
           bunnyStreamLibraryId: null,
           ogTitle: null,
@@ -92,6 +95,7 @@ describe('getPublicOffer', () => {
           slug: 'acme',
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+          socialLinks: [],
           legal: { termsUrl: null, privacyUrl: null },
           support: { url: null },
         },
@@ -137,6 +141,20 @@ describe('getPublicOffer', () => {
     });
 
     expect(result).toMatchObject({ ok: true, value: { tenant: { branding } } });
+  });
+
+  it('exposes social profiles to public and member clients', async () => {
+    const socialLinks = [
+      { label: 'Instagram', url: 'https://instagram.com/akademia' },
+      { label: 'YouTube', url: 'https://youtube.com/@akademia' },
+    ];
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([]),
+      prices: noPrices,
+      tenants: fakeTenants({ logoUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { tenant: { socialLinks } } });
   });
 
   it('exposes current wording for active checkout consent definitions', async () => {

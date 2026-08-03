@@ -4,7 +4,7 @@ import { languageSchema, type Language } from './language.js';
 
 export const transactionalLanguageSchema = languageSchema;
 
-export type TransactionalLanguage = Language;
+type TransactionalLanguage = Language;
 
 export const emailMessageSchema = z.object({
   subject: z.string().min(1),
@@ -62,6 +62,7 @@ const manageNotificationsFooter = (
 export interface EmailBranding {
   logoUrl: string | null;
   accentColor: string | null;
+  socialLinks?: Array<{ label: string; url: string }> | undefined;
 }
 
 /** Tenant-branded header; an empty string (byte-identical mail) without branding. */
@@ -75,26 +76,40 @@ const brandHeader = (branding: EmailBranding | undefined): string => {
   return `${rule}${logo}`;
 };
 
+const brandSocialLinks = (
+  branding: EmailBranding | undefined,
+): { html: string; text: string } => {
+  const socialLinks = branding?.socialLinks ?? [];
+  if (socialLinks.length === 0) return { html: '', text: '' };
+  return {
+    html: `<p style="font-size:12px;margin-top:24px">${socialLinks
+      .map((item) => link(item.url, item.label))
+      .join(' &middot; ')}</p>`,
+    text: `\n\n${socialLinks.map((item) => `${item.label}: ${item.url}`).join(' · ')}`,
+  };
+};
+
 export const welcomeSetPassword = (
   language: string,
   input: { tenantName: string; actionUrl: string; branding?: EmailBranding },
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
+  const socialLinks = brandSocialLinks(input.branding);
   const actionLink = link(input.actionUrl, languageOrDefault(language) === 'en' ? 'Set password' : 'Ustaw hasło');
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Hello, your ${input.tenantName} account is ready`,
-      html: `${header}<p>Hello!</p><p>Your account on ${tenantName} has been created.</p><p>Before you start, set your password: ${actionLink}</p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>`,
-      text: `Hello!\n\nYour account on ${input.tenantName} has been created.\n\nBefore you start, set your password: ${input.actionUrl}\n\nThe password setup link expires in one hour. If it stops working, request a new password reset from the login page.`,
+      html: `${header}<p>Hello!</p><p>Your account on ${tenantName} has been created.</p><p>Before you start, set your password: ${actionLink}</p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>${socialLinks.html}`,
+      text: `Hello!\n\nYour account on ${input.tenantName} has been created.\n\nBefore you start, set your password: ${input.actionUrl}\n\nThe password setup link expires in one hour. If it stops working, request a new password reset from the login page.${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Cześć, Twoje konto ${input.tenantName} jest gotowe`,
-    html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>`,
-    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} zostało utworzone.\n\nZanim zaczniesz, ustaw swoje hasło: ${input.actionUrl}\n\nLink do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.`,
+    html: `${header}<p>Cześć!</p><p>Twoje konto na platformie ${tenantName} zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: ${actionLink}</p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>${socialLinks.html}`,
+    text: `Cześć!\n\nTwoje konto na platformie ${input.tenantName} zostało utworzone.\n\nZanim zaczniesz, ustaw swoje hasło: ${input.actionUrl}\n\nLink do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.${socialLinks.text}`,
   });
 };
 
@@ -215,20 +230,21 @@ export const magicLink = (
 ): EmailMessage => {
   const tenantName = escapeHtml(input.tenantName);
   const header = brandHeader(input.branding);
+  const socialLinks = brandSocialLinks(input.branding);
   const actionLink = link(input.url, languageOrDefault(language) === 'en' ? 'Sign in' : 'Zaloguj się');
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Sign in to ${input.tenantName}`,
-      html: `${header}<p>Hello!</p><p>Use this link to sign in to ${tenantName}:</p><p>${actionLink}</p><p>If you did not request this email, you can ignore it.</p>`,
-      text: `Hello!\n\nUse this link to sign in to ${input.tenantName}:\n${input.url}\n\nIf you did not request this email, you can ignore it.`,
+      html: `${header}<p>Hello!</p><p>Use this link to sign in to ${tenantName}:</p><p>${actionLink}</p><p>If you did not request this email, you can ignore it.</p>${socialLinks.html}`,
+      text: `Hello!\n\nUse this link to sign in to ${input.tenantName}:\n${input.url}\n\nIf you did not request this email, you can ignore it.${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Zaloguj się do ${input.tenantName}`,
-    html: `${header}<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>`,
-    text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.`,
+    html: `${header}<p>Cześć!</p><p>Użyj tego linku, aby zalogować się do ${tenantName}:</p><p>${actionLink}</p><p>Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.</p>${socialLinks.html}`,
+    text: `Cześć!\n\nUżyj tego linku, aby zalogować się do ${input.tenantName}:\n${input.url}\n\nJeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.${socialLinks.text}`,
   });
 };
 
@@ -246,6 +262,7 @@ export const subscriptionPaymentFailed = (
   const productTitle = escapeHtml(input.productTitle);
   const accessEndsAt = escapeHtml(input.accessEndsAt);
   const header = brandHeader(input.branding);
+  const socialLinks = brandSocialLinks(input.branding);
   const portal =
     input.billingPortalUrl === null
       ? ''
@@ -254,15 +271,15 @@ export const subscriptionPaymentFailed = (
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Payment failed for ${input.productTitle}`,
-      html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitle} on ${tenantName}.</p><p>Your access ends on ${accessEndsAt}.</p>${portal}`,
-      text: `Hello!\n\nWe could not collect payment for ${input.productTitle} on ${input.tenantName}.\n\nYour access ends on ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${input.billingPortalUrl}`}`,
+      html: `${header}<p>Hello!</p><p>We could not collect payment for ${productTitle} on ${tenantName}.</p><p>Your access ends on ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
+      text: `Hello!\n\nWe could not collect payment for ${input.productTitle} on ${input.tenantName}.\n\nYour access ends on ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nUpdate billing details: ${input.billingPortalUrl}`}${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Nie udało się pobrać płatności za ${input.productTitle}`,
-    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za ${productTitle} na platformie ${tenantName}.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p>${portal}`,
-    text: `Cześć!\n\nNie udało się pobrać płatności za ${input.productTitle} na platformie ${input.tenantName}.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj płatność: ${input.billingPortalUrl}`}`,
+    html: `${header}<p>Cześć!</p><p>Nie udało się pobrać płatności za ${productTitle} na platformie ${tenantName}.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p>${portal}${socialLinks.html}`,
+    text: `Cześć!\n\nNie udało się pobrać płatności za ${input.productTitle} na platformie ${input.tenantName}.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.${input.billingPortalUrl === null ? '' : `\n\nZaktualizuj płatność: ${input.billingPortalUrl}`}${socialLinks.text}`,
   });
 };
 
@@ -280,19 +297,20 @@ export const subscriptionEnded = (
   const productTitle = escapeHtml(input.productTitle);
   const accessEndsAt = escapeHtml(input.accessEndsAt);
   const header = brandHeader(input.branding);
+  const socialLinks = brandSocialLinks(input.branding);
 
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `Your ${input.productTitle} subscription has ended`,
-      html: `${header}<p>Hello!</p><p>Your subscription to ${productTitle} on ${tenantName} has ended.</p><p>Your access ends on ${accessEndsAt}.</p><p>${link(input.offerUrl, 'View the offer')}</p>`,
-      text: `Hello!\n\nYour subscription to ${input.productTitle} on ${input.tenantName} has ended.\n\nYour access ends on ${input.accessEndsAt}.\n\nView the offer: ${input.offerUrl}`,
+      html: `${header}<p>Hello!</p><p>Your subscription to ${productTitle} on ${tenantName} has ended.</p><p>Your access ends on ${accessEndsAt}.</p><p>${link(input.offerUrl, 'View the offer')}</p>${socialLinks.html}`,
+      text: `Hello!\n\nYour subscription to ${input.productTitle} on ${input.tenantName} has ended.\n\nYour access ends on ${input.accessEndsAt}.\n\nView the offer: ${input.offerUrl}${socialLinks.text}`,
     });
   }
 
   return emailMessageSchema.parse({
     subject: `Twoja subskrypcja ${input.productTitle} zakończyła się`,
-    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja ${productTitle} na platformie ${tenantName} zakończyła się.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>`,
-    text: `Cześć!\n\nTwoja subskrypcja ${input.productTitle} na platformie ${input.tenantName} zakończyła się.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.\n\nZobacz ofertę: ${input.offerUrl}`,
+    html: `${header}<p>Cześć!</p><p>Twoja subskrypcja ${productTitle} na platformie ${tenantName} zakończyła się.</p><p>Twój dostęp wygaśnie ${accessEndsAt}.</p><p>${link(input.offerUrl, 'Zobacz ofertę')}</p>${socialLinks.html}`,
+    text: `Cześć!\n\nTwoja subskrypcja ${input.productTitle} na platformie ${input.tenantName} zakończyła się.\n\nTwój dostęp wygaśnie ${input.accessEndsAt}.\n\nZobacz ofertę: ${input.offerUrl}${socialLinks.text}`,
   });
 };
 
@@ -313,17 +331,18 @@ export const supportMessage = (
   const subject = escapeHtml(input.subject);
   const body = escapeHtml(input.body);
   const header = brandHeader(input.branding);
+  const socialLinks = brandSocialLinks(input.branding);
   if (languageOrDefault(language) === 'en') {
     return emailMessageSchema.parse({
       subject: `[${input.tenantName}] ${input.subject}`,
-      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
-      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+      html: `${header}<p>Support message from ${memberDisplay} on ${tenantName}.</p><p>Reply to: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>${socialLinks.html}`,
+      text: `Support message from ${input.memberDisplay} on ${input.tenantName}.\n\nReply to: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}${socialLinks.text}`,
     });
   }
   return emailMessageSchema.parse({
     subject: `[${input.tenantName}] ${input.subject}`,
-    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>`,
-    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}`,
+    html: `${header}<p>Wiadomość do wsparcia od ${memberDisplay} na platformie ${tenantName}.</p><p>Odpowiedz do: ${memberEmail}</p><p><strong>${subject}</strong></p><blockquote>${body}</blockquote>${socialLinks.html}`,
+    text: `Wiadomość do wsparcia od ${input.memberDisplay} na platformie ${input.tenantName}.\n\nOdpowiedz do: ${input.memberEmail}\n\n${input.subject}\n\n${input.body}${socialLinks.text}`,
   });
 };
 

@@ -17,7 +17,7 @@ const secretRow = (tenantId: string, key: TenantSecretKey): TenantSecret => ({
   id: `sec-${tenantId}-${key}`,
   tenantId,
   key,
-  ciphertext: `ct-${tenantId}`,
+  ciphertext: `ct-${tenantId}-${key}`,
   iv: 'iv',
   authTag: 'tag',
   maskedPreview: 'rk_***',
@@ -67,5 +67,61 @@ describe('createTenantSecretResolver', () => {
     );
     const result = await resolver.resolve('tenant-a', 'stripe.webhookSecret');
     expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+
+  it('resolves legacy credential keys from the encrypted S3 configuration', async () => {
+    const configuration = JSON.stringify({
+      provider: 'minio',
+      endpoint: 'http://127.0.0.1:19000',
+      region: 'us-east-1',
+      bucket: 'together-test',
+      accessKeyId: 'configured-access',
+      secretAccessKey: 'configured-secret',
+    });
+    const resolver = createTenantSecretResolver(
+      repoWith([secretRow('tenant-a', 's3.configuration')]),
+      cryptoReturning(ok(configuration)),
+    );
+
+    await expect(resolver.resolve('tenant-a', 's3.accessKeyId')).resolves.toEqual({
+      ok: true,
+      value: 'configured-access',
+    });
+    await expect(resolver.resolve('tenant-a', 's3.secretAccessKey')).resolves.toEqual({
+      ok: true,
+      value: 'configured-secret',
+    });
+  });
+
+  it('prefers the encrypted S3 configuration over stale legacy credential rows', async () => {
+    const configuration = JSON.stringify({
+      provider: 'cloudflare_r2',
+      endpoint: 'https://account.r2.cloudflarestorage.com',
+      region: 'auto',
+      bucket: 'together-test',
+      accessKeyId: 'current-access',
+      secretAccessKey: 'current-secret',
+    });
+    const resolver = createTenantSecretResolver(
+      repoWith([
+        secretRow('tenant-a', 's3.accessKeyId'),
+        secretRow('tenant-a', 's3.secretAccessKey'),
+        secretRow('tenant-a', 's3.configuration'),
+      ]),
+      {
+        encrypt: () => ({ ciphertext: 'x', iv: 'y', authTag: 'z' }),
+        decrypt: ({ ciphertext }) =>
+          ok(ciphertext.endsWith('s3.configuration') ? configuration : 'stale-legacy-credential'),
+      },
+    );
+
+    await expect(resolver.resolve('tenant-a', 's3.accessKeyId')).resolves.toEqual({
+      ok: true,
+      value: 'current-access',
+    });
+    await expect(resolver.resolve('tenant-a', 's3.secretAccessKey')).resolves.toEqual({
+      ok: true,
+      value: 'current-secret',
+    });
   });
 });

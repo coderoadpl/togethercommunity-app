@@ -82,6 +82,8 @@ import type {
   TenantCreateInput,
   TenantSecretDeleteInput,
   IntegrationTestInput,
+  StorageConfigureInput,
+  StorageProbeInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
@@ -1097,6 +1099,18 @@ export const testIntegrationMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantSecretsScopes.all(), 'provider-test'],
     call: (input: IntegrationTestInput) => api.testIntegration(input),
+  });
+
+export const probeStorageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'storage-probe'],
+    call: (input: StorageProbeInput) => api.probeStorage(input),
+  });
+
+export const configureStorageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'storage-configure'],
+    call: (input: StorageConfigureInput) => api.configureStorage(input),
   });
 
 export const testIfirmaConnectionMutation = (api: ApiClient) =>

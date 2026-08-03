@@ -298,6 +298,7 @@ Architecture is enforced by configuration and executable probes:
 | `pnpm run e2e:poc` | The creator and member proof-of-concept journeys at the CLI+HTTP level (no browser; `e2e:auth` and `e2e:coupon` are the browser-driven suites). |
 | `pnpm run e2e:subs` | Subscription, payment, ledger, grant, replay, and expiry lifecycle. |
 | `pnpm run e2e:marketing` | Marketing consent, delivery, suppression, and provider-event lifecycle. |
+| `pnpm run e2e:storage` | The S3 write-read-delete probe and its mapped failure paths against a throwaway MinIO container or a real bucket. |
 | `pnpm run visual` | Multi-theme, multi-viewport pixel comparison against reviewed repository goldens. |
 | `pnpm run storybook:build` | CI compilation of the bounded component workbench documented in [app/docs/storybook.md](app/docs/storybook.md). |
 

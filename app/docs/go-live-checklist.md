@@ -125,6 +125,10 @@ pnpm --silent run cli --tenant <slug> tenant-secret set s3.accessKeyId <id>
 pnpm --silent run cli --tenant <slug> tenant-secret set s3.secretAccessKey <secret>
 ```
 
+A tenant configured through the integrations panel wizard stores endpoint,
+region, bucket and both keys in the single encrypted `s3.configuration` secret
+instead; the presigner reads the keys from whichever of the two shapes exists.
+
 The commands are implemented in `apps/cli/src/main.ts:2368-2381`. Deactivate and
 then delete the legacy key in IAM. Delete the development copy with:
 

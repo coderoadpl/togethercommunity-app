@@ -57,6 +57,7 @@ const fakeDeps = (
     },
   },
   storage: {
+    probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(input.url),
     delete: async () => ok({ deleted: true }),

@@ -20,6 +20,8 @@ import {
   grantCreateInputSchema,
   grantRevokeInputSchema,
   integrationTestInputSchema,
+  storageConfigureInputSchema,
+  storageProbeInputSchema,
   lastViewedInputSchema,
   lessonCompleteInputSchema,
   lessonCreateInputSchema,
@@ -126,6 +128,7 @@ import {
   createTenant,
   createTenantApiKey,
   createTenantDocument,
+  configureStorageConnection,
   deactivateProductPrice,
   deleteLesson,
   deletePost,
@@ -214,6 +217,7 @@ import {
   pauseCampaign,
   pollSesOnboarding,
   previewMarketingAudience,
+  probeStorageConnection,
   provisionSesInfrastructure,
   publishProduct,
   publishTenantDocument,
@@ -1505,6 +1509,28 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         payment: deps.payment,
         storage: deps.storage,
       },
+    ));
+  });
+
+  app.post(API_PATHS.storageProbe, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = storageProbeInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid storage probe payload', parsed.error.flatten())));
+    return respond(await probeStorageConnection(
+      { identity: c.get('identity') },
+      parsed.data,
+      { storage: deps.storage },
+    ));
+  });
+
+  app.post(API_PATHS.storageConfigure, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = storageConfigureInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid storage configuration payload', parsed.error.flatten())));
+    return respond(await configureStorageConnection(
+      { identity: c.get('identity') },
+      parsed.data,
+      deps,
     ));
   });
 

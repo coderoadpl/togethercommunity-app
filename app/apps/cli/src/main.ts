@@ -22,6 +22,7 @@ import {
   priceMajorSchema,
   reactionEmojiSchema,
   spaceVisibilitySchema,
+  storageProviderKindSchema,
   tenantSecretKeySchema,
   transactionalLanguageSchema,
   updateCourseLessonInputSchema,
@@ -118,6 +119,14 @@ const tenantCreateOptionsSchema = z.object({ slug: z.string().min(1).optional() 
 const tenantSettingsOptionsSchema = z.object({
   billingPortalUrl: z.string().url().optional(),
   clearBillingPortalUrl: z.boolean().optional(),
+});
+const storageConfigurationOptionsSchema = z.object({
+  provider: storageProviderKindSchema,
+  endpoint: z.string().url(),
+  region: z.string().min(1),
+  bucket: z.string().min(1),
+  accessKeyId: z.string().min(1),
+  secretAccessKey: z.string().min(1),
 });
 const productCreateOptionsSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -2601,6 +2610,38 @@ tenantSecret
   .action(
     withInput(z.tuple([tenantSecretKeySchema, noOptionsSchema]), async (ctx, [key]) => {
       emit(await ctx.api.deleteTenantSecret({ key }), ctx.json, (data) => `deleted ${data.key}`);
+    }),
+  );
+
+const storage = program.command('storage').description('S3-compatible storage integration (owner only)');
+
+storage
+  .command('probe')
+  .description('Run a write, read and delete probe without saving the configuration')
+  .requiredOption('--provider <provider>')
+  .requiredOption('--endpoint <url>')
+  .requiredOption('--region <region>')
+  .requiredOption('--bucket <bucket>')
+  .requiredOption('--access-key-id <id>')
+  .requiredOption('--secret-access-key <secret>')
+  .action(
+    withInput(z.tuple([storageConfigurationOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.probeStorage(options), ctx.json, (data) => data.diagnostic.message);
+    }),
+  );
+
+storage
+  .command('configure')
+  .description('Re-run the live probe and save the encrypted configuration')
+  .requiredOption('--provider <provider>')
+  .requiredOption('--endpoint <url>')
+  .requiredOption('--region <region>')
+  .requiredOption('--bucket <bucket>')
+  .requiredOption('--access-key-id <id>')
+  .requiredOption('--secret-access-key <secret>')
+  .action(
+    withInput(z.tuple([storageConfigurationOptionsSchema]), async (ctx, [options]) => {
+      emit(await ctx.api.configureStorage(options), ctx.json, (data) => data.diagnostic.message);
     }),
   );
 

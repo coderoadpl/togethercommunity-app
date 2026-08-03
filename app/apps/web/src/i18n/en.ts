@@ -424,12 +424,50 @@ export const en: Messages = {
     bunnyLibraryIdLabel: 'library id',
     bunnyLibraryIdHelper: 'Find it in the Bunny dashboard → Stream → your library → API.',
     bunnySaveFirst: 'Save the API key and library id first to test the connection.',
-    s3Heading: 'S3 documents',
+    s3Heading: 'S3-compatible storage',
     s3Description:
-      'Enter an AWS key with read access to the bucket hosting your lesson PDF files. The app signs their links on the fly, so the bucket can stay private.',
+      'Connect your own private bucket. Together verifies write, read and delete access before encrypting the configuration.',
     s3AccessKeyIdLabel: 'access key ID',
     s3SecretAccessKeyLabel: 'secret access key',
-    s3SaveFirst: 'Save the storage access key ID and secret key first to test the connection.',
+    s3SaveFirst: 'Complete the storage wizard first to test the saved connection.',
+    storageConfigured: 'Storage is configured. Run the wizard again to replace its encrypted settings.',
+    storageProviderStep: 'Provider',
+    storageConnectionStep: 'Connection',
+    storageProbeStep: 'Live probe',
+    storageProviderLabel: 'Choose your storage provider',
+    storageProviderAws: 'AWS S3',
+    storageProviderR2: 'Cloudflare R2',
+    storageProviderB2: 'Backblaze B2',
+    storageProviderMinio: 'MinIO',
+    storageEndpointLabel: 'S3 endpoint URL',
+    storageRegionLabel: 'region',
+    storageBucketLabel: 'bucket name',
+    storageContinue: 'Continue',
+    storageBack: 'Back',
+    storageInstructionsHeading: 'Where to get the keys',
+    storageInstructionAws:
+      'Create a scoped IAM access key with PutObject, GetObject and DeleteObject permissions for this bucket.',
+    storageInstructionR2:
+      'Create an R2 API token with Object Read & Write access limited to this bucket, then copy its S3 credentials and endpoint.',
+    storageInstructionB2:
+      'Create a bucket-scoped application key with readFiles, writeFiles and deleteFiles capabilities. Use the key ID as the access key ID.',
+    storageInstructionMinio:
+      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket.',
+    storageInstructionLink: 'Open provider instructions',
+    storageProbeDescription:
+      'Together will upload a small scratch object, read it back byte for byte, and delete it. Nothing is saved yet.',
+    storageProbeStart: 'Run live probe',
+    storageProbeSuccess: 'Write, read and delete all succeeded. You can now save this configuration.',
+    storageSave: 'Save encrypted configuration',
+    storageSaving: 'Testing and saving…',
+    storageSaved: 'Storage configuration saved.',
+    storageProbeWrongRegion: 'Use the region and endpoint shown for this bucket by your provider.',
+    storageProbeCredentials:
+      'Check the access key, secret key and PutObject, GetObject and DeleteObject permissions.',
+    storageProbeBucket: 'Check that the bucket name is exact and that this key can access it.',
+    storageProbeCors:
+      'Allow this Together origin in the bucket CORS policy for PUT, GET and DELETE requests.',
+    storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {
     newProduct: 'New product',

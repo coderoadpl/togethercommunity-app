@@ -201,6 +201,7 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
   return {
     calls,
     signer: {
+      probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => {
         calls.push({ url: input.url, expiresInSeconds: input.expiresInSeconds });
@@ -308,6 +309,7 @@ describe('getPlayableLesson', () => {
 
   it('keeps the original url when the signer fails', async () => {
     const failing: StorageProvider = {
+      probe: async () => err(validation('bad url')),
       presignPut: () => err(validation('bad url')),
       presignGet: () => err(validation('bad url')),
       delete: async () => err(validation('bad url')),

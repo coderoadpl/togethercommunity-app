@@ -49,6 +49,7 @@ import type {
   ReactionSummary,
   Space,
   SpaceStats,
+  StorageConfiguration,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -844,6 +845,7 @@ export interface BunnyEmbedTokenSigner {
 }
 
 export interface StorageProvider {
+  probe(input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>>;
   presignPut(input: {
     url: string;
     accessKeyId: string;

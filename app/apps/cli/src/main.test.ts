@@ -11,6 +11,7 @@ interface Hoisted {
   loadError: Error | null;
   saved: CliConfig[];
   health: ReturnType<typeof vi.fn>;
+  configureStorage: ReturnType<typeof vi.fn>;
   changePassword: ReturnType<typeof vi.fn>;
   requestPasswordReset: ReturnType<typeof vi.fn>;
   signOut: ReturnType<typeof vi.fn>;
@@ -29,6 +30,7 @@ const h = vi.hoisted(
     loadError: null,
     saved: [],
     health: vi.fn(),
+    configureStorage: vi.fn(),
     changePassword: vi.fn(),
     requestPasswordReset: vi.fn(),
     signOut: vi.fn(),
@@ -77,6 +79,7 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', () => ({
   createApiClient: () => ({
     health: h.health,
+    configureStorage: h.configureStorage,
   }),
 }));
 
@@ -112,6 +115,11 @@ beforeEach(() => {
     database: 'up',
     version: '0.1.0',
     sha: 'cafe1234',
+  }));
+  h.configureStorage.mockReset();
+  h.configureStorage.mockResolvedValue(ok({
+    diagnostic: { code: 'storage.available', message: 'Storage completed the probe.' },
+    secret: { key: 's3.configuration', maskedPreview: '••••', updatedAt: '2026-08-03T12:00:00.000Z' },
   }));
   h.signOut.mockReset();
   h.signOut.mockResolvedValue(ok(undefined));
@@ -257,6 +265,60 @@ describe('origin profiles', () => {
     });
     expect(h.saved.at(-1)?.profiles['https://one.example']?.token).toBeNull();
     expect(process.exitCode).toBe(10);
+  });
+});
+
+describe('storage configure', () => {
+  it('sends the whole connection to the probing endpoint and prints its diagnostic', async () => {
+    await run(
+      'storage',
+      'configure',
+      '--provider',
+      'minio',
+      '--endpoint',
+      'http://localhost:9000',
+      '--region',
+      'us-east-1',
+      '--bucket',
+      'studio-files',
+      '--access-key-id',
+      'minio-access',
+      '--secret-access-key',
+      'minio-secret',
+    );
+
+    expect(h.configureStorage).toHaveBeenCalledExactlyOnceWith({
+      provider: 'minio',
+      endpoint: 'http://localhost:9000',
+      region: 'us-east-1',
+      bucket: 'studio-files',
+      accessKeyId: 'minio-access',
+      secretAccessKey: 'minio-secret',
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('Storage completed the probe.');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('rejects an unknown provider before calling the API', async () => {
+    await run(
+      'storage',
+      'configure',
+      '--provider',
+      'dropbox',
+      '--endpoint',
+      'http://localhost:9000',
+      '--region',
+      'us-east-1',
+      '--bucket',
+      'studio-files',
+      '--access-key-id',
+      'minio-access',
+      '--secret-access-key',
+      'minio-secret',
+    );
+
+    expect(h.configureStorage).not.toHaveBeenCalled();
+    expect(process.exitCode).not.toBe(0);
   });
 });
 

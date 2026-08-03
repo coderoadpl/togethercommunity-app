@@ -52,7 +52,7 @@ export const memberEventRegistry = defineMemberEventRegistry({
     mailKind: z.enum(['transactional', 'marketing']),
     subject: z.string().min(1),
     source: z.string().min(1),
-    transport: z.enum(['tenant-ses', 'smtp', 'platform']),
+    transport: z.enum(['tenant-ses', 'smtp', 'resend', 'platform']),
   }).strict(),
 });
 
@@ -89,6 +89,7 @@ type MemberEventFromRegistry<TRegistry extends MemberEventRegistry> = {
   };
 }[keyof TRegistry & string];
 
+/** @public part of the member-event registry surface (consumed by panel i18n) */
 export type MemberEventType = keyof typeof memberEventRegistry;
 export type MemberEvent = MemberEventFromRegistry<typeof memberEventRegistry>;
 

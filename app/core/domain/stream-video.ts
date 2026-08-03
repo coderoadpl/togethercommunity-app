@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const streamVideoSchema = z.object({
+const streamVideoSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
   lengthSeconds: z.number().int().nonnegative(),

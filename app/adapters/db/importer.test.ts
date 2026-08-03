@@ -1,7 +1,4 @@
 import { and, eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { memberTombstone } from '#core/domain/index.js';
@@ -37,17 +34,10 @@ import {
   tenants,
   user,
 } from './schema.js';
-import * as dbSchema from './schema.js';
-import { uniqueTestDatabaseName } from './test-database-name.js';
+import { createTestDatabase } from './test-database-name.js';
 
-const TEST_DB = uniqueTestDatabaseName('together_importer_test');
 const baseDatabaseUrl =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const testUrl = (() => {
-  const url = new URL(baseDatabaseUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
-})();
 
 const TENANT_ID = 'tenant-import-spec';
 const TENANT_SLUG = 'import-spec';
@@ -141,7 +131,7 @@ const buildBundle = (): TenantBundle => ({
     },
     {
       legacyId: ids.p2,
-      title: 'Single lesson access',
+      title: 'Full course access',
       accessItems: [{ level: 'lessons', courseId: ids.c1, lessonIds: [ids.l2] }],
     },
   ],
@@ -187,7 +177,7 @@ const buildBundle = (): TenantBundle => ({
 });
 
 let db: Db;
-let dbPool: pg.Pool;
+let closeTestDatabase: () => Promise<void>;
 let auth: Auth;
 let gateway: ImportAuthGateway;
 
@@ -207,11 +197,7 @@ const targets = (bundle: TenantBundle): ImportTarget[] => [
 const nowIso = (): string => new Date().toISOString();
 
 afterAll(async () => {
-  await dbPool.end();
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.end();
+  await closeTestDatabase();
 });
 
 const reportByKind = (kinds: KindReport[], kind: string): KindReport => {
@@ -221,18 +207,9 @@ const reportByKind = (kinds: KindReport[], kind: string): KindReport => {
 };
 
 beforeAll(async () => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.query(`CREATE DATABASE ${TEST_DB}`);
-  await admin.end();
-
-  const migrationPool = new pg.Pool({ connectionString: testUrl });
-  await migrate(drizzle(migrationPool), { migrationsFolder: 'drizzle' });
-  await migrationPool.end();
-
-  dbPool = new pg.Pool({ connectionString: testUrl });
-  db = drizzle(dbPool, { schema: dbSchema });
+  const testDatabase = await createTestDatabase('together_importer_test', baseDatabaseUrl);
+  db = testDatabase.db;
+  closeTestDatabase = testDatabase.close;
   auth = createAuth(db, {
     secret: 'importer-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
@@ -417,6 +394,10 @@ describe('importer', () => {
     const productRows = await db.select().from(products).where(eq(products.tenantId, TENANT_ID));
     expect(productRows).toHaveLength(2);
     expect(productRows.every((row) => !row.published)).toBe(true);
+    expect(productRows.map(({ legacyId, slug }) => ({ legacyId, slug }))).toEqual([
+      { legacyId: ids.p1, slug: 'full-course-access' },
+      { legacyId: ids.p2, slug: 'full-course-access-3aa10f02' },
+    ]);
 
     expect(result.verification?.pass).toBe(true);
     const spotChecks = result.verification?.tenants[0]?.spotChecks ?? [];

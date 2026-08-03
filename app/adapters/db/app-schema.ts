@@ -270,8 +270,11 @@ export const products = pgTable(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['course', 'digital_download', 'membership'] }).notNull().default('course'),
+    slug: text('slug').notNull(),
     title: text('title').notNull(),
     description: text('description').notNull(),
+    coverUrl: text('cover_url'),
     priceCents: integer('price_cents').notNull(),
     currency: text('currency').notNull(),
     published: boolean('published').notNull().default(false),
@@ -283,6 +286,7 @@ export const products = pgTable(
   },
   (table) => [
     index('products_tenantId_idx').on(table.tenantId),
+    uniqueIndex('products_tenant_slug_uidx').on(table.tenantId, table.slug),
     uniqueIndex('products_tenant_legacy_uidx')
       .on(table.tenantId, table.legacyId)
       .where(sql`${table.legacyId} is not null`),
@@ -1249,7 +1253,7 @@ export const emailOutbox = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
     sesMessageId: text('ses_message_id'),
-    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'platform'] }),
+    transport: text('transport', { enum: ['tenant-ses', 'smtp', 'resend', 'platform'] }),
     deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
     deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
   },

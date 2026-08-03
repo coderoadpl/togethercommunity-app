@@ -1692,6 +1692,26 @@ describe('new route authorization', () => {
     'content-type': 'application/json',
   };
 
+  it('denies members on product-download creator routes', async () => {
+    const uploadPath = API_PATHS.productDownloadUpload.replace(':productId', 'download-1');
+    const deletePath = API_PATHS.productDownloadDelete
+      .replace(':productId', 'download-1')
+      .replace(':assetId', 'asset-1');
+    const upload = await scopedApp('member').request(uploadPath, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        fileName: 'workbook.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 4096,
+      }),
+    });
+    const remove = await scopedApp('member').request(deletePath, { method: 'DELETE', headers });
+
+    expect(upload.status).toBe(403);
+    expect(remove.status).toBe(403);
+  });
+
   it('denies members and permits staff on post pinning', async () => {
     const request = {
       method: 'POST',

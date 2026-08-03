@@ -1,17 +1,14 @@
 import {
   LESSON_ATTACHMENT_MAX_BYTES,
   err,
-  integrationNotConfigured,
   lessonAttachmentUploadInputSchema,
   notFound,
   ok,
-  storageConfigurationSchema,
   validation,
   type AppError,
   type LessonAttachment,
   type LessonAttachmentUploadInput,
   type Result,
-  type StorageConfiguration,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
@@ -25,6 +22,11 @@ import type {
   TenantSecretResolver,
 } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
+import {
+  resolveStorageConfiguration,
+  storageAssetExpiresAt,
+  storageFileName,
+} from './storage-assets.js';
 
 export const ATTACHMENT_UPLOAD_TTL_SECONDS = 15 * 60;
 export const ATTACHMENT_DOWNLOAD_TTL_SECONDS = 60 * 60;
@@ -39,40 +41,6 @@ export interface LessonAttachmentDeps {
 }
 
 export interface MemberLessonAttachmentDeps extends LessonAttachmentDeps, CourseAccessDeps {}
-
-const resolveStorageConfiguration = async (
-  tenantId: string,
-  secretResolver: TenantSecretResolver,
-): Promise<Result<StorageConfiguration, AppError>> => {
-  const stored = await secretResolver.resolve(tenantId, 's3.configuration');
-  if (!stored.ok) {
-    return stored.error.code === 'not_found'
-      ? err(integrationNotConfigured('Storage is not configured.'))
-      : stored;
-  }
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(stored.value);
-  } catch {
-    return err(integrationNotConfigured('The stored storage configuration is invalid.'));
-  }
-  const parsed = storageConfigurationSchema.safeParse(decoded);
-  return parsed.success
-    ? ok(parsed.data)
-    : err(integrationNotConfigured('The stored storage configuration is invalid.'));
-};
-
-const storageFileName = (fileName: string): string => {
-  const normalized = fileName
-    .normalize('NFKD')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(-120);
-  return normalized.length > 0 ? normalized : 'attachment';
-};
-
-const expiresAt = (nowIso: string, ttlSeconds: number): string =>
-  new Date(Date.parse(nowIso) + ttlSeconds * 1000).toISOString();
 
 const requireLesson = async (
   tenantId: string,
@@ -101,7 +69,7 @@ export const beginLessonAttachmentUpload = async (
   if (!configuration.ok) return configuration;
 
   const id = deps.ids.nextId();
-  const storageKey = `lesson-attachments/${lessonId}/${id}/${storageFileName(parsed.data.fileName)}`;
+  const storageKey = `lesson-attachments/${lessonId}/${id}/${storageFileName(parsed.data.fileName, 'attachment')}`;
   const signed = deps.storage.presignPut({
     url: deps.storage.objectUrl(configuration.value, storageKey).toString(),
     accessKeyId: configuration.value.accessKeyId,
@@ -126,7 +94,7 @@ export const beginLessonAttachmentUpload = async (
   return ok({
     attachment,
     uploadUrl: signed.value,
-    expiresAt: expiresAt(createdAt, ATTACHMENT_UPLOAD_TTL_SECONDS),
+    expiresAt: storageAssetExpiresAt(createdAt, ATTACHMENT_UPLOAD_TTL_SECONDS),
   });
 };
 

@@ -21,7 +21,6 @@ export type ProductDownloadAsset = z.infer<typeof productDownloadAssetSchema>;
 export const productDownloadAssetMetadataSchema = productDownloadAssetSchema.omit({
   tenantId: true,
   storageKey: true,
-  status: true,
 });
 
 export type ProductDownloadAssetMetadata = z.infer<typeof productDownloadAssetMetadataSchema>;

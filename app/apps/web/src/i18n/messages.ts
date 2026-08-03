@@ -528,7 +528,8 @@ export interface Messages {
     uploadDownload: string;
     uploadingDownload: string;
     deleteDownload: (params: { name: string }) => string;
-    downloadSize: (params: { kilobytes: number }) => string;
+    downloadStatusPending: string;
+    downloadStatusReady: string;
   };
   access: {
     loading: string;

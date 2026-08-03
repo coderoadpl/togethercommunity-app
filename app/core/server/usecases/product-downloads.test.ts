@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  PRODUCT_DOWNLOAD_MAX_BYTES,
+  err,
+  integrationUnavailable,
   ok,
   type Identity,
   type Product,
@@ -19,6 +22,7 @@ import {
   PRODUCT_DOWNLOAD_TTL_SECONDS,
   beginProductDownloadUpload,
   completeProductDownloadUpload,
+  deleteProductDownloadAsset,
   getProductDownload,
   type ProductDownloadDeps,
 } from './product-downloads.js';
@@ -67,6 +71,19 @@ const grant: ProductGrant = {
   legacyId: null,
   createdAt: '2026-08-01T00:00:00.000Z',
 };
+
+const storedAsset = (overrides: Partial<ProductDownloadAsset> = {}): ProductDownloadAsset => ({
+  id: 'asset-1',
+  tenantId: 'tenant-1',
+  productId: product.id,
+  fileName: 'workbook.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 4096,
+  storageKey: 'product-downloads/download-1/asset-1/workbook.pdf',
+  status: 'ready',
+  createdAt: NOW,
+  ...overrides,
+});
 
 const assetRepository = (): ProductDownloadAssetRepository & { rows: ProductDownloadAsset[] } => {
   const rows: ProductDownloadAsset[] = [];
@@ -130,9 +147,11 @@ const storageConfiguration = JSON.stringify({
   secretAccessKey: 'secret-key',
 });
 
-const testDeps = (activeGrant = true) => {
+const testDeps = (activeGrant = true, actualSizeBytes = 4096) => {
   const downloadAssets = assetRepository();
   const signed: Array<{ method: 'GET' | 'PUT'; url: string; expiresInSeconds: number }> = [];
+  const removed: string[] = [];
+  const warnings: string[] = [];
   const storage: StorageProvider = {
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'ok' }),
@@ -144,8 +163,11 @@ const testDeps = (activeGrant = true) => {
       signed.push({ method: 'GET', url: input.url, expiresInSeconds: input.expiresInSeconds });
       return ok(`${input.url}&signed=get`);
     },
-    delete: async () => ok({ deleted: true }),
-    head: async () => ok({ sizeBytes: 4096 }),
+    delete: async (input) => {
+      removed.push(input.url);
+      return ok({ deleted: true });
+    },
+    head: async () => ok({ sizeBytes: actualSizeBytes }),
     healthcheck: async () => ok({ healthy: true }),
     test: async () => ok({ code: 'storage.available', message: 'ok' }),
   };
@@ -157,8 +179,9 @@ const testDeps = (activeGrant = true) => {
     secretResolver: { resolve: async () => ok(storageConfiguration) },
     ids: { nextId: () => 'asset-1' },
     clock: { nowIso: () => NOW },
+    logger: { error: (message) => warnings.push(message) },
   };
-  return { deps, downloadAssets, signed };
+  return { deps, downloadAssets, removed, signed, warnings };
 };
 
 describe('product downloads', () => {
@@ -182,17 +205,7 @@ describe('product downloads', () => {
 
   it('issues an expiring signed URL for a purchased download', async () => {
     const { deps, downloadAssets, signed } = testDeps();
-    downloadAssets.rows.push({
-      id: 'asset-1',
-      tenantId: 'tenant-1',
-      productId: product.id,
-      fileName: 'workbook.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 4096,
-      storageKey: 'product-downloads/download-1/asset-1/workbook.pdf',
-      status: 'ready',
-      createdAt: NOW,
-    });
+    downloadAssets.rows.push(storedAsset());
 
     const result = await getProductDownload(memberCtx, product.id, 'asset-1', deps);
 
@@ -207,21 +220,90 @@ describe('product downloads', () => {
 
   it('returns forbidden before signing for an unentitled member', async () => {
     const { deps, downloadAssets, signed } = testDeps(false);
-    downloadAssets.rows.push({
-      id: 'asset-1',
-      tenantId: 'tenant-1',
-      productId: product.id,
-      fileName: 'workbook.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 4096,
-      storageKey: 'product-downloads/download-1/asset-1/workbook.pdf',
-      status: 'ready',
-      createdAt: NOW,
-    });
+    downloadAssets.rows.push(storedAsset());
 
     const result = await getProductDownload(memberCtx, product.id, 'asset-1', deps);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(signed).toEqual([]);
+  });
+
+  it('returns not found when an entitled member requests an asset from another product', async () => {
+    const { deps, downloadAssets, signed } = testDeps();
+    downloadAssets.rows.push(storedAsset({ productId: 'download-2' }));
+
+    const result = await getProductDownload(memberCtx, product.id, 'asset-1', deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(signed).toEqual([]);
+  });
+
+  it('returns not found when an entitled member requests a pending asset', async () => {
+    const { deps, downloadAssets, signed } = testDeps();
+    downloadAssets.rows.push(storedAsset({ status: 'pending' }));
+
+    const result = await getProductDownload(memberCtx, product.id, 'asset-1', deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(signed).toEqual([]);
+  });
+
+  it('deletes an invalid uploaded object before returning validation', async () => {
+    const { deps, downloadAssets, removed } = testDeps(true, PRODUCT_DOWNLOAD_MAX_BYTES + 1);
+    const started = await beginProductDownloadUpload(ownerCtx, product.id, {
+      fileName: 'oversized.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 1024,
+    }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+
+    const result = await completeProductDownloadUpload(ownerCtx, product.id, 'asset-1', deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(removed).toEqual([
+      'https://storage.example.test/creator-files/product-downloads/download-1/asset-1/oversized.pdf',
+    ]);
+    expect(downloadAssets.rows[0]?.status).toBe('pending');
+  });
+
+  it('detaches the row before storage cleanup and reports cleanup failure as a warning', async () => {
+    const { deps, downloadAssets, warnings } = testDeps();
+    const sequence: string[] = [];
+    downloadAssets.rows.push(storedAsset());
+    const deleteRow = downloadAssets.delete;
+    downloadAssets.delete = async (tenantId, assetId) => {
+      sequence.push('row');
+      return deleteRow(tenantId, assetId);
+    };
+    deps.storage = {
+      ...deps.storage,
+      delete: async () => {
+        sequence.push('storage');
+        return err(integrationUnavailable('Storage unavailable'));
+      },
+    };
+
+    const result = await deleteProductDownloadAsset(ownerCtx, product.id, 'asset-1', deps);
+
+    expect(result).toEqual({ ok: true, value: { deleted: true } });
+    expect(sequence).toEqual(['row', 'storage']);
+    expect(downloadAssets.rows).toEqual([]);
+    expect(warnings).toEqual([expect.stringContaining('Storage unavailable')]);
+  });
+
+  it('rejects creator-route writes from an ordinary member', async () => {
+    const { deps, downloadAssets } = testDeps();
+
+    await expect(beginProductDownloadUpload(memberCtx, product.id, {
+      fileName: 'member.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 1024,
+    }, deps)).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+
+    downloadAssets.rows.push(storedAsset());
+    await expect(
+      deleteProductDownloadAsset(memberCtx, product.id, 'asset-1', deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(downloadAssets.rows).toHaveLength(1);
   });
 });

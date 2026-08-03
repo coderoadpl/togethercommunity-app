@@ -370,6 +370,7 @@ const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAs
   fileName: asset.fileName,
   contentType: asset.contentType,
   sizeBytes: asset.sizeBytes,
+  status: asset.status,
   createdAt: asset.createdAt,
 });
 

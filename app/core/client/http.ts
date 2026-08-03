@@ -243,6 +243,8 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
+import { uploadPresignedStorageAsset } from './storage-assets.js';
+
 declare const HTTP_METHOD_BRAND: unique symbol;
 
 /**
@@ -1103,38 +1105,28 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     ),
   uploadLessonAttachment: async (input: LessonAttachmentFileUpload, signal?: AbortSignal) => {
-    const started = await request(
-      options,
-      API_ROUTES.lessonAttachmentUpload.method,
-      API_ROUTES.lessonAttachmentUpload.path.replace(':lessonId', encodeURIComponent(input.lessonId)),
-      lessonAttachmentUploadOutputSchema,
-      { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
-      signal,
-    );
-    if (!started.ok) return started;
-    const fetchImpl = options.fetchImpl ?? fetch;
-    let uploaded: Response;
-    try {
-      uploaded = await fetchImpl(started.value.upload.url, {
-        method: 'PUT',
-        headers: started.value.upload.headers,
-        body: input.body,
-        signal: signal ?? null,
-      });
-    } catch (cause) {
-      return err(internal(`Network error uploading ${input.fileName}: ${String(cause)}`));
-    }
-    if (!uploaded.ok) {
-      return err(internal(`Storage rejected ${input.fileName} with HTTP ${String(uploaded.status)}`));
-    }
-    return request(
-      options,
-      API_ROUTES.lessonAttachmentComplete.method,
-      API_ROUTES.lessonAttachmentComplete.path
-        .replace(':lessonId', encodeURIComponent(input.lessonId))
-        .replace(':attachmentId', encodeURIComponent(started.value.attachment.id)),
-      lessonAttachmentCompleteOutputSchema,
-      {},
+    return uploadPresignedStorageAsset(
+      input,
+      options.fetchImpl ?? fetch,
+      () => request(
+        options,
+        API_ROUTES.lessonAttachmentUpload.method,
+        API_ROUTES.lessonAttachmentUpload.path.replace(':lessonId', encodeURIComponent(input.lessonId)),
+        lessonAttachmentUploadOutputSchema,
+        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+        signal,
+      ),
+      (started) => started.upload,
+      (started) => request(
+        options,
+        API_ROUTES.lessonAttachmentComplete.method,
+        API_ROUTES.lessonAttachmentComplete.path
+          .replace(':lessonId', encodeURIComponent(input.lessonId))
+          .replace(':attachmentId', encodeURIComponent(started.attachment.id)),
+        lessonAttachmentCompleteOutputSchema,
+        {},
+        signal,
+      ),
       signal,
     );
   },
@@ -1159,38 +1151,28 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     ),
   uploadProductDownload: async (input: ProductDownloadFileUpload, signal?: AbortSignal) => {
-    const started = await request(
-      options,
-      API_ROUTES.productDownloadUpload.method,
-      API_ROUTES.productDownloadUpload.path.replace(':productId', encodeURIComponent(input.productId)),
-      productDownloadUploadOutputSchema,
-      { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
-      signal,
-    );
-    if (!started.ok) return started;
-    const fetchImpl = options.fetchImpl ?? fetch;
-    let uploaded: Response;
-    try {
-      uploaded = await fetchImpl(started.value.upload.url, {
-        method: 'PUT',
-        headers: started.value.upload.headers,
-        body: input.body,
-        signal: signal ?? null,
-      });
-    } catch (cause) {
-      return err(internal(`Network error uploading ${input.fileName}: ${String(cause)}`));
-    }
-    if (!uploaded.ok) {
-      return err(internal(`Storage rejected ${input.fileName} with HTTP ${String(uploaded.status)}`));
-    }
-    return request(
-      options,
-      API_ROUTES.productDownloadComplete.method,
-      API_ROUTES.productDownloadComplete.path
-        .replace(':productId', encodeURIComponent(input.productId))
-        .replace(':assetId', encodeURIComponent(started.value.asset.id)),
-      productDownloadCompleteOutputSchema,
-      {},
+    return uploadPresignedStorageAsset(
+      input,
+      options.fetchImpl ?? fetch,
+      () => request(
+        options,
+        API_ROUTES.productDownloadUpload.method,
+        API_ROUTES.productDownloadUpload.path.replace(':productId', encodeURIComponent(input.productId)),
+        productDownloadUploadOutputSchema,
+        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+        signal,
+      ),
+      (started) => started.upload,
+      (started) => request(
+        options,
+        API_ROUTES.productDownloadComplete.method,
+        API_ROUTES.productDownloadComplete.path
+          .replace(':productId', encodeURIComponent(input.productId))
+          .replace(':assetId', encodeURIComponent(started.asset.id)),
+        productDownloadCompleteOutputSchema,
+        {},
+        signal,
+      ),
       signal,
     );
   },

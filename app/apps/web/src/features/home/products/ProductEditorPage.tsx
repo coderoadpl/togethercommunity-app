@@ -28,7 +28,7 @@ import { priceMajorSchema, SUPPORTED_CURRENCIES, type PriceKind, type Product, t
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatPrice } from '../../../lib/format.js';
+import { formatFileSize, formatPrice } from '../../../lib/format.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
 
 const PriceRow = ({ price, onDeactivate }: { price: ProductPrice; onDeactivate: (price: ProductPrice) => void }) => {
@@ -293,6 +293,7 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
 
 const DownloadAssetsSection = ({ productId }: { productId: string }) => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
   const assets = useQuery(actions.productDownloadAssets(productId));
   const refresh = async () => {
@@ -337,9 +338,15 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
             <ListItem key={asset.id} disableGutters>
               <ListItemText
                 primary={asset.fileName}
-                secondary={t.products.downloadSize({
-                  kilobytes: Math.max(1, Math.ceil(asset.sizeBytes / 1024)),
-                })}
+                secondary={formatFileSize(asset.sizeBytes, language)}
+              />
+              <Chip
+                size="small"
+                color={asset.status === 'ready' ? 'success' : 'warning'}
+                variant="outlined"
+                label={asset.status === 'ready'
+                  ? t.products.downloadStatusReady
+                  : t.products.downloadStatusPending}
               />
               <Button
                 size="small"
@@ -382,11 +389,9 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
       <PricesSection product={product} />
       {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
       <CheckoutConsentsSection product={product} />
-      {product.type === 'digital_download' ? null : (
-        <SectionCard title={t.access.heading}>
-          <ProductAccessEditor product={product} />
-        </SectionCard>
-      )}
+      <SectionCard title={t.access.heading}>
+        <ProductAccessEditor product={product} />
+      </SectionCard>
     </PanelPage>
   );
 };

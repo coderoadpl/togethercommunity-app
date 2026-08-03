@@ -97,15 +97,9 @@ const ProductRow = ({
       sx={{ p: '1.1rem 1.25rem', display: 'grid', gap: '0.6rem' }}
     >
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.75rem', flexWrap: 'wrap' }}>
-        {product.type === 'digital_download' ? (
-          <Typography variant="h2" component="h2" sx={{ opacity: inactive ? 0.72 : 1 }}>
-            {product.title}
-          </Typography>
-        ) : (
-          <MemberProductLink href={`/my/course/${product.id}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
-            {product.title}
-          </MemberProductLink>
-        )}
+        <MemberProductLink href={`/my/course/${product.id}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
+          {product.title}
+        </MemberProductLink>
         <Chip
           size="small"
           variant={product.grantStatus === 'active' ? 'filled' : 'outlined'}

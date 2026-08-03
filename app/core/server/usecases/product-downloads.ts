@@ -2,18 +2,15 @@ import {
   PRODUCT_DOWNLOAD_MAX_BYTES,
   err,
   forbidden,
-  integrationNotConfigured,
   notFound,
   ok,
   productDownloadUploadInputSchema,
-  storageConfigurationSchema,
   validation,
   type AppError,
   type Product,
   type ProductDownloadAsset,
   type ProductDownloadUploadInput,
   type Result,
-  type StorageConfiguration,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
@@ -27,6 +24,11 @@ import type {
   StorageProvider,
   TenantSecretResolver,
 } from '../ports.js';
+import {
+  resolveStorageConfiguration,
+  storageAssetExpiresAt,
+  storageFileName,
+} from './storage-assets.js';
 
 const PRODUCT_DOWNLOAD_UPLOAD_TTL_SECONDS = 15 * 60;
 export const PRODUCT_DOWNLOAD_TTL_SECONDS = 60 * 60;
@@ -39,41 +41,8 @@ export interface ProductDownloadDeps {
   secretResolver: TenantSecretResolver;
   ids: IdGenerator;
   clock: Clock;
+  logger: { error(message: string): void };
 }
-
-const resolveStorageConfiguration = async (
-  tenantId: string,
-  secretResolver: TenantSecretResolver,
-): Promise<Result<StorageConfiguration, AppError>> => {
-  const stored = await secretResolver.resolve(tenantId, 's3.configuration');
-  if (!stored.ok) {
-    return stored.error.code === 'not_found'
-      ? err(integrationNotConfigured('Storage is not configured.'))
-      : stored;
-  }
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(stored.value);
-  } catch {
-    return err(integrationNotConfigured('The stored storage configuration is invalid.'));
-  }
-  const parsed = storageConfigurationSchema.safeParse(decoded);
-  return parsed.success
-    ? ok(parsed.data)
-    : err(integrationNotConfigured('The stored storage configuration is invalid.'));
-};
-
-const storageFileName = (fileName: string): string => {
-  const normalized = fileName
-    .normalize('NFKD')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(-120);
-  return normalized.length > 0 ? normalized : 'download';
-};
-
-const expiresAt = (nowIso: string, ttlSeconds: number): string =>
-  new Date(Date.parse(nowIso) + ttlSeconds * 1000).toISOString();
 
 const requireDigitalProduct = async (
   tenantId: string,
@@ -103,7 +72,7 @@ export const beginProductDownloadUpload = async (
   if (!configuration.ok) return configuration;
 
   const id = deps.ids.nextId();
-  const storageKey = `product-downloads/${productId}/${id}/${storageFileName(parsed.data.fileName)}`;
+  const storageKey = `product-downloads/${productId}/${id}/${storageFileName(parsed.data.fileName, 'download')}`;
   const signed = deps.storage.presignPut({
     url: deps.storage.objectUrl(configuration.value, storageKey).toString(),
     accessKeyId: configuration.value.accessKeyId,
@@ -128,7 +97,7 @@ export const beginProductDownloadUpload = async (
   return ok({
     asset,
     uploadUrl: signed.value,
-    expiresAt: expiresAt(createdAt, PRODUCT_DOWNLOAD_UPLOAD_TTL_SECONDS),
+    expiresAt: storageAssetExpiresAt(createdAt, PRODUCT_DOWNLOAD_UPLOAD_TTL_SECONDS),
   });
 };
 
@@ -155,6 +124,13 @@ export const completeProductDownloadUpload = async (
   });
   if (!storedObject.ok) return storedObject;
   if (storedObject.value.sizeBytes < 1 || storedObject.value.sizeBytes > PRODUCT_DOWNLOAD_MAX_BYTES) {
+    const removed = await deps.storage.delete({
+      url: deps.storage.objectUrl(configuration.value, asset.storageKey).toString(),
+      accessKeyId: configuration.value.accessKeyId,
+      secretAccessKey: configuration.value.secretAccessKey,
+      region: configuration.value.region,
+    });
+    if (!removed.ok) return removed;
     return err(validation(`Uploaded file must be between 1 and ${String(PRODUCT_DOWNLOAD_MAX_BYTES)} bytes`));
   }
   const ready = await deps.downloadAssets.markReady(tenant.value, assetId, storedObject.value.sizeBytes);
@@ -218,7 +194,7 @@ export const deleteProductDownloadAsset = async (
   ctx: Ctx,
   productId: string,
   assetId: string,
-  deps: Pick<ProductDownloadDeps, 'downloadAssets' | 'secretResolver' | 'storage'>,
+  deps: Pick<ProductDownloadDeps, 'downloadAssets' | 'logger' | 'secretResolver' | 'storage'>,
 ): Promise<Result<{ deleted: true }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'product:write');
   if (!tenant.ok) return tenant;
@@ -228,18 +204,18 @@ export const deleteProductDownloadAsset = async (
   }
   const configuration = await resolveStorageConfiguration(tenant.value, deps.secretResolver);
   if (!configuration.ok) return configuration;
+  const deleted = await deps.downloadAssets.delete(tenant.value, assetId);
+  if (!deleted) return err(notFound(`No download asset "${assetId}" on this product`));
   const deletedObject = await deps.storage.delete({
     url: deps.storage.objectUrl(configuration.value, asset.storageKey).toString(),
     accessKeyId: configuration.value.accessKeyId,
     secretAccessKey: configuration.value.secretAccessKey,
     region: configuration.value.region,
   });
-  const deleted = await deps.downloadAssets.delete(tenant.value, assetId);
-  if (!deleted) return err(notFound(`No download asset "${assetId}" on this product`));
-  return deletedObject.ok
-    ? ok({ deleted: true })
-    : err({
-        ...deletedObject.error,
-        message: `Download detached, but storage object "${asset.storageKey}" could not be deleted: ${deletedObject.error.message}`,
-      });
+  if (!deletedObject.ok) {
+    deps.logger.error(
+      `[product-download] warning: detached asset "${asset.id}" but could not delete storage object "${asset.storageKey}": ${deletedObject.error.message}`,
+    );
+  }
+  return ok({ deleted: true });
 };

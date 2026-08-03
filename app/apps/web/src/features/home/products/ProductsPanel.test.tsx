@@ -90,6 +90,7 @@ const renderProductsPanel = async (
             fileName: 'workbook.pdf',
             contentType: 'application/pdf',
             sizeBytes: 7,
+            status: 'pending',
             createdAt: '2026-07-12T12:00:00.000Z',
           },
           upload: {
@@ -111,6 +112,7 @@ const renderProductsPanel = async (
         fileName: 'workbook.pdf',
         contentType: 'application/pdf',
         sizeBytes: 7,
+        status: 'ready',
         createdAt: '2026-07-12T12:00:00.000Z',
       };
       assets = [asset];
@@ -283,7 +285,8 @@ describe('ProductsPanel', () => {
 
     await waitFor(() => expect(rendered.directUploadCalled()).toBe(true));
     expect(await screen.findByText('workbook.pdf')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: pl.access.heading })).not.toBeInTheDocument();
+    expect(screen.getByText(pl.products.downloadStatusReady)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: pl.access.heading, level: 2 })).toBeInTheDocument();
   });
 
   it('shows the product type of every listed product', async () => {

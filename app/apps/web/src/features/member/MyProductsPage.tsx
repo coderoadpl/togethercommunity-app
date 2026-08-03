@@ -19,6 +19,7 @@ import type {
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
+import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { formatDate, formatPrice } from '../../lib/format.js';
 import { DataValue, MemberProductLink } from '../../theme.js';
@@ -116,8 +117,8 @@ const ProductRow = ({
       </Stack>
       <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
         <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
-        {product.description ? <> · {product.description}</> : null}
       </Typography>
+      {product.description ? <RichTextContent html={product.description} /> : null}
       {product.grantStatus === 'upcoming' ? (
         <Typography variant="caption" color="text.secondary">
           {t.student.grantUpcomingNote({ date: formatDate(product.grantStartsAt, language) })}

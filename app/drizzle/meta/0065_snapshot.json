@@ -1,6 +1,6 @@
 {
-  "id": "8fa9a21d-6d9f-4635-bef4-1633fd07d8db",
-  "prevId": "58c4c39a-4b77-4f2e-83c7-f472c84eb543",
+  "id": "0b21dcdd-7915-4bc9-8323-f201c3b4de20",
+  "prevId": "2b40d8e7-4a14-440b-ae2f-01aeb5c59b3c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -648,7 +648,7 @@
           "name": "consent_row_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "unsubscribe_token_id": {
           "name": "unsubscribe_token_id",
@@ -961,7 +961,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -1691,12 +1691,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "retention_started_at": {
-          "name": "retention_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -1711,27 +1705,6 @@
             },
             {
               "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "consents_retention_started_tenant_idx": {
-          "name": "consents_retention_started_tenant_idx",
-          "columns": [
-            {
-              "expression": "retention_started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "tenant_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4592,12 +4565,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
-        },
-        "retention_started_at": {
-          "name": "retention_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -4626,27 +4593,6 @@
               "expression": "occurred_at",
               "isExpression": false,
               "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "marketing_consents_retention_started_tenant_idx": {
-          "name": "marketing_consents_retention_started_tenant_idx",
-          "columns": [
-            {
-              "expression": "retention_started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
               "nulls": "last"
             }
           ],
@@ -5325,15 +5271,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_user_id": {
-          "name": "actor_user_id",
-          "type": "text",
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -7511,6 +7451,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'course'"
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "title": {
           "name": "title",
           "type": "text",
@@ -7522,6 +7475,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "cover_url": {
+          "name": "cover_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "price_cents": {
           "name": "price_cents",
@@ -7581,6 +7540,27 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "products_tenant_slug_uidx": {
+          "name": "products_tenant_slug_uidx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

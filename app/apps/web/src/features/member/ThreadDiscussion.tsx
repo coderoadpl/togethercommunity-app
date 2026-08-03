@@ -58,13 +58,13 @@ const ThreadSubscriptionToggle = ({
   );
 };
 
-export interface ThreadContext {
+interface ThreadContext {
   contextKind: PostContextKind;
   contextId: string;
 }
 
 /** Thread-focus mode: render a single root thread with an exit back to its origin (a space feed). */
-export interface ThreadFocus {
+interface ThreadFocus {
   rootPostId: string;
   onExit: () => void;
   exitLabel: ReactNode;

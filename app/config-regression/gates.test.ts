@@ -1,10 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { ESLint, type Linter } from 'eslint';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import packageJson from '../package.json' with { type: 'json' };
 
 const appRoot = join(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
@@ -15,6 +18,7 @@ const featureDir = join('apps', 'web', 'src', 'features', token);
 const islandCoreDir = join(featureDir, 'core');
 const islandDomFixture = join(islandCoreDir, 'dom.tsx');
 const layoutDir = join('apps', 'web', 'src', 'components', 'layout', token);
+const tenantScopeFixtureRoot = mkdtempSync(join(tmpdir(), 'together-tenant-scope-'));
 
 const sweepRoots = [
   join(appRoot, 'core', 'domain'),
@@ -103,6 +107,8 @@ const messagesByFixture = new Map<string, EslintMessage[]>();
 const depcruiseRules = new Set<string>();
 let islandTypecheckOutput = '';
 let islandTypecheckStatus: number | null = null;
+let tenantScopeOutput = '';
+let tenantScopeStatus: number | null = null;
 
 const writeFixture = (rel: string, content: string): string => {
   const absolute = join(appRoot, rel);
@@ -159,6 +165,18 @@ beforeAll(() => {
   );
   islandTypecheckStatus = islandTypecheckRun.status;
   islandTypecheckOutput = `${islandTypecheckRun.stdout}${islandTypecheckRun.stderr}`;
+
+  writeFileSync(
+    join(tenantScopeFixtureRoot, 'unscoped.ts'),
+    'export type DeliberatelyUnscopedRepository = { findById(id: string): Promise<unknown> };\n',
+  );
+  const tenantScopeRun = spawnSync(
+    join(appRoot, 'node_modules', '.bin', 'tsx'),
+    ['scripts/tenant-scope-check.ts', tenantScopeFixtureRoot],
+    { cwd: appRoot, encoding: 'utf8' },
+  );
+  tenantScopeStatus = tenantScopeRun.status;
+  tenantScopeOutput = `${tenantScopeRun.stdout}${tenantScopeRun.stderr}`;
 }, 60_000);
 
 afterAll(() => {
@@ -166,6 +184,7 @@ afterAll(() => {
   rmSync(join(appRoot, coreServerDir), { recursive: true, force: true });
   rmSync(join(appRoot, featureDir), { recursive: true, force: true });
   rmSync(join(appRoot, layoutDir), { recursive: true, force: true });
+  rmSync(tenantScopeFixtureRoot, { recursive: true, force: true });
   sweep();
 });
 
@@ -267,6 +286,22 @@ describe('Island typecheck gate', () => {
     expect(islandTypecheckStatus).not.toBe(0);
     expect(islandTypecheckOutput).toContain(islandDomFixture);
     expect(islandTypecheckOutput).toContain("Cannot find name 'document'");
+  });
+});
+
+describe('Tenant scope gate', () => {
+  it('rejects an unscoped repository through the CLI exit path', () => {
+    expect(tenantScopeStatus).toBe(1);
+    expect(tenantScopeOutput).toContain(
+      'DeliberatelyUnscopedRepository.findById must take tenantId as its first parameter',
+    );
+  });
+
+  it('remains a stage of the aggregate check gate', () => {
+    const stages = packageJson.scripts.check
+      .split('&&')
+      .map((stage) => stage.trim().replace(/^pnpm run /, ''));
+    expect(stages).toContain('tenant-scope-check');
   });
 });
 

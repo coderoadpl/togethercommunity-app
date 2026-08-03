@@ -569,7 +569,7 @@ const deps = (
             staffRole: 'admin',
           }
         : null,
-    findMember: async (userId, tenantId) => members.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
+    findMember: async (tenantId, userId) => members.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
   };
   return {
     posts: new FakePosts(),

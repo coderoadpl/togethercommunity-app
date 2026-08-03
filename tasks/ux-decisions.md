@@ -21,8 +21,8 @@
 3. **Mobile-first is mandatory** — Storybook stories and visual tests run in
    BOTH mobile and desktop viewports for every story.
 4. **A11y runtime scanning** — accepted but explicitly LOWEST priority of the
-   six (MUI's built-in a11y does a lot already); axe-core scan hooked into the
-   screenshot/Storybook pipeline when the rest is done.
+   six (MUI's built-in a11y does a lot already); extend the permissively licensed
+   in-house scan to the screenshot/Storybook pipeline when the rest is done.
 5. **PL/EN terminology glossary** — accepted; produce the glossary and align
    microcopy during the layout refactor.
 6. **Creator first-run onboarding** — accepted with an architectural

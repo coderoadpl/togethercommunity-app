@@ -24,7 +24,7 @@ const renderLessonsAt = async (initialEntry = '/panel/lessons') => {
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
-describe('LessonsSection pagination', { timeout: 15000 }, () => {
+describe('LessonsSection pagination', () => {
   it('paginates the lesson pool and applies the type filter to the full set', async () => {
     const manyLessons: CourseLesson[] = Array.from({ length: 26 }, (_, index) => ({
       id: `lesson-${index}`,
@@ -52,7 +52,7 @@ describe('LessonsSection pagination', { timeout: 15000 }, () => {
   });
 });
 
-describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
+describe('LessonsSection blocks editor', () => {
   it('adds a video block, reorders it and creates the lesson', async () => {
     let lessons: CourseLesson[] = [];
     let submitted: LessonBlock[] = [];

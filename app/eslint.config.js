@@ -1,6 +1,5 @@
 import js from '@eslint/js';
 import tanstackQuery from '@tanstack/eslint-plugin-query';
-import jsxA11y from 'eslint-plugin-jsx-a11y';
 import react from 'eslint-plugin-react';
 import reactCompiler from 'eslint-plugin-react-compiler';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -782,7 +781,6 @@ export default tseslint.config(
     plugins: {
       '@tanstack/query': tanstackQuery,
       together,
-      'jsx-a11y': jsxA11y,
       react,
       'react-compiler': reactCompiler,
       'react-hooks': reactHooks,
@@ -800,7 +798,6 @@ export default tseslint.config(
       },
     },
     rules: {
-      ...jsxA11y.flatConfigs.recommended.rules,
       '@tanstack/query/exhaustive-deps': 'error',
       '@tanstack/query/no-rest-destructuring': 'error',
       '@tanstack/query/stable-query-client': 'error',

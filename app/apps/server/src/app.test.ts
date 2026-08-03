@@ -275,6 +275,13 @@ const deps = (input: {
       test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
       send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
     },
+    emailTransports: {
+      resolve: async () => ({
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+        send: async () => ok({ messageId: 'transport-test-message-id' }),
+      }),
+    },
     emailOutbox: {
       enqueue: async (message) => ok({ id: message.id }),
       claimBatch: async () => ok([]),

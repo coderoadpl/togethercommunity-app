@@ -75,6 +75,7 @@ import {
   notificationMarkReadInputSchema,
   notificationSchema,
   pinPostInputSchema,
+  emailIntegrationTransportSchema,
   integrationProviderSchema,
   providerDiagnosticSchema,
   postReportSchema,
@@ -940,6 +941,15 @@ export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 
 export const integrationTestInputSchema = z.object({
   provider: integrationProviderSchema,
+  emailTransport: emailIntegrationTransportSchema.optional(),
+}).superRefine((input, ctx) => {
+  if (input.emailTransport !== undefined && input.provider !== 'email') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'An email transport can only be selected for the email provider',
+      path: ['emailTransport'],
+    });
+  }
 });
 
 export type IntegrationTestInput = z.input<typeof integrationTestInputSchema>;
@@ -1049,6 +1059,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
   smtpConfigured: z.boolean(),
+  resendConfigured: z.boolean(),
   platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
 });

@@ -279,6 +279,11 @@ const smtpConfigured = async (tenantId: string, secrets: TenantSecretRepository)
   return smtpSecretKeys.every((key) => stored.some((secret) => secret.key === key));
 };
 
+const resendConfigured = async (tenantId: string, secrets: TenantSecretRepository): Promise<boolean> => {
+  const stored = await secrets.listByTenant(tenantId);
+  return stored.some((secret) => secret.key === 'resend.apiKey');
+};
+
 const broadcastsEnabled = (settings: TenantSesSettings, hasCredentials: boolean): boolean =>
   hasCredentials && tenantSesBroadcastsReady(settings);
 
@@ -286,6 +291,7 @@ interface TenantSendingSettingsOutput {
   settings: TenantSesSettings | null;
   credentialsConfigured: boolean;
   smtpConfigured: boolean;
+  resendConfigured: boolean;
   platformPool: { used: number; limit: 1000 };
   webhookUrl: string | null;
 }
@@ -302,14 +308,16 @@ export const getTenantSesMarketingSettings = async (
   const tenantId = staffTenantIdFrom(ctx, 'marketing:ses:read');
   if (!tenantId.ok) return tenantId;
   const settings = await deps.settings.findByTenant(tenantId.value);
-  const [hasCredentials, hasSmtp, usage] = await Promise.all([
+  const [hasCredentials, hasSmtp, hasResend, usage] = await Promise.all([
     credentialsConfigured(tenantId.value, deps.secrets),
     smtpConfigured(tenantId.value, deps.secrets),
+    resendConfigured(tenantId.value, deps.secrets),
     deps.pool.usage(tenantId.value),
   ]);
   const transport = {
     credentialsConfigured: hasCredentials,
     smtpConfigured: hasSmtp,
+    resendConfigured: hasResend,
     platformPool: { used: usage.sent, limit: 1000 as const },
   };
   if (settings === null) return ok({ settings: null, ...transport, webhookUrl: null });
@@ -351,6 +359,7 @@ export const updateTenantSesMarketingSettings = async (
   const current = await deps.settings.findByTenant(tenantId.value);
   const hasCredentials = await credentialsConfigured(tenantId.value, deps.secrets);
   const hasSmtp = await smtpConfigured(tenantId.value, deps.secrets);
+  const hasResend = await resendConfigured(tenantId.value, deps.secrets);
   const usage = await deps.pool.usage(tenantId.value);
   const settings: TenantSesSettings = {
     tenantId: tenantId.value,
@@ -386,6 +395,7 @@ export const updateTenantSesMarketingSettings = async (
     settings: stored,
     credentialsConfigured: hasCredentials,
     smtpConfigured: hasSmtp,
+    resendConfigured: hasResend,
     platformPool: { used: usage.sent, limit: 1000 as const },
     webhookUrl: `${deps.webhookBaseUrl}/${stored.webhookToken}`,
   });

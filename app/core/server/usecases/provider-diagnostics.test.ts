@@ -48,13 +48,29 @@ const fakeDeps = (
   appBaseUrl: 'https://acme.together.dev',
   payment: fakePayment(tested, options),
   email: {
-    send: async () => ok({ messageId: 'message-1' }),
+    send: async (message) => {
+      tested.push(`email-send:${message.to}`);
+      return ok({ messageId: 'message-1' });
+    },
     healthcheck: async () => ok({ healthy: true }),
     test: async () => {
       tested.push('email');
       if (options.testFails) return err(notFound('No email transport is configured'));
       return ok({ code: 'email.available', message: 'SMTP accepted the connection settings.' });
     },
+  },
+  emailTransports: {
+    resolve: async (_tenantId, transport) => ({
+      send: async (message) => {
+        tested.push(`${transport}-send:${message.to}`);
+        return ok({ messageId: `${transport}-message-1` });
+      },
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => {
+        tested.push(transport);
+        return ok({ code: 'email.available', message: `${transport} accepted the settings.` });
+      },
+    }),
   },
   storage: {
     presignPut: (input) => ok(input.url),
@@ -85,7 +101,30 @@ describe('testIntegration', () => {
       testIntegration(ctx('owner'), { provider: 'payment' }, deps),
     ).resolves.toMatchObject({ ok: true, value: { diagnostic: { code: 'payment.available' } } });
 
-    expect(tested).toEqual(['storage', 'email', 'payment']);
+    expect(tested).toEqual(['storage', 'email', 'email-send:owner@together.dev', 'payment']);
+  });
+
+  it('tests SMTP, SES and Resend and delivers each test message to the creator', async () => {
+    const tested: string[] = [];
+    const deps = fakeDeps(tested);
+
+    for (const emailTransport of ['smtp', 'ses', 'resend'] as const) {
+      await expect(
+        testIntegration(ctx('owner'), { provider: 'email', emailTransport }, deps),
+      ).resolves.toMatchObject({
+        ok: true,
+        value: { diagnostic: { code: 'email.available' } },
+      });
+    }
+
+    expect(tested).toEqual([
+      'smtp',
+      'smtp-send:owner@together.dev',
+      'ses',
+      'ses-send:owner@together.dev',
+      'resend',
+      'resend-send:owner@together.dev',
+    ]);
   });
 
   it('returns a non-empty user-facing message for every provider', async () => {

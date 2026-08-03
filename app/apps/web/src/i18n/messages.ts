@@ -1226,6 +1226,7 @@ export interface Messages {
     transportLabel: string;
     transportTenantSes: string;
     transportSmtp: string;
+    transportResend: string;
     transportPlatform: string;
     limitedTracking: string;
     campaignLabel: string;
@@ -1413,6 +1414,11 @@ export interface Messages {
     smtpPasswordLabel: string;
     smtpSecureLabel: string;
     smtpNoFeedback: string;
+    resendTitle: string;
+    resendHint: string;
+    resendApiKeyLabel: string;
+    resendDomainHint: string;
+    testEmailSent: string;
     platformPool: (params: { used: number; limit: number }) => string;
     platformPoolChecklist: string;
     platformPoolNudge: string;

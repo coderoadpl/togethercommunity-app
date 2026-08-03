@@ -14,7 +14,7 @@ export const emailSendStatusSchema = z.enum([
 ]);
 
 export const emailDeliveryStatusSchema = z.enum(['delivered', 'bounced', 'complained']);
-export const transactionalEmailTransportSchema = z.enum(['tenant-ses', 'smtp', 'platform']);
+export const transactionalEmailTransportSchema = z.enum(['tenant-ses', 'smtp', 'resend', 'platform']);
 
 export const emailSendCursorSchema = z.string().min(1).superRefine((value, ctx) => {
   const parts = value.split('~');

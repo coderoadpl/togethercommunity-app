@@ -353,6 +353,25 @@ export const memberErasureRequestEmail = (
   });
 };
 
+export const emailTransportTest = (
+  language: string,
+  input: { transport: string },
+): EmailMessage => {
+  const transport = escapeHtml(input.transport);
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `Together test e-mail (${input.transport})`,
+      html: `<p>Your ${transport} transport is configured correctly.</p><p>This message was sent from the panel to confirm delivery.</p>`,
+      text: `Your ${input.transport} transport is configured correctly.\n\nThis message was sent from the panel to confirm delivery.`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `Together — wiadomość testowa (${input.transport})`,
+    html: `<p>Transport ${transport} jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>`,
+    text: `Transport ${input.transport} jest poprawnie skonfigurowany.\n\nTa wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.`,
+  });
+};
+
 export const reputationAlertEmail = (
   language: string,
   input: {

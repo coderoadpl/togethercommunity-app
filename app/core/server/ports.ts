@@ -10,6 +10,7 @@ import type {
   EmailLayout,
   EmailEvent,
   EmailEventMailKind,
+  EmailIntegrationTransport,
   EmailReputationCounts,
   EmailSendListQuery,
   EmailSendProjection,
@@ -991,6 +992,10 @@ export interface TransactionalEmailSender {
 
 export interface TransactionalEmailTransportResolver {
   resolve(tenantId: string): Promise<EmailPort | null>;
+}
+
+export interface EmailIntegrationTransportResolver {
+  resolve(tenantId: string, transport: EmailIntegrationTransport): Promise<EmailPort | null>;
 }
 
 export interface PlatformTransactionalPool {

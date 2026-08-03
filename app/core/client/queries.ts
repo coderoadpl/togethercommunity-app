@@ -91,6 +91,7 @@ import type { DevGrantInput, MemberExportFormat, NewProductInput, OrderExportFor
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
 import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
+import type { LessonAttachmentFileUpload } from './http.js';
 
 /**
  * Identity helpers that type descriptors against `@tanstack/query-core` option
@@ -259,6 +260,7 @@ export const contentHistoryScopes = {
 export const lessonsScopes = {
   all: () => ['lessons'] as const,
   references: (lessonId: string) => ['lessons', 'references', lessonId] as const,
+  attachments: (lessonId: string) => ['lessons', 'attachments', lessonId] as const,
 };
 
 export const studentScopes = {
@@ -266,6 +268,7 @@ export const studentScopes = {
   courses: () => ['student', 'courses'] as const,
   courseStructure: (courseId: string) => ['student', 'course-structure', courseId] as const,
   lesson: (lessonId: string) => ['student', 'lesson', lessonId] as const,
+  attachments: (lessonId: string) => ['student', 'attachments', lessonId] as const,
   nextLesson: (lessonId: string) => ['student', 'next-lesson', lessonId] as const,
   progress: (courseId: string) => ['student', 'progress', courseId] as const,
 };
@@ -829,6 +832,24 @@ export const deleteLessonMutation = (api: ApiClient) =>
     call: (lessonId: string) => api.deleteLesson(lessonId),
   });
 
+export const lessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: lessonsScopes.attachments(lessonId),
+    call: ({ signal }) => api.listLessonAttachments(lessonId, signal),
+  });
+
+export const uploadLessonAttachmentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'upload-attachment'],
+    call: (input: LessonAttachmentFileUpload) => api.uploadLessonAttachment(input),
+  });
+
+export const deleteLessonAttachmentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'delete-attachment'],
+    call: (input: { lessonId: string; attachmentId: string }) => api.deleteLessonAttachment(input),
+  });
+
 export const updateProductAccessItemsMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productsScopes.all(), 'access-items'],
@@ -857,6 +878,12 @@ export const studentLessonQuery = (api: ApiClient, lessonId: string) =>
   defineQuery({
     queryKey: studentScopes.lesson(lessonId),
     call: ({ signal }) => api.studentLesson(lessonId, signal),
+  });
+
+export const studentLessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: studentScopes.attachments(lessonId),
+    call: ({ signal }) => api.studentLessonAttachments(lessonId, signal),
   });
 
 export const nextLessonQuery = (api: ApiClient, lessonId: string) =>
@@ -1179,6 +1206,10 @@ export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });
 export const modulesInvalidates = () => ({ queryKey: modulesScopes.all() });
 
 export const lessonsInvalidates = () => ({ queryKey: lessonsScopes.all() });
+
+export const lessonAttachmentsInvalidates = (lessonId: string) => ({
+  queryKey: lessonsScopes.attachments(lessonId),
+});
 
 /** The invalidation filter product mutations apply after they settle. */
 export const productsInvalidates = () => ({ queryKey: productsScopes.all() });

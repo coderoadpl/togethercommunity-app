@@ -29,6 +29,9 @@ import {
   detachModuleFromCourseInputSchema,
   discussionSchema,
   lessonReferencesSchema,
+  lessonAttachmentMetadataSchema,
+  lessonAttachmentUploadInputSchema,
+  lessonAttachmentViewSchema,
   listDiscussionInputSchema,
   listReportsInputSchema,
   createApiKeyInputSchema,
@@ -674,6 +677,31 @@ export const lessonDeleteOutputSchema = z.object({
   references: lessonReferencesSchema,
 });
 
+export const lessonAttachmentUploadRequestSchema = lessonAttachmentUploadInputSchema;
+
+export type LessonAttachmentUploadRequest = z.input<typeof lessonAttachmentUploadRequestSchema>;
+
+export const lessonAttachmentUploadOutputSchema = z.object({
+  attachment: lessonAttachmentMetadataSchema,
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const lessonAttachmentCompleteOutputSchema = z.object({
+  attachment: lessonAttachmentViewSchema,
+});
+
+export const lessonAttachmentsOutputSchema = z.object({
+  attachments: z.array(lessonAttachmentViewSchema),
+});
+
+export const lessonAttachmentDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
 export const contentHistoryQuerySchema = courseHistoryQuerySchema;
 
 export type ContentHistoryQueryInput = z.input<typeof contentHistoryQuerySchema>;
@@ -1237,9 +1265,15 @@ export const API_ROUTES = {
   lessonsUpdate: { method: 'POST', path: '/api/lessons/update' },
   lessonReferences: { method: 'GET', path: '/api/lessons/references' },
   lessonsDelete: { method: 'DELETE', path: '/api/lessons/:lessonId' },
+  lessonAttachments: { method: 'GET', path: '/api/lessons/:lessonId/attachments' },
+  lessonAttachmentUpload: { method: 'POST', path: '/api/lessons/:lessonId/attachments/upload' },
+  lessonAttachmentComplete: { method: 'POST', path: '/api/lessons/:lessonId/attachments/:attachmentId/complete' },
+  lessonAttachmentDelete: { method: 'DELETE', path: '/api/lessons/:lessonId/attachments/:attachmentId' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
+  studentLessonAttachments: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments' },
+  studentLessonAttachmentDownload: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments/:attachmentId/download' },
   studentLessonComplete: { method: 'POST', path: '/api/student/lessons/complete' },
   studentLessonUncomplete: { method: 'POST', path: '/api/student/lessons/uncomplete' },
   studentLessonNext: { method: 'GET', path: '/api/student/lessons/next' },
@@ -1419,9 +1453,15 @@ export const API_PATHS = {
   lessonsUpdate: API_ROUTES.lessonsUpdate.path,
   lessonReferences: API_ROUTES.lessonReferences.path,
   lessonsDelete: API_ROUTES.lessonsDelete.path,
+  lessonAttachments: API_ROUTES.lessonAttachments.path,
+  lessonAttachmentUpload: API_ROUTES.lessonAttachmentUpload.path,
+  lessonAttachmentComplete: API_ROUTES.lessonAttachmentComplete.path,
+  lessonAttachmentDelete: API_ROUTES.lessonAttachmentDelete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,
+  studentLessonAttachments: API_ROUTES.studentLessonAttachments.path,
+  studentLessonAttachmentDownload: API_ROUTES.studentLessonAttachmentDownload.path,
   studentLessonComplete: API_ROUTES.studentLessonComplete.path,
   studentLessonUncomplete: API_ROUTES.studentLessonUncomplete.path,
   studentLessonNext: API_ROUTES.studentLessonNext.path,

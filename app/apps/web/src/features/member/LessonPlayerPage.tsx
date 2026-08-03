@@ -266,6 +266,10 @@ export const LessonPlayerPage = ({
   const structure = useQuery(actions.courseStructure(courseId));
   const progress = useQuery(actions.studentProgress(courseId));
   const next = useQuery(actions.nextLesson(lessonId));
+  const attachments = useQuery({
+    ...actions.studentLessonAttachments(lessonId),
+    enabled: lesson.isSuccess,
+  });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -437,6 +441,24 @@ export const LessonPlayerPage = ({
             ))
           )}
         </Stack>
+
+        {attachments.isSuccess && attachments.data.attachments.length > 0 ? (
+          <SectionCard title={t.lesson.attachmentsHeading} data-testid="lesson-attachments">
+            <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
+              {attachments.data.attachments.map((attachment) => (
+                <Button
+                  key={attachment.id}
+                  component="a"
+                  href={attachment.downloadPath}
+                  variant="outlined"
+                  startIcon={<LinkIcon />}
+                >
+                  {t.lesson.downloadAttachment({ name: attachment.fileName })}
+                </Button>
+              ))}
+            </Stack>
+          </SectionCard>
+        ) : null}
 
         <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
           <Stack

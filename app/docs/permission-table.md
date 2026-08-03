@@ -12,7 +12,7 @@ The `member` and `authenticated` matrix rows carried historically derived edge c
 
 SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.
 
-Closed capability count: 92. Route rows: 200. Exported `Ctx` use-case rows: 176.
+Closed capability count: 92. Route rows: 206. Exported `Ctx` use-case rows: 183.
 
 ## Human-readable diff
 
@@ -185,8 +185,14 @@ no changes
 | `POST /api/lessons/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/lessons/references` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/lessons/:lessonId` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/lessons/:lessonId/attachments` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/lessons/:lessonId/attachments/upload` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/lessons/:lessonId/attachments/:attachmentId/complete` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `DELETE /api/lessons/:lessonId/attachments/:attachmentId` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/student/courses` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/courses/:courseId/structure` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/:lessonId/attachments` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/complete` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/uncomplete` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/progress/last-viewed` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
@@ -292,6 +298,13 @@ no changes
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
+| `lesson-attachments.ts#beginLessonAttachmentUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#completeLessonAttachmentUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#listLessonAttachments` | course:read | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#listMemberLessonAttachments` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#getLessonAttachmentDownload` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#deleteLessonAttachment` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -411,11 +424,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:113` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:762` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:764` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1206` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1206` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:118` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:788` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:790` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1232` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1232` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

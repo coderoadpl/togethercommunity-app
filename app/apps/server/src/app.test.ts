@@ -21,6 +21,8 @@ import {
   ok,
   type Member,
   type Membership,
+  type CourseLesson,
+  type LessonAttachment,
   type Order,
   type Post,
   type Product,
@@ -239,10 +241,12 @@ const deps = (input: {
       sign: ({ videoId, expires }) => `${videoId}-${expires}`,
     },
     storage: {
+      objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
       delete: async () => ok({ deleted: true }),
+      head: async () => ok({ sizeBytes: 1 }),
       healthcheck: async () => ok({ healthy: true }),
       test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
@@ -371,6 +375,14 @@ const deps = (input: {
       findByIds: async () => [],
       create: async () => undefined,
       update: async () => null,
+      delete: async () => false,
+    },
+    attachments: {
+      create: async () => undefined,
+      findById: async () => null,
+      listByLesson: async () => [],
+      listReadyByLesson: async () => [],
+      markReady: async () => null,
       delete: async () => false,
     },
     entityVersions: {
@@ -528,7 +540,7 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
 
 const scopedApp = (
   scope: 'none' | 'member' | 'banned-member' | 'staff' | 'owner',
-  options: { memberDeletedAt?: string; marketing?: MarketingAppDeps } = {},
+  options: { memberDeletedAt?: string; marketing?: MarketingAppDeps; overrides?: Partial<AppDeps> } = {},
 ) => {
   const base = deps();
   const member: Member = {
@@ -657,6 +669,7 @@ const scopedApp = (
       listPaidWithoutGrant: async () => [],
     },
     marketing: options.marketing ?? marketingDeps(),
+    ...options.overrides,
   });
 };
 
@@ -1406,10 +1419,21 @@ describe('server edge security baseline', () => {
     const result = await app.request(API_PATHS.health);
 
     expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
-    expect(result.headers.get('content-security-policy')).toContain('https://*.sentry.io');
+    expect(result.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
+    expect(result.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
     expect(result.headers.get('x-content-type-options')).toBe('nosniff');
     expect(result.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
     expect(result.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('allows tenant bucket connections only on panel documents', async () => {
+    const app = buildApp(deps());
+    const panel = await app.request('/panel/lessons/lesson-1');
+    const checkout = await app.request('/checkout/product-1');
+
+    expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
+    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
+    expect(checkout.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
@@ -1475,6 +1499,90 @@ describe('server edge security baseline', () => {
     });
 
     expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('lesson attachment download route', () => {
+  const lesson: CourseLesson = {
+    id: 'lesson-download',
+    tenantId: acme.id,
+    name: 'Download lesson',
+    contents: [],
+    legacyId: null,
+    createdAt: '2026-07-12T00:00:00.000Z',
+  };
+  const attachment: LessonAttachment = {
+    id: 'attachment-download',
+    tenantId: acme.id,
+    lessonId: lesson.id,
+    fileName: 'private.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 4096,
+    storageKey: 'lesson-attachments/private.pdf',
+    status: 'ready',
+    createdAt: '2026-07-12T00:00:00.000Z',
+  };
+  const app = scopedApp('owner', {
+    overrides: {
+      lessons: {
+        list: async () => [lesson],
+        findById: async (tenantId, lessonId) =>
+          tenantId === acme.id && lessonId === lesson.id ? lesson : null,
+        findByIds: async () => [lesson],
+        create: async () => undefined,
+        update: async () => null,
+        delete: async () => false,
+      },
+      attachments: {
+        create: async () => undefined,
+        findById: async (tenantId, attachmentId) =>
+          tenantId === acme.id && attachmentId === attachment.id ? attachment : null,
+        listByLesson: async () => [attachment],
+        listReadyByLesson: async () => [attachment],
+        markReady: async () => attachment,
+        delete: async () => false,
+      },
+      secretResolver: {
+        resolve: async () => ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'creator-files',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        })),
+      },
+      storage: {
+        objectUrl: (configuration, key) =>
+          new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+        probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        presignPut: (input) => ok(input.url),
+        presignGet: () => ok('https://download.example.test/signed'),
+        delete: async () => ok({ deleted: true }),
+        head: async () => ok({ sizeBytes: attachment.sizeBytes }),
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'storage.available', message: 'ok' }),
+      },
+    },
+  });
+  const path = API_PATHS.studentLessonAttachmentDownload
+    .replace(':lessonId', lesson.id)
+    .replace(':attachmentId', attachment.id);
+
+  it('redirects an authorized request to the signed object URL', async () => {
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed');
+  });
+
+  it('returns an API envelope when the use-case rejects the attachment', async () => {
+    const response = await app.request(path.replace(attachment.id, 'missing'), {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });
 

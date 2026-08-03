@@ -40,6 +40,10 @@ import {
   lessonsListOutputSchema,
   lessonReferencesOutputSchema,
   lessonDeleteOutputSchema,
+  lessonAttachmentCompleteOutputSchema,
+  lessonAttachmentDeleteOutputSchema,
+  lessonAttachmentUploadOutputSchema,
+  lessonAttachmentsOutputSchema,
   m2mEnrollOutputSchema,
   marketingConsentDefinitionOutputSchema,
   marketingConsentDefinitionDetailOutputSchema,
@@ -160,6 +164,7 @@ import {
   type MemberProgressResetInput,
   type LessonCreateInput,
   type LessonUpdateInput,
+  type LessonAttachmentUploadRequest,
   type M2mEnrollRequest,
   type MarketingConsentDefinitionCreateInput,
   type MarketingConsentDefinitionUpdateInput,
@@ -261,6 +266,11 @@ export interface ApiClientOptions {
    * SDK-free and makes propagation trivially testable by passing a stub.
    */
   traceparent?: () => string | undefined;
+}
+
+export interface LessonAttachmentFileUpload extends LessonAttachmentUploadRequest {
+  lessonId: string;
+  body: Blob;
 }
 
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
@@ -1066,6 +1076,62 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listLessonAttachments: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.lessonAttachments.method,
+      API_ROUTES.lessonAttachments.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      lessonAttachmentsOutputSchema,
+      undefined,
+      signal,
+    ),
+  uploadLessonAttachment: async (input: LessonAttachmentFileUpload, signal?: AbortSignal) => {
+    const started = await request(
+      options,
+      API_ROUTES.lessonAttachmentUpload.method,
+      API_ROUTES.lessonAttachmentUpload.path.replace(':lessonId', encodeURIComponent(input.lessonId)),
+      lessonAttachmentUploadOutputSchema,
+      { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+      signal,
+    );
+    if (!started.ok) return started;
+    const fetchImpl = options.fetchImpl ?? fetch;
+    let uploaded: Response;
+    try {
+      uploaded = await fetchImpl(started.value.upload.url, {
+        method: 'PUT',
+        headers: started.value.upload.headers,
+        body: input.body,
+        signal: signal ?? null,
+      });
+    } catch (cause) {
+      return err(internal(`Network error uploading ${input.fileName}: ${String(cause)}`));
+    }
+    if (!uploaded.ok) {
+      return err(internal(`Storage rejected ${input.fileName} with HTTP ${String(uploaded.status)}`));
+    }
+    return request(
+      options,
+      API_ROUTES.lessonAttachmentComplete.method,
+      API_ROUTES.lessonAttachmentComplete.path
+        .replace(':lessonId', encodeURIComponent(input.lessonId))
+        .replace(':attachmentId', encodeURIComponent(started.value.attachment.id)),
+      lessonAttachmentCompleteOutputSchema,
+      {},
+      signal,
+    );
+  },
+  deleteLessonAttachment: (input: { lessonId: string; attachmentId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.lessonAttachmentDelete.method,
+      API_ROUTES.lessonAttachmentDelete.path
+        .replace(':lessonId', encodeURIComponent(input.lessonId))
+        .replace(':attachmentId', encodeURIComponent(input.attachmentId)),
+      lessonAttachmentDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
   studentCourses: (signal?: AbortSignal) =>
     request(
       options,
@@ -1090,6 +1156,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.studentLesson.method,
       API_ROUTES.studentLesson.path.replace(':lessonId', encodeURIComponent(lessonId)),
       studentLessonOutputSchema,
+      undefined,
+      signal,
+    ),
+  studentLessonAttachments: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLessonAttachments.method,
+      API_ROUTES.studentLessonAttachments.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      lessonAttachmentsOutputSchema,
       undefined,
       signal,
     ),

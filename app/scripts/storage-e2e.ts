@@ -11,6 +11,10 @@ import {
   type StorageConfiguration,
   type StorageProbeErrorCode,
 } from '#core/domain/index.js';
+import {
+  ATTACHMENT_DOWNLOAD_TTL_SECONDS,
+  ATTACHMENT_UPLOAD_TTL_SECONDS,
+} from '#core/server/index.js';
 
 import { delay, ephemeralPort, run } from './server-harness.js';
 
@@ -134,6 +138,64 @@ const expectProbeFailure = async (
   console.log(`storage:e2e: ${label} → ${actual}`);
 };
 
+const verifyAttachmentRoundtrip = async (): Promise<void> => {
+  const storageKey = `lesson-attachments/lesson-e2e/${randomUUID()}/handout.txt`;
+  const objectUrl = storage.objectUrl(configuration, storageKey).toString();
+  const body = `together lesson attachment ${randomUUID()}`;
+
+  const upload = storage.presignPut({
+    url: objectUrl,
+    accessKeyId: configuration.accessKeyId,
+    secretAccessKey: configuration.secretAccessKey,
+    region: configuration.region,
+    expiresInSeconds: ATTACHMENT_UPLOAD_TTL_SECONDS,
+  });
+  assert(upload.ok, `Could not presign the upload: ${upload.ok ? '' : upload.error.message}`);
+  const uploaded = await fetch(upload.value, {
+    method: 'PUT',
+    headers: { 'content-type': 'text/plain' },
+    body,
+  });
+  assert(uploaded.ok, `The presigned upload failed with HTTP ${String(uploaded.status)}`);
+
+  const metadata = await storage.head({
+    url: objectUrl,
+    accessKeyId: configuration.accessKeyId,
+    secretAccessKey: configuration.secretAccessKey,
+    region: configuration.region,
+  });
+  assert(metadata.ok, `Could not read attachment metadata: ${metadata.ok ? '' : metadata.error.message}`);
+  assert(
+    metadata.value.sizeBytes === Buffer.byteLength(body),
+    `The attachment metadata reported ${String(metadata.value.sizeBytes)} bytes instead of ${String(Buffer.byteLength(body))}`,
+  );
+
+  const unsigned = await fetch(objectUrl);
+  assert(!unsigned.ok, `The uploaded attachment is publicly readable (HTTP ${String(unsigned.status)})`);
+
+  const download = storage.presignGet({
+    url: objectUrl,
+    accessKeyId: configuration.accessKeyId,
+    secretAccessKey: configuration.secretAccessKey,
+    region: configuration.region,
+    expiresInSeconds: ATTACHMENT_DOWNLOAD_TTL_SECONDS,
+  });
+  assert(download.ok, `Could not presign the download: ${download.ok ? '' : download.error.message}`);
+  const downloaded = await fetch(download.value);
+  assert(downloaded.ok, `The presigned download failed with HTTP ${String(downloaded.status)}`);
+  const received = await downloaded.text();
+  assert(received === body, `The downloaded attachment differs from the uploaded one: "${received}"`);
+
+  const removed = await storage.delete({
+    url: objectUrl,
+    accessKeyId: configuration.accessKeyId,
+    secretAccessKey: configuration.secretAccessKey,
+    region: configuration.region,
+  });
+  assert(removed.ok, `Could not delete the attachment: ${removed.ok ? '' : removed.error.message}`);
+  console.log('storage:e2e: presigned attachment upload, private read and delete → ok');
+};
+
 const assertBucketIsEmpty = async (): Promise<void> => {
   if (!managesMinio) return;
   const listed = await run('docker', [
@@ -164,6 +226,7 @@ try {
     `The live probe failed: ${probed.ok ? '' : `${probeCodeOf(probed.error)} — ${probed.error.message}`}`,
   );
   console.log(`storage:e2e: write, read and delete → ${probed.value.code}`);
+  await verifyAttachmentRoundtrip();
   await assertBucketIsEmpty();
 
   await expectProbeFailure(

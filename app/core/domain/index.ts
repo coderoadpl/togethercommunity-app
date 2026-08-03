@@ -18,6 +18,7 @@ export * from './product.js';
 export * from './grant.js';
 export * from './api-key.js';
 export * from './course.js';
+export * from './lesson-attachment.js';
 export * from './community.js';
 export * from './moderation.js';
 export * from './space.js';

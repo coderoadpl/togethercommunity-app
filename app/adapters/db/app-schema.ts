@@ -974,6 +974,29 @@ export const courseLessons = pgTable(
   ],
 );
 
+export const lessonAttachments = pgTable(
+  'lesson_attachments',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    lessonId: text('lesson_id')
+      .notNull()
+      .references(() => courseLessons.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    storageKey: text('storage_key').notNull(),
+    status: text('status', { enum: ['pending', 'ready'] }).notNull().default('pending'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('lesson_attachments_tenant_lesson_idx').on(table.tenantId, table.lessonId),
+    uniqueIndex('lesson_attachments_tenant_storage_key_uidx').on(table.tenantId, table.storageKey),
+  ],
+);
+
 export const memberCourseProgress = pgTable(
   'member_course_progress',
   {

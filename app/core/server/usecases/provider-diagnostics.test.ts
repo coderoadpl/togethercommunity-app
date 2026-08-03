@@ -57,10 +57,12 @@ const fakeDeps = (
     },
   },
   storage: {
+    objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(input.url),
     delete: async () => ok({ deleted: true }),
+    head: async () => ok({ sizeBytes: 1 }),
     healthcheck: async () => ok({ healthy: true }),
     test: async () => {
       tested.push('storage');

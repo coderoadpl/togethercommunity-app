@@ -446,13 +446,13 @@ export const en: Messages = {
     storageBack: 'Back',
     storageInstructionsHeading: 'Where to get the keys',
     storageInstructionAws:
-      'Create a scoped IAM access key with PutObject, GetObject and DeleteObject permissions for this bucket.',
+      'Create a scoped IAM access key with PutObject, GetObject and DeleteObject permissions for this bucket. Set bucket CORS AllowedHeaders to include Content-Type.',
     storageInstructionR2:
-      'Create an R2 API token with Object Read & Write access limited to this bucket, then copy its S3 credentials and endpoint.',
+      'Create an R2 API token with Object Read & Write access limited to this bucket, then copy its S3 credentials and endpoint. Set bucket CORS AllowedHeaders to include Content-Type.',
     storageInstructionB2:
-      'Create a bucket-scoped application key with readFiles, writeFiles and deleteFiles capabilities. Use the key ID as the access key ID.',
+      'Create a bucket-scoped application key with readFiles, writeFiles and deleteFiles capabilities. Use the key ID as the access key ID. Set bucket CORS AllowedHeaders to include Content-Type.',
     storageInstructionMinio:
-      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket.',
+      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type.',
     storageInstructionLink: 'Open provider instructions',
     storageProbeDescription:
       'Together will upload a small scratch object, read it back byte for byte, and delete it. Nothing is saved yet.',
@@ -466,7 +466,7 @@ export const en: Messages = {
       'Check the access key, secret key and PutObject, GetObject and DeleteObject permissions.',
     storageProbeBucket: 'Check that the bucket name is exact and that this key can access it.',
     storageProbeCors:
-      'Allow this Together origin in the bucket CORS policy for PUT, GET and DELETE requests.',
+      'Allow this Together origin and PUT, GET and DELETE methods in bucket CORS, with Content-Type in AllowedHeaders.',
     storageProbeUnavailable: 'Check the endpoint URL and network access, then run the probe again.',
   },
   products: {
@@ -700,6 +700,14 @@ export const en: Messages = {
     saving: 'Saving…',
     saveLesson: 'Save lesson',
     createLesson: 'Create lesson',
+    attachmentsHeading: 'Private attachments',
+    attachmentsHelp: 'Files upload directly to your configured bucket and are available only to members with access to this lesson.',
+    attachmentsEmpty: 'No attachments yet.',
+    attachmentFileInput: 'Choose a private attachment',
+    uploadAttachment: 'Add attachment',
+    uploadingAttachment: 'Uploading…',
+    attachmentSize: ({ kilobytes }) => format('{kilobytes} KB', { kilobytes }),
+    deleteAttachment: ({ name }) => format('delete attachment {name}', { name }),
     invalidBlocks: 'Invalid lesson blocks',
     blockNoun: ({ count }) => plural(count, 'block', 'blocks'),
     typeVideo: 'Video',
@@ -964,6 +972,8 @@ export const en: Messages = {
     videoTitle: 'Lesson video',
     embedTitle: 'Embedded content',
     pdfTitle: 'Lesson PDF',
+    attachmentsHeading: 'Downloads',
+    downloadAttachment: ({ name }) => format('Download {name}', { name }),
   },
   discussion: {
     heading: 'Discussion',

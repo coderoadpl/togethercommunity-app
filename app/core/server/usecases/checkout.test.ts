@@ -168,7 +168,7 @@ describe('createCheckoutSession', () => {
   ] as const)('rejects a membership checkout %s', async (_case, priceId, foundPrice) => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, ...(priceId === undefined ? {} : { priceId }) },
       {

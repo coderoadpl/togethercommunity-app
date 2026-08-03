@@ -389,6 +389,7 @@ export interface MemberPseudonymization {
   postAuthorDisplay: string;
 }
 
+/** @public */
 export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
@@ -619,6 +620,7 @@ export interface InvoiceRepository {
   ): Promise<Invoice | null>;
 }
 
+/** @public */
 export interface KsefNumberAllocation {
   p2: string;
   sequence: number;
@@ -631,6 +633,7 @@ export interface KsefNumberRepository {
   ): Promise<KsefNumberAllocation>;
 }
 
+/** @public */
 export interface KsefSubmissionJob {
   id: string;
   tenantId: string;
@@ -1067,7 +1070,10 @@ export interface PaymentTransactionPort {
   ): Promise<Result<T, AppError>>;
 }
 
-/** Dev-only sink so tests and the CLI can read magic links without a mailer. */
+/**
+ * Dev-only sink so tests and the CLI can read magic links without a mailer.
+ * @public
+ */
 export interface DevMagicLink {
   email: string;
   url: string;
@@ -1078,6 +1084,7 @@ export interface DevMagicLinkReader {
   findByEmail(email: string): Promise<DevMagicLink | null>;
 }
 
+/** @public */
 export interface DevEmail {
   to: string;
   subject: string;
@@ -1108,6 +1115,7 @@ export interface OnboardingStateRepository {
   dismiss(tenantId: string, dismissedAt: string): Promise<void>;
 }
 
+/** @public */
 export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 
 export interface TenantRepository {

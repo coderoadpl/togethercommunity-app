@@ -67,6 +67,7 @@ type MemberEventFromRegistry<TRegistry extends MemberEventRegistry> = {
   };
 }[keyof TRegistry & string];
 
+/** @public part of the member-event registry surface (consumed by panel i18n) */
 export type MemberEventType = keyof typeof memberEventRegistry;
 export type MemberEvent = MemberEventFromRegistry<typeof memberEventRegistry>;
 

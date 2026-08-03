@@ -1,7 +1,6 @@
 import {
   appError,
   buildEmailHeaders,
-  campaignCanEditContent,
   campaignCanTransition,
   classifySesEvent,
   deriveConsentState,
@@ -271,18 +270,6 @@ export const withdrawMarketingConsent = async (
   };
   await deps.consents.record(tenantId.value, withdrawn);
   return ok({ consent: withdrawn });
-};
-
-export const purgeStalePendingConsents = async (
-  ctx: Ctx,
-  input: { olderThan: string },
-  deps: Pick<ConsentDeps, 'consents' | 'definitions'>,
-): Promise<Result<{ purged: number }, AppError>> => {
-  const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
-  if (!tenantId.ok) return tenantId;
-  const definitions = await deps.definitions.list(tenantId.value);
-  const doubleOptInDefinitionIds = definitions.filter((definition) => definition.doubleOptIn).map((definition) => definition.id);
-  return ok({ purged: await deps.consents.purgeStalePending(tenantId.value, input.olderThan, doubleOptInDefinitionIds) });
 };
 
 interface EligibilityDeps {
@@ -773,20 +760,6 @@ export const cancelCampaign = async (
   const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
   if (!tenantId.ok) return tenantId;
   return transitionCampaign(ctx, input.campaignId, 'cancelled', deps);
-};
-
-export const updateCampaignContent = async (
-  ctx: Ctx,
-  input: { campaignId: string; subject: string; bodyHtml: string },
-  deps: CampaignDeps,
-): Promise<Result<Campaign, AppError>> => {
-  const tenantId = staffTenantIdFrom(ctx, 'marketing:campaign:write');
-  if (!tenantId.ok) return tenantId;
-  const campaign = await deps.campaigns.findById(tenantId.value, input.campaignId);
-  if (campaign === null) return err(notFound('Campaign was not found'));
-  if (!campaignCanEditContent(campaign.status)) return err(validation('Campaign content is locked in this state'));
-  const updated = await deps.campaigns.update(tenantId.value, { ...campaign, subject: input.subject, bodyHtml: input.bodyHtml, bodySource: input.bodyHtml });
-  return updated === null ? err(notFound('Campaign was not found')) : ok(updated);
 };
 
 interface SendDeps extends EligibilityDeps {

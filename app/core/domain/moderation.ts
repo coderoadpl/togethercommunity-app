@@ -3,13 +3,12 @@ import { z } from 'zod';
 import { publicPostSchema } from './community.js';
 import { MAX_MEMBER_BAN_REASON_LENGTH } from './tenant.js';
 
-export const postReportReasonSchema = z.enum(['spam', 'harassment', 'off-topic', 'illegal', 'other']);
-export const postReportSourceSchema = z.enum(['member', 'heuristic']);
-export const postReportStatusSchema = z.enum(['open', 'dismissed', 'resolved']);
-export const heuristicSignalSchema = z.enum(['link-flood', 'duplicate-body']);
+const postReportReasonSchema = z.enum(['spam', 'harassment', 'off-topic', 'illegal', 'other']);
+const postReportSourceSchema = z.enum(['member', 'heuristic']);
+const postReportStatusSchema = z.enum(['open', 'dismissed', 'resolved']);
+const heuristicSignalSchema = z.enum(['link-flood', 'duplicate-body']);
 
 export type PostReportReason = z.output<typeof postReportReasonSchema>;
-export type PostReportSource = z.output<typeof postReportSourceSchema>;
 export type PostReportStatus = z.output<typeof postReportStatusSchema>;
 export type HeuristicSignal = z.output<typeof heuristicSignalSchema>;
 
@@ -44,14 +43,12 @@ export const postReportEventSchema = z.object({
 
 export type PostReportEvent = z.output<typeof postReportEventSchema>;
 
-export const reportQueueItemSchema = z.object({
+const reportQueueItemSchema = z.object({
   report: postReportSchema,
   post: publicPostSchema,
   spaceName: z.string().nullable(),
   openReportsForPost: z.number().int().nonnegative(),
 });
-
-export type ReportQueueItem = z.output<typeof reportQueueItemSchema>;
 
 export const reportQueueSchema = z.object({
   items: z.array(reportQueueItemSchema),
@@ -67,30 +64,22 @@ export const reportPostInputSchema = z.object({
   note: z.string().max(MAX_REPORT_NOTE_LENGTH).optional(),
 });
 
-export type ReportPostInput = z.input<typeof reportPostInputSchema>;
-
 export const listReportsInputSchema = z.object({
   status: postReportStatusSchema.default('open'),
   cursor: z.string().optional(),
   limit: z.number().int().min(1).max(100).default(20),
 });
 
-export type ListReportsInput = z.input<typeof listReportsInputSchema>;
-
 export const resolveReportInputSchema = z.object({
   reportId: z.string().min(1),
   action: z.enum(['dismiss', 'delete-post']),
 });
-
-export type ResolveReportInput = z.input<typeof resolveReportInputSchema>;
 
 export const setMemberBannedInputSchema = z.object({
   memberId: z.string().min(1),
   banned: z.boolean(),
   reason: z.string().trim().max(MAX_MEMBER_BAN_REASON_LENGTH).optional(),
 });
-
-export type SetMemberBannedInput = z.input<typeof setMemberBannedInputSchema>;
 
 export const POST_RATE_LIMIT = { maxPosts: 10, windowMinutes: 10 } as const;
 export const LINK_COUNT_FLAG_THRESHOLD = 3;

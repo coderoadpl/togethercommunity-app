@@ -1,7 +1,4 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -91,16 +88,9 @@ import {
   suppressions,
   user,
 } from './schema.js';
-import * as dbSchema from './schema.js';
-import { uniqueTestDatabaseName } from './test-database-name.js';
+import { createTestDatabase } from './test-database-name.js';
 
-const TEST_DB = uniqueTestDatabaseName('together_repositories_test');
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const testUrl = (() => {
-  const url = new URL(baseDatabaseUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
-})();
 
 const NOW = '2026-07-14T10:00:00.000Z';
 const PAST = '2026-01-01T00:00:00.000Z';
@@ -110,15 +100,11 @@ const ACME = 'tenant-acme';
 const GLOBEX = 'tenant-globex';
 
 let db: Db;
-let dbPool: pg.Pool;
+let closeTestDatabase: () => Promise<void>;
 const emailHmac = { compute: (tenantId: string, email: string) => `${tenantId}:${email.trim().toLowerCase()}` };
 
 afterAll(async () => {
-  await dbPool.end();
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.end();
+  await closeTestDatabase();
 });
 
 const product = (over: Partial<Product> & { id: string; tenantId: string }): Product => ({
@@ -197,18 +183,9 @@ const member = (over: Partial<Member> & { id: string; tenantId: string; userId: 
 });
 
 beforeAll(async () => {
-  const admin = new pg.Client({ connectionString: baseDatabaseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.query(`CREATE DATABASE ${TEST_DB}`);
-  await admin.end();
-
-  const migrationPool = new pg.Pool({ connectionString: testUrl });
-  await migrate(drizzle(migrationPool), { migrationsFolder: 'drizzle' });
-  await migrationPool.end();
-
-  dbPool = new pg.Pool({ connectionString: testUrl });
-  db = drizzle(dbPool, { schema: dbSchema });
+  const testDatabase = await createTestDatabase('together_repositories_test', baseDatabaseUrl);
+  db = testDatabase.db;
+  closeTestDatabase = testDatabase.close;
 
   await db.insert(user).values([
     { id: 'user-acme-owner', name: 'Acme Owner', email: 'owner-acme@together.dev' },

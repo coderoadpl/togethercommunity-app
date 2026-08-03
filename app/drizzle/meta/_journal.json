@@ -442,6 +442,13 @@
       "when": 1785286000000,
       "tag": "0062_member_bans",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1785739502447,
+      "tag": "0063_product_metadata",
+      "breakpoints": true
     }
   ]
 }

@@ -55,6 +55,10 @@ export const simulatePurchase = async (
     if (!price.active) return err(validation('This price is no longer active'));
   }
 
+  if (product.type === 'membership' && price?.kind !== 'recurring') {
+    return err(validation('Membership products require a recurring price'));
+  }
+
   if (price?.kind === 'recurring') {
     const member = await ensureMember(tenantId, input.email, deps);
     if (!member.ok) return member;

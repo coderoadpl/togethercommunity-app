@@ -65,6 +65,8 @@ beforeAll(async () => {
   await db.insert(products).values({
     id: 'product-ksef',
     tenantId: 'tenant-ksef',
+    type: 'course',
+    slug: 'course',
     title: 'Course',
     description: '',
     priceCents: 7900,

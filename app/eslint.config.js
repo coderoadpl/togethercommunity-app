@@ -560,6 +560,7 @@ export default tseslint.config(
                 '@mui/material',
                 '@testing-library/react',
                 '@testing-library/user-event',
+                'dompurify',
                 'react',
                 'vitest',
               ],

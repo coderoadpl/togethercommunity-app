@@ -316,6 +316,29 @@ export const productPrices = pgTable(
   ],
 );
 
+export const productDownloadAssets = pgTable(
+  'product_download_assets',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    contentType: text('content_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    storageKey: text('storage_key').notNull(),
+    status: text('status', { enum: ['pending', 'ready'] }).notNull().default('pending'),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('product_download_assets_tenant_product_idx').on(table.tenantId, table.productId),
+    uniqueIndex('product_download_assets_tenant_storage_key_uidx').on(table.tenantId, table.storageKey),
+  ],
+);
+
 export const coupons = pgTable(
   'coupons',
   {

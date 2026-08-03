@@ -56,6 +56,15 @@ const subscriptions = {
   countActive: async () => 0,
 };
 
+const downloadAssets = {
+  create: async () => undefined,
+  findById: async () => null,
+  listByProduct: async () => [],
+  listReadyByProduct: async () => [],
+  markReady: async () => null,
+  delete: async () => false,
+};
+
 const grants = (products: Product[], memberGrants: MemberGrant[]): ProductGrantRepository => ({
   findById: async () => null,
   findGrant: async () => null,
@@ -73,6 +82,7 @@ describe('listMyProducts', () => {
       grants: grants([granted], [memberGrant()]),
       clock,
       subscriptions,
+      downloadAssets,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -87,6 +97,7 @@ describe('listMyProducts', () => {
       ]),
       clock,
       subscriptions,
+      downloadAssets,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -101,6 +112,7 @@ describe('listMyProducts', () => {
       ]),
       clock,
       subscriptions,
+      downloadAssets,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -116,6 +128,7 @@ describe('listMyProducts', () => {
       ]),
       clock,
       subscriptions,
+      downloadAssets,
     });
     expect(result).toMatchObject({ ok: true, value: [{ id: 'p1', grantStatus: 'active' }] });
     if (result.ok) expect(result.value).toHaveLength(1);
@@ -126,6 +139,7 @@ describe('listMyProducts', () => {
       grants: grants([granted], []),
       clock,
       subscriptions,
+      downloadAssets,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
@@ -135,6 +149,7 @@ describe('listMyProducts', () => {
       grants: grants([], []),
       clock,
       subscriptions,
+      downloadAssets,
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });

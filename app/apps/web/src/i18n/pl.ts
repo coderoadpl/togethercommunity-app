@@ -567,6 +567,14 @@ export const pl: Messages = {
     deactivateConfirm: 'Dezaktywuj cenę',
     creatingPrice: 'Dodawanie…',
     priceCreated: 'Cena została dodana.',
+    downloadsHeading: 'Pliki do pobrania',
+    downloadsDescription: 'Dodaj pliki, które kupujący pobiorą po uzyskaniu aktywnego dostępu.',
+    downloadsEmpty: 'Ten produkt nie ma jeszcze plików do pobrania.',
+    downloadFileInput: 'Wybierz plik produktu',
+    uploadDownload: 'Dodaj plik',
+    uploadingDownload: 'Wysyłanie pliku…',
+    deleteDownload: ({ name }) => `Usuń plik ${name}`,
+    downloadSize: ({ kilobytes }) => `${kilobytes} KB`,
   },
   access: {
     loading: 'ładowanie danych o dostępie…',
@@ -955,6 +963,8 @@ export const pl: Messages = {
     manageSubscription: 'Zarządzaj płatnościami',
     coursesEmptyRenewHint:
       'Masz już produkt? Sprawdź status dostępu w swoich produktach — jeśli wygasł, możesz go tam odnowić.',
+    downloadsHeading: 'Pliki do pobrania',
+    downloadFile: ({ name }) => `Pobierz ${name}`,
   },
   courseTree: {
     lockedTooltip: 'Treść zablokowana',

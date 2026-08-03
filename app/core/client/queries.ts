@@ -87,7 +87,13 @@ import type {
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
-import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
+import {
+  unwrap,
+  type ApiClient,
+  type ProductDownloadFileUpload,
+  type ReadResult,
+  type WriteResult,
+} from './http.js';
 import type { LessonAttachmentFileUpload } from './http.js';
 
 /**
@@ -180,6 +186,11 @@ const productsScopes = {
 const productPricesScopes = {
   all: () => ['product-prices'] as const,
   list: (productId: string) => ['product-prices', 'list', productId] as const,
+};
+
+const productDownloadsScopes = {
+  all: () => ['product-downloads'] as const,
+  list: (productId: string) => ['product-downloads', 'list', productId] as const,
 };
 
 const salesScopes = {
@@ -532,6 +543,28 @@ export const deactivateProductPriceMutation = (api: ApiClient) =>
     mutationKey: [...productPricesScopes.all(), 'deactivate'],
     call: (input: ProductPriceDeactivateInput) => api.deactivateProductPrice(input),
   });
+
+export const productDownloadAssetsQuery = (api: ApiClient, productId: string) =>
+  defineQuery({
+    queryKey: productDownloadsScopes.list(productId),
+    call: ({ signal }) => api.listProductDownloadAssets(productId, signal),
+  });
+
+export const uploadProductDownloadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productDownloadsScopes.all(), 'upload'],
+    call: (input: ProductDownloadFileUpload) => api.uploadProductDownload(input),
+  });
+
+export const deleteProductDownloadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productDownloadsScopes.all(), 'delete'],
+    call: (input: { productId: string; assetId: string }) => api.deleteProductDownload(input),
+  });
+
+export const productDownloadAssetsInvalidates = (productId: string) => ({
+  queryKey: productDownloadsScopes.list(productId),
+});
 
 export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
   defineQuery({

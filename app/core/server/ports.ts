@@ -35,6 +35,7 @@ import type {
   OrderStatus,
   PriceKind,
   Product,
+  ProductDownloadAsset,
   ProductGrant,
   ProductPrice,
   ProcessedPaymentEvent,
@@ -179,6 +180,15 @@ export interface LessonAttachmentRepository {
   listReadyByLesson(tenantId: string, lessonId: string): Promise<LessonAttachment[]>;
   markReady(tenantId: string, attachmentId: string, sizeBytes: number): Promise<LessonAttachment | null>;
   delete(tenantId: string, attachmentId: string): Promise<boolean>;
+}
+
+export interface ProductDownloadAssetRepository {
+  create(tenantId: string, asset: ProductDownloadAsset): Promise<void>;
+  findById(tenantId: string, assetId: string): Promise<ProductDownloadAsset | null>;
+  listByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
+  listReadyByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
+  markReady(tenantId: string, assetId: string, sizeBytes: number): Promise<ProductDownloadAsset | null>;
+  delete(tenantId: string, assetId: string): Promise<boolean>;
 }
 
 export interface PostSearchRow {

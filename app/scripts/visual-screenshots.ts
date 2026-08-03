@@ -207,7 +207,10 @@ const SCREENS: ScreenSpec[] = [
     name: 'my-products',
     auth: 'member',
     path: '/my/products',
-    ready: (page) => page.getByTestId('my-product-product-js-full').waitFor(visible),
+    ready: async (page) => {
+      await page.getByTestId('my-product-product-js-full').waitFor(visible);
+      await page.getByTestId('download-download-asset-workbook').waitFor(visible);
+    },
   },
   {
     name: 'product-stub',
@@ -336,6 +339,17 @@ const SCREENS: ScreenSpec[] = [
     auth: 'creator',
     path: '/panel/products',
     ready: (page) => page.getByTestId('product-row').first().waitFor(visible),
+  },
+  {
+    name: 'panel-product-downloads',
+    auth: 'creator',
+    path: '/panel/products/product-download-workbook',
+    ready: (page) => page.getByTestId('product-download-assets').waitFor(visible),
+    settled: async (page) => {
+      await page.getByTestId('product-download-assets').evaluate((element) =>
+        element.scrollIntoView({ block: 'start' }),
+      );
+    },
   },
   {
     name: 'panel-coupons',

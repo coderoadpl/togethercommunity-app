@@ -18,6 +18,7 @@ import {
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
+  productDownloadAssetSchema,
   postSchema,
   postReportSchema,
   REACTION_EMOJIS,
@@ -43,6 +44,7 @@ import {
   type Order,
   type OrderListItem,
   type ProductPrice,
+  type ProductDownloadAsset,
   type Post,
   type PostReport,
   type Product,
@@ -76,6 +78,7 @@ import type {
   OrderDetailRepository,
   PaymentRefundRepository,
   ProductPriceRepository,
+  ProductDownloadAssetRepository,
   PostRepository,
   PostReportRepository,
   PostSearchRow,
@@ -131,6 +134,7 @@ import {
   posts,
   productGrants,
   productPrices,
+  productDownloadAssets,
   processedPaymentEvents,
   products,
   spaces,
@@ -154,6 +158,9 @@ const parseProduct = (product: Product): Product => productSchema.parse(product)
 
 const parseLessonAttachment = (attachment: LessonAttachment): LessonAttachment =>
   lessonAttachmentSchema.parse(attachment);
+
+const parseProductDownloadAsset = (asset: ProductDownloadAsset): ProductDownloadAsset =>
+  productDownloadAssetSchema.parse(asset);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
 
@@ -605,6 +612,60 @@ export const createLessonAttachmentRepository = (db: Db): LessonAttachmentReposi
       .delete(lessonAttachments)
       .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
       .returning({ id: lessonAttachments.id });
+    return rows.length > 0;
+  },
+});
+
+export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAssetRepository => ({
+  create: async (tenantId, asset) => {
+    await db.insert(productDownloadAssets).values({ ...asset, tenantId });
+  },
+  findById: async (tenantId, assetId) => {
+    const rows = await db
+      .select()
+      .from(productDownloadAssets)
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseProductDownloadAsset(row) : null;
+  },
+  listByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productDownloadAssets)
+        .where(and(
+          eq(productDownloadAssets.tenantId, tenantId),
+          eq(productDownloadAssets.productId, productId),
+        ))
+        .orderBy(asc(productDownloadAssets.createdAt))
+    ).map(parseProductDownloadAsset),
+  listReadyByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productDownloadAssets)
+        .where(and(
+          eq(productDownloadAssets.tenantId, tenantId),
+          eq(productDownloadAssets.productId, productId),
+          eq(productDownloadAssets.status, 'ready'),
+        ))
+        .orderBy(asc(productDownloadAssets.createdAt))
+    ).map(parseProductDownloadAsset),
+  markReady: async (tenantId, assetId, sizeBytes) => {
+    const rows = await db
+      .update(productDownloadAssets)
+      .set({ status: 'ready', sizeBytes })
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseProductDownloadAsset(row) : null;
+  },
+  delete: async (tenantId, assetId) => {
+    const rows = await db
+      .delete(productDownloadAssets)
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .returning({ id: productDownloadAssets.id });
     return rows.length > 0;
   },
 });

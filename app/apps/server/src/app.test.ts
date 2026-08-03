@@ -26,6 +26,8 @@ import {
   type Order,
   type Post,
   type Product,
+  type ProductDownloadAsset,
+  type ProductGrant,
   type Tenant,
   type TenantDomain,
   type TermsConsent,
@@ -152,6 +154,14 @@ const deps = (input: {
       listForMemberWithProductNames: async () => [],
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
+    },
+    downloadAssets: {
+      create: async () => undefined,
+      findById: async () => null,
+      listByProduct: async () => [],
+      listReadyByProduct: async () => [],
+      markReady: async () => null,
+      delete: async () => false,
     },
     prices: {
       listByProduct: async () => [],
@@ -1599,6 +1609,80 @@ describe('lesson attachment download route', () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
+describe('purchased product download route', () => {
+  const downloadProduct: Product = {
+    ...product({ id: 'digital-download', tenantId: acme.id, title: 'Creator workbook', published: true }),
+    type: 'digital_download',
+  };
+  const asset: ProductDownloadAsset = {
+    id: 'download-asset',
+    tenantId: acme.id,
+    productId: downloadProduct.id,
+    fileName: 'workbook.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 4096,
+    storageKey: 'product-downloads/digital-download/download-asset/workbook.pdf',
+    status: 'ready',
+    createdAt: '2026-07-12T00:00:00.000Z',
+  };
+  const grant: ProductGrant = {
+    id: 'download-grant',
+    tenantId: acme.id,
+    memberId: 'member-1',
+    productId: downloadProduct.id,
+    source: 'stripe',
+    startsAt: '2026-07-01T00:00:00.000Z',
+    expiresAt: null,
+    legacyId: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+  };
+  const path = API_PATHS.memberProductDownload
+    .replace(':productId', downloadProduct.id)
+    .replace(':assetId', asset.id);
+  const overrides = (entitled: boolean): Partial<AppDeps> => ({
+    grants: {
+      ...deps().grants,
+      listActiveForMember: async () => entitled ? [grant] : [],
+    },
+    downloadAssets: {
+      ...deps().downloadAssets,
+      findById: async () => asset,
+    },
+    secretResolver: {
+      resolve: async () => ok(JSON.stringify({
+        provider: 'minio',
+        endpoint: 'https://storage.example.test',
+        region: 'eu-central-1',
+        bucket: 'creator-files',
+        accessKeyId: 'access-key',
+        secretAccessKey: 'secret-key',
+      })),
+    },
+    storage: {
+      ...deps().storage,
+      presignGet: () => ok('https://download.example.test/signed-workbook'),
+    },
+  });
+
+  it('redirects a purchased download to its signed object URL', async () => {
+    const response = await scopedApp('member', { overrides: overrides(true) }).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+  });
+
+  it('returns 403 for an unentitled member', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });
 

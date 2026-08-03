@@ -84,7 +84,7 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
     routed = true;
     try {
       await gate;
-      await route.continue();
+      await route.continue().catch(() => undefined);
     } finally {
       complete();
     }

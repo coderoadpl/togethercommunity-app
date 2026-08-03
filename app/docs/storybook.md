@@ -41,7 +41,7 @@ are bounded to the story and Storybook configuration directories.
 
 `addons: []` stays empty. Do not add a Storybook test runner, an accessibility
 addon, Chromatic, or another hosted comparison service. Accessibility already
-belongs to `pnpm run a11y` and `eslint-plugin-jsx-a11y`; hosted advisory pixels
+belongs to the in-house browser checks in `pnpm run a11y`; hosted advisory pixels
 belong to Argos. Any Storybook dependency or addon requires an owner decision
 and the licence review required by `CLAUDE.md`.
 
@@ -52,20 +52,11 @@ Canonical route pixels belong to `tasks/visual-goldens/` and the deterministic
 [visual regression policy](visual-regression.md). The hosted advisory track is
 Argos.
 
-`pnpm run visual:stories` builds `storybook-static/`, captures every story at
-390 px and 1440 px through the repository's Playwright browser, and reuses the
-route harness's zero-diff PNG comparator. Existing images in
-`tasks/lost-pixel-baselines/` are compared with `pixelmatch` at threshold zero
-and a zero mismatch budget. New stories without a baseline are reported as
-additions, because this remains an advisory, partial track rather than a merge
-signal.
-
-`pnpm run visual:stories:update` authors only the separate story baseline
-directory; it never writes `tasks/visual-goldens/`. Story authoring is guarded
-to macOS, matching the preserved baseline renderer. Current images and diffs go
-to `out/visual-stories/`. Lost Pixel itself and its configuration are retired;
-the committed story baselines and command meanings are preserved by the thin
-in-house comparator.
+Lost Pixel, its copied story baselines, and the replacement story-shot commands
+are retired. Storybook has no committed PNG baseline or screenshot comparison
+path. `pnpm run storybook:build` verifies that the catalogue compiles, while
+pixel ownership and authoring remain exclusively with `pnpm run visual` and
+`pnpm run visual:update`.
 
 ## Merge gate
 

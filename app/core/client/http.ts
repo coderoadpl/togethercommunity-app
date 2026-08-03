@@ -30,6 +30,7 @@ import {
   healthLiveOutputSchema,
   healthReadyOutputSchema,
   ifirmaTestConnectionOutputSchema,
+  integrationTestOutputSchema,
   ksefTestConnectionOutputSchema,
   emailDispatchOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
@@ -55,7 +56,6 @@ import {
   marketingSesOnboardingStatusSchema,
   marketingSesProvisionOutputSchema,
   marketingSesSimulatorOutputSchema,
-  marketingSmtpTestOutputSchema,
   marketingReputationOutputSchema,
   marketingSuppressionOutputSchema,
   marketingSuppressionsOutputSchema,
@@ -77,6 +77,7 @@ import {
   memberErasureRequestsOutputSchema,
   memberGrantsOutputSchema,
   memberLearningSummaryOutputSchema,
+  memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
   memberRemoveOutputSchema,
   membersListOutputSchema,
@@ -122,7 +123,7 @@ import {
   productsListOutputSchema,
   productsPublishOutputSchema,
   simulatePurchaseOutputSchema,
-  stripeTestConnectionOutputSchema,
+  stripeConfigureOutputSchema,
   stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
@@ -149,6 +150,8 @@ import {
   type GrantCreateInput,
   type GrantRevokeInput,
   type HttpMethod,
+  type IntegrationTestInput,
+  type StripeConfigureInput,
   type LastViewedInput,
   type LessonCompleteInput,
   type LessonUncompleteInput,
@@ -367,8 +370,6 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.marketingReputation.method, API_ROUTES.marketingReputation.path, marketingReputationOutputSchema, undefined, signal),
   updateMarketingSesSettings: (input: MarketingSesSettingsUpdateInput, signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingSesSettingsUpdate.method, API_ROUTES.marketingSesSettingsUpdate.path, marketingSesSettingsOutputSchema, input, signal),
-  testMarketingSmtp: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.marketingSmtpTest.method, API_ROUTES.marketingSmtpTest.path, marketingSmtpTestOutputSchema, {}, signal),
   listMarketingSuppressions: (signal?: AbortSignal) =>
     request(options, API_ROUTES.marketingStaffSuppressions.method, API_ROUTES.marketingStaffSuppressions.path, marketingSuppressionsOutputSchema, undefined, signal),
   addMarketingSuppression: (input: MarketingSuppressionCreateInput, signal?: AbortSignal) =>
@@ -916,6 +917,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  memberTimeline: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberTimeline.method,
+      API_ROUTES.memberTimeline.path.replace(':memberId', encodeURIComponent(memberId)),
+      memberTimelineOutputSchema,
+      undefined,
+      signal,
+    ),
   memberLearningSummary: (memberId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1378,13 +1388,22 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
-  testStripeConnection: (signal?: AbortSignal) =>
+  testIntegration: (input: IntegrationTestInput, signal?: AbortSignal) =>
     request(
       options,
-      API_ROUTES.stripeTestConnection.method,
-      API_ROUTES.stripeTestConnection.path,
-      stripeTestConnectionOutputSchema,
-      {},
+      API_ROUTES.integrationTest.method,
+      API_ROUTES.integrationTest.path,
+      integrationTestOutputSchema,
+      input,
+      signal,
+    ),
+  configureStripe: (input: StripeConfigureInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.stripeConfigure.method,
+      API_ROUTES.stripeConfigure.path,
+      stripeConfigureOutputSchema,
+      input,
       signal,
     ),
   testIfirmaConnection: (signal?: AbortSignal) =>

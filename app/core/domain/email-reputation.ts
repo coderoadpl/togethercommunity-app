@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const emailReputationStatusSchema = z.enum(['insufficient_data', 'ok', 'warn', 'critical']);
+const emailReputationStatusSchema = z.enum(['insufficient_data', 'ok', 'warn', 'critical']);
 
-export const emailReputationMetricSchema = z.object({
+const emailReputationMetricSchema = z.object({
   count: z.number().int().nonnegative(),
   sends: z.number().int().nonnegative(),
   rate: z.number().nonnegative().nullable(),

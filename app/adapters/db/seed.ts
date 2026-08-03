@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
-import type { AccessItem, Chapter, LessonBlock } from '#core/domain/index.js';
+import type { AccessItem, Chapter, LessonBlock, ProductType } from '#core/domain/index.js';
 
 import { createDb } from './client.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
@@ -583,6 +583,7 @@ const courseDefs: CourseDef[] = [
 interface ProductDef {
   id: string;
   tenantId: string;
+  type: ProductType;
   title: string;
   description: string;
   priceCents: number;
@@ -593,6 +594,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-js-full',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'Kurs JavaScript - pełny dostęp',
     description: 'Pełny dostęp do wszystkich modułów kursu JavaScript od podstaw.',
     priceCents: 39900,
@@ -601,6 +603,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-react-full',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'React w praktyce - pełny dostęp',
     description: 'Pełny dostęp do kursu React w praktyce.',
     priceCents: 49900,
@@ -609,6 +612,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-js-dom-module',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'Pakiet: moduł DOM',
     description: 'Dostęp wyłącznie do modułu DOM z kursu JavaScript.',
     priceCents: 9900,
@@ -617,6 +621,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-free-preview',
     tenantId: 'tenant-studio',
+    type: 'course',
     title: 'Free preview',
     description: 'Darmowa zajawka — po jednej lekcji z każdego modułu obu kursów.',
     priceCents: 0,
@@ -636,6 +641,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-akademia-roczny',
     tenantId: 'tenant-akademia',
+    type: 'course',
     title: 'Akademia - dostęp roczny',
     description: 'Roczny dostęp do kursu Samodzielna nauka programowania.',
     priceCents: 29900,
@@ -644,6 +650,7 @@ const demoProducts: ProductDef[] = [
   {
     id: 'product-club',
     tenantId: 'tenant-studio',
+    type: 'membership',
     title: 'Klub Studio — subskrypcja',
     description: 'Abonament klubu: dostęp do kursów JavaScript i React, dopóki subskrypcja trwa.',
     priceCents: 4900,
@@ -1078,6 +1085,8 @@ await db
     {
       id: 'product-studio-kurs-101',
       tenantId: 'tenant-studio',
+      type: 'course',
+      slug: 'kurs-together-101',
       title: 'Kurs Together 101',
       description: '',
       priceCents: 19900,
@@ -1089,6 +1098,8 @@ await db
     {
       id: 'product-studio-warsztat',
       tenantId: 'tenant-studio',
+      type: 'course',
+      slug: 'warsztat-scenariuszowy',
       title: 'Warsztat scenariuszowy',
       description: '',
       priceCents: 49900,
@@ -1100,6 +1111,8 @@ await db
     {
       id: 'product-acme-course',
       tenantId: 'tenant-acme',
+      type: 'course',
+      slug: 'acme-course',
       title: 'Acme Course',
       description: '',
       priceCents: 9900,
@@ -1117,6 +1130,8 @@ await db
     demoProducts.map((product) => ({
       id: product.id,
       tenantId: product.tenantId,
+      type: product.type,
+      slug: product.id.replace(/^product-/, ''),
       title: product.title,
       description: product.description,
       priceCents: product.priceCents,
@@ -1198,8 +1213,10 @@ await db
     tenantId: 'tenant-studio',
     memberId: 'member-studio-free',
     type: 'banned',
-    reason: 'Powtarzające się reklamy w społeczności',
-    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    payload: {
+      reason: 'Powtarzające się reklamy w społeczności',
+      actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    },
     occurredAt: seededBanAt,
   })
   .onConflictDoNothing();

@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 
 import { buildApp } from './app.js';
+import { buildCaddyDomainCheckApp } from './caddy-domain-check.js';
 import { createDeps } from './composition.js';
 import { loadEnv } from './env.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
@@ -16,6 +17,15 @@ const deps =
     ? createDeps(env)
     : createDeps(env, { clock: { nowIso: () => visualClockOverride } });
 const app = buildApp(deps);
+
+if (env.INTERNAL_PORT !== undefined) {
+  const caddyApp = buildCaddyDomainCheckApp(deps.tenantDomains, {
+    appBaseUrl: deps.appBaseUrl,
+    baseDomain: deps.baseDomain,
+    singleTenantMode: deps.singleTenantMode,
+  });
+  serve({ fetch: caddyApp.fetch, port: env.INTERNAL_PORT, hostname: '0.0.0.0' });
+}
 
 if (env.NODE_ENV !== 'test' && deps.devSinkPurge !== undefined) {
   try {

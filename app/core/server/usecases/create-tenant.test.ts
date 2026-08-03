@@ -32,6 +32,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
     findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
+    hasAny: async () => tenants.length > 0,
     findSettings: async () => ({
       billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
@@ -39,7 +40,8 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
       privacyUrl: null,
     }),
     updateSettings: async (_tenantId, settings) => settings,
-    createTenantWithOwnerGrant: async (input) => {
+    createTenantWithOwnerGrant: async (input, options) => {
+      if (options?.requireEmpty === true && tenants.length > 0) return null;
       const tenant: Tenant = {
         id: input.tenant.id,
         slug: input.tenant.slug,
@@ -118,6 +120,30 @@ describe('createTenant', () => {
     });
     expect(store.tenants).toEqual([]);
     expect(store.ownerGrants).toEqual([]);
+  });
+
+  it('allows production bootstrap only while the tenant store is empty', async () => {
+    const store = fakeTenants();
+    const bootstrapDeps = { ...deps(store.repo), tenantCreationMode: 'bootstrap' as const };
+
+    const first = await createTenant(
+      { identity },
+      { slug: 'first-workspace', name: 'First Workspace' },
+      bootstrapDeps,
+    );
+    const second = await createTenant(
+      { identity },
+      { slug: 'second-workspace', name: 'Second Workspace' },
+      bootstrapDeps,
+    );
+
+    expect(first).toMatchObject({ ok: true, value: { slug: 'first-workspace' } });
+    expect(second).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden', message: 'Tenant creation is closed after the first workspace' },
+    });
+    expect(store.tenants).toHaveLength(1);
+    expect(store.ownerGrants).toHaveLength(1);
   });
 
   it('rejects slug conflicts before creating records', async () => {

@@ -1213,8 +1213,10 @@ await db
     tenantId: 'tenant-studio',
     memberId: 'member-studio-free',
     type: 'banned',
-    reason: 'Powtarzające się reklamy w społeczności',
-    actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    payload: {
+      reason: 'Powtarzające się reklamy w społeczności',
+      actorUserId: creatorUserIds.get('tenant-studio') ?? 'user-studio-creator',
+    },
     occurredAt: seededBanAt,
   })
   .onConflictDoNothing();

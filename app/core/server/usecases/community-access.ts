@@ -76,7 +76,8 @@ export const requireUnbannedMember = (
   return actor;
 };
 
-export const memberScope = (ctx: Ctx): MemberScope | null =>
+// Identity narrowing only; performs no repository access.
+const memberScope = (ctx: Ctx): MemberScope | null =>
   ctx.identity.tenantId && ctx.identity.memberId
     ? { tenantId: ctx.identity.tenantId, userId: ctx.identity.userId, memberId: ctx.identity.memberId }
     : null;

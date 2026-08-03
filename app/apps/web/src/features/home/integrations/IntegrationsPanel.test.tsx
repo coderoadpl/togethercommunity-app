@@ -21,6 +21,7 @@ const renderPanel = (
 ) => {
   let secrets = [...initial];
   let settings = { ...initialSettings };
+  const testedProviders: string[] = [];
 
   server.use(
     http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets } })),
@@ -32,6 +33,8 @@ const renderPanel = (
           key === 'stripe.webhookSecret' ||
           key === 'bunny.apiKey' ||
           key === 'bunny.securityKey' ||
+          key === 's3.accessKeyId' ||
+          key === 's3.secretAccessKey' ||
           key === 'ifirma.invoiceApiKey' ||
           key === 'ifirma.username'
             ? key
@@ -54,9 +57,19 @@ const renderPanel = (
       }
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
-    http.post('/api/integrations/stripe/test', () =>
-      HttpResponse.json({ ok: true, data: { ok: true, diagnostic: 'Stripe accepted the credentials.' } }),
-    ),
+    http.post('/api/integrations/test', async ({ request }) => {
+      const body = await request.json();
+      const provider = typeof body === 'object' && body !== null && 'provider' in body
+        ? String(body.provider)
+        : '';
+      testedProviders.push(provider);
+      const code = provider === 'storage'
+        ? 'storage.available'
+        : provider === 'email'
+          ? 'email.available'
+          : 'payment.available';
+      return HttpResponse.json({ ok: true, data: { diagnostic: { code, message: 'adapter message' } } });
+    }),
     http.post('/api/integrations/ifirma/test', () =>
       HttpResponse.json({
         ok: true,
@@ -71,7 +84,7 @@ const renderPanel = (
     ),
   );
 
-  return renderWithProviders(<IntegrationsPanel tenantId="tenant-123" />);
+  return { ...renderWithProviders(<IntegrationsPanel tenantId="tenant-123" />), testedProviders };
 };
 
 describe('IntegrationsPanel', () => {
@@ -107,17 +120,35 @@ describe('IntegrationsPanel', () => {
       { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
       { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
     ]);
-    await userEvent.click(await screen.findByTestId('stripe-test-connection'));
-    expect(await screen.findByTestId('stripe-test-result')).toHaveTextContent(
-      'Stripe accepted the credentials.',
+    await userEvent.click(await screen.findByTestId('payment-test-connection'));
+    expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(
+      pl.integrations.paymentAvailable,
     );
   });
 
   it('guards the test button until both Stripe secrets are stored', async () => {
     renderPanel();
-    const hint = await screen.findByTestId('stripe-test-hint');
+    const hint = await screen.findByTestId('payment-test-hint');
     expect(hint).toHaveTextContent(pl.integrations.saveKeysFirst);
-    expect(screen.getByTestId('stripe-test-connection')).toBeDisabled();
+    expect(screen.getByTestId('payment-test-connection')).toBeDisabled();
+  });
+
+  it('runs storage, email and payment through one diagnostic contract', async () => {
+    const { testedProviders } = renderPanel([
+      { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    await userEvent.click(await screen.findByTestId('payment-test-connection'));
+    await userEvent.click(screen.getByTestId('email-test-connection'));
+    await userEvent.click(screen.getByTestId('storage-test-connection'));
+
+    expect(await screen.findByTestId('payment-test-result')).toHaveTextContent(pl.integrations.paymentAvailable);
+    expect(await screen.findByTestId('email-test-result')).toHaveTextContent(pl.integrations.emailAvailable);
+    expect(await screen.findByTestId('storage-test-result')).toHaveTextContent(pl.integrations.storageAvailable);
+    expect(testedProviders).toEqual(['payment', 'email', 'storage']);
   });
 
   it('guards the Bunny test button until the key and library id are stored', async () => {

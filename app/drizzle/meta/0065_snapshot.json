@@ -1,6 +1,6 @@
 {
-  "id": "2d158946-5a2b-4800-afa5-4f21a8d2b7b8",
-  "prevId": "58c4c39a-4b77-4f2e-83c7-f472c84eb543",
+  "id": "0b21dcdd-7915-4bc9-8323-f201c3b4de20",
+  "prevId": "2b40d8e7-4a14-440b-ae2f-01aeb5c59b3c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5271,15 +5271,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "actor_user_id": {
-          "name": "actor_user_id",
-          "type": "text",
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },

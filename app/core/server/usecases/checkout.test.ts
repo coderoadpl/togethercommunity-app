@@ -94,6 +94,7 @@ const checkoutDeps = (): CheckoutDeps => ({
     delete: async () => false,
   },
   payment: {
+    test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
     createCheckoutSession: async () =>
       ok({ url: 'https://checkout.stripe.test/default', sessionId: 'default' }),
     expireCheckoutSession: async () => ok({ expired: true }),
@@ -333,6 +334,7 @@ describe('createCheckoutSession', () => {
         delete: async () => false,
       },
       payment: {
+        test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
         createCheckoutSession: async (input) => {
           calls.push(input);
           return ok({ url: 'https://checkout.stripe.test/cs_1', sessionId: 'cs_1' });
@@ -407,6 +409,7 @@ describe('createCheckoutSession', () => {
         delete: async () => false,
       },
       payment: {
+        test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
         createCheckoutSession: async (input) => {
           calls.push(input);
           return ok({ url: 'https://checkout.stripe.test/cs_sub', sessionId: 'cs_sub' });

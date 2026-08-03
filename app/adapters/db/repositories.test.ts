@@ -1921,7 +1921,11 @@ describe('member erasure repository', () => {
     });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
-    expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });
+    expect(consentRows[0]).toMatchObject({
+      userId: 'user-rodo-buyer',
+      email: 'jan.kowalski@together.dev',
+    });
+    expect(new Date(consentRows[0]?.retentionStartedAt ?? '').toISOString()).toBe(REMOVAL_AT);
 
     const suppressionRows = await db.select().from(suppressions).where(eq(suppressions.sourceRef, 'mem-rodo'));
     expect(suppressionRows).toMatchObject([{

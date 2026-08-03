@@ -33,10 +33,9 @@ fixtures outside the layered runtime graph. For
 `apps/web/src/stories/**`, `boundaries/element-types`,
 `boundaries/external`, `together/query-descriptors-only`,
 `together/sx-layout-only`, and `no-restricted-globals` are disabled.
-For `.storybook/**` and `lostpixel.config.ts`, the `boundaries/*` rules are
-disabled. This is the only repository location where the layered graph is not
-enforced, and the exception is bounded to those directories and configuration
-files.
+For `.storybook/**`, the `boundaries/*` rules are disabled. These are the only
+repository locations where the layered graph is not enforced, and the exceptions
+are bounded to the story and Storybook configuration directories.
 
 ## Dependency freeze
 
@@ -53,23 +52,20 @@ Canonical route pixels belong to `tasks/visual-goldens/` and the deterministic
 [visual regression policy](visual-regression.md). The hosted advisory track is
 Argos.
 
-`tasks/lost-pixel-baselines/` is an advisory, partial, macOS-authored local
-snapshot. It is not a golden set or a merge signal and must never be added to a
-gate or branch protection. Missing baselines are expected rather than defects;
-`pnpm run visual:stories` reports unbaselined stories as additions.
+`pnpm run visual:stories` builds `storybook-static/`, captures every story at
+390 px and 1440 px through the repository's Playwright browser, and reuses the
+route harness's zero-diff PNG comparator. Existing images in
+`tasks/lost-pixel-baselines/` are compared with `pixelmatch` at threshold zero
+and a zero mismatch budget. New stories without a baseline are reported as
+additions, because this remains an advisory, partial track rather than a merge
+signal.
 
-The story-shot regime differs materially from the route goldens: it uses a
-`0.01` threshold, four concurrent shots, one flakiness retry, a fixed
-500-millisecond wait, no frozen clock, locale, timezone, or color scheme, no
-image-size assertion, no platform guard, and the older Chromium bundled with
-`lost-pixel`. Reviewers apply the determinism policy only to
-`tasks/visual-goldens/`.
-
-Now that Argos is live, the likely next owner decision is to remove
-`lost-pixel`, `lostpixel.config.ts`, `tasks/lost-pixel-baselines/`, and the
-`visual:stories*` scripts, eliminating roughly 31 lockfile entries and the
-second Chromium. That decision is recorded here but is not executed in this
-batch.
+`pnpm run visual:stories:update` authors only the separate story baseline
+directory; it never writes `tasks/visual-goldens/`. Story authoring is guarded
+to macOS, matching the preserved baseline renderer. Current images and diffs go
+to `out/visual-stories/`. Lost Pixel itself and its configuration are retired;
+the committed story baselines and command meanings are preserved by the thin
+in-house comparator.
 
 ## Merge gate
 

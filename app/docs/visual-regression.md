@@ -41,7 +41,7 @@ and show review evidence for every changed image, using a side-by-side compariso
 or diff artifact. The reviewer must confirm that each baseline change is an
 intentional consequence of the product change before approval. The directory
 name `tasks/visual-goldens/`, the `out/visual/current` and `out/visual/diff`
-paths, and the separate Lost Pixel failure semantics remain unchanged.
+paths, and the `visual` and `visual:update` command names remain unchanged.
 
 The Linux CI visual job remains deferred. Enabling it requires a deliberate,
 reviewed migration that switches the authoring platform guard and regenerates
@@ -54,9 +54,8 @@ Argos is a second, advisory-only visual track that runs in Linux CI. It captures
 the same canonical routes, themes, and viewports into `out/visual/argos/` without
 reading, writing, or comparing `tasks/visual-goldens/`, then uploads those PNGs
 to an independent Argos-hosted Linux baseline. It does not replace the
-lost-pixel or committed-golden workflows, and no existing visual command changes
-meaning. The evaluation exists only so the owner can compare both workflows in
-practice.
+committed-golden workflow, and no existing visual command changes meaning. The
+evaluation exists only so the owner can compare both workflows in practice.
 
 The `argos-advisory` job is not a gate. Its upload step tolerates Argos service
 failures, and it is skipped when `ARGOS_TOKEN` is absent. Argos may post commit
@@ -90,7 +89,10 @@ empirically:
 
 ## Story shots
 
-Storybook's scope, drift gate, and the advisory non-golden status of
-`tasks/lost-pixel-baselines/` are documented in
-[Storybook](storybook.md). The determinism and platform rules above apply to
-`tasks/visual-goldens/`; story shots are not a merge signal.
+Storybook keeps a separate advisory track in `tasks/lost-pixel-baselines/`.
+`pnpm run visual:stories` builds the static catalogue and uses Playwright plus
+the same zero-diff PNG comparator as the route harness. It reports unbaselined
+stories as additions. `pnpm run visual:stories:update` writes only story
+baselines and carries its own macOS authoring guard; it cannot overwrite the
+canonical route goldens. Storybook's scope and the story-shot policy are
+documented in [Storybook](storybook.md).

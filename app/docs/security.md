@@ -29,8 +29,6 @@ contains only these reviewed advisories:
   vulnerable path semantics are not present. Revisit this acceptance when the
   `@hono/node-server` 2.x major upgrade lands.
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
-  audit reaches the old esbuild through `better-auth` and `drizzle-kit`; the
-  development tree also reaches esbuild through Lost Pixel. Together does not
-  invoke esbuild's development server from application code. Revisit when
-  `better-auth` or `drizzle-kit` can resolve esbuild 0.25 or newer, and when
-  Lost Pixel is removed as planned in [Storybook](storybook.md).
+  audit reaches esbuild 0.18 through `better-auth` and `drizzle-kit`. Together
+  does not invoke esbuild's development server from application code. Revisit
+  when that dependency chain no longer resolves a vulnerable esbuild release.

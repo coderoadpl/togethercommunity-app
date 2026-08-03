@@ -64,8 +64,8 @@
     "e2e:ksef": "tsx scripts/ksef-e2e.ts",
     "storybook": "storybook dev -p 9009 --no-open",
     "storybook:build": "storybook build -o storybook-static",
-    "visual:stories": "pnpm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel",
-    "visual:stories:update": "pnpm run storybook:build && LOST_PIXEL_DISABLE_TELEMETRY=1 lost-pixel update",
+    "visual:stories": "pnpm run storybook:build && tsx scripts/visual-story-screenshots.ts",
+    "visual:stories:update": "pnpm run storybook:build && tsx scripts/visual-story-screenshots.ts --update",
     "lock-lint": "tsx scripts/lock-lint.ts",
     "migration-lint": "tsx scripts/migration-lint.ts"
   },
@@ -135,7 +135,6 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.1",
     "knip": "^6.29.0",
-    "lost-pixel": "^3.22.0",
     "mongodb": "^7.5.0",
     "msw": "^2.15.0",
     "otplib": "^13.4.1",

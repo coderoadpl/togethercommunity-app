@@ -5,6 +5,14 @@
 > storycap+reg-suit). Built end-to-end in a worktree on top of `poc-together`.
 > Date: 2026-07-19.
 
+> **Retired implementation (2026-08-03).** This is a historical spike record,
+> not current operating guidance. Lost Pixel and `app/lostpixel.config.ts` were
+> removed after the spike. `pnpm run visual:stories` now builds static Storybook
+> and runs `app/scripts/visual-story-screenshots.ts`, which uses the repository's
+> Playwright browser and shared zero-diff `pixelmatch` comparator against the
+> preserved advisory baselines. `pnpm run visual:stories:update` updates only
+> those story baselines. See `app/docs/storybook.md` for current policy.
+
 ## TL;DR
 
 **Lost Pixel OSS holds up. Recommend adopting it** for the layout-primitive
@@ -76,10 +84,9 @@ machine but **will differ across machines/CI** — see Next steps.
 
 Excellent. Baselines are plain PNGs named
 `<story-id>__[w<width>px].png`, committed in-repo (owner requirement met).
-Updating is `npm run visual:stories:update` — the diff shows up as changed PNGs
-in the PR, reviewable like any other artifact. No service, no account, no Docker.
-This mirrors the existing `npm run visual` golden harness, so the mental model
-is already familiar.
+The historical update command was `npm run visual:stories:update`; the current
+pnpm command and authoring policy are documented in `app/docs/storybook.md`.
+Baseline PNG changes remain reviewable like any other artifact.
 
 ### Mobile + desktop matrix
 
@@ -158,9 +165,9 @@ fallbacks (Loki, storycap+reg-suit) are not needed — Lost Pixel cleared the ba
 5. **Theme fan-out policy**: keep default single-theme + showcase; opt-in
    per-story `globals` for high-risk cross-theme screens; reconsider a global
    matrix only if regressions leak.
-6. **CI wiring**: run `visual:stories` on PRs; treat baseline PNG changes as a
-   reviewed artifact, mirroring the existing `npm run visual` harness (which is
-   left untouched by this spike).
+6. **Historical CI recommendation (not adopted)**: the spike proposed running
+   `visual:stories` on PRs. The replacement remains advisory and is not a merge
+   gate; current policy lives in `app/docs/storybook.md`.
 ```
 
 ## Fallbacks (only if Lost Pixel had failed)

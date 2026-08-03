@@ -996,8 +996,8 @@ export default tseslint.config(
     },
   },
   {
-    // Storybook + Lost Pixel config files live outside the layered graph.
-    files: ['.storybook/**/*.{ts,tsx}', 'lostpixel.config.ts'],
+    // Storybook config files live outside the layered graph.
+    files: ['.storybook/**/*.{ts,tsx}'],
     rules: {
       'boundaries/element-types': 'off',
       'boundaries/external': 'off',

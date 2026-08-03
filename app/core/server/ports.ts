@@ -1104,6 +1104,7 @@ export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 export interface TenantRepository {
   findById(tenantId: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
+  findSole(): Promise<Tenant | null>;
   findSettings(tenantId: string): Promise<TenantSettings | null>;
   updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
   createTenantWithOwnerGrant(input: {

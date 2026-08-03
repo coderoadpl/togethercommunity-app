@@ -31,6 +31,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
   const repo: TenantRepository = {
     findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
     findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
+    findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
     findSettings: async () => ({
       billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
@@ -39,10 +40,12 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
     }),
     updateSettings: async (_tenantId, settings) => settings,
     createTenantWithOwnerGrant: async (input) => {
-      const tenant = {
+      const tenant: Tenant = {
         id: input.tenant.id,
         slug: input.tenant.slug,
         name: input.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       };
       tenants.push(tenant);
@@ -86,7 +89,9 @@ describe('createTenant', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { id: 't-new', slug: 'new-co', name: 'New Co', contentVersion: 1 },
+      value: {
+        id: 't-new', slug: 'new-co', name: 'New Co', status: 'active', plan: 'self_hosted', contentVersion: 1,
+      },
     });
     expect(store.ownerGrants).toEqual([
       {
@@ -116,7 +121,10 @@ describe('createTenant', () => {
   });
 
   it('rejects slug conflicts before creating records', async () => {
-    const store = fakeTenants([{ id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 1 }]);
+    const existing: Tenant = {
+      id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1,
+    };
+    const store = fakeTenants([existing]);
 
     const result = await createTenant(
       { identity },
@@ -128,7 +136,7 @@ describe('createTenant', () => {
       ok: false,
       error: { code: 'conflict', message: 'Tenant "acme" already exists' },
     });
-    expect(store.tenants).toEqual([{ id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 1 }]);
+    expect(store.tenants).toEqual([existing]);
     expect(store.ownerGrants).toEqual([]);
   });
 

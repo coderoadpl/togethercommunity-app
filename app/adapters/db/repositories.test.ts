@@ -837,8 +837,14 @@ describe('invoice repository', () => {
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
     const repo = createTenantRepository(db);
-    expect(await repo.findBySlug('acme')).toMatchObject({ id: ACME, slug: 'acme' });
+    expect(await repo.findBySlug('acme')).toMatchObject({
+      id: ACME,
+      slug: 'acme',
+      status: 'active',
+      plan: 'self_hosted',
+    });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
+    expect(await repo.findSole()).toBeNull();
     const updated = await repo.updateSettings(ACME, {
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
@@ -870,6 +876,15 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
   it('rejects unsupported persisted VAT modes', async () => {
     await expect(db.execute(sql`
       UPDATE tenants SET invoice_vat_mode = 'reverse_charge' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+  });
+
+  it('rejects unsupported tenant lifecycle values', async () => {
+    await expect(db.execute(sql`
+      UPDATE tenants SET status = 'deleted' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+    await expect(db.execute(sql`
+      UPDATE tenants SET plan = 'enterprise' WHERE id = ${ACME}
     `)).rejects.toThrow();
   });
 

@@ -173,10 +173,13 @@ describe('run reputation alerts', () => {
     };
     const settings = new InMemoryTenantSesSettingsRepository([sesSettings()]);
     const emailOutbox = new InMemoryEmailOutboxRepository();
-    const tenant = { id: 'tenant-1', slug: 'tenant', name: 'Tenant', contentVersion: 1 };
+    const tenant = {
+      id: 'tenant-1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
+    } as const;
     const tenants: TenantRepository = {
       findById: async () => tenant,
       findBySlug: async () => tenant,
+      findSole: async () => tenant,
       findSettings: async () =>
         tenantSettingsSchema.parse({
           billingPortalUrl: null,
@@ -250,6 +253,7 @@ describe('run reputation alerts', () => {
       tenants: {
         findById: async () => null,
         findBySlug: async () => null,
+        findSole: async () => null,
         findSettings: async () => null,
         updateSettings: async (_tenantId, value) => value,
         createTenantWithOwnerGrant: async () => {
@@ -277,6 +281,7 @@ describe('tenant staff recipients', () => {
   const tenants = (supportEmail: string | null): TenantRepository => ({
     findById: async () => null,
     findBySlug: async () => null,
+    findSole: async () => null,
     findSettings: async () =>
       tenantSettingsSchema.parse({
         billingPortalUrl: null,

@@ -44,6 +44,7 @@ const harness = (options: HarnessOptions = {}): Harness => {
   const settings =
     options.settings === undefined
       ? {
+          name: 'Acme', socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: 'lib-77', logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -98,6 +99,7 @@ describe('listBunnyVideos', () => {
 
   it('reports integration_not_configured when no library id is set, without calling Bunny', async () => {
     const h = harness({ settings: {
+      name: 'Acme', socialLinks: [],
       billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
       ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,

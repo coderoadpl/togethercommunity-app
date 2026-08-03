@@ -179,6 +179,7 @@ describe('run reputation alerts', () => {
       findBySlug: async () => tenant,
       findSettings: async () =>
         tenantSettingsSchema.parse({
+          name: 'Tenant',
           billingPortalUrl: null,
           bunnyStreamLibraryId: null,
           supportEmail: 'support@tenant.test',
@@ -279,6 +280,7 @@ describe('tenant staff recipients', () => {
     findBySlug: async () => null,
     findSettings: async () =>
       tenantSettingsSchema.parse({
+        name: 'Tenant',
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
         supportEmail,

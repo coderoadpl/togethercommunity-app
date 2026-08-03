@@ -25,6 +25,11 @@ export interface Messages {
     open: string;
     status: string;
   };
+  bootSplash: {
+    opening: string;
+    tenant: (params: { host: string }) => string;
+    warming: string;
+  };
   pagination: {
     rowsPerPage: string;
     displayedRows: (params: { from: number; to: number; count: number }) => string;
@@ -1104,6 +1109,8 @@ export interface Messages {
   branding: {
     heading: string;
     intro: string;
+    nameLabel: string;
+    nameHint: string;
     logoLabel: string;
     logoPlaceholder: string;
     accentLabel: string;
@@ -1112,6 +1119,15 @@ export interface Messages {
     previewHint: string;
     faviconLabel: string;
     faviconPlaceholder: string;
+    profileLinksHeading: string;
+    profileLinksIntro: string;
+    socialLinkLabel: string;
+    socialLinkLabelPlaceholder: string;
+    socialLinkUrl: string;
+    socialLinkUrlPlaceholder: string;
+    addSocialLink: string;
+    removeSocialLink: string;
+    socialLinksAria: string;
     socialHeading: string;
     ogTitleLabel: string;
     ogTitleHint: string;

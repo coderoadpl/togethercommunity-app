@@ -37,6 +37,7 @@ export const tenants = pgTable(
     logoUrl: text('logo_url'),
     accentColor: text('accent_color'),
     faviconUrl: text('favicon_url'),
+    socialLinks: jsonb('social_links').$type<Array<{ label: string; url: string }>>().notNull().default([]),
     ogTitle: text('og_title'),
     ogDescription: text('og_description'),
     ogImageUrl: text('og_image_url'),

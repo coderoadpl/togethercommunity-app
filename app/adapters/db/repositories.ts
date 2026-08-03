@@ -2488,6 +2488,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
   findSettings: async (tenantId) => {
     const rows = await db
       .select({
+        name: tenants.name,
+        socialLinks: tenants.socialLinks,
         billingPortalUrl: tenants.billingPortalUrl,
         bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
         logoUrl: tenants.logoUrl,
@@ -2516,6 +2518,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const row = rows[0];
     return row
       ? {
+          name: row.name,
+          socialLinks: row.socialLinks,
           billingPortalUrl: row.billingPortalUrl,
           bunnyStreamLibraryId: row.bunnyStreamLibraryId,
           logoUrl: row.logoUrl,
@@ -2559,6 +2563,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     await db
       .update(tenants)
       .set({
+        name: settings.name,
+        socialLinks: settings.socialLinks,
+        contentVersion: sql`${tenants.contentVersion} + 1`,
         billingPortalUrl: settings.billingPortalUrl,
         bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
         logoUrl: settings.logoUrl,
@@ -2583,6 +2590,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       })
       .where(eq(tenants.id, tenantId));
     return {
+      name: settings.name,
+      socialLinks: settings.socialLinks,
       billingPortalUrl: settings.billingPortalUrl,
       bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
       logoUrl: settings.logoUrl,

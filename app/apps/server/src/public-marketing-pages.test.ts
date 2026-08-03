@@ -10,6 +10,8 @@ import {
 const brand = {
   tenant: { id: 'tenant-1', slug: 'studio', name: 'Studio Demo', contentVersion: 1 },
   settings: {
+    name: 'Studio Demo',
+    socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@studio' }],
     billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: '/brand.svg',
     accentColor: '#0E7490', faviconUrl: '/favicon.svg',
     ogTitle: null, ogDescription: null, ogImageUrl: null,
@@ -27,6 +29,10 @@ describe('public marketing pages', () => {
     });
     expect(html).toContain('lang="en"');
     expect(html).toContain('/brand.svg');
+    expect(html).toContain('<nav class="social-links" aria-label="Social profiles">');
+    expect(html).toContain(
+      '<a href="https://youtube.com/@studio" target="_blank" rel="noreferrer">YouTube</a>',
+    );
     expect(html).toContain('Unsubscribe me from this scope');
     expect(html).toContain('Unsubscribe me from everything from Studio Demo');
     expect(html).toContain('name="consent" value="newsletter" checked');

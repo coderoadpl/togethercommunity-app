@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-import { campaignSendSchema, consentEvidenceSchema, marketingConsentSourceSchema } from './marketing-email.js';
+import { campaignSendSchema, marketingConsentSourceSchema } from './marketing-email.js';
 
-export const marketingAutomationMessageSchema = z.object({
+const marketingAutomationMessageSchema = z.object({
   to: z.string().email(),
   consentDefinitionId: z.string().min(1),
   templateId: z.string().min(1).optional(),
@@ -59,5 +59,3 @@ export const marketingMessagesQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
-
-export const marketingConsentEvidenceInputSchema = consentEvidenceSchema;

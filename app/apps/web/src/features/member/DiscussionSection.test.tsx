@@ -254,7 +254,7 @@ describe('DiscussionSection', () => {
       http.post('/api/posts', async ({ request }) => {
         const body = createPostInputSchema.parse(await request.json());
         bodies.push(body);
-        await delay(80);
+        await delay(500);
         replied = true;
         return HttpResponse.json({ ok: true, data: { post: post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: body.body, isOwn: true }) } });
       }),

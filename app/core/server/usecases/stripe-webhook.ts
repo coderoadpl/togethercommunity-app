@@ -71,7 +71,11 @@ const enqueueSubscriptionNotice = async (
   const tenantBaseUrl = new URL(deps.appBaseUrl);
   tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
   const branding =
-    settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+    settings === null ? undefined : {
+      logoUrl: settings.logoUrl,
+      accentColor: settings.accentColor,
+      socialLinks: settings.socialLinks,
+    };
   const payload =
     kind === 'subscription-payment-failed'
       ? {

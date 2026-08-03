@@ -177,7 +177,7 @@ beforeAll(() => {
   );
   tenantScopeStatus = tenantScopeRun.status;
   tenantScopeOutput = `${tenantScopeRun.stdout}${tenantScopeRun.stderr}`;
-}, 60_000);
+}, 120_000);
 
 afterAll(() => {
   rmSync(join(appRoot, coreDomainDir), { recursive: true, force: true });

@@ -3,9 +3,27 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveInvoiceVat,
   resolveTenantSocial,
+  tenantSchema,
   tenantSettingsSchema,
   updateTenantSettingsInputSchema,
 } from './tenant.js';
+
+describe('tenantSchema', () => {
+  it('requires declared lifecycle status and plan values', () => {
+    const tenant = {
+      id: 'tenant-1',
+      slug: 'acme',
+      name: 'Acme',
+      status: 'active',
+      plan: 'self_hosted',
+      contentVersion: 1,
+    };
+
+    expect(tenantSchema.parse(tenant)).toEqual(tenant);
+    expect(tenantSchema.safeParse({ ...tenant, status: 'deleted' }).success).toBe(false);
+    expect(tenantSchema.safeParse({ ...tenant, plan: 'enterprise' }).success).toBe(false);
+  });
+});
 
 describe('updateTenantSettingsInputSchema', () => {
   it('leaves omitted fields undefined so the use-case can keep the stored value', () => {
@@ -92,7 +110,9 @@ describe('resolveInvoiceVat', () => {
 });
 
 describe('resolveTenantSocial', () => {
-  const tenant = { id: 'tenant-1', slug: 'acme', name: 'Acme', contentVersion: 1 };
+  const tenant = {
+    id: 'tenant-1', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1,
+  } as const;
 
   it('falls back to the tenant name and logo', () => {
     expect(resolveTenantSocial(tenant, {

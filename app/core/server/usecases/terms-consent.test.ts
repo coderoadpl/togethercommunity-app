@@ -26,6 +26,7 @@ const harness = (stored: TenantSettings | null) => {
   const tenants: TenantRepository = {
     findById: async () => null,
     findBySlug: async () => null,
+    findSole: async () => null,
     findSettings: async () => stored,
     updateSettings: async (_tenantId, next) => next,
     createTenantWithOwnerGrant: async () => {

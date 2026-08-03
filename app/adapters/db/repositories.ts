@@ -47,6 +47,7 @@ import {
   type Space,
   type ProductGrant,
   type StaffRole,
+  type Tenant,
   type TenantApiKey,
   type TenantSecret,
   type TenantSettings,
@@ -2485,6 +2486,10 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
+  findSole: async () => {
+    const rows = await db.select().from(tenants).limit(2);
+    return rows.length === 1 ? rows[0] ?? null : null;
+  },
   findSettings: async (tenantId) => {
     const rows = await db
       .select({
@@ -2619,6 +2624,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         id: input.tenant.id,
         slug: input.tenant.slug,
         name: input.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       };
     }),
@@ -2683,22 +2690,28 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         id: tenants.id,
         slug: tenants.slug,
         name: tenants.name,
+        status: tenants.status,
+        plan: tenants.plan,
         contentVersion: tenants.contentVersion,
         staffRole: tenantAdmins.role,
       })
       .from(tenantAdmins)
       .innerJoin(tenants, eq(tenantAdmins.tenantId, tenants.id));
 
-  const toMembership = (row: {
-    id: string;
-    slug: string;
-    name: string;
-    contentVersion: number;
-    staffRole: string;
-  }): Membership | null => {
+  const toMembership = (row: Tenant & { staffRole: string }): Membership | null => {
     const staffRole = parseStaffRole(row.staffRole);
     return staffRole
-      ? { tenant: { id: row.id, slug: row.slug, name: row.name, contentVersion: row.contentVersion }, staffRole }
+      ? {
+          tenant: {
+            id: row.id,
+            slug: row.slug,
+            name: row.name,
+            status: row.status,
+            plan: row.plan,
+            contentVersion: row.contentVersion,
+          },
+          staffRole,
+        }
       : null;
   };
 

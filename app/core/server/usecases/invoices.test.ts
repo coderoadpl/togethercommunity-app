@@ -147,6 +147,7 @@ const harness = (options: {
     tenants: {
       findById: async () => null,
       findBySlug: async () => null,
+      findSole: async () => null,
       findSettings: async () => ({
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,

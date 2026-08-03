@@ -35,6 +35,7 @@ const deps: TenantSettingsDeps = {
   tenants: {
     findById: async () => null,
     findBySlug: async () => null,
+    findSole: async () => null,
     findSettings: async () => settings,
     updateSettings: async (_tenantId, next) => next,
     createTenantWithOwnerGrant: async () => {

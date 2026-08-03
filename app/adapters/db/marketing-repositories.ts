@@ -141,7 +141,6 @@ export const createMarketingConsentRepository = (db: Db): MarketingConsentReposi
       eq(marketingConsents.status, 'granted'),
       lt(marketingConsents.occurredAt, olderThan),
       sql`not exists (select 1 from ${marketingConsents} newer where newer.tenant_id = ${marketingConsents.tenantId} and newer.previous_id = ${marketingConsents.id})`,
-      sql`not exists (select 1 from ${campaignSends} send where send.consent_row_id = ${marketingConsents.id})`,
     )).returning({ id: marketingConsents.id });
     return deleted.length;
   },

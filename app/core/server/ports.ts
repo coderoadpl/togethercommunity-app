@@ -1177,7 +1177,11 @@ export interface MarketingConsentRepository {
 
 export interface ConsentEvidenceRetentionRepository {
   listExpiredTenantIds(retentionStartedBefore: string): Promise<string[]>;
-  purgeExpired(tenantId: string, retentionStartedBefore: string): Promise<number>;
+  purgeExpired(
+    tenantId: string,
+    retentionStartedBefore: string,
+    options: { batchSize: number; deadlineMs: number },
+  ): Promise<number>;
 }
 
 export interface TenantDocumentRepository {

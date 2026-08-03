@@ -8,17 +8,26 @@ import type {
 } from '../ports.js';
 
 export const CONSENT_EVIDENCE_PURGE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const CONSENT_EVIDENCE_PURGE_BATCH_SIZE = 500;
+export const CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS = 5_000;
 
 const WARSAW_JANUARY_OFFSET_MS = 60 * 60 * 1000;
 
 // Art. 118 of the Polish Civil Code uses the Warsaw calendar year, whose January boundary is UTC+1.
 export const consentEvidenceRetentionCutoff = (now: string): string => {
-  const year = new Date(now).getUTCFullYear();
+  const year = new Date(Date.parse(now) + WARSAW_JANUARY_OFFSET_MS).getUTCFullYear();
   return new Date(Date.UTC(year - 6, 0, 1) - WARSAW_JANUARY_OFFSET_MS).toISOString();
 };
 
+const errorMessage = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+
 export const purgeExpiredConsentEvidence = async (
-  input: { trigger: 'cron' | 'dev' | 'manual'; minIntervalMs: number },
+  input: {
+    trigger: 'cron' | 'dev' | 'manual';
+    minIntervalMs: number;
+    batchSize: number;
+    timeBudgetMs: number;
+  },
   deps: {
     retention: ConsentEvidenceRetentionRepository;
     runs: SchedulerRunRepository;
@@ -26,14 +35,20 @@ export const purgeExpiredConsentEvidence = async (
     clock: Clock;
   },
 ): Promise<Result<{ purged: number; tenantsProcessed: number }, AppError>> => {
-  const startedAt = deps.clock.nowIso();
-  if (input.trigger === 'cron') {
-    const [previous] = (await deps.runs.listPage({ kind: 'consent_evidence_purge', limit: 1 })).runs;
-    if (previous !== undefined && Date.parse(startedAt) - Date.parse(previous.startedAt) < input.minIntervalMs) {
-      return ok({ purged: 0, tenantsProcessed: 0 });
+  let startedAt: string;
+  let runId: string;
+  try {
+    startedAt = deps.clock.nowIso();
+    if (input.trigger === 'cron') {
+      const [previous] = (await deps.runs.listPage({ kind: 'consent_evidence_purge', limit: 1 })).runs;
+      if (previous !== undefined && Date.parse(startedAt) - Date.parse(previous.startedAt) < input.minIntervalMs) {
+        return ok({ purged: 0, tenantsProcessed: 0 });
+      }
     }
+    runId = deps.ids.nextId();
+  } catch (cause) {
+    return err(internal(errorMessage(cause)));
   }
-  const runId = deps.ids.nextId();
   const emptyTotals = {
     campaignsTouched: 0,
     sendsAttempted: 0,
@@ -42,47 +57,54 @@ export const purgeExpiredConsentEvidence = async (
     skipped: 0,
     reEnqueued: false,
   };
-  await deps.runs.start({
-    id: runId,
-    kind: 'consent_evidence_purge',
-    trigger: input.trigger,
-    startedAt,
-    finishedAt: null,
-    durationMs: null,
-    status: 'running',
-    error: null,
-    totals: emptyTotals,
-    createdAt: startedAt,
-  });
-  const tenantMetrics: Array<{ tenantId: string; purged: number; errors: string[] }> = [];
-  let result: Result<{ purged: number; tenantsProcessed: number }, AppError> | undefined;
-  let thrown: unknown;
   try {
+    await deps.runs.start({
+      id: runId,
+      kind: 'consent_evidence_purge',
+      trigger: input.trigger,
+      startedAt,
+      finishedAt: null,
+      durationMs: null,
+      status: 'running',
+      error: null,
+      totals: emptyTotals,
+      createdAt: startedAt,
+    });
+  } catch (cause) {
+    return err(internal(errorMessage(cause)));
+  }
+  const tenantMetrics: Array<{ tenantId: string; purged: number; errors: string[] }> = [];
+  let result: Result<{ purged: number; tenantsProcessed: number }, AppError>;
+  try {
+    const deadlineMs = Date.now() + input.timeBudgetMs;
     const retentionStartedBefore = consentEvidenceRetentionCutoff(startedAt);
     const tenantIds = await deps.retention.listExpiredTenantIds(retentionStartedBefore);
     let purged = 0;
     let firstError: string | null = null;
     for (const tenantId of tenantIds) {
+      if (Date.now() >= deadlineMs) break;
       try {
-        const tenantPurged = await deps.retention.purgeExpired(tenantId, retentionStartedBefore);
+        const tenantPurged = await deps.retention.purgeExpired(tenantId, retentionStartedBefore, {
+          batchSize: input.batchSize,
+          deadlineMs,
+        });
         purged += tenantPurged;
         tenantMetrics.push({ tenantId, purged: tenantPurged, errors: [] });
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
+        const message = errorMessage(cause);
         firstError ??= message;
         tenantMetrics.push({ tenantId, purged: 0, errors: [message] });
       }
     }
     result = firstError === null
-      ? ok({ purged, tenantsProcessed: tenantIds.length })
+      ? ok({ purged, tenantsProcessed: tenantMetrics.length })
       : err(internal(firstError));
   } catch (cause) {
-    thrown = cause;
-  } finally {
+    result = err(internal(errorMessage(cause)));
+  }
+  try {
     const finishedAt = deps.clock.nowIso();
-    const resultError = result !== undefined && !result.ok ? result.error.message : null;
-    const thrownError = thrown instanceof Error ? thrown.message : thrown === undefined ? null : String(thrown);
-    const error = thrownError ?? resultError;
+    const error = result.ok ? null : result.error.message;
     await deps.runs.finalize(runId, {
       finishedAt,
       durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
@@ -104,8 +126,8 @@ export const purgeExpiredConsentEvidence = async (
         createdAt: finishedAt,
       })),
     });
+  } catch (cause) {
+    return err(internal(errorMessage(cause)));
   }
-  if (thrown !== undefined) throw thrown;
-  if (result === undefined) throw new Error('Consent evidence purge did not produce a result');
   return result;
 };

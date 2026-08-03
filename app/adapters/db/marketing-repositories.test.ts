@@ -299,12 +299,13 @@ describe('marketing database repositories', () => {
     const repository = createConsentEvidenceRetentionRepository(db);
 
     await expect(repository.listExpiredTenantIds(
-      consentEvidenceRetentionCutoff('2026-12-31T23:59:59.999Z'),
+      consentEvidenceRetentionCutoff('2026-12-31T22:59:59.999Z'),
     )).resolves.toEqual([]);
-    const cutoff = consentEvidenceRetentionCutoff('2027-01-01T00:00:00.000Z');
+    const cutoff = consentEvidenceRetentionCutoff('2026-12-31T23:00:00.000Z');
     await expect(repository.listExpiredTenantIds(cutoff)).resolves.toEqual(['retention-a', 'retention-b']);
-    await expect(repository.purgeExpired('retention-a', cutoff)).resolves.toBe(2);
-    await expect(repository.purgeExpired('retention-a', cutoff)).resolves.toBe(0);
+    const purgeOptions = { batchSize: 1, deadlineMs: Date.now() + 60_000 };
+    await expect(repository.purgeExpired('retention-a', cutoff, purgeOptions)).resolves.toBe(2);
+    await expect(repository.purgeExpired('retention-a', cutoff, purgeOptions)).resolves.toBe(0);
     await expect(repository.listExpiredTenantIds(cutoff)).resolves.toEqual(['retention-b']);
     await expect(db.select({ id: consents.id }).from(consents)
       .where(eq(consents.tenantId, 'retention-a'))).resolves.toEqual([]);
@@ -314,7 +315,7 @@ describe('marketing database repositories', () => {
       .where(eq(campaignSends.id, 'send-retention-a'))).resolves.toEqual([{ consentRowId: null }]);
   });
 
-  it('keeps stale pending consent evidence referenced by a campaign send', async () => {
+  it('purges stale pending consent evidence referenced by a skipped campaign send', async () => {
     const tenantId = 'retention-pending';
     await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Pending retention', createdAt: NOW });
     await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
@@ -340,11 +341,11 @@ describe('marketing database repositories', () => {
       tenantId,
       '2021-01-01T00:00:00.000Z',
       [consent.definitionId],
-    )).resolves.toBe(0);
-    await expect(repository.findById(tenantId, consent.id)).resolves.toMatchObject({ id: consent.id });
+    )).resolves.toBe(1);
+    await expect(repository.findById(tenantId, consent.id)).resolves.toBeNull();
     await expect(db.select({ consentRowId: campaignSends.consentRowId }).from(campaignSends)
       .where(eq(campaignSends.id, 'send-retention-pending')))
-      .resolves.toEqual([{ consentRowId: consent.id }]);
+      .resolves.toEqual([{ consentRowId: null }]);
   });
 
   it('claims idempotency keys by unique insert and returns original metadata on reuse', async () => {

@@ -73,9 +73,10 @@ the underlying communication could be raised. The scheduled
 `consent_evidence_purge` job in
 `core/server/usecases/purge-consent-evidence.ts` enforces this horizon against
 the `retention_started_at` stamp written by member erasure and consent
-withdrawal.
+withdrawal. Deletion is disabled by default and requires the operator to set
+`CONSENT_EVIDENCE_PURGE_ENABLED=true`.
 
-Migration `0063_consent_evidence_retention.sql` cannot reconstruct the terms
+Migration `0066_consent_evidence_retention.sql` cannot reconstruct the terms
 consent stamps for members erased before its deployment. Their surviving
 identity link is an e-mail HMAC, so those rows retain a null stamp and remain
 outside the scheduled purge until a secret-aware application backfill is run.
@@ -84,8 +85,7 @@ member tombstone supplies the start date.
 
 Campaign send rows survive evidence expiry for delivery auditing. Purging the
 referenced marketing-consent row sets `campaign_sends.consent_row_id` to null;
-the stale-pending cleanup leaves referenced evidence intact until the retention
-horizon is reached.
+the stale-pending cleanup does the same when removing never-confirmed evidence.
 
 The marketing suppression path degrades the address to an HMAC, as pinned in
 `adapters/db/repositories.test.ts`; retained plaintext is confined to the

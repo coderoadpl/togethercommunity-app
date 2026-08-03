@@ -208,7 +208,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -618,10 +618,17 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           },
         ),
     });
-    const purged = await purgeExpiredConsentEvidence(
-      { trigger, minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS },
-      { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
-    );
+    const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED
+      ? await purgeExpiredConsentEvidence(
+          {
+            trigger,
+            minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS,
+            batchSize: CONSENT_EVIDENCE_PURGE_BATCH_SIZE,
+            timeBudgetMs: CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS,
+          },
+          { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
+        )
+      : ok({ purged: 0, tenantsProcessed: 0 });
     if (!marketing.ok) return marketing;
     if (!purged.ok) return purged;
     return marketing;

@@ -24,8 +24,8 @@ these specifications.
 | [CI security](ci-security.md) | Monthly and after CI or ruleset changes | Repository owner | OpenSSF Scorecard 5.5.0; SLSA v1.2 |
 | [Dependencies](dependencies.md) | Weekly automation; monthly review | Dependency maintainer | OpenSSF Scorecard 5.5.0; SLSA v1.2 |
 | [Dead code and test gaps](dead-code-and-test-gaps.md) | Monthly and before a release | Repository owner | ISO/IEC 25010:2023 |
-| [Consistency](consistency.md) | Before a release and after a cross-surface change | Feature owner | OWASP ASVS 5.0.0 V8 |
-| [External links](external-links.md) | Quarterly and before a release | Documentation owner | Repository-defined |
+| [Consistency](consistency.md) | Before a release and after a cross-surface change | Feature owner | OWASP ASVS 5.0.0 V8; OWASP API Security Top 10:2023 |
+| [External links](external-links.md) | Quarterly and before a release | Documentation owner | Together [`doc-lint`](../../scripts/doc-lint.ts) relative-target contract at the audited commit |
 | [Completeness](completeness.md) | Monthly and before go-live | Product owner | OWASP ASVS 5.0.0 V6/V7 L2-derived profile; NIST SP 800-63B-4 |
 | [Accessibility](accessibility.md) | Before a release and after material UI changes | Web owner | WCAG 2.2 AA; axe-core 4.12.x |
 | [Performance](performance.md) | Quarterly instrument review; then before a release | Web owner | Core Web Vitals |
@@ -46,4 +46,3 @@ these specifications.
 - Report advisory evidence as advisory. In particular, Scorecard, accessibility
   automation, visual comparison, and future performance measurements do not
   become release gates merely because an audit consumes them.
-

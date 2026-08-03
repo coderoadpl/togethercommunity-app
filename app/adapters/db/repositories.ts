@@ -48,6 +48,7 @@ import {
   type Space,
   type ProductGrant,
   type StaffRole,
+  type Tenant,
   type TenantApiKey,
   type TenantSecret,
   type TenantSettings,
@@ -2657,6 +2658,10 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
+  findSole: async () => {
+    const rows = await db.select().from(tenants).limit(2);
+    return rows.length === 1 ? rows[0] ?? null : null;
+  },
   findSettings: async (tenantId) => {
     const rows = await db
       .select({
@@ -2787,8 +2792,13 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
-  createTenantWithOwnerGrant: async (input) =>
+  createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
+      if (options?.requireEmpty === true) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
+        const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
+        if (existing.length > 0) return null;
+      }
       await tx.insert(tenants).values(input.tenant);
       await tx.insert(tenantAdmins).values({
         id: input.ownerGrant.id,
@@ -2800,9 +2810,15 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         id: input.tenant.id,
         slug: input.tenant.slug,
         name: input.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       };
     }),
+  hasAny: async () => {
+    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({
@@ -2864,22 +2880,28 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         id: tenants.id,
         slug: tenants.slug,
         name: tenants.name,
+        status: tenants.status,
+        plan: tenants.plan,
         contentVersion: tenants.contentVersion,
         staffRole: tenantAdmins.role,
       })
       .from(tenantAdmins)
       .innerJoin(tenants, eq(tenantAdmins.tenantId, tenants.id));
 
-  const toMembership = (row: {
-    id: string;
-    slug: string;
-    name: string;
-    contentVersion: number;
-    staffRole: string;
-  }): Membership | null => {
+  const toMembership = (row: Tenant & { staffRole: string }): Membership | null => {
     const staffRole = parseStaffRole(row.staffRole);
     return staffRole
-      ? { tenant: { id: row.id, slug: row.slug, name: row.name, contentVersion: row.contentVersion }, staffRole }
+      ? {
+          tenant: {
+            id: row.id,
+            slug: row.slug,
+            name: row.name,
+            status: row.status,
+            plan: row.plan,
+            contentVersion: row.contentVersion,
+          },
+          staffRole,
+        }
       : null;
   };
 

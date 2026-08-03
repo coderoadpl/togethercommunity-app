@@ -1,6 +1,6 @@
 {
-  "id": "c80445a2-47c6-4f1b-a830-5caa72edba4a",
-  "prevId": "c0dc76db-6b6c-41ac-bd84-b8b91f0679f5",
+  "id": "496c48cc-c127-405e-a6be-05a2c6825e10",
+  "prevId": "c80445a2-47c6-4f1b-a830-5caa72edba4a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9221,6 +9221,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "social_links": {
+          "name": "social_links",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "og_title": {
           "name": "og_title",

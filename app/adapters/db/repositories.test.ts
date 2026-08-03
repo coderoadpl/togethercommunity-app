@@ -981,9 +981,33 @@ describe('invoice repository', () => {
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
     const repo = createTenantRepository(db);
-    expect(await repo.findBySlug('acme')).toMatchObject({ id: ACME, slug: 'acme' });
+    expect(await repo.findBySlug('acme')).toMatchObject({
+      id: ACME,
+      slug: 'acme',
+      status: 'active',
+      plan: 'self_hosted',
+    });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
     const previousVersion = (await repo.findById(ACME))?.contentVersion;
+    expect(await repo.findSole()).toBeNull();
+    expect(await repo.hasAny()).toBe(true);
+    expect(await repo.createTenantWithOwnerGrant(
+      {
+        tenant: {
+          id: 'tenant-bootstrap-rejected',
+          slug: 'bootstrap-rejected',
+          name: 'Rejected',
+          createdAt: NOW,
+        },
+        ownerGrant: {
+          id: 'admin-bootstrap-rejected',
+          userId: 'user-acme-owner',
+          staffRole: 'owner',
+        },
+      },
+      { requireEmpty: true },
+    )).toBeNull();
+    expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
     const updated = await repo.updateSettings(ACME, {
       name: 'Acme Academy',
       socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
@@ -1025,6 +1049,15 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
   it('rejects unsupported persisted VAT modes', async () => {
     await expect(db.execute(sql`
       UPDATE tenants SET invoice_vat_mode = 'reverse_charge' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+  });
+
+  it('rejects unsupported tenant lifecycle values', async () => {
+    await expect(db.execute(sql`
+      UPDATE tenants SET status = 'deleted' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+    await expect(db.execute(sql`
+      UPDATE tenants SET plan = 'enterprise' WHERE id = ${ACME}
     `)).rejects.toThrow();
   });
 

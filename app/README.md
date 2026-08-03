@@ -9,6 +9,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 
 ## Quickstart (local demo)
 
+For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24
 pnpm run db:up        # Postgres 16
@@ -147,16 +149,16 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->233<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->234<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
 
 Per request: (1) exact custom-domain match in `tenant_domains`,
 (2) subdomain of `APP_BASE_DOMAIN` (subdomain = org slug),
-(3) `X-Tenant` header (CLI). Membership is verified in every case; every
-tenant-scoped use-case takes `ctx.identity` and every repository call requires
-`tenantId`.
+(3) `X-Tenant` header (CLI), (4) the sole tenant when `APP_BASE_DOMAIN` is
+unset. Membership is verified in every case; every tenant-scoped use-case takes
+`ctx.identity` and every repository call requires `tenantId`.
 
 ## Community
 

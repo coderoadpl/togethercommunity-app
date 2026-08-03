@@ -13,9 +13,10 @@ export interface ResolveTenantDeps {
   tenantDomains: TenantDomainRepository;
   tenants: TenantRepository;
   baseDomain: string;
+  singleTenantMode: boolean;
 }
 
-export type TenantSource = 'custom-domain' | 'subdomain' | 'tenant-header';
+export type TenantSource = 'custom-domain' | 'subdomain' | 'tenant-header' | 'single-tenant';
 
 export interface ResolvedTenant {
   tenant: Tenant;
@@ -23,6 +24,14 @@ export interface ResolvedTenant {
 }
 
 const stripPort = (host: string): string => host.split(':')[0] ?? host;
+
+const resolvedIfActive = (
+  tenant: Tenant,
+  source: TenantSource,
+): Result<ResolvedTenant, AppError> =>
+  tenant.status === 'active'
+    ? ok({ tenant, source })
+    : err(tenantNotFound());
 
 const tenantNotFoundMessage = (slug: string): string =>
   `No tenant "${slug}" or you do not have access to it`;
@@ -37,16 +46,22 @@ export const resolveTenant = async (
   const customDomain = await deps.tenantDomains.findByDomain(host);
   if (customDomain) {
     const tenant = await deps.tenants.findById(customDomain.tenantId);
-    return tenant ? ok({ tenant, source: 'custom-domain' }) : err(tenantNotFound('Tenant domain is not attached'));
+    return tenant
+      ? resolvedIfActive(tenant, 'custom-domain')
+      : err(tenantNotFound('Tenant domain is not attached'));
   }
 
   const subdomain = subdomainOf(host, deps.baseDomain);
   const slug = subdomain ?? tenantHeader?.toLowerCase() ?? null;
-  if (!slug) return ok(null);
+  if (!slug) {
+    if (!deps.singleTenantMode) return ok(null);
+    const tenant = await deps.tenants.findSole();
+    return tenant ? resolvedIfActive(tenant, 'single-tenant') : ok(null);
+  }
 
   const tenant = await deps.tenants.findBySlug(slug);
   if (!tenant) return err(tenantNotFound(tenantNotFoundMessage(slug)));
-  return ok({ tenant, source: subdomain ? 'subdomain' : 'tenant-header' });
+  return resolvedIfActive(tenant, subdomain ? 'subdomain' : 'tenant-header');
 };
 
 const subdomainOf = (host: string, baseDomain: string): string | null => {

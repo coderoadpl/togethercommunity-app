@@ -3,14 +3,18 @@ import {
   Alert,
   Box,
   Chip,
+  Collapse,
   Divider,
   IconButton,
   List,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
+  ListSubheader,
   Menu,
   MenuItem,
   Snackbar,
+  SvgIcon,
   ThemeProvider,
   Tooltip,
   useMediaQuery,
@@ -93,25 +97,69 @@ interface SectionDescriptor {
   exact?: boolean;
 }
 
-const sectionDescriptors: SectionDescriptor[] = [
-  { id: 'dashboard', to: '/panel', exact: true },
-  { id: 'products', to: '/panel/products' },
-  { id: 'courses', to: '/panel/courses' },
-  { id: 'lessons', to: '/panel/lessons' },
-  { id: 'members', to: '/panel/members' },
-  { id: 'reports', to: '/panel/reports' },
-  { id: 'spaces', to: '/panel/spaces' },
-  { id: 'sales', to: '/panel/sales' },
-  { id: 'coupons', to: '/panel/sales/coupons' },
-  { id: 'integrations', to: '/panel/integrations' },
-  { id: 'marketingActivity', to: '/panel/marketing/activity' },
-  { id: 'marketingSends', to: '/panel/marketing/sends' },
-  { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
-  { id: 'marketingConsents', to: '/panel/marketing/consents' },
-  { id: 'marketingDocuments', to: '/panel/marketing/documents' },
-  { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
-  { id: 'marketingSettings', to: '/panel/marketing/settings' },
-  { id: 'settings', to: '/panel/settings' },
+type NavigationGroupId =
+  | 'content'
+  | 'offer'
+  | 'community'
+  | 'sales'
+  | 'marketing'
+  | 'configuration';
+
+interface NavigationGroupDescriptor {
+  id: NavigationGroupId;
+  sections: SectionDescriptor[];
+  collapsible?: boolean;
+}
+
+const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
+
+const sectionDescriptors: NavigationGroupDescriptor[] = [
+  {
+    id: 'content',
+    sections: [
+      { id: 'courses', to: '/panel/courses' },
+      { id: 'lessons', to: '/panel/lessons' },
+    ],
+  },
+  {
+    id: 'offer',
+    sections: [
+      { id: 'products', to: '/panel/products' },
+      { id: 'coupons', to: '/panel/sales/coupons' },
+    ],
+  },
+  {
+    id: 'community',
+    sections: [
+      { id: 'members', to: '/panel/members' },
+      { id: 'spaces', to: '/panel/spaces' },
+      { id: 'reports', to: '/panel/reports' },
+    ],
+  },
+  {
+    id: 'sales',
+    sections: [
+      { id: 'sales', to: '/panel/sales' },
+      { id: 'integrations', to: '/panel/integrations' },
+    ],
+  },
+  {
+    id: 'marketing',
+    collapsible: true,
+    sections: [
+      { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
+      { id: 'marketingActivity', to: '/panel/marketing/activity' },
+      { id: 'marketingSends', to: '/panel/marketing/sends' },
+      { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
+      { id: 'marketingConsents', to: '/panel/marketing/consents' },
+      { id: 'marketingDocuments', to: '/panel/marketing/documents' },
+      { id: 'marketingSettings', to: '/panel/marketing/settings' },
+    ],
+  },
+  {
+    id: 'configuration',
+    sections: [{ id: 'settings', to: '/panel/settings' }],
+  },
 ];
 
 const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
@@ -165,36 +213,118 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
   }
 };
 
+const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
+  <SvgIcon
+    fontSize="small"
+    aria-hidden
+    viewBox="0 0 24 24"
+    sx={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms ease' }}
+  >
+    <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
+  </SvgIcon>
+);
+
+const NavigationItem = ({
+  descriptor,
+  pathname,
+  onNavigate,
+  openReportCount,
+}: {
+  descriptor: SectionDescriptor;
+  pathname: string;
+  onNavigate: (to: string) => void;
+  openReportCount: number | undefined;
+}) => {
+  const t = useTranslations();
+  const { id, to, exact } = descriptor;
+  const active = isActive(pathname, to, exact ?? false);
+
+  return (
+    <PanelNavItem
+      data-testid={`section-${id}`}
+      selected={active}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => onNavigate(to)}
+      sx={{ pl: id === 'dashboard' ? undefined : '1rem' }}
+    >
+      <ListItemIcon>
+        <SectionIcon id={id} />
+      </ListItemIcon>
+      <ListItemText primary={t.sections[id]} />
+      {id === 'reports' && openReportCount !== undefined ? (
+        <Chip data-testid="reports-open-count" size="small" label={openReportCount} />
+      ) : null}
+    </PanelNavItem>
+  );
+};
+
 const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const t = useTranslations();
   const { pathname } = useLocation();
   const openReports = useQuery(actions.reports({ status: 'open', limit: 1 }));
+  const [marketingOpen, setMarketingOpen] = useState(pathname.startsWith('/panel/marketing'));
+
+  useEffect(() => {
+    if (pathname.startsWith('/panel/marketing')) setMarketingOpen(true);
+  }, [pathname]);
+
   return (
     <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
-      {sectionDescriptors.map(({ id, to, exact }) => {
-        const active = isActive(pathname, to, exact ?? false);
-        return (
-          <PanelNavItem
-            key={id}
-            data-testid={`section-${id}`}
-            selected={active}
-            aria-current={active ? 'page' : undefined}
-            onClick={() => onNavigate(to)}
-          >
-            <ListItemIcon>
-              <SectionIcon id={id} />
-            </ListItemIcon>
-            <ListItemText primary={t.sections[id]} />
-            {id === 'reports' && openReports.data !== undefined ? (
-              <Chip
-                data-testid="reports-open-count"
-                size="small"
-                label={openReports.data.openCount}
+      <NavigationItem
+        descriptor={overviewDescriptor}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        openReportCount={undefined}
+      />
+      {sectionDescriptors.map((group) => (
+        <Box component="li" key={group.id} sx={{ listStyle: 'none' }}>
+          {group.collapsible ? (
+            <ListItemButton
+              data-testid={`group-${group.id}`}
+              aria-expanded={marketingOpen}
+              aria-controls="panel-navigation-marketing"
+              onClick={() => setMarketingOpen((open) => !open)}
+              sx={{ minHeight: '2rem', mt: '0.5rem', px: '1rem' }}
+            >
+              <ListItemText
+                primary={t.navigationGroups[group.id]}
+                slotProps={{ primary: { variant: 'overline' } }}
               />
-            ) : null}
-          </PanelNavItem>
-        );
-      })}
+              <ExpandIcon expanded={marketingOpen} />
+            </ListItemButton>
+          ) : (
+            <ListSubheader
+              component="div"
+              disableSticky
+              data-testid={`group-${group.id}`}
+              sx={{ pt: '0.75rem', px: '1rem' }}
+            >
+              {t.navigationGroups[group.id]}
+            </ListSubheader>
+          )}
+          <Collapse
+            in={group.collapsible ? marketingOpen : true}
+            timeout="auto"
+            unmountOnExit={group.collapsible}
+          >
+            <List
+              component="div"
+              disablePadding
+              id={group.id === 'marketing' ? 'panel-navigation-marketing' : undefined}
+            >
+              {group.sections.map((descriptor) => (
+                <NavigationItem
+                  key={descriptor.id}
+                  descriptor={descriptor}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                  openReportCount={openReports.data?.openCount}
+                />
+              ))}
+            </List>
+          </Collapse>
+        </Box>
+      ))}
       {openReports.isError ? (
         <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
       ) : null}

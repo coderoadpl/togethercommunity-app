@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
@@ -109,9 +109,48 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = t
   return { queryClient, updates };
 };
 
+const openSettingsSection = async (label: string) => {
+  await userEvent.click(await screen.findByRole('tab', { name: label }));
+};
+
+afterEach(() => {
+  window.history.replaceState(null, '', '/');
+});
+
+describe('SettingsPanel information architecture', () => {
+  it('groups settings into five localized tabs', async () => {
+    renderPanel();
+
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      pl.settingsNavigation.company,
+      pl.settingsNavigation.legal,
+      pl.settingsNavigation.brand,
+      pl.settingsNavigation.security,
+      pl.settingsNavigation.diagnostics,
+    ]);
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'settings-panel-company');
+    expect(document.querySelector('#billing')).not.toBeNull();
+    expect(document.querySelector('#support')).not.toBeNull();
+  });
+
+  it('opens the company tab for billing and support deep links', async () => {
+    window.history.replaceState(null, '', '/panel/settings#support');
+
+    renderPanel();
+
+    expect(await screen.findByRole('tab', { name: pl.settingsNavigation.company })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(document.querySelector('#support')).not.toBeNull();
+  });
+});
+
 describe('SettingsPanel build information', () => {
   it('shows matching browser and server versions from the health action', async () => {
     renderPanel();
+    await openSettingsSection(pl.settingsNavigation.diagnostics);
 
     expect(await screen.findByText(`${pl.buildInfo.serverVersion}: ${BUILD_VERSION}`))
       .toBeInTheDocument();
@@ -137,6 +176,7 @@ describe('SettingsPanel build information', () => {
       ),
     );
     renderPanel();
+    await openSettingsSection(pl.settingsNavigation.diagnostics);
 
     expect(await screen.findByTestId('build-mismatch-warning')).toHaveTextContent(
       pl.buildInfo.mismatch,
@@ -147,6 +187,7 @@ describe('SettingsPanel build information', () => {
 describe('SettingsPanel security', () => {
   it('mounts passkey and two-factor management on the creator surface', async () => {
     renderPanel();
+    await openSettingsSection(pl.settingsNavigation.security);
 
     expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
     expect(screen.getByLabelText(pl.security.passkeyPasswordLabel)).toBeInTheDocument();
@@ -161,6 +202,7 @@ describe('SettingsPanel security', () => {
       return HttpResponse.json({ status: true });
     }));
     renderPanel(EMPTY_SETTINGS, false);
+    await openSettingsSection(pl.settingsNavigation.security);
 
     expect(await screen.findByText(pl.emailVerification.pending({ email: 'creator3@together.dev' })))
       .toBeInTheDocument();
@@ -181,6 +223,7 @@ describe('SettingsPanel security', () => {
       }),
     );
     renderPanel();
+    await openSettingsSection(pl.settingsNavigation.security);
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
     await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
@@ -209,6 +252,7 @@ describe('SettingsPanel security', () => {
       }),
     );
     renderPanel();
+    await openSettingsSection(pl.settingsNavigation.security);
 
     await userEvent.click(await screen.findByTestId('passkey-set-password'));
 
@@ -225,6 +269,7 @@ describe('SettingsPanel security', () => {
 describe('SettingsPanel legal documents', () => {
   it('saves terms and privacy urls through the settings endpoint', async () => {
     const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.legal);
 
     await userEvent.type(await screen.findByTestId('legal-terms-url'), 'https://akademia.test/regulamin');
     await userEvent.type(screen.getByTestId('legal-privacy-url'), 'https://akademia.test/prywatnosc');
@@ -242,6 +287,7 @@ describe('SettingsPanel legal documents', () => {
       ...EMPTY_SETTINGS,
       termsUrl: 'https://akademia.test/regulamin',
     });
+    await openSettingsSection(pl.settingsNavigation.legal);
 
     const termsInput = await screen.findByTestId('legal-terms-url');
     await waitFor(() => {
@@ -315,6 +361,7 @@ const BRANDING_TEST_TIMEOUT = 10_000;
 describe('SettingsPanel branding', () => {
   it('saves logo, accent color and favicon through the settings endpoint', async () => {
     const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
 
     await userEvent.type(await screen.findByTestId('branding-logo-url'), 'https://cdn.example.com/logo.svg');
     await userEvent.type(screen.getByTestId('branding-accent-color'), '#0E7490');
@@ -336,6 +383,7 @@ describe('SettingsPanel branding', () => {
 
   it('saves and reloads social metadata through the settings endpoint', async () => {
     const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
 
     await userEvent.type(await screen.findByTestId('branding-og-title'), 'Akademia Acme');
     await userEvent.type(screen.getByTestId('branding-og-description'), 'Praktyczna nauka');
@@ -360,6 +408,7 @@ describe('SettingsPanel branding', () => {
 
   it('renames the tenant and round-trips social profiles without a slug field', async () => {
     const { queryClient, updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
 
     const name = await screen.findByTestId('branding-name');
@@ -386,6 +435,7 @@ describe('SettingsPanel branding', () => {
 
   it('marks a non-http profile URL before sending settings', async () => {
     const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
 
     await screen.findByTestId('branding-name');
     await userEvent.click(screen.getByTestId('branding-social-add'));
@@ -400,6 +450,7 @@ describe('SettingsPanel branding', () => {
 
   it('previews the accent in the swatch as you type', async () => {
     renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
 
     await userEvent.type(await screen.findByTestId('branding-accent-color'), '#0E7490');
 
@@ -410,6 +461,7 @@ describe('SettingsPanel branding', () => {
 
   it('rejects a malformed accent color without calling the API', async () => {
     const { updates } = renderPanel();
+    await openSettingsSection(pl.settingsNavigation.brand);
 
     await userEvent.type(await screen.findByTestId('branding-accent-color'), 'niebieski');
     await userEvent.click(screen.getByTestId('branding-save'));
@@ -425,6 +477,7 @@ describe('SettingsPanel branding', () => {
       logoUrl: 'https://cdn.example.com/logo.svg',
       accentColor: '#0E7490',
     });
+    await openSettingsSection(pl.settingsNavigation.brand);
 
     const logoInput = await screen.findByTestId('branding-logo-url');
     await waitFor(() => {

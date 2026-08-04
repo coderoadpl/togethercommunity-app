@@ -191,36 +191,56 @@ describe('Creator panel routing', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 
-  it('renders every sidebar section and marks the active one from the URL', async () => {
+  it('renders the grouped sidebar, keeps marketing collapsed, and marks the active item', async () => {
     stubViewport(true);
     commonHandlers();
 
     await renderPanelAt('/panel/members');
 
     expect(await screen.findByTestId('tenant-name')).toHaveTextContent('Acme');
-    const sectionIds = [
+    const alwaysVisibleSectionIds = [
       'dashboard',
-      'products',
       'courses',
       'lessons',
-      'members',
-      'reports',
-      'spaces',
-      'sales',
+      'products',
       'coupons',
+      'members',
+      'spaces',
+      'reports',
+      'sales',
       'integrations',
-      'marketingActivity',
-      'marketingSends',
-      'marketingCampaigns',
-      'marketingConsents',
-      'marketingLayouts',
-      'marketingDocuments',
-      'marketingSettings',
       'settings',
     ] as const;
-    for (const id of sectionIds) {
+    const marketingSectionIds = [
+      'marketingCampaigns',
+      'marketingActivity',
+      'marketingSends',
+      'marketingLayouts',
+      'marketingConsents',
+      'marketingDocuments',
+      'marketingSettings',
+    ] as const;
+    for (const id of alwaysVisibleSectionIds) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
     }
+    expect(screen.getByTestId('group-content')).toHaveTextContent(pl.navigationGroups.content);
+    expect(screen.getByTestId('group-offer')).toHaveTextContent(pl.navigationGroups.offer);
+    expect(screen.getByTestId('group-community')).toHaveTextContent(pl.navigationGroups.community);
+    expect(screen.getByTestId('group-sales')).toHaveTextContent(pl.navigationGroups.sales);
+    expect(screen.getByTestId('group-configuration')).toHaveTextContent(pl.navigationGroups.configuration);
+    expect(screen.getByTestId('group-content')).not.toHaveAttribute('tabindex');
+    expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'false');
+    for (const id of marketingSectionIds) {
+      expect(screen.queryByTestId(`section-${id}`)).not.toBeInTheDocument();
+    }
+
+    await userEvent.click(screen.getByTestId('group-marketing'));
+
+    expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'true');
+    for (const id of marketingSectionIds) {
+      expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
+    }
+    const sectionIds = [...alwaysVisibleSectionIds, ...marketingSectionIds];
     const iconPaths = sectionIds.map((id) =>
       screen.getByTestId(`section-${id}`).querySelector('path')?.getAttribute('d'),
     );

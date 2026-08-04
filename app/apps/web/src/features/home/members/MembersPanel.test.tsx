@@ -59,6 +59,20 @@ const useMembers = () =>
   server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members } })));
 
 describe('MembersPanel', () => {
+  it('offers the existing checkout-link action when there are no members', async () => {
+    server.use(
+      http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
+    );
+
+    renderWithProviders(<MembersPanel />);
+
+    expect(await screen.findByText(pl.members.empty)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.products.copyCheckoutLink })).toHaveAttribute(
+      'href',
+      '/panel/products#product-actions',
+    );
+  });
+
   it('renders the members table newest-first with emails and product counts', async () => {
     useMembers();
 

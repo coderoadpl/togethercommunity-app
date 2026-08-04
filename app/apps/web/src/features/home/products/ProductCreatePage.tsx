@@ -11,7 +11,7 @@ import {
   Select,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useLocation, useNavigate } from '@tanstack/react-router';
 
 import {
   PRODUCT_TYPES,
@@ -29,6 +29,7 @@ import { productTypeLabel } from './product-type.js';
 export const ProductCreatePage = () => {
   const t = useTranslations();
   const navigate = useNavigate();
+  const { hash } = useLocation();
   const queryClient = useQueryClient();
   const [type, setType] = useState<ProductType>('course');
   const [title, setTitle] = useState('');
@@ -41,7 +42,11 @@ export const ProductCreatePage = () => {
     ...actions.createProduct,
     onSuccess: async ({ product }) => {
       await queryClient.invalidateQueries(actions.productsInvalidates());
-      await navigate({ to: '/panel/products/$productId', params: { productId: product.id } });
+      await navigate({
+        to: '/panel/products/$productId',
+        params: { productId: product.id },
+        hash: hash === 'prices' ? 'prices' : '',
+      });
     },
   });
   const parsedCoverUrl = productCoverUrlSchema.safeParse(coverUrl);

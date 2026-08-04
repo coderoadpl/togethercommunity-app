@@ -333,6 +333,7 @@ export const ProductsPanel = () => {
     >
       {accessIssues.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(accessIssues.error, t), retry: { label: t.common.retry, onRetry: () => void accessIssues.refetch() } }} /> : null}
       {spaces.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} /> : null}
+      <Box id="product-actions" sx={{ scrollMarginTop: '1rem' }}>
       <ListSection
         toolbar={{
           search: (
@@ -384,6 +385,7 @@ export const ProductsPanel = () => {
           </Stack>
         )}
       </ListSection>
+      </Box>
     </PanelPage>
   );
 };

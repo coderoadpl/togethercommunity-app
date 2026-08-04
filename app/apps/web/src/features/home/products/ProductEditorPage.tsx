@@ -491,7 +491,9 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
   return (
     <PanelPage title={product.title} backTo={{ label: t.products.allProducts, href: '/panel/products' }}>
       <ProductDetailsSection product={product} />
-      <PricesSection product={product} />
+      <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
+        <PricesSection product={product} />
+      </Box>
       {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
       <CheckoutConsentsSection product={product} />
       <SectionCard title={t.access.heading}>

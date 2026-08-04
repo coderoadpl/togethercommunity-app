@@ -14,11 +14,11 @@ export type OnboardingStepId = z.infer<typeof onboardingStepIdSchema>;
 
 /** Panel route each step deep-links to; a UI hint owned by the domain so all clients agree. */
 const ONBOARDING_STEP_TARGETS: Record<OnboardingStepId, string> = {
-  course_with_lesson: '/panel/courses',
-  product_with_price: '/panel/products',
-  published_product: '/panel/products',
-  first_member: '/panel/members',
-  payments_configured: '/panel/integrations',
+  course_with_lesson: '/panel/courses/new',
+  product_with_price: '/panel/products/new#prices',
+  published_product: '/panel/products#product-actions',
+  first_member: '/panel/members#invite-members',
+  payments_configured: '/panel/integrations#payments',
 };
 
 const onboardingStepSchema = z.object({

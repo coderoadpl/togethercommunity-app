@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type SyntheticEvent } from 'react';
 import {
   Alert,
   Box,
@@ -11,6 +11,8 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  Tab,
+  Tabs,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,6 +51,30 @@ const isExemptionBasisKind = (value: unknown): value is ExemptionBasisKind =>
   value === 'art_43_1' ||
   value === 'other_statute' ||
   value === 'other';
+
+type SettingsSection = 'company' | 'legal' | 'brand' | 'security' | 'diagnostics';
+
+const settingsSectionFromHash = (hash: string): SettingsSection => {
+  switch (hash.replace(/^#/, '')) {
+    case 'legal':
+      return 'legal';
+    case 'brand':
+    case 'branding':
+      return 'brand';
+    case 'security':
+    case 'email-verification':
+      return 'security';
+    case 'diagnostics':
+    case 'build':
+      return 'diagnostics';
+    case 'company':
+    case 'billing':
+    case 'support':
+    case 'invoice':
+    default:
+      return 'company';
+  }
+};
 
 const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const t = useTranslations();
@@ -962,16 +988,78 @@ const EmailVerificationPanel = () => {
 export const SettingsPanel = () => {
   const { tenant } = usePanelContext();
   const t = useTranslations();
+  const [section, setSection] = useState<SettingsSection>(() =>
+    settingsSectionFromHash(window.location.hash),
+  );
+  const canEdit = tenant.staffRole === 'owner';
+
+  useEffect(() => {
+    const syncSection = () => setSection(settingsSectionFromHash(window.location.hash));
+    window.addEventListener('hashchange', syncSection);
+    return () => window.removeEventListener('hashchange', syncSection);
+  }, []);
+
+  const changeSection = (_event: SyntheticEvent, value: SettingsSection) => {
+    setSection(value);
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}#${value}`,
+    );
+  };
+
   return (
     <PanelPage title={t.sections.settings}>
-      <BillingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
-      <SupportSettingsPanel canEdit={tenant.staffRole === 'owner'} />
-      <InvoiceSettingsPanel canEdit={tenant.staffRole === 'owner'} />
-      <LegalSettingsPanel canEdit={tenant.staffRole === 'owner'} />
-      <BrandingSettingsPanel canEdit={tenant.staffRole === 'owner'} />
-      <EmailVerificationPanel />
-      <SecurityPanel />
-      <BuildInfoPanel />
+      <Tabs
+        value={section}
+        onChange={changeSection}
+        aria-label={t.settingsNavigation.aria}
+        variant="scrollable"
+        allowScrollButtonsMobile
+      >
+        <Tab id="settings-tab-company" aria-controls="settings-panel-company" value="company" label={t.settingsNavigation.company} />
+        <Tab id="settings-tab-legal" aria-controls="settings-panel-legal" value="legal" label={t.settingsNavigation.legal} />
+        <Tab id="settings-tab-brand" aria-controls="settings-panel-brand" value="brand" label={t.settingsNavigation.brand} />
+        <Tab id="settings-tab-security" aria-controls="settings-panel-security" value="security" label={t.settingsNavigation.security} />
+        <Tab id="settings-tab-diagnostics" aria-controls="settings-panel-diagnostics" value="diagnostics" label={t.settingsNavigation.diagnostics} />
+      </Tabs>
+
+      {section === 'company' ? (
+        <Stack id="settings-panel-company" role="tabpanel" aria-labelledby="settings-tab-company" useFlexGap spacing="1.5rem">
+          <Box id="billing" sx={{ scrollMarginTop: '1rem' }}>
+            <BillingSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="support" sx={{ scrollMarginTop: '1rem' }}>
+            <SupportSettingsPanel canEdit={canEdit} />
+          </Box>
+          <Box id="invoice" sx={{ scrollMarginTop: '1rem' }}>
+            <InvoiceSettingsPanel canEdit={canEdit} />
+          </Box>
+        </Stack>
+      ) : null}
+      {section === 'legal' ? (
+        <Box id="settings-panel-legal" role="tabpanel" aria-labelledby="settings-tab-legal">
+          <LegalSettingsPanel canEdit={canEdit} />
+        </Box>
+      ) : null}
+      {section === 'brand' ? (
+        <Box id="settings-panel-brand" role="tabpanel" aria-labelledby="settings-tab-brand">
+          <BrandingSettingsPanel canEdit={canEdit} />
+        </Box>
+      ) : null}
+      {section === 'security' ? (
+        <Stack id="settings-panel-security" role="tabpanel" aria-labelledby="settings-tab-security" useFlexGap spacing="1.5rem">
+          <Box id="email-verification" sx={{ scrollMarginTop: '1rem' }}>
+            <EmailVerificationPanel />
+          </Box>
+          <SecurityPanel />
+        </Stack>
+      ) : null}
+      {section === 'diagnostics' ? (
+        <Box id="settings-panel-diagnostics" role="tabpanel" aria-labelledby="settings-tab-diagnostics">
+          <BuildInfoPanel />
+        </Box>
+      ) : null}
     </PanelPage>
   );
 };

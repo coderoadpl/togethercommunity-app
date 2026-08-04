@@ -27,6 +27,11 @@ Object.defineProperty(globalThis, 'localStorage', {
   value: localStorageStub,
 });
 
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: () => undefined,
+});
+
 /**
  * Start MSW at module scope, before any test file (and thus `api.ts`) is
  * imported: the Better Auth client grabs `globalThis.fetch` the moment its

@@ -12,11 +12,11 @@ import { OnboardingChecklist } from './OnboardingChecklist.js';
 
 const onboarding = (dismissed = false): CreatorOnboarding => ({
   steps: [
-    { id: 'course_with_lesson', done: true, target: '/panel/courses' },
-    { id: 'product_with_price', done: false, target: '/panel/products' },
-    { id: 'published_product', done: false, target: '/panel/products' },
-    { id: 'first_member', done: false, target: '/panel/members' },
-    { id: 'payments_configured', done: false, target: '/panel/integrations' },
+    { id: 'course_with_lesson', done: true, target: '/panel/courses/new' },
+    { id: 'product_with_price', done: false, target: '/panel/products/new#prices' },
+    { id: 'published_product', done: false, target: '/panel/products#product-actions' },
+    { id: 'first_member', done: false, target: '/panel/members#invite-members' },
+    { id: 'payments_configured', done: false, target: '/panel/integrations#payments' },
   ],
   dismissed,
 });

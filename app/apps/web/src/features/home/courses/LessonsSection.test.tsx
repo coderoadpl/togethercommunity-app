@@ -195,11 +195,17 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
     await userEvent.type(embedUrlInput, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
-    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual(['video', 'embed']);
+    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
+      pl.lessons.typeVideo,
+      pl.lessons.typeEmbed,
+    ]);
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.moveUp({ index: 1 }) }));
 
-    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual(['embed', 'video']);
+    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
+      pl.lessons.typeEmbed,
+      pl.lessons.typeVideo,
+    ]);
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
 

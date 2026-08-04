@@ -4,11 +4,15 @@ import {
   Box,
   Button,
   Chip,
+  FormControl,
+  FormHelperText,
+  FormLabel,
   IconButton,
   List,
   ListItem,
   ListItemText,
   Paper,
+  OutlinedInput,
   Snackbar,
   Stack,
   SvgIcon,
@@ -21,11 +25,11 @@ import { Link } from '@tanstack/react-router';
 import type { Product, ProductAccessIssues } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatDate } from '../../../lib/format.js';
+import { formatDate, formatPrice } from '../../../lib/format.js';
 import { DataValue, EntryDate, PublishedStatus } from '../../../theme.js';
 import { productTypeLabel } from './product-type.js';
 
@@ -72,20 +76,61 @@ const ProductRow = ({
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const [copied, setCopied] = useState(false);
+  const [copyFallbackUrl, setCopyFallbackUrl] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<'publish' | 'unpublish' | null>(null);
+  const prices = useQuery({ ...actions.productPrices(product.id), enabled: !product.published });
 
   const publishProduct = useMutation({
     ...actions.publishProduct,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.productsInvalidates());
+      setConfirmation(null);
+      await Promise.all([
+        queryClient.invalidateQueries(actions.productsInvalidates()),
+        queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+      ]);
+    },
+  });
+  const unpublishProduct = useMutation({
+    ...actions.unpublishProduct,
+    onSuccess: async () => {
+      setConfirmation(null);
+      await Promise.all([
+        queryClient.invalidateQueries(actions.productsInvalidates()),
+        queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+      ]);
     },
   });
 
   const accessCount = product.accessItems.length;
+  const activePrice = prices.data?.prices.find((price) => price.active);
+  const checkoutUrl = `${window.location.origin}/checkout/${product.id}`;
+  const publishBlockers = product.published
+    ? []
+    : [
+        ...(accessCount === 0 ? [t.products.publishNeedsAccess] : []),
+        ...(prices.isPending
+          ? [t.products.publishCheckingPrice]
+          : prices.isError
+            ? [t.products.publishPriceUnavailable]
+            : activePrice === undefined
+              ? [t.products.publishNeedsActivePrice]
+              : []),
+      ];
 
-  const copyCheckoutLink = () => {
-    const url = `${window.location.origin}/checkout/${product.id}`;
-    void navigator.clipboard?.writeText(url);
-    setCopied(true);
+  const copyCheckoutLink = async () => {
+    if (navigator.clipboard === undefined) {
+      setCopied(false);
+      setCopyFallbackUrl(checkoutUrl);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(checkoutUrl);
+      setCopyFallbackUrl(null);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+      setCopyFallbackUrl(checkoutUrl);
+    }
   };
 
   return (
@@ -107,20 +152,29 @@ const ProductRow = ({
         <Tooltip title={t.products.copyCheckoutLink}>
           <IconButton
             size="small"
-            onClick={copyCheckoutLink}
+            onClick={() => void copyCheckoutLink()}
             aria-label={t.products.copyCheckoutLink}
             data-testid={`copy-checkout-${product.id}`}
           >
             <CopyLinkGlyph />
           </IconButton>
         </Tooltip>
-        {product.published ? null : (
+        {product.published ? (
           <Button
             variant="text"
-            disabled={publishProduct.isPending}
-            onClick={() => publishProduct.mutate({ id: product.id })}
+            color="error"
+            disabled={unpublishProduct.isPending}
+            onClick={() => setConfirmation('unpublish')}
           >
-            {t.products.publish}
+            {unpublishProduct.isPending ? t.products.unpublishing : t.products.unpublish}
+          </Button>
+        ) : (
+          <Button
+            variant="text"
+            disabled={publishProduct.isPending || publishBlockers.length > 0}
+            onClick={() => setConfirmation('publish')}
+          >
+            {publishProduct.isPending ? t.products.publishing : t.products.publish}
           </Button>
         )}
       </Stack>
@@ -131,6 +185,21 @@ const ProductRow = ({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
         message={t.products.checkoutLinkCopied}
       />
+      {copyFallbackUrl === null ? null : (
+        <Stack useFlexGap spacing="0.5rem" data-testid={`copy-fallback-${product.id}`}>
+          <Alert severity="warning">{t.products.checkoutLinkCopyFailed}</Alert>
+          <FormControl fullWidth>
+            <FormLabel htmlFor={`checkout-url-${product.id}`}>{t.products.publishPublicUrl}</FormLabel>
+            <OutlinedInput
+              id={`checkout-url-${product.id}`}
+              value={copyFallbackUrl}
+              readOnly
+              onFocus={(event) => event.currentTarget.select()}
+            />
+            <FormHelperText>{t.products.checkoutLinkManualHint}</FormHelperText>
+          </FormControl>
+        </Stack>
+      )}
       <Stack useFlexGap spacing="0.2rem">
         <span>
           {product.published ? <PublishedStatus>{t.products.published}</PublishedStatus> : t.products.draft} ·{' '}
@@ -141,6 +210,15 @@ const ProductRow = ({
         </EntryDate>
       </Stack>
       {issue ? <AccessIssues issue={issue} /> : null}
+      {!product.published && publishBlockers.length > 0 ? (
+        <Stack useFlexGap spacing="0.25rem" data-testid={`publish-blockers-${product.id}`}>
+          {publishBlockers.map((reason) => (
+            <Typography key={reason} variant="body2" color="error">
+              {reason}
+            </Typography>
+          ))}
+        </Stack>
+      ) : null}
       <Box>
         <Button
           size="small"
@@ -154,6 +232,45 @@ const ProductRow = ({
       {publishProduct.isError ? (
         <Alert severity="error">{localizeError(publishProduct.error, t)}</Alert>
       ) : null}
+      {unpublishProduct.isError ? (
+        <Alert severity="error">{localizeError(unpublishProduct.error, t)}</Alert>
+      ) : null}
+      <ConfirmDialog
+        open={confirmation === 'publish'}
+        title={t.products.publishConfirmTitle}
+        body={(
+          <Stack useFlexGap spacing="0.75rem">
+            <Typography>{t.products.publishConfirmIntro}</Typography>
+            <FormControl fullWidth>
+              <FormLabel htmlFor={`publish-url-${product.id}`}>{t.products.publishPublicUrl}</FormLabel>
+              <OutlinedInput id={`publish-url-${product.id}`} value={checkoutUrl} readOnly />
+            </FormControl>
+            <Typography>
+              {t.products.publishActivePrice}:{' '}
+              <DataValue>
+                {activePrice === undefined
+                  ? '—'
+                  : formatPrice(activePrice.amountCents, activePrice.currency, language)}
+              </DataValue>
+            </Typography>
+          </Stack>
+        )}
+        cancelLabel={t.common.cancel}
+        confirmLabel={publishProduct.isPending ? t.products.publishing : t.products.publishConfirm}
+        pending={publishProduct.isPending}
+        onClose={() => setConfirmation(null)}
+        onConfirm={() => publishProduct.mutate({ id: product.id })}
+      />
+      <ConfirmDialog
+        open={confirmation === 'unpublish'}
+        title={t.products.unpublishConfirmTitle}
+        body={t.products.unpublishConfirmBody}
+        cancelLabel={t.common.cancel}
+        confirmLabel={unpublishProduct.isPending ? t.products.unpublishing : t.products.unpublishConfirm}
+        pending={unpublishProduct.isPending}
+        onClose={() => setConfirmation(null)}
+        onConfirm={() => unpublishProduct.mutate({ id: product.id })}
+      />
     </Paper>
   );
 };

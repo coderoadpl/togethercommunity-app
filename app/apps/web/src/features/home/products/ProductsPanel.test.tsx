@@ -2,11 +2,12 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   newProductSchema,
   PRODUCT_TYPES,
+  updateProductInputSchema,
   type Product,
   type ProductAccessIssues,
   type ProductPrice,
@@ -33,21 +34,35 @@ const initialProducts: Product[] = [
     priceCents: 2500,
     currency: 'PLN',
     published: false,
-    accessItems: [],
+    accessItems: [{ level: 'course', courseId: 'c1' }],
     legacyId: null,
     createdAt: '2026-07-12T10:00:00.000Z',
   },
 ];
 
+const initialPrices: ProductPrice[] = [{
+  id: 'price-draft-1',
+  tenantId: 't1',
+  productId: 'draft-1',
+  kind: 'one_time',
+  interval: null,
+  amountCents: 2500,
+  currency: 'PLN',
+  active: true,
+  createdAt: '2026-07-12T10:00:00.000Z',
+}];
+
 const renderProductsPanel = async (
   issues: ProductAccessIssues[] = [],
   initialEntry = '/panel/products',
   seededProducts = initialProducts,
+  seededPrices = initialPrices,
 ) => {
   let products = [...seededProducts];
-  let prices: ProductPrice[] = [];
+  let prices = [...seededPrices];
   let assets: ProductDownloadAssetMetadata[] = [];
   let directUploadCalled = false;
+  let updatedProduct: Product | null = null;
   const created: Product[] = [];
 
   server.use(
@@ -72,6 +87,20 @@ const renderProductsPanel = async (
       };
       created.push(product);
       products = [...products, product];
+      return HttpResponse.json({ ok: true, data: { product } });
+    }),
+    http.post('/api/products/update', async ({ request }) => {
+      const input = updateProductInputSchema.parse(await request.json());
+      const existing = products.find((candidate) => candidate.id === input.id);
+      if (existing === undefined) return HttpResponse.json({ ok: false }, { status: 404 });
+      const product: Product = {
+        ...existing,
+        title: input.title ?? existing.title,
+        description: input.description ?? existing.description,
+        coverUrl: input.coverUrl === undefined ? existing.coverUrl : input.coverUrl,
+      };
+      updatedProduct = product;
+      products = products.map((candidate) => candidate.id === product.id ? product : candidate);
       return HttpResponse.json({ ok: true, data: { product } });
     }),
     http.get('/api/products/:productId/prices', () =>
@@ -158,6 +187,13 @@ const renderProductsPanel = async (
       products = products.map((candidate) => (candidate.id === product.id ? product : candidate));
       return HttpResponse.json({ ok: true, data: { product } });
     }),
+    http.post('/api/products/unpublish', () => {
+      const published = products.find((candidate) => candidate.published);
+      if (!published) return HttpResponse.json({ ok: false }, { status: 404 });
+      const product = { ...published, published: false };
+      products = products.map((candidate) => candidate.id === product.id ? product : candidate);
+      return HttpResponse.json({ ok: true, data: { product } });
+    }),
   );
 
   const rootRoute = createRootRoute();
@@ -180,6 +216,7 @@ const renderProductsPanel = async (
     ...renderWithProviders(<RouterProvider router={router} />),
     created,
     directUploadCalled: () => directUploadCalled,
+    updatedProduct: () => updatedProduct,
   };
 };
 
@@ -189,11 +226,20 @@ describe('ProductsPanel', () => {
 
     expect(await screen.findByText('Draft Course')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: pl.products.publish }));
+    const publish = screen.getByRole('button', { name: pl.products.publish });
+    await waitFor(() => expect(publish).toBeEnabled());
+    await userEvent.click(publish);
+    expect(await screen.findByText(pl.products.publishConfirmIntro)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.products.publishPublicUrl)).toHaveValue(
+      `${window.location.origin}/checkout/draft-1`,
+    );
+    expect(screen.getByText(/25,00/u)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.products.publishConfirm }));
 
     await waitFor(() => {
       expect(screen.getByText(pl.products.published)).toBeInTheDocument();
     });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     await userEvent.click(screen.getByRole('link', { name: `+ ${pl.common.add}` }));
     await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'New Workshop');
@@ -293,6 +339,67 @@ describe('ProductsPanel', () => {
     await renderProductsPanel();
 
     expect(await screen.findByTestId('product-type-draft-1')).toHaveTextContent(pl.products.typeCourse);
+  });
+
+  it('shows publish blockers for missing access and an inactive price', async () => {
+    const product = initialProducts[0];
+    if (product === undefined) throw new Error('Expected the base product fixture');
+    await renderProductsPanel([], '/panel/products', [{ ...product, accessItems: [] }], []);
+
+    const publish = await screen.findByRole('button', { name: pl.products.publish });
+    expect(publish).toBeDisabled();
+    expect(screen.getByText(pl.products.publishNeedsAccess)).toBeInTheDocument();
+    expect(await screen.findByText(pl.products.publishNeedsActivePrice)).toBeInTheDocument();
+  });
+
+  it('offers a selectable checkout URL when clipboard writing fails', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockRejectedValue(new Error('Clipboard denied')) },
+    });
+    await renderProductsPanel();
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.products.copyCheckoutLink }));
+
+    expect(await screen.findByText(pl.products.checkoutLinkCopyFailed)).toBeInTheDocument();
+    expect(screen.getByLabelText(pl.products.publishPublicUrl)).toHaveValue(
+      `${window.location.origin}/checkout/draft-1`,
+    );
+    expect(screen.queryByText(pl.products.checkoutLinkCopied)).not.toBeInTheDocument();
+  });
+
+  it('updates product details while keeping the slug read-only', async () => {
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1');
+
+    const title = await screen.findByLabelText(pl.products.titleLabel);
+    await userEvent.clear(title);
+    await userEvent.type(title, 'Updated course offer');
+    await userEvent.clear(screen.getByLabelText(pl.products.coverUrlLabel));
+    await userEvent.type(screen.getByLabelText(pl.products.coverUrlLabel), 'https://cdn.test/new-cover.jpg');
+    expect(screen.getByLabelText(pl.products.slugLabel)).toHaveAttribute('readonly');
+    expect(screen.getByLabelText(pl.products.slugLabel)).toHaveAccessibleDescription(
+      pl.products.slugImmutableHint,
+    );
+    await userEvent.click(screen.getByRole('button', { name: pl.products.saveDetails }));
+
+    expect(await screen.findByText(pl.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updatedProduct()).toMatchObject({
+      title: 'Updated course offer',
+      slug: 'draft-course',
+      coverUrl: 'https://cdn.test/new-cover.jpg',
+    });
+  });
+
+  it('unpublishes a live product after confirmation', async () => {
+    const product = initialProducts[0];
+    if (product === undefined) throw new Error('Expected the base product fixture');
+    await renderProductsPanel([], '/panel/products', [{ ...product, published: true }]);
+
+    await userEvent.click(await screen.findByRole('button', { name: pl.products.unpublish }));
+    expect(await screen.findByText(pl.products.unpublishConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: pl.products.unpublishConfirm }));
+
+    expect(await screen.findByRole('button', { name: pl.products.publish })).toBeInTheDocument();
   });
 
   it('flags products whose access items point at missing content', async () => {

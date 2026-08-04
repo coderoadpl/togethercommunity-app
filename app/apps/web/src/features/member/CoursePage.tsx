@@ -69,11 +69,22 @@ export const CoursePage = ({ productId }: { productId: string }) => {
     );
   }
 
-  const accessibleCourses = courses.data?.courses ?? [];
+  const grantedCourseIds = new Set(product.accessItems.map((item) => item.courseId));
+  const accessibleCourses = (courses.data?.courses ?? []).filter((course) => grantedCourseIds.has(course.id));
 
   return (
     <MemberSurface title={product.title} eyebrow={t.student.courseEyebrow}>
-      {accessibleCourses.length === 0 ? (
+      {courses.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.student.loadingCourses }} />
+      ) : courses.isError ? (
+        <StatusView
+          state={{
+            kind: 'error',
+            message: localizeError(courses.error, t),
+            retry: { label: t.student.retryCourses, onRetry: () => void courses.refetch() },
+          }}
+        />
+      ) : accessibleCourses.length === 0 ? (
         <StatusView
           state={{
             kind: 'empty',

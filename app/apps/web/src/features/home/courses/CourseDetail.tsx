@@ -1,5 +1,6 @@
 import { useState, type DragEvent, type FormEvent } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Divider,
@@ -676,6 +677,85 @@ const orderAttachedModules = (course: Course, attached: CourseModule[]): CourseM
   });
 };
 
+const CourseDetailsSection = ({ course }: { course: Course }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(course.name);
+  const [description, setDescription] = useState(course.description);
+  const [imageUrl, setImageUrl] = useState(course.imageUrl ?? '');
+  const save = useMutation({
+    ...actions.updateCourse,
+    onSuccess: async () => queryClient.invalidateQueries(actions.coursesInvalidates()),
+  });
+
+  const resetFeedback = () => {
+    if (save.isSuccess || save.isError) save.reset();
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    save.mutate({
+      id: course.id,
+      name: name.trim(),
+      description,
+      imageUrl: imageUrl.trim() === '' ? null : imageUrl.trim(),
+    });
+  };
+
+  return (
+    <SectionCard
+      title={t.courses.detailsHeading}
+      onSubmit={submit}
+      actions={(
+        <Button type="submit" variant="contained" disabled={save.isPending || name.trim().length === 0}>
+          {save.isPending ? t.courses.savingDetails : t.courses.saveDetails}
+        </Button>
+      )}
+      data-testid="course-details-section"
+    >
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-name">{t.courses.titleLabel}</FormLabel>
+        <OutlinedInput
+          id="course-name"
+          value={name}
+          required
+          onChange={(event) => {
+            resetFeedback();
+            setName(event.target.value);
+          }}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-description">{t.common.description}</FormLabel>
+        <OutlinedInput
+          id="course-description"
+          value={description}
+          multiline
+          minRows={3}
+          onChange={(event) => {
+            resetFeedback();
+            setDescription(event.target.value);
+          }}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
+        <OutlinedInput
+          id="course-image"
+          type="url"
+          value={imageUrl}
+          onChange={(event) => {
+            resetFeedback();
+            setImageUrl(event.target.value);
+          }}
+        />
+      </FormControl>
+      {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
+      {save.isError ? <MutationError error={save.error} /> : null}
+    </SectionCard>
+  );
+};
+
 export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () => void }) => {
   const t = useTranslations();
   const navigate = useNavigate();
@@ -778,6 +858,7 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
         </Button>
       }
     >
+      <CourseDetailsSection course={course} />
       <AttachModuleForm courseId={course.id} modules={unattached} />
       <HistoryPanel courseId={course.id} />
 

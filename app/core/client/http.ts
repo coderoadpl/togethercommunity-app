@@ -135,6 +135,8 @@ import {
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
+  productsUnpublishOutputSchema,
+  productsUpdateOutputSchema,
   simulatePurchaseOutputSchema,
   stripeConfigureOutputSchema,
   stripeWebhookOutputSchema,
@@ -230,6 +232,8 @@ import {
   type SupportMessageInput,
   type ProductsAccessItemsInput,
   type ProductsPublishInput,
+  type ProductsUnpublishInput,
+  type ProductsUpdateInput,
   type ReadMethod,
   type SimulatePurchaseInput,
   type TenantCreateInput,
@@ -629,12 +633,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  updateProduct: (input: ProductsUpdateInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productsUpdate.method,
+      API_ROUTES.productsUpdate.path,
+      productsUpdateOutputSchema,
+      input,
+      signal,
+    ),
   publishProduct: (input: ProductsPublishInput, signal?: AbortSignal) =>
     request(
       options,
       API_ROUTES.productsPublish.method,
       API_ROUTES.productsPublish.path,
       productsPublishOutputSchema,
+      input,
+      signal,
+    ),
+  unpublishProduct: (input: ProductsUnpublishInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productsUnpublish.method,
+      API_ROUTES.productsUnpublish.path,
+      productsUnpublishOutputSchema,
       input,
       signal,
     ),

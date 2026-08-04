@@ -86,6 +86,7 @@ import type {
   PostSearchRow,
   PurchaseRepository,
   ProductGrantRepository,
+  ProductMetadataRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
   ProductBatchReader,
@@ -313,7 +314,9 @@ const insertEntityVersion = async (executor: Db, tenantId: string, version: Enti
   });
 };
 
-export const createProductRepository = (db: Db): ProductRepository & ProductBatchReader => ({
+export const createProductRepository = (
+  db: Db,
+): ProductRepository & ProductBatchReader & ProductMetadataRepository => ({
   listByTenant: async (tenantId) =>
     (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt), asc(products.id))).map(
       parseProduct,
@@ -368,6 +371,20 @@ export const createProductRepository = (db: Db): ProductRepository & ProductBatc
       throw cause;
     }
   },
+  update: async (tenantId, product, version) => db.transaction(async (tx) => {
+    await insertEntityVersion(tx, tenantId, version);
+    const rows = await tx
+      .update(products)
+      .set({
+        title: product.title,
+        description: product.description,
+        coverUrl: product.coverUrl,
+      })
+      .where(and(eq(products.tenantId, tenantId), eq(products.id, product.id)))
+      .returning();
+    const row = rows[0];
+    return row ? parseProduct(row) : null;
+  }),
   updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const apply = async (executor: Db): Promise<Product | null> => {
       const changes = checkoutConsentDefinitionIds === undefined

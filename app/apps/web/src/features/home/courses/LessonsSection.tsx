@@ -540,7 +540,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
             <Paper key={index} variant="outlined" sx={{ p: '0.9rem', display: 'grid', gap: '0.6rem' }} data-testid="lesson-block">
               <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
                 <Eyebrow variant="overline" component="span" data-testid="block-type">
-                  {block.type}
+                  {blockTypeLabel(t, block.type)}
                 </Eyebrow>
                 <Box sx={{ flex: 1 }} />
                 <Tooltip title={t.lessons.moveUp({ index })}>

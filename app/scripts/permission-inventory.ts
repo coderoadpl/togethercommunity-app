@@ -143,6 +143,8 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
+  if (path === '/api/products/update') return 'product:write';
+  if (path === '/api/products/unpublish') return 'product:publish';
   if (path.startsWith('/api/products/') && path.includes('/downloads')) {
     return method === 'GET' ? 'product:read' : 'product:write';
   }

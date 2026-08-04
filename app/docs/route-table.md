@@ -148,7 +148,9 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/integrations/bunny/videos` | authenticated | read | bunny videos |
 | `POST /api/integrations/bunny/test` | authenticated | mutating | bunny test connection |
 | `POST /api/products` | authenticated | mutating | products create |
+| `POST /api/products/update` | authenticated | mutating | products update |
 | `POST /api/products/publish` | authenticated | mutating | products publish |
+| `POST /api/products/unpublish` | authenticated | mutating | products unpublish |
 | `POST /api/products/access-items` | authenticated | mutating | products access items |
 | `GET /api/products/access-issues` | authenticated | read | products access issues |
 | `GET /api/products/:productId/prices` | authenticated | read | product prices |

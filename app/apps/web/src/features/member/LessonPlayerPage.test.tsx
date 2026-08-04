@@ -186,6 +186,25 @@ describe('LessonPlayerPage', () => {
     );
   });
 
+  it('renders blocks in the saved lesson order', async () => {
+    const savedOrder: LessonBlock[] = [
+      { type: 'link', url: 'https://example.com/start' },
+      { type: 'html', html: '<p>Context</p>' },
+      { type: 'video', storageKey: 'k1', streamVideoId: 'vid-1' },
+      { type: 'pdf', pdfUrl: 'https://example.com/notes.pdf' },
+    ];
+    server.use(okNext(null), okStructure(), okProgress(), okLesson(savedOrder));
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    await screen.findByTestId('lesson-video-placeholder');
+    expect(screen.getAllByTestId(/lesson-block-/u).map((node) => node.dataset.blockType)).toEqual([
+      'link',
+      'html',
+      'video',
+      'pdf',
+    ]);
+  });
+
   it('renders an anonymous preview without member-only requests or controls', async () => {
     let memberOnlyRequests = 0;
     const countMemberOnly = () => {

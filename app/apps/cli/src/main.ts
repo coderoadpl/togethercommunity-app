@@ -154,6 +154,12 @@ const productCreateOptionsSchema = z.object({
   coverUrl: z.string().url().optional(),
   accessItems: z.string().optional(),
 });
+const productUpdateOptionsSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().optional(),
+  coverUrl: z.string().url().optional(),
+  clearCover: z.boolean().default(false),
+});
 const simulatePurchaseOptionsSchema = z.object({
   email: z.string().email(),
   product: z.string().min(1),
@@ -945,6 +951,45 @@ product
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       emit(await ctx.api.publishProduct({ id }), ctx.json, (data) =>
         `published: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+product
+  .command('unpublish <id>')
+  .description('Return a published product to draft')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+      emit(await ctx.api.unpublishProduct({ id }), ctx.json, (data) =>
+        `unpublished: ${data.product.title} (${data.product.id.slice(0, 8)})`,
+      );
+    }),
+  );
+
+product
+  .command('update <id>')
+  .description('Update product title, description or cover')
+  .option('--title <title>')
+  .option('--description <description>')
+  .option('--cover-url <url>', 'absolute cover image URL')
+  .option('--clear-cover', 'remove the current cover image')
+  .action(
+    withInput(z.tuple([z.string().min(1), productUpdateOptionsSchema]), async (ctx, [id, options]) => {
+      if (options.coverUrl !== undefined && options.clearCover) {
+        emit(err(validation('Provide only one of --cover-url and --clear-cover')), ctx.json, () => '');
+        return;
+      }
+      emit(
+        await ctx.api.updateProduct({
+          id,
+          ...(options.title === undefined ? {} : { title: options.title }),
+          ...(options.description === undefined ? {} : { description: options.description }),
+          ...(options.coverUrl === undefined && !options.clearCover
+            ? {}
+            : { coverUrl: options.clearCover ? null : options.coverUrl }),
+        }),
+        ctx.json,
+        (data) => `updated: ${data.product.title} (${data.product.id.slice(0, 8)})`,
       );
     }),
   );

@@ -46,14 +46,6 @@ const isForbidden = (error: Error | null) =>
 
 const VIDEO_ALLOW = 'accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;';
 
-const BLOCK_RANK: Record<LessonBlock['type'], number> = {
-  video: 0,
-  pdf: 1,
-  embed: 2,
-  html: 3,
-  link: 4,
-};
-
 const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
   switch (type) {
     case 'video':
@@ -68,12 +60,6 @@ const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
       return t.lesson.labelLink;
   }
 };
-
-const sortBlocks = (blocks: readonly PlayableLessonBlock[]): PlayableLessonBlock[] =>
-  blocks
-    .map((block, index) => ({ block, index }))
-    .sort((a, b) => BLOCK_RANK[a.block.type] - BLOCK_RANK[b.block.type] || a.index - b.index)
-    .map((entry) => entry.block);
 
 const MediaIframe = ({
   frameSx,
@@ -378,7 +364,7 @@ export const LessonPlayerPage = ({
     );
   }
 
-  const blocks = sortBlocks(lesson.data.lesson.contents);
+  const blocks = lesson.data.lesson.contents;
   const nextLesson = next.data?.next ?? null;
   const nextHref = nextLesson === null ? null : `/my/courses/${courseId}/lessons/${nextLesson.id}`;
 
@@ -436,7 +422,13 @@ export const LessonPlayerPage = ({
             />
           ) : (
             blocks.map((block, index) => (
-              <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
+              <Paper
+                key={index}
+                elevation={1}
+                sx={{ p: '1.5rem' }}
+                data-testid={`lesson-block-${index}`}
+                data-block-type={block.type}
+              >
                 <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
                   {blockLabel(t, block.type)}
                 </Eyebrow>

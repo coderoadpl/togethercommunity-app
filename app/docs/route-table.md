@@ -140,6 +140,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/api-keys` | authenticated | read | api keys |
 | `POST /api/api-keys` | authenticated | mutating | api keys create |
 | `DELETE /api/api-keys/:id` | authenticated | mutating | api key revoke |
+| `GET /api/api-keys/:id/import-audit` | authenticated | read | api key import audit |
 | `GET /api/tenant-secrets` | authenticated | read | tenant secrets |
 | `POST /api/tenant-secrets` | authenticated | mutating | tenant secret set |
 | `DELETE /api/tenant-secrets/:key` | authenticated | mutating | tenant secret delete |

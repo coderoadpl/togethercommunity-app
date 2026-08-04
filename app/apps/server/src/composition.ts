@@ -161,6 +161,7 @@ import type {
   IdGenerator,
   ImportAuditEventRepository,
   ImportContentRepository,
+  ImportUsersReader,
   ImportUsersRepository,
   InvoiceRepository,
   InvoicingPort,
@@ -309,6 +310,7 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   importAuditEvents: ImportAuditEventRepository;
   importContent: ImportContentRepository;
+  importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
   contentHash: ContentHash;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
@@ -551,6 +553,17 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const fiscalArtifacts = createFiscalArtifactRepository(db);
   const ksefJobs = createKsefSubmissionJobRepository(db);
   const contentHash = createContentHash();
+  const importUsers = createImportUsersRepository(db);
+  const importUsersReader: ImportUsersReader = {
+    findAuthUserByEmail: importUsers.findAuthUserByEmail,
+    isLegacyCredentialEmailAllowed: importUsers.isLegacyCredentialEmailAllowed,
+    findMemberById: importUsers.findMemberById,
+    findMemberByEmail: importUsers.findMemberByEmail,
+    findGrantById: importUsers.findGrantById,
+    findGrantByPair: importUsers.findGrantByPair,
+    findProgressById: importUsers.findProgressById,
+    findProgressByPair: importUsers.findProgressByPair,
+  };
   const ksefPdf = createKsefInvoicePdf();
   const fa3Validator = createFa3XsdValidator();
   const ksefClient = createKsefClient({
@@ -923,7 +936,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantApiKeys: createTenantApiKeyRepository(db),
     importAuditEvents: createImportAuditEventRepository(db),
     importContent: createImportContentRepository(db),
-    importUsers: createImportUsersRepository(db),
+    importUsersReader,
+    importUsers,
     contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     m2mTransactionalRateLimits: {

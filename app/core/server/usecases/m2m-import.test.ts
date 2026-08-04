@@ -103,6 +103,7 @@ const harness = () => {
     },
     importUsers: {
       findAuthUserByEmail: async () => null,
+      isLegacyCredentialEmailAllowed: async () => true,
       findMemberById: async () => null,
       findMemberByEmail: async () => null,
       findGrantById: async () => null,
@@ -234,6 +235,27 @@ describe('m2m content import', () => {
         summary: { created: 1, failed: 2 },
       },
     });
+  });
+
+  it('rejects attaching an imported module to a native course', async () => {
+    const h = harness();
+    h.courses.set('native-course', {
+      id: 'native-course', tenantId: TENANT_ID, name: 'Live', description: '', imageUrl: null,
+      moduleOrder: [], legacyId: null, createdAt: NOW,
+    });
+    const result = await importM2mContent(ctx, apiKey, 'module', {
+      datasetVersion: 'together-import/v1',
+      records: [{
+        importKey: 'module-injected', courseKeys: ['native-course'], title: 'Injected',
+        prefix: null, chapters: [],
+      }],
+    }, h.deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(h.modules.has('module-injected')).toBe(false);
   });
 
   it('validates mixed forward references without invoking the write port', async () => {

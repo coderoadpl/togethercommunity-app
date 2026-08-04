@@ -12,7 +12,12 @@ const importAuditResourceTypeSchema = z.enum([
 
 export type ImportAuditResourceType = z.output<typeof importAuditResourceTypeSchema>;
 
-const importAuditActionSchema = z.enum(['created', 'updated', 'unchanged']);
+const importAuditActionSchema = z.enum([
+  'created',
+  'updated',
+  'unchanged',
+  'credential_created',
+]);
 
 export const importAuditEventSchema = z.object({
   id: z.string(),

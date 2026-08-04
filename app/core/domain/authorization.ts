@@ -90,6 +90,7 @@ export const CAPABILITIES = [
   'transactional:message:send',
   'import:content-write',
   'import:users-write',
+  'import:validate',
   'scheduler:read',
   'scheduler:dispatch',
   'checkout:read',
@@ -257,8 +258,8 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'transactional:message:read',
     'transactional:message:send',
   ],
-  'import-content-api-key': ['import:content-write'],
-  'import-users-api-key': ['import:users-write'],
+  'import-content-api-key': ['import:content-write', 'import:validate'],
+  'import-users-api-key': ['import:users-write', 'import:validate'],
   'operator-secret': [
     'scheduler:read',
     'scheduler:dispatch',

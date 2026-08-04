@@ -57,8 +57,14 @@ describe('authorization contract', () => {
     expect(capabilitiesForPrincipal('api-key')).toContain('marketing:message:send');
     expect(capabilitiesForPrincipal('api-key')).not.toContain('import:content-write');
     expect(capabilitiesForPrincipal('api-key')).not.toContain('import:users-write');
-    expect(capabilitiesForPrincipal('import-content-api-key')).toEqual(['import:content-write']);
-    expect(capabilitiesForPrincipal('import-users-api-key')).toEqual(['import:users-write']);
+    expect(capabilitiesForPrincipal('import-content-api-key')).toEqual([
+      'import:content-write',
+      'import:validate',
+    ]);
+    expect(capabilitiesForPrincipal('import-users-api-key')).toEqual([
+      'import:users-write',
+      'import:validate',
+    ]);
     expect(capabilitiesForPrincipal('public')).toContain('offer:read');
     expect(capabilitiesForPrincipal('public')).toContain('lesson:play');
     expect(capabilitiesForPrincipal('public')).not.toContain('tenant:settings:read');

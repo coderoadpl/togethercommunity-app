@@ -884,7 +884,9 @@ export const importAuditEvents = pgTable(
     }).notNull(),
     importKey: text('import_key').notNull(),
     resourceId: text('resource_id').notNull(),
-    action: text('action', { enum: ['created', 'updated', 'unchanged'] }).notNull(),
+    action: text('action', {
+      enum: ['created', 'updated', 'unchanged', 'credential_created'],
+    }).notNull(),
     payloadHash: text('payload_hash').notNull(),
     at: text('at').notNull(),
   },

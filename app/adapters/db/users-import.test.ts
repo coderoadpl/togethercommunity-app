@@ -11,6 +11,7 @@ import {
   importAuditEvents,
   members,
   tenantApiKeys,
+  tenantSesSettings,
   tenants,
   user,
 } from './schema.js';
@@ -45,6 +46,14 @@ beforeAll(async () => {
     createdAt: NOW,
     expiresAt: '1998-08-20T10:00:00.000Z',
   });
+  await db.insert(tenantSesSettings).values({
+    tenantId: TENANT_ID,
+    fromAddress: 'migration@example.test',
+    fromName: 'Migration',
+    identity: 'example.test',
+    identityVerifiedAt: NOW,
+    webhookToken: 'users-import-webhook-token',
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -68,7 +77,7 @@ const memberMutation = (
   authUser: {
     action: 'create',
     name: 'Imported User',
-    emailVerified: true,
+    emailVerified: false,
     credentialAccountId: 'credential-source',
     legacyPasswordHash,
   },
@@ -83,9 +92,60 @@ const memberMutation = (
     payloadHash: 'a'.repeat(64),
     at: NOW,
   },
+  credentialEvent: {
+    id: 'audit-credential-created',
+    tenantId: TENANT_ID,
+    apiKeyId: 'import-key',
+    kind: 'member',
+    importKey: 'member-source',
+    resourceId: 'member-source',
+    action: 'credential_created',
+    payloadHash: 'a'.repeat(64),
+    at: NOW,
+  },
 });
 
 describe('users import repository', () => {
+  it('allows legacy credentials only for the tenant verified sending identity', async () => {
+    const repository = createImportUsersRepository(db);
+
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'USER@example.test',
+    )).toBe(true);
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'user@outside.test',
+    )).toBe(false);
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      'tenant-users-import-other',
+      'user@example.test',
+    )).toBe(false);
+    await db.update(tenantSesSettings).set({
+      identity: 'specific@example.test',
+    }).where(eq(tenantSesSettings.tenantId, TENANT_ID));
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'specific@example.test',
+    )).toBe(true);
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'other@example.test',
+    )).toBe(false);
+    await db.update(tenantSesSettings).set({
+      identity: 'example.test',
+      identityVerifiedAt: null,
+    }).where(eq(tenantSesSettings.tenantId, TENANT_ID));
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'user@example.test',
+    )).toBe(false);
+    expect(await repository.commit(TENANT_ID, memberMutation(MARKER))).toBe('conflict');
+    expect(await db.select().from(user).where(eq(user.id, 'user-source'))).toEqual([]);
+    await db.update(tenantSesSettings).set({ identityVerifiedAt: NOW })
+      .where(eq(tenantSesSettings.tenantId, TENANT_ID));
+  });
+
   it('commits auth identity, credential, member, and audit atomically', async () => {
     const repository = createImportUsersRepository(db);
     const result = await repository.commit(TENANT_ID, memberMutation(MARKER));
@@ -98,7 +158,7 @@ describe('users import repository', () => {
       .where(eq(importAuditEvents.id, 'audit-member-created'));
 
     expect(result).toBe('saved');
-    expect(authUser).toMatchObject({ email: 'user@example.test', emailVerified: true });
+    expect(authUser).toMatchObject({ email: 'user@example.test', emailVerified: false });
     expect(credential?.password).toBe(MARKER);
     expect(member).toMatchObject({
       userId: 'user-source',
@@ -107,6 +167,10 @@ describe('users import repository', () => {
     });
     expect(audit).toMatchObject({ kind: 'member', resourceId: 'member-source' });
     expect(audit?.payloadHash).not.toContain(MARKER);
+    expect(await repository.findAuthUserByEmail(TENANT_ID, 'USER@example.test')).toMatchObject({
+      id: 'user-source',
+      credentialPassword: MARKER,
+    });
   });
 
   it('rejects credential replacement and rolls back the audit entry', async () => {
@@ -132,6 +196,63 @@ describe('users import repository', () => {
 
     expect(result).toBe('conflict');
     expect(credential?.password).toBe(MARKER);
-    expect(audits).toHaveLength(1);
+    expect(audits).toHaveLength(2);
+  });
+
+  it('does not resolve or adopt an auth user that belongs only to another tenant', async () => {
+    const repository = createImportUsersRepository(db);
+    await db.insert(tenants).values({
+      id: 'tenant-users-import-other',
+      slug: 'users-import-other',
+      name: 'Users Import Other',
+      createdAt: NOW,
+    });
+    await db.insert(user).values({
+      id: 'foreign-user',
+      name: 'Foreign User',
+      email: 'foreign@example.test',
+      emailVerified: true,
+    });
+    await db.insert(members).values({
+      id: 'foreign-member',
+      tenantId: 'tenant-users-import-other',
+      userId: 'foreign-user',
+      email: 'foreign@example.test',
+      displayName: 'Foreign User',
+      createdAt: NOW,
+    });
+
+    expect(await repository.findAuthUserByEmail(TENANT_ID, 'foreign@example.test')).toBeNull();
+    expect(await repository.findAuthUserByEmail(
+      'tenant-users-import-other',
+      'foreign@example.test',
+    )).toMatchObject({ id: 'foreign-user' });
+
+    const attempted = memberMutation(MARKER);
+    if (attempted.credentialEvent === null) throw new Error('Expected credential audit event');
+    const conflict = await repository.commit(TENANT_ID, {
+      ...attempted,
+      resource: {
+        ...attempted.resource,
+        id: 'member-foreign-attempt',
+        userId: 'new-user-for-foreign-email',
+        email: 'foreign@example.test',
+      },
+      event: {
+        ...attempted.event,
+        id: 'audit-foreign-attempt',
+        importKey: 'member-foreign-attempt',
+        resourceId: 'member-foreign-attempt',
+      },
+      credentialEvent: {
+        ...attempted.credentialEvent,
+        id: 'audit-foreign-credential-attempt',
+        importKey: 'member-foreign-attempt',
+        resourceId: 'member-foreign-attempt',
+      },
+    });
+
+    expect(conflict).toBe('conflict');
+    expect(await repository.findMemberById(TENANT_ID, 'member-foreign-attempt')).toBeNull();
   });
 });

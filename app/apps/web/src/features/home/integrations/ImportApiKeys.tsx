@@ -59,6 +59,11 @@ export const ImportApiKeys = () => {
   const [usersScope, setUsersScope] = useState(false);
   const [expiryDate, setExpiryDate] = useState(() => relativeDateInputValue(IMPORT_API_KEY_DEFAULT_EXPIRY_DAYS));
   const [confirmingRevoke, setConfirmingRevoke] = useState<TenantApiKeyPublic | null>(null);
+  const [auditKeyId, setAuditKeyId] = useState<string | null>(null);
+  const audit = useQuery({
+    ...actions.apiKeyImportAudit(auditKeyId ?? ''),
+    enabled: auditKeyId !== null,
+  });
 
   const create = useMutation({
     ...actions.createApiKey,
@@ -223,7 +228,7 @@ export const ImportApiKeys = () => {
                     </Typography>
                   )}
                   {state === 'active' ? (
-                    <Box>
+                    <Box sx={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <Button
                         type="button"
                         color="error"
@@ -233,7 +238,46 @@ export const ImportApiKeys = () => {
                       >
                         {t.integrations.importKeysRevoke}
                       </Button>
+                      <Button
+                        type="button"
+                        size="small"
+                        data-testid={`import-api-key-audit-${key.id}`}
+                        onClick={() => setAuditKeyId(auditKeyId === key.id ? null : key.id)}
+                      >
+                        {t.integrations.importKeysAudit}
+                      </Button>
                     </Box>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="small"
+                      data-testid={`import-api-key-audit-${key.id}`}
+                      onClick={() => setAuditKeyId(auditKeyId === key.id ? null : key.id)}
+                    >
+                      {t.integrations.importKeysAudit}
+                    </Button>
+                  )}
+                  {auditKeyId === key.id ? (
+                    audit.isPending ? (
+                      <StatusView surface={false} state={{ kind: 'loading', label: t.integrations.importKeysAuditLoading }} />
+                    ) : audit.isError ? (
+                      <Alert severity="error">{localizeError(audit.error, t)}</Alert>
+                    ) : audit.data.events.length === 0 ? (
+                      <Typography color="text.secondary">{t.integrations.importKeysAuditEmpty}</Typography>
+                    ) : (
+                      <Stack component="ul" useFlexGap spacing="0.4rem" sx={{ listStyle: 'none', p: 0, m: 0 }}>
+                        {audit.data.events.map((event) => (
+                          <Typography component="li" variant="body2" key={event.id}>
+                            {t.integrations.importKeysAuditEvent({
+                              kind: event.kind,
+                              importKey: event.importKey,
+                              action: event.action,
+                              at: formatDate(event.at),
+                            })}
+                          </Typography>
+                        ))}
+                      </Stack>
+                    )
                   ) : null}
                 </Stack>
               </Paper>

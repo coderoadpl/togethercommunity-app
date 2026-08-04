@@ -14,6 +14,7 @@ export interface TenantRepositoryMethod {
 export interface TenantScopeAudit {
   excludedPorts: string[];
   exceptions: TenantRepositoryMethod[];
+  ignoredTenantParameters: TenantRepositoryMethod[];
   methods: TenantRepositoryMethod[];
   scoped: TenantRepositoryMethod[];
   staleExcludedPorts: string[];
@@ -223,6 +224,41 @@ const declarationMembers = (
   return null;
 };
 
+type ImplementedFunction =
+  | ts.ArrowFunction
+  | ts.FunctionDeclaration
+  | ts.FunctionExpression
+  | ts.MethodDeclaration;
+
+const implementedFunction = (node: ts.Node): node is ImplementedFunction =>
+  ts.isArrowFunction(node)
+  || ts.isFunctionDeclaration(node)
+  || ts.isFunctionExpression(node)
+  || ts.isMethodDeclaration(node);
+
+const functionName = (node: ImplementedFunction, sourceFile: ts.SourceFile): string => {
+  const parent = node.parent;
+  if (ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent)) {
+    return propertyName(parent.name) ?? parent.name.getText(sourceFile);
+  }
+  return node.name === undefined ? '<anonymous>' : node.name.getText(sourceFile);
+};
+
+const ignoresTenantParameter = (node: ImplementedFunction): boolean => {
+  if (node.body === undefined) return false;
+  const first = node.parameters[0];
+  if (first === undefined || !ts.isIdentifier(first.name)) return false;
+  const parameterName = first.name.text;
+  if (parameterName !== 'tenantId' && parameterName !== '_tenantId') return false;
+  let used = false;
+  const visit = (child: ts.Node): void => {
+    if (child !== first.name && ts.isIdentifier(child) && child.text === parameterName) used = true;
+    ts.forEachChild(child, visit);
+  };
+  visit(node.body);
+  return !used;
+};
+
 export const auditTenantRepositoryScopes = (
   sources: readonly TenantScopeSource[],
   exceptions: Readonly<Record<string, string>> = TENANT_SCOPE_EXCEPTIONS,
@@ -232,6 +268,7 @@ export const auditTenantRepositoryScopes = (
   const methods: TenantRepositoryMethod[] = [];
   const scoped: TenantRepositoryMethod[] = [];
   const approved: TenantRepositoryMethod[] = [];
+  const ignoredTenantParameters: TenantRepositoryMethod[] = [];
   const violations: TenantRepositoryMethod[] = [];
   const seenExceptions = new Set<string>();
   const seenExcludedPorts = new Set<string>();
@@ -250,6 +287,23 @@ export const auditTenantRepositoryScopes = (
       if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
         declarations.set(statement.name.text, statement);
       }
+    }
+    if (input.file.startsWith('adapters/')) {
+      const visit = (node: ts.Node): void => {
+        if (implementedFunction(node) && ignoresTenantParameter(node)) {
+          const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          const method = functionName(node, sourceFile);
+          ignoredTenantParameters.push({
+            file: input.file,
+            line: location.line + 1,
+            method,
+            repository: input.file,
+            subject: `${input.file}.${method}`,
+          });
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sourceFile);
     }
     for (const statement of sourceFile.statements) {
       const declaration = declarationMembers(statement);
@@ -287,6 +341,7 @@ export const auditTenantRepositoryScopes = (
   return {
     excludedPorts: [...seenExcludedPorts].sort(),
     exceptions: approved,
+    ignoredTenantParameters,
     methods,
     scoped,
     staleExcludedPorts: Object.keys(excludedPorts).filter(
@@ -333,6 +388,7 @@ if (invokedPath !== undefined && fileURLToPath(import.meta.url) === invokedPath)
   );
   if (
     audit.violations.length > 0
+    || audit.ignoredTenantParameters.length > 0
     || audit.staleExceptions.length > 0
     || audit.staleExcludedPorts.length > 0
   ) {
@@ -340,6 +396,11 @@ if (invokedPath !== undefined && fileURLToPath(import.meta.url) === invokedPath)
     for (const violation of audit.violations) {
       process.stderr.write(
         `  ${violation.file}:${String(violation.line)} ${violation.subject} must take tenantId as its first parameter\n`,
+      );
+    }
+    for (const ignored of audit.ignoredTenantParameters) {
+      process.stderr.write(
+        `  ${ignored.file}:${String(ignored.line)} ${ignored.method} accepts tenantId but does not use it\n`,
       );
     }
     for (const exception of audit.staleExceptions) {

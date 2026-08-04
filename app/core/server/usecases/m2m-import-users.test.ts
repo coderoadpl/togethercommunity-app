@@ -20,7 +20,7 @@ import type {
 } from '../ports.js';
 import { importM2mUsers, type M2mImportUsersDeps } from './m2m-import-users.js';
 import {
-  validateM2mImportForUsers,
+  validateM2mImport,
   type M2mImportValidationDeps,
 } from './m2m-import.js';
 
@@ -128,6 +128,7 @@ const harness = () => {
   const commits: ImportUsersMutation[] = [];
   const importUsers: M2mImportUsersDeps['importUsers'] = {
     findAuthUserByEmail: async (_tenantId, email) => authUsers.get(email) ?? null,
+    isLegacyCredentialEmailAllowed: async () => true,
     findMemberById: async (_tenantId, id) => members.get(id) ?? null,
     findMemberByEmail: async (_tenantId, email) =>
       [...members.values()].find((member) => member.email === email) ?? null,
@@ -181,7 +182,7 @@ const harness = () => {
 };
 
 describe('m2m users import', () => {
-  it('creates a verified-ready member identity and makes exact replays unchanged', async () => {
+  it('creates an unverified imported identity and makes exact replays unchanged', async () => {
     const h = harness();
     const created = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
@@ -200,12 +201,13 @@ describe('m2m users import', () => {
     });
     expect(h.commits[0]).toMatchObject({
       kind: 'member',
-      authUser: { action: 'create', emailVerified: true },
+      authUser: { action: 'create', emailVerified: false },
+      credentialEvent: { action: 'credential_created' },
     });
     expect(h.audits.get('member:member-source')?.payloadHash).not.toContain(MARKER);
   });
 
-  it('attaches an existing tenant owner user without replacing its identity', async () => {
+  it('rejects both calls in the credential-planting PoC for a pre-existing identity', async () => {
     const h = harness();
     h.authUsers.set('user@example.test', {
       id: 'owner-user',
@@ -213,30 +215,20 @@ describe('m2m users import', () => {
       hasCredentialAccount: false,
       credentialPassword: null,
     });
-    const result = await importM2mUsers(ctx, apiKey, 'member', {
+    const first = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
       records: [memberRecord(null)],
     }, h.deps);
-
-    expect(result).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
-    expect(h.members.get('member-source')?.userId).toBe('owner-user');
-    expect(h.commits[0]).toMatchObject({ kind: 'member', authUser: { action: 'keep' } });
-  });
-
-  it('does not plant a credential while attaching an existing passwordless user', async () => {
-    const h = harness();
-    h.authUsers.set('user@example.test', {
-      id: 'owner-user',
-      email: 'user@example.test',
-      hasCredentialAccount: false,
-      credentialPassword: null,
-    });
-    const result = await importM2mUsers(ctx, apiKey, 'member', {
+    const second = await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
       records: [memberRecord()],
     }, h.deps);
 
-    expect(result).toMatchObject({
+    expect(first).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(second).toMatchObject({
       ok: true,
       value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
     });
@@ -244,7 +236,52 @@ describe('m2m users import', () => {
     expect(h.authUsers.get('user@example.test')?.credentialPassword).toBeNull();
   });
 
-  it('allows an import-created member credential to transition from empty to set once', async () => {
+  it('returns one validation conflict for every credential state of a tenant identity', async () => {
+    const h = harness();
+    const validationDeps: M2mImportValidationDeps = {
+      ...h.deps,
+      products: {
+        ...h.deps.products,
+        listByTenant: async () => [product],
+      },
+    };
+    h.authUsers.set('user@example.test', {
+      id: 'existing-user',
+      email: 'user@example.test',
+      hasCredentialAccount: false,
+      credentialPassword: null,
+    });
+    const withoutCredential = await validateM2mImport(ctx, {
+      datasetVersion: 'together-import/v1',
+      records: [{ kind: 'member', ...memberRecord() }],
+    }, validationDeps);
+    h.authUsers.set('user@example.test', {
+      id: 'existing-user',
+      email: 'user@example.test',
+      hasCredentialAccount: true,
+      credentialPassword: OTHER_MARKER,
+    });
+    const withCredential = await validateM2mImport(ctx, {
+      datasetVersion: 'together-import/v1',
+      records: [{ kind: 'member', ...memberRecord() }],
+    }, validationDeps);
+
+    const conflict = {
+      code: 'conflict',
+      message: 'This member identity cannot be imported',
+    };
+    expect(withoutCredential).toMatchObject({
+      ok: true,
+      value: { errors: [{ error: conflict }] },
+    });
+    expect(withCredential).toMatchObject({
+      ok: true,
+      value: { errors: [{ error: conflict }] },
+    });
+    expect(h.commits).toEqual([]);
+  });
+
+  it('does not add a credential on a later call, even for an import-created member', async () => {
     const h = harness();
     await importM2mUsers(ctx, apiKey, 'member', {
       datasetVersion: 'together-import/v1',
@@ -255,8 +292,42 @@ describe('m2m users import', () => {
       records: [memberRecord()],
     }, h.deps);
 
-    expect(updated).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
-    expect(h.authUsers.get('user@example.test')?.credentialPassword).toBe(MARKER);
+    expect(updated).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(h.authUsers.get('user@example.test')?.credentialPassword).toBeNull();
+  });
+
+  it('requires tenant evidence for a legacy credential but allows a passwordless import', async () => {
+    const h = harness();
+    const depsWithoutEvidence: M2mImportUsersDeps = {
+      ...h.deps,
+      importUsers: {
+        ...h.deps.importUsers,
+        isLegacyCredentialEmailAllowed: async () => false,
+      },
+    };
+    const credential = await importM2mUsers(ctx, apiKey, 'member', {
+      datasetVersion: 'together-import/v1',
+      records: [memberRecord()],
+    }, depsWithoutEvidence);
+    const passwordless = await importM2mUsers(ctx, apiKey, 'member', {
+      datasetVersion: 'together-import/v1',
+      records: [memberRecord(null)],
+    }, depsWithoutEvidence);
+
+    expect(credential).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(passwordless).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0]).toMatchObject({
+      kind: 'member',
+      authUser: { legacyPasswordHash: null, emailVerified: false },
+      credentialEvent: null,
+    });
   });
 
   it('rejects malformed, plaintext-looking, and replacement credential inputs per record', async () => {
@@ -284,7 +355,7 @@ describe('m2m users import', () => {
     expect(h.authUsers.get('user@example.test')?.credentialPassword).toBe(MARKER);
   });
 
-  it('creates, updates, and replays import grants while rejecting dangling references', async () => {
+  it('restricts grants to imported members and products', async () => {
     const h = harness();
     h.members.set('member-native', {
       id: 'member-native', tenantId: TENANT_ID, userId: 'user-native',
@@ -296,6 +367,19 @@ describe('m2m users import', () => {
       productKey: 'product-native',
       startsAt: '1995-01-01T00:00:00.000Z',
       expiresAt,
+    });
+    const native = await importM2mUsers(ctx, apiKey, 'grant', {
+      datasetVersion: 'together-import/v1', records: [grantRecord(null)],
+    }, h.deps);
+    h.audits.set('member:member-native', {
+      id: 'audit-member', tenantId: TENANT_ID, apiKeyId: apiKey.id, kind: 'member',
+      importKey: 'member-native', resourceId: 'member-native', action: 'created',
+      payloadHash: 'member', at: NOW,
+    });
+    h.audits.set('product:product-native', {
+      id: 'audit-product', tenantId: TENANT_ID, apiKeyId: apiKey.id, kind: 'product',
+      importKey: 'product-native', resourceId: 'product-native', action: 'created',
+      payloadHash: 'product', at: NOW,
     });
     const created = await importM2mUsers(ctx, apiKey, 'grant', {
       datasetVersion: 'together-import/v1', records: [grantRecord(null)],
@@ -313,6 +397,10 @@ describe('m2m users import', () => {
       records: [{ ...grantRecord(null), importKey: 'grant-dangling', memberKey: 'missing' }],
     }, h.deps);
 
+    expect(native).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
     expect(created).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
     expect(updated).toMatchObject({ ok: true, value: { summary: { updated: 1 } } });
     expect(unchanged).toMatchObject({ ok: true, value: { summary: { unchanged: 1 } } });
@@ -332,6 +420,17 @@ describe('m2m users import', () => {
       id: 'member-native', tenantId: TENANT_ID, userId: 'user-native',
       email: 'native@example.test', displayName: 'Native', legacyId: null, createdAt: NOW,
     });
+    for (const [kind, key] of [
+      ['member', 'member-native'],
+      ['course', 'course-native'],
+      ['lesson', 'lesson-native'],
+      ['module', 'module-native'],
+    ] as const) {
+      h.audits.set(`${kind}:${key}`, {
+        id: `audit-${kind}`, tenantId: TENANT_ID, apiKeyId: apiKey.id, kind,
+        importKey: key, resourceId: key, action: 'created', payloadHash: kind, at: NOW,
+      });
+    }
     const validRecord = {
       importKey: 'progress-source',
       memberKey: 'member-native',
@@ -376,7 +475,7 @@ describe('m2m users import', () => {
     });
   });
 
-  it('validates mixed users records and in-call references without committing', async () => {
+  it('reports content records as forbidden for a users-only validation key', async () => {
     const h = harness();
     const validationDeps: M2mImportValidationDeps = {
       ...h.deps,
@@ -385,7 +484,7 @@ describe('m2m users import', () => {
         listByTenant: async () => [product],
       },
     };
-    const result = await validateM2mImportForUsers(ctx, {
+    const result = await validateM2mImport(ctx, {
       datasetVersion: 'together-import/v1',
       records: [
         {
@@ -405,24 +504,6 @@ describe('m2m users import', () => {
           }],
         },
         { kind: 'member', ...memberRecord(null) },
-        {
-          kind: 'grant',
-          importKey: 'grant-source',
-          memberKey: 'member-source',
-          productKey: 'product-native',
-          startsAt: '1998-08-01T00:00:00.000Z',
-          expiresAt: null,
-        },
-        {
-          kind: 'progress',
-          importKey: 'progress-source',
-          memberKey: 'member-source',
-          courseKey: 'course-source',
-          completedLessonKeys: ['lesson-source'],
-          lastViewedModuleKey: 'module-source',
-          lastViewedChapterId: 'chapter-source',
-          updatedAt: '1998-08-10T00:00:00.000Z',
-        },
       ],
     }, validationDeps);
 
@@ -430,10 +511,14 @@ describe('m2m users import', () => {
       ok: true,
       value: {
         plan: {
-          create: { course: 1, lesson: 1, module: 1, member: 1, grant: 1, progress: 1 },
+          create: { course: 0, lesson: 0, module: 0, member: 1, grant: 0, progress: 0 },
         },
-        errors: [],
-        valid: true,
+        errors: [
+          { index: 0, kind: 'course', error: { code: 'forbidden' } },
+          { index: 1, kind: 'lesson', error: { code: 'forbidden' } },
+          { index: 2, kind: 'module', error: { code: 'forbidden' } },
+        ],
+        valid: false,
       },
     });
     expect(h.commits).toEqual([]);

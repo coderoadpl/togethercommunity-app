@@ -19,7 +19,6 @@ import {
   importM2mContent,
   importM2mUsers,
   validateM2mImport,
-  validateM2mImportForUsers,
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -61,16 +60,13 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       const headers = retryHeaders(limited);
       return respond(limited, headers === undefined ? {} : { headers });
     }
-    const validate = apiKeyHasCapability(authenticated.value.apiKey, 'import:content-write')
-      ? validateM2mImport
-      : validateM2mImportForUsers;
-    return respond(await validate(authenticated.value.ctx, parsed.data, {
+    return respond(await validateM2mImport(authenticated.value.ctx, parsed.data, {
       courses: deps.courses,
       modules: deps.modules,
       lessons: deps.lessons,
       products: deps.products,
       importAuditEvents: deps.importAuditEvents,
-      importUsers: deps.importUsers,
+      importUsers: deps.importUsersReader,
       hash: deps.contentHash,
       clock: deps.clock,
     }));

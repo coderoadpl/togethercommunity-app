@@ -533,6 +533,11 @@ export const en: Messages = {
     importKeysRevoking: 'Revoking…',
     importKeysRevokeConfirmTitle: 'Revoke this import key?',
     importKeysRevokeConfirmBody: 'The key will stop working immediately. This cannot be undone.',
+    importKeysAudit: 'Import audit',
+    importKeysAuditLoading: 'Loading import audit…',
+    importKeysAuditEmpty: 'This key has no import events.',
+    importKeysAuditEvent: ({ kind, importKey, action, at }) =>
+      format('{kind} {importKey} — {action} — {at}', { kind, importKey, action, at }),
     ifirmaHeading: 'IFirma',
     ifirmaDescription:
       'Connect iFirma with the faktura API key. Configure KSeF inside iFirma; its certificate never reaches Together.',

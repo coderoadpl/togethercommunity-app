@@ -510,7 +510,11 @@ export interface ImportAuditEventRepository {
     kind: ImportAuditResourceType,
     importKey: string,
   ): Promise<ImportAuditEvent | null>;
-  listByApiKey(tenantId: string, apiKeyId: string): Promise<ImportAuditEvent[]>;
+  listByApiKey(
+    tenantId: string,
+    apiKeyId: string,
+    query: { cursor?: string; limit: number },
+  ): Promise<{ events: ImportAuditEvent[]; nextCursor: string | null }>;
 }
 
 export type ImportContentMutation =
@@ -551,11 +555,12 @@ export type ImportUsersMutation =
       authUser: {
         action: 'create' | 'keep';
         name: string;
-        emailVerified: true;
+        emailVerified: false;
         credentialAccountId: string;
         legacyPasswordHash: string | null;
       };
       event: ImportAuditEvent;
+      credentialEvent: ImportAuditEvent | null;
     }
   | {
       kind: 'grant';
@@ -570,8 +575,9 @@ export type ImportUsersMutation =
       event: ImportAuditEvent;
     };
 
-export interface ImportUsersRepository {
+export interface ImportUsersReader {
   findAuthUserByEmail(tenantId: string, email: string): Promise<ImportAuthUserState | null>;
+  isLegacyCredentialEmailAllowed(tenantId: string, email: string): Promise<boolean>;
   findMemberById(tenantId: string, memberId: string): Promise<ImportMemberResource | null>;
   findMemberByEmail(tenantId: string, email: string): Promise<ImportMemberResource | null>;
   findGrantById(tenantId: string, grantId: string): Promise<ProductGrant | null>;
@@ -584,6 +590,9 @@ export interface ImportUsersRepository {
     tenantId: string,
     input: { memberId: string; courseId: string },
   ): Promise<MemberCourseProgress | null>;
+}
+
+export interface ImportUsersRepository extends ImportUsersReader {
   commit(tenantId: string, mutation: ImportUsersMutation): Promise<'saved' | 'conflict'>;
 }
 

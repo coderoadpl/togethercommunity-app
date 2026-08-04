@@ -45,6 +45,17 @@ const renderPanel = (
 
   server.use(
     http.get('/api/api-keys', () => HttpResponse.json({ ok: true, data: { apiKeys } })),
+    http.get('/api/api-keys/:id/import-audit', ({ params }) => HttpResponse.json({
+      ok: true,
+      data: {
+        events: [{
+          id: 'audit-1', tenantId: 'tenant-123', apiKeyId: String(params.id), kind: 'member',
+          importKey: 'member-source', resourceId: 'member-source', action: 'created',
+          payloadHash: 'a'.repeat(64), at: '1998-08-14T10:00:00.000Z',
+        }],
+        nextCursor: null,
+      },
+    })),
     http.post('/api/api-keys', async ({ request }) => {
       const body = await request.json();
       apiKeySubmissions.push(body);
@@ -288,6 +299,18 @@ describe('IntegrationsPanel', () => {
         pl.integrations.importKeysRevoked,
       );
     });
+  });
+
+  it('opens the import audit from an import key', async () => {
+    renderPanel([], defaultSettings, null, 'success', [{
+      id: 'audited-key', tenantId: 'tenant-123', name: 'Audited migration',
+      scopes: ['import:users'], createdAt: '1998-08-01T10:00:00.000Z',
+      expiresAt: null, revokedAt: null,
+    }]);
+
+    await userEvent.click(await screen.findByTestId('import-api-key-audit-audited-key'));
+
+    expect(await screen.findByText(/member member-source/)).toBeInTheDocument();
   });
 
   it.each(['pending', 'error'] as const)('does not claim credentials are missing while secrets are %s', async (state) => {

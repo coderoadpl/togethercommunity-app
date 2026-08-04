@@ -1161,8 +1161,20 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     await repo.append(ACME, first);
     await repo.append(ACME, second);
 
-    expect(await repo.listByApiKey(ACME, 'key-import-acme')).toEqual([second, first]);
-    expect(await repo.listByApiKey(GLOBEX, 'key-import-acme')).toEqual([]);
+    expect(await repo.listByApiKey(ACME, 'key-import-acme', { limit: 10 })).toEqual({
+      events: [second, first],
+      nextCursor: null,
+    });
+    const firstPage = await repo.listByApiKey(ACME, 'key-import-acme', { limit: 1 });
+    expect(firstPage).toEqual({ events: [second], nextCursor: second.id });
+    expect(await repo.listByApiKey(ACME, 'key-import-acme', {
+      cursor: firstPage.nextCursor ?? '',
+      limit: 1,
+    })).toEqual({ events: [first], nextCursor: null });
+    expect(await repo.listByApiKey(GLOBEX, 'key-import-acme', { limit: 10 })).toEqual({
+      events: [],
+      nextCursor: null,
+    });
     expect(await repo.findLatestByImportKey(ACME, 'course', 'course-source-1')).toEqual(second);
     expect(await repo.findLatestByImportKey(GLOBEX, 'course', 'course-source-1')).toBeNull();
     await expect(repo.append(GLOBEX, { ...first, id: 'import-audit-cross-tenant' })).rejects.toThrow();

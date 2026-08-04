@@ -24,6 +24,7 @@ import {
   type Course,
   type CourseLesson,
   type CourseModule,
+  type ImportAuditEvent,
   type Member,
   type Membership,
   type LessonAttachment,
@@ -33,6 +34,7 @@ import {
   type ProductDownloadAsset,
   type ProductGrant,
   type Tenant,
+  type TenantApiKey,
   type TenantDomain,
   type TermsConsent,
   type TenantApiKeyScope,
@@ -92,6 +94,17 @@ const product = (input: {
   accessItems: [],
   legacyId: null,
   createdAt: '1998-07-12T00:00:00.000Z',
+});
+
+const readOnlyImportUsers = (repository: AppDeps['importUsers']): AppDeps['importUsersReader'] => ({
+  findAuthUserByEmail: repository.findAuthUserByEmail,
+  isLegacyCredentialEmailAllowed: repository.isLegacyCredentialEmailAllowed,
+  findMemberById: repository.findMemberById,
+  findMemberByEmail: repository.findMemberByEmail,
+  findGrantById: repository.findGrantById,
+  findGrantByPair: repository.findGrantByPair,
+  findProgressById: repository.findProgressById,
+  findProgressByPair: repository.findProgressByPair,
 });
 
 const deps = (input: {
@@ -222,13 +235,24 @@ const deps = (input: {
     importAuditEvents: {
       append: async () => undefined,
       findLatestByImportKey: async () => null,
-      listByApiKey: async () => [],
+      listByApiKey: async () => ({ events: [], nextCursor: null }),
     },
     importContent: {
       commit: async () => 'saved',
     },
+    importUsersReader: {
+      findAuthUserByEmail: async () => null,
+      isLegacyCredentialEmailAllowed: async () => true,
+      findMemberById: async () => null,
+      findMemberByEmail: async () => null,
+      findGrantById: async () => null,
+      findGrantByPair: async () => null,
+      findProgressById: async () => null,
+      findProgressByPair: async () => null,
+    },
     importUsers: {
       findAuthUserByEmail: async () => null,
+      isLegacyCredentialEmailAllowed: async () => true,
       findMemberById: async () => null,
       findMemberByEmail: async () => null,
       findGrantById: async () => null,
@@ -939,6 +963,7 @@ const importM2mApp = (options: {
       return 'saved';
     },
   };
+  configured.importUsersReader = readOnlyImportUsers(configured.importUsers);
   configured.contentHash = { sha256: (content) => String(content) };
   configured.apiKeyRateLimits = {
     claim: async () => options.rateLimited !== true,
@@ -1103,7 +1128,7 @@ describe('migration import HTTP surfaces', () => {
     expect(mutations).toEqual([]);
   });
 
-  it('allows either import scope to dry-run and performs no content commit', async () => {
+  it('enforces validate scopes per record kind and performs no commit', async () => {
     const { app, mutations } = importM2mApp({ scopes: ['import:users'] });
     const response = await app.request(API_PATHS.m2mImportValidate, {
       method: 'POST',
@@ -1120,7 +1145,12 @@ describe('migration import HTTP surfaces', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       ok: true,
-      data: { plan: { create: { course: 1 } }, errors: [], warnings: [], valid: true },
+      data: {
+        plan: { create: { course: 0 } },
+        errors: [{ index: 0, kind: 'course', error: { code: 'forbidden' } }],
+        warnings: [],
+        valid: false,
+      },
     });
     expect(mutations).toEqual([]);
   });
@@ -1174,7 +1204,7 @@ describe('migration import HTTP surfaces', () => {
     expect(userMutations[0]).toMatchObject({
       kind: 'member',
       resource: { email: 'user@example.test' },
-      authUser: { emailVerified: true, legacyPasswordHash: marker },
+      authUser: { emailVerified: false, legacyPasswordHash: marker },
     });
   });
 
@@ -1199,7 +1229,7 @@ describe('migration import HTTP surfaces', () => {
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
-  it('resolves member and product references for users-scoped grant imports', async () => {
+  it('rejects native member and product references for users-scoped grant imports', async () => {
     const member = {
       id: 'member-native', tenantId: 't-acme', userId: 'user-native',
       email: 'member@example.test', displayName: 'Member', legacyId: null,
@@ -1227,12 +1257,9 @@ describe('migration import HTTP surfaces', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       ok: true,
-      data: { results: [{ importKey: 'grant-source', action: 'created', id: 'grant-source' }] },
+      data: { results: [{ importKey: 'grant-source', action: 'error', error: { code: 'conflict' } }] },
     });
-    expect(userMutations[0]).toMatchObject({
-      kind: 'grant',
-      resource: { memberId: 'member-native', productId: 'acme-draft', source: 'import' },
-    });
+    expect(userMutations).toEqual([]);
   });
 
   it('activates the progress endpoint with the minimal completion-state schema', async () => {
@@ -1257,9 +1284,32 @@ describe('migration import HTTP surfaces', () => {
       createdAt: '1998-08-01T00:00:00.000Z',
     };
     const base = deps({ lessons: [progressLesson] });
+    const lineage = new Map<string, ImportAuditEvent>([
+      ['member:member-native', {
+        id: 'audit-member', tenantId: 't-acme', apiKeyId: 'import-key-id', kind: 'member',
+        importKey: 'member-native', resourceId: 'member-native', action: 'created',
+        payloadHash: 'a'.repeat(64), at: '1998-08-01T00:00:00.000Z',
+      }],
+      ['course:course-native', {
+        id: 'audit-course', tenantId: 't-acme', apiKeyId: 'import-key-id', kind: 'course',
+        importKey: 'course-native', resourceId: 'course-native', action: 'created',
+        payloadHash: 'b'.repeat(64), at: '1998-08-01T00:00:00.000Z',
+      }],
+      ['lesson:lesson-native', {
+        id: 'audit-lesson', tenantId: 't-acme', apiKeyId: 'import-key-id', kind: 'lesson',
+        importKey: 'lesson-native', resourceId: 'lesson-native', action: 'created',
+        payloadHash: 'c'.repeat(64), at: '1998-08-01T00:00:00.000Z',
+      }],
+    ]);
     const { app, userMutations } = importM2mApp({
       scopes: ['import:users'],
       overrides: {
+        importAuditEvents: {
+          append: async () => undefined,
+          findLatestByImportKey: async (_tenantId, kind, importKey) =>
+            lineage.get(`${kind}:${importKey}`) ?? null,
+          listByApiKey: async () => ({ events: [], nextCursor: null }),
+        },
         courses: {
           ...base.courses,
           list: async () => [progressCourse],
@@ -2390,6 +2440,40 @@ describe('new route authorization', () => {
     host: 'acme.localhost:48730',
     'content-type': 'application/json',
   };
+
+  it('serves a tenant-scoped import audit only to the owner', async () => {
+    const base = deps();
+    const key: TenantApiKey = {
+      id: 'audit-key', tenantId: 't-acme', name: 'Migration', keyHash: 'hash:audit',
+      scopes: ['import:users'], createdAt: '1998-08-01T00:00:00.000Z',
+      expiresAt: '1998-08-20T00:00:00.000Z', revokedAt: null,
+    };
+    const event: ImportAuditEvent = {
+      id: 'audit-event', tenantId: 't-acme', apiKeyId: key.id, kind: 'member',
+      importKey: 'member-source', resourceId: 'member-source', action: 'created',
+      payloadHash: 'a'.repeat(64), at: '1998-08-14T00:00:00.000Z',
+    };
+    const overrides: Partial<AppDeps> = {
+      tenantApiKeys: {
+        ...base.tenantApiKeys,
+        listByTenant: async () => [key],
+      },
+      importAuditEvents: {
+        ...base.importAuditEvents,
+        listByApiKey: async () => ({ events: [event], nextCursor: null }),
+      },
+    };
+    const path = API_PATHS.apiKeyImportAudit.replace(':id', key.id);
+    const owner = await scopedApp('owner', { overrides }).request(path, { headers });
+    const admin = await scopedApp('staff', { overrides }).request(path, { headers });
+
+    expect(owner.status).toBe(200);
+    expect(await owner.json()).toMatchObject({
+      ok: true,
+      data: { events: [{ importKey: 'member-source' }], nextCursor: null },
+    });
+    expect(admin.status).toBe(403);
+  });
 
   it('denies members on product-download creator routes', async () => {
     const uploadPath = API_PATHS.productDownloadUpload.replace(':productId', 'download-1');

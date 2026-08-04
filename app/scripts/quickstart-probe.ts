@@ -31,7 +31,21 @@ const compose = async (
   project: string,
   args: string[],
 ): Promise<{ code: number; stdout: string; stderr: string }> =>
-  run('docker', ['compose', '--project-name', project, ...args], {}, cloneApp);
+  run(
+    'docker',
+    [
+      'compose',
+      '-f',
+      'docker-compose.yml',
+      '-f',
+      'docker-compose.quickstart.yml',
+      '--project-name',
+      project,
+      ...args,
+    ],
+    {},
+    cloneApp,
+  );
 
 const composeLogs = async (cloneApp: string, project: string): Promise<string> => {
   const result = await compose(cloneApp, project, ['logs', '--no-color', '--tail', '200']);
@@ -134,19 +148,22 @@ const createEnvironment = (httpPort: number, httpsPort: number, project: string)
   const hex = (): string => randomBytes(32).toString('hex');
   return [
     'NODE_ENV=production',
-    'APP_ENV=staging',
+    'APP_ENV=self-host',
     `APP_BASE_URL=http://localhost:${String(httpPort)}`,
     'APP_BASE_DOMAIN=',
     'TENANT_CREATION=open',
     `BETTER_AUTH_SECRET=${hex()}`,
     'AUTH_TRUSTED_PROXY_HEADER=x-forwarded-for',
     `SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
-    'SECURE_COOKIES=false',
-    'PAYMENT_PROVIDER=fake',
+    'SECURE_COOKIES=true',
+    'PAYMENT_PROVIDER=stripe',
     'KSEF_ENVIRONMENT=production',
     'SIMULATED_PAYMENTS=false',
     'AUTH_DEV_EXPOSE_MAGIC_LINKS=false',
-    'EMAIL_PROVIDER=dev',
+    'EMAIL_PROVIDER=smtp',
+    'EMAIL_FROM=probe@localhost',
+    'SMTP_HOST=mailpit',
+    'SMTP_PORT=1025',
     `EMAIL_DISPATCH_SECRET=${hex()}`,
     `MARKETING_TICK_SECRET=${hex()}`,
     `CRON_SECRET=${hex()}`,

@@ -57,12 +57,12 @@ with `docker compose ps` and `docker compose logs -f app`.
 ## Clone-to-panel budget
 
 `pnpm run quickstart:probe` performs a clean local Git clone, builds the real
-production image, and runs it with `APP_ENV=staging` for its disposable local
-HTTP demo configuration. It runs `docker compose up`, registers an owner,
-creates the single workspace, and waits for the setup checklist in Chrome. It
-also verifies that running the seed twice leaves every table's row count
-unchanged. The probe fails when clone-to-authenticated-panel takes 900 seconds
-or more, and the CI smoke job executes that same automated path on every pull
-request. The first workspace can be created before the registered address is
-verified; verification is required for any later workspace creation where
-instance policy permits it.
+production image, and runs it with the documented `APP_ENV=self-host`
+production posture. Its disposable Compose override provides an SMTP capture
+service. The probe registers an owner, creates the single workspace, and waits
+for the setup checklist in Chrome. It also verifies that running the seed twice
+leaves every table's row count unchanged. The probe fails when
+clone-to-authenticated-panel takes 900 seconds or more, and the CI smoke job
+executes that same automated path on every pull request. The first workspace
+can be created before the registered address is verified; verification is
+required for any later workspace creation where instance policy permits it.

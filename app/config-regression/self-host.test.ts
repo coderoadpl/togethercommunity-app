@@ -103,6 +103,9 @@ describe('production self-host stack', () => {
 
     expect(workflow.jobs.smoke.steps.some((step) => step.run === 'pnpm run quickstart:probe')).toBe(true);
     expect(probe).toContain("'NODE_ENV=production'");
-    expect(probe).toContain("'APP_ENV=staging'");
+    expect(probe).toContain("'APP_ENV=self-host'");
+    expect(probe).toContain("'SECURE_COOKIES=true'");
+    expect(probe).toContain("'PAYMENT_PROVIDER=stripe'");
+    expect(probe).toContain("'EMAIL_PROVIDER=smtp'");
   });
 });

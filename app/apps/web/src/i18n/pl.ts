@@ -276,7 +276,7 @@ export const pl: Messages = {
     ksefPdfDownload: 'Pobierz wizualizację PDF',
     ksefUpoDownload: 'Pobierz UPO',
     ksefConflictHelp:
-      'KSeF zgłosił fakturę o tym samym NIP sprzedawcy, rodzaju i numerze P_2, ale nie można potwierdzić zgodności z tym dokumentem. Nie zmieniaj numeru ani nie wysyłaj ponownie. Wymagana jest ręczna weryfikacja.',
+      'KSeF zgłosił fakturę o tym samym NIP sprzedawcy, rodzaju i numerze faktury (P_2), ale nie można potwierdzić zgodności z tym dokumentem. Nie zmieniaj numeru ani nie wysyłaj ponownie. Wymagana jest ręczna weryfikacja.',
     ksefStates: {
       queued: 'oczekuje w kolejce',
       session_opened: 'sesja KSeF otwarta',
@@ -465,8 +465,8 @@ export const pl: Messages = {
     testing: 'Testowanie…',
     testFailed: 'Test połączenia nie powiódł się.',
     paymentAvailable: 'Dostawca płatności przyjął dane dostępowe.',
-    emailAvailable: 'Dostawca e-mail przeszedł diagnostykę i wysłał wiadomość testową na Twój adres twórcy.',
-    storageAvailable: 'Dane dostępowe storage są dostępne.',
+    emailAvailable: 'Dostawca e-mail przeszedł diagnostykę i wysłał wiadomość testową na adres e-mail Twojego konta.',
+    storageAvailable: 'Storage przeszedł próbę zapisu, odczytu i usunięcia.',
     saveKeysFirst: 'Zapisz klucz Stripe, aby utworzyć webhook przed testem połączenia.',
     webhookUrlLabel: 'URL webhooka',
     webhookUrlHint: 'Together automatycznie rejestruje ten adres w Stripe podczas zapisywania klucza.',
@@ -482,7 +482,7 @@ export const pl: Messages = {
     ifirmaSaveFirst: 'Zapisz najpierw login i klucz API „faktura”, aby przetestować połączenie.',
     ksefHeading: 'KSeF 2.0',
     ksefDescription:
-      'Podaj token KSeF wygenerowany przez tenant z uprawnieniem InvoiceWrite oraz pasujący NIP kontekstu. Tokeny dostępowe pozostają ulotne.',
+      'Podaj token KSeF wygenerowany z uprawnieniem InvoiceWrite oraz NIP, w którego kontekście go wystawiono. Tymczasowe tokeny sesji KSeF nie są trwale zapisywane.',
     ksefTokenHelp:
       'W KSeF otwórz Tokeny, wygeneruj nowy token z uprawnieniem InvoiceWrite i wklej go tutaj. Token jest wyświetlany w KSeF tylko raz.',
     ksefSaveFirst: 'Zapisz NIP kontekstu i token KSeF, aby przetestować połączenie.',
@@ -494,7 +494,7 @@ export const pl: Messages = {
     bunnyApiKeyLabel: 'klucz API biblioteki (Stream API key)',
     bunnySecurityKeyLabel: 'klucz bezpieczeństwa tokenów osadzania',
     bunnySecurityHint:
-      'Bez klucza bezpieczeństwa osadzone wideo nie jest kontrolowane przez dostęp i każda osoba z linkiem może oglądać je także po odebraniu dostępu. Dodaj klucz i włącz uwierzytelnianie tokenem osadzania w Bunny, aby chronić odtwarzanie.',
+      'Bez klucza bezpieczeństwa osadzone wideo nie jest objęte kontrolą dostępu i każda osoba z linkiem może je oglądać także po cofnięciu dostępu. Dodaj klucz i włącz uwierzytelnianie tokenem osadzania w Bunny, aby chronić odtwarzanie.',
     bunnyLibraryIdLabel: 'identyfikator biblioteki (library id)',
     bunnyLibraryIdHelper: 'Znajdziesz go w panelu Bunny → Stream → wybrana biblioteka → API.',
     bunnySaveFirst: 'Zapisz najpierw klucz API i identyfikator biblioteki, aby przetestować połączenie.',
@@ -551,8 +551,8 @@ export const pl: Messages = {
     typeCourse: 'Kurs',
     typeDigitalDownload: 'Paczka plików',
     typeMembership: 'Członkostwo',
-    slugLabel: 'slug',
-    slugHint: 'Małe litery, cyfry i łączniki. Unikalny w tej społeczności.',
+    slugLabel: 'adres (slug)',
+    slugHint: 'Małe litery, cyfry i myślniki. Unikalny w tej przestrzeni.',
     coverUrlLabel: 'adres URL okładki',
     coverUrlHint: 'Opcjonalny adres HTTPS okładki produktu.',
     priceLabel: 'cena',
@@ -844,7 +844,7 @@ export const pl: Messages = {
     youtubePrivacyNote:
       'Film niepubliczny w YouTube nie jest chroniony dostępem: każda osoba z linkiem może go udostępnić lub obejrzeć. Jako właściciel treści odpowiadasz za przestrzeganie Warunków korzystania z YouTube.',
     vimeoPrivacyNote:
-      'Film niepubliczny w Vimeo nie jest chroniony dostępem przez Together: każda osoba z linkiem może móc go obejrzeć. Skonfiguruj prywatność osadzania i ograniczenia domen w Vimeo, jeśli pozwala na to Twój plan.',
+      'Film niepubliczny w Vimeo nie jest chroniony dostępem przez Together: każda osoba z linkiem może go obejrzeć. Skonfiguruj prywatność osadzania i ograniczenia domen w Vimeo, jeśli pozwala na to Twój plan.',
     allLessons: '← Wszystkie lekcje',
   },
   members: {
@@ -876,7 +876,7 @@ export const pl: Messages = {
       ),
     removeImpact: ({ grants, completedLessons }) =>
       format(
-        'Skutki: dane osobowe zostaną usunięte, historia zamówień zostanie zachowana. Odebrane zostaną {grants} {grantNoun}; zanonimizowany postęp obejmuje {completedLessons} {lessonNoun}.',
+        'Skutki: dane osobowe zostaną usunięte, historia zamówień zostanie zachowana. Cofniemy {grants} {grantNoun}; zanonimizowany postęp obejmuje {completedLessons} {lessonNoun}.',
         {
           grants,
           completedLessons,
@@ -1507,7 +1507,7 @@ export const pl: Messages = {
     couponWrongScope: 'Kod rabatowy nie obejmuje tego produktu.',
     couponWrongPrice: 'Kod rabatowy nie obejmuje wybranego sposobu płatności.',
     couponLimit: 'Wyczerpano limit użyć tego kodu rabatowego.',
-    couponMemberLimit: 'Wyczerpałeś limit użyć tego kodu rabatowego.',
+    couponMemberLimit: 'Wyczerpano limit użyć tego kodu rabatowego dla Twojego adresu e-mail.',
     couponEmailRequired: 'Podaj e-mail, aby sprawdzić ten kod rabatowy.',
     couponNoReduction: 'Ten kod nie obniża wybranej ceny.',
     marketingConsentsLabel: 'Opcjonalne zgody marketingowe',
@@ -1608,7 +1608,7 @@ export const pl: Messages = {
     versionEntry: ({ version, date }) => `wersja ${version} · ${date}`,
     documentsTitle: 'Dokumenty prawne', documentsDescription: 'Publikuj wersjonowane dokumenty markdown na domenie przestrzeni.', documentsEmpty: 'Nie masz jeszcze dokumentów hostowanych.',
     documentsLoading: 'Wczytywanie dokumentów…', newDocument: 'Nowy dokument', documentDetails: 'Treść dokumentu', allDocuments: '← Wszystkie dokumenty',
-    slugLabel: 'slug adresu', titleLabel: 'tytuł', markdownLabel: 'treść markdown',
+    slugLabel: 'adres (slug)', titleLabel: 'tytuł', markdownLabel: 'treść markdown',
     createDocumentAction: 'Utwórz dokument', saveDocumentAction: 'Zapisz dokument',
     publish: 'Opublikuj nową wersję', publishing: 'Publikowanie…',
     publicUrls: 'Adresy publiczne', latestUrl: 'Najnowsza opublikowana wersja', immutableUrl: ({ version }) => `Niezmienny adres wersji ${version}`, draft: 'wersja robocza', published: 'opublikowany',
@@ -1627,7 +1627,7 @@ export const pl: Messages = {
     resendHint: 'Połącz Resend z tą samą tożsamością nadawcy, której używają SES i SMTP.',
     resendApiKeyLabel: 'klucz API Resend',
     resendDomainHint: 'Przed wysyłką produkcyjną zweryfikuj domenę nadawcy w Resend.',
-    testEmailSent: 'Transport przeszedł diagnostykę i wysłał wiadomość testową na Twój adres twórcy.',
+    testEmailSent: 'Transport przeszedł diagnostykę i wysłał wiadomość testową na adres e-mail Twojego konta.',
     platformPool: ({ used, limit }) => `Pula startowa: ${used}/${limit}`,
     platformPoolChecklist: 'Pula startowa wiadomości transakcyjnych',
     platformPoolNudge: 'Pula startowa zbliża się do końca. Skonfiguruj własny SES, SMTP lub Resend.',

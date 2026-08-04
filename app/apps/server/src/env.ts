@@ -63,6 +63,10 @@ export const envSchema = z
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
     KSEF_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
+    CONSENT_EVIDENCE_PURGE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
     EMAIL_DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(1000),
     EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),

@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
-import { delay, http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { createPostInputSchema, type DiscussionPost, type PublicPost } from '#core/domain/index.js';
@@ -230,6 +230,10 @@ describe('DiscussionSection', () => {
 
   it('sends a reply optimistically and refetches the discussion', async () => {
     const bodies: unknown[] = [];
+    let releasePost: ((value: undefined) => void) | undefined;
+    const postResponse = new Promise<undefined>((resolve) => {
+      releasePost = resolve;
+    });
     let replied = false;
     let discussionReads = 0;
     const root = asThread(post({ id: 'r1', body: 'Pytanie o silnik' }));
@@ -254,7 +258,7 @@ describe('DiscussionSection', () => {
       http.post('/api/posts', async ({ request }) => {
         const body = createPostInputSchema.parse(await request.json());
         bodies.push(body);
-        await delay(80);
+        await postResponse;
         replied = true;
         return HttpResponse.json({ ok: true, data: { post: post({ id: 'n1', parentPostId: 'r1', rootPostId: 'r1', body: body.body, isOwn: true }) } });
       }),
@@ -269,6 +273,7 @@ describe('DiscussionSection', () => {
     await user.click(screen.getByTestId('reply-composer-r1-submit'));
 
     expect(await screen.findByTestId('pending-post')).toHaveTextContent('Moja odpowiedź');
+    releasePost?.(undefined);
 
     expect(await screen.findByTestId('post-body-n1')).toHaveTextContent('Moja odpowiedź');
     expect(screen.queryByTestId('pending-post')).not.toBeInTheDocument();

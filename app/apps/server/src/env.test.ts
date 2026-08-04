@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { selectBaseTrustedOrigins, selectDevSinkPurge, selectTenantRouting } from './composition.js';
+import { createMultipleTenantsReporter, selectBaseTrustedOrigins, selectDevSinkPurge, selectTenantRouting } from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -38,14 +38,22 @@ describe('tenant routing mode', () => {
     expect(selectTenantRouting(envSchema.parse({ APP_BASE_URL: 'https://learn.example.com' }))).toEqual({
       baseDomain: 'learn.example.com',
       singleTenantMode: true,
+      tenantCreationMode: 'closed',
     });
+  });
+
+  it('closes tenant creation in single-tenant mode even when the environment requests open creation', () => {
+    expect(selectTenantRouting(envSchema.parse({
+      APP_BASE_URL: 'https://learn.example.com',
+      TENANT_CREATION: 'open',
+    })).tenantCreationMode).toBe('closed');
   });
 
   it('keeps subdomain routing when a base domain is configured', () => {
     expect(selectTenantRouting(envSchema.parse({
       APP_BASE_DOMAIN: 'together.com',
       APP_BASE_URL: 'https://together.com',
-    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false });
+    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false, tenantCreationMode: 'open' });
   });
 
   it('does not trust sibling subdomains in single-tenant mode', () => {
@@ -64,6 +72,16 @@ describe('tenant routing mode', () => {
       port: 48730,
       singleTenantMode: false,
     })).toContain('https://*.example.com');
+  });
+
+  it('reports multiple tenants only once per composition boot', () => {
+    const write = vi.fn();
+    const report = createMultipleTenantsReporter(write);
+
+    report();
+    report();
+
+    expect(write).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -134,6 +152,15 @@ describe('development sink policy', () => {
 
     expect(selectDevSinkPurge(env, create)).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('consent evidence purge policy', () => {
+  it('requires an explicit operator opt-in', () => {
+    expect(envSchema.parse({}).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(false);
+    expect(envSchema.parse({
+      CONSENT_EVIDENCE_PURGE_ENABLED: 'true',
+    }).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(true);
   });
 });
 

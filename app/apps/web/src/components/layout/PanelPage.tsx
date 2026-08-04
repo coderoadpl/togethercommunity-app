@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 
+import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
 
@@ -50,7 +51,11 @@ export const PanelPage = ({
         </Stack>
       </Box>
       <Stack useFlexGap sx={{ rowGap: '1.5rem' }}>
-        {statusOnly ? <StatusView state={state} /> : children}
+        {state?.kind === 'loading' ? (
+          <BrandLoader scope="container" caption={state.label} />
+        ) : statusOnly ? (
+          <StatusView state={state} />
+        ) : children}
       </Stack>
     </Box>
   );

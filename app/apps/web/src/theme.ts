@@ -1,6 +1,6 @@
 import type { ElementType } from 'react';
 import { Box, Button, ButtonBase, LinearProgress, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
-import { alpha, createTheme, keyframes, styled, type Theme } from '@mui/material/styles';
+import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
  * The entire "engineer's logbook" visual language lives in this theme:
@@ -2680,30 +2680,6 @@ export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
-
-const bootSweep = keyframes({
-  from: { transform: 'translateX(-100%)' },
-  to: { transform: 'translateX(400%)' },
-});
-
-export const BootIndicator = styled('div')(({ theme }) => ({
-  position: 'relative',
-  width: '100%',
-  height: '1px',
-  overflow: 'hidden',
-  backgroundColor: theme.palette.divider,
-  '&::after': {
-    content: '""',
-    position: 'absolute',
-    inset: 0,
-    width: '20%',
-    backgroundColor: theme.palette.primary.dark,
-    animation: `${bootSweep} 1.6s ease-in-out infinite`,
-  },
-  '@media (prefers-reduced-motion: reduce)': {
-    '&::after': { width: '100%', animation: 'none' },
-  },
-}));
 
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({

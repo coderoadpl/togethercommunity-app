@@ -1,5 +1,5 @@
 export { AppShell } from './AppShell.js';
-export { BrandSplash } from './BrandSplash.js';
+export { BrandLoader } from './BrandLoader.js';
 export { ConfirmDialog } from './ConfirmDialog.js';
 export { ListSection, ResponsiveTable } from './ListSection.js';
 export { MemberPage } from './MemberPage.js';

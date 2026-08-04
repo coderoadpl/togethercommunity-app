@@ -1,6 +1,6 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { BrandMark, TenantLogo } from './branding.js';
 import { MemberPage } from './components/layout/index.js';
@@ -74,6 +74,24 @@ describe('BrandMark', () => {
     renderWithProviders(<BrandMark />);
 
     expect(await screen.findByText('Together')).toBeInTheDocument();
+    expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the stock wordmark when the offer is not found', async () => {
+    const requested = vi.fn();
+    server.use(
+      http.get('/api/public/offer', () => {
+        requested();
+        return HttpResponse.json(
+          { ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } },
+          { status: 404 },
+        );
+      }),
+    );
+    renderWithProviders(<BrandMark />);
+
+    await waitFor(() => expect(requested).toHaveBeenCalledOnce());
+    expect(screen.getByText('Together')).toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 });

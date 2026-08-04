@@ -14,6 +14,7 @@ import {
   createKsefSubmissionJobRepository,
 } from '#adapters/db/ksef-repositories.js';
 import { createSchedulerRunRepository } from '#adapters/db/scheduler-runs.js';
+import { createConsentEvidenceRetentionRepository } from '#adapters/db/consent-evidence-retention.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -163,13 +164,13 @@ import type {
   MemberErasureRequestRepository,
   MemberErasurePort,
   MemberEventRepository,
-  MemberOrderListReader,
   MemberRepository,
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
   MarketingConsentRepository,
   MarketingThrottleRepository,
   MarketingSesCredentialResolver,
+  MemberOrderListReader,
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
@@ -209,7 +210,7 @@ import type {
   UserDisplayReader,
   VideoLibraryPort,
 } from '#core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -473,6 +474,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
   const schedulerRuns = createSchedulerRunRepository(db);
+  const consentEvidenceRetention = createConsentEvidenceRetentionRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
@@ -607,9 +609,9 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       singleTenantMode,
     });
   };
-  const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
+  const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
-    return runScheduledMarketingJobs({
+    const marketing = await runScheduledMarketingJobs({
       now,
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -652,6 +654,20 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           },
         ),
     });
+    const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED
+      ? await purgeExpiredConsentEvidence(
+          {
+            trigger,
+            minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS,
+            batchSize: CONSENT_EVIDENCE_PURGE_BATCH_SIZE,
+            timeBudgetMs: CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS,
+          },
+          { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
+        )
+      : ok({ purged: 0, tenantsProcessed: 0 });
+    if (!marketing.ok) return marketing;
+    if (!purged.ok) return purged;
+    return marketing;
   };
   const realtimeBus = createRealtimeBus();
   const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };

@@ -1,6 +1,7 @@
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 
-import { AUTH_POLICY, createAuth } from '#adapters/auth/create-auth.js';
+import { AUTH_IP_ADDRESS_HEADERS, AUTH_POLICY, createAuth } from '#adapters/auth/create-auth.js';
 import { createDb } from '#adapters/db/client.js';
 import { createEmailOutboxRepository } from '#adapters/db/email-outbox.js';
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
@@ -27,6 +28,18 @@ const isTwoFactorPlugin = (plugin: AuthPlugin): plugin is TwoFactorPlugin =>
   plugin.id === 'two-factor';
 const twoFactorPlugin = auth.options.plugins.find(isTwoFactorPlugin);
 
+const infrastructureSchema = z.object({
+  rateLimit: z.object({
+    enabled: z.literal(true),
+    storage: z.literal('database'),
+  }),
+  advanced: z.object({
+    ipAddress: z.object({
+      ipAddressHeaders: z.array(z.string()),
+    }),
+  }),
+});
+
 describe('composed auth policy', () => {
   it('pins the 7-day session expiry and 1-day activity refresh', () => {
     expect(AUTH_POLICY.sessionExpiresInSeconds).toBe(60 * 60 * 24 * 7);
@@ -50,5 +63,12 @@ describe('composed auth policy', () => {
   it('hands the provider the shared fifteen-character password floor', () => {
     expect(PASSWORD_MIN_LENGTH).toBe(15);
     expect(auth.options.emailAndPassword?.minPasswordLength).toBe(PASSWORD_MIN_LENGTH);
+  });
+
+  it('composes durable rate limits and only the sanitized address header', () => {
+    const infrastructure = infrastructureSchema.parse(auth.options);
+
+    expect(infrastructure.rateLimit.storage).toBe('database');
+    expect(infrastructure.advanced.ipAddress.ipAddressHeaders).toEqual(AUTH_IP_ADDRESS_HEADERS);
   });
 });

@@ -66,6 +66,8 @@ export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
 
 export const EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES = 512;
 
+export const AUTH_IP_ADDRESS_HEADERS = ['x-forwarded-for'] as const;
+
 export const AUTH_POLICY = {
   sessionExpiresInSeconds: 60 * 60 * 24 * 7,
   sessionUpdateAgeSeconds: 60 * 60 * 24,
@@ -304,6 +306,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     },
     rateLimit: {
       enabled: true,
+      storage: 'database',
       // The e-mail-sending endpoints carry the anti-bombing throttle (S3). The other
       // entries relax the tighter limits Better-Auth applies by default once rate
       // limiting is on, so token verification and password sign-in stay usable.
@@ -444,6 +447,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     ],
     advanced: {
       useSecureCookies: settings.secureCookies,
+      ipAddress: { ipAddressHeaders: [...AUTH_IP_ADDRESS_HEADERS] },
       // Domain=.localhost is invalid, and single-tenant sessions must stay host-only.
       ...(settings.singleTenantMode || settings.baseDomain === 'localhost'
         ? {}

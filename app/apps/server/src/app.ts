@@ -7,6 +7,7 @@ import { err, internal, notFound, validation, type Identity } from '#core/domain
 
 import type { AppDeps } from './composition.js';
 import { requestBodyLimit } from './body-limits.js';
+import { trustedAuthRequest } from './auth-network.js';
 import { registerInternalRoutes } from './internal-app.js';
 import {
   assertPublicRouteManifest,
@@ -98,7 +99,7 @@ export const buildApp = (deps: AppDeps) => {
   registerInternalRoutes(app, deps);
   app.all('/api/*', (c) =>
     c.req.path.startsWith(betterAuthPathPrefix)
-      ? deps.auth.handler(c.req.raw)
+      ? deps.auth.handler(trustedAuthRequest(c, c.req.raw, deps.authTrustedProxyHeader))
       : respond(err(notFound(`No API route for ${c.req.method} ${c.req.path}`))),
   );
   const socialRouteStart = app.routes.length;

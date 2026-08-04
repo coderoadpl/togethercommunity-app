@@ -1,9 +1,17 @@
-import { err, ok, type AppError, type Membership, type Result } from '#core/domain/index.js';
+import {
+  decideTenantCreation,
+  err,
+  ok,
+  type AppError,
+  type Membership,
+  type Result,
+  type TenantCreationMode,
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { TenantAccessReader, TenantRepository } from '../ports.js';
 import { authorize } from '../authorize.js';
-import { tenantCreationPolicy, type TenantCreationMode } from './create-tenant.js';
+import { tenantCreationPolicy } from './create-tenant.js';
 
 export interface MyTenantsResult {
   tenants: Membership[];
@@ -18,21 +26,23 @@ const canCreateTenant = async (
   },
 ): Promise<boolean> => {
   const hasAnyTenant = deps.tenantCreationMode === 'closed' ? false : await deps.tenants.hasAny();
-  const policy = tenantCreationPolicy(
+  const { allowUnverifiedEmail } = tenantCreationPolicy(
     deps.tenantCreationMode,
     hasAnyTenant,
     ctx.identity.emailVerified,
   );
-  return policy.available
-    && authorize(ctx, 'tenant:create', {
-      allowUnverifiedEmail: policy.allowUnverifiedEmail,
-    }) === null;
+  const principalAllowed = authorize(ctx, 'tenant:create', { allowUnverifiedEmail }) === null;
+  return decideTenantCreation({
+    principalAllowed,
+    mode: deps.tenantCreationMode,
+    hasAnyTenant,
+  }).allowed;
 };
 
 export const listMyTenants = async (
   ctx: Ctx,
   deps: {
-    tenantAccess: TenantAccessReader;
+    tenantAccess: Pick<TenantAccessReader, 'listTenantsForStaff'>;
     tenants: Pick<TenantRepository, 'hasAny'>;
     tenantCreationMode: TenantCreationMode;
   },

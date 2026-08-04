@@ -139,6 +139,7 @@ const createEnvironment = (httpPort: number, httpsPort: number, project: string)
     'APP_BASE_DOMAIN=',
     'TENANT_CREATION=open',
     `BETTER_AUTH_SECRET=${hex()}`,
+    'AUTH_TRUSTED_PROXY_HEADER=x-forwarded-for',
     `SECRETS_MASTER_KEY=${randomBytes(32).toString('base64')}`,
     'SECURE_COOKIES=false',
     'PAYMENT_PROVIDER=fake',

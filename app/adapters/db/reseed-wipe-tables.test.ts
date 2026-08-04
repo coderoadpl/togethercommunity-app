@@ -36,6 +36,7 @@ describe('DEMO_TENANT_WIPE_TABLES', () => {
       schema.verification,
       schema.passkey,
       schema.twoFactor,
+      schema.rateLimit,
     ].map(getTableName).toSorted();
 
     expect(tablesWithoutTenantId).toEqual(allowedTablesWithoutTenantId);

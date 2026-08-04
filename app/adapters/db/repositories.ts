@@ -52,6 +52,7 @@ import {
   type Space,
   type ProductGrant,
   type StaffRole,
+  type Tenant,
   type TenantApiKey,
   type TenantSecret,
   type TenantSettings,
@@ -76,6 +77,7 @@ import type {
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
+  MemberOrderListReader,
   PaymentRefundRepository,
   ProductPriceRepository,
   ProductDownloadAssetRepository,
@@ -86,6 +88,7 @@ import type {
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   SpaceRepository,
@@ -126,6 +129,7 @@ import {
   memberErasureRequests,
   members,
   memberSubscriptions,
+  marketingConsents,
   notifications,
   orders,
   postReactions,
@@ -296,9 +300,9 @@ const insertEntityVersion = async (executor: Db, tenantId: string, version: Enti
   });
 };
 
-export const createProductRepository = (db: Db): ProductRepository => ({
+export const createProductRepository = (db: Db): ProductRepository & ProductBatchReader => ({
   listByTenant: async (tenantId) =>
-    (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt))).map(
+    (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt), asc(products.id))).map(
       parseProduct,
     ),
   listPublishedByTenant: async (tenantId) =>
@@ -307,7 +311,7 @@ export const createProductRepository = (db: Db): ProductRepository => ({
         .select()
         .from(products)
         .where(and(eq(products.tenantId, tenantId), eq(products.published, true)))
-        .orderBy(asc(products.createdAt))
+        .orderBy(asc(products.createdAt), asc(products.id))
     ).map(parseProduct),
   findById: async (tenantId, id) => {
     const rows = await db
@@ -317,6 +321,15 @@ export const createProductRepository = (db: Db): ProductRepository => ({
       .limit(1);
     const row = rows[0];
     return row ? parseProduct(row) : null;
+  },
+  findByIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select()
+        .from(products)
+        .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
+    ).map(parseProduct);
   },
   create: async (tenantId, product) => {
     try {
@@ -1656,6 +1669,17 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         erasedAt: input.deletedAt,
       }).onConflictDoNothing({ target: erasedMemberImports.memberId });
 
+      await tx.update(consents).set({ retentionStartedAt: input.deletedAt }).where(and(
+        eq(consents.tenantId, tenantId),
+        or(eq(consents.userId, member.userId), eq(consents.email, member.email)),
+        isNull(consents.retentionStartedAt),
+      ));
+      await tx.update(marketingConsents).set({ retentionStartedAt: input.deletedAt }).where(and(
+        eq(marketingConsents.tenantId, tenantId),
+        or(eq(marketingConsents.memberId, member.id), eq(marketingConsents.email, member.email)),
+        isNull(marketingConsents.retentionStartedAt),
+      ));
+
       await tx
         .update(productGrants)
         .set({ expiresAt: input.deletedAt, legacyId: null })
@@ -2037,7 +2061,9 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
   },
 });
 
-export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepository => {
+export const createOrderRepository = (
+  db: Db,
+): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
@@ -2154,14 +2180,23 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
         total: totals[0]?.value ?? 0,
       };
     },
-    listForMember: async (tenantId, memberId) =>
-      (
-        await db
-          .select()
-          .from(orders)
-          .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
-          .orderBy(desc(orders.createdAt), desc(orders.id))
-      ).map(parseOrder),
+    listForMember: async (tenantId, memberId) => {
+      const rows = await db
+        .select({
+          order: orders,
+          memberEmail: members.email,
+          memberName: members.displayName,
+          productTitle: products.title,
+          couponCode: coupons.code,
+        })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
+        .orderBy(desc(orders.createdAt), desc(orders.id));
+      return rows.map((row) => orderListItemSchema.parse({ ...row.order, ...row }));
+    },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(
         eq(orders.tenantId, tenantId),
@@ -2745,9 +2780,15 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
+  findSole: async () => {
+    const rows = await db.select().from(tenants).limit(2);
+    return rows.length === 1 ? rows[0] ?? null : null;
+  },
   findSettings: async (tenantId) => {
     const rows = await db
       .select({
+        name: tenants.name,
+        socialLinks: tenants.socialLinks,
         billingPortalUrl: tenants.billingPortalUrl,
         bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
         logoUrl: tenants.logoUrl,
@@ -2776,6 +2817,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const row = rows[0];
     return row
       ? {
+          name: row.name,
+          socialLinks: row.socialLinks,
           billingPortalUrl: row.billingPortalUrl,
           bunnyStreamLibraryId: row.bunnyStreamLibraryId,
           logoUrl: row.logoUrl,
@@ -2819,6 +2862,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     await db
       .update(tenants)
       .set({
+        name: settings.name,
+        socialLinks: settings.socialLinks,
+        contentVersion: sql`${tenants.contentVersion} + 1`,
         billingPortalUrl: settings.billingPortalUrl,
         bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
         logoUrl: settings.logoUrl,
@@ -2843,6 +2889,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       })
       .where(eq(tenants.id, tenantId));
     return {
+      name: settings.name,
+      socialLinks: settings.socialLinks,
       billingPortalUrl: settings.billingPortalUrl,
       bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
       logoUrl: settings.logoUrl,
@@ -2866,8 +2914,13 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
-  createTenantWithOwnerGrant: async (input) =>
+  createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
+      if (options?.requireEmpty === true) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
+        const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
+        if (existing.length > 0) return null;
+      }
       await tx.insert(tenants).values(input.tenant);
       await tx.insert(tenantAdmins).values({
         id: input.ownerGrant.id,
@@ -2879,9 +2932,15 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         id: input.tenant.id,
         slug: input.tenant.slug,
         name: input.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       };
     }),
+  hasAny: async () => {
+    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({
@@ -2943,22 +3002,28 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         id: tenants.id,
         slug: tenants.slug,
         name: tenants.name,
+        status: tenants.status,
+        plan: tenants.plan,
         contentVersion: tenants.contentVersion,
         staffRole: tenantAdmins.role,
       })
       .from(tenantAdmins)
       .innerJoin(tenants, eq(tenantAdmins.tenantId, tenants.id));
 
-  const toMembership = (row: {
-    id: string;
-    slug: string;
-    name: string;
-    contentVersion: number;
-    staffRole: string;
-  }): Membership | null => {
+  const toMembership = (row: Tenant & { staffRole: string }): Membership | null => {
     const staffRole = parseStaffRole(row.staffRole);
     return staffRole
-      ? { tenant: { id: row.id, slug: row.slug, name: row.name, contentVersion: row.contentVersion }, staffRole }
+      ? {
+          tenant: {
+            id: row.id,
+            slug: row.slug,
+            name: row.name,
+            status: row.status,
+            plan: row.plan,
+            contentVersion: row.contentVersion,
+          },
+          staffRole,
+        }
       : null;
   };
 

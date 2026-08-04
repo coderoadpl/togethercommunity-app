@@ -1,3 +1,5 @@
+import type { MemberEventType } from '#core/domain/index.js';
+
 export type MessageParams = Record<string, string | number>;
 
 export const format = (template: string, params: MessageParams): string =>
@@ -373,7 +375,12 @@ export interface Messages {
     stripeHeading: string;
     stripeDescription: string;
     restrictedKeyLabel: string;
-    webhookSecretLabel: string;
+    stripeConfigure: string;
+    stripeConfiguring: string;
+    stripeConfigured: string;
+    stripeTestMode: string;
+    stripeLiveMode: string;
+    stripeRestrictedPermissions: string;
     configured: string;
     notConfigured: string;
     valuePlaceholder: string;
@@ -391,6 +398,7 @@ export interface Messages {
     saveKeysFirst: string;
     webhookUrlLabel: string;
     webhookUrlHint: string;
+    webhookActiveHint: string;
     loading: string;
     emailHeading: string;
     emailDescription: string;
@@ -747,6 +755,34 @@ export interface Messages {
     erasureReject: string;
     allMembersBack: string;
     joined: string;
+    accountHeading: string;
+    accountName: string;
+    accountEmail: string;
+    purchasesHeading: string;
+    commerceLoading: string;
+    purchasesEmpty: string;
+    subscriptionsHeading: string;
+    subscriptionsEmpty: string;
+    subscriptionProvider: string;
+    subscriptionPeriodEnd: string;
+    subscriptionWillCancel: string;
+    subscriptionStatuses: Record<'active' | 'past_due' | 'canceled', string>;
+    providerLabels: Record<'stripe' | 'simulated', string>;
+    timelineHeading: string;
+    timelineLoading: string;
+    timelineEmpty: string;
+    timelineEventLabels: Record<MemberEventType, string>;
+    timelinePurchase: (params: { product: string; amount: string; status: string }) => string;
+    timelineSubscription: (params: { product: string; status: string; date: string }) => string;
+    timelineGrant: (params: { product: string; date: string }) => string;
+    timelineRevoke: (params: { product: string; date: string }) => string;
+    timelineLesson: (params: { course: string; lesson: string }) => string;
+    timelineUnavailableProduct: string;
+    timelineUnavailableCourse: string;
+    timelineUnavailableLesson: string;
+    timelineEmail: (params: { subject: string }) => string;
+    timelineBan: (params: { reason: string }) => string;
+    timelineUnban: string;
     grantProduct: string;
     productLabel: string;
     selectProduct: string;
@@ -1186,6 +1222,8 @@ export interface Messages {
   branding: {
     heading: string;
     intro: string;
+    nameLabel: string;
+    nameHint: string;
     logoLabel: string;
     logoPlaceholder: string;
     accentLabel: string;
@@ -1194,6 +1232,16 @@ export interface Messages {
     previewHint: string;
     faviconLabel: string;
     faviconPlaceholder: string;
+    profileLinksHeading: string;
+    profileLinksIntro: (input: { count: number }) => string;
+    socialLinkLabel: string;
+    socialLinkLabelPlaceholder: string;
+    socialLinkUrl: string;
+    socialLinkUrlPlaceholder: string;
+    socialLinkUrlInvalid: string;
+    addSocialLink: string;
+    removeSocialLink: string;
+    socialLinksAria: string;
     socialHeading: string;
     ogTitleLabel: string;
     ogTitleHint: string;
@@ -1361,14 +1409,16 @@ export interface Messages {
       breakdown: string;
       campaignsTouched: string;
       batchSize: string;
+      evidencePurged: string;
       budget: string;
       errors: string;
       noErrors: string;
       viewSends: string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
+      purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
       milliseconds: (params: { value: number }) => string;
-      kinds: Record<'marketing_tick' | 'outbox_dispatch', string>;
+      kinds: Record<'marketing_tick' | 'outbox_dispatch' | 'consent_evidence_purge', string>;
       triggers: Record<'cron' | 'dev' | 'manual', string>;
       statuses: Record<'running' | 'completed' | 'failed', string>;
     };

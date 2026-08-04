@@ -9,6 +9,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 
 ## Quickstart (local demo)
 
+For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24
 pnpm run db:up        # Postgres 16
@@ -147,16 +149,16 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->232<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->238<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
 
 Per request: (1) exact custom-domain match in `tenant_domains`,
 (2) subdomain of `APP_BASE_DOMAIN` (subdomain = org slug),
-(3) `X-Tenant` header (CLI). Membership is verified in every case; every
-tenant-scoped use-case takes `ctx.identity` and every repository call requires
-`tenantId`.
+(3) `X-Tenant` header (CLI), (4) the sole tenant when `APP_BASE_DOMAIN` is
+unset. Membership is verified in every case; every tenant-scoped use-case takes
+`ctx.identity` and every repository call requires `tenantId`.
 
 ## Community
 
@@ -238,28 +240,30 @@ trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 
 ## Stripe test mode
 
-Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, and store that tenant's
-Stripe test-mode restricted key and webhook signing secret without adding either
-value to an env file or Git:
+Set `PAYMENT_PROVIDER=stripe`, sign in as the tenant owner, open **Integrations →
+Stripe**, and save the tenant's `rk_test_…` restricted key. Together detects the
+mode from the prefix, registers the tenant webhook through Stripe, and stores
+the returned signing secret encrypted without adding either credential to an
+env file or Git. Headless deployments can perform the same setup through the
+CLI. Then verify the connection:
 
 ```bash
-pnpm --silent run cli --tenant studio tenant-secret set stripe.restrictedKey '<restricted-test-key>'
-pnpm --silent run cli --tenant studio tenant-secret set stripe.webhookSecret '<webhook-signing-secret>'
+pnpm --silent run cli --tenant studio stripe configure rk_test_…
 pnpm --silent run cli --tenant studio stripe test-connection
 ```
 
-The restricted key needs write access to Checkout Sessions. In the Stripe
-Dashboard, register `/api/webhooks/stripe/<tenant-id>` for
-`checkout.session.completed`. For localhost, the Stripe CLI can forward events:
+The restricted key needs write access to Checkout Sessions, Coupons, Promotion
+Codes, Subscriptions, and Webhook Endpoints. Together enables the event set it
+handles when creating the endpoint. For localhost without a public callback,
+the Stripe CLI can still forward events:
 
 ```bash
 stripe listen --events checkout.session.completed --forward-to http://localhost:48730/api/webhooks/stripe/<tenant-id>
 ```
 
-Store the `whsec_…` value printed by `stripe listen` as the tenant webhook
-secret, open a published product's `/checkout/<product-id>` page, and pay with a
-Stripe test card. The browser return page only shows status; the signed webhook
-creates or renews access and sends the welcome magic link.
+Open a published product's `/checkout/<product-id>` page and pay with a Stripe
+test card. The browser return page only shows status; the signed webhook creates
+or renews access and sends the welcome magic link.
 
 Checkout is one-time payment only. Recurring payments and subscriptions remain
 deferred under FR-33.

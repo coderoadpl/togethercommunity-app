@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   FormControl,
   FormLabel,
   OutlinedInput,
@@ -12,7 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { IntegrationTestInput } from '#core/contract/index.js';
-import type { ProviderDiagnosticCode, TenantSecretKey } from '#core/domain/index.js';
+import type { ProviderDiagnosticCode, StripeMode, TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -24,6 +25,101 @@ const previewFor = (
   secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
   key: TenantSecretKey,
 ): string | null => secrets?.find((secret) => secret.key === key)?.maskedPreview ?? null;
+
+const StripeConfiguration = ({
+  maskedPreview,
+  webhookConfigured,
+  mode,
+}: {
+  maskedPreview: string | null;
+  webhookConfigured: boolean;
+  mode: StripeMode | null;
+}) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [restrictedKey, setRestrictedKey] = useState('');
+  const configure = useMutation({
+    ...actions.configureStripe,
+    onSuccess: async () => {
+      setRestrictedKey('');
+      await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
+    },
+  });
+  const remove = useMutation({
+    ...actions.deleteStripeSecrets,
+    onSettled: async () => {
+      await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
+    },
+  });
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    configure.mutate({ restrictedKey });
+  };
+
+  return (
+    <Box component="form" onSubmit={submit} sx={{ display: 'grid', gap: '0.6rem' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+        <FormLabel htmlFor="stripe-restricted-key">{t.integrations.restrictedKeyLabel}</FormLabel>
+        <Chip
+          size="small"
+          variant="outlined"
+          data-testid="stripe-key-status"
+          label={maskedPreview === null
+            ? t.integrations.notConfigured
+            : `${t.integrations.configured} · ${maskedPreview}`}
+        />
+        {mode === null ? null : (
+          <Chip
+            size="small"
+            color={mode === 'live' ? 'success' : 'info'}
+            data-testid="stripe-mode-badge"
+            label={mode === 'live' ? t.integrations.stripeLiveMode : t.integrations.stripeTestMode}
+          />
+        )}
+      </Box>
+      <OutlinedInput
+        id="stripe-restricted-key"
+        type="password"
+        value={restrictedKey}
+        placeholder={t.integrations.valuePlaceholder}
+        onChange={(event) => setRestrictedKey(event.target.value)}
+        inputProps={{ 'data-testid': 'stripe-restricted-key' }}
+        autoComplete="off"
+      />
+      <Typography variant="caption" component="p">
+        {t.integrations.stripeRestrictedPermissions}
+      </Typography>
+      <Box>
+        <Button
+          type="submit"
+          variant="outlined"
+          data-testid="stripe-configure"
+          disabled={configure.isPending || restrictedKey.trim() === ''}
+        >
+          {configure.isPending ? t.integrations.stripeConfiguring : t.integrations.stripeConfigure}
+        </Button>
+        {maskedPreview === null && !webhookConfigured ? null : (
+          <Button
+            type="button"
+            color="error"
+            data-testid="stripe-remove"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate(undefined)}
+          >
+            {remove.isPending ? t.integrations.removing : t.integrations.remove}
+          </Button>
+        )}
+      </Box>
+      {configure.isSuccess ? (
+        <Typography variant="caption" component="p" data-testid="stripe-configured">
+          {t.integrations.stripeConfigured}
+        </Typography>
+      ) : null}
+      {configure.isError ? <Alert>{localizeError(configure.error, t)}</Alert> : null}
+      {remove.isError ? <Alert>{localizeError(remove.error, t)}</Alert> : null}
+    </Box>
+  );
+};
 
 const BunnyLibraryIdField = () => {
   const t = useTranslations();
@@ -193,13 +289,13 @@ const ProviderTest = ({
   );
 };
 
-export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
+export const IntegrationsPanel = () => {
   const t = useTranslations();
   const secrets = useQuery(actions.tenantSecrets);
   const settings = useQuery(actions.tenantSettings);
 
-  const webhookUrl = `${window.location.origin}/api/webhooks/stripe/${tenantId}`;
   const storedSecrets = secrets.data?.secrets;
+  const stripeMode = secrets.data?.stripeMode ?? null;
   const stripeReady =
     storedSecrets !== undefined &&
     previewFor(storedSecrets, 'stripe.restrictedKey') !== null &&
@@ -230,18 +326,11 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           ) : secrets.isError ? (
             <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
           ) : (
-            <Stack useFlexGap spacing="1.25rem">
-              <SecretField
-                secretKey="stripe.restrictedKey"
-                label={t.integrations.restrictedKeyLabel}
-                maskedPreview={previewFor(secrets.data.secrets, 'stripe.restrictedKey')}
-              />
-              <SecretField
-                secretKey="stripe.webhookSecret"
-                label={t.integrations.webhookSecretLabel}
-                maskedPreview={previewFor(secrets.data.secrets, 'stripe.webhookSecret')}
-              />
-            </Stack>
+            <StripeConfiguration
+              maskedPreview={previewFor(secrets.data.secrets, 'stripe.restrictedKey')}
+              webhookConfigured={previewFor(secrets.data.secrets, 'stripe.webhookSecret') !== null}
+              mode={stripeMode}
+            />
           )}
 
           <FormControl fullWidth>
@@ -249,11 +338,11 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
             <OutlinedInput
               id="stripe-webhook-url"
               readOnly
-              value={webhookUrl}
+              value={secrets.data?.stripeWebhookUrl ?? ''}
               inputProps={{ 'data-testid': 'stripe-webhook-url' }}
             />
             <Typography variant="caption" component="p" sx={{ mt: '0.35rem' }}>
-              {t.integrations.webhookUrlHint}
+              {stripeReady ? t.integrations.webhookActiveHint : t.integrations.webhookUrlHint}
             </Typography>
           </FormControl>
 

@@ -86,6 +86,7 @@ import {
   memberErasureRequestMutationOutputSchema,
   memberErasureRequestsOutputSchema,
   memberGrantsOutputSchema,
+  memberCommerceOutputSchema,
   memberLearningSummaryOutputSchema,
   memberTimelineOutputSchema,
   memberProgressResetOutputSchema,
@@ -133,6 +134,7 @@ import {
   productsListOutputSchema,
   productsPublishOutputSchema,
   simulatePurchaseOutputSchema,
+  stripeConfigureOutputSchema,
   stripeWebhookOutputSchema,
   studentCoursesOutputSchema,
   studentLessonOutputSchema,
@@ -162,6 +164,7 @@ import {
   type IntegrationTestInput,
   type StorageConfigureInput,
   type StorageProbeInput,
+  type StripeConfigureInput,
   type LastViewedInput,
   type LessonCompleteInput,
   type LessonUncompleteInput,
@@ -941,6 +944,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  memberCommerce: (memberId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.memberCommerce.method,
+      API_ROUTES.memberCommerce.path.replace(':memberId', encodeURIComponent(memberId)),
+      memberCommerceOutputSchema,
+      undefined,
+      signal,
+    ),
   memberTimeline: (memberId: string, signal?: AbortSignal) =>
     request(
       options,
@@ -1537,6 +1549,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.storageConfigure.method,
       API_ROUTES.storageConfigure.path,
       storageConfigureOutputSchema,
+      input,
+      signal,
+    ),
+  configureStripe: (input: StripeConfigureInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.stripeConfigure.method,
+      API_ROUTES.stripeConfigure.path,
+      stripeConfigureOutputSchema,
       input,
       signal,
     ),

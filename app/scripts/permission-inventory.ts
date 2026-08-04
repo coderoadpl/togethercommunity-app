@@ -117,6 +117,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
   if (path === '/api/members/export') return 'member:export';
+  if (path.endsWith('/commerce') && path.startsWith('/api/members/')) return 'member:commerce:read';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
   if (path.endsWith('/timeline') && path.startsWith('/api/members/')) return 'member:timeline:read';
   if (path.endsWith('/learning-summary')) return 'member:learning:read';
@@ -130,6 +131,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
+  if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
   if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
@@ -425,6 +427,7 @@ const beforeForUseCase = (
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
+  if (file === 'configure-stripe.ts') return owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
@@ -552,6 +555,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
     '',
     '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
+    '',
+    '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

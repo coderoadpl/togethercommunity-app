@@ -1,23 +1,23 @@
 # Migration import API
 
-The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, and product grants as **drafts**: content arrives unpublished, members arrive able to log in, and nothing goes live and no e-mail is sent until you act in the panel.
+The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, product grants, and course progress. Products always arrive unpublished and the import sends no e-mail; a legacy credential preserves password login, while passwordless members can use an enabled passwordless or password-reset flow.
 
-Use it when you are switching platforms or restoring a bulk export. Do not use it for day-to-day writes — it creates and updates only records it created, never publishes, never deletes, and never reads your tenant data back.
+Use it when you are switching platforms or restoring a bulk export. Do not use it for day-to-day writes — it creates and updates only records it created, never publishes, never deletes, and has no endpoint that returns imported tenant records.
 
 ## Import keys
 
-Import keys are created in the panel under **Integrations → Migration API keys**. The secret is shown once at creation.
+An owner creates import keys in the panel at `/panel/integrations`, under **Integrations → Migration API keys**. The secret is shown once at creation.
 
 | Scope | Grants | Does not grant |
 |---|---|---|
 | `import:content` | Draft upsert of courses, modules, lessons, and products | Publishing, deleting, editing anything not created by import, any read, any other API |
-| `import:users` | Upsert of members (with an optional legacy credential) and product grants | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
+| `import:users` | Upsert of members (with an optional legacy credential), product grants, and course progress | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
 
-- The two scopes are independent. Create one key per scope — a leaked content key then cannot touch members, and a leaked users key cannot touch content.
+- The two scopes are independent but may be combined on one key. Separate keys reduce the effect of a leaked key and keep their rate-limit counters independent.
 - Import scopes cannot be combined with `enrollment`, `marketing`, or `transactional` on the same key. Existing unscoped keys never gain import access.
 - **Expiry is mandatory.** The panel defaults to 7 days and caps the lifetime at 30 days. There is no renewal — create a new key.
 - An expired key behaves exactly like a revoked one: `401` on every import endpoint. Revocation takes effect immediately.
-- Every write is recorded in an append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, timestamp. `GET /api/api-keys/:id/import-audit?cursor=&limit=` (owner session auth, newest first) enumerates everything a key created, so a leaked token can be cleaned up exactly.
+- Every successful record write, including an `unchanged` result, is recorded in an internal append-only audit journal per key: kind, `importKey`, resource id, action, payload hash, and timestamp. Audit retrieval is not yet available through the API or panel; there is no `GET /api/api-keys/:id/import-audit` route.
 
 Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostname, or send the tenant slug in `x-tenant` on a shared host — the same as the [transactional e-mail API](transactional-m2m-email.md).
 
@@ -32,19 +32,19 @@ Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostna
 | `POST /api/m2m/import/products` | `import:content` | Batch upsert products, always unpublished |
 | `POST /api/m2m/import/members` | `import:users` | Batch upsert members |
 | `POST /api/m2m/import/grants` | `import:users` | Batch upsert product grants |
-| `POST /api/m2m/import/progress` | `import:users` | Batch upsert course progress — not yet enabled, returns `403` |
+| `POST /api/m2m/import/progress` | `import:users` | Batch upsert course progress |
 
-There are no other verbs. There is no listing endpoint and no delete endpoint; review imported records in the panel.
+There are no other import verbs. There is no import listing, audit-retrieval, or delete endpoint; review imported resources in the panel.
 
 ## The `together-import/v1` dataset
 
-Your transform produces one JSONL file. Line 1 is the manifest; every following line is one record carrying a `kind` discriminator. The record schemas below are exactly the record schemas the endpoints accept.
+The HTTP API accepts JSON request envelopes, not a JSONL upload. A JSONL file is a useful local staging format: line 1 can be your own manifest and every following line is one record carrying a `kind` discriminator. Do not send the manifest object to an endpoint. Put the record objects in the `records` array, keep `kind` for `validate`, and remove `kind` when sending records to a kind-specific write endpoint.
 
 ```jsonl
-{"datasetVersion":"together-import/v1","source":"acme-lms","exportedAt":"2026-08-04T00:00:00Z","counts":{"course":3,"module":46,"lesson":1745,"product":4,"member":377,"grant":774}}
+{"datasetVersion":"together-import/v1","source":"acme-lms","exportedAt":"2026-08-04T00:00:00Z","counts":{"course":3,"module":46,"lesson":1745,"product":4,"member":377,"grant":774,"progress":377}}
 ```
 
-`counts` are your own totals. Nothing on the server enforces them; you compare them against the validate plan and the batch summaries during reconciliation.
+`source`, `exportedAt`, and `counts` belong only to this local manifest convention. The server does not accept or enforce them; compare the counts against the validate plan and batch summaries during reconciliation.
 
 ### `importKey`
 
@@ -55,9 +55,9 @@ course-<sourceId>   module-<sourceId>   lesson-<sourceId>
 product-<sourceAccessId>   member-<sourceUserId>   grant-<sourceUserId>:<sourceAccessId>
 ```
 
-Records reference each other by `importKey`, never by Together ids. A reference resolves to an already-imported record with that key, or to a native resource whose id equals that key; otherwise the referencing record fails with `not_found`. Created resources get `id` equal to their `importKey`, and `legacyId` from the record when you supply it.
+Records reference each other by `importKey`, never by a generated Together id. A reference resolves to an already-imported record with that key, or to a native resource whose id equals that key; otherwise the referencing record fails with `conflict`. Created resources get `id` equal to their `importKey`, and `legacyId` from the record when the schema accepts it and you supply it.
 
-`createdAt` is optional and preserves the original creation timestamp. It is an import-only privilege — the normal APIs never accept it.
+`createdAt` is optional for courses, modules, lessons, products, and members and preserves the original creation timestamp. Grant and progress records do not accept it. It is an import-only privilege — the normal APIs never accept it.
 
 ### Course
 
@@ -65,7 +65,7 @@ Records reference each other by `importKey`, never by Together ids. A reference 
 {"kind":"course","importKey":"course-abc123","legacyId":"abc123","name":"Front-end from A to Z","description":"","imageUrl":"https://cdn.example.com/cover.png","moduleOrder":["module-m1","module-m2"],"createdAt":"2020-01-01T00:00:00Z"}
 ```
 
-`moduleOrder` must contain unique keys. Entries pointing at modules that do not exist yet fail the record, so either submit courses with `moduleOrder: []` first and re-run them after the modules land, or submit in dependency order.
+`moduleOrder` must contain unique keys. Entries pointing at modules that do not exist yet fail with `conflict`, so submit courses with `moduleOrder: []` first and update them after the modules land.
 
 ### Module
 
@@ -73,7 +73,7 @@ Records reference each other by `importKey`, never by Together ids. A reference 
 {"kind":"module","importKey":"module-m1","legacyId":"m1","courseKeys":["course-abc123"],"title":"Layout","prefix":"01","chapters":[{"id":"chapter-m1-0","name":"Flexbox","contents":[{"id":"content-m1-0-0","name":"Flex container","lessonKey":"lesson-l1"}]}],"createdAt":"2020-02-01T00:00:00Z"}
 ```
 
-The display name is computed from `prefix` and `title`; it is never accepted as input. Chapter and content `id`s are stored verbatim and must be unique within the module — derive them from your source ids too. Each `lessonKey` must resolve or the record fails.
+The display name is computed from `prefix` and `title`; it is never accepted as input. `courseKeys` must be unique. Chapter and content `id`s are stored verbatim and must be unique within the module — derive them from your source ids too. Each `lessonKey` must resolve or the record fails with `conflict`.
 
 ### Lesson
 
@@ -81,7 +81,7 @@ The display name is computed from `prefix` and `title`; it is never accepted as 
 {"kind":"lesson","importKey":"lesson-l1","legacyId":"l1","name":"Flex container","isPreview":false,"durationMinutes":12,"contents":[{"type":"video","storageKey":"lessons/l1.mp4","streamVideoId":"vid-1","streamCollectionId":"col-1"},{"type":"embed","embedUrl":"https://youtu.be/xxxxxxxxxxx"},{"type":"pdf","pdfUrl":"https://cdn.example.com/l1.pdf","name":"Worksheet"},{"type":"link","url":"https://example.com/docs","description":"Reference"},{"type":"html","html":"<p>Notes.</p>"}],"createdAt":"2020-02-01T00:00:00Z"}
 ```
 
-Media is bring-your-own-storage by URL. Nothing is fetched, copied, or re-hosted, so your existing URLs must stay reachable. HTML blocks are stored byte-for-byte under the same trust model as the lesson editor.
+Nothing is fetched, copied, or re-hosted. Video blocks require `storageKey` and `streamVideoId`; `streamLibraryId` and `streamCollectionId` are optional. Embed blocks take `embedUrl`, PDF blocks take `pdfUrl` and an optional `name`, link blocks take `url` and an optional `description`, and HTML blocks take non-empty `html`. Existing URLs and stream identifiers must stay usable.
 
 ### Product
 
@@ -89,13 +89,15 @@ Media is bring-your-own-storage by URL. Nothing is fetched, copied, or re-hosted
 {"kind":"product","importKey":"product-p1","legacyId":"p1","type":"course","slug":"front-end-full","title":"Front-end full course","description":"","coverUrl":null,"priceCents":0,"currency":"PLN","accessItems":[{"level":"modules","courseKey":"course-abc123","moduleKeys":["module-m1","module-m2"]}],"createdAt":"2020-03-01T00:00:00Z"}
 ```
 
-`published` is not an accepted field. `accessItems` use `courseKey`, `moduleKeys`, and `lessonKeys` instead of ids; unresolved references fail the record. A slug that is reserved or already taken fails with `slug_reserved`.
+`published` is not an accepted field. `type` is `course`, `digital_download`, or `membership`; `priceCents` is a non-negative integer and `currency` is a three-letter uppercase code. `accessItems` use `courseKey` plus `excludedModuleKeys` for `level: "course"`, `moduleKeys` for `level: "modules"`, or `lessonKeys` for `level: "lessons"`. The module and lesson arrays must be non-empty. Unresolved references fail with `conflict`; a slug already used by another product fails with `slug_reserved`.
 
 ### Member
 
 ```jsonl
-{"kind":"member","importKey":"member-u789","legacyId":"u789","email":"user@example.com","displayName":"Jan Kowalski","legacyPasswordHash":"pbkdf2$25000$<64 hex chars>$<1024 hex chars>","createdAt":"2021-05-06T00:00:00Z"}
+{"kind":"member","importKey":"member-u789","legacyId":"u789","email":"user@example.com","displayName":"Jan Kowalski","createdAt":"2021-05-06T00:00:00Z"}
 ```
+
+`email` is normalized to lowercase and `displayName` is a non-empty string of at most 200 characters. `legacyPasswordHash` is an optional string; its exact grammar is documented under [Importing members and their passwords](#importing-members-and-their-passwords).
 
 ### Grant
 
@@ -103,19 +105,21 @@ Media is bring-your-own-storage by URL. Nothing is fetched, copied, or re-hosted
 {"kind":"grant","importKey":"grant-u789:p1","legacyId":"e12,e44","memberKey":"member-u789","productKey":"product-p1","startsAt":"2023-01-01T00:00:00Z","expiresAt":"2026-01-01T00:00:00Z"}
 ```
 
-One grant per member and product. Collapse renewals and repeated purchases in your transform into a single record using the earliest start and the latest expiry; a second grant for the same member and product under a different `importKey` fails with `conflict`. `expiresAt` may be `null` for lifetime access. Imported grants carry the source `import`.
+One grant per member and product. Collapse renewals and repeated purchases in your transform into a single record using the earliest start and the latest expiry; a second grant for the same member and product under a different `importKey` fails with `conflict`. `startsAt` is required. `expiresAt` may be `null` for lifetime access but cannot be earlier than `startsAt`. Imported grants carry the source `import`.
 
 ### Progress
 
-Progress is specified but not yet enabled; the endpoint returns `403`. Emit the records now and submit them in a follow-up run — access never depends on progress.
+Progress import is enabled. There can be only one progress record per member and course; using another `importKey` for the same pair fails with `conflict`.
 
 ```jsonl
 {"kind":"progress","importKey":"progress-u789:abc123","memberKey":"member-u789","courseKey":"course-abc123","completedLessonKeys":["lesson-l1"],"lastViewedLessonKey":"lesson-l1","lastViewedModuleKey":"module-m1","lastViewedChapterId":"chapter-m1-0","updatedAt":"2025-11-02T10:00:00Z"}
 ```
 
+`completedLessonKeys` is required and contains unique keys; it may be empty. `lastViewedLessonKey`, `lastViewedModuleKey`, and `lastViewedChapterId` are optional. Referenced lessons, modules, and chapters must belong to the referenced course. `updatedAt` is required. Progress records do not accept `legacyId` or `createdAt`.
+
 ### Order
 
-Submit kinds in dependency order: `course`, `lesson`, `module`, `product`, `member`, `grant`, `progress`. Chunk each kind into batches. Anything that still points forward is fixed by re-running the affected kind.
+Submit kinds in dependency order: `course`, `lesson`, `module`, `product`, `member`, `grant`, `progress`. Chunk each kind into batches. Because write endpoints do not resolve forward references, submit a course with `moduleOrder: []` before its modules and then update the course with its final module order. Anything else that still points forward is fixed by re-running the affected kind.
 
 ## Validate before you write
 
@@ -123,7 +127,7 @@ Submit kinds in dependency order: `course`, `lesson`, `module`, `product`, `memb
 POST /api/m2m/import/validate HTTP/1.1
 Host: acme.example.com
 Content-Type: application/json
-x-api-key: together_api_key
+x-api-key: <secret shown at creation>
 
 {
   "datasetVersion": "together-import/v1",
@@ -141,13 +145,13 @@ Mixed kinds are allowed and records inside one call may reference each other. Th
   "ok": true,
   "data": {
     "plan": {
-      "create": { "course": 3, "lesson": 1745 },
-      "update": { "product": 1 },
-      "unchanged": { "module": 46 }
+      "create": { "course": 3, "module": 0, "lesson": 1745, "product": 0, "member": 0, "grant": 0, "progress": 0 },
+      "update": { "course": 0, "module": 0, "lesson": 0, "product": 1, "member": 0, "grant": 0, "progress": 0 },
+      "unchanged": { "course": 0, "module": 46, "lesson": 0, "product": 0, "member": 0, "grant": 0, "progress": 0 }
     },
     "errors": [
       { "index": 12, "kind": "lesson", "importKey": "lesson-l13",
-        "error": { "code": "validation", "message": "…", "details": { "path": ["name"] } } }
+        "error": { "code": "validation", "message": "Invalid import record", "details": { "formErrors": [], "fieldErrors": { "name": ["String must contain at least 1 character(s)"] } } } }
     ],
     "warnings": [
       { "index": 40, "kind": "grant", "importKey": "grant-u1:p1",
@@ -158,7 +162,7 @@ Mixed kinds are allowed and records inside one call may reference each other. Th
 }
 ```
 
-Validate checks schemas, `importKey` uniqueness inside the call and against what you already imported, reference resolution, duplicate e-mails, slug reservations, credential-hash format, and predicts the action for every record. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
+Validate checks schemas, duplicate kind-and-`importKey` pairs inside the call, reference resolution, duplicate member e-mails, product slug collisions, credential-marker format, and whether existing imported records would be updated or left unchanged. A key already used by an imported record is not an error; a key colliding with a native resource is. The loop is: fix your export, validate, repeat until `valid: true`, then apply.
 
 ## Applying a batch
 
@@ -166,7 +170,7 @@ Validate checks schemas, `importKey` uniqueness inside the call and against what
 POST /api/m2m/import/courses HTTP/1.1
 Host: acme.example.com
 Content-Type: application/json
-x-api-key: together_api_key
+x-api-key: <secret shown at creation>
 
 {
   "datasetVersion": "together-import/v1",
@@ -176,7 +180,7 @@ x-api-key: together_api_key
 }
 ```
 
-Endpoint bodies carry no `kind` field — the endpoint is the kind. The response is `200 OK` even when individual records fail:
+Write endpoint records carry no `kind` field — the endpoint is the kind. The response is `200 OK` even when individual records fail:
 
 ```json
 {
@@ -200,8 +204,10 @@ Every write is an upsert keyed by `importKey`, so submitting the same dataset tw
 
 - First submission → `created`.
 - Same payload again → no write, `unchanged`.
-- Different payload → `updated`, but only if the target was created by import for this tenant under the same kind and key, and is still updatable: products must still be unpublished, and a member's credential may only go from empty to set.
-- Anything else → `conflict` for that record. In particular, two different source records sharing one `importKey` surface as a conflict rather than silently overwriting each other.
+- Different payload → `updated`, but only if the target was created by import for this tenant under the same kind and key and remains updatable. Products must still be unpublished; a member's e-mail, a grant's member/product pair, and a progress record's member/course pair cannot change.
+- Anything else → `action: "error"` with `error.code: "conflict"` for that record. In particular, two different payloads sharing one `importKey` in a write batch surface as a conflict rather than silently overwriting each other.
+
+The validate plan uses the outcome names `create`, `update`, and `unchanged`. Write results use `created`, `updated`, and `unchanged`; failures use `action: "error"`, with `conflict` appearing as an error code rather than an action.
 
 A full re-run of a finished import returns an all-`unchanged` summary. That is the check to run before you call the migration done.
 
@@ -213,24 +219,23 @@ A full re-run of a finished import returns an all-`unchanged` summary. That is t
 | Request body | 2 MiB | 10 MiB |
 | Requests | 60 per minute per key | 30 per hour per key |
 
-Daily record budgets per key: 20 000 content records (courses, modules, lessons, products), 2000 members, 20 000 grants, 20 000 progress records. Limits are per key and independent of your other tenant keys. Exceeding any of them returns `429`; honor the `Retry-After` header.
+All write endpoints on a key share one daily record counter. Content, grant, and progress requests can claim against a 20,000-record ceiling; member requests can claim only while that same counter remains within 2,000. Use a separate `import:users` key for member batches if you also expect to import more than 2,000 grants or progress records that day. Counters are per key and independent of other tenant keys. Exceeding a limit returns `429` with `error.code: "rate_limited"`; honor the `Retry-After` header.
 
 ## Errors
 
 Request-level failures use HTTP status codes:
 
-- `400` for a malformed envelope, an unknown `datasetVersion`, too many records, or an oversized body.
-- `401` for a missing, invalid, expired, or revoked key.
-- `403` when the key lacks the scope the endpoint requires, or for the not-yet-enabled progress endpoint.
-- `404` when the tenant cannot be resolved from the host or `x-tenant`.
-- `429` when a minute, hourly, or daily limit is exceeded.
+- `400` with `validation` for a malformed envelope, an unknown `datasetVersion`, too many records, or an oversized body.
+- `401` with `unauthorized` for a missing, invalid, expired, or revoked key.
+- `403` with `forbidden` when the key lacks the scope the endpoint requires.
+- `404` with `tenant_not_found` when the tenant cannot be resolved from the host or `x-tenant`.
+- `429` with `rate_limited` when a minute, hourly, or daily limit is exceeded.
 
 Record-level failures appear inside `results[]` (or `errors[]` for validate) and never change the HTTP status:
 
 - `validation` — the record does not match its schema, or a field exceeds its limit.
-- `not_found` — a referenced `importKey` resolves to nothing in your tenant.
-- `conflict` — a divergent payload on a record that cannot be updated, an e-mail already belonging to another member, or a second grant for the same member and product.
-- `slug_reserved` — the product slug is reserved or already used.
+- `conflict` — a reference cannot be resolved, a divergent payload targets a record that cannot be updated, an e-mail already belongs to another member, or a second grant/progress row exists for the same logical pair.
+- `slug_reserved` — another product already uses the submitted slug.
 
 ## Drafts only
 
@@ -241,27 +246,27 @@ The import surface cannot make anything public:
 - Nothing is deleted, no tenant settings are touched, no roles or admin rights exist in any payload, and no media is uploaded.
 - Records that were not created by import are never modified.
 
-After the data lands: review the drafts in the panel, attach pricing and delivery, publish the products you want live, then run the set-password or invite flow for your members. Revoke the import key when you are done — do not wait for it to expire.
+After the data lands: review the drafts in the panel, attach pricing and delivery, publish the products you want live, and tell passwordless members to use the magic-link or forgot-password flow. Revoke the import key when you are done — do not wait for it to expire.
 
 ## Importing members and their passwords
 
 Members can be imported in two ways.
 
-**Passwordless.** Omit `legacyPasswordHash`. The member exists and appears in your member list but has no password; they gain access through the invite or set-password flow you start from the panel, whenever you choose.
+**Passwordless.** Omit `legacyPasswordHash`. The member exists, appears in your member list, and has no password. They can request a magic link or use the forgot-password flow when the corresponding e-mail delivery is configured; the import itself sends neither message.
 
 **With the legacy credential.** Supply `legacyPasswordHash` in the exact supported format and the member keeps their existing password:
 
 ```text
-pbkdf2$25000$<hex salt, 64 characters>$<hex derived key, 1024 characters>
+pbkdf2$25000$<64-hex-character salt>$<1024-hex-character hash>
 ```
 
-That is PBKDF2-HMAC-SHA-256, 25 000 iterations, a 512-byte derived key, salt and key hex-encoded. If your platform stores passwords this way (a hex salt plus a hex PBKDF2-SHA-256 hash), your transform reformats the two columns into this string — no derivation, no password knowledge, no user interaction. The first successful login transparently upgrades the stored credential.
+The literal marker is `pbkdf2`, the literal iteration field is `25000`, the salt is exactly 64 hexadecimal characters, and the hash is exactly 1024 hexadecimal characters. Hex digits may be upper- or lowercase; no other iteration count or field length is accepted. Verification uses PBKDF2-HMAC-SHA-256 with 25,000 iterations and a 512-byte derived key, passing the 64-character salt string directly as the salt. If your platform stores credentials with those exact semantics, your transform joins the existing fields with `$` — no derivation, password knowledge, or user interaction. The first successful password login transparently upgrades the stored credential.
 
 - **Plaintext passwords are never accepted.** There is no `password` field, and nothing else derives a hash for you.
 - The value is validated for format only. It is never verified, logged, echoed back, or written to the audit journal.
-- A credential can only go from empty to set. An existing member's credential is never overwritten — a differing hash on a member who already has one fails with `conflict`.
+- On a re-run of an imported member, a credential can go from empty to set. An existing non-empty credential is never overwritten — a differing hash fails with `conflict`.
 - An e-mail already belonging to a member of your tenant that was not created under the same `importKey` fails with `conflict`. Deduplicate in your transform.
-- If your hashes use bcrypt, argon2, or any other scheme, import those members passwordless and send them a set-password link.
+- If your hashes use bcrypt, argon2, or any other scheme, import those members passwordless and have them use the magic-link or forgot-password flow.
 
 Imported members carry no consent evidence. You are the data controller: import only members you have a legal basis to hold, and notify them on your own terms — the import will not do it for you.
 
@@ -278,13 +283,13 @@ Give the assistant two things: the record schemas from this document, and a smal
 > Write a standalone TypeScript script (run with `npx tsx`) that reads my full export from `./export/`, transforms it into a valid `together-import/v1` JSONL file, and follows these rules:
 >
 > - derive every `importKey` deterministically from my source ids using the documented convention, so re-running the script produces identical keys;
-> - preserve original creation timestamps in `createdAt`;
+> - preserve original creation timestamps in `createdAt` only for courses, modules, lessons, products, and members;
 > - merge repeated enrollments for the same user and product into one grant using the earliest start and the latest expiry;
 > - reference other records only by `importKey`, never by generated ids, and emit records in dependency order;
 > - write every source field that has no Together equivalent into a separate `unmapped-report.json` instead of dropping it silently;
 > - never invent data — if a required Together field has no source value, list the record in `problems.json` instead of guessing;
 > - write a manifest line with the real per-kind counts;
-> - never put a plaintext password in the output; only reformat an existing hex salt and hex PBKDF2-SHA-256 hash into the documented credential string, and if my hashes use any other scheme, omit the field.
+> - never put a plaintext password in the output; only join an existing 64-character hex salt and 1024-character hex PBKDF2-SHA-256 hash as `pbkdf2$25000$<salt>$<hash>` when the source used the documented 25,000-iteration, 512-byte derivation with the salt string passed directly, and otherwise omit the field.
 >
 > Then tell me which of my source fields you could not map and what decisions I need to make.
 
@@ -300,5 +305,5 @@ Run through this before you call the migration done.
 4. **Nothing silently vanished.** `problems.json` is empty or every entry has a decision, and `unmapped-report.json` has been reviewed — keep both files.
 5. **Re-run is clean.** Submitting the same dataset again returns an all-`unchanged` summary with zero failures.
 6. **Spot-check the drafts.** Open a course in the panel and confirm module order, chapter structure, and lesson blocks of every type you use render correctly; check one product's access items against your source access rules.
-7. **Spot-check the people.** Verify one member per access tier has the grant they should have, log in once with a migrated legacy password, and run one invite through the set-password flow.
-8. **Close the door.** Revoke the import keys, and use the key's import audit to confirm the journal contains exactly what you expected.
+7. **Spot-check the people.** Verify one member per access tier has the grant they should have, log in once with a migrated legacy password, and request one magic link or password reset for a passwordless member.
+8. **Close the door.** Revoke the import keys. Audit retrieval is not yet customer-accessible, so retain your manifest, validation response, and batch responses as the reconciliation record.

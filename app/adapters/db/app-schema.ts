@@ -29,6 +29,8 @@ export const tenants = pgTable(
     id: text('id').primaryKey(),
     slug: text('slug').notNull().unique(),
     name: text('name').notNull(),
+    status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
+    plan: text('plan', { enum: ['self_hosted', 'hosted', 'hosted_pro'] }).notNull().default('self_hosted'),
     createdAt: text('created_at').notNull(),
     contentVersion: integer('content_version').notNull().default(1),
     billingPortalUrl: text('billing_portal_url'),
@@ -37,6 +39,7 @@ export const tenants = pgTable(
     logoUrl: text('logo_url'),
     accentColor: text('accent_color'),
     faviconUrl: text('favicon_url'),
+    socialLinks: jsonb('social_links').$type<Array<{ label: string; url: string }>>().notNull().default([]),
     ogTitle: text('og_title'),
     ogDescription: text('og_description'),
     ogImageUrl: text('og_image_url'),
@@ -60,6 +63,8 @@ export const tenants = pgTable(
   },
   (table) => [
     uniqueIndex('tenants_slug_uidx').on(table.slug),
+    check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
+    check('tenants_plan_check', sql`${table.plan} IN ('self_hosted', 'hosted', 'hosted_pro')`),
     check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
   ],
 );
@@ -77,8 +82,12 @@ export const consents = pgTable(
     termsUrl: text('terms_url'),
     privacyUrl: text('privacy_url'),
     acceptedAt: text('accepted_at').notNull(),
+    retentionStartedAt: timestamp('retention_started_at', { withTimezone: true, mode: 'string' }),
   },
-  (table) => [index('consents_tenant_email_idx').on(table.tenantId, table.email)],
+  (table) => [
+    index('consents_tenant_email_idx').on(table.tenantId, table.email),
+    index('consents_tenant_retention_started_idx').on(table.tenantId, table.retentionStartedAt),
+  ],
 );
 
 export const tenantDocuments = pgTable(
@@ -164,10 +173,13 @@ export const marketingConsents = pgTable(
     source: text('source', { enum: ['checkout', 'panel', 'import', 'api', 'preference_page'] }).notNull(),
     evidence: jsonb('evidence').$type<ConsentEvidence>().notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    retentionStartedAt: timestamp('retention_started_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
     index('marketing_consents_tenant_email_definition_occurred_idx')
       .on(table.tenantId, table.email, table.definitionId, table.occurredAt.desc()),
+    index('marketing_consents_tenant_retention_started_idx')
+      .on(table.tenantId, table.retentionStartedAt),
   ],
 );
 
@@ -1397,6 +1409,7 @@ export const schedulerRunTenants = pgTable(
     tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
     campaignsTouched: integer('campaigns_touched').notNull(),
     batchSize: integer('batch_size').notNull(),
+    purged: integer('purged'),
     sent: integer('sent').notNull(),
     failed: integer('failed').notNull(),
     skipped: integer('skipped').notNull(),
@@ -1457,7 +1470,7 @@ export const campaignSends = pgTable(
     memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
     email: text('email').notNull(),
     subject: text('subject').notNull(),
-    consentRowId: text('consent_row_id').notNull().references(() => marketingConsents.id, { onDelete: 'restrict' }),
+    consentRowId: text('consent_row_id').references(() => marketingConsents.id, { onDelete: 'set null' }),
     unsubscribeTokenId: text('unsubscribe_token_id'),
     status: text('status', { enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] }).notNull(),
     skipReason: text('skip_reason', { enum: ['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation'] }),
@@ -1470,6 +1483,7 @@ export const campaignSends = pgTable(
     sentAt: timestamp('sent_at', { withTimezone: true, mode: 'string' }),
   },
   (table) => [
+    index('campaign_sends_consent_row_id_idx').on(table.consentRowId),
     index('campaign_sends_tenant_campaign_status_idx').on(table.tenantId, table.campaignId, table.status),
     index('campaign_sends_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
     index('campaign_sends_tenant_email_created_id_idx').on(table.tenantId, table.email, table.createdAt, table.id),

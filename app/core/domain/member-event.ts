@@ -56,6 +56,28 @@ export const memberEventRegistry = defineMemberEventRegistry({
   }).strict(),
 });
 
+const memberTimelineEventRegistry = defineMemberEventRegistry({
+  banned: memberEventRegistry.banned,
+  unbanned: memberEventRegistry.unbanned,
+  purchase: memberEventRegistry.purchase.extend({
+    productTitle: z.string().nullable(),
+  }),
+  grant: memberEventRegistry.grant.extend({
+    productTitle: z.string().nullable(),
+  }),
+  revoke: memberEventRegistry.revoke.extend({
+    productTitle: z.string().nullable(),
+  }),
+  'subscription-change': memberEventRegistry['subscription-change'].extend({
+    productTitle: z.string().nullable(),
+  }),
+  'lesson-completion': memberEventRegistry['lesson-completion'].extend({
+    courseTitle: z.string().nullable(),
+    lessonTitle: z.string().nullable(),
+  }),
+  'email-sent': memberEventRegistry['email-sent'],
+});
+
 type MemberEventFromRegistry<TRegistry extends MemberEventRegistry> = {
   [TType in keyof TRegistry & string]: {
     id: string;
@@ -102,6 +124,10 @@ export function createMemberEventSchema(registry: MemberEventRegistry): z.ZodTyp
 }
 
 export const memberEventSchema = createMemberEventSchema(memberEventRegistry);
+
+export const memberTimelineEventSchema = createMemberEventSchema(memberTimelineEventRegistry);
+
+export type MemberTimelineEvent = z.output<typeof memberTimelineEventSchema>;
 
 export const memberBanEventSchema = createMemberEventSchema({
   banned: memberEventRegistry.banned,

@@ -112,6 +112,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/members/export` | authenticated | read | members export |
 | `POST /api/members/ban` | authenticated | mutating | member ban |
 | `GET /api/members/:memberId/grants` | authenticated | read | member grants |
+| `GET /api/members/:memberId/commerce` | authenticated | read | member commerce |
 | `GET /api/members/:memberId/timeline` | authenticated | read | member timeline |
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |
@@ -131,6 +132,7 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
 | `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
 | `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
+| `POST /api/integrations/stripe/configure` | authenticated | mutating | stripe configure |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |
 | `GET /api/integrations/bunny/videos` | authenticated | read | bunny videos |

@@ -543,9 +543,14 @@ const fixture = (input: {
     listStaffForTenant: async () => [],
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && (input.staffUserIds ?? []).includes(userId)
-        ? { tenant: { id: 't1', slug: 'tenant', name: 'Tenant', contentVersion: 1 }, staffRole: 'admin' }
+        ? {
+            tenant: {
+              id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
+            },
+            staffRole: 'admin',
+          }
         : null,
-    findMember: async (userId, tenantId) =>
+    findMember: async (tenantId, userId) =>
       MEMBERS.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
   };
   const deps: SpacesDeps & CommunityDeps = {

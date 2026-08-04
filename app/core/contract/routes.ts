@@ -48,6 +48,7 @@ import {
   listStreamVideosInputSchema,
   m2mEnrollInputSchema,
   memberSubscriptionSchema,
+  memberSubscriptionListItemSchema,
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
@@ -67,7 +68,7 @@ import {
   memberErasureRequestStatusSchema,
   memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
-  memberEventSchema,
+  memberTimelineEventSchema,
   memberWithProductIdsSchema,
   memberSchema,
   setMemberBannedInputSchema,
@@ -83,6 +84,8 @@ import {
   emailIntegrationTransportSchema,
   integrationProviderSchema,
   providerDiagnosticSchema,
+  configureStripeInputSchema,
+  stripeModeSchema,
   postReportSchema,
   reportPostInputSchema,
   reportQueueSchema,
@@ -109,6 +112,7 @@ import {
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
+  tenantSocialLinkSchema,
   tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
@@ -241,6 +245,7 @@ export const publicOfferOutputSchema = z.object({
     slug: z.string(),
     name: z.string(),
     branding: tenantBrandingSchema.default({}),
+    socialLinks: z.array(tenantSocialLinkSchema).default([]),
     legal: publicLegalUrlsSchema.default({}),
     support: tenantSupportPublicSchema.default({ url: null }),
   }),
@@ -394,7 +399,12 @@ export const memberLearningSummaryOutputSchema = z.object({
 });
 
 export const memberTimelineOutputSchema = z.object({
-  events: z.array(memberEventSchema),
+  events: z.array(memberTimelineEventSchema),
+});
+
+export const memberCommerceOutputSchema = z.object({
+  purchases: z.array(orderListItemSchema),
+  activeSubscriptions: z.array(memberSubscriptionListItemSchema),
 });
 
 export const memberProgressResetInputSchema = z.object({
@@ -586,7 +596,7 @@ export const devEmailOutputSchema = z.object({
 
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
-  name: z.string(),
+  name: tenantSchema.shape.name,
 });
 
 export type TenantCreateInput = z.input<typeof tenantCreateInputSchema>;
@@ -952,6 +962,8 @@ export const apiKeyRevokeOutputSchema = z.object({
 
 export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
+  stripeMode: stripeModeSchema.nullable(),
+  stripeWebhookUrl: z.string().url(),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
@@ -1024,6 +1036,15 @@ export type StorageConfigureInput = z.input<typeof storageConfigureInputSchema>;
 export const storageConfigureOutputSchema = z.object({
   diagnostic: providerDiagnosticSchema,
   secret: tenantSecretMaskedSchema,
+});
+
+export const stripeConfigureInputSchema = configureStripeInputSchema;
+
+export type StripeConfigureInput = z.input<typeof stripeConfigureInputSchema>;
+
+export const stripeConfigureOutputSchema = z.object({
+  mode: stripeModeSchema,
+  webhookUrl: z.string().url(),
 });
 
 export const ifirmaTestConnectionOutputSchema = z.object({
@@ -1353,6 +1374,7 @@ export const API_ROUTES = {
   },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
+  memberCommerce: { method: 'GET', path: '/api/members/:memberId/commerce' },
   memberTimeline: { method: 'GET', path: '/api/members/:memberId/timeline' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
@@ -1374,6 +1396,7 @@ export const API_ROUTES = {
   integrationTest: { method: 'POST', path: '/api/integrations/test' },
   storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
   storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
+  stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
@@ -1542,6 +1565,7 @@ export const API_PATHS = {
   memberErasureReject: API_ROUTES.memberErasureReject.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
+  memberCommerce: API_ROUTES.memberCommerce.path,
   memberTimeline: API_ROUTES.memberTimeline.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
@@ -1562,6 +1586,7 @@ export const API_PATHS = {
   integrationTest: API_ROUTES.integrationTest.path,
   storageProbe: API_ROUTES.storageProbe.path,
   storageConfigure: API_ROUTES.storageConfigure.path,
+  stripeConfigure: API_ROUTES.stripeConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,

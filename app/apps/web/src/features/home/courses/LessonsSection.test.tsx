@@ -17,7 +17,7 @@ import { PanelLessonEditRoute } from '../panel-routes.js';
 import { LessonCreatePage, LessonsSection } from './LessonsSection.js';
 
 const renderLessonsAt = async (initialEntry = '/panel/lessons', secrets: TenantSecretMasked[] = []) => {
-  server.use(http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets } })));
+  server.use(http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets, stripeMode: null, stripeWebhookUrl: 'https://studio.together.dev/api/stripe/webhook' } })));
   const rootRoute = createRootRoute();
   const listRoute = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons', component: LessonsSection });
   const createRoutePage = createRoute({ getParentRoute: () => rootRoute, path: '/panel/lessons/new', component: LessonCreatePage });

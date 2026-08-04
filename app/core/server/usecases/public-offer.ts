@@ -12,6 +12,7 @@ import {
   type Result,
   type Tenant,
   type TenantBranding,
+  type TenantSocialLink,
   type TenantSupportPublic,
 } from '#core/domain/index.js';
 
@@ -28,6 +29,7 @@ export interface PublicOffer {
     slug: string;
     name: string;
     branding: TenantBranding;
+    socialLinks: TenantSocialLink[];
     legal: LegalUrls;
     support: TenantSupportPublic;
   };
@@ -93,6 +95,7 @@ export const getPublicOffer = async (
         settings === null
           ? EMPTY_TENANT_BRANDING
           : { logoUrl: settings.logoUrl, accentColor: settings.accentColor, faviconUrl: settings.faviconUrl },
+      socialLinks: settings?.socialLinks ?? [],
       legal:
         settings === null
           ? EMPTY_LEGAL_URLS

@@ -267,7 +267,7 @@ describe('reset password email', () => {
     });
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
-      headers: new Headers(),
+      headers: new Headers({ 'x-forwarded-for': '198.51.100.224' }),
     });
     await flushEmails();
 

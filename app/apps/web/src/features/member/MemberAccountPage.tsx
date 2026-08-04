@@ -18,6 +18,7 @@ import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
+import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -440,6 +441,7 @@ export const MemberAccountPage = () => {
         <SectionCard title={t.account.preferencesHeading} description={t.account.preferencesIntro}>
           <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="1rem">
             <LanguageSwitcher inline />
+            <ColorSchemeSwitcher />
           </Stack>
         </SectionCard>
       </Stack>

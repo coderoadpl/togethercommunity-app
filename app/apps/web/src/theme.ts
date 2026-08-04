@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, Button, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, keyframes, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -23,6 +23,7 @@ declare module '@mui/material/styles' {
     numericFontFamily?: string;
     statusAccent?: string;
     moneyColor?: string;
+    primaryActive?: string;
     /** Focus-ring base color; themes that set it let applyBranding tint focus with the tenant accent. */
     focusRing?: string;
   }
@@ -31,6 +32,7 @@ declare module '@mui/material/styles' {
     numericFontFamily?: string;
     statusAccent?: string;
     moneyColor?: string;
+    primaryActive?: string;
     focusRing?: string;
   }
 }
@@ -67,6 +69,7 @@ export const MODES = [
 
 type ThemeModeOption = (typeof MODES)[number];
 export type ThemeMode = ThemeModeOption['id'];
+export type ResolvedColorScheme = 'light' | 'dark';
 
 /**
  * Stock Material UI look. Only the per-tenant accent carries over as the
@@ -124,7 +127,12 @@ const createPlainTheme = (accentHue?: number): Theme =>
     },
   });
 
-export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme => {
+export const createThemeForMode = (
+  mode: ThemeMode,
+  accentHue?: number,
+  scheme: ResolvedColorScheme = 'light',
+): Theme => {
+  if (scheme === 'dark') return createShadcnTheme('dark');
   switch (mode) {
     case 'logbook':
       return createAppTheme(accentHue);
@@ -133,7 +141,7 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
     case 'scoreboard':
       return createScoreboardTheme();
     case 'shadcn':
-      return createShadcnTheme();
+      return createShadcnTheme('light');
     case 'signal-mono':
       return createSignalMonoTheme();
     case 'steady-frame':
@@ -145,45 +153,194 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
 
 const SHADCN_FONT =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const SHADCN_FONT_DISPLAY = `'Poppins', ${SHADCN_FONT}`;
 
-const SHADCN_BG = '#fafafa';
-const SHADCN_SURFACE = '#ffffff';
-const SHADCN_INK = '#09090b';
-const SHADCN_INK_SOFT = '#64646b';
-const SHADCN_PRIMARY = '#18181b';
-const SHADCN_PRIMARY_HOVER = '#27272a';
-const SHADCN_MUTED = '#f4f4f5';
-const SHADCN_BORDER = '#e4e4e7';
-const SHADCN_BORDER_STRONG = '#d4d4d8';
-const SHADCN_RING = '#a1a1aa';
-const SHADCN_DESTRUCTIVE = '#dc2626';
-const SHADCN_SUCCESS = '#15803d';
-const SHADCN_SHADOW_XS = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
-const SHADCN_SHADOW_MD = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)';
-const SHADCN_SHADOW_LG = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)';
+interface ShadcnTokens {
+  background: string;
+  surface: string;
+  overlay: string;
+  muted: string;
+  pressed: string;
+  input: string;
+  toggleSelected: string;
+  ink: string;
+  inkSoft: string;
+  disabledText: string;
+  border: string;
+  borderStrong: string;
+  ember: string;
+  emberHover: string;
+  emberActive: string;
+  emberType: string;
+  emberInk: string;
+  ring: string;
+  destructive: string;
+  destructiveDark: string;
+  destructiveContrast: string;
+  success: string;
+  successContrast: string;
+  warning: string;
+  warningText: string;
+  warningContrast: string;
+  info: string;
+  infoContrast: string;
+  shadowXs: string;
+  shadowMd: string;
+  shadowLg: string;
+  tooltipBackground: string;
+  tooltipText: string;
+}
 
-const createShadcnTheme = (): Theme =>
-  createTheme({
+const SHADCN_LIGHT: ShadcnTokens = {
+  background: '#FAF8F5',
+  surface: '#FFFFFF',
+  overlay: '#FFFFFF',
+  muted: '#F2EEE8',
+  pressed: '#EDE8E1',
+  input: '#FFFFFF',
+  toggleSelected: '#FFFFFF',
+  ink: '#1B1613',
+  inkSoft: '#6A6156',
+  disabledText: '#8A8177',
+  border: '#E7E2DA',
+  borderStrong: '#D8D1C7',
+  ember: '#E8682A',
+  emberHover: '#DA5D22',
+  emberActive: '#D8571F',
+  emberType: '#AD440A',
+  emberInk: '#1C120B',
+  ring: '#E8682A',
+  destructive: '#C21E1E',
+  destructiveDark: '#A81A1A',
+  destructiveContrast: '#FFFFFF',
+  success: '#147036',
+  successContrast: '#FFFFFF',
+  warning: '#D97706',
+  warningText: '#A34D08',
+  warningContrast: '#231303',
+  info: '#0E7490',
+  infoContrast: '#FFFFFF',
+  shadowXs: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+  shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
+  shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+  tooltipBackground: '#1B1613',
+  tooltipText: '#FFFFFF',
+};
+
+const SHADCN_DARK: ShadcnTokens = {
+  background: '#141210',
+  surface: '#1E1B18',
+  overlay: '#262220',
+  muted: '#26211C',
+  pressed: '#38312A',
+  input: '#141210',
+  toggleSelected: '#38312A',
+  ink: '#F4EFE9',
+  inkSoft: '#A9A29A',
+  disabledText: '#756E66',
+  border: '#2E2A26',
+  borderStrong: '#423C35',
+  ember: '#E8682A',
+  emberHover: '#EE7B40',
+  emberActive: '#EE7B40',
+  emberType: '#F49A5E',
+  emberInk: '#1C120B',
+  ring: '#F49A5E',
+  destructive: '#F0857A',
+  destructiveDark: '#F0857A',
+  destructiveContrast: '#2A0F0B',
+  success: '#55C382',
+  successContrast: '#0C1F15',
+  warning: '#E5A84B',
+  warningText: '#E5A84B',
+  warningContrast: '#231303',
+  info: '#85B8DC',
+  infoContrast: '#1B1815',
+  shadowXs: '0 1px 2px 0 rgba(0, 0, 0, 0.45)',
+  shadowMd: '0 4px 10px -2px rgba(0, 0, 0, 0.55)',
+  shadowLg: '0 12px 24px -6px rgba(0, 0, 0, 0.60)',
+  tooltipBackground: '#F4EFE9',
+  tooltipText: '#1B1815',
+};
+
+const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
+  const tokens = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
+  const {
+    background: SHADCN_BG,
+    surface: SHADCN_SURFACE,
+    overlay: SHADCN_OVERLAY,
+    muted: SHADCN_MUTED,
+    pressed: SHADCN_PRESSED,
+    input: SHADCN_INPUT,
+    toggleSelected: SHADCN_TOGGLE_SELECTED,
+    ink: SHADCN_INK,
+    inkSoft: SHADCN_INK_SOFT,
+    disabledText: SHADCN_DISABLED_TEXT,
+    border: SHADCN_BORDER,
+    borderStrong: SHADCN_BORDER_STRONG,
+    ember: SHADCN_PRIMARY,
+    emberHover: SHADCN_PRIMARY_HOVER,
+    emberActive: SHADCN_PRIMARY_ACTIVE,
+    emberType: SHADCN_PRIMARY_TYPE,
+    emberInk: SHADCN_PRIMARY_INK,
+    ring: SHADCN_RING,
+    destructive: SHADCN_DESTRUCTIVE,
+    destructiveDark: SHADCN_DESTRUCTIVE_DARK,
+    destructiveContrast: SHADCN_DESTRUCTIVE_CONTRAST,
+    success: SHADCN_SUCCESS,
+    successContrast: SHADCN_SUCCESS_CONTRAST,
+    warning: SHADCN_WARNING,
+    warningText: SHADCN_WARNING_TEXT,
+    warningContrast: SHADCN_WARNING_CONTRAST,
+    info: SHADCN_INFO,
+    infoContrast: SHADCN_INFO_CONTRAST,
+    shadowXs: SHADCN_SHADOW_XS,
+    shadowMd: SHADCN_SHADOW_MD,
+    shadowLg: SHADCN_SHADOW_LG,
+    tooltipBackground: SHADCN_TOOLTIP_BACKGROUND,
+    tooltipText: SHADCN_TOOLTIP_TEXT,
+  } = tokens;
+  return createTheme({
     headerRule: `1px solid ${SHADCN_BORDER}`,
     focusRing: SHADCN_RING,
+    primaryActive: SHADCN_PRIMARY_ACTIVE,
     palette: {
-      mode: 'light',
+      mode: scheme,
       contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: SHADCN_PRIMARY,
         light: SHADCN_PRIMARY_HOVER,
-        dark: SHADCN_INK,
-        contrastText: SHADCN_SURFACE,
+        dark: SHADCN_PRIMARY_TYPE,
+        contrastText: SHADCN_PRIMARY_INK,
       },
       secondary: {
         main: SHADCN_PRIMARY,
-        dark: SHADCN_INK,
-        contrastText: SHADCN_SURFACE,
+        light: SHADCN_PRIMARY_HOVER,
+        dark: SHADCN_PRIMARY_TYPE,
+        contrastText: SHADCN_PRIMARY_INK,
       },
-      success: { main: SHADCN_SUCCESS, contrastText: SHADCN_SURFACE },
-      error: { main: SHADCN_DESTRUCTIVE, contrastText: SHADCN_SURFACE },
+      success: { main: SHADCN_SUCCESS, contrastText: SHADCN_SUCCESS_CONTRAST },
+      error: {
+        main: SHADCN_DESTRUCTIVE,
+        dark: SHADCN_DESTRUCTIVE_DARK,
+        contrastText: SHADCN_DESTRUCTIVE_CONTRAST,
+      },
+      warning: {
+        main: SHADCN_WARNING,
+        dark: SHADCN_WARNING_TEXT,
+        contrastText: SHADCN_WARNING_CONTRAST,
+      },
+      info: { main: SHADCN_INFO, contrastText: SHADCN_INFO_CONTRAST },
       background: { default: SHADCN_BG, paper: SHADCN_SURFACE },
-      text: { primary: SHADCN_INK, secondary: SHADCN_INK_SOFT },
+      text: {
+        primary: SHADCN_INK,
+        secondary: SHADCN_INK_SOFT,
+        disabled: SHADCN_DISABLED_TEXT,
+      },
+      action: {
+        disabled: SHADCN_DISABLED_TEXT,
+        disabledBackground: SHADCN_PRESSED,
+      },
       divider: SHADCN_BORDER,
     },
     shape: { borderRadius: 8 },
@@ -192,18 +349,21 @@ const createShadcnTheme = (): Theme =>
       body1: { fontSize: '0.875rem', lineHeight: 1.6 },
       body2: { fontSize: '0.8125rem', lineHeight: 1.55 },
       h1: {
+        fontFamily: SHADCN_FONT_DISPLAY,
         fontSize: '1.875rem',
         fontWeight: 700,
         letterSpacing: '-0.025em',
         lineHeight: 1.2,
       },
       h2: {
+        fontFamily: SHADCN_FONT_DISPLAY,
         fontSize: '1.125rem',
         fontWeight: 600,
         letterSpacing: '-0.015em',
         lineHeight: 1.4,
       },
       h3: {
+        fontFamily: SHADCN_FONT_DISPLAY,
         fontSize: '1rem',
         fontWeight: 600,
         lineHeight: 1.45,
@@ -228,6 +388,10 @@ const createShadcnTheme = (): Theme =>
     components: {
       MuiCssBaseline: {
         styleOverrides: {
+          ':root': {
+            colorScheme: scheme,
+            backgroundColor: SHADCN_BG,
+          },
           body: {
             backgroundColor: SHADCN_BG,
             WebkitFontSmoothing: 'antialiased',
@@ -256,11 +420,34 @@ const createShadcnTheme = (): Theme =>
             color: theme.palette.primary.contrastText,
             boxShadow: SHADCN_SHADOW_XS,
             '&:hover': { backgroundColor: theme.palette.primary.light, boxShadow: SHADCN_SHADOW_XS },
-            '&.Mui-disabled': {
-              backgroundColor: theme.palette.primary.main,
-              color: theme.palette.primary.contrastText,
-              opacity: 0.5,
+            '&:active': {
+              backgroundColor: theme.primaryActive ?? theme.palette.primary.light,
+              boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.18)',
             },
+            '&.MuiButton-colorError': {
+              backgroundColor: theme.palette.error.main,
+              color: theme.palette.error.contrastText,
+              '&:hover': { backgroundColor: theme.palette.error.dark },
+              '&:active': {
+                backgroundColor: theme.palette.error.dark,
+                boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.18)',
+              },
+            },
+            '&.Mui-disabled': scheme === 'dark'
+              ? {
+                  backgroundColor: theme.palette.primary.main,
+                  color: theme.palette.primary.contrastText,
+                  boxShadow: 'none',
+                  opacity: 0.5,
+                }
+              : {
+                  backgroundColor: SHADCN_PRESSED,
+                  color: SHADCN_DISABLED_TEXT,
+                  boxShadow: 'none',
+                  cursor: 'not-allowed',
+                  opacity: 1,
+                  pointerEvents: 'auto',
+                },
           }),
           outlined: {
             border: `1px solid ${SHADCN_BORDER}`,
@@ -268,13 +455,28 @@ const createShadcnTheme = (): Theme =>
             backgroundColor: SHADCN_SURFACE,
             boxShadow: SHADCN_SHADOW_XS,
             '&:hover': {
-              border: `1px solid ${SHADCN_BORDER}`,
+              border: `1px solid ${SHADCN_BORDER_STRONG}`,
               backgroundColor: SHADCN_MUTED,
+            },
+            '&:active': { backgroundColor: SHADCN_PRESSED },
+            '&.Mui-disabled': {
+              border: `1px solid ${SHADCN_BORDER}`,
+              backgroundColor: SHADCN_SURFACE,
+              color: SHADCN_DISABLED_TEXT,
+              boxShadow: 'none',
+              cursor: 'not-allowed',
+              pointerEvents: 'auto',
             },
           },
           text: {
             color: SHADCN_INK,
             '&:hover': { backgroundColor: SHADCN_MUTED },
+            '&:active': { backgroundColor: SHADCN_PRESSED },
+            '&.Mui-disabled': {
+              color: SHADCN_DISABLED_TEXT,
+              cursor: 'not-allowed',
+              pointerEvents: 'auto',
+            },
           },
         },
       },
@@ -307,6 +509,7 @@ const createShadcnTheme = (): Theme =>
           elevation8: {
             border: `1px solid ${SHADCN_BORDER}`,
             borderRadius: 8,
+            backgroundColor: SHADCN_OVERLAY,
             boxShadow: SHADCN_SHADOW_MD,
           },
         },
@@ -315,7 +518,7 @@ const createShadcnTheme = (): Theme =>
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            backgroundColor: SHADCN_SURFACE,
+            backgroundColor: SHADCN_INPUT,
             '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER },
             '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
             '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.35)}` },
@@ -383,7 +586,10 @@ const createShadcnTheme = (): Theme =>
               borderColor: alpha(SHADCN_SUCCESS, 0.4),
               color: SHADCN_SUCCESS,
             },
-            '&.MuiChip-colorWarning': { borderColor: alpha('#d97706', 0.4), color: '#b45309' },
+            '&.MuiChip-colorWarning': {
+              borderColor: alpha(SHADCN_WARNING, 0.4),
+              color: SHADCN_WARNING_TEXT,
+            },
           },
         },
       },
@@ -416,10 +622,10 @@ const createShadcnTheme = (): Theme =>
             textTransform: 'none',
             '&:hover': { backgroundColor: 'transparent', color: SHADCN_INK },
             '&.Mui-selected': {
-              backgroundColor: SHADCN_SURFACE,
+              backgroundColor: SHADCN_TOGGLE_SELECTED,
               color: SHADCN_INK,
               boxShadow: SHADCN_SHADOW_XS,
-              '&:hover': { backgroundColor: SHADCN_SURFACE },
+              '&:hover': { backgroundColor: SHADCN_TOGGLE_SELECTED },
             },
             '&:focus-visible': {
               outline: 'none',
@@ -436,15 +642,15 @@ const createShadcnTheme = (): Theme =>
       },
       MuiTab: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             minHeight: 40,
             padding: '0.5rem 0.85rem',
             color: SHADCN_INK_SOFT,
             fontSize: '0.875rem',
             fontWeight: 500,
             textTransform: 'none',
-            '&.Mui-selected': { color: SHADCN_INK },
-          },
+            '&.Mui-selected': { color: theme.palette.primary.dark },
+          }),
         },
       },
       MuiList: {
@@ -514,11 +720,26 @@ const createShadcnTheme = (): Theme =>
         defaultProps: { severity: 'error', variant: 'outlined' },
         styleOverrides: {
           root: {
-            border: `1px solid ${alpha(SHADCN_DESTRUCTIVE, 0.5)}`,
             borderRadius: 10,
             backgroundColor: SHADCN_SURFACE,
-            color: SHADCN_DESTRUCTIVE,
             boxShadow: 'none',
+            '& .MuiAlert-icon': { color: 'inherit' },
+            '&.MuiAlert-colorError': {
+              border: `1px solid ${alpha(SHADCN_DESTRUCTIVE, 0.5)}`,
+              color: SHADCN_DESTRUCTIVE,
+            },
+            '&.MuiAlert-colorSuccess': {
+              border: `1px solid ${alpha(SHADCN_SUCCESS, 0.5)}`,
+              color: SHADCN_SUCCESS,
+            },
+            '&.MuiAlert-colorWarning': {
+              border: `1px solid ${alpha(SHADCN_WARNING, 0.4)}`,
+              color: SHADCN_WARNING_TEXT,
+            },
+            '&.MuiAlert-colorInfo': {
+              border: `1px solid ${alpha(SHADCN_INFO, 0.5)}`,
+              color: SHADCN_INFO,
+            },
           },
         },
       },
@@ -548,6 +769,7 @@ const createShadcnTheme = (): Theme =>
           paper: {
             border: `1px solid ${SHADCN_BORDER}`,
             borderRadius: 12,
+            backgroundColor: SHADCN_OVERLAY,
             boxShadow: SHADCN_SHADOW_LG,
           },
         },
@@ -557,6 +779,7 @@ const createShadcnTheme = (): Theme =>
           paper: {
             border: `1px solid ${SHADCN_BORDER}`,
             borderRadius: 8,
+            backgroundColor: SHADCN_OVERLAY,
             boxShadow: SHADCN_SHADOW_MD,
           },
           option: {
@@ -571,24 +794,28 @@ const createShadcnTheme = (): Theme =>
       MuiLinearProgress: {
         styleOverrides: {
           root: { height: 6, borderRadius: 999, backgroundColor: SHADCN_BORDER },
-          bar: { borderRadius: 999, backgroundColor: SHADCN_PRIMARY },
+          bar: ({ theme }) => ({
+            borderRadius: 999,
+            backgroundColor: scheme === 'dark' ? theme.palette.primary.main : theme.palette.primary.dark,
+          }),
         },
       },
       MuiTooltip: {
         styleOverrides: {
           tooltip: {
-            backgroundColor: SHADCN_PRIMARY,
-            color: SHADCN_SURFACE,
+            backgroundColor: SHADCN_TOOLTIP_BACKGROUND,
+            color: SHADCN_TOOLTIP_TEXT,
             fontSize: '0.75rem',
             fontWeight: 500,
             borderRadius: 6,
             padding: '0.35rem 0.65rem',
           },
-          arrow: { color: SHADCN_PRIMARY },
+          arrow: { color: SHADCN_TOOLTIP_BACKGROUND },
         },
       },
     },
   });
+};
 
 const SIGNAL_FONT_UI =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
@@ -2417,6 +2644,35 @@ export const CardTitle = styled(Typography)<AsElement>({ fontSize: '1.6rem' });
 
 export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
 
+export const CompactWordmark = styled(Wordmark)(({ theme }) => ({
+  color: theme.palette.text.primary,
+  fontSize: '0.95rem',
+  fontWeight: 600,
+}));
+
+export const CheckoutPrice = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.primary,
+  fontSize: '1.375rem',
+  fontWeight: 650,
+  fontVariantNumeric: 'tabular-nums',
+  lineHeight: 1.3,
+}));
+
+export const CheckoutPriceOption = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'selected',
+})<{ selected: boolean }>(({ selected, theme }) => ({
+  ...(selected
+    ? {
+        borderColor: theme.palette.primary.main,
+        backgroundColor: alpha(theme.palette.primary.main, 0.06),
+      }
+    : {}),
+}));
+
+export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
+  color: theme.palette.primary.dark,
+}));
+
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
@@ -2724,7 +2980,7 @@ export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
 
 export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.3rem',
-  color: theme.palette.primary.main,
+  color: theme.palette.primary.dark,
 }));
 
 export const StatTileValue = styled(Typography)<AsElement>(({ theme }) => ({
@@ -2813,7 +3069,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
-  '& a': { color: theme.palette.primary.main },
+  '& a': { color: theme.palette.primary.dark },
   '& pre': {
     overflowX: 'auto',
     padding: '0.75rem',

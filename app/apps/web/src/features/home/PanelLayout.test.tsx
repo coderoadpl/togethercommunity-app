@@ -23,6 +23,7 @@ import {
 } from './panel-routes.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { PanelLayout } from './PanelLayout.js';
 
 const meWithTenant = {
@@ -117,7 +118,15 @@ const renderPanelAt = async (
   });
   await router.load();
   const navigateSpy = preventNavigation ? vi.spyOn(router, 'navigate').mockResolvedValue() : null;
-  return { router, navigateSpy, ...renderWithProviders(<RouterProvider router={router} />) };
+  return {
+    router,
+    navigateSpy,
+    ...renderWithProviders(
+      <ThemeModeProvider>
+        <RouterProvider router={router} />
+      </ThemeModeProvider>,
+    ),
+  };
 };
 
 afterEach(() => {

@@ -19,8 +19,8 @@ export const reduceCheckoutState = (
   switch (event.type) {
     case 'priceSelected':
       return { ...state, selectedPriceId: event.priceId };
-    case 'couponOpened':
-      return { ...state, couponVisible: true };
+    case 'couponVisibilityChanged':
+      return { ...state, couponVisible: event.visible };
     case 'couponCodeChanged':
       return { ...state, couponCode: event.couponCode };
   }

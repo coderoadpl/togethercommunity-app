@@ -43,7 +43,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-**Bundled fonts (OFL-1.1).** The web client ships five font families installed
+**Bundled fonts (OFL-1.1).** The web client ships six font families installed
 as `@fontsource` packages and imported in `app/apps/web/src/main.tsx`. They are
 licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/),
 whose copyright notice and license text must accompany every copy of the font
@@ -58,6 +58,8 @@ files; each package carries the full license in its `LICENSE` file under
   ([JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono))
 - Manrope — Copyright 2019 The Manrope Project Authors
   ([sharanda/manrope](https://github.com/sharanda/manrope))
+- Poppins — Copyright 2020 The Poppins Project Authors
+  ([itfoundry/Poppins](https://github.com/itfoundry/Poppins))
 - Space Grotesk — Copyright 2020 The Space Grotesk Project Authors
   ([floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk))
 
@@ -269,6 +271,7 @@ invoices can be checked locally.
 - [@fontsource/inter@5.3.0](https://fontsource.org/fonts/inter) - OFL-1.1
 - [@fontsource/jetbrains-mono@5.3.0](https://fontsource.org/fonts/jetbrains-mono) - OFL-1.1
 - [@fontsource/manrope@5.3.0](https://fontsource.org/fonts/manrope) - OFL-1.1
+- [@fontsource/poppins@5.3.0](https://fontsource.org/fonts/poppins) - OFL-1.1
 - [@fontsource/space-grotesk@5.3.0](https://fontsource.org/fonts/space-grotesk) - OFL-1.1
 - [@hexagon/base64@1.1.28](https://base64.56k.guru) - MIT
 - [@hono/node-server@2.0.12](https://github.com/honojs/node-server) - MIT

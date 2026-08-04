@@ -15,13 +15,13 @@ const ThemeProbe = () => {
 };
 
 describe('ThemeModeProvider', () => {
-  it('provides the light Shadcn theme', () => {
+  it('provides the warm light Shadcn theme by default', () => {
     render(
       <ThemeModeProvider>
         <ThemeProbe />
       </ThemeModeProvider>,
     );
 
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^light:8:#fafafa:'Inter'/);
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^light:8:#FAF8F5:'Inter'/);
   });
 });

@@ -513,6 +513,7 @@ export default tseslint.config(
                 '@fontsource/inter',
                 '@fontsource/jetbrains-mono',
                 '@fontsource/manrope',
+                '@fontsource/poppins',
                 '@fontsource/space-grotesk',
                 '@mui/material',
                 '@tanstack/react-query',

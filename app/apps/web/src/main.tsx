@@ -22,6 +22,8 @@ import '@fontsource/manrope/latin-ext-400.css';
 import '@fontsource/manrope/latin-ext-500.css';
 import '@fontsource/manrope/latin-ext-600.css';
 import '@fontsource/manrope/latin-ext-700.css';
+import '@fontsource/poppins/600.css';
+import '@fontsource/poppins/700.css';
 import '@fontsource/space-grotesk/latin-400.css';
 import '@fontsource/space-grotesk/latin-500.css';
 import '@fontsource/space-grotesk/latin-600.css';

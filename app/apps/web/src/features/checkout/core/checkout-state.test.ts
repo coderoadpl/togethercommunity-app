@@ -13,7 +13,7 @@ describe('checkout state', () => {
 
   it('keeps coupon and price transitions independent', () => {
     const initial = createCheckoutState('');
-    const revealed = reduceCheckoutState(initial, { type: 'couponOpened' });
+    const revealed = reduceCheckoutState(initial, { type: 'couponVisibilityChanged', visible: true });
     const entered = reduceCheckoutState(revealed, {
       type: 'couponCodeChanged',
       couponCode: 'SAVE20',
@@ -27,6 +27,10 @@ describe('checkout state', () => {
       selectedPriceId: 'price-yearly',
       couponVisible: true,
       couponCode: 'SAVE20',
+    });
+    expect(reduceCheckoutState(selected, { type: 'couponVisibilityChanged', visible: false })).toEqual({
+      ...selected,
+      couponVisible: false,
     });
   });
 });

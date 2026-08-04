@@ -81,6 +81,13 @@ describe('BrandMark', () => {
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 
+  it('renders the compact checkout brand at the specified size', async () => {
+    server.use(offerHandler(BRANDED));
+    renderWithProviders(<BrandMark size="compact" />);
+
+    expect(await screen.findByTestId('tenant-brand-logo')).toHaveStyle({ height: '1.5rem' });
+  });
+
   it('falls back to the stock wordmark when the offer is not found', async () => {
     const requested = vi.fn();
     server.use(

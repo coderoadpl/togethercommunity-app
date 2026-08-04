@@ -55,6 +55,9 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TenantSesSettingsRepository.findByWebhookToken': 'The signed provider webhook token resolves the owning tenant.',
   'TenantAccessReader.findStaffGrant': 'Tenant resolution may start from a slug before a tenant ID exists.',
   'TenantAccessReader.listTenantsForStaff': 'Sign-in discovers the tenants available to a platform user.',
+  'TenantRepository.findSole': 'Self-host bootstrap resolves the single tenant before a tenant ID exists.',
+  'TenantRepository.hasAny': 'Self-host bootstrap checks platform-wide tenant existence before a tenant ID exists.',
+  'ConsentEvidenceRetentionRepository.listExpiredTenantIds': 'A platform worker discovers tenants due for consent-evidence retention.',
 };
 
 export const NON_DATA_PORTS: Readonly<Record<string, string>> = {

@@ -327,6 +327,16 @@ describe('private storage endpoint policy', () => {
   });
 });
 
+describe('playback token lifetime', () => {
+  it('defaults to six hours and enforces the supported range', () => {
+    expect(envSchema.parse({}).PLAYBACK_TOKEN_TTL_SECONDS).toBe(21_600);
+    expect(envSchema.parse({ PLAYBACK_TOKEN_TTL_SECONDS: '300' }).PLAYBACK_TOKEN_TTL_SECONDS).toBe(300);
+    expect(envSchema.parse({ PLAYBACK_TOKEN_TTL_SECONDS: '86400' }).PLAYBACK_TOKEN_TTL_SECONDS).toBe(86_400);
+    expect(envSchema.safeParse({ PLAYBACK_TOKEN_TTL_SECONDS: '299' }).success).toBe(false);
+    expect(envSchema.safeParse({ PLAYBACK_TOKEN_TTL_SECONDS: '86401' }).success).toBe(false);
+  });
+});
+
 describe('database driver policy', () => {
   it('rejects neon-http while runtime adapters require interactive transactions', () => {
     const parsed = envSchema.safeParse({ DB_DRIVER: 'neon-http' });

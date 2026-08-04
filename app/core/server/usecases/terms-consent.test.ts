@@ -10,6 +10,7 @@ const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
   socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
+  bunnyStreamCdnHostname: null,
   logoUrl: null,
   accentColor: null,
   faviconUrl: null,

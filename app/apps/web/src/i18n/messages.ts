@@ -460,6 +460,8 @@ export interface Messages {
     bunnySecurityHint: string;
     bunnyLibraryIdLabel: string;
     bunnyLibraryIdHelper: string;
+    bunnyCdnHostnameLabel: string;
+    bunnyCdnHostnameHelper: string;
     bunnySaveFirst: string;
     s3Heading: string;
     s3Description: string;

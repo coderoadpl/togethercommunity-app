@@ -15,6 +15,7 @@ interface TestSettings {
   socialLinks: [];
   billingPortalUrl: string | null;
   bunnyStreamLibraryId: string | null;
+  bunnyStreamCdnHostname: string | null;
 }
 
 const defaultSettings: TestSettings = {
@@ -22,6 +23,7 @@ const defaultSettings: TestSettings = {
   socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
+  bunnyStreamCdnHostname: null,
 };
 
 const renderPanel = (
@@ -106,6 +108,9 @@ const renderPanel = (
       const body = await request.json();
       if (typeof body === 'object' && body !== null && 'bunnyStreamLibraryId' in body) {
         settings = { ...settings, bunnyStreamLibraryId: body.bunnyStreamLibraryId === null ? null : String(body.bunnyStreamLibraryId) };
+      }
+      if (typeof body === 'object' && body !== null && 'bunnyStreamCdnHostname' in body) {
+        settings = { ...settings, bunnyStreamCdnHostname: body.bunnyStreamCdnHostname === null ? null : String(body.bunnyStreamCdnHostname) };
       }
       return HttpResponse.json({ ok: true, data: { settings } });
     }),
@@ -398,6 +403,23 @@ describe('IntegrationsPanel', () => {
     });
     await userEvent.click(testButton);
     expect(await screen.findByTestId('bunny-test-result')).toHaveTextContent('3 video(s)');
+  });
+
+  it('saves the Bunny Stream CDN hostname', async () => {
+    renderPanel();
+
+    const input = await screen.findByTestId('bunny-cdn-hostname');
+    expect(input).toHaveAttribute('placeholder', 'vz-xxxxxxx-xxx.b-cdn.net');
+    expect(screen.getByText(pl.integrations.bunnyCdnHostnameHelper)).toBeInTheDocument();
+    await userEvent.type(input, 'vz-demo-123.b-cdn.net');
+    await userEvent.click(screen.getByTestId('bunny-cdn-hostname-save'));
+
+    expect(await screen.findByTestId('bunny-cdn-hostname-saved')).toHaveTextContent(
+      pl.integrations.saved,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('bunny-cdn-hostname')).toHaveValue('vz-demo-123.b-cdn.net');
+    });
   });
 
   it('removes a configured iFirma invoice API key', async () => {

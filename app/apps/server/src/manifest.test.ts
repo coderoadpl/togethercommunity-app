@@ -54,6 +54,7 @@ const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDep
         socialLinks: [],
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
+        bunnyStreamCdnHostname: null,
         logoUrl: null,
         accentColor,
         faviconUrl: null,

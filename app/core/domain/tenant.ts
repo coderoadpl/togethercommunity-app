@@ -115,6 +115,7 @@ export const tenantSettingsSchema = z.object({
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).default([]),
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
+  bunnyStreamCdnHostname: z.string().nullable().default(null),
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
   accentColor: accentColorSchema.nullable().default(null),
   faviconUrl: brandingAssetUrlSchema.nullable().default(null),
@@ -169,6 +170,17 @@ export const updateTenantSettingsInputSchema = z.object({
     .string()
     .trim()
     .nullable()
+    .transform((value) => (value === '' || value === null ? null : value))
+    .optional(),
+  bunnyStreamCdnHostname: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i,
+      'Must be a bare hostname like vz-xxxx.b-cdn.net',
+    )
+    .nullable()
+    .or(z.literal(''))
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   logoUrl: clearableBrandingAssetUrl,

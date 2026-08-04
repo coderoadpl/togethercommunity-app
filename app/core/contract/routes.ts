@@ -774,6 +774,42 @@ export const studentLessonOutputSchema = z.object({
   authenticated: z.boolean(),
 });
 
+const bunnyPlaybackVideoSchema = z.object({
+  kind: z.literal('bunny'),
+  storageKey: z.string().min(1),
+  videoId: z.string().min(1),
+  libraryId: z.string().min(1),
+  embedUrl: z.string().url(),
+  hlsUrl: z.string().url().nullable(),
+  signed: z.boolean(),
+});
+
+const externalPlaybackVideoSchema = z.object({
+  kind: z.literal('external'),
+  embedUrl: z.string().url(),
+});
+
+const unavailablePlaybackVideoSchema = z.object({
+  kind: z.literal('unavailable'),
+  storageKey: z.string().min(1),
+  reason: z.literal('missing_library_id'),
+});
+
+export const lessonPlaybackVideoSchema = z.discriminatedUnion('kind', [
+  bunnyPlaybackVideoSchema,
+  externalPlaybackVideoSchema,
+  unavailablePlaybackVideoSchema,
+]);
+
+export const studentLessonPlaybackOutputSchema = z.object({
+  lessonId: z.string().min(1),
+  expiresAt: z.string().datetime(),
+  videos: z.array(lessonPlaybackVideoSchema),
+});
+
+export type LessonPlaybackVideo = z.infer<typeof lessonPlaybackVideoSchema>;
+export type StudentLessonPlaybackOutput = z.infer<typeof studentLessonPlaybackOutputSchema>;
+
 export const lessonCompleteInputSchema = z.object({
   lessonId: z.string().min(1),
 });
@@ -1339,6 +1375,7 @@ export const API_ROUTES = {
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
   studentLessonAttachments: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments' },
   studentLessonAttachmentDownload: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments/:attachmentId/download' },
+  studentLessonPlayback: { method: 'GET', path: '/api/student/lessons/:lessonId/playback' },
   studentLessonComplete: { method: 'POST', path: '/api/student/lessons/complete' },
   studentLessonUncomplete: { method: 'POST', path: '/api/student/lessons/uncomplete' },
   studentLessonNext: { method: 'GET', path: '/api/student/lessons/next' },
@@ -1535,6 +1572,7 @@ export const API_PATHS = {
   studentLesson: API_ROUTES.studentLesson.path,
   studentLessonAttachments: API_ROUTES.studentLessonAttachments.path,
   studentLessonAttachmentDownload: API_ROUTES.studentLessonAttachmentDownload.path,
+  studentLessonPlayback: API_ROUTES.studentLessonPlayback.path,
   studentLessonComplete: API_ROUTES.studentLessonComplete.path,
   studentLessonUncomplete: API_ROUTES.studentLessonUncomplete.path,
   studentLessonNext: API_ROUTES.studentLessonNext.path,

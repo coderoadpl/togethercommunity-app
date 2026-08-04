@@ -45,7 +45,7 @@ const fakeDeps = (
   tested: string[],
   options: { emailMissing?: boolean; sendFails?: boolean; testFails?: boolean } = {},
 ): TestIntegrationDeps => ({
-  appBaseUrl: 'https://acme.together.dev',
+  appBaseUrl: 'https://acme.example.com',
   payment: fakePayment(tested, options),
   email: {
     send: async () => ok({ messageId: 'message-1' }),

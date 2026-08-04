@@ -21,7 +21,7 @@
             "version": 3,
             "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
             "mapper": {
-              "url": "https://acme.together.app/api/m2m/marketing/consents",
+              "url": "https://acme.example.com/api/m2m/marketing/consents",
               "method": "post",
               "headers": [
                 { "name": "content-type", "value": "application/json" },
@@ -40,7 +40,7 @@
             "version": 3,
             "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
             "mapper": {
-              "url": "https://acme.together.app/api/m2m/marketing/eligibility?email={{encodeURL(1.email)}}&definitionId=cd_newsletter",
+              "url": "https://acme.example.com/api/m2m/marketing/eligibility?email={{encodeURL(1.email)}}&definitionId=cd_newsletter",
               "method": "get",
               "headers": [{ "name": "x-api-key", "value": "replace-with-api-key" }],
               "parseResponse": true
@@ -66,7 +66,7 @@
                       "conditions": [[{ "a": "{{3.data.eligible}}", "b": "true", "o": "text:equal" }]]
                     },
                     "mapper": {
-                      "url": "https://acme.together.app/api/m2m/marketing/messages",
+                      "url": "https://acme.example.com/api/m2m/marketing/messages",
                       "method": "post",
                       "headers": [
                         { "name": "content-type", "value": "application/json" },
@@ -141,7 +141,7 @@
             "version": 3,
             "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
             "mapper": {
-              "url": "https://acme.together.app/api/m2m/marketing/eligibility?email={{encodeURL(2.email)}}&definitionId=cd_newsletter",
+              "url": "https://acme.example.com/api/m2m/marketing/eligibility?email={{encodeURL(2.email)}}&definitionId=cd_newsletter",
               "method": "get",
               "headers": [{ "name": "x-api-key", "value": "replace-with-api-key" }],
               "parseResponse": true
@@ -177,7 +177,7 @@
                     "parameters": { "handleErrors": false, "useNewZLibDeCompress": true },
                     "filter": { "name": "Eligible", "conditions": [[{ "a": "{{3.data.eligible}}", "b": "true", "o": "text:equal" }]] },
                     "mapper": {
-                      "url": "https://acme.together.app/api/m2m/marketing/messages",
+                      "url": "https://acme.example.com/api/m2m/marketing/messages",
                       "method": "post",
                       "headers": [
                         { "name": "content-type", "value": "application/json" },

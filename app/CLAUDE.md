@@ -51,8 +51,11 @@ Visual verification has zero retries.
   CHECK THE LICENSE of every new dependency before adding it; if it is not
   clearly permissive, do not add it — flag to the owner instead.
   Accepted exception: sharp's prebuilt libvips binaries
-  (`@img/sharp-libvips-*`, LGPL-3.0-or-later, dynamically linked) — recorded
-  in THIRD-PARTY-LICENSES.md.
+  (`@img/sharp-libvips-*`, LGPL-3.0-or-later) — platform-specific shared
+  libraries installed under `node_modules` alongside sharp and loaded by it
+  through dynamic linking; the LGPL obligations are satisfied by that dynamic
+  linking together with upstream source availability
+  (sharp.pixelplumbing.com) — recorded in THIRD-PARTY-LICENSES.md.
 - Clean-room discipline for AGPL inspiration sources (inventory in the owner's
   private materials): reading agents produce behavioral specs in their own
   words; implementing agents work from specs only and never open those sources.

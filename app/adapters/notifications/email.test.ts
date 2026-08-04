@@ -26,7 +26,7 @@ const notification: Notification = {
 
 const context: NotificationDeliveryContext = {
   recipientEmail: 'u2@example.com',
-  tenantName: 'Kamperowo',
+  tenantName: 'Caravan',
   contextName: 'Lekcja o hamakach',
   contextUrl: 'http://acme.localhost:48730/my/courses/c1/lessons/l1',
   language: 'pl',
@@ -62,7 +62,7 @@ describe('email notification channel', () => {
     expect(delivered.ok).toBe(true);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.to).toBe('u2@example.com');
-    expect(sent[0]?.payload).toMatchObject({ kind: 'thread-reply', lessonName: 'Lekcja o hamakach', authorDisplay: 'Ola', snippet: 'Świetne pytanie!', tenantName: 'Kamperowo' });
+    expect(sent[0]?.payload).toMatchObject({ kind: 'thread-reply', lessonName: 'Lekcja o hamakach', authorDisplay: 'Ola', snippet: 'Świetne pytanie!', tenantName: 'Caravan' });
   });
 
   it('renders the spacePost template for space-post notifications', async () => {

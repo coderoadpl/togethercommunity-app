@@ -2,7 +2,7 @@
 
 Together supplies the delivery and compliance boundary for marketing e-mail while n8n, Make, or another automation tool decides when to send. Every API send uses the same consent, suppression, unsubscribe, footer, SES, and send-log pipeline as a campaign created in the panel.
 
-This guide uses `https://acme.together.app` as the tenant base URL. Replace it with your tenant domain. JSON examples are abbreviated only where a value is tenant-specific.
+This guide uses `https://acme.example.com` as the tenant base URL. Replace it with your tenant domain. JSON examples are abbreviated only where a value is tenant-specific.
 
 ## Before you start
 
@@ -68,7 +68,7 @@ Missing or invalid keys return `401 unauthorized`. IDs, e-mail addresses, and cu
 Check eligibility before a delayed step. This keeps a normal unsubscribe or pending confirmation on the successful branch of your automation. The send endpoint checks eligibility again immediately before delivery, so the pre-flight is an optimization rather than an authorization token.
 
 ```bash
-curl --get 'https://acme.together.app/api/m2m/marketing/eligibility' \
+curl --get 'https://acme.example.com/api/m2m/marketing/eligibility' \
   --header 'x-api-key: replace-with-api-key' \
   --data-urlencode 'email=ala@example.com' \
   --data-urlencode 'definitionId=cd_newsletter'
@@ -119,7 +119,7 @@ If no consent row exists, `consent` is `null`. An unknown `definitionId` returns
 Template send:
 
 ```bash
-curl 'https://acme.together.app/api/m2m/marketing/messages' \
+curl 'https://acme.example.com/api/m2m/marketing/messages' \
   --request POST \
   --header 'content-type: application/json' \
   --header 'x-api-key: replace-with-api-key' \
@@ -140,7 +140,7 @@ curl 'https://acme.together.app/api/m2m/marketing/messages' \
 Inline send:
 
 ```bash
-curl 'https://acme.together.app/api/m2m/marketing/messages' \
+curl 'https://acme.example.com/api/m2m/marketing/messages' \
   --request POST \
   --header 'content-type: application/json' \
   --header 'x-api-key: replace-with-api-key' \
@@ -265,7 +265,7 @@ Wait for the integer number of seconds in `Retry-After`, then retry. Because `42
 `POST /api/m2m/marketing/consents` never infers consent. Evidence is mandatory and the definition must be active, optional marketing, and have a wording version.
 
 ```bash
-curl 'https://acme.together.app/api/m2m/marketing/consents' \
+curl 'https://acme.example.com/api/m2m/marketing/consents' \
   --request POST \
   --header 'content-type: application/json' \
   --header 'x-api-key: replace-with-api-key' \
@@ -322,7 +322,7 @@ For double opt-in, Together queues the transactional confirmation e-mail and ret
 ### Read suppressions
 
 ```bash
-curl --get 'https://acme.together.app/api/m2m/marketing/suppressions' \
+curl --get 'https://acme.example.com/api/m2m/marketing/suppressions' \
   --header 'x-api-key: replace-with-api-key' \
   --data-urlencode 'email=ala@example.com' \
   --data-urlencode 'limit=50'
@@ -358,7 +358,7 @@ Rows may also have `hard_bounce`, `complaint`, `unsubscribe_global`, or `erasure
 ### Add a manual suppression
 
 ```bash
-curl 'https://acme.together.app/api/m2m/marketing/suppressions' \
+curl 'https://acme.example.com/api/m2m/marketing/suppressions' \
   --request POST \
   --header 'content-type: application/json' \
   --header 'x-api-key: replace-with-api-key' \
@@ -376,7 +376,7 @@ curl 'https://acme.together.app/api/m2m/marketing/suppressions' \
 ### List messages
 
 ```bash
-curl --get 'https://acme.together.app/api/m2m/marketing/messages' \
+curl --get 'https://acme.example.com/api/m2m/marketing/messages' \
   --header 'x-api-key: replace-with-api-key' \
   --data-urlencode 'campaignKey=welcome-series' \
   --data-urlencode 'email=ala@example.com' \
@@ -421,7 +421,7 @@ All filters are optional. `status` is one of `pending`, `sending`, `sent`, `fail
 ### Get one message
 
 ```bash
-curl 'https://acme.together.app/api/m2m/marketing/messages/send_01J3W2' \
+curl 'https://acme.example.com/api/m2m/marketing/messages/send_01J3W2' \
   --header 'x-api-key: replace-with-api-key'
 ```
 
@@ -468,7 +468,7 @@ Stray valid records from the tenant-authorized SNS topic are acknowledged even w
 ## List templates and layouts
 
 ```bash
-curl 'https://acme.together.app/api/m2m/marketing/templates' \
+curl 'https://acme.example.com/api/m2m/marketing/templates' \
   --header 'x-api-key: replace-with-api-key'
 ```
 

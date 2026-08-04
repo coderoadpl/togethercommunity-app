@@ -18,13 +18,40 @@ synchronized paths: `app/eslint.config.js`, `app/eslint-plugin-together/`,
 `app/.dependency-cruiser.cjs`, `app/tsconfig*.json`, the `app/package.json`
 gate scripts, `app/scripts/doc-lint.ts`, `app/scripts/smoke*.ts`,
 `app/config-regression/`, `.github/workflows/`, and the agent instruction
-files.
+files. The MIT license requires that its permission notice travel with every
+copy, so it is reproduced in full here.
+
+MIT License
+
+Copyright (c) 2026 Mateusz Choma
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 **sharp / libvips.** The dev-only Argos upload tooling installs sharp's
-prebuilt libvips binaries (`@img/sharp-libvips-*`, LGPL-3.0-or-later,
-dynamically linked; the related `@img/sharp-*` prebuilds carry the same
-notice). They never enter the product bundle and are the one recorded
-exception to the permissive-only dependency policy.
+prebuilt libvips binaries (`@img/sharp-libvips-*`, LGPL-3.0-or-later; the
+related `@img/sharp-*` prebuilds carry the same notice). They are
+platform-specific shared libraries installed under `node_modules` alongside
+sharp and loaded by it at runtime through dynamic linking. The LGPL-3.0
+obligations are satisfied by that dynamic linking together with upstream
+source availability, documented at
+[sharp.pixelplumbing.com](https://sharp.pixelplumbing.com/). They are the one
+recorded exception to the permissive-only dependency policy.
 
 **`app/adapters/invoicing/xsd/`** holds the official FA(3) schemas published by
 the Polish Ministry of Finance (podatki.gov.pl, KSeF FA(3) schema). They are

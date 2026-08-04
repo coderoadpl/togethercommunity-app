@@ -489,7 +489,7 @@ Docs ship this as an importable n8n workflow JSON. Node list:
 
 1. **Schedule Trigger** — every hour (poll-based v1; switches to a Webhook
    node when S3 outbound webhooks land).
-2. **HTTP Request** `GET https://acme.together.app/api/m2m/orders?since={{$now.minus(1,'hour')}}`
+2. **HTTP Request** `GET https://acme.example.com/api/m2m/orders?since={{$now.minus(1,'hour')}}`
    — new purchases (existing surface) — or the tenant's own store as source.
 3. **Split In Batches** — iterate buyers.
 4. **HTTP Request** `GET /api/m2m/marketing/eligibility?email={{$json.email}}`

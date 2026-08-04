@@ -14,12 +14,12 @@ const children = <div>APP</div>;
 describe('hostHasTenantSubdomain', () => {
   it('is false on the apex domain', () => {
     expect(hostHasTenantSubdomain('localhost', 'localhost')).toBe(false);
-    expect(hostHasTenantSubdomain('together.com', 'together.com')).toBe(false);
+    expect(hostHasTenantSubdomain('example.com', 'example.com')).toBe(false);
   });
 
   it('is true for a single-label tenant subdomain', () => {
     expect(hostHasTenantSubdomain('acme.localhost', 'localhost')).toBe(true);
-    expect(hostHasTenantSubdomain('acme.together.com', 'together.com')).toBe(true);
+    expect(hostHasTenantSubdomain('acme.example.com', 'example.com')).toBe(true);
   });
 
   it('ignores unrelated or multi-label hosts', () => {

@@ -25,7 +25,7 @@
             {
               "id": "5fa6842c-d6ba-46ac-a5fc-28db91f02fd4",
               "name": "togetherBaseUrl",
-              "value": "https://acme.together.app",
+              "value": "https://acme.example.com",
               "type": "string"
             },
             {

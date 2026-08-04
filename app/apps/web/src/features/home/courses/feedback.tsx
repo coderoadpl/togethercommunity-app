@@ -26,7 +26,7 @@ export const MutationError = ({ error }: { error: Error }) => {
   const appError = error instanceof ApiError ? error.appError : null;
   const details = appError ? detailMessages(appError.details) : [];
   return (
-    <Alert>
+    <Alert severity="error">
       {localizeError(error, t)}
       {details.length > 0 ? (
         <Box component="ul" sx={{ m: 0, pl: '1.2rem' }}>

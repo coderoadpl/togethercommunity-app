@@ -141,8 +141,8 @@ export const ChangePasswordForm = ({
           {t.changePassword.success}
         </Typography>
       ) : null}
-      {localError ? <Alert data-testid="change-password-local-error">{localError}</Alert> : null}
-      {remoteError ? <Alert data-testid="change-password-remote-error">{remoteError}</Alert> : null}
+      {localError ? <Alert severity="error" data-testid="change-password-local-error">{localError}</Alert> : null}
+      {remoteError ? <Alert severity="error" data-testid="change-password-remote-error">{remoteError}</Alert> : null}
     </Box>
   );
 };

@@ -285,7 +285,7 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
         </Select>
       </FormControl>
       {definitions.isError || save.isError ? (
-        <Alert>{localizeError(definitions.error ?? save.error, t)}</Alert>
+        <Alert severity="error">{localizeError(definitions.error ?? save.error, t)}</Alert>
       ) : null}
     </SectionCard>
   );
@@ -327,7 +327,7 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
       {assets.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} surface={false} />
       ) : assets.isError ? (
-        <Alert>{localizeError(assets.error, t)}</Alert>
+        <Alert severity="error">{localizeError(assets.error, t)}</Alert>
       ) : assets.data.assets.length === 0 ? (
         <Typography variant="body2" color="text.secondary" data-testid="product-download-assets-empty">
           {t.products.downloadsEmpty}
@@ -375,8 +375,8 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
           />
         </Button>
       </Box>
-      {upload.isError ? <Alert>{localizeError(upload.error, t)}</Alert> : null}
-      {remove.isError ? <Alert>{localizeError(remove.error, t)}</Alert> : null}
+      {upload.isError ? <Alert severity="error">{localizeError(upload.error, t)}</Alert> : null}
+      {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
     </SectionCard>
   );
 };

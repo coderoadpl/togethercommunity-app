@@ -195,7 +195,7 @@ export const SpaceForm = ({ mode, initial, pending, error, onSubmit }: SpaceForm
         </FormControl>
       ) : null}
 
-      {error !== undefined && error !== null ? <Alert>{localizeError(error, t)}</Alert> : null}
+      {error !== undefined && error !== null ? <Alert severity="error">{localizeError(error, t)}</Alert> : null}
     </SectionCard>
   );
 };

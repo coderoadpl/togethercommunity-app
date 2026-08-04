@@ -79,7 +79,7 @@ export const BunnyVideoPickerDialog = ({
               </Typography>
             </Stack>
           ) : videos.isError ? (
-            <Alert data-testid="bunny-picker-error">{errorMessage(videos.error, t)}</Alert>
+            <Alert severity="error" data-testid="bunny-picker-error">{errorMessage(videos.error, t)}</Alert>
           ) : result === undefined || result.videos.length === 0 ? (
             <Typography variant="body2" data-testid="bunny-picker-empty">
               {query.trim().length > 0 ? t.lessons.videoPickerNoMatches : t.lessons.videoPickerEmptyLibrary}

@@ -31,7 +31,7 @@ describe('i18n dictionaries', () => {
 
   it('interpolates named params through the format helper', () => {
     expect(format('checkout · {tenant}', { tenant: 'Acme' })).toBe('checkout · Acme');
-    expect(pl.checkout.eyebrow({ tenant: 'Acme' })).toBe('płatność · Acme');
-    expect(en.checkout.eyebrow({ tenant: 'Acme' })).toBe('checkout · Acme');
+    expect(pl.checkout.eyebrow({ tenant: 'Acme' })).toBe('Płatność · Acme');
+    expect(en.checkout.eyebrow({ tenant: 'Acme' })).toBe('Checkout · Acme');
   });
 });

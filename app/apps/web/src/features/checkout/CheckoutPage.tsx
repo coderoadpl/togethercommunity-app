@@ -7,7 +7,7 @@ import {
   FormControl,
   FormControlLabel,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Paper,
   Radio,
@@ -17,6 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -227,7 +228,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           <Typography variant="body1">
             {subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody}
           </Typography>
-          <Button component="a" href="/login" variant="contained" fullWidth>
+          <Button component={Link} to="/login" variant="contained" fullWidth>
             {t.checkout.goToLogin}
           </Button>
         </Stack>
@@ -298,7 +299,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             title: t.checkout.unavailableTitle,
             body: t.checkout.unavailableBody,
             action: (
-              <Button component="a" href="/login" variant="contained">
+              <Button component={Link} to="/login" variant="contained">
                 {t.checkout.goToLogin}
               </Button>
             ),
@@ -332,7 +333,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             <Typography variant="body1">{t.checkout.alreadyOwnedNote}</Typography>
           ) : null}
           <Typography variant="body1">{product.title}</Typography>
-          {magicLinkUrl ? <Link href={magicLinkUrl}>{t.checkout.openCourse}</Link> : null}
+          {magicLinkUrl ? <MuiLink href={magicLinkUrl}>{t.checkout.openCourse}</MuiLink> : null}
           <FinePrint variant="caption" component="p">
             {magicLinkUrl ? t.checkout.productionNote : t.checkout.noMagicLinkNote}
           </FinePrint>
@@ -556,9 +557,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                       <Stack useFlexGap spacing="0.2rem">
                         <Typography>{definition.label}</Typography>
                         {definition.documentUrl === null ? null : (
-                          <Link href={definition.documentUrl} target="_blank" rel="noreferrer">
+                          <MuiLink href={definition.documentUrl} target="_blank" rel="noreferrer">
                             {t.checkout.marketingConsentDocument}
-                          </Link>
+                          </MuiLink>
                         )}
                         {definition.doubleOptIn ? (
                           <FinePrint component="span" variant="caption">{t.checkout.marketingConsentDoiHint}</FinePrint>

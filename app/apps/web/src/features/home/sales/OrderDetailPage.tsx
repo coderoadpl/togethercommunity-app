@@ -5,6 +5,7 @@ import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 
 export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   const t = useTranslations();
@@ -56,7 +57,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   return (
     <PanelPage
       title={t.sales.orderTitle({ id: order.id })}
-      backTo={{ label: t.sales.allOrders, href: '/panel/sales' }}
+      backTo={<PanelBackLink to="/panel/sales">{t.sales.allOrders}</PanelBackLink>}
     >
       <SectionCard title={t.sales.orderTitle({ id: order.id })}>
         <Stack useFlexGap spacing="0.75rem">

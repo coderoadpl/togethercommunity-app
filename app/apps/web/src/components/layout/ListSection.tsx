@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Box, Stack, Typography } from '@mui/material';
 
+import { ResponsiveTableRoot } from '../../theme.js';
+
 interface ListSectionToolbar {
   search?: ReactNode;
   filters?: ReactNode;
@@ -21,7 +23,6 @@ interface ListSectionProps {
   'data-testid'?: string;
 }
 
-/** Horizontal scroller for tables that outgrow narrow viewports. */
 export const ResponsiveTable = ({
   children,
   'data-testid': testId,
@@ -29,9 +30,9 @@ export const ResponsiveTable = ({
   children: ReactNode;
   'data-testid'?: string;
 }) => (
-  <Box sx={{ overflowX: 'auto' }} data-testid={testId}>
+  <ResponsiveTableRoot data-testid={testId}>
     {children}
-  </Box>
+  </ResponsiveTableRoot>
 );
 
 export const ListSection = ({

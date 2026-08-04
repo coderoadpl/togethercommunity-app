@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useParams } from '@tanstack/react-router';
 import { actions } from '../../api.js';
 import { PanelPage } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
+import { PanelBackLink } from './PanelBackLink.js';
 import { CourseDetail } from './courses/CourseDetail.js';
 import { CourseCreatePage, CoursesListPanel } from './courses/CoursesPanel.js';
 import { ModuleCreatePage } from './courses/ModuleCreatePage.js';
@@ -96,8 +97,8 @@ export const PanelLessonEditRoute = () => {
   const lessonId = params.lessonId ?? '';
   const lessons = useQuery(actions.lessons);
 
-  if (lessons.isPending) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'loading', label: t.lessons.loading }} />;
-  if (lessons.isError) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
+  if (lessons.isPending) return <PanelPage title={t.sections.lessons} backTo={<PanelBackLink to="/panel/lessons">{t.lessons.allLessons}</PanelBackLink>} state={{ kind: 'loading', label: t.lessons.loading }} />;
+  if (lessons.isError) return <PanelPage title={t.sections.lessons} backTo={<PanelBackLink to="/panel/lessons">{t.lessons.allLessons}</PanelBackLink>} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const lesson = lessons.data.lessons.find((entry) => entry.id === lessonId);
   if (!lesson) return <Navigate to="/panel/lessons" />;

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Box, Breadcrumbs, Container, Link, Stack, Typography } from '@mui/material';
+import { Box, Breadcrumbs, Container, Stack, Typography } from '@mui/material';
 
 import { Eyebrow, LedgerHeader } from '../../theme.js';
 import { StatusView, type PageState } from './StatusView.js';
@@ -7,7 +7,7 @@ import { PAGE_WIDTH } from './widths.js';
 
 interface BreadcrumbItem {
   label: ReactNode;
-  href?: string;
+  link?: ReactNode;
 }
 
 export interface MemberPageProps {
@@ -19,6 +19,7 @@ export interface MemberPageProps {
   /** Utility nav in the header row: links + NotificationBell + MemberAccountMenu. */
   nav?: ReactNode;
   breadcrumbs?: BreadcrumbItem[];
+  breadcrumbLabel: string;
   /** Sticky right column (24rem) on md+. */
   rail?: ReactNode;
   railLeading?: ReactNode;
@@ -36,7 +37,7 @@ export interface MemberPageProps {
 }
 
 const Crumb = ({ item, isCurrent }: { item: BreadcrumbItem; isCurrent: boolean }) => {
-  if (item.href !== undefined) return <Link href={item.href}>{item.label}</Link>;
+  if (item.link !== undefined) return item.link;
   return (
     <Typography variant="body2" color={isCurrent ? 'text.primary' : undefined}>
       {item.label}
@@ -51,6 +52,7 @@ export const MemberPage = ({
   logo,
   nav,
   breadcrumbs,
+  breadcrumbLabel,
   rail,
   railLeading,
   mobileRail = 'before',
@@ -80,7 +82,7 @@ export const MemberPage = ({
       <LedgerHeader component="header" sx={{ pt: '48px', pb: '21px' }}>
         {logo}
         {breadcrumbs !== undefined && breadcrumbs.length > 0 && (
-          <Breadcrumbs aria-label="breadcrumb" sx={{ mb: '0.75rem' }}>
+          <Breadcrumbs aria-label={breadcrumbLabel} data-testid="member-breadcrumbs" sx={{ mb: '0.75rem' }}>
             {breadcrumbs.map((item, index) => (
               <Crumb key={index} item={item} isCurrent={index === breadcrumbs.length - 1} />
             ))}

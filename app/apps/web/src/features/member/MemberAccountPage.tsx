@@ -53,7 +53,13 @@ export const MemberAccountPage = () => {
   });
   const [supportSubject, setSupportSubject] = useState('');
   const [supportBody, setSupportBody] = useState('');
-  const support = useMutation(actions.sendSupportMessage);
+  const support = useMutation({
+    ...actions.sendSupportMessage,
+    onSuccess: () => {
+      setSupportSubject('');
+      setSupportBody('');
+    },
+  });
   const passkeys = useQuery(actions.passkeys);
   const registerPasskey = useMutation({
     ...actions.registerPasskey,

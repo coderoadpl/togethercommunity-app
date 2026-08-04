@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { Link, Stack } from '@mui/material';
+import { Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -64,7 +64,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
           kind: 'not-found',
           title: t.student.courseNotFound,
           body: t.student.productNotInLibrary,
-          action: <Link href="/my/products">{t.student.backToMyProducts}</Link>,
+          action: <MuiLink component={Link} to="/my/products">{t.student.backToMyProducts}</MuiLink>,
         }}
       />
     );
@@ -101,9 +101,9 @@ export const CoursePage = ({ productId }: { productId: string }) => {
         >
           <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
             {accessibleCourses.map((course) => (
-              <Link key={course.id} href={`/my/courses/${course.id}`}>
+              <MuiLink key={course.id} component={Link} to={`/my/courses/${encodeURIComponent(course.id)}`}>
                 {course.name}
-              </Link>
+              </MuiLink>
             ))}
           </Stack>
         </SectionCard>

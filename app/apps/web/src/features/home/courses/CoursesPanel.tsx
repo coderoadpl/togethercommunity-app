@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
+  Box,
   Button,
   Chip,
   FormControl,
@@ -23,6 +24,7 @@ import { matchesQuery, SearchField, useDebouncedValue } from '../../../component
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { MutationError } from './feedback.js';
 
 const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void }) => {
@@ -71,11 +73,21 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
         <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
         <OutlinedInput
           id="course-image"
+          type="url"
           value={imageUrl}
           onChange={(event) => setImageUrl(event.target.value)}
           placeholder="https://…"
           aria-describedby={createCourse.isError ? errorId : undefined}
         />
+        {imageUrl.trim() === '' ? null : (
+          <Box
+            component="img"
+            src={imageUrl.trim()}
+            alt={t.courses.imagePreview}
+            data-testid="course-image-preview"
+            sx={{ display: 'block', mt: '0.75rem', width: '100%', maxWidth: '30rem', aspectRatio: '16 / 9', objectFit: 'cover' }}
+          />
+        )}
       </FormControl>
       <Button type="submit" variant="contained" disabled={createCourse.isPending || name.trim().length === 0}>
         {createCourse.isPending ? t.courses.creating : t.courses.create}
@@ -137,6 +149,7 @@ export const CoursesListPanel = () => {
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.courses.searchPlaceholder}
             placeholder={t.courses.searchPlaceholder}
             testId="courses-search"
           />
@@ -208,7 +221,7 @@ export const CourseCreatePage = () => {
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={t.courses.newCourse} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }}>
+    <PanelPage title={t.courses.newCourse} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>}>
       <CreateCourseForm
         onCreated={(courseId) => void navigate({ to: '/panel/courses/$courseId', params: { courseId } })}
       />

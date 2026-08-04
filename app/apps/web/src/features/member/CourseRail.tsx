@@ -1,4 +1,5 @@
-import { Box, Button, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Button, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
+import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureLesson, CourseStructureWithAccess } from '#core/domain/index.js';
 
@@ -116,21 +117,22 @@ export const CourseProgressCard = ({
           <Button
             variant={isReview ? 'outlined' : 'contained'}
             fullWidth
-            component="a"
-            href={`/my/courses/${courseId}/lessons/${continueTarget}`}
+            component={Link}
+            to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(continueTarget)}`}
             data-testid="continue-cta"
           >
             {isReview ? t.courseOverview.reviewAgain : t.courseOverview.continueLearning}
           </Button>
           {firstTarget !== null && firstTarget !== continueTarget && (
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-              <Link
-                href={`/my/courses/${courseId}/lessons/${firstTarget}`}
+              <MuiLink
+                component={Link}
+                to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(firstTarget)}`}
                 variant="body2"
                 data-testid="first-lesson-link"
               >
                 {t.courseOverview.goToFirstLesson}
-              </Link>
+              </MuiLink>
             </Box>
           )}
         </Stack>

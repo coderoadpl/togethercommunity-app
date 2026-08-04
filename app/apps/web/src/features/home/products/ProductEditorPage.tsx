@@ -37,6 +37,7 @@ import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } fr
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatFileSize, formatPrice } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
 
 const ProductDetailsSection = ({ product }: { product: Product }) => {
@@ -489,7 +490,7 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
   const t = useTranslations();
 
   return (
-    <PanelPage title={product.title} backTo={{ label: t.products.allProducts, href: '/panel/products' }}>
+    <PanelPage title={product.title} backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}>
       <ProductDetailsSection product={product} />
       <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
         <PricesSection product={product} />

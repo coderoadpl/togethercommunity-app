@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -24,6 +25,17 @@ const offerBody = {
       prices: [],
     },
   ],
+};
+
+const renderCheckout = (productId: string) => {
+  const root = createRootRoute({ component: () => <CheckoutPage productId={productId} /> });
+  const router = createRouter({
+    routeTree: root,
+    history: createMemoryHistory({
+      initialEntries: [`${window.location.pathname}${window.location.search}`],
+    }),
+  });
+  return renderWithProviders(<RouterProvider router={router} />);
 };
 
 describe('CheckoutPage', () => {
@@ -60,7 +72,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
     expect(screen.getByTestId('checkout-product-cover')).toHaveAttribute('src', 'https://cdn.test/intro.jpg');
@@ -101,7 +113,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     const submit = await screen.findByRole('button', { name: /^Zapłać/ });
     const socialLink = await screen.findByRole('link', { name: 'YouTube' });
@@ -130,7 +142,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByRole('button', { name: /^Odbierz za darmo/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Zapłać/ })).not.toBeInTheDocument();
@@ -176,7 +188,7 @@ describe('CheckoutPage', () => {
         });
       }),
     );
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByLabelText(pl.checkout.couponLabel)).toHaveValue('partner20');
     expect(screen.getByTestId('checkout-coupon-input')).toBeInTheDocument();
@@ -235,7 +247,7 @@ describe('CheckoutPage', () => {
         }),
       ),
     );
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
     expect(await screen.findByText(pl.checkout.couponForever)).toBeInTheDocument();
@@ -260,7 +272,7 @@ describe('CheckoutPage', () => {
         ),
       ),
     );
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     await userEvent.click(await screen.findByTestId('checkout-coupon-reveal'));
     await userEvent.type(screen.getByLabelText(pl.checkout.couponLabel), 'OLD20');
@@ -306,7 +318,7 @@ describe('CheckoutPage', () => {
       }),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).toBeRequired();
@@ -340,7 +352,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -385,7 +397,7 @@ describe('CheckoutPage', () => {
       }),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     const checkbox = await screen.findByRole('checkbox', {
       name: /Chcę otrzymywać wiadomości o nowych kursach/,
@@ -433,7 +445,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     await userEvent.type(await screen.findByLabelText(pl.checkout.emailLabel), 'buyer@together.dev');
     await userEvent.click(screen.getByRole('button', { name: /^Zapłać/ }));
@@ -450,7 +462,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Symuluj płatność/ })).toBeInTheDocument();
@@ -494,7 +506,7 @@ describe('CheckoutPage', () => {
       }),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByRole('radio', { name: /Kup teraz.*399,00/ })).toBeChecked();
     await userEvent.click(screen.getByRole('radio', { name: /Subskrybuj.*39,00/ }));
@@ -531,31 +543,31 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
     expect(await screen.findByText('49,00 zł')).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
   });
 
-  it('renders webhook-driven success guidance without fulfilling from the page', () => {
+  it('renders webhook-driven success guidance without fulfilling from the page', async () => {
     window.history.replaceState(null, '', '/checkout/course-1?status=success&session_id=cs_1');
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
-    expect(screen.getByRole('heading', { name: pl.checkout.successTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.checkout.successTitle })).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.successBody)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: pl.checkout.goToLogin })).toHaveAttribute('href', '/login');
   });
 
-  it('renders subscription-specific webhook success guidance', () => {
+  it('renders subscription-specific webhook success guidance', async () => {
     window.history.replaceState(
       null,
       '',
       '/checkout/course-1?status=success&purchase_kind=subscription&session_id=cs_1',
     );
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
-    expect(screen.getByRole('heading', { name: pl.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.checkout.subscriptionSuccessTitle })).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.subscriptionSuccessBody)).toBeInTheDocument();
     expect(screen.queryByText(pl.checkout.successBody)).not.toBeInTheDocument();
   });
@@ -568,7 +580,7 @@ describe('CheckoutPage', () => {
       ),
     );
 
-    renderWithProviders(<CheckoutPage productId="missing-product" />);
+    renderCheckout('missing-product');
 
     const heading = await screen.findByRole('heading', { name: pl.checkout.unavailableTitle });
     expect(heading.closest('[data-state]')).toHaveAttribute('data-state', 'not-found');
@@ -583,9 +595,9 @@ describe('CheckoutPage', () => {
         HttpResponse.json({ ok: true, data: { stripeConfigured: true, simulatedPaymentsEnabled: true } }),
       ),
     );
-    renderWithProviders(<CheckoutPage productId="course-1" />);
+    renderCheckout('course-1');
 
-    expect(screen.getByRole('heading', { name: pl.checkout.cancelledTitle })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: pl.checkout.cancelledTitle })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: pl.checkout.retry }));
     expect(await screen.findByRole('heading', { name: 'Intro Course' })).toBeInTheDocument();
   });

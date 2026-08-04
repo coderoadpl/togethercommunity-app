@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Box, Button, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Box, Button, ButtonBase, LinearProgress, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import { alpha, createTheme, keyframes, styled, type Theme } from '@mui/material/styles';
 
 /**
@@ -578,6 +578,10 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
             lineHeight: 1.45,
           },
           label: { padding: '0.16rem 0.6rem' },
+          colorWarning: {
+            backgroundColor: alpha(SHADCN_WARNING, 0.2),
+            color: SHADCN_WARNING_TEXT,
+          },
           outlined: {
             border: `1px solid ${SHADCN_BORDER}`,
             color: SHADCN_INK,
@@ -2714,7 +2718,7 @@ export const DataValue = styled('span')(({ theme }) => ({
   color: theme.moneyColor,
 }));
 
-export const MemberProductLink = styled(Link)(({ theme }) => ({
+export const MemberProductLink = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
   fontWeight: 700,
   color: theme.palette.text.primary,
   textDecorationColor: alpha(theme.palette.text.primary, 0.4),
@@ -2901,7 +2905,7 @@ export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ theme }) => ({
+export const CourseCardRoot = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'block',
   height: '100%',
   overflow: 'hidden',
@@ -3008,10 +3012,26 @@ export const StatTileValue = styled(Typography)<AsElement>(({ theme }) => ({
 }));
 
 export const StatTileLabel = styled(Typography)<AsElement>(({ theme }) => ({
-  fontSize: '0.68rem',
-  letterSpacing: '0.09em',
-  textTransform: 'uppercase',
+  fontSize: '0.75rem',
+  letterSpacing: '0.02em',
+  textTransform: 'none',
   color: theme.palette.text.secondary,
+}));
+
+export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
+  overflowX: 'auto',
+  '& th:first-of-type, & td:first-of-type': {
+    position: 'sticky',
+    left: 0,
+    zIndex: 1,
+    backgroundColor: theme.palette.background.paper,
+    boxShadow: `2px 0 0 ${alpha(theme.palette.common.black, 0.08)}`,
+    [theme.breakpoints.up('sm')]: {
+      position: 'static',
+      boxShadow: 'none',
+    },
+  },
+  '& th:first-of-type': { zIndex: 2 },
 }));
 
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({

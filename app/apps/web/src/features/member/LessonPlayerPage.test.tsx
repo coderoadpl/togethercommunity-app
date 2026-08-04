@@ -290,7 +290,7 @@ describe('LessonPlayerPage', () => {
     server.use(okNext(null), okStructure(), okProgress(), okLesson(allBlocks));
     await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
 
-    const crumbs = await screen.findByLabelText('breadcrumb');
+    const crumbs = await screen.findByLabelText(pl.common.breadcrumbs);
     expect(within(crumbs).getByRole('link', { name: 'JavaScript Foundations' })).toBeInTheDocument();
     expect(within(crumbs).getByText('01 - Fundamentals')).toBeInTheDocument();
     expect(within(crumbs).getByText('Getting started')).toBeInTheDocument();

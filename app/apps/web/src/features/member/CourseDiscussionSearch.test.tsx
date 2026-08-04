@@ -1,5 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
@@ -66,6 +67,17 @@ const post = (id: string, lessonId: string, body: string): PublicPost => ({
   pinnedAt: null,
 });
 
+const renderSearch = () => {
+  const root = createRootRoute({
+    component: () => <CourseDiscussionSearch courseId="course-1" structure={structure} />,
+  });
+  const router = createRouter({
+    routeTree: root,
+    history: createMemoryHistory({ initialEntries: ['/my/courses/course-1'] }),
+  });
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
 describe('CourseDiscussionSearch', () => {
   it('groups hits by lesson and links each hit to the lesson discussion', async () => {
     const requestedUrls: string[] = [];
@@ -86,9 +98,9 @@ describe('CourseDiscussionSearch', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<CourseDiscussionSearch courseId="course-1" structure={structure} />);
+    renderSearch();
 
-    expect(screen.getByText(pl.discussion.searchCourseHeading)).toBeInTheDocument();
+    expect(await screen.findByText(pl.discussion.searchCourseHeading)).toBeInTheDocument();
     expect(screen.getByTestId('course-search-hint')).toHaveTextContent(
       pl.discussion.searchWholeWordsHint,
     );
@@ -123,9 +135,9 @@ describe('CourseDiscussionSearch', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<CourseDiscussionSearch courseId="course-1" structure={structure} />);
+    renderSearch();
 
-    await user.type(screen.getByTestId('course-discussion-search-input'), 'niema');
+    await user.type(await screen.findByTestId('course-discussion-search-input'), 'niema');
 
     expect(await screen.findByTestId('course-search-empty')).toHaveTextContent(
       pl.discussion.searchCourseEmpty,

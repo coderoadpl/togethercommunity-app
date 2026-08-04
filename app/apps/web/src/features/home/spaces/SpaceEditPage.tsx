@@ -1,12 +1,13 @@
 import { Alert, Button, Stack } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import type { StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { useTranslations } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { SpaceForm, type SpaceFormValues } from './SpaceForm.js';
 
 export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
@@ -36,11 +37,11 @@ export const SpaceEditPage = ({ space }: { space: StaffSpace }) => {
     <PanelPage
       title={space.name}
       description={space.slug}
-      backTo={{ label: t.spacesPanel.allSpaces, href: '/panel/spaces' }}
+      backTo={<PanelBackLink to="/panel/spaces">{t.spacesPanel.allSpaces}</PanelBackLink>}
       action={
         <Button
-          component="a"
-          href={`/community/${encodeURIComponent(space.id)}`}
+          component={Link}
+          to={`/community/${encodeURIComponent(space.id)}`}
           variant="text"
         >
           {t.spacesPanel.openFeed}

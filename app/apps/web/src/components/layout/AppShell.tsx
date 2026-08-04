@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AppBar, Box, Container, Drawer, Toolbar } from '@mui/material';
+import { AppBar, Box, Container, Drawer, IconButton, SvgIcon, Toolbar, Tooltip } from '@mui/material';
 
 import { StatusView, type PageState } from './StatusView.js';
 
@@ -10,6 +10,7 @@ interface AppShellProps {
   isDesktop: boolean;
   mobileNavigationOpen: boolean;
   onMobileNavigationClose: () => void;
+  mobileNavigationCloseLabel: string;
   header: ReactNode;
   navigation: ReactNode;
   footer?: ReactNode;
@@ -21,6 +22,7 @@ export const AppShell = ({
   isDesktop,
   mobileNavigationOpen,
   onMobileNavigationClose,
+  mobileNavigationCloseLabel,
   header,
   navigation,
   footer,
@@ -55,7 +57,19 @@ export const AppShell = ({
             '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
           }}
         >
-          <Toolbar />
+          <Toolbar sx={{ justifyContent: 'flex-end' }}>
+            <Tooltip title={mobileNavigationCloseLabel}>
+              <IconButton
+                data-testid="close-navigation"
+                aria-label={mobileNavigationCloseLabel}
+                onClick={onMobileNavigationClose}
+              >
+                <SvgIcon aria-hidden viewBox="0 0 24 24">
+                  <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4l-6.3 6.31-1.42-1.42L9.17 12l-6.3-6.29 1.42-1.42 6.3 6.31 6.3-6.31z" />
+                </SvgIcon>
+              </IconButton>
+            </Tooltip>
+          </Toolbar>
           {navigation}
         </Drawer>
       )}

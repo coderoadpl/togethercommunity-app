@@ -1,5 +1,5 @@
-import type { MouseEvent, ReactNode } from 'react';
-import { Box, Link, Stack, Typography } from '@mui/material';
+import type { ReactNode } from 'react';
+import { Box, Stack, Typography } from '@mui/material';
 
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
@@ -10,7 +10,7 @@ interface PanelPageProps {
   description?: ReactNode;
   /** Primary action, top-right; wraps under the title on narrow viewports. */
   action?: ReactNode;
-  backTo?: { label: ReactNode; href: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
+  backTo?: ReactNode;
   state?: PageState;
   children?: ReactNode;
   'data-testid'?: string;
@@ -30,11 +30,7 @@ export const PanelPage = ({
   return (
     <Box data-testid={testId} sx={{ maxWidth: PAGE_WIDTH.panel, mx: 'auto' }}>
       <Box component="header" sx={{ mb: '1.5rem' }}>
-        {backTo !== undefined && (
-          <Box sx={{ mb: '0.75rem' }}>
-            <Link href={backTo.href} onClick={backTo.onClick}>{backTo.label}</Link>
-          </Box>
-        )}
+        {backTo !== undefined && <Box sx={{ mb: '0.75rem' }}>{backTo}</Box>}
         <Stack
           direction="row"
           useFlexGap

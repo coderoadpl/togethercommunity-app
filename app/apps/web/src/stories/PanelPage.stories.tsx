@@ -43,7 +43,7 @@ export const WithAction: Story = {
 export const WithBackLink: Story = {
   args: {
     title: 'Nowy produkt',
-    backTo: { label: '← Wróć do produktów', href: '#' },
+    backTo: <a href="#">← Wróć do produktów</a>,
     children: (
       <SectionCard
         title="Podstawowe informacje"

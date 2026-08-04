@@ -39,6 +39,7 @@ import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
 import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 
 const toIsoOrNull = (localValue: string): string | null =>
   localValue.trim() === '' ? null : new Date(localValue).toISOString();
@@ -536,14 +537,13 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
   return (
     <PanelPage
       title={member.email}
-      backTo={{
-        label: t.members.allMembersBack,
-        href: '/panel/members',
-        onClick: (event) => {
+      backTo={<PanelBackLink
+        to="/panel/members"
+        onClick={(event) => {
           event.preventDefault();
           onBack();
-        },
-      }}
+        }}
+      >{t.members.allMembersBack}</PanelBackLink>}
     >
       <Tabs
         value={tab}

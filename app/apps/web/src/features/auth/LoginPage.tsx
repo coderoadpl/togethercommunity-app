@@ -6,15 +6,13 @@ import {
   Divider,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-
-import { lessonPath } from '#core/contract/index.js';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
@@ -123,7 +121,7 @@ export const LoginPage = () => {
         </FinePrint>
       ) : null}
       <FinePrint variant="caption" component="p">
-        {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
+        {t.auth.registerPrompt} <MuiLink component={Link} to="/register">{t.auth.registerLink}</MuiLink>
       </FinePrint>
       {publicOffer.data !== undefined && publicOffer.data.previewLessons.length > 0 ? (
         <Box sx={{ mt: '1em' }}>
@@ -132,16 +130,16 @@ export const LoginPage = () => {
           </FinePrint>
           <Stack useFlexGap spacing="0.25em">
             {publicOffer.data.previewLessons.map((lesson) => (
-              <Link key={`${lesson.courseId}:${lesson.id}`} href={lessonPath(lesson.courseId, lesson.id)}>
+              <MuiLink key={`${lesson.courseId}:${lesson.id}`} component={Link} to={`/my/courses/${encodeURIComponent(lesson.courseId)}/lessons/${encodeURIComponent(lesson.id)}`}>
                 {lesson.name}
-              </Link>
+              </MuiLink>
             ))}
           </Stack>
         </Box>
       ) : null}
       {publicOffer.data?.tenant.support.url ? (
         <FinePrint variant="caption" component="p">
-          <Link href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</Link>
+          <MuiLink href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</MuiLink>
         </FinePrint>
       ) : null}
       {publicOffer.data?.tenant.socialLinks.length ? (
@@ -302,7 +300,7 @@ export const LoginPage = () => {
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '0.6rem' }} data-testid="forgot-password">
-          {t.auth.forgotPassword} <Link href="/forgot-password">{t.auth.forgotPasswordLink}</Link>
+          {t.auth.forgotPassword} <MuiLink component={Link} to="/forgot-password">{t.auth.forgotPasswordLink}</MuiLink>
         </FinePrint>
         <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
           <FormControl fullWidth>

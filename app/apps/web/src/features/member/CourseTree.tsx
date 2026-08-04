@@ -4,13 +4,14 @@ import {
   Collapse,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   List,
   ListItemButton,
   OutlinedInput,
   Stack,
   Tooltip,
 } from '@mui/material';
+import { Link } from '@tanstack/react-router';
 
 import type {
   AccessStatus,
@@ -137,13 +138,14 @@ const LessonRow = ({
         </Tooltip>
         {lesson.unlockProductId !== undefined && (
           <Box sx={{ pl: '3.4rem', pr: '0.75rem', pb: '0.5rem', mt: '-0.25rem' }}>
-            <Link
-              href={`/checkout/${lesson.unlockProductId}`}
+            <MuiLink
+              component={Link}
+              to={`/checkout/${encodeURIComponent(lesson.unlockProductId)}`}
               variant="body2"
               data-testid={`unlock-lesson-${lesson.lessonId}`}
             >
               {t.courseTree.unlockAccess}
-            </Link>
+            </MuiLink>
           </Box>
         )}
       </>
@@ -152,8 +154,8 @@ const LessonRow = ({
 
   return (
     <ListItemButton
-      component="a"
-      href={`/my/courses/${courseId}/lessons/${lesson.lessonId}`}
+      component={Link}
+      to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(lesson.lessonId)}`}
       selected={lesson.lessonId === currentLessonId}
       data-testid={`lesson-button-${lesson.lessonId}`}
       sx={{ pl: '3.4rem', pr: '0.75rem' }}

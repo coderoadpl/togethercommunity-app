@@ -4,11 +4,12 @@ import {
   Button,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
@@ -62,7 +63,7 @@ export const ResetPasswordPage = () => {
               title: t.resetPassword.missingTokenTitle,
               body: t.resetPassword.missingToken,
               action: (
-                <Button component="a" href="/forgot-password" variant="contained">
+                <Button component={Link} to="/forgot-password" variant="contained">
                   {t.resetPassword.requestNewLink}
                 </Button>
               ),
@@ -77,7 +78,7 @@ export const ResetPasswordPage = () => {
             <FinePrint variant="body2" component="p">
               {t.resetPassword.successBody}
             </FinePrint>
-            <Button component="a" href="/login" variant="contained" fullWidth>
+            <Button component={Link} to="/login" variant="contained" fullWidth>
               {t.resetPassword.goToLogin}
             </Button>
           </Stack>
@@ -132,7 +133,7 @@ export const ResetPasswordPage = () => {
               </Alert>
             ) : null}
             <FinePrint variant="caption" component="p" sx={{ mt: '1rem' }}>
-              <Link href="/login">{t.resetPassword.goToLogin}</Link>
+              <MuiLink component={Link} to="/login">{t.resetPassword.goToLogin}</MuiLink>
             </FinePrint>
           </>
         )}

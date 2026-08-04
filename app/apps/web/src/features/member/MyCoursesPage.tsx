@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Box, Chip, Link, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link as RouterLink, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { CompletionStatus, Course } from '#core/domain/index.js';
@@ -81,11 +81,11 @@ const CourseCardMedia = ({ course }: { course: Course }) => {
 };
 
 const CourseCard = ({ course }: { course: Course }) => (
-  <CourseCardRoot component="a" href={`/my/courses/${course.id}`} data-testid={`course-card-${course.id}`}>
+  <CourseCardRoot component={RouterLink} to={`/my/courses/${encodeURIComponent(course.id)}`} data-testid={`course-card-${course.id}`}>
     <CourseCardMedia course={course} />
     <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-      <Stack direction="row" useFlexGap sx={{ alignItems: 'flex-start', columnGap: '0.75rem' }}>
-        <CardTitle variant="h2" sx={{ flex: 1, minWidth: 0 }}>
+      <Stack useFlexGap sx={{ alignItems: 'flex-start', rowGap: '0.55rem' }}>
+        <CardTitle variant="h2" sx={{ minWidth: 0 }}>
           {course.name}
         </CardTitle>
         <CompletionChip courseId={course.id} />
@@ -151,7 +151,7 @@ export const MyCoursesPage = () => {
                   </Typography>
                 </Stack>
               ),
-              action: <Link href="/my/products">{t.student.myProducts}</Link>,
+              action: <Link component={RouterLink} to="/my/products">{t.student.myProducts}</Link>,
             }}
             data-testid="my-courses-empty-state"
           />

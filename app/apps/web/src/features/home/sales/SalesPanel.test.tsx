@@ -16,6 +16,21 @@ import { server } from '../../../test/server.js';
 import { SalesPanel } from './SalesPanel.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
 
+const renderOrderDetail = async () => {
+  const rootRoute = createRootRoute();
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/panel/sales/$orderId',
+    component: () => <OrderDetailPage orderId="o1" />,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([detailRoute]),
+    history: createMemoryHistory({ initialEntries: ['/panel/sales/o1'] }),
+  });
+  await router.load();
+  return renderWithProviders(<RouterProvider router={router} />);
+};
+
 describe('SalesPanel', () => {
   it('renders orders, applies a server filter, and exports all filtered rows without page parameters', async () => {
     const listQueries: string[] = [];
@@ -160,7 +175,7 @@ describe('OrderDetailPage', () => {
       ),
     );
 
-    renderWithProviders(<OrderDetailPage orderId="o1" />);
+    await renderOrderDetail();
 
     expect(await screen.findByText('PARTNER20')).toBeInTheDocument();
     expect(screen.getByText('9,80 zł')).toBeInTheDocument();
@@ -218,7 +233,7 @@ describe('OrderDetailPage', () => {
         return HttpResponse.json({ ok: true, data: { invoice: { ...detail.invoice, status: 'delivered' } } });
       }),
     );
-    renderWithProviders(<OrderDetailPage orderId="o1" />);
+    await renderOrderDetail();
 
     const download = await screen.findByRole('link', { name: /pobierz fakturę/i });
     expect(download).toHaveAttribute('href', '/api/invoices/invoice-1/download');
@@ -303,7 +318,7 @@ describe('OrderDetailPage', () => {
       http.get('/api/orders/o1', () =>
         HttpResponse.json({ ok: true, data: { order, invoice } })),
     );
-    renderWithProviders(<OrderDetailPage orderId="o1" />);
+    await renderOrderDetail();
 
     expect(await screen.findByText((_content, element) =>
       element?.tagName === 'P'

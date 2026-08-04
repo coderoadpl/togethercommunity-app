@@ -9,12 +9,37 @@ import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
 import { MarketingSummaryRow } from './MarketingSummaryRow.js';
 
-const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument | undefined; versions?: TenantDocumentVersion[] | undefined }) => {
+const versionExcerpt = (content: string): string => {
+  const compact = content.replace(/\s+/g, ' ').trim();
+  return compact.length <= 180 ? compact : `${compact.slice(0, 177)}…`;
+};
+
+const DocumentVersionRow = ({ version }: { version: TenantDocumentVersion }) => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <MarketingSummaryRow
+      title={t.marketing.versionLabel({ version: version.version })}
+      chips={<Chip size="small" variant="outlined" label={version.publishedAt === null ? t.marketing.draft : t.marketing.published} />}
+      summary={expanded ? version.content : versionExcerpt(version.content)}
+      date={formatDateTime(version.createdAt, language)}
+      actions={(
+        <Button onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
+          {expanded ? t.marketing.hideVersion : t.marketing.viewVersion}
+        </Button>
+      )}
+    />
+  );
+};
+
+const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument | undefined; versions?: TenantDocumentVersion[] | undefined }) => {
+  const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const latest = versions.at(-1);
@@ -102,11 +127,11 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
         <SectionCard title={t.marketing.publicUrls}>
           <Stack spacing="0.75rem">
             <Typography variant="body2">
-              {t.marketing.latestUrl}: <MuiLink href={`${origin}/legal/${document.slug}`} target="_blank" rel="noreferrer">{`${origin}/legal/${document.slug}`}</MuiLink>
+              {t.marketing.latestUrl}: <MuiLink component={Link} to={`/legal/${encodeURIComponent(document.slug)}`} target="_blank" rel="noreferrer">{`${origin}/legal/${document.slug}`}</MuiLink>
             </Typography>
             {published.toSorted((a, b) => b.version - a.version).map((version) => (
               <Typography key={version.id} variant="body2">
-                {t.marketing.immutableUrl({ version: version.version })}: <MuiLink href={`${origin}/legal/${document.slug}/v/${version.version}`} target="_blank" rel="noreferrer">{`${origin}/legal/${document.slug}/v/${version.version}`}</MuiLink>
+                {t.marketing.immutableUrl({ version: version.version })}: <MuiLink component={Link} to={`/legal/${encodeURIComponent(document.slug)}/v/${version.version}`} target="_blank" rel="noreferrer">{`${origin}/legal/${document.slug}/v/${version.version}`}</MuiLink>
               </Typography>
             ))}
           </Stack>
@@ -116,12 +141,7 @@ const DocumentForm = ({ document, versions = [] }: { document?: TenantDocument |
         <SectionCard title={t.marketing.versions}>
           <Stack spacing="0.75rem">
             {versions.toSorted((a, b) => b.version - a.version).map((version) => (
-              <MarketingSummaryRow
-                key={version.id}
-                title={t.marketing.versionEntry({ version: version.version, date: formatDateTime(version.createdAt, language) })}
-                chips={<Chip size="small" variant="outlined" label={version.publishedAt === null ? t.marketing.draft : t.marketing.published} />}
-                summary={version.content}
-              />
+              <DocumentVersionRow key={version.id} version={version} />
             ))}
           </Stack>
         </SectionCard>
@@ -160,7 +180,7 @@ export const DocumentsPanel = () => {
 
 export const DocumentCreatePage = () => {
   const t = useTranslations();
-  return <PanelPage title={t.marketing.newDocument} backTo={{ label: t.marketing.allDocuments, href: '/panel/marketing/documents' }}><DocumentForm /></PanelPage>;
+  return <PanelPage title={t.marketing.newDocument} backTo={<PanelBackLink to="/panel/marketing/documents">{t.marketing.allDocuments}</PanelBackLink>}><DocumentForm /></PanelPage>;
 };
 
 export const DocumentDetailPage = () => {
@@ -172,7 +192,7 @@ export const DocumentDetailPage = () => {
   if (document.isError) return <PanelPage title={t.marketing.documentsTitle} state={{ kind: 'error', message: localizeError(document.error, t), retry: { label: t.common.retry, onRetry: () => void document.refetch() } }} />;
   if (params.documentId === undefined) return <Navigate to="/panel/marketing/documents" />;
   return (
-    <PanelPage title={document.data.document.title} backTo={{ label: t.marketing.allDocuments, href: '/panel/marketing/documents' }}>
+    <PanelPage title={document.data.document.title} backTo={<PanelBackLink to="/panel/marketing/documents">{t.marketing.allDocuments}</PanelBackLink>}>
       <DocumentForm document={document.data.document} versions={document.data.versions} key={`${document.data.document.updatedAt}-${language}`} />
     </PanelPage>
   );

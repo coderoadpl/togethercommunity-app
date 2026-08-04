@@ -24,6 +24,7 @@ import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { errorCodeOf, localizeError, useTranslations } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { productTypeLabel } from './product-type.js';
 
 export const ProductCreatePage = () => {
@@ -71,7 +72,7 @@ export const ProductCreatePage = () => {
   return (
     <PanelPage
       title={t.products.newProduct}
-      backTo={{ label: t.products.allProducts, href: '/panel/products' }}
+      backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}
     >
       <SectionCard title={t.products.detailsHeading} onSubmit={submit}>
         <FormControl fullWidth>

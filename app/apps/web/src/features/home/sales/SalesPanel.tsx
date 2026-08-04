@@ -119,6 +119,7 @@ export const SalesPanel = () => {
                 setSearch(value);
                 resetPage();
               }}
+              label={t.sales.searchPlaceholder}
               placeholder={t.sales.searchPlaceholder}
               testId="sales-search"
             />
@@ -267,7 +268,7 @@ export const SalesPanel = () => {
                 {orders.data.orders.map((order) => (
                   <TableRow key={order.id} data-testid="sales-row">
                     <TableCell>
-                      <MuiLink href={`/panel/sales/${order.id}`}>
+                      <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
                         {formatDateTime(order.createdAt, language)}
                       </MuiLink>
                     </TableCell>

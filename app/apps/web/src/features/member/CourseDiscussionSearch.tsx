@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
-import { Box, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import type { CourseStructureWithAccess, PostSearchHit } from '#core/domain/index.js';
 
@@ -67,6 +68,7 @@ export const CourseDiscussionSearch = ({
         <SearchField
           value={term}
           onChange={setTerm}
+          label={t.discussion.searchCoursePlaceholder}
           placeholder={t.discussion.searchCoursePlaceholder}
           testId="course-discussion-search-input"
         />
@@ -92,12 +94,13 @@ export const CourseDiscussionSearch = ({
                   <Stack useFlexGap sx={{ rowGap: '0.5rem', mt: '0.35rem' }}>
                     {group.hits.map((hit) => (
                       <Box key={hit.post.id}>
-                        <Link
-                          href={`/my/courses/${courseId}/lessons/${hit.lessonId}`}
+                        <MuiLink
+                          component={Link}
+                          to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(hit.lessonId)}`}
                           data-testid={`course-search-hit-${hit.post.id}`}
                         >
                           {hit.post.authorDisplay}
-                        </Link>
+                        </MuiLink>
                         <DiscussionHitSnippet variant="body2" component="p">
                           <Highlighted text={hit.snippet} query={debounced} />
                         </DiscussionHitSnippet>

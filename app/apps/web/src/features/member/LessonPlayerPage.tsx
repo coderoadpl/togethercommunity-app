@@ -4,7 +4,7 @@ import {
   Box,
   Button,
   Chip,
-  Link,
+  Link as MuiLink,
   Paper,
   Skeleton,
   Stack,
@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '#core/client/index.js';
@@ -201,7 +201,10 @@ const LockedView = ({
         ? {}
         : {
             breadcrumbs: [
-              { label: courseName, href: `/my/courses/${courseId}` },
+              {
+                label: courseName,
+                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{courseName}</MuiLink>,
+              },
               { label: lessonName ?? t.lesson.contentLocked },
             ],
           })}
@@ -217,8 +220,8 @@ const LockedView = ({
         actions={
           unlockProductId === undefined ? undefined : (
             <Button
-              component="a"
-              href={`/checkout/${unlockProductId}`}
+              component={Link}
+              to={`/checkout/${encodeURIComponent(unlockProductId)}`}
               variant="contained"
               data-testid="unlock-lesson-cta"
             >
@@ -235,7 +238,7 @@ const LockedView = ({
               <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
             </Typography>
           )}
-          <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
+          <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
         </Stack>
       </SectionCard>
     </MemberSurface>
@@ -401,7 +404,10 @@ export const LessonPlayerPage = ({
         ? {}
         : {
             breadcrumbs: [
-              { label: location.courseName, href: `/my/courses/${courseId}` },
+              {
+                label: location.courseName,
+                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{location.courseName}</MuiLink>,
+              },
               ...(location.module === null ? [] : [{ label: location.module.name }]),
               ...(location.chapter === null ? [] : [{ label: location.chapter.name }]),
               { label: lesson.data.lesson.name },
@@ -525,9 +531,9 @@ export const LessonPlayerPage = ({
                   <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
                 )
               ) : (
-                <Link href={nextHref ?? ''} data-testid="next-lesson">
+                <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(nextLesson.id)}`} data-testid="next-lesson">
                   {t.lesson.next({ name: nextLesson.name })}
-                </Link>
+                </MuiLink>
               ))}
           </Stack>
         </LessonFooterBar>}

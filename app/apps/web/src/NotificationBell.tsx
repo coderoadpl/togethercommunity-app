@@ -135,7 +135,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
         <TabBellIcon />
       </Badge>
-      <Typography variant="caption" component="span">{tabLabel}</Typography>
+      <Typography variant="caption" component="span" noWrap>{tabLabel}</Typography>
     </ButtonBase>
   );
 
@@ -218,6 +218,9 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       </Menu>
       <Snackbar open={markRead.isError} autoHideDuration={6000} onClose={() => markRead.reset()}>
         <Alert severity="error" onClose={() => markRead.reset()}>{markRead.isError ? localizeError(markRead.error, t) : ''}</Alert>
+      </Snackbar>
+      <Snackbar open={markAllRead.isSuccess} autoHideDuration={4000} onClose={() => markAllRead.reset()}>
+        <Alert severity="success" onClose={() => markAllRead.reset()}>{t.notifications.markedAllRead}</Alert>
       </Snackbar>
     </>
   );

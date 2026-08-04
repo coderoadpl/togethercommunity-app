@@ -6,7 +6,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Link,
+  Link as MuiLink,
   List,
   ListItemButton,
   ListItemText,
@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { StreamVideo } from '#core/domain/index.js';
@@ -63,6 +64,7 @@ export const BunnyVideoPickerDialog = ({
               setSearch(next);
               setPage(1);
             }}
+            label={t.lessons.videoPickerSearchPlaceholder}
             placeholder={t.lessons.videoPickerSearchPlaceholder}
             testId="bunny-picker-search"
           />
@@ -72,7 +74,7 @@ export const BunnyVideoPickerDialog = ({
             <Stack useFlexGap spacing="0.5rem" data-testid="bunny-picker-not-configured">
               <Typography variant="body2">{t.lessons.videoPickerNotConfigured}</Typography>
               <Box>
-                <Link href="/panel/integrations">{t.lessons.videoPickerOpenIntegrations}</Link>
+                <MuiLink component={Link} to="/panel/integrations">{t.lessons.videoPickerOpenIntegrations}</MuiLink>
               </Box>
               <Typography variant="caption" component="p">
                 {t.lessons.videoPickerManualHint}

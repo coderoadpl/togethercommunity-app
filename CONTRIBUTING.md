@@ -5,7 +5,8 @@ Thank you for helping improve Together.
 ## Contribution flow
 
 1. Open an issue before starting a large change so its scope and design can be
-   agreed on.
+   agreed on. Vulnerability reports are the exception: do not disclose them in
+   an issue or pull request; follow the private [security policy](SECURITY.md).
 2. Fork the repository and create a focused branch from the current default
    branch.
 3. Use Node.js 24 and run `pnpm install --frozen-lockfile` from `app/`.

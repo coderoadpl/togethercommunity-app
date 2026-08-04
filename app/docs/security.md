@@ -1,5 +1,8 @@
 # Server edge security
 
+Potential vulnerabilities must be reported privately through the repository
+[security policy](../../SECURITY.md), not through a public issue or pull request.
+
 Together serves its SPA and API on the same origin. Session-backed API routes do
 not expose CORS headers. Better Auth validates `Origin` on its authentication
 POST routes, and its session cookies remain `HttpOnly` and `SameSite=Lax`;

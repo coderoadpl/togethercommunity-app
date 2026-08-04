@@ -65,10 +65,10 @@ export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) 
   if (products.isPending || courses.isPending || members.isPending || sales.isPending) {
     return <PanelPage title={t.dashboard.heading} state={{ kind: 'loading', label: t.dashboard.loading }} />;
   }
-  if (products.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(products.error, t) }} />;
-  if (courses.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
-  if (members.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(members.error, t) }} />;
-  if (sales.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(sales.error, t) }} />;
+  if (products.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />;
+  if (courses.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />;
+  if (members.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />;
+  if (sales.isError) return <PanelPage title={t.dashboard.heading} state={{ kind: 'error', message: localizeError(sales.error, t), retry: { label: t.common.retry, onRetry: () => void sales.refetch() } }} />;
 
   const published = products.data.products.filter((product) => product.published).length;
   const draft = products.data.products.length - published;

@@ -37,7 +37,7 @@ describe('PanelPage', () => {
 
   it('renders a StatusView instead of children for non-ready states', () => {
     render(
-      <PanelPage title="Uczestnicy" state={{ kind: 'error', message: 'Nie udało się wczytać' }}>
+      <PanelPage title="Uczestnicy" state={{ kind: 'error', message: 'Nie udało się wczytać', retry: { label: 'Ponów', onRetry: () => undefined } }}>
         <p>Nie powinno się pojawić</p>
       </PanelPage>,
     );

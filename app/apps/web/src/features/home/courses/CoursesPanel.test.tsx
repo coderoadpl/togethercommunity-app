@@ -152,7 +152,11 @@ describe('CoursesPanel courses tab', () => {
     await userEvent.type(screen.getByLabelText(pl.common.name), 'X');
     await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
 
-    expect(await screen.findByText('Name is required')).toBeInTheDocument();
+    const name = screen.getByLabelText(pl.common.name);
+    expect(await screen.findByText(pl.errors.validationField({ field: pl.common.name }))).toBeInTheDocument();
+    expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
+    expect(name).toHaveAttribute('aria-describedby', 'create-course-error');
+    expect(name).toHaveFocus();
   });
 
   it('updates course title, description and image from the details card', async () => {

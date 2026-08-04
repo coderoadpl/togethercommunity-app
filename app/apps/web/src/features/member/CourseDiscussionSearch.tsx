@@ -1,10 +1,11 @@
 import { useId, useState } from 'react';
-import { Alert, Box, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import type { CourseStructureWithAccess, PostSearchHit } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../components/ui/SearchField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { DiscussionHitSnippet, Eyebrow, TreeChapterTitle } from '../../theme.js';
@@ -76,7 +77,7 @@ export const CourseDiscussionSearch = ({
           (search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>
           ) : search.isError ? (
-            <Alert severity="error">{localizeError(search.error, t)}</Alert>
+            <StatusView surface={false} state={{ kind: 'error', message: localizeError(search.error, t), retry: { label: t.common.retry, onRetry: () => void search.refetch() } }} />
           ) : groups.length === 0 ? (
             <Typography variant="body2" data-testid="course-search-empty">
               {t.discussion.searchCourseEmpty}

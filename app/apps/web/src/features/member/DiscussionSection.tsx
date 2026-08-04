@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Alert, Box, Stack, TextField, Typography } from '@mui/material';
+import { Box, Stack, TextField, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { useDebouncedValue } from '../../components/ui/SearchField.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { DiscussionHitSnippet, DiscussionThread, PostAuthorName } from '../../theme.js';
@@ -39,7 +40,7 @@ const LessonDiscussionSearch = ({ lessonId }: { lessonId: string }) => {
           {search.isPending ? (
             <Typography variant="body2">{t.discussion.searching}</Typography>
           ) : search.isError ? (
-            <Alert severity="error">{localizeError(search.error, t)}</Alert>
+            <StatusView surface={false} state={{ kind: 'error', message: localizeError(search.error, t), retry: { label: t.common.retry, onRetry: () => void search.refetch() } }} />
           ) : search.data.hits.length === 0 ? (
             <Typography variant="body2" data-testid="discussion-search-empty">
               {t.discussion.searchEmpty}

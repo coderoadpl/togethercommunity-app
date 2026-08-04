@@ -168,7 +168,7 @@ export const SpacesPanel = () => {
         {spaces.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.spacesPanel.loading }} />
         ) : spaces.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {visible.map((space) => (

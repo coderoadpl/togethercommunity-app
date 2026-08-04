@@ -22,9 +22,10 @@ import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 import type { Campaign, CampaignEngagementStats } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { useUnsavedChanges } from '../use-unsaved-changes.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
 import {
@@ -81,12 +82,24 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const [consentDefinitionId, setConsentDefinitionId] = useState(campaign?.consentDefinitionId ?? '');
   const [productIds, setProductIds] = useState<string[]>(campaign?.audienceFilter?.productIds ?? []);
   const [layoutId, setLayoutId] = useState(campaign?.layoutId ?? '');
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify([
+    campaign?.name ?? '',
+    campaign?.subject ?? '',
+    campaign?.bodySource ?? '',
+    campaign !== undefined && campaign.bodySource === campaign.bodyHtml ? 'html' : 'markdown',
+    campaign?.consentDefinitionId ?? '',
+    campaign?.audienceFilter?.productIds ?? [],
+    campaign?.layoutId ?? '',
+  ]));
 
   const activeDefinitions = (consents.data?.definitions ?? []).filter((definition) =>
     definition.status === 'active' && definition.kind === 'optional_marketing'
   );
   const effectiveConsentId = consentDefinitionId || activeDefinitions[0]?.id || '';
   const editable = campaign === undefined || campaign.status === 'draft' || campaign.status === 'scheduled';
+  const currentSnapshot = JSON.stringify([name, subject, bodySource, bodyMode, consentDefinitionId, productIds, layoutId]);
+  const dirty = editable && currentSnapshot !== savedSnapshot;
+  const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
 
   const preview = useMutation(actions.previewMarketingAudience);
   const previewAudience = preview.mutate;
@@ -98,13 +111,17 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
   const create = useMutation({
     ...actions.createMarketingCampaign,
     onSuccess: async ({ campaign: saved }) => {
+      allowNavigation();
       await queryClient.invalidateQueries(actions.marketingInvalidates());
       await navigate({ to: '/panel/marketing/campaigns/$campaignId', params: { campaignId: saved.id } });
     },
   });
   const update = useMutation({
     ...actions.updateMarketingCampaign,
-    onSuccess: async () => queryClient.invalidateQueries(actions.marketingInvalidates()),
+    onSuccess: async () => {
+      setSavedSnapshot(currentSnapshot);
+      await queryClient.invalidateQueries(actions.marketingInvalidates());
+    },
   });
 
   const submit = (event: FormEvent) => {
@@ -260,10 +277,25 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
         </Select>
       </FormControl>
       {consents.isError || products.isError || layouts.isError ? (
-        <Alert severity="error">{localizeError(consents.error ?? products.error ?? layouts.error, t)}</Alert>
+        <StatusView
+          surface={false}
+          state={{
+            kind: 'error',
+            message: localizeError(consents.error ?? products.error ?? layouts.error, t),
+            retry: {
+              label: t.common.retry,
+              onRetry: () => {
+                void consents.refetch();
+                void products.refetch();
+                void layouts.refetch();
+              },
+            },
+          }}
+        />
       ) : null}
       {preview.isError ? <Alert severity="error">{localizeError(preview.error, t)}</Alert> : null}
       {create.isError || update.isError ? <Alert severity="error">{localizeError(create.error ?? update.error, t)}</Alert> : null}
+      {dirty ? <Alert severity="warning">{t.common.unsavedChanges}</Alert> : null}
     </SectionCard>
   );
 };
@@ -272,9 +304,16 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [sendAt, setSendAt] = useState('');
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const invalidate = async () => queryClient.invalidateQueries(actions.marketingInvalidates());
   const schedule = useMutation({ ...actions.scheduleMarketingCampaign, onSuccess: invalidate });
-  const action = useMutation({ ...actions.marketingCampaignAction, onSuccess: invalidate });
+  const action = useMutation({
+    ...actions.marketingCampaignAction,
+    onSuccess: async (_data, variables) => {
+      if (variables.action === 'cancel') setConfirmingCancel(false);
+      await invalidate();
+    },
+  });
   const testSend = useMutation(actions.testMarketingCampaign);
   const terminal = campaign.status === 'cancelled' || campaign.status === 'finished';
 
@@ -304,7 +343,7 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         {campaign.status === 'running' ? <Button onClick={() => action.mutate({ campaignId: campaign.id, action: 'pause' })}>{t.marketing.pause}</Button> : null}
         {campaign.status === 'paused' ? <Button onClick={() => action.mutate({ campaignId: campaign.id, action: 'resume' })}>{t.marketing.resume}</Button> : null}
         {['draft', 'scheduled', 'running', 'paused'].includes(campaign.status) ? (
-          <Button color="error" onClick={() => action.mutate({ campaignId: campaign.id, action: 'cancel' })}>{t.marketing.cancelCampaign}</Button>
+          <Button color="error" onClick={() => setConfirmingCancel(true)}>{t.marketing.cancelCampaign}</Button>
         ) : null}
         {terminal ? null : (
           <Button disabled={testSend.isPending} onClick={() => testSend.mutate({ campaignId: campaign.id })}>
@@ -314,6 +353,22 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
       </Stack>
       {campaign.pausedReason === null ? null : <Alert severity="warning"><strong>{t.marketing.pausedReason}:</strong> {campaign.pausedReason}</Alert>}
       {schedule.isError || action.isError || testSend.isError ? <Alert severity="error">{localizeError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
+      <ConfirmDialog
+        open={confirmingCancel}
+        title={t.marketing.cancelCampaignConfirmTitle}
+        body={(
+          <>
+            <Typography>{t.marketing.cancelCampaignConfirmBody}</Typography>
+            {action.isError ? <Alert severity="error">{localizeError(action.error, t)}</Alert> : null}
+          </>
+        )}
+        confirmLabel={t.marketing.cancelCampaign}
+        cancelLabel={t.common.cancel}
+        pending={action.isPending}
+        onClose={() => setConfirmingCancel(false)}
+        onConfirm={() => action.mutate({ campaignId: campaign.id, action: 'cancel' })}
+        confirmTestId="campaign-cancel-confirm"
+      />
     </SectionCard>
   );
 };
@@ -328,6 +383,8 @@ export const CampaignsPanel = () => {
 
   return (
     <PanelPage title={t.marketing.campaignsTitle} description={t.marketing.campaignsDescription} action={<Button component={Link} to="/panel/marketing/campaigns/new" variant="contained">+ {t.common.add}</Button>}>
+      {consents.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : null}
+      {reputation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(reputation.error, t), retry: { label: t.common.retry, onRetry: () => void reputation.refetch() } }} /> : null}
       {reputation.data?.overallStatus === 'warn' ? (
         <Alert severity="warning">{t.marketing.campaignReputationWarnBanner}</Alert>
       ) : null}
@@ -339,7 +396,7 @@ export const CampaignsPanel = () => {
         empty={<StatusView state={{ kind: 'empty', title: t.marketing.campaignsEmpty, action: <Button component={Link} to="/panel/marketing/campaigns/new">+ {t.common.add}</Button> }} />}
       >
         {campaigns.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.campaignsLoading }} /> : campaigns.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(campaigns.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {campaigns.data.campaigns.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)).map((campaign) => (
@@ -382,7 +439,7 @@ export const CampaignDetailPage = () => {
   const params = useParams({ strict: false });
   const campaign = useQuery(actions.marketingCampaign(params.campaignId ?? ''));
   if (campaign.isPending) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'loading', label: t.marketing.campaignsLoading }} />;
-  if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizeError(campaign.error, t) }} />;
+  if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizeError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
   return (
     <PanelPage title={campaign.data.campaign.name} backTo={{ label: t.marketing.allCampaigns, href: '/panel/marketing/campaigns' }}>

@@ -683,6 +683,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
   const [name, setName] = useState(course.name);
   const [description, setDescription] = useState(course.description);
   const [imageUrl, setImageUrl] = useState(course.imageUrl ?? '');
+  const errorId = 'course-details-error';
   const save = useMutation({
     ...actions.updateCourse,
     onSuccess: async () => queryClient.invalidateQueries(actions.coursesInvalidates()),
@@ -719,6 +720,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           id="course-name"
           value={name}
           required
+          aria-describedby={save.isError ? errorId : undefined}
           onChange={(event) => {
             resetFeedback();
             setName(event.target.value);
@@ -732,6 +734,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           value={description}
           multiline
           minRows={3}
+          aria-describedby={save.isError ? errorId : undefined}
           onChange={(event) => {
             resetFeedback();
             setDescription(event.target.value);
@@ -744,6 +747,7 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
           id="course-image"
           type="url"
           value={imageUrl}
+          aria-describedby={save.isError ? errorId : undefined}
           onChange={(event) => {
             resetFeedback();
             setImageUrl(event.target.value);
@@ -751,7 +755,17 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
         />
       </FormControl>
       {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
-      {save.isError ? <MutationError error={save.error} /> : null}
+      {save.isError ? (
+        <MutationError
+          error={save.error}
+          id={errorId}
+          fields={[
+            { name: 'name', id: 'course-name', label: t.courses.titleLabel },
+            { name: 'description', id: 'course-description', label: t.common.description },
+            { name: 'imageUrl', id: 'course-image', label: t.courses.imageUrl },
+          ]}
+        />
+      ) : null}
     </SectionCard>
   );
 };
@@ -808,8 +822,8 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   if (modules.isPending || lessons.isPending) {
     return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
-  if (modules.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(modules.error, t) }} />;
-  if (lessons.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
+  if (modules.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
+  if (lessons.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const attached = orderAttachedModules(
     course,

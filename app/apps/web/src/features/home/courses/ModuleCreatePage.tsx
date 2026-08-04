@@ -13,6 +13,7 @@ const CreateModuleForm = ({ courseId, onCreated }: { courseId: string; onCreated
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [prefix, setPrefix] = useState('');
+  const errorId = 'create-module-error';
 
   const createModule = useMutation({
     ...actions.createModule,
@@ -37,17 +38,27 @@ const CreateModuleForm = ({ courseId, onCreated }: { courseId: string; onCreated
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             required
+            aria-describedby={createModule.isError ? errorId : undefined}
           />
         </FormControl>
         <FormControl sx={{ flex: 1 }}>
           <FormLabel htmlFor="new-module-prefix">{t.courses.prefixLabel}</FormLabel>
-          <OutlinedInput id="new-module-prefix" value={prefix} onChange={(event) => setPrefix(event.target.value)} />
+          <OutlinedInput id="new-module-prefix" value={prefix} onChange={(event) => setPrefix(event.target.value)} aria-describedby={createModule.isError ? errorId : undefined} />
         </FormControl>
         <Button type="submit" variant="contained" disabled={createModule.isPending || title.trim().length === 0}>
           {createModule.isPending ? t.courses.creatingModule : t.courses.createModule}
         </Button>
       </Stack>
-      {createModule.isError ? <MutationError error={createModule.error} /> : null}
+      {createModule.isError ? (
+        <MutationError
+          error={createModule.error}
+          id={errorId}
+          fields={[
+            { name: 'title', id: 'new-module-title', label: t.products.titleLabel },
+            { name: 'prefix', id: 'new-module-prefix', label: t.courses.prefixLabel },
+          ]}
+        />
+      ) : null}
     </SectionCard>
   );
 };

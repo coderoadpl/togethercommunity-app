@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sesIdentityFreshness } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { PanelPage, SectionCard } from '../../../components/layout/index.js';
+import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { MarketingReadiness } from './MarketingReadiness.js';
@@ -351,21 +351,38 @@ export const MarketingSettingsPanel = () => {
     footerLegalName: footerLegalName ?? settings?.footerLegalName ?? '',
     footerAddress: footerAddress ?? settings?.footerAddress ?? '',
   };
-  const update = useMutation({
+  const senderUpdate = useMutation({
     ...actions.updateMarketingSesSettings,
     onSuccess: async () => queryClient.invalidateQueries(actions.marketingInvalidates()),
   });
-  const submit = (event: FormEvent) => {
+  const reputationUpdate = useMutation({
+    ...actions.updateMarketingSesSettings,
+    onSuccess: async () => queryClient.invalidateQueries(actions.marketingInvalidates()),
+  });
+  const footerUpdate = useMutation({
+    ...actions.updateMarketingSesSettings,
+    onSuccess: async () => queryClient.invalidateQueries(actions.marketingInvalidates()),
+  });
+  const settingsInput = () => ({
+    ...values,
+    configurationSet: values.configurationSet.trim() === '' ? null : values.configurationSet,
+    snsTopicArn: values.snsTopicArn.trim() === '' ? null : values.snsTopicArn,
+  });
+  const submitSender = (event: FormEvent) => {
     event.preventDefault();
-    update.mutate({
-      ...values,
-      configurationSet: values.configurationSet.trim() === '' ? null : values.configurationSet,
-      snsTopicArn: values.snsTopicArn.trim() === '' ? null : values.snsTopicArn,
-    });
+    senderUpdate.mutate(settingsInput());
+  };
+  const submitReputation = (event: FormEvent) => {
+    event.preventDefault();
+    reputationUpdate.mutate(settingsInput());
+  };
+  const submitFooter = (event: FormEvent) => {
+    event.preventDefault();
+    footerUpdate.mutate(settingsInput());
   };
 
   if (result.isPending) return <PanelPage title={t.marketing.settingsTitle} state={{ kind: 'loading', label: t.marketing.settingsLoading }} />;
-  if (result.isError) return <PanelPage title={t.marketing.settingsTitle} state={{ kind: 'error', message: localizeError(result.error, t) }} />;
+  if (result.isError) return <PanelPage title={t.marketing.settingsTitle} state={{ kind: 'error', message: localizeError(result.error, t), retry: { label: t.common.retry, onRetry: () => void result.refetch() } }} />;
 
   const credentialsConfigured = result.data.credentialsConfigured;
   const footerConfigured = settings !== null
@@ -422,7 +439,7 @@ export const MarketingSettingsPanel = () => {
         {pool.used >= 800 ? <Alert severity="warning">{t.marketing.platformPoolNudge}</Alert> : null}
       </SectionCard>
       <CredentialsForm configured={credentialsConfigured} />
-      <SectionCard title={t.marketing.sender} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
+      <SectionCard title={t.marketing.sender} onSubmit={submitSender} actions={<Button type="submit" variant="contained" disabled={senderUpdate.isPending}>{senderUpdate.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
         <Alert severity="info">{t.marketing.identityAuthenticationHint}</Alert>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-from-address">{t.marketing.fromAddressLabel}</FormLabel>
@@ -450,7 +467,7 @@ export const MarketingSettingsPanel = () => {
             {t.marketing.trackingDocsLink}
           </Link>
         </Alert>
-        {update.isError ? <Alert severity="error">{localizeError(update.error, t)}</Alert> : null}
+        {senderUpdate.isError ? <Alert severity="error">{localizeError(senderUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SesOnboardingWizard enabled={credentialsConfigured && settings !== null} onChecklist={setLiveChecklist} />
       <SmtpForm configured={result.data.smtpConfigured} />
@@ -458,19 +475,20 @@ export const MarketingSettingsPanel = () => {
       <SectionCard
         title={t.marketing.reputationTitle}
         description={t.marketing.reputationDescription}
-        onSubmit={submit}
-        actions={<Button type="submit" variant="contained" disabled={settings === null || update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
+        onSubmit={submitReputation}
+        actions={<Button type="submit" variant="contained" disabled={settings === null || reputationUpdate.isPending}>{reputationUpdate.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
       >
         {reputation.isPending ? <Typography variant="body2">{t.marketing.reputationLoading}</Typography> : null}
-        {reputation.isError ? <Alert severity="error">{localizeError(reputation.error, t)}</Alert> : null}
+        {reputation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(reputation.error, t), retry: { label: t.common.retry, onRetry: () => void reputation.refetch() } }} /> : null}
         {reputation.isSuccess ? <ReputationSummary reputation={reputation.data} /> : null}
         <FormControlLabel
           control={<Switch checked={values.autoPauseOnCritical} disabled={settings === null} onChange={(event) => setAutoPauseOnCritical(event.target.checked)} />}
           label={t.marketing.autoPauseOnCriticalLabel}
         />
         <Typography variant="body2">{t.marketing.autoPauseOnCriticalHint}</Typography>
+        {reputationUpdate.isError ? <Alert severity="error">{localizeError(reputationUpdate.error, t)}</Alert> : null}
       </SectionCard>
-      <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submit} actions={<Button type="submit" variant="contained" disabled={update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
+      <SectionCard title={t.marketing.footer} description={t.marketing.footerRequiredHint} onSubmit={submitFooter} actions={<Button type="submit" variant="contained" disabled={footerUpdate.isPending}>{footerUpdate.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}>
         <FormControl fullWidth>
           <FormLabel htmlFor="marketing-footer-name">{t.marketing.footerLegalNameLabel}</FormLabel>
           <OutlinedInput id="marketing-footer-name" value={values.footerLegalName} onChange={(event) => setFooterLegalName(event.target.value)} />
@@ -479,6 +497,7 @@ export const MarketingSettingsPanel = () => {
           <FormLabel htmlFor="marketing-footer-address">{t.marketing.footerAddressLabel}</FormLabel>
           <OutlinedInput id="marketing-footer-address" value={values.footerAddress} onChange={(event) => setFooterAddress(event.target.value)} multiline minRows={2} />
         </FormControl>
+        {footerUpdate.isError ? <Alert severity="error">{localizeError(footerUpdate.error, t)}</Alert> : null}
       </SectionCard>
       <SectionCard title={t.marketing.webhookUrl} description={t.marketing.webhookHint}>
         <Typography variant="body2" data-testid="marketing-webhook-url">{result.data.webhookUrl ?? t.marketing.blocked}</Typography>

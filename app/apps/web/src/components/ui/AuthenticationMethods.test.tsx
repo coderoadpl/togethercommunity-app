@@ -14,7 +14,7 @@ const idle = { pending: false, success: false, error: null };
 const propsWith = (
   overrides: Partial<AuthenticationMethodsProps> = {},
 ): AuthenticationMethodsProps => ({
-  passkeys: { data: [], pending: false, error: null },
+  passkeys: { data: [], pending: false, error: null, retry: vi.fn() },
   registerPasskey: { ...idle, run: vi.fn() },
   removePasskey: { ...idle, run: vi.fn() },
   requestPasswordSetup: { ...idle, run: vi.fn() },
@@ -38,6 +38,7 @@ describe('AuthenticationMethods', () => {
         data: [{ id: 'passkey-1', name: 'Laptop', createdAt: '2026-08-01T10:00:00.000Z' }],
         pending: false,
         error: null,
+        retry: vi.fn(),
       },
     });
     renderMethods(props);
@@ -66,6 +67,7 @@ describe('AuthenticationMethods', () => {
         data: [{ id: 'passkey-1', name: 'Laptop', createdAt: '2026-08-01T10:00:00.000Z' }],
         pending: false,
         error: null,
+        retry: vi.fn(),
       },
       removePasskey: { ...idle, run: remove },
     });

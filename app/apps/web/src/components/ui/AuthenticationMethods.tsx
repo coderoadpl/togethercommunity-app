@@ -29,6 +29,7 @@ export interface AuthenticationMethodsProps {
     data: PasskeyRow[] | undefined;
     pending: boolean;
     error: Error | null;
+    retry(): void;
   };
   registerPasskey: OperationState & {
     run(input: { name: string; password: string }): void;
@@ -236,7 +237,14 @@ export const AuthenticationMethods = ({
           </Typography>
         ) : null}
         {removePasskey.error ? <Alert severity="error">{localizeError(removePasskey.error, t)}</Alert> : null}
-        {passkeys.error ? <Alert severity="error">{localizeError(passkeys.error, t)}</Alert> : null}
+        {passkeys.error ? (
+          <Box>
+            <Alert severity="error">{localizeError(passkeys.error, t)}</Alert>
+            <Button size="small" sx={{ mt: '0.5rem' }} onClick={passkeys.retry}>
+              {t.common.retry}
+            </Button>
+          </Box>
+        ) : null}
       </Box>
 
       <Box component="section" sx={{ display: 'grid', gap: '0.8rem' }}>

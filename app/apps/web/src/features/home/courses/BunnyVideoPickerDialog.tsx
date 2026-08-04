@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Dialog,
@@ -20,6 +19,7 @@ import { ApiError } from '#core/client/index.js';
 import type { StreamVideo } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
@@ -79,7 +79,7 @@ export const BunnyVideoPickerDialog = ({
               </Typography>
             </Stack>
           ) : videos.isError ? (
-            <Alert severity="error" data-testid="bunny-picker-error">{errorMessage(videos.error, t)}</Alert>
+            <StatusView data-testid="bunny-picker-error" surface={false} state={{ kind: 'error', message: errorMessage(videos.error, t), retry: { label: t.common.retry, onRetry: () => void videos.refetch() } }} />
           ) : result === undefined || result.videos.length === 0 ? (
             <Typography variant="body2" data-testid="bunny-picker-empty">
               {query.trim().length > 0 ? t.lessons.videoPickerNoMatches : t.lessons.videoPickerEmptyLibrary}

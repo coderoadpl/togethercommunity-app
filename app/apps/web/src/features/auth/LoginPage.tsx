@@ -19,6 +19,7 @@ import { lessonPath } from '#core/contract/index.js';
 import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -146,6 +147,8 @@ export const LoginPage = () => {
       {publicOffer.data?.tenant.socialLinks.length ? (
         <TenantSocialLinks links={publicOffer.data.tenant.socialLinks} />
       ) : null}
+      {authConfig.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(authConfig.error, t), retry: { label: t.common.retry, onRetry: () => void authConfig.refetch() } }} /> : null}
+      {publicOffer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(publicOffer.error, t), retry: { label: t.common.retry, onRetry: () => void publicOffer.refetch() } }} /> : null}
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
         <BuildStamp />
       </Box>
@@ -170,7 +173,7 @@ export const LoginPage = () => {
               {t.auth.openMagicLink}
             </Button>
           ) : null}
-          {devMagicLink.isError ? <Alert severity="error">{localizeError(devMagicLink.error, t)}</Alert> : null}
+          {devMagicLink.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(devMagicLink.error, t), retry: { label: t.common.retry, onRetry: () => void devMagicLink.refetch() } }} /> : null}
         </Stack>
       </FocusCard>
     );
@@ -290,6 +293,7 @@ export const LoginPage = () => {
               {t.auth.continueWithGoogle}
             </Button>
           ) : null}
+          {signInWithGoogle.isError ? <Alert severity="error">{localizeError(signInWithGoogle.error, t)}</Alert> : null}
         </Stack>
         {signInWithPasskey.isError ? (
           <Alert severity="error" sx={{ mt: '0.6rem' }}>

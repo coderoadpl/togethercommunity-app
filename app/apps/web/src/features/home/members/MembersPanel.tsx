@@ -168,7 +168,7 @@ export const MembersPanel = () => {
         {members.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.members.loading }} />
         ) : members.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <TableContainer>

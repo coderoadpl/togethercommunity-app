@@ -40,7 +40,7 @@ export const PanelProductDetailRoute = () => {
     return <PanelPage title={t.sections.products} state={{ kind: 'loading', label: t.products.loading }} />;
   }
   if (products.isError) {
-    return <PanelPage title={t.sections.products} state={{ kind: 'error', message: localizeError(products.error, t) }} />;
+    return <PanelPage title={t.sections.products} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />;
   }
   const product = products.data.products.find((entry) => entry.id === productId);
   if (!product) return <Navigate to="/panel/products" />;
@@ -60,7 +60,7 @@ export const PanelModuleCreateRoute = () => {
     return <PanelPage title={t.courses.newModule} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
   if (courses.isError) {
-    return <PanelPage title={t.courses.newModule} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
+    return <PanelPage title={t.courses.newModule} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />;
   }
 
   const course = courses.data.courses.find((entry) => entry.id === courseId);
@@ -79,7 +79,7 @@ export const PanelCourseDetailRoute = () => {
   const back = () => void navigate({ to: '/panel/courses' });
 
   if (courses.isPending) return <PanelPage title={t.sections.courses} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
-  if (courses.isError) return <PanelPage title={t.sections.courses} state={{ kind: 'error', message: localizeError(courses.error, t) }} />;
+  if (courses.isError) return <PanelPage title={t.sections.courses} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />;
 
   const course = courses.data.courses.find((entry) => entry.id === courseId);
   if (!course) return <Navigate to="/panel/courses" />;
@@ -97,7 +97,7 @@ export const PanelLessonEditRoute = () => {
   const lessons = useQuery(actions.lessons);
 
   if (lessons.isPending) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'loading', label: t.lessons.loading }} />;
-  if (lessons.isError) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
+  if (lessons.isError) return <PanelPage title={t.sections.lessons} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const lesson = lessons.data.lessons.find((entry) => entry.id === lessonId);
   if (!lesson) return <Navigate to="/panel/lessons" />;
@@ -118,7 +118,7 @@ export const PanelMemberDetailRoute = () => {
   const back = () => void navigate({ to: '/panel/members' });
 
   if (members.isPending) return <PanelPage title={t.sections.members} state={{ kind: 'loading', label: t.members.loading }} />;
-  if (members.isError) return <PanelPage title={t.sections.members} state={{ kind: 'error', message: localizeError(members.error, t) }} />;
+  if (members.isError) return <PanelPage title={t.sections.members} state={{ kind: 'error', message: localizeError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />;
 
   const member = members.data.members.find((entry) => entry.id === memberId);
   if (!member) return <Navigate to="/panel/members" />;
@@ -139,7 +139,7 @@ export const PanelSpaceDetailRoute = () => {
     return <PanelPage title={t.sections.spaces} state={{ kind: 'loading', label: t.spacesPanel.loading }} />;
   }
   if (spaces.isError) {
-    return <PanelPage title={t.sections.spaces} state={{ kind: 'error', message: localizeError(spaces.error, t) }} />;
+    return <PanelPage title={t.sections.spaces} state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />;
   }
   const space = spaces.data.spaces.find((entry) => entry.id === spaceId);
   if (!space) return <Navigate to="/panel/spaces" />;

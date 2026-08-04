@@ -6,7 +6,8 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
-import { useTranslations } from '../../i18n/index.js';
+import { StatusView } from '../../components/layout/StatusView.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { hostHasTenantSubdomain } from '../../lib/tenant.js';
 import { CardTitle } from '../../theme.js';
 
@@ -37,6 +38,7 @@ export const TenantGate = ({
   children: ReactNode;
   hostname?: string;
 }) => {
+  const t = useTranslations();
   const onSubdomain = hostHasTenantSubdomain(hostname);
   const offer = useQuery({ ...actions.publicOffer, enabled: onSubdomain });
 
@@ -50,6 +52,13 @@ export const TenantGate = ({
   }
   if (offer.error instanceof ApiError && offer.error.appError.code === 'tenant_not_found') {
     return <TenantNotFoundPage />;
+  }
+  if (offer.isError) {
+    return (
+      <Container sx={{ maxWidth: '44rem', py: 6 }}>
+        <StatusView state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} />
+      </Container>
+    );
   }
   return <>{children}</>;
 };

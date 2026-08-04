@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  Alert,
   Box,
   Button,
   FormControl,
@@ -98,7 +99,7 @@ export const MemberAccountPage = () => {
       <MemberSurface
         title={t.account.title}
         eyebrow={t.account.heading}
-        state={{ kind: 'error', message: localizeError(me.error, t) }}
+        state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }}
       />
     );
   }
@@ -132,6 +133,13 @@ export const MemberAccountPage = () => {
           </BreakAllText>
         </SectionCard>
 
+        {billingOrders.isError ? (
+          <StatusView state={{ kind: 'error', message: localizeError(billingOrders.error, t), retry: { label: t.common.retry, onRetry: () => void billingOrders.refetch() } }} />
+        ) : null}
+        {tenantSettings.isError ? (
+          <StatusView state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} />
+        ) : null}
+
         <SectionCard title={t.emailVerification.heading}>
           <EmailVerificationStatus
             email={email}
@@ -163,7 +171,7 @@ export const MemberAccountPage = () => {
           </Box>
           {dataExport.isError ? (
             <StatusView
-              state={{ kind: 'error', message: localizeError(dataExport.error, t) }}
+              state={{ kind: 'error', message: localizeError(dataExport.error, t), retry: { label: t.common.retry, onRetry: () => void downloadDataExport() } }}
             />
           ) : null}
         </SectionCard>
@@ -172,7 +180,11 @@ export const MemberAccountPage = () => {
           title={t.account.erasureHeading}
           description={t.account.erasureIntro}
         >
-          {erasureRequest.data?.request === null ? (
+          {erasureRequest.isPending ? (
+            <StatusView state={{ kind: 'loading', label: t.common.loading }} />
+          ) : erasureRequest.isError ? (
+            <StatusView state={{ kind: 'error', message: localizeError(erasureRequest.error, t), retry: { label: t.common.retry, onRetry: () => void erasureRequest.refetch() } }} />
+          ) : erasureRequest.data.request === null ? (
             <>
               <FormControl fullWidth>
                 <FormLabel htmlFor="erasure-confirm-email">
@@ -199,7 +211,7 @@ export const MemberAccountPage = () => {
                 {t.account.erasureRequestButton}
               </Button>
             </>
-          ) : erasureRequest.data?.request.status === 'open' ? (
+          ) : erasureRequest.data.request.status === 'open' ? (
             <>
               <Typography>
                 {t.account.erasureOpen({
@@ -217,8 +229,6 @@ export const MemberAccountPage = () => {
                 {t.account.erasureCancelButton}
               </Button>
             </>
-          ) : erasureRequest.data?.request === undefined ? (
-            <Typography>{t.common.loading}</Typography>
           ) : (
             <Typography>
               {t.account.erasureResolved({
@@ -235,13 +245,9 @@ export const MemberAccountPage = () => {
             </Typography>
           )}
           {createErasureRequest.isError ? (
-            <StatusView
-              state={{
-                kind: 'error',
-                message: localizeError(createErasureRequest.error, t),
-              }}
-            />
+            <Alert severity="error">{localizeError(createErasureRequest.error, t)}</Alert>
           ) : null}
+          {cancelErasureRequest.isError ? <Alert severity="error">{localizeError(cancelErasureRequest.error, t)}</Alert> : null}
         </SectionCard>
 
         <SectionCard title={t.account.passwordHeading} description={t.account.passwordIntro}>
@@ -269,13 +275,13 @@ export const MemberAccountPage = () => {
               </Typography>
             ) : null}
             {requestPasswordReset.isError ? (
-              <StatusView state={{ kind: 'error', message: localizeError(requestPasswordReset.error, t) }} />
+              <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
             ) : null}
         </SectionCard>
 
         <SectionCard title={t.security.heading} data-testid="account-security-methods">
           <AuthenticationMethods
-            passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error }}
+            passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error, retry: () => void passkeys.refetch() }}
             registerPasskey={{
               pending: registerPasskey.isPending,
               success: registerPasskey.isSuccess,
@@ -377,7 +383,7 @@ export const MemberAccountPage = () => {
             </Button>
             {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}
             {support.isError ? (
-              <StatusView state={{ kind: 'error', message: localizeError(support.error, t) }} />
+              <Alert severity="error">{localizeError(support.error, t)}</Alert>
             ) : null}
           </SectionCard>
         ) : null}

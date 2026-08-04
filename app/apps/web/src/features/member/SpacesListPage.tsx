@@ -83,6 +83,7 @@ export const SpacesListPage = () => {
         state={{
           kind: 'error',
           message: isForbidden(spaces.error) ? t.community.staffNoMember : localizeError(spaces.error, t),
+          retry: { label: t.common.retry, onRetry: () => void spaces.refetch() },
         }}
       />
     );

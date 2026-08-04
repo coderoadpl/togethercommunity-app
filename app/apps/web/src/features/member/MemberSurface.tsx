@@ -7,9 +7,10 @@ import { useRouterState } from '@tanstack/react-router';
 
 import { TenantLogo, TenantSocialLinks } from '../../branding.js';
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { MemberPage } from '../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { MemberAccountMenu } from './MemberAccountMenu.js';
 import { AccountIcon } from './account-icons.js';
@@ -124,6 +125,7 @@ export const MemberSurface = ({ authenticated = true, ...props }: Props) => {
       {...props}
       children={(
         <>
+          {me.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /> : null}
           {me.data?.tenant?.banned === true ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
           {props.children}
           <TenantSocialLinks />

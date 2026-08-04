@@ -168,7 +168,7 @@ export const CouponsPanel = () => {
         {coupons.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.coupons.loading }} />
         ) : coupons.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(coupons.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table>
@@ -307,6 +307,7 @@ export const CouponCreatePage = () => {
       title={t.coupons.createTitle}
       backTo={{ label: t.coupons.allCoupons, href: '/panel/sales/coupons' }}
     >
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       <SectionCard title={t.coupons.createTitle} onSubmit={submit}>
         <FormControl fullWidth>
           <FormLabel htmlFor="coupon-code">{t.coupons.code}</FormLabel>
@@ -505,7 +506,7 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
     return (
       <PanelPage
         title={t.coupons.title}
-        state={{ kind: 'error', message: localizeError(detail.error, t) }}
+        state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }}
       />
     );
   }

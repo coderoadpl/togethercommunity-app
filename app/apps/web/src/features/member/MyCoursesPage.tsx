@@ -35,6 +35,9 @@ const completionLabel = (t: Messages, status: CompletionStatus): string =>
 const CompletionChip = ({ courseId }: { courseId: string }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
+  if (structure.isError) {
+    return <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} />;
+  }
   if (!structure.data) return null;
   const status = structure.data.structure.completionStatus;
   return (
@@ -126,6 +129,7 @@ export const MyCoursesPage = () => {
         state={{
           kind: 'error',
           message: isForbidden(courses.error) ? t.student.staffNoMember : localizeError(courses.error, t),
+          retry: { label: t.common.retry, onRetry: () => void courses.refetch() },
         }}
       />
     );

@@ -20,6 +20,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { tenantUrl } from '../../lib/tenant.js';
@@ -55,6 +56,7 @@ export const TenantHomePage = () => {
     return (
       <Container sx={{ maxWidth: '44rem' }}>
         <Alert severity="error" sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
+        <Button variant="outlined" sx={{ mt: 2 }} onClick={() => void me.refetch()}>{t.common.retry}</Button>
       </Container>
     );
   }
@@ -105,6 +107,7 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
             {t.tenant.loading}
           </Typography>
         ) : null}
+        {tenants.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenants.error, t), retry: { label: t.common.retry, onRetry: () => void tenants.refetch() } }} /> : null}
         <List sx={{ mt: '1.2rem' }} disablePadding>
           {tenants.data?.tenants.map((m) => (
             <ListItem key={m.tenant.id} disablePadding>

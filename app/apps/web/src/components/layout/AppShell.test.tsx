@@ -49,7 +49,7 @@ describe('AppShell', () => {
         onMobileNavigationClose={vi.fn()}
         header={<span>Acme header</span>}
         navigation={<nav><a href="/panel/products">Products</a></nav>}
-        state={{ kind: 'error', message: 'Could not open workspace' }}
+        state={{ kind: 'error', message: 'Could not open workspace', retry: { label: 'Retry', onRetry: vi.fn() } }}
       >
         <p>Panel content</p>
       </AppShell>,

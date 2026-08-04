@@ -255,7 +255,17 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
         width="wide"
       >
         <StatusView
-          state={{ kind: 'error', message: localizeError(offer.error ?? paymentConfig.error, t) }}
+          state={{
+            kind: 'error',
+            message: localizeError(offer.error ?? paymentConfig.error, t),
+            retry: {
+              label: t.common.retry,
+              onRetry: () => {
+                void offer.refetch();
+                void paymentConfig.refetch();
+              },
+            },
+          }}
         />
       </FocusCard>
     );

@@ -1,6 +1,8 @@
 # ADR-0003: Vercel environments and release topology
 
-Status: accepted, 2026-07-28.
+Status: accepted, 2026-07-28. Amended 2026-08-04 to add the deployment-risk
+profile and distinguish the target production topology from its outstanding
+owner actions.
 
 ## Context
 
@@ -8,6 +10,9 @@ Together deploys the static web app and Hono API to Vercel. The repository
 needs a named development, staging, preview, and production topology that keeps
 production promotion owner-controlled and runs each deployment against the
 matching database.
+
+The internal [deployment-risk classification](../deployment-risk-classes.md)
+selects a SIL-3-shaped posture for Together's commercial hosted production.
 
 Runtime adapters currently require interactive database transactions.
 Consequently every environment uses `DB_DRIVER=node-postgres`; the reason and
@@ -22,6 +27,13 @@ the migration path to another driver are defined in
 | Preview | pull request | automatic Preview | disposable Neon preview branch |
 | Staging | `main` | stable Preview alias | Neon staging branch |
 | Production | `production` | Vercel Production Branch | Neon production branch |
+
+This table is the target release topology, not evidence of live configuration.
+As of 2026-08-04, the remote has no `production` branch and the current private
+repository plan does not provide ruleset or branch-protection enforcement.
+Creation of the branch and wall, verification of the hosting boundary, and
+manual SHA attestation are tracked in items 16–18 of the
+[go-live checklist](../go-live-checklist.md#16-production-branch-and-approval-wall).
 
 `main` is trunk and staging (graduated from the `poc-together` PoC branch on
 2026-07-29). A production release is an owner-approved pull request from
@@ -57,7 +69,9 @@ production credentials.
 
 ## Verification and promotion
 
-Run the remote gate manually against an existing deployment:
+Run the remote attestation manually against an existing deployment. Supplying
+`EXPECTED_SHA` is mandatory for promotion even though the script accepts an
+omitted value:
 
 ```bash
 BASE_URL=https://deployment.example \
@@ -66,8 +80,10 @@ EXPECTED_SHA="$(git rev-parse HEAD)" \
 pnpm run smoke:remote
 ```
 
-The gate checks the health/database/SHA attestation, the public offer API using
-the tenant header, and the public web page. It does not mutate deployed data.
+The command checks the health/database/SHA attestation, the public offer API
+using the tenant header, and the public web page. It does not mutate deployed
+data. No workflow currently invokes it or turns its result into an automated
+acceptance gate.
 Before deployment, confirm `NODEJS_HELPERS=0` is set for every target Vercel
 environment.
 The first platform login, project linkage, environment provisioning, and first

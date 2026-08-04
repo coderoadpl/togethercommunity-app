@@ -29,7 +29,7 @@ export interface ResolveIdentityDeps {
   tenantAccess: TenantAccessReader;
   members: MemberRepository;
   tenants: TenantRepository;
-  /** e.g. "localhost" in dev, "together.com" in prod. */
+  /** e.g. "localhost" in dev, "together.example" in prod. */
   baseDomain: string;
   singleTenantMode: boolean;
 }

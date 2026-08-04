@@ -73,9 +73,9 @@ describe('tenant routing mode', () => {
 
   it('keeps subdomain routing when a base domain is configured', () => {
     expect(selectTenantRouting(envSchema.parse({
-      APP_BASE_DOMAIN: 'together.com',
-      APP_BASE_URL: 'https://together.com',
-    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false, tenantCreationMode: 'open' });
+      APP_BASE_DOMAIN: 'together.example',
+      APP_BASE_URL: 'https://together.example',
+    }))).toEqual({ baseDomain: 'together.example', singleTenantMode: false, tenantCreationMode: 'open' });
   });
 
   it('does not trust sibling subdomains in single-tenant mode', () => {

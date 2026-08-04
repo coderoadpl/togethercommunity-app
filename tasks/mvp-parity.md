@@ -2,7 +2,7 @@
 
 > Status: accepted by the owner (2026-07-13). This document is the contract for
 > the parity sprint. Legacy recon reports (field-level, file:line citations)
-> to prywatne artefakty audytowe właściciela (kept outside the
+> are the owner's private audit artifacts (kept outside the
 > repo deliberately — they contain infrastructure identifiers).
 
 ## Goal and sequence (owner decision)

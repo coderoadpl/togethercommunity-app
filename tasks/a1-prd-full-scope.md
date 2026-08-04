@@ -6,7 +6,7 @@
 > specs are written at package entry (see "Entry criteria").
 >
 > Inputs: `tasks/prd-together.md` (FR/US ids used verbatim), the reality audit
-> (file:line — prywatne artefakty audytowe właściciela), plus direct code
+> (file:line — the owner's private audit artifacts), plus direct code
 > checks recorded below.
 > Baseline commit: `495b45f`.
 

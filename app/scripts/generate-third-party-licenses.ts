@@ -122,6 +122,24 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+**Bundled fonts (OFL-1.1).** The web client ships five font families installed
+as \`@fontsource\` packages and imported in \`app/apps/web/src/main.tsx\`. They are
+licensed under the [SIL Open Font License 1.1](https://openfontlicense.org/),
+whose copyright notice and license text must accompany every copy of the font
+files; each package carries the full license in its \`LICENSE\` file under
+\`app/node_modules/@fontsource/\`.
+
+- Fraunces — Copyright 2020 The Fraunces Project Authors
+  ([undercasetype/Fraunces](https://github.com/undercasetype/Fraunces))
+- Inter — Copyright 2016 The Inter Project Authors
+  ([rsms/inter](https://github.com/rsms/inter))
+- JetBrains Mono — Copyright 2020 The JetBrains Mono Project Authors
+  ([JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono))
+- Manrope — Copyright 2019 The Manrope Project Authors
+  ([sharanda/manrope](https://github.com/sharanda/manrope))
+- Space Grotesk — Copyright 2020 The Space Grotesk Project Authors
+  ([floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk))
+
 **sharp / libvips.** The dev-only Argos upload tooling installs sharp's
 prebuilt libvips binaries (\`@img/sharp-libvips-*\`, LGPL-3.0-or-later; the
 related \`@img/sharp-*\` prebuilds carry the same notice). They are
@@ -129,8 +147,10 @@ platform-specific shared libraries installed under \`node_modules\` alongside
 sharp and loaded by it at runtime through dynamic linking. The LGPL-3.0
 obligations are satisfied by that dynamic linking together with upstream
 source availability, documented at
-[sharp.pixelplumbing.com](https://sharp.pixelplumbing.com/). They are the one
-recorded exception to the permissive-only dependency policy.
+[sharp.pixelplumbing.com](https://sharp.pixelplumbing.com/). libvips is the one
+copyleft entry in the dependency policy; the full machine-checked exception
+registry — fonts, datasets, permissive MIT variants and these prebuilds — lives
+in \`app/scripts/license-lint.ts\`.
 
 **\`app/adapters/invoicing/xsd/\`** holds the official FA(3) schemas published by
 the Polish Ministry of Finance (podatki.gov.pl, KSeF FA(3) schema). They are

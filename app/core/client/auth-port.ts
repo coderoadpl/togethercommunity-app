@@ -23,7 +23,8 @@ export interface PasswordResetRequest {
   language?: string;
 }
 
-interface VerificationEmailRequest {
+/** @public */
+export interface VerificationEmailRequest {
   email: string;
   callbackURL: string;
   language?: string;

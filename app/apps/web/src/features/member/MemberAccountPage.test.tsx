@@ -28,10 +28,10 @@ const stubMe = (emailVerified = true) =>
     }),
   );
 
-const stubSettings = (billingPortalUrl: string | null) =>
+const stubSettings = (billingPortalUrl: string | null, supportConfigured = false) =>
   http.get('*/api/tenant/settings', () =>
     HttpResponse.json({ ok: true, data: { settings: {
-      name: 'Akademia', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null,
+      name: 'Akademia', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null, supportConfigured,
     } } }),
   );
 
@@ -116,6 +116,34 @@ describe('MemberAccountPage', () => {
     const link = await screen.findByTestId('account-manage-payments');
     expect(link).toHaveAttribute('href', 'https://billing.stripe.com/p/login/test_example');
     expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('keeps support submission inactive until both fields are filled and resets after success', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(),
+      stubSettings(null, true),
+      stubBillingOrders(),
+      http.post('*/api/support/message', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ok: true, data: { queued: true } });
+      }),
+    );
+    await renderAccount();
+
+    const send = await screen.findByRole('button', { name: pl.support.send });
+    expect(send).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(pl.support.subjectLabel), 'Problem z lekcją');
+    expect(send).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(pl.support.bodyLabel), 'Nie mogę uruchomić nagrania.');
+    expect(send).toBeEnabled();
+    await userEvent.click(send);
+
+    expect(await screen.findByText(pl.support.sent)).toBeInTheDocument();
+    expect(body).toEqual({ subject: 'Problem z lekcją', body: 'Nie mogę uruchomić nagrania.' });
+    expect(screen.getByLabelText(pl.support.subjectLabel)).toHaveValue('');
+    expect(screen.getByLabelText(pl.support.bodyLabel)).toHaveValue('');
+    expect(send).toBeDisabled();
   });
 
   it('requests password setup from member passkey management', async () => {

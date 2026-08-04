@@ -385,7 +385,11 @@ export const MemberAccountPage = () => {
                 required
               />
             </FormControl>
-            <Button type="submit" variant="contained" disabled={support.isPending}>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={support.isPending || supportSubject.trim() === '' || supportBody.trim() === ''}
+            >
               {support.isPending ? t.support.sending : t.support.send}
             </Button>
             {support.isSuccess ? <Typography>{t.support.sent}</Typography> : null}

@@ -457,22 +457,32 @@ launch checklist.
 
 **STATUS:** owner-action
 
-The release topology targets an owner-approved `main` to `production` pull
-request, but that wall is not live. Earlier on 2026-08-04, the remote has no
-`production` branch and no ruleset. GitHub enforces rulesets and branch
-protection on public repositories on the Free plan, so nothing but the missing
-configuration blocks enforcement. The requirement is procedural until the owner
-creates it; an agent must not be described as technically unable to approve or
-release its own work.
+The release topology targets an owner-approved `staging` to `main` pull
+request, but repository files do not prove that wall is live. `main` is the
+default and production branch; `staging` is the integration trunk where feature
+pull requests merge. Later on 2026-08-04, this model was
+switched to the platform's
+default convention precisely because the previous inverted model (`main` as
+staging and `production` as production) fought the hosting and database
+integrations, which assume the default branch is production.
 
-Before launch, create `production` from the owner-approved `main` commit, and
-add a rule that requires a pull request, independent owner approval, and the
-required CI checks. `.github/workflows/ci.yml` triggers on both `main` and
-`production`, so a promotion pull request produces the required statuses.
-Disallow direct pushes, force pushes, deletion, and
-unreviewed bypasses. Inspect the live rule through the GitHub UI or API and
-record the rule, approving owner, pull request, `main` SHA, and resulting
-`production` SHA in the launch record.
+The earlier 2026-08-04 warning remains relevant history: the remote then had no
+`production` branch and no ruleset, so the former target wall was not live.
+GitHub enforces rulesets and branch protection on public repositories on the
+Free plan, but the requirement remains procedural until the owner configures
+the new wall; an agent must not be described as technically unable to approve
+or release its own work.
+
+Before launch, create `staging` from the owner-approved `main` commit. Protect
+`staging` so ordinary work merges through reviewed pull requests, and protect
+`main` so production changes require a pull request from `staging`, independent
+owner approval, and the required CI checks. `.github/workflows/ci.yml` triggers
+on both `staging` and `main`, so feature and promotion pull requests produce the
+required statuses. Disallow direct pushes, force pushes, deletion, and
+unreviewed bypasses. The legacy `production` branch is not a deployment or
+promotion target. Inspect the live rules through the GitHub UI or API and
+record them, the approving owner, promotion pull request, `staging` SHA, and
+resulting `main` SHA in the launch record.
 
 Until those steps are complete, do not claim an enforced production-promotion
 wall. Any rehearsal remains subject to the documented owner-approval procedure
@@ -490,13 +500,13 @@ login, CLI session, deployment token, database credential, or production
 secret. Preview and staging must not reuse the production hosting, database, or
 credential boundary.
 
-After item 16 creates the branch, set Vercel Production Branch Tracking to
-`production` and verify that a `main` merge creates staging only. Staging is
-the `main`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
-to Preview with branch `main`, and its database URL must come exclusively
-from the database integration, which creates and manages a dedicated branch
-per git branch. A fourth verified trap is member-role mapping on the hosting
-team: when a git identity that pushes or merges (including a machine account
+After item 16 creates `staging`, set Vercel Production Branch Tracking to
+`main` and verify that a `staging` merge creates staging only. Staging is the
+`staging`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
+to Preview with branch `staging`, and its database URL must come exclusively
+from the database integration, which automatically creates and manages its
+dedicated branch per git branch. A fourth verified trap is member-role mapping
+on the hosting team: when a git identity that pushes or merges (including a machine account
 merging pull requests) maps to a hosting-team member whose role cannot create
 deployments (a read-only viewer seat), the platform silently drops every
 deployment that identity triggers — no record, no error. An UNMAPPED git
@@ -533,10 +543,10 @@ comparison is silently skipped when `EXPECTED_SHA` is absent. For launch,
 and run the command against the deployed production URL:
 
 ```sh
-git fetch origin production
+git fetch origin main
 BASE_URL=https://deployment.example \
 SMOKE_TENANT=acme \
-EXPECTED_SHA="$(git rev-parse origin/production)" \
+EXPECTED_SHA="$(git rev-parse origin/main)" \
 pnpm run smoke:remote
 ```
 

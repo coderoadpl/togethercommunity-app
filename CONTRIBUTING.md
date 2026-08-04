@@ -7,8 +7,8 @@ Thank you for helping improve Together.
 1. Open an issue before starting a large change so its scope and design can be
    agreed on. Vulnerability reports are the exception: do not disclose them in
    an issue or pull request; follow the private [security policy](SECURITY.md).
-2. Fork the repository and create a focused branch from the current default
-   branch.
+2. Fork the repository and create a focused branch from `staging`, the
+   integration trunk.
 3. Use Node.js 24 and run `pnpm install --frozen-lockfile` from `app/`.
 4. Prepare the local database before running any gate: start Docker, then run
    `pnpm run db:up && pnpm run db:migrate && pnpm run db:seed` from `app/`.
@@ -17,8 +17,9 @@ Thank you for helping improve Together.
    focused.
 6. Run the static gate `pnpm run check` and the runtime gate `pnpm run smoke`
    from `app/`; both must be green.
-7. Open a pull request that explains the problem, the solution, and how it was
-   verified.
+7. Open a pull request into `staging` that explains the problem, the solution,
+   and how it was verified. Production promotion is a separate owner-approved
+   pull request from `staging` to the default branch, `main`.
 8. Address review feedback and keep the branch current until all required
    checks pass.
 

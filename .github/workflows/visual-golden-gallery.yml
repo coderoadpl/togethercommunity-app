@@ -2,7 +2,7 @@ name: visual golden gallery
 
 on:
   pull_request_target:
-    branches: [main]
+    branches: [staging]
     types: [opened, reopened, synchronize]
 
 permissions: {}

@@ -25,11 +25,11 @@ weaken Together's target production wall.
 ## Together controls
 
 1. **Human-approved production promotion.** The target topology makes `main`
-   trunk and staging, and sources production only from the `production` branch.
-   The operating procedure requires the owner to approve every `main` to
-   `production` pull request and forbids an agent from approving or releasing
-   its own work. This is a procedural commitment until the repository can
-   enforce the wall. The topology is defined by
+   the default and production branch, and makes `staging` the integration
+   trunk. The operating procedure requires the owner to approve every
+   `staging` to `main` pull request and forbids an agent from approving or
+   releasing its own work. This is a procedural commitment until the
+   repository can enforce the wall. The topology is defined by
    [ADR-0003](decisions/0003-vercel-environments.md).
 2. **Separate production boundary.** Production uses its own hosting and
    database boundary with production-only credentials. Preview and staging must
@@ -52,15 +52,18 @@ weaken Together's target production wall.
 
 The label does not enforce these requirements. Earlier on 2026-08-04,
 Together's repository was prepared for public visibility; GitHub enforces rulesets and
-branch protection on public repositories on the Free plan. The remote still has
-no `production` branch and no ruleset, so the owner-approval wall remains a
-procedural commitment, not a technically enforced control, until the owner
-creates the production branch and its ruleset.
+branch protection on public repositories on the Free plan. The remote then had
+no `production` branch and no ruleset, which was a blocker under the former
+inverted topology. The later 2026-08-04 switch makes the existing default branch,
+`main`, production and requires `staging` as the protected integration trunk.
+The owner-approval wall remains a procedural commitment, not a technically
+enforced control, until the owner creates `staging` and configures the live
+rulesets for `staging` and `main`.
 
 The live hosting account membership, credential boundary, and Vercel Production
-Branch setting are also not established by repository files. Creation of the
-branch and approval wall, verification of the hosting boundary, and manual SHA
-attestation remain explicit owner actions in items 16–18 of the
+Branch settings are also not established by repository files. Creation of the
+integration branch and approval wall, verification of the hosting boundary,
+and manual SHA attestation remain explicit owner actions in items 16–18 of the
 [go-live checklist](go-live-checklist.md#16-production-branch-and-approval-wall).
 Together's release-cut and immutable-tag machinery remains deferred until the
 first public supported release under the

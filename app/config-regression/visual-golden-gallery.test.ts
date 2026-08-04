@@ -29,7 +29,7 @@ const workflow: {
 describe('visual golden gallery workflow', () => {
   it('keeps privileged execution isolated from pull request code', () => {
     expect(workflow.on.pull_request_target).toEqual({
-      branches: ['main'],
+      branches: ['staging'],
       types: ['opened', 'reopened', 'synchronize'],
     });
     expect(workflow.permissions).toEqual({});

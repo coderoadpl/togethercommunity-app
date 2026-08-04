@@ -7,6 +7,7 @@ import {
   failSubscriptionPayment,
   renewSubscriptionPeriod,
   startSubscription,
+  syncGrantToSubscription,
   updateSubscriptionFromProvider,
 } from './subscription-lifecycle.js';
 
@@ -199,6 +200,35 @@ describe('renewSubscriptionPeriod', () => {
     expect(order).toMatchObject({ status: 'paid', amountCents: 2900 });
   });
 
+  it('extends a grant that a withdrawn cancellation had cut back to the period end', async () => {
+    const h = harness([price()]);
+    const started = await startSubscription(
+      't1',
+      {
+        memberId: 'mem-1',
+        price: price(),
+        provider: 'stripe',
+        providerSubscriptionId: 'psub-1',
+        providerObjectIds: {},
+      },
+      h.deps,
+    );
+    await syncGrantToSubscription(
+      't1',
+      { ...started.subscription, cancelAtPeriodEnd: true },
+      null,
+      h.deps,
+    );
+    expect([...h.grants.values()][0]?.expiresAt).toBe('1998-08-14T10:00:00.000Z');
+
+    await renewSubscriptionPeriod(
+      't1',
+      { subscription: started.subscription, providerObjectIds: { invoice: 'in-renew' } },
+      h.deps,
+    );
+    expect([...h.grants.values()][0]?.expiresAt).toBe('1998-09-17T10:00:00.000Z');
+  });
+
   it('extends from now when the current period already lapsed', async () => {
     const h = harness([price()]);
     const { subscription: sub } = await renewSubscriptionPeriod(
@@ -275,5 +305,113 @@ describe('updateSubscriptionFromProvider', () => {
       h.deps,
     );
     expect(sub).toMatchObject({ status: 'canceled', currentPeriodEnd: '1998-09-01T00:00:00.000Z' });
+  });
+});
+
+describe('syncGrantToSubscription', () => {
+  const subscribed = async () => {
+    const h = harness();
+    const started = await startSubscription(
+      't1',
+      {
+        memberId: 'mem-1',
+        price: price(),
+        provider: 'stripe',
+        providerSubscriptionId: 'psub-1',
+        providerObjectIds: {},
+      },
+      h.deps,
+    );
+    return { ...h, subscription: started.subscription };
+  };
+  const grantExpiry = (h: { grants: Map<string, ProductGrant> }) =>
+    [...h.grants.values()][0]?.expiresAt;
+
+  it('drops the grace buffer and ends the grant at the paid period end when cancellation is scheduled', async () => {
+    const h = await subscribed();
+    await syncGrantToSubscription(
+      't1',
+      { ...h.subscription, cancelAtPeriodEnd: true, currentPeriodEnd: '1998-08-20T10:00:00.000Z' },
+      '1998-08-20T10:00:00.000Z',
+      h.deps,
+    );
+    expect(grantExpiry(h)).toBe('1998-08-20T10:00:00.000Z');
+  });
+
+  it('keeps the paid period the provider reports on a cancelled subscription', async () => {
+    const h = await subscribed();
+    await syncGrantToSubscription(
+      't1',
+      { ...h.subscription, status: 'canceled' },
+      '1998-08-20T10:00:00.000Z',
+      h.deps,
+    );
+    expect(grantExpiry(h)).toBe('1998-08-20T10:00:00.000Z');
+  });
+
+  it('ends access at the provider termination time for an immediate cancellation', async () => {
+    const h = await subscribed();
+    await syncGrantToSubscription('t1', { ...h.subscription, status: 'canceled' }, NOW, h.deps);
+    expect(grantExpiry(h)).toBe(NOW);
+  });
+
+  it('falls back to the stored period end when a canceled event omits it', async () => {
+    const h = await subscribed();
+    await syncGrantToSubscription('t1', { ...h.subscription, status: 'canceled' }, null, h.deps);
+    expect(grantExpiry(h)).toBe(h.subscription.currentPeriodEnd);
+  });
+
+  it('restores the grace buffer when a scheduled cancellation is withdrawn', async () => {
+    const h = await subscribed();
+    await syncGrantToSubscription(
+      't1',
+      { ...h.subscription, cancelAtPeriodEnd: true },
+      null,
+      h.deps,
+    );
+    expect(grantExpiry(h)).toBe('1998-08-14T10:00:00.000Z');
+
+    await syncGrantToSubscription('t1', h.subscription, null, h.deps);
+    expect(grantExpiry(h)).toBe('1998-08-17T10:00:00.000Z');
+  });
+
+  it('does not shorten a longer grant on an ordinary subscription update', async () => {
+    const h = await subscribed();
+    const grant = [...h.grants.values()][0];
+    if (grant === undefined) throw new Error('missing grant');
+    h.grants.set(grant.id, { ...grant, expiresAt: '1998-12-01T00:00:00.000Z' });
+
+    const applied = await syncGrantToSubscription('t1', h.subscription, null, h.deps);
+
+    expect(applied).toBe('1998-12-01T00:00:00.000Z');
+    expect(grantExpiry(h)).toBe('1998-12-01T00:00:00.000Z');
+  });
+
+  it('leaves a lifetime grant alone', async () => {
+    const h = await subscribed();
+    const grant = [...h.grants.values()][0];
+    if (grant === undefined) throw new Error('missing grant');
+    h.grants.set(grant.id, { ...grant, expiresAt: null });
+
+    await syncGrantToSubscription('t1', { ...h.subscription, status: 'canceled' }, null, h.deps);
+    expect(grantExpiry(h)).toBeNull();
+  });
+
+  it('does not resurrect an already expired grant', async () => {
+    const h = await subscribed();
+    const grant = [...h.grants.values()][0];
+    if (grant === undefined) throw new Error('missing grant');
+    h.grants.set(grant.id, { ...grant, expiresAt: '1998-07-01T10:00:00.000Z' });
+
+    await syncGrantToSubscription('t1', h.subscription, null, h.deps);
+    expect(grantExpiry(h)).toBe('1998-07-01T10:00:00.000Z');
+
+    await syncGrantToSubscription(
+      't1',
+      { ...h.subscription, status: 'canceled' },
+      '1998-09-01T10:00:00.000Z',
+      h.deps,
+    );
+    expect(grantExpiry(h)).toBe('1998-07-01T10:00:00.000Z');
   });
 });

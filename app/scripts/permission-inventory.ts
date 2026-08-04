@@ -51,6 +51,9 @@ const member = ['member'] as const;
 const publicPrincipal = ['public'] as const;
 const apiKey = ['api-key'] as const;
 const transactionalApiKey = ['transactional-api-key'] as const;
+const importContentApiKey = ['import-content-api-key'] as const;
+const importUsersApiKey = ['import-users-api-key'] as const;
+const importApiKeys = ['import-content-api-key', 'import-users-api-key'] as const;
 const operatorSecret = ['operator-secret'] as const;
 const webhook = ['webhook'] as const;
 const token = ['token'] as const;
@@ -91,6 +94,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/dev/')) return method === 'GET' ? 'development:inspect' : 'development:mutate';
   if (path === '/api/m2m/enroll') return 'enrollment:create';
   if (path.startsWith('/api/m2m/transactional/messages')) return method === 'GET' ? 'transactional:message:read' : 'transactional:message:send';
+  if (path.startsWith('/api/m2m/import/')) return 'import:content-write';
   if (path.startsWith('/api/m2m/marketing/messages')) return method === 'GET' ? 'marketing:message:read' : 'marketing:message:send';
   if (path === '/api/m2m/marketing/eligibility') return 'marketing:consent:read';
   if (path === '/api/m2m/marketing/consents') return 'marketing:consent:write';
@@ -202,6 +206,8 @@ const beforeForRoute = (
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) {
     if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
+      if (path === '/api/m2m/import/validate') return importApiKeys;
+      if (path.startsWith('/api/m2m/import/')) return importContentApiKey;
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
@@ -252,9 +258,15 @@ const routeRows = (): PermissionRow[] =>
         subject: `${route.method} ${route.path}`,
         capability,
         before,
-        after: capability === null ? [] : effectiveAfter(reachable, capability),
-        derivable: capability !== null,
-        evidence: publicRouteManifestEntry(route) !== undefined
+        after: capability === null
+          ? []
+          : route.path === '/api/m2m/import/validate'
+            ? before
+            : effectiveAfter(reachable, capability),
+        derivable: capability !== null && route.path !== '/api/m2m/import/validate',
+        evidence: route.path === '/api/m2m/import/validate'
+          ? 'Tenant API key + either import scope'
+          : publicRouteManifestEntry(route) !== undefined
           ? 'public route manifest'
           : selfAuthenticatingRouteManifestEntry(route)?.mechanism ?? 'identity middleware + use-case guard',
       };
@@ -426,6 +438,9 @@ const beforeForUseCase = (
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
   if (file === 'm2m-transactional-email.ts') return transactionalApiKey;
+  if (file === 'm2m-import.ts') {
+    return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
+  }
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
@@ -459,7 +474,13 @@ const useCaseRows = (): PermissionRow[] =>
     const before = beforeForUseCase(file, name, capability);
     const reachable = before === allHumans
       ? allHumans
-      : before === transactionalApiKey ? transactionalApiKey : tenantActors;
+      : before === transactionalApiKey
+        ? transactionalApiKey
+        : before === importContentApiKey
+          ? importContentApiKey
+          : before === importUsersApiKey
+            ? importUsersApiKey
+            : tenantActors;
     return {
       subject: `${file}#${name}`,
       capability,

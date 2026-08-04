@@ -5,6 +5,8 @@ import type { Identity, TenantSettings } from '#core/domain/index.js';
 import { getTenantSettings, updateTenantSettings, type TenantSettingsDeps } from './tenant-settings.js';
 
 const settings: TenantSettings = {
+  name: 'Alpha',
+  socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   logoUrl: null,
@@ -35,6 +37,8 @@ const deps: TenantSettingsDeps = {
   tenants: {
     findById: async () => null,
     findBySlug: async () => null,
+    findSole: async () => null,
+    hasAny: async () => false,
     findSettings: async () => settings,
     updateSettings: async (_tenantId, next) => next,
     createTenantWithOwnerGrant: async () => {
@@ -64,6 +68,28 @@ describe('updateTenantSettings', () => {
     identity: identity('admin'),
     capabilities: ['tenant:settings:write' as const],
   };
+
+  it('round-trips the display name and social links while keeping the slug outside settings', async () => {
+    const result = await updateTenantSettings(adminCtx, {
+      name: 'Alpha Studio',
+      socialLinks: [
+        { label: 'Instagram', url: 'https://instagram.com/alpha' },
+        { label: 'YouTube', url: 'https://youtube.com/@alpha' },
+      ],
+    }, deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        name: 'Alpha Studio',
+        socialLinks: [
+          { label: 'Instagram', url: 'https://instagram.com/alpha' },
+          { label: 'YouTube', url: 'https://youtube.com/@alpha' },
+        ],
+      },
+    });
+    expect(result.ok && 'slug' in result.value).toBe(false);
+  });
 
   it('rejects an exempt mode without a legal basis', async () => {
     expect(await updateTenantSettings(adminCtx, {

@@ -459,7 +459,7 @@ export const campaignSendSchema = z.object({
   memberId: z.string().nullable(),
   email: z.string().email().transform(normalizeEmail),
   subject: z.string().min(1),
-  consentRowId: z.string().min(1),
+  consentRowId: z.string().min(1).nullable(),
   unsubscribeTokenId: z.string().nullable(),
   status: z.enum(['pending', 'sending', 'sent', 'failed', 'skipped']),
   skipReason: z.enum(['suppressed', 'unsubscribed', 'not_consented', 'pending_confirmation']).nullable(),

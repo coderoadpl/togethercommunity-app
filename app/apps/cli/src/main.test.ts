@@ -15,6 +15,7 @@ interface Hoisted {
   changePassword: ReturnType<typeof vi.fn>;
   requestPasswordReset: ReturnType<typeof vi.fn>;
   signOut: ReturnType<typeof vi.fn>;
+  configureStripe: ReturnType<typeof vi.fn>;
 }
 
 const h = vi.hoisted(
@@ -34,6 +35,7 @@ const h = vi.hoisted(
     changePassword: vi.fn(),
     requestPasswordReset: vi.fn(),
     signOut: vi.fn(),
+    configureStripe: vi.fn(),
   }),
 );
 
@@ -80,6 +82,7 @@ vi.mock('#core/client/index.js', () => ({
   createApiClient: () => ({
     health: h.health,
     configureStorage: h.configureStorage,
+    configureStripe: h.configureStripe,
   }),
 }));
 
@@ -127,6 +130,11 @@ beforeEach(() => {
   h.changePassword.mockResolvedValue(ok(undefined));
   h.requestPasswordReset.mockReset();
   h.requestPasswordReset.mockResolvedValue(ok(undefined));
+  h.configureStripe.mockReset();
+  h.configureStripe.mockResolvedValue(ok({
+    mode: 'test',
+    webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+  }));
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   process.exitCode = 0;
@@ -416,5 +424,16 @@ describe('request-password-reset', () => {
     });
     expect(soleJson()).toEqual({ ok: true });
     expect(process.exitCode).toBe(0);
+  });
+});
+
+describe('stripe configure', () => {
+  it('registers the webhook through the same API used by the integrations panel', async () => {
+    await run('stripe', 'configure', 'rk_test_private');
+
+    expect(h.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: 'rk_test_private' });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith(
+      'configured Stripe in test mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
+    );
   });
 });

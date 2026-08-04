@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { SOCIAL_LINKS_MAX_COUNT, tenantSocialLinkSchema } from './tenant.js';
-import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
+import { emailMessageSchema, magicLink, memberErasureRequestEmail, reputationAlertEmail, resetPassword, verifyEmail, welcomeSetPassword, threadReply, lessonQuestion, spacePost, subscriptionEnded, subscriptionPaymentFailed, supportMessage } from './transactional-email.js';
 
 const brandingSchema = z.object({
   logoUrl: z.string().url().nullable(),
@@ -13,6 +13,7 @@ const brandingSchema = z.object({
 export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('welcome-set-password'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('reset-password'), language: z.string(), actionUrl: z.string().url() }),
+  z.object({ kind: z.literal('verify-email'), language: z.string(), actionUrl: z.string().url() }),
   z.object({ kind: z.literal('magic-link'), language: z.string(), tenantName: z.string(), url: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('thread-reply'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
   z.object({ kind: z.literal('lesson-question'), language: z.string(), tenantName: z.string(), lessonName: z.string(), authorDisplay: z.string(), snippet: z.string(), url: z.string().url() }),
@@ -35,6 +36,8 @@ export const renderEmailOutboxPayload = (raw: unknown) => {
     ? welcomeSetPassword(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, ...(value.branding === undefined ? {} : { branding: value.branding }) })
     : value.kind === 'reset-password'
       ? resetPassword(value.language, { actionUrl: value.actionUrl })
+      : value.kind === 'verify-email'
+        ? verifyEmail(value.language, { actionUrl: value.actionUrl })
       : value.kind === 'magic-link'
         ? magicLink(value.language, { tenantName: value.tenantName, url: value.url, ...(value.branding === undefined ? {} : { branding: value.branding }) })
         : value.kind === 'thread-reply'

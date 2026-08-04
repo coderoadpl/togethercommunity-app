@@ -13,7 +13,7 @@ import { MemberAccountPage } from './MemberAccountPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
-const stubMe = () =>
+const stubMe = (emailVerified = true) =>
   http.get('*/api/me', () =>
     HttpResponse.json({
       ok: true,
@@ -21,6 +21,7 @@ const stubMe = () =>
         userId: 'user-1',
         email: 'member@together.dev',
         name: 'Member',
+        emailVerified,
         tenant: { id: 't1', slug: 'studio', name: 'Studio Demo', staffRole: null, memberId: 'm1', banned: false },
       },
     }),
@@ -69,6 +70,30 @@ describe('MemberAccountPage', () => {
     expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
     expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
     expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
+  });
+
+  it('shows the member verification state and resends without blocking the account', async () => {
+    let body: unknown;
+    server.use(
+      stubMe(false),
+      stubSettings(null),
+      stubBillingOrders(),
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    await renderAccount();
+
+    expect(await screen.findByText(pl.emailVerification.pending({ email: 'member@together.dev' })))
+      .toBeInTheDocument();
+    expect(screen.getByTestId('account-data-export')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('resend-verification-email'));
+    expect(await screen.findByText(pl.emailVerification.sent)).toBeInTheDocument();
+    expect(body).toEqual({
+      email: 'member@together.dev',
+      callbackURL: 'http://localhost:3000/login?verification=verified',
+    });
   });
 
   it('hides the manage-payments link when no billing portal URL is set', async () => {

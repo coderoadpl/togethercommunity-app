@@ -17,6 +17,7 @@ import { actions } from '../../api.js';
 import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { AuthenticationMethods } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
+import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -79,6 +80,7 @@ export const MemberAccountPage = () => {
   const requestPasswordReset = useMutation(actions.requestPasswordReset);
   const requestPasskeyPasswordSetup = useMutation(actions.requestPasswordReset);
   const changePassword = useMutation(actions.changePassword);
+  const resendVerification = useMutation(actions.sendVerificationEmail);
 
   if (me.isPending) {
     return (
@@ -129,6 +131,21 @@ export const MemberAccountPage = () => {
           <BreakAllText variant="body1" data-testid="account-email">
             {email}
           </BreakAllText>
+        </SectionCard>
+
+        <SectionCard title={t.emailVerification.heading}>
+          <EmailVerificationStatus
+            email={email}
+            emailVerified={me.data.emailVerified}
+            resendPending={resendVerification.isPending}
+            resendSent={resendVerification.isSuccess}
+            resendError={resendVerification.isError}
+            onResend={() => resendVerification.mutate({
+              email,
+              callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
+              language,
+            })}
+          />
         </SectionCard>
 
         <SectionCard

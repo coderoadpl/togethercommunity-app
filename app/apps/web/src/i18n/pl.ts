@@ -383,6 +383,18 @@ export const pl: Messages = {
         ? format('{author} dodał(a) nowy wpis w strefie „{space}”', { author, space })
         : format('{author} dodał(a) nowy wpis w strefie', { author }),
   },
+  emailVerification: {
+    heading: 'Weryfikacja adresu e-mail',
+    verifiedStatus: 'Adres e-mail jest zweryfikowany.',
+    pending: ({ email }) => format('Adres {email} nie jest jeszcze zweryfikowany. Możesz normalnie korzystać z konta i swoich przestrzeni. Potwierdzenie jest potrzebne tylko do utworzenia nowej przestrzeni.', { email }),
+    resend: 'Wyślij link ponownie',
+    sending: 'Wysyłanie…',
+    sent: 'Wysłaliśmy nowy link weryfikacyjny. Sprawdź swoją skrzynkę.',
+    verified: 'Adres e-mail został zweryfikowany.',
+    expired: 'Link weryfikacyjny wygasł. Wyślij nowy link z ustawień konta.',
+    invalid: 'Link weryfikacyjny jest nieprawidłowy. Wyślij nowy link z ustawień konta.',
+    providerError: 'Nie udało się obsłużyć weryfikacji adresu e-mail. Spróbuj ponownie.',
+  },
   security: {
     heading: 'Bezpieczeństwo',
     setOrResetPasswordHeading: 'Ustaw lub zresetuj hasło',

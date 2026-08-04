@@ -27,6 +27,7 @@ const okMe = () =>
       data: {
         userId: 'u1',
         email: 'user@example.com',
+        emailVerified: true,
         name: 'Jan Uczestnik',
         tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: null, memberId: 'm1', banned: false },
       },

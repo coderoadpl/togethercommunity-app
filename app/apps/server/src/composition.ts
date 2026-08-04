@@ -250,7 +250,7 @@ interface KsefAppDeps {
 }
 
 export interface AppDeps {
-  auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext'>;
+  auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext' | 'setEmailVerificationDeliveryContext'>;
   authPort: AuthPort;
   products: ProductRepository & ProductBatchReader;
   courses: CourseRepository;
@@ -607,6 +607,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     return campaignTick({
       identity: {
         userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
+        emailVerified: true,
         tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
       },
       capabilities: capabilitiesForPrincipal('operator-secret'),
@@ -623,6 +624,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
   const workerIdentity = (tenantId: string) => ({
     userId: 'marketing-worker', email: 'worker@together.invalid', name: 'Marketing worker',
+    emailVerified: true,
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {

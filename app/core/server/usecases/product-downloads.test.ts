@@ -33,6 +33,7 @@ const identity = (staffRole: Identity['staffRole'], memberId: string | null): Id
   userId: staffRole === null ? 'member-user' : 'owner-user',
   email: staffRole === null ? 'buyer@example.test' : 'owner@example.test',
   name: staffRole === null ? 'Buyer' : 'Owner',
+  emailVerified: true,
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',

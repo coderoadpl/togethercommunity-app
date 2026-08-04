@@ -353,6 +353,18 @@ export interface Messages {
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
   };
+  emailVerification: {
+    heading: string;
+    verifiedStatus: string;
+    pending: (params: { email: string }) => string;
+    resend: string;
+    sending: string;
+    sent: string;
+    verified: string;
+    expired: string;
+    invalid: string;
+    providerError: string;
+  };
   security: {
     heading: string;
     setOrResetPasswordHeading: string;

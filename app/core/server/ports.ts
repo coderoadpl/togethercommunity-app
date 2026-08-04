@@ -1551,6 +1551,7 @@ export interface AuthenticatedUser {
   userId: string;
   email: string;
   name: string;
+  emailVerified: boolean;
 }
 
 export interface AuthPort {

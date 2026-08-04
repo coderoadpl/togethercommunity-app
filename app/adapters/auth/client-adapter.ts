@@ -110,6 +110,7 @@ const postCliAuth = async (
   body: SignUpInput | SignInInput,
   onToken: (token: string) => void,
   onChallengeCookie: (cookie: string | null) => void,
+  language?: string,
 ): Promise<Result<AuthSessionResult, AppError>> => {
   let response: Response;
   try {
@@ -118,6 +119,7 @@ const postCliAuth = async (
       headers: {
         'content-type': 'application/json',
         origin: endpoint.origin,
+        ...(language ? { [MAGIC_LINK_LANGUAGE_HEADER]: language } : {}),
       },
       body: JSON.stringify(body),
       credentials: 'include',
@@ -150,13 +152,17 @@ const postCliAuth = async (
 
 const postBrowserSignUp = async (
   baseUrl: string,
-  body: SignUpInput,
+  input: SignUpInput,
 ): Promise<Result<AuthSessionResult, AppError>> => {
+  const { language, ...body } = input;
   let response: Response;
   try {
     response = await fetch(baseUrl === '' ? '/api/auth/sign-up/email' : new URL('/api/auth/sign-up/email', baseUrl), {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(language ? { [MAGIC_LINK_LANGUAGE_HEADER]: language } : {}),
+      },
       body: JSON.stringify(body),
       credentials: 'include',
     });
@@ -199,6 +205,16 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
         undefined,
         (
           await client.signIn.magicLink(
+            { email, callbackURL },
+            language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
+          )
+        ).error,
+      ),
+    sendVerificationEmail: async ({ email, callbackURL, language }) =>
+      toResult(
+        undefined,
+        (
+          await client.sendVerificationEmail(
             { email, callbackURL },
             language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
           )
@@ -344,6 +360,28 @@ const postCliPasswordReset = async (
   return ok(undefined);
 };
 
+const postCliVerificationEmail = async (
+  endpoint: CliEndpoint,
+  input: Parameters<AuthClientPort['sendVerificationEmail']>[0],
+): Promise<Result<void, AppError>> => {
+  let response: Response;
+  try {
+    response = await fetch(new URL('/api/auth/send-verification-email', endpoint.baseUrl), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: endpoint.origin,
+        ...(input.language ? { [MAGIC_LINK_LANGUAGE_HEADER]: input.language } : {}),
+      },
+      body: JSON.stringify({ email: input.email, callbackURL: input.callbackURL }),
+    });
+  } catch (cause) {
+    return err(appError('internal', `Network error requesting email verification: ${String(cause)}`));
+  }
+  if (!response.ok) return toResult(undefined, await readAuthError(response));
+  return ok(undefined);
+};
+
 const postCliResetPassword = async (
   endpoint: CliEndpoint,
   input: { token: string; newPassword: string },
@@ -455,13 +493,17 @@ export const createCliAuthAdapter = (
   const endpoint = { baseUrl: normalizedBaseUrl, origin: normalizedBaseUrl.origin };
   let challengeCookie: string | null = null;
   return {
-    signUp: (input) => postCliAuth(
-      endpoint,
-      '/api/auth/sign-up/email',
-      input,
-      onToken,
-      (cookie) => { challengeCookie = cookie; },
-    ),
+    signUp: (input) => {
+      const { language, ...body } = input;
+      return postCliAuth(
+        endpoint,
+        '/api/auth/sign-up/email',
+        body,
+        onToken,
+        (cookie) => { challengeCookie = cookie; },
+        language,
+      );
+    },
     signIn: (input) => postCliAuth(
       endpoint,
       '/api/auth/sign-in/email',
@@ -470,6 +512,7 @@ export const createCliAuthAdapter = (
       (cookie) => { challengeCookie = cookie; },
     ),
     requestMagicLink: (input) => postCliMagicLink(endpoint, input),
+    sendVerificationEmail: (input) => postCliVerificationEmail(endpoint, input),
     requestPasswordReset: (input) => postCliPasswordReset(endpoint, input),
     resetPassword: (input) => postCliResetPassword(endpoint, input),
     changePassword: (input) => postCliChangePassword(endpoint, input, token(), onToken),

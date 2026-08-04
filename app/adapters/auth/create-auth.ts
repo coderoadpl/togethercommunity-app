@@ -54,11 +54,17 @@ export const BETTER_AUTH_API_PATH_PATTERN = '/api/auth/*';
 
 export const BETTER_AUTH_MAGIC_LINK_PATH = '/api/auth/sign-in/magic-link';
 
+export const BETTER_AUTH_SIGN_UP_PATH = '/api/auth/sign-up/email';
+
 export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset';
+
+export const BETTER_AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/send-verification-email';
 
 export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
+
+export const EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES = 512;
 
 export const AUTH_POLICY = {
   sessionExpiresInSeconds: 60 * 60 * 24 * 7,
@@ -276,9 +282,15 @@ export interface ResetPasswordDeliveryContext {
   baseUrl?: string;
 }
 
+export interface EmailVerificationDeliveryContext {
+  language: string;
+  baseUrl: string;
+}
+
 export const createAuth = (db: Db, settings: AuthSettings) => {
   const deliveryContexts = new Map<string, MagicLinkDeliveryContext>();
   const resetPasswordContexts = new Map<string, ResetPasswordDeliveryContext>();
+  const emailVerificationContexts = new Map<string, EmailVerificationDeliveryContext>();
   const capturedLinks = new Map<string, { url: string; token: string }>();
 
   const auth = betterAuth({
@@ -298,6 +310,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       customRules: {
         '/sign-in/magic-link': { window: 60, max: 20 },
         '/request-password-reset': { window: 60, max: 20 },
+        '/send-verification-email': { window: 60, max: 20 },
         '/change-password': { window: 60, max: 20 },
         '/magic-link/verify': { window: 60, max: 20 },
         '/sign-in/email': { window: 60, max: 20 },
@@ -330,6 +343,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     },
     emailAndPassword: {
       enabled: true,
+      requireEmailVerification: false,
       minPasswordLength: PASSWORD_MIN_LENGTH,
       resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
       revokeSessionsOnPasswordReset: true,
@@ -344,6 +358,31 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           tenantId: null,
           to: normalizedEmail,
           payload: { kind: 'reset-password', language: context.language, actionUrl },
+          now: settings.clock.nowIso(),
+        });
+        if (!queued.ok) throw new Error(queued.error.message);
+        settings.dispatchEmail();
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        const normalizedEmail = normalizeEmail(user.email);
+        const context = emailVerificationContexts.get(normalizedEmail) ?? {
+          language: 'pl',
+          baseUrl: settings.baseUrl,
+        };
+        emailVerificationContexts.delete(normalizedEmail);
+        const queued = await settings.emailOutbox.enqueue({
+          id: settings.ids.nextId(),
+          tenantId: null,
+          to: normalizedEmail,
+          payload: {
+            kind: 'verify-email',
+            language: context.language,
+            actionUrl: rebaseUrl(url, context.baseUrl),
+          },
           now: settings.clock.nowIso(),
         });
         if (!queued.ok) throw new Error(queued.error.message);
@@ -426,6 +465,16 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       }
       resetPasswordContexts.set(normalizedEmail, context);
     },
+    setEmailVerificationDeliveryContext: (email: string, context: EmailVerificationDeliveryContext) => {
+      const normalizedEmail = normalizeEmail(email);
+      emailVerificationContexts.delete(normalizedEmail);
+      while (emailVerificationContexts.size >= EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES) {
+        const oldest = emailVerificationContexts.keys().next();
+        if (oldest.done) break;
+        emailVerificationContexts.delete(oldest.value);
+      }
+      emailVerificationContexts.set(normalizedEmail, context);
+    },
     consumeCapturedMagicLink: (email: string) => {
       const normalizedEmail = normalizeEmail(email);
       const captured = capturedLinks.get(normalizedEmail) ?? null;
@@ -456,6 +505,7 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       userId: session.user.id,
       email: session.user.email,
       name: session.user.name,
+      emailVerified: session.user.emailVerified,
     };
   },
   ensureUser: async (email) => {
@@ -468,7 +518,7 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
       const created = await internalAdapter.createUser({
         name: nameFromEmail(normalizedEmail),
         email: normalizedEmail,
-        emailVerified: true,
+        emailVerified: false,
       });
       return { userId: created.id, created: true };
     } catch (cause) {

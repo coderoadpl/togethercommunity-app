@@ -10,6 +10,7 @@ const authWith = (overrides: Partial<AuthClientPort>): AuthClientPort => ({
   signUp: vi.fn(),
   signIn: vi.fn(),
   requestMagicLink: vi.fn(),
+  sendVerificationEmail: vi.fn(),
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
   changePassword: vi.fn(),

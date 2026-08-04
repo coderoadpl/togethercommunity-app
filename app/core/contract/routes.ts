@@ -184,13 +184,13 @@ export const authConfigOutputSchema = z.object({
   passkeysEnabled: z.boolean(),
   totpEnabled: z.boolean(),
   exposeMagicLinks: z.boolean(),
-  tenantCreationEnabled: z.boolean(),
 });
 
 export const meOutputSchema = z.object({
   userId: z.string(),
   email: z.string(),
   name: z.string(),
+  emailVerified: z.boolean(),
   tenant: z
     .object({
       id: z.string(),
@@ -221,6 +221,7 @@ export const memberBillingOrdersOutputSchema = z.object({
 
 export const tenantListOutputSchema = z.object({
   tenants: z.array(membershipSchema),
+  canCreateTenant: z.boolean(),
 });
 
 export const productsListOutputSchema = z.object({

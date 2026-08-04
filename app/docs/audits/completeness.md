@@ -50,3 +50,31 @@ document is not an input and cannot create Together scope.
    unexercised providers as blind spots. A green gate means implemented behavior
    works as tested; it does not mean the product backlog is complete.
 
+## Email-verification evidence — 2026-08-04
+
+- **Reviewed commit:** `bcac038897c8819af4a539ef96f8a424b791e8df` on
+  `run-v140-email-verify`, with the findings below resolved by the review commit.
+- **Auditor and owner:** feature owner; repository owner accepts documented
+  exceptions before merge.
+- **Scope:** soft email verification at registration and resend, tenant-host
+  delivery, creator and member account status, PL/EN mail and UI states,
+  authorization, CLI identity output, and self-host bootstrap behavior.
+- **Tool evidence:** focused auth, server, and login-page tests cover delivery
+  rebasing, bounded pending contexts, provider outcomes, and both account
+  surfaces. `pnpm run check` and `pnpm run smoke` remain the merge gates.
+- **Manual evidence:** the route and permission inventories, ADR 0012, and the
+  self-host guide were reconciled with the registration, login, resend,
+  tenant-creation, creator-settings, and member-account journeys.
+- **Finding status:** no open product-completeness finding remains in this
+  scope. Verification remains soft by design and blocks only tenant creation.
+- **Accepted exception:** `createTenant` reads `tenants.hasAny()` before
+  authorization so the documented first-workspace waiver can be selected.
+  This deliberately differs from a repository-free denial ordering. The read
+  is non-mutating, `requireEmpty` keeps creation atomic, and the use-case tests
+  prove a denied request does not mutate the store.
+- **Blind spots:** production-provider delivery, DNS/TLS for a real custom
+  domain, and inbox placement were not exercised. They remain deployment
+  evidence, not repository-complete claims.
+- **Due date:** feature owner re-runs this evidence at the next release audit;
+  production owners supply provider and domain evidence before
+  go-live.

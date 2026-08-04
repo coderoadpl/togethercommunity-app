@@ -442,6 +442,7 @@ const executeAdapterE2e = async (
         userId: 'e2e-owner',
         email: 'e2e@together.dev',
         name: 'E2E',
+        emailVerified: true,
         tenantId,
         tenantSlug: 'acme',
         tenantName: 'Acme',

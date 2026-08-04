@@ -23,6 +23,7 @@ const identity: Identity = {
   userId: 'owner-1',
   email: 'owner@example.test',
   name: 'Owner',
+  emailVerified: true,
   tenantId: TENANT_ID,
   tenantSlug: 'acme',
   tenantName: 'Acme',

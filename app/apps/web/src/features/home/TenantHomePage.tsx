@@ -20,7 +20,8 @@ import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
-import { localizeError, useTranslations } from '../../i18n/index.js';
+import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
+import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { tenantUrl } from '../../lib/tenant.js';
 import { CardTitle, TenantListItemText } from '../../theme.js';
 
@@ -58,13 +59,13 @@ export const TenantHomePage = () => {
     );
   }
 
-  return <PickTenant />;
+  return <PickTenant account={{ email: me.data.email, emailVerified: me.data.emailVerified }} />;
 };
 
-const PickTenant = () => {
+const PickTenant = ({ account }: { account: { email: string; emailVerified: boolean } }) => {
   const t = useTranslations();
+  const { language } = useLanguage();
   const tenants = useQuery(actions.tenants);
-  const authConfig = useQuery(actions.authConfig);
   const [name, setName] = useState('');
   const [slugInput, setSlugInput] = useState('');
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
@@ -78,6 +79,7 @@ const PickTenant = () => {
       await queryClient.invalidateQueries();
     },
   });
+  const resendVerification = useMutation(actions.sendVerificationEmail);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -116,7 +118,23 @@ const PickTenant = () => {
             </ListItem>
           ))}
         </List>
-        {authConfig.data?.tenantCreationEnabled ? (
+        {!account.emailVerified ? (
+          <Box sx={{ mt: '1.5rem' }}>
+            <EmailVerificationStatus
+              email={account.email}
+              emailVerified={false}
+              resendPending={resendVerification.isPending}
+              resendSent={resendVerification.isSuccess}
+              resendError={resendVerification.isError}
+              onResend={() => resendVerification.mutate({
+                email: account.email,
+                callbackURL: new URL('/login?verification=verified', window.location.origin).toString(),
+                language,
+              })}
+            />
+          </Box>
+        ) : null}
+        {tenants.data?.canCreateTenant ? (
           <Box component="form" onSubmit={submit} sx={{ mt: '1.5rem', display: 'grid', gap: '1rem' }}>
           <Typography variant="h2" component="h2">
             {t.tenant.create}

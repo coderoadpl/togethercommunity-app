@@ -27,6 +27,22 @@ describe('renderEmailOutboxPayload', () => {
     if (rendered.success) expect(rendered.data.subject).toBe('Reset your password');
   });
 
+  it.each([
+    ['pl', 'Potwierdź swój adres e-mail'],
+    ['en', 'Verify your email address'],
+  ] as const)('renders a %s verification email', (language, subject) => {
+    const rendered = renderEmailOutboxPayload({
+      kind: 'verify-email',
+      language,
+      actionUrl: 'https://studio.example/verify?token=xyz',
+    });
+    expect(rendered.success).toBe(true);
+    if (rendered.success) {
+      expect(rendered.data.subject).toBe(subject);
+      expect(rendered.data.text).toContain('studio.example');
+    }
+  });
+
   it('renders a welcome-set-password payload without branding', () => {
     const rendered = renderEmailOutboxPayload({
       kind: 'welcome-set-password',

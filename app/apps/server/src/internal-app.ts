@@ -392,6 +392,7 @@ const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
   userId: user.userId,
   email: user.email,
   name: user.name,
+  emailVerified: user.emailVerified,
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -404,6 +405,7 @@ const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): 
   userId: 'checkout',
   email: 'checkout@invalid.test',
   name: 'Checkout',
+  emailVerified: false,
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -1250,6 +1252,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         userId: identity.userId,
         email: identity.email,
         name: identity.name,
+        emailVerified: identity.emailVerified,
         tenant:
           identity.tenantId &&
             identity.tenantSlug &&
@@ -1390,7 +1393,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
 
   app.get(API_PATHS.tenants, async (c) => {
     const result = await listMyTenants({ identity: c.get('identity') }, deps);
-    return respond(result.ok ? ok({ tenants: result.value }) : result);
+    return respond(result);
   });
 
   app.get(API_PATHS.products, async (c) => {

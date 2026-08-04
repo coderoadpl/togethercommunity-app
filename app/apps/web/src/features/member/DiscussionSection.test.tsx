@@ -40,6 +40,7 @@ const okMe = (staffRole: 'owner' | null = null) =>
       data: {
         userId: 'u1',
         email: 'user@example.com',
+        emailVerified: true,
         name: 'Jan Uczestnik',
         tenant: {
           id: 't1',

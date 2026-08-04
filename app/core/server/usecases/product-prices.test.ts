@@ -9,6 +9,7 @@ const identity = (staffRole: 'owner' | 'admin' | null): Identity => ({
   userId: 'u1',
   email: 'owner@together.dev',
   name: 'Owner',
+  emailVerified: true,
   tenantId: 't1',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',

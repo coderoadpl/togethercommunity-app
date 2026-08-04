@@ -3,6 +3,7 @@ import {
   capabilitiesForPrincipal,
   forbidden,
   ok,
+  requiresVerifiedEmail,
   tenantNotFound,
   type AppError,
   type Capability,
@@ -18,8 +19,12 @@ const principalFor = (ctx: Ctx) => {
   return 'authenticated';
 };
 
-export const authorize = (ctx: Ctx, capability: Capability): AppError | null =>
-  (
+export const authorize = (
+  ctx: Ctx,
+  capability: Capability,
+  options: { allowUnverifiedEmail?: boolean } = {},
+): AppError | null => {
+  const granted =
     ctx.capabilities?.includes(capability)
     ?? (
       capabilitiesForPrincipal(principalFor(ctx)).includes(capability)
@@ -27,10 +32,14 @@ export const authorize = (ctx: Ctx, capability: Capability): AppError | null =>
         ctx.identity.memberId !== null
         && capabilitiesForPrincipal('member').includes(capability)
       )
-    )
-  )
-    ? null
-    : forbidden(`${capability} is not permitted`);
+    );
+  if (!granted) return forbidden(`${capability} is not permitted`);
+  return requiresVerifiedEmail(capability)
+    && !ctx.identity.emailVerified
+    && options.allowUnverifiedEmail !== true
+    ? forbidden(`${capability} requires a verified email address`)
+    : null;
+};
 
 export const authorizeTenant = (
   ctx: Ctx,

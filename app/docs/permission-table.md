@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 94. Route rows: 214. Exported `Ctx` use-case rows: 188.
+Closed capability count: 94. Route rows: 216. Exported `Ctx` use-case rows: 188.
 
 ## Human-readable diff
 
@@ -43,6 +43,8 @@ no changes
 | `GET /api/public/auth-config` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/sign-in/magic-link` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/request-password-reset` | auth:use | public | public | yes | public route manifest |
+| `POST /api/auth/sign-up/email` | auth:use | public | public | yes | public route manifest |
+| `POST /api/auth/send-verification-email` | auth:use | public | public | yes | public route manifest |
 | `GET /api/auth/*` | auth:use | public | public | yes | public route manifest |
 | `POST /api/auth/*` | auth:use | public | public | yes | public route manifest |
 | `POST /api/webhooks/ses/:webhookToken` | webhook:process | webhook | webhook | yes | public route manifest |
@@ -442,10 +444,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:124` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:821` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:823` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1257` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1257` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:823` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:825` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1260` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1260` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -484,7 +486,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
-| staff-role | `core/server/usecases/resolve-identity.ts:78` | `staffRole: staffGrant?.staffRole ?? null,` |
+| staff-role | `core/server/usecases/resolve-identity.ts:79` | `staffRole: staffGrant?.staffRole ?? null,` |
 
 ## Suspicious but preserved
 

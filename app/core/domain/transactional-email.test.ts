@@ -10,7 +10,7 @@ import {
   subscriptionPaymentFailed,
   supportMessage,
   threadReply,
-  welcomeSetPassword,
+  welcomeSignIn,
 } from './transactional-email.js';
 
 describe('subscription lifecycle emails', () => {
@@ -100,62 +100,58 @@ describe('email transport test message', () => {
   });
 });
 
-describe('welcomeSetPassword', () => {
+describe('welcomeSignIn', () => {
   it('renders the Polish template', () => {
     expect(
-      welcomeSetPassword('pl', {
+      welcomeSignIn('pl', {
         tenantName: 'Acme Courses',
-        actionUrl: 'https://acme.localhost/set-password?token=abc',
+        actionUrl: 'https://acme.localhost/sign-in?token=abc',
       }),
     ).toMatchInlineSnapshot(`
       {
-        "html": "<p>Cześć!</p><p>Twoje konto na platformie Acme Courses zostało utworzone.</p><p>Zanim zaczniesz, ustaw swoje hasło: <a href="https://acme.localhost/set-password?token=abc">Ustaw hasło</a></p><p>Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.</p>",
+        "html": "<p>Cześć!</p><p>Twoje konto na platformie Acme Courses jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.</p><p><a href="https://acme.localhost/sign-in?token=abc">Zaloguj się i otwórz kurs</a></p>",
         "subject": "Cześć, Twoje konto Acme Courses jest gotowe",
         "text": "Cześć!
 
-      Twoje konto na platformie Acme Courses zostało utworzone.
+      Twoje konto na platformie Acme Courses jest gotowe. Kliknij, aby się zalogować — link jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy na stronie logowania.
 
-      Zanim zaczniesz, ustaw swoje hasło: https://acme.localhost/set-password?token=abc
-
-      Link do ustawienia hasła jest ważny przez godzinę. Jeśli przestanie działać, poproś o nowy link na stronie logowania.",
+      Zaloguj się i otwórz kurs: https://acme.localhost/sign-in?token=abc",
       }
     `);
   });
 
   it('renders the English template', () => {
     expect(
-      welcomeSetPassword('en', {
+      welcomeSignIn('en', {
         tenantName: 'Acme Courses',
-        actionUrl: 'https://acme.localhost/set-password?token=abc',
+        actionUrl: 'https://acme.localhost/sign-in?token=abc',
       }),
     ).toMatchInlineSnapshot(`
       {
-        "html": "<p>Hello!</p><p>Your account on Acme Courses has been created.</p><p>Before you start, set your password: <a href="https://acme.localhost/set-password?token=abc">Set password</a></p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>",
+        "html": "<p>Hello!</p><p>Your account on Acme Courses is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.</p><p><a href="https://acme.localhost/sign-in?token=abc">Sign in and open your course</a></p>",
         "subject": "Hello, your Acme Courses account is ready",
         "text": "Hello!
 
-      Your account on Acme Courses has been created.
+      Your account on Acme Courses is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.
 
-      Before you start, set your password: https://acme.localhost/set-password?token=abc
-
-      The password setup link expires in one hour. If it stops working, request a new password reset from the login page.",
+      Sign in and open your course: https://acme.localhost/sign-in?token=abc",
       }
     `);
   });
 
   it('falls back to Polish for unknown languages', () => {
-    expect(welcomeSetPassword('de', { tenantName: 'Acme', actionUrl: 'https://x/y' }).subject).toBe(
-      welcomeSetPassword('pl', { tenantName: 'Acme', actionUrl: 'https://x/y' }).subject,
+    expect(welcomeSignIn('de', { tenantName: 'Acme', actionUrl: 'https://x/y' }).subject).toBe(
+      welcomeSignIn('pl', { tenantName: 'Acme', actionUrl: 'https://x/y' }).subject,
     );
   });
 
   it('escapes HTML in the tenant name and action url', () => {
     expect(
-      welcomeSetPassword('en', {
+      welcomeSignIn('en', {
         tenantName: "Ben & Jerry's <Studio>",
         actionUrl: 'https://x/y?a=1&b=2',
       }).html,
-    ).toMatchInlineSnapshot(`"<p>Hello!</p><p>Your account on Ben &amp; Jerry&#39;s &lt;Studio&gt; has been created.</p><p>Before you start, set your password: <a href="https://x/y?a=1&amp;b=2">Set password</a></p><p>The password setup link expires in one hour. If it stops working, request a new password reset from the login page.</p>"`);
+    ).toMatchInlineSnapshot(`"<p>Hello!</p><p>Your account on Ben &amp; Jerry&#39;s &lt;Studio&gt; is ready. Click to sign in — the link is valid for one hour. If it stops working, request a new one on the login page.</p><p><a href="https://x/y?a=1&amp;b=2">Sign in and open your course</a></p>"`);
   });
 });
 
@@ -292,8 +288,8 @@ describe('email branding header', () => {
 
   it('is byte-identical to the unbranded mail when both branding fields are null', () => {
     expect(
-      welcomeSetPassword('pl', { ...input, branding: { logoUrl: null, accentColor: null } }),
-    ).toEqual(welcomeSetPassword('pl', input));
+      welcomeSignIn('pl', { ...input, branding: { logoUrl: null, accentColor: null } }),
+    ).toEqual(welcomeSignIn('pl', input));
     expect(
       magicLink('en', {
         tenantName: input.tenantName,
@@ -304,7 +300,7 @@ describe('email branding header', () => {
   });
 
   it('prepends the accent rule and logo to the welcome mail', () => {
-    const message = welcomeSetPassword('pl', {
+    const message = welcomeSignIn('pl', {
       ...input,
       branding: { logoUrl: 'https://akademia.localhost/assets/akademia-logo.svg', accentColor: '#0E7490' },
     });
@@ -324,7 +320,7 @@ describe('email branding header', () => {
   });
 
   it('renders social profiles in HTML and plain-text transactional mail', () => {
-    const message = welcomeSetPassword('en', {
+    const message = welcomeSignIn('en', {
       ...input,
       branding: {
         logoUrl: null,

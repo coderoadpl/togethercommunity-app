@@ -112,6 +112,7 @@ export const en: Messages = {
     magicLinkEmailLabel: 'magic link email',
     magicLinkIdle: 'Send me a magic link',
     magicLinkPending: 'Sending magic link…',
+    magicLinkExpired: 'This magic link has expired or was already used. Enter your email below and we will send you a new one.',
     magicLinkRequested: 'Magic link sent.',
     magicLinkRequestedBody: ({ email }) =>
       format('Check {email}. The link will sign you in without a password.', { email }),

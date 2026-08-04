@@ -205,7 +205,11 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
         undefined,
         (
           await client.signIn.magicLink(
-            { email, callbackURL },
+            {
+              email,
+              callbackURL,
+              errorCallbackURL: new URL('/login?error=INVALID_TOKEN', callbackURL).toString(),
+            },
             language ? { headers: { [MAGIC_LINK_LANGUAGE_HEADER]: language } } : {},
           )
         ).error,

@@ -27,7 +27,7 @@ describe('unified email send projection', () => {
     expect(emailSendProjectionSchema.parse({
       ...base,
       kind: 'transactional',
-      source: 'welcome-set-password',
+      source: 'welcome-sign-in',
       status: 'queued',
       skipReason: null,
       transport: 'platform',

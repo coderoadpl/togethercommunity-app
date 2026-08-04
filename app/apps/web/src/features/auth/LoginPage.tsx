@@ -24,9 +24,13 @@ import { EmailVerificationResult } from '../../components/ui/EmailVerificationSt
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
+const invalidTokenFromLocation = (): boolean =>
+  new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
+
 export const LoginPage = () => {
   const t = useTranslations();
   const { language } = useLanguage();
+  const magicLinkExpired = invalidTokenFromLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [magicEmail, setMagicEmail] = useState('');
@@ -217,7 +221,13 @@ export const LoginPage = () => {
 
   return (
     <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
-        <EmailVerificationResult />
+        {magicLinkExpired ? (
+          <Alert severity="error" sx={{ mb: '1rem' }}>
+            {t.auth.magicLinkExpired}
+          </Alert>
+        ) : (
+          <EmailVerificationResult />
+        )}
         <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="login-email">{t.auth.emailLabel}</FormLabel>
@@ -299,6 +309,7 @@ export const LoginPage = () => {
               value={magicEmail}
               onChange={(event) => setMagicEmail(event.target.value)}
               autoComplete="email"
+              autoFocus={magicLinkExpired}
               required
             />
           </FormControl>

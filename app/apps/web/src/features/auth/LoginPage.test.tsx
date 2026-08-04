@@ -52,7 +52,10 @@ const fillCredentials = async () => {
 };
 
 describe('LoginPage', () => {
-  it('uses platform login on the configured base domain without resolving a tenant', async () => {
+  it.each([
+    ['configured base domain', 'togethercommunity.app'],
+    ['derived start host', 'start.togethercommunity.app'],
+  ])('uses platform login on the %s without resolving a tenant', async (_surface, hostname) => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
     server.use(
@@ -65,7 +68,7 @@ describe('LoginPage', () => {
       }),
     );
 
-    await renderLoginPage(false, '/login', 'togethercommunity.app');
+    await renderLoginPage(false, '/login', hostname);
 
     expect(screen.getByText(pl.auth.signInPlatformEyebrow)).toBeInTheDocument();
     expect(screen.queryByText(/przestrzeń togethercommunity\.app/u)).not.toBeInTheDocument();

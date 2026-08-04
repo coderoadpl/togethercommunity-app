@@ -97,6 +97,7 @@ const deps = (
   tenants: fakeTenants(tenantRows),
   tenantDomains: fakeDomains(domains),
   baseDomain: 'localhost',
+  platformHost: 'start.localhost',
   singleTenantMode: false,
 });
 

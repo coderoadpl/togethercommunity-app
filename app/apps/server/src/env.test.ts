@@ -170,6 +170,7 @@ describe('tenant routing mode', () => {
   it('falls back to the app host as base domain when none is configured', () => {
     expect(selectTenantRouting(envSchema.parse({ APP_BASE_URL: 'https://learn.example.com' }))).toEqual({
       baseDomain: 'learn.example.com',
+      platformHost: null,
       singleTenantMode: true,
       tenantCreationMode: 'closed',
     });
@@ -195,7 +196,12 @@ describe('tenant routing mode', () => {
     expect(selectTenantRouting(envSchema.parse({
       APP_BASE_DOMAIN: 'together.example',
       APP_BASE_URL: 'https://together.example',
-    }))).toEqual({ baseDomain: 'together.example', singleTenantMode: false, tenantCreationMode: 'open' });
+    }))).toEqual({
+      baseDomain: 'together.example',
+      platformHost: 'start.together.example',
+      singleTenantMode: false,
+      tenantCreationMode: 'open',
+    });
   });
 
   it('trusts no sibling subdomains or HTTP custom domains in single-tenant mode', () => {

@@ -64,6 +64,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([domain]),
       tenants: fakeTenants([acme, globex]),
       baseDomain: 'localhost',
+      platformHost: 'start.localhost',
       singleTenantMode: false,
     });
 
@@ -78,6 +79,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([]),
       tenants: fakeTenants([acme, globex]),
       baseDomain: 'localhost',
+      platformHost: 'start.localhost',
       singleTenantMode: false,
     };
 
@@ -96,6 +98,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([]),
       tenants: fakeTenants([acme]),
       baseDomain: 'localhost',
+      platformHost: 'start.localhost',
       singleTenantMode: false,
     });
 
@@ -110,6 +113,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([]),
       tenants: fakeTenants([acme]),
       baseDomain: 'localhost',
+      platformHost: null,
       singleTenantMode: true,
     });
 
@@ -124,6 +128,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([]),
       tenants: fakeTenants([acme, globex]),
       baseDomain: 'localhost',
+      platformHost: null,
       singleTenantMode: true,
     });
 
@@ -138,6 +143,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([]),
       tenants: fakeTenants([acme]),
       baseDomain: 'localhost',
+      platformHost: null,
       singleTenantMode: true,
     });
 
@@ -153,6 +159,7 @@ describe('resolveTenant', () => {
       tenantDomains: fakeDomains([]),
       tenants: fakeTenants([suspended]),
       baseDomain: 'localhost',
+      platformHost: 'start.localhost',
       singleTenantMode: false,
     });
 
@@ -174,6 +181,7 @@ describe('resolveTenant', () => {
       }]),
       tenants: fakeTenants([suspended]),
       baseDomain: 'localhost',
+      platformHost: 'start.localhost',
       singleTenantMode: false,
     });
 
@@ -181,5 +189,50 @@ describe('resolveTenant', () => {
       ok: false,
       error: { code: 'tenant_not_found', message: 'Unknown tenant' },
     });
+  });
+
+  it('returns the no-tenant platform result on the derived start host', async () => {
+    const result = await resolveTenant('START.TOGETHERCOMMUNITY.APP:443', 'acme', {
+      tenantDomains: fakeDomains([{
+        id: 'domain-acme',
+        tenantId: acme.id,
+        domain: 'start.togethercommunity.app',
+        kind: 'custom',
+        verified: true,
+      }]),
+      tenants: fakeTenants([acme]),
+      baseDomain: 'togethercommunity.app',
+      platformHost: 'start.togethercommunity.app',
+      singleTenantMode: false,
+    });
+
+    expect(result).toEqual({ ok: true, value: null });
+  });
+
+  it('keeps tenant subdomain resolution unchanged beside the platform host', async () => {
+    const result = await resolveTenant('acme.togethercommunity.app', null, {
+      tenantDomains: fakeDomains([]),
+      tenants: fakeTenants([acme]),
+      baseDomain: 'togethercommunity.app',
+      platformHost: 'start.togethercommunity.app',
+      singleTenantMode: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { tenant: { id: 't-acme' }, source: 'subdomain' },
+    });
+  });
+
+  it('keeps the staging base host as a no-tenant platform surface', async () => {
+    const result = await resolveTenant('staging.togethercommunity.app', null, {
+      tenantDomains: fakeDomains([]),
+      tenants: fakeTenants([acme]),
+      baseDomain: 'staging.togethercommunity.app',
+      platformHost: 'start.staging.togethercommunity.app',
+      singleTenantMode: false,
+    });
+
+    expect(result).toEqual({ ok: true, value: null });
   });
 });

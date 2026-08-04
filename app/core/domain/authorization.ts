@@ -258,6 +258,7 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'checkout:read',
     'checkout:start',
     'offer:read',
+    'lesson:play',
     'legal:read',
     'development:inspect',
     'development:mutate',

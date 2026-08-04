@@ -5,6 +5,7 @@ import {
   BETTER_AUTH_MAGIC_LINK_PATH,
   BETTER_AUTH_PASSWORD_RESET_PATH,
 } from '#adapters/auth/create-auth.js';
+import { API_PATHS } from '#core/contract/index.js';
 
 export type PublicRouteManifestEntry = {
   path: string;
@@ -19,6 +20,7 @@ export const PUBLIC_ROUTE_MANIFEST: readonly PublicRouteManifestEntry[] = [
   { path: '/api/health/live', methods: ['GET'], mutating: false, why: 'Process liveness check' },
   { path: '/api/health/ready', methods: ['GET'], mutating: false, why: 'Database readiness check' },
   { path: '/api/public/offer', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Public offer discovery' },
+  { path: API_PATHS.studentLesson, methods: ['GET', 'OPTIONS'], mutating: false, why: 'Free lesson preview' },
   { path: '/api/public/payment-config', methods: ['GET', 'OPTIONS'], mutating: false, why: 'Checkout capability discovery' },
   { path: '/api/public/checkout/coupon', methods: ['POST', 'OPTIONS'], mutating: false, why: 'Read-only coupon validation' },
   { path: '/api/public/checkout/session', methods: ['OPTIONS'], mutating: false, why: 'Checkout session start preflight' },

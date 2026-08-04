@@ -170,11 +170,18 @@ export interface CourseModuleRepository {
 
 export interface CourseLessonRepository {
   list(tenantId: string): Promise<CourseLesson[]>;
+  listPreviews(tenantId: string): Promise<CourseLessonPreview[]>;
   findById(tenantId: string, id: string): Promise<CourseLesson | null>;
   findByIds(tenantId: string, ids: string[]): Promise<CourseLesson[]>;
   create(tenantId: string, lesson: CourseLesson): Promise<void>;
   update(tenantId: string, lesson: CourseLesson, version?: EntityVersionRecord): Promise<CourseLesson | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface CourseLessonPreview {
+  id: string;
+  name: string;
+  courseId: string;
 }
 
 export interface LessonAttachmentRepository {

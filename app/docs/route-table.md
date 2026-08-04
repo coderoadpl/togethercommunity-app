@@ -9,11 +9,13 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
+| `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
 | `GET /api/public/offer` | public | read | Public offer discovery |
+| `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
@@ -188,7 +190,6 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/student/progress/last-viewed` | authenticated | mutating | student last viewed |
 | `GET /api/student/lessons/next` | authenticated | read | student lesson next |
 | `GET /api/student/progress` | authenticated | read | student progress |
-| `GET /api/student/lessons/:lessonId` | authenticated | read | student lesson |
 | `POST /api/posts` | authenticated | mutating | posts create |
 | `POST /api/support/message` | authenticated | mutating | support message |
 | `POST /api/posts/pin` | authenticated | mutating | posts pin |

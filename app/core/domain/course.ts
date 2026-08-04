@@ -227,6 +227,7 @@ export const courseLessonSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   name: requiredNameSchema,
+  isPreview: z.boolean().default(false),
   contents: z.array(lessonBlockSchema),
   durationMinutes: lessonDurationSchema.optional(),
   legacyId: z.string().nullable(),
@@ -405,6 +406,7 @@ export const updateCourseModuleInputSchema = z.object({
 
 export const newCourseLessonSchema = z.object({
   name: requiredNameSchema,
+  isPreview: z.boolean().default(false),
   contents: z.array(lessonBlockSchema).default([]),
   durationMinutes: lessonDurationSchema.optional(),
   legacyId: z.string().nullable().default(null),
@@ -413,6 +415,7 @@ export const newCourseLessonSchema = z.object({
 export const updateCourseLessonInputSchema = z.object({
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
+  isPreview: z.boolean().optional(),
   contents: z.array(lessonBlockSchema).optional(),
   durationMinutes: lessonDurationSchema.nullable().optional(),
 });

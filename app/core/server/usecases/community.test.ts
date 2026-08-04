@@ -106,6 +106,7 @@ const lesson = (id: string): CourseLesson => ({
   id,
   tenantId: 't1',
   name: id,
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: NOW,
@@ -171,6 +172,7 @@ const modulesRepo: CourseModuleRepository = {
 
 const lessonsRepo: CourseLessonRepository = {
   list: async (tenantId) => (tenantId === 't1' ? [lesson('l1'), lesson('l2')] : []),
+  listPreviews: async () => [],
   findById: async (tenantId, id) => (tenantId === 't1' && ['l1', 'l2'].includes(id) ? lesson(id) : null),
   findByIds: async (_tenantId, ids) => ids.map(lesson),
   create: async () => undefined,

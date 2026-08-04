@@ -55,7 +55,7 @@ const signBunnyEmbedUrl = (
 };
 
 /**
- * The member-facing lesson read: entitlement-checked content with S3-hosted
+ * The learner-facing lesson read: entitlement-checked content with S3-hosted
  * PDF pointers exchanged for short-lived presigned URLs, because imported
  * legacy documents live on a private bucket that rejects anonymous reads.
  * Tenants without stored S3 credentials get the blocks untouched.

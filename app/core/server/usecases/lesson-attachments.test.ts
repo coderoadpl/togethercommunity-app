@@ -60,6 +60,7 @@ const lesson: CourseLesson = {
   id: 'lesson-1',
   tenantId: 'tenant-1',
   name: 'Private lesson',
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -152,6 +153,7 @@ const attachmentRepository = (): LessonAttachmentRepository & { rows: LessonAtta
 
 const lessons: CourseLessonRepository = {
   list: async () => [lesson],
+  listPreviews: async () => [],
   findById: async (tenantId, id) => tenantId === lesson.tenantId && id === lesson.id ? lesson : null,
   findByIds: async () => [lesson],
   create: async () => undefined,

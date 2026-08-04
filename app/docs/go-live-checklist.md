@@ -281,9 +281,13 @@ grant is revoked when no other paid access remains
 e. Open a dispute with card `4000 0000 0000 0259`. Confirm
 `charge.dispute.created` follows the same adjustment path.
 
-f. Cancel the subscription in Stripe. Confirm
-`customer.subscription.deleted` makes the local row `canceled` through
-`updateSubscriptionFromProvider`.
+f. Cancel the subscription at period end in Stripe. Confirm the grant expiry
+drops to the reported `current_period_end` with no retry grace, and that
+`customer.subscription.deleted` then makes the local row `canceled` while
+keeping that expiry. Cancel another subscription immediately and confirm the
+grant expiry drops to Stripe's reported `ended_at` rather than the later
+`current_period_end` (`core/server/usecases/subscription-lifecycle.ts`,
+`syncGrantToSubscription`).
 
 g. Remove that member in the staff panel. Confirm the Stripe subscription is
 immediately canceled, `subscriptionCancellations` reports `canceled`, and a

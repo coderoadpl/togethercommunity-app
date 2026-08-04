@@ -105,9 +105,10 @@ dynamically linked; the related \`@img/sharp-*\` prebuilds carry the same
 notice). They never enter the product bundle and are the one recorded
 exception to the permissive-only dependency policy.
 
-**\`app/adapters/invoicing/xsd/\`** holds the official Polish Ministry of Finance
-FA(3) schemas. They are public administrative documents, redistributed
-unmodified so invoices can be validated locally.
+**\`app/adapters/invoicing/xsd/\`** holds the official FA(3) schemas published by
+the Polish Ministry of Finance (podatki.gov.pl, KSeF FA(3) schema). They are
+public administrative documents, redistributed unmodified for validation so
+invoices can be checked locally.
 
 ## npm dependencies
 

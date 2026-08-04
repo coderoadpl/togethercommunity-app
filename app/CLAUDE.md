@@ -53,10 +53,10 @@ Visual verification has zero retries.
   Accepted exception: sharp's prebuilt libvips binaries
   (`@img/sharp-libvips-*`, LGPL-3.0-or-later, dynamically linked) — recorded
   in THIRD-PARTY-LICENSES.md.
-- Clean-room discipline for AGPL inspiration sources (inventory in the owner's private materials):
-  reading agents produce behavioral specs in their own words; implementing
-  agents work from specs only and never open those sources. No a-prior-art-tool-like
-  naming.
+- Clean-room discipline for AGPL inspiration sources (inventory in the owner's
+  private materials): reading agents produce behavioral specs in their own
+  words; implementing agents work from specs only and never open those sources.
+  No naming derived from those tools.
 
 ## Layer rules (enforced, but know them anyway)
 

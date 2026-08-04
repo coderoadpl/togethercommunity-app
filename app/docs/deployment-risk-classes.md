@@ -51,12 +51,12 @@ weaken Together's target production wall.
 
 ## Enforcement and review
 
-The label does not enforce these requirements. As of 2026-08-04, Together is a
-private repository on a plan that does not make rulesets or branch protection
-available, and the remote has no `production` branch. The owner-approval wall is
-therefore a procedural commitment, not a technically enforced control. A paid
-repository plan or a public repository would be required before GitHub could
-enforce that wall.
+The label does not enforce these requirements. Earlier on 2026-08-04,
+Together's repository was prepared for public visibility; GitHub enforces rulesets and
+branch protection on public repositories on the Free plan. The remote still has
+no `production` branch and no ruleset, so the owner-approval wall remains a
+procedural commitment, not a technically enforced control, until the owner
+creates the production branch and its ruleset.
 
 The live hosting account membership, credential boundary, and Vercel Production
 Branch setting are also not established by repository files. Creation of the

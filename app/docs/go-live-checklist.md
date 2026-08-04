@@ -125,7 +125,8 @@ developer tools, and confirm the session cookie has `Secure`, `HttpOnly`, and
 
 The legacy platform's read-capable AWS key was stored in the development
 database for `akademia-samouka` as `s3.accessKeyId` and `s3.secretAccessKey`
-(`tasks/import-rehearsal-audit.md:46`). The SigV4 presigner consumes those
+(recorded in the import-rehearsal audit, kept in the owner's private archive).
+The SigV4 presigner consumes those
 secrets through `core/server/usecases/lesson-media.ts` and
 `adapters/storage/s3.ts`.
 
@@ -443,9 +444,9 @@ surface the incident.
 Durable retry scheduling, cancel-at-period-end or refund policy, Stripe customer
 deletion, and self-service member deletion are outside this change. Production
 guards for payment, e-mail, and secure-cookie defaults remain the owner actions
-in items 5 through 7. Other audited backlog items remain in
-[`tasks/audit-convergence-r4.md`](../../tasks/audit-convergence-r4.md) and are
-not added to this launch checklist.
+in items 5 through 7. Other audited backlog items remain in the
+post-convergence backlog (owner's private archive) and are not added to this
+launch checklist.
 
 ### 16. Production branch and approval wall
 

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Together is a private pre-release. It has no public supported release line,
+Together is a pre-release. It has no public supported release line,
 maintenance branches, backport policy, or response-time commitment. Fixes are
 evaluated only against the current `main` branch. If a report concerns a
 deployed instance, include the commit SHA from its health attestation and the
@@ -15,8 +15,8 @@ neither creates a public support promise, as recorded in the
 
 Do not open an issue, pull request, or discussion for a vulnerability.
 
-Email **<kontakt@coderoad.pl>**. The repository is private, so email is also the
-reporting path for someone who does not already have repository access. Include:
+Report privately via [GitHub private vulnerability reporting](https://github.com/coderoadpl/togethercommunity-app/security/advisories/new)
+or email **<kontakt@coderoad.pl>**. Include:
 
 - the affected commit and deployment surface;
 - the impact and the boundary crossed;

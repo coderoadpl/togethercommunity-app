@@ -18,9 +18,9 @@
 
 ## Sources of truth
 
-Completeness is measured against Together's own
-[post-convergence product backlog](../../../tasks/audit-convergence-r4.md#complete-accumulated-backlog-index-post-convergence-roadmap),
-[accepted parity scope](../../../tasks/mvp-parity.md), and
+Completeness is measured against Together's own post-convergence product
+backlog (maintained in the owner's private archive), the
+[accepted parity scope](../../../tasks/mvp-parity.md), and the
 [go-live checklist](../go-live-checklist.md). An upstream product requirements
 document is not an input and cannot create Together scope.
 

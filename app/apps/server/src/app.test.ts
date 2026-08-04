@@ -96,6 +96,17 @@ const product = (input: {
   createdAt: '1998-07-12T00:00:00.000Z',
 });
 
+const readOnlyImportUsers = (repository: AppDeps['importUsers']): AppDeps['importUsersReader'] => ({
+  findAuthUserByEmail: repository.findAuthUserByEmail,
+  isLegacyCredentialEmailAllowed: repository.isLegacyCredentialEmailAllowed,
+  findMemberById: repository.findMemberById,
+  findMemberByEmail: repository.findMemberByEmail,
+  findGrantById: repository.findGrantById,
+  findGrantByPair: repository.findGrantByPair,
+  findProgressById: repository.findProgressById,
+  findProgressByPair: repository.findProgressByPair,
+});
+
 const deps = (input: {
   tenants?: Tenant[];
   domains?: TenantDomain[];
@@ -229,8 +240,19 @@ const deps = (input: {
     importContent: {
       commit: async () => 'saved',
     },
+    importUsersReader: {
+      findAuthUserByEmail: async () => null,
+      isLegacyCredentialEmailAllowed: async () => true,
+      findMemberById: async () => null,
+      findMemberByEmail: async () => null,
+      findGrantById: async () => null,
+      findGrantByPair: async () => null,
+      findProgressById: async () => null,
+      findProgressByPair: async () => null,
+    },
     importUsers: {
       findAuthUserByEmail: async () => null,
+      isLegacyCredentialEmailAllowed: async () => true,
       findMemberById: async () => null,
       findMemberByEmail: async () => null,
       findGrantById: async () => null,
@@ -941,6 +963,7 @@ const importM2mApp = (options: {
       return 'saved';
     },
   };
+  configured.importUsersReader = readOnlyImportUsers(configured.importUsers);
   configured.contentHash = { sha256: (content) => String(content) };
   configured.apiKeyRateLimits = {
     claim: async () => options.rateLimited !== true,

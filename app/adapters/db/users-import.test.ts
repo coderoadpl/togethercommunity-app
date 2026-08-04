@@ -11,6 +11,7 @@ import {
   importAuditEvents,
   members,
   tenantApiKeys,
+  tenantSesSettings,
   tenants,
   user,
 } from './schema.js';
@@ -44,6 +45,14 @@ beforeAll(async () => {
     scopes: ['import:users'],
     createdAt: NOW,
     expiresAt: '1998-08-20T10:00:00.000Z',
+  });
+  await db.insert(tenantSesSettings).values({
+    tenantId: TENANT_ID,
+    fromAddress: 'migration@example.test',
+    fromName: 'Migration',
+    identity: 'example.test',
+    identityVerifiedAt: NOW,
+    webhookToken: 'users-import-webhook-token',
   });
 }, 60_000);
 
@@ -97,6 +106,46 @@ const memberMutation = (
 });
 
 describe('users import repository', () => {
+  it('allows legacy credentials only for the tenant verified sending identity', async () => {
+    const repository = createImportUsersRepository(db);
+
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'USER@example.test',
+    )).toBe(true);
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'user@outside.test',
+    )).toBe(false);
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      'tenant-users-import-other',
+      'user@example.test',
+    )).toBe(false);
+    await db.update(tenantSesSettings).set({
+      identity: 'specific@example.test',
+    }).where(eq(tenantSesSettings.tenantId, TENANT_ID));
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'specific@example.test',
+    )).toBe(true);
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'other@example.test',
+    )).toBe(false);
+    await db.update(tenantSesSettings).set({
+      identity: 'example.test',
+      identityVerifiedAt: null,
+    }).where(eq(tenantSesSettings.tenantId, TENANT_ID));
+    expect(await repository.isLegacyCredentialEmailAllowed(
+      TENANT_ID,
+      'user@example.test',
+    )).toBe(false);
+    expect(await repository.commit(TENANT_ID, memberMutation(MARKER))).toBe('conflict');
+    expect(await db.select().from(user).where(eq(user.id, 'user-source'))).toEqual([]);
+    await db.update(tenantSesSettings).set({ identityVerifiedAt: NOW })
+      .where(eq(tenantSesSettings.tenantId, TENANT_ID));
+  });
+
   it('commits auth identity, credential, member, and audit atomically', async () => {
     const repository = createImportUsersRepository(db);
     const result = await repository.commit(TENANT_ID, memberMutation(MARKER));

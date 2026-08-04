@@ -37,20 +37,10 @@ import type {
   ImportAuditEventRepository,
   ImportMemberResource,
   ImportUsersMutation,
+  ImportUsersReader,
   ImportUsersRepository,
   ProductRepository,
 } from '../ports.js';
-
-type ImportUsersReader = Pick<
-  ImportUsersRepository,
-  | 'findAuthUserByEmail'
-  | 'findMemberById'
-  | 'findMemberByEmail'
-  | 'findGrantById'
-  | 'findGrantByPair'
-  | 'findProgressById'
-  | 'findProgressByPair'
->;
 
 export type M2mImportUsersReaders = {
   courses: Pick<CourseRepository, 'findById'>;
@@ -186,6 +176,15 @@ const prepareMember = async (
     const authUser = await deps.importUsers.findAuthUserByEmail(tenantId, record.email);
     if (authUser !== null) {
       return err(appError('conflict', 'This member identity cannot be imported'));
+    }
+    if (
+      passwordHash !== null
+      && !await deps.importUsers.isLegacyCredentialEmailAllowed(tenantId, record.email)
+    ) {
+      return err(appError(
+        'conflict',
+        'Legacy credentials require an e-mail covered by this tenant\'s verified sending identity',
+      ));
     }
     return ok({
       kind: 'member',

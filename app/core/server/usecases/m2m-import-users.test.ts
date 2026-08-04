@@ -128,6 +128,7 @@ const harness = () => {
   const commits: ImportUsersMutation[] = [];
   const importUsers: M2mImportUsersDeps['importUsers'] = {
     findAuthUserByEmail: async (_tenantId, email) => authUsers.get(email) ?? null,
+    isLegacyCredentialEmailAllowed: async () => true,
     findMemberById: async (_tenantId, id) => members.get(id) ?? null,
     findMemberByEmail: async (_tenantId, email) =>
       [...members.values()].find((member) => member.email === email) ?? null,
@@ -296,6 +297,37 @@ describe('m2m users import', () => {
       value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
     });
     expect(h.authUsers.get('user@example.test')?.credentialPassword).toBeNull();
+  });
+
+  it('requires tenant evidence for a legacy credential but allows a passwordless import', async () => {
+    const h = harness();
+    const depsWithoutEvidence: M2mImportUsersDeps = {
+      ...h.deps,
+      importUsers: {
+        ...h.deps.importUsers,
+        isLegacyCredentialEmailAllowed: async () => false,
+      },
+    };
+    const credential = await importM2mUsers(ctx, apiKey, 'member', {
+      datasetVersion: 'together-import/v1',
+      records: [memberRecord()],
+    }, depsWithoutEvidence);
+    const passwordless = await importM2mUsers(ctx, apiKey, 'member', {
+      datasetVersion: 'together-import/v1',
+      records: [memberRecord(null)],
+    }, depsWithoutEvidence);
+
+    expect(credential).toMatchObject({
+      ok: true,
+      value: { results: [{ action: 'error', error: { code: 'conflict' } }] },
+    });
+    expect(passwordless).toMatchObject({ ok: true, value: { summary: { created: 1 } } });
+    expect(h.commits).toHaveLength(1);
+    expect(h.commits[0]).toMatchObject({
+      kind: 'member',
+      authUser: { legacyPasswordHash: null, emailVerified: false },
+      credentialEvent: null,
+    });
   });
 
   it('rejects malformed, plaintext-looking, and replacement credential inputs per record', async () => {

@@ -110,8 +110,19 @@ export const notificationSchema = z.object({
 
 export type Notification = z.output<typeof notificationSchema>;
 
+const notificationCursorSchema = z.string().min(1).superRefine((value, ctx) => {
+  const separator = value.indexOf('|');
+  if (
+    separator === -1
+    || !z.string().datetime().safeParse(value.slice(0, separator)).success
+    || value.slice(separator + 1).length === 0
+  ) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid notification cursor' });
+  }
+});
+
 export const notificationListInputSchema = z.object({
-  cursor: z.string().optional(),
+  cursor: notificationCursorSchema.optional(),
   limit: z.number().int().min(1).max(100).default(20),
 });
 

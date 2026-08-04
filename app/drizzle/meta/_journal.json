@@ -526,6 +526,13 @@
       "when": 1785830693893,
       "tag": "0074_durable_auth_rate_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1785868260000,
+      "tag": "0075_welcome_sign_in_payload",
+      "breakpoints": true
     }
   ]
 }

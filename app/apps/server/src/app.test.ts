@@ -19,6 +19,7 @@ import {
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
+  type CourseLesson,
   type Member,
   type Membership,
   type Order,
@@ -76,6 +77,8 @@ const deps = (input: {
   tenants?: Tenant[];
   domains?: TenantDomain[];
   products?: Product[];
+  lessons?: CourseLesson[];
+  getAuthenticatedUser?: AppDeps['authPort']['getAuthenticatedUser'];
   authenticated?: boolean;
   databaseUp?: boolean;
   dispatchEmails?: AppDeps['dispatchEmails'];
@@ -99,10 +102,10 @@ const deps = (input: {
       setResetPasswordDeliveryContext: () => undefined,
     },
     authPort: {
-      getAuthenticatedUser: async () => {
+      getAuthenticatedUser: input.getAuthenticatedUser ?? (async () => {
         if (!input.authenticated) throw new Error('Public route must not authenticate');
         return null;
-      },
+      }),
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -358,9 +361,12 @@ const deps = (input: {
       delete: async () => false,
     },
     lessons: {
-      list: async () => [],
-      findById: async () => null,
-      findByIds: async () => [],
+      list: async (tenantId) => (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId),
+      listPreviews: async () => [],
+      findById: async (tenantId, id) =>
+        (input.lessons ?? []).find((lesson) => lesson.tenantId === tenantId && lesson.id === id) ?? null,
+      findByIds: async (tenantId, ids) =>
+        (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)),
       create: async () => undefined,
       update: async () => null,
       delete: async () => false,
@@ -1807,6 +1813,87 @@ describe('public offer route', () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get('access-control-allow-methods')).toBe('GET, OPTIONS');
+  });
+});
+
+describe('free lesson preview route', () => {
+  const lesson = (id: string, isPreview: boolean): CourseLesson => ({
+    id,
+    tenantId: acme.id,
+    name: `Lesson ${id}`,
+    isPreview,
+    contents: [{ type: 'html', html: `<p>${id}</p>` }],
+    legacyId: null,
+    createdAt: '2026-07-12T00:00:00.000Z',
+  });
+
+  it('serves an anonymous preview and returns 403 for a non-preview lesson', async () => {
+    const preview = lesson('preview', true);
+    const paid = lesson('paid', false);
+    const getAuthenticatedUser = vi.fn(async () => null);
+    const app = buildApp(deps({ lessons: [preview, paid], getAuthenticatedUser }));
+    const request = (lessonId: string) => app.request(
+      API_PATHS.studentLesson.replace(':lessonId', lessonId),
+      { headers: { [TENANT_HEADER]: acme.slug } },
+    );
+
+    const previewResponse = await request(preview.id);
+    expect(previewResponse.status).toBe(200);
+    expect(await previewResponse.json()).toMatchObject({
+      ok: true,
+      data: { lesson: { id: preview.id, isPreview: true }, authenticated: false },
+    });
+
+    const paidResponse = await request(paid.id);
+    expect(paidResponse.status).toBe(403);
+    expect(await paidResponse.json()).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+    expect(getAuthenticatedUser).toHaveBeenCalledTimes(2);
+
+    const nextResponse = await buildApp(deps({ authenticated: true })).request(API_PATHS.studentLessonNext, {
+      headers: { [TENANT_HEADER]: acme.slug },
+    });
+    expect(nextResponse.status).toBe(401);
+    expect(await nextResponse.json()).toMatchObject({
+      ok: false,
+      error: { code: 'unauthorized' },
+    });
+    expect(nextResponse.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('serves a preview as public to a user authenticated in another tenant', async () => {
+    const preview = lesson('preview', true);
+    const paid = lesson('paid', false);
+    const app = buildApp(
+      deps({
+        lessons: [preview, paid],
+        getAuthenticatedUser: async () => ({
+          userId: 'other-tenant-user',
+          email: 'other@example.com',
+          name: 'Other Tenant User',
+        }),
+      }),
+    );
+    const request = (lessonId: string) => app.request(
+      API_PATHS.studentLesson.replace(':lessonId', lessonId),
+      { headers: { [TENANT_HEADER]: acme.slug } },
+    );
+
+    const previewResponse = await request(preview.id);
+    expect(previewResponse.status).toBe(200);
+    expect(await previewResponse.json()).toMatchObject({
+      ok: true,
+      data: { lesson: { id: preview.id, isPreview: true }, authenticated: false },
+    });
+
+    const paidResponse = await request(paid.id);
+    expect(paidResponse.status).toBe(403);
+    expect(await paidResponse.json()).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
   });
 });
 

@@ -487,6 +487,38 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .where(eq(courseLessons.tenantId, tenantId))
         .orderBy(asc(courseLessons.createdAt))
     ).map(parseLesson),
+  listPreviews: async (tenantId) => {
+    const [lessonRows, moduleRows] = await Promise.all([
+      db
+        .select({ id: courseLessons.id, name: courseLessons.name })
+        .from(courseLessons)
+        .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.isPreview, true)))
+        .orderBy(asc(courseLessons.createdAt)),
+      db
+        .select({ courseIds: courseModules.courseIds, chapters: courseModules.chapters })
+        .from(courseModules)
+        .where(eq(courseModules.tenantId, tenantId))
+        .orderBy(asc(courseModules.createdAt)),
+    ]);
+    const lessonById = new Map(lessonRows.map((lesson) => [lesson.id, lesson]));
+    const seen = new Set<string>();
+    const previews = [];
+    for (const module of moduleRows) {
+      for (const chapter of module.chapters) {
+        for (const content of chapter.contents) {
+          const lesson = lessonById.get(content.lessonId);
+          if (lesson === undefined) continue;
+          for (const courseId of module.courseIds) {
+            const key = `${courseId}:${lesson.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            previews.push({ ...lesson, courseId });
+          }
+        }
+      }
+    }
+    return previews;
+  },
   findById: async (tenantId, id) => {
     const rows = await db
       .select()
@@ -514,6 +546,7 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .update(courseLessons)
         .set({
           name: lesson.name,
+          isPreview: lesson.isPreview,
           contents: lesson.contents,
           durationMinutes: lesson.durationMinutes ?? null,
           legacyId: lesson.legacyId,

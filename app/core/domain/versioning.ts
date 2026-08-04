@@ -5,7 +5,7 @@ import { internal, validation, type AppError } from './errors.js';
 import { err, ok, type Result } from './result.js';
 import { productSchema } from './product.js';
 import { courseSnapshotV2Schema } from './snapshots/course/v2.js';
-import { courseLessonSnapshotV3Schema } from './snapshots/course_lesson/v3.js';
+import { courseLessonSnapshotV4Schema } from './snapshots/course_lesson/v4.js';
 import { courseModuleSnapshotV1Schema } from './snapshots/course_module/v1.js';
 import { productSnapshotV2Schema } from './snapshots/product/v2.js';
 
@@ -26,7 +26,7 @@ export type EntityKind = z.infer<typeof entityKindSchema>;
 const currentSchemas: Record<EntityKind, z.ZodTypeAny> = {
   course: courseSnapshotV2Schema,
   course_module: courseModuleSnapshotV1Schema,
-  course_lesson: courseLessonSnapshotV3Schema,
+  course_lesson: courseLessonSnapshotV4Schema,
   product: productSnapshotV2Schema,
 };
 
@@ -41,7 +41,7 @@ const liveEntitySchemas: Record<EntityKind, z.ZodTypeAny> = {
 export const CURRENT_SNAPSHOT_SCHEMA_VERSION: Record<EntityKind, number> = {
   course: 2,
   course_module: 1,
-  course_lesson: 3,
+  course_lesson: 4,
   product: 2,
 };
 
@@ -58,8 +58,12 @@ const upcasters: Record<EntityKind, Record<number, Upcaster>> = {
   course_module: {},
   // v1 payloads (pdfUrl restricted to absolute URLs) are a strict subset of v2,
   // which additionally accepts same-origin paths, and v2 of v3 (durationMinutes
-  // is optional) — so both widenings are identity.
-  course_lesson: { 1: (payload) => payload, 2: (payload) => payload },
+  // is optional) — so both widenings are identity. v3 predates the preview flag.
+  course_lesson: {
+    1: (payload) => payload,
+    2: (payload) => payload,
+    3: (payload) => ({ ...z.object({}).passthrough().parse(payload), isPreview: false }),
+  },
   product: {
     1: (payload) => ({
       ...z.object({}).passthrough().parse(payload),
@@ -216,7 +220,7 @@ export const SNAPSHOT_CURRENT_SCHEMAS: Record<EntityKind, z.ZodTypeAny> = curren
 export const STORED_ENTITY_SHAPE_HASH: Record<EntityKind, string> = {
   course: '94a7899a',
   course_module: 'db069353',
-  course_lesson: '8d56f36c',
+  course_lesson: 'a1c7d122',
   product: '94350883',
 };
 

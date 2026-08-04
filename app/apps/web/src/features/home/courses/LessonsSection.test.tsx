@@ -1,8 +1,9 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { lessonUpdateInputSchema } from '#core/contract/index.js';
 import { newCourseLessonSchema, type CourseLesson, type LessonBlock } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
@@ -30,6 +31,7 @@ describe('LessonsSection pagination', { timeout: 15000 }, () => {
       id: `lesson-${index}`,
       tenantId: 't1',
       name: `Lesson ${String(index).padStart(2, '0')}`,
+      isPreview: false,
       contents: index === 0 ? [{ type: 'html', html: '<p>intro</p>' }] : [],
       legacyId: null,
       createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
@@ -66,6 +68,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
           id: 'lesson-new',
           tenantId: 't1',
           name: body.name,
+          isPreview: body.isPreview,
           contents: body.contents,
           legacyId: null,
           createdAt: '2026-07-12T10:00:00.000Z',
@@ -100,6 +103,68 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
       expect(submitted.map((block) => block.type)).toEqual(['embed', 'video']);
     });
     expect(await screen.findByText('Reordered Lesson')).toBeInTheDocument();
+  });
+
+  it('submits the free preview setting when creating a lesson', async () => {
+    let submittedPreview = false;
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.post('/api/lessons', async ({ request }) => {
+        const body = newCourseLessonSchema.parse(await request.json());
+        submittedPreview = body.isPreview;
+        const created: CourseLesson = {
+          id: 'lesson-preview',
+          tenantId: 't1',
+          name: body.name,
+          isPreview: body.isPreview,
+          contents: body.contents,
+          legacyId: null,
+          createdAt: '2026-07-12T10:00:00.000Z',
+        };
+        return HttpResponse.json({ ok: true, data: { lesson: created } });
+      }),
+    );
+
+    await renderLessonsAt('/panel/lessons/new');
+
+    fireEvent.change(await screen.findByLabelText(pl.common.name), { target: { value: 'Preview' } });
+    fireEvent.click(screen.getByRole('switch', { name: pl.lessons.previewLabel }));
+    fireEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
+
+    await waitFor(() => expect(submittedPreview).toBe(true));
+  });
+
+  it('preloads and updates the free preview setting for an existing lesson', async () => {
+    const existing: CourseLesson = {
+      id: 'lesson-preview',
+      tenantId: 't1',
+      name: 'Preview lesson',
+      isPreview: true,
+      contents: [],
+      legacyId: null,
+      createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    let submittedPreview: boolean | undefined;
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [existing] } })),
+      http.post('/api/lessons/update', async ({ request }) => {
+        const body = lessonUpdateInputSchema.parse(await request.json());
+        submittedPreview = body.isPreview;
+        return HttpResponse.json({
+          ok: true,
+          data: { lesson: { ...existing, isPreview: body.isPreview ?? existing.isPreview } },
+        });
+      }),
+    );
+
+    await renderLessonsAt('/panel/lessons/lesson-preview');
+
+    const preview = await screen.findByRole('switch', { name: pl.lessons.previewLabel });
+    expect(preview).toBeChecked();
+    await userEvent.click(preview);
+    await userEvent.click(screen.getByRole('button', { name: pl.lessons.saveLesson }));
+
+    await waitFor(() => expect(submittedPreview).toBe(false));
   });
 
   it('fills the video ids from the Bunny Stream picker', async () => {
@@ -198,6 +263,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
         id: 'l1',
         tenantId: 't1',
         name: 'Video intro',
+        isPreview: false,
         contents: [{ type: 'video', storageKey: 'videos/a.mp4', streamVideoId: 'vid-1' }],
         legacyId: null,
         createdAt: '2026-07-10T10:00:00.000Z',
@@ -206,6 +272,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
         id: 'l2',
         tenantId: 't1',
         name: 'Reading list',
+        isPreview: false,
         contents: [{ type: 'html', html: '<p>Read me</p>' }],
         legacyId: null,
         createdAt: '2026-07-11T10:00:00.000Z',
@@ -240,6 +307,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
         id: 'lesson-1',
         tenantId: 't1',
         name: 'Intro lesson',
+        isPreview: false,
         contents: [],
         legacyId: null,
         createdAt: '2026-07-12T10:00:00.000Z',

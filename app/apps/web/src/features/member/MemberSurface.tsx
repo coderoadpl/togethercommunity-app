@@ -104,14 +104,16 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
   );
 };
 
-type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav'>;
+type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav'> & {
+  authenticated?: boolean;
+};
 
-export const MemberSurface = (props: Props) => {
+export const MemberSurface = ({ authenticated = true, ...props }: Props) => {
   useSuppressGlobalChrome();
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down('sm'));
   const t = useTranslations();
-  const me = useQuery(actions.me);
+  const me = useQuery({ ...actions.me, enabled: authenticated });
   return (
     <MemberPage
       {...props}
@@ -122,8 +124,10 @@ export const MemberSurface = (props: Props) => {
         </>
       )}
       logo={<TenantLogo />}
-      nav={<HeaderNavigation liveNotifications={!mobile} />}
-      bottomNav={<BottomNavigation liveNotifications={mobile} />}
+      nav={authenticated
+        ? <HeaderNavigation liveNotifications={!mobile} />
+        : <Link href="/login">{t.auth.signInLink}</Link>}
+      bottomNav={authenticated ? <BottomNavigation liveNotifications={mobile} /> : undefined}
     />
   );
 };

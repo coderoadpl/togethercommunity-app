@@ -90,6 +90,7 @@ const lesson = (over: Partial<CourseLesson> = {}): CourseLesson => ({
   id: 'lesson-1',
   tenantId: 't1',
   name: 'Intro lesson',
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: '2026-07-12T10:00:00.000Z',

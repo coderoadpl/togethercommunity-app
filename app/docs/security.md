@@ -7,9 +7,12 @@ production enables the `Secure` flag. Sessions span tenant subdomains on a real
 base domain, while each custom domain remains a separate cookie world.
 
 Open CORS covers public offer and payment configuration reads, coupon
-validation, checkout-session start, and auth configuration so external creator
-sites can use the public checkout contract. Webhook, unsubscribe, confirmation,
-and authenticated routes do not inherit that policy.
+validation, checkout-session start, auth configuration, and free lesson
+previews so external creator sites can use the public checkout contract.
+Webhook, unsubscribe, confirmation, and authenticated routes do not inherit
+that policy. The lesson read resolves a session when one is present and falls
+back to anonymous public capabilities, which reach lessons flagged as free
+previews and nothing else.
 
 All responses receive the secure-header baseline. The CSP permits Emotion's
 runtime styles, HTTPS images, HTTPS lesson embeds, and Sentry envelope delivery

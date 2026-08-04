@@ -288,6 +288,7 @@ export const createLesson = async (
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     name: parsed.data.name,
+    isPreview: parsed.data.isPreview,
     contents: parsed.data.contents,
     ...(parsed.data.durationMinutes === undefined
       ? {}
@@ -296,6 +297,7 @@ export const createLesson = async (
     createdAt: deps.clock.nowIso(),
   };
   await deps.lessons.create(tenant.value, lesson);
+  if (lesson.isPreview) await deps.products.bumpContentVersion(tenant.value);
   return ok(lesson);
 };
 
@@ -323,11 +325,14 @@ export const updateLesson = async (
   const updated: CourseLesson = {
     ...base,
     name: parsed.data.name ?? existing.name,
+    isPreview: parsed.data.isPreview ?? existing.isPreview,
     contents: parsed.data.contents ?? existing.contents,
     ...(nextDuration === undefined ? {} : { durationMinutes: nextDuration }),
   };
   const saved = await deps.lessons.update(tenant.value, updated, snapshot.value);
-  return saved ? ok(saved) : err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+  if (!saved) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+  if (existing.isPreview || saved.isPreview) await deps.products.bumpContentVersion(tenant.value);
+  return ok(saved);
 };
 
 export const attachModuleToCourse = async (
@@ -474,6 +479,7 @@ export const deleteLesson = async (
 
   const deleted = await deps.lessons.delete(tenant.value, lesson.id);
   if (!deleted) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
+  if (lesson.isPreview) await deps.products.bumpContentVersion(tenant.value);
 
   const modules = await deps.modules.list(tenant.value);
   for (const module of modules) {

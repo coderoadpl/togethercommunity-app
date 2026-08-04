@@ -71,6 +71,7 @@ const lesson = (id: string): CourseLesson => ({
   id,
   tenantId: 't1',
   name: `Lesson ${id}`,
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: NOW,

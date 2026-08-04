@@ -69,6 +69,7 @@ const lesson = (contents: PlayableLessonBlock[]): PlayableCourseLesson => ({
   id: 'l1',
   tenantId: 't1',
   name: 'Intro to Variables',
+  isPreview: false,
   contents,
   legacyId: null,
   createdAt: '2024-01-01T00:00:00.000Z',
@@ -85,7 +86,7 @@ const progress = (completedLessonIds: string[]): MemberCourseProgress => ({
 
 const okLesson = (contents: PlayableLessonBlock[]) =>
   http.get('/api/student/lessons/:lessonId', () =>
-    HttpResponse.json({ ok: true, data: { lesson: lesson(contents) } }),
+    HttpResponse.json({ ok: true, data: { lesson: lesson(contents), authenticated: true } }),
   );
 
 const okStructure = () =>
@@ -180,6 +181,40 @@ describe('LessonPlayerPage', () => {
       'href',
       'https://github.com/acme/repo',
     );
+  });
+
+  it('renders an anonymous preview without member-only requests or controls', async () => {
+    let memberOnlyRequests = 0;
+    const countMemberOnly = () => {
+      memberOnlyRequests += 1;
+      return HttpResponse.json(
+        { ok: false, error: { code: 'unauthorized', message: 'Sign in' } },
+        { status: 401 },
+      );
+    };
+    server.use(
+      http.get('/api/student/lessons/:lessonId', () => HttpResponse.json({
+        ok: true,
+        data: {
+          lesson: { ...lesson([{ type: 'html', html: '<p>Preview body</p>' }]), isPreview: true },
+          authenticated: false,
+        },
+      })),
+      http.get('/api/me', countMemberOnly),
+      http.get('/api/student/courses/:courseId/structure', countMemberOnly),
+      http.get('/api/student/progress', countMemberOnly),
+      http.get('/api/student/lessons/next', countMemberOnly),
+      http.get('/api/discussion', countMemberOnly),
+      http.post('/api/student/progress/last-viewed', countMemberOnly),
+    );
+
+    await renderPage(<LessonPlayerPage courseId="course-1" lessonId="l1" />);
+
+    expect(await screen.findByTestId('lesson-html')).toHaveTextContent('Preview body');
+    expect(screen.getByRole('link', { name: pl.auth.signInLink })).toHaveAttribute('href', '/login');
+    expect(screen.queryByTestId('mark-complete')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('discussion-section')).not.toBeInTheDocument();
+    expect(memberOnlyRequests).toBe(0);
   });
 
   it('uses a signed Bunny embed url returned by the lesson endpoint', async () => {

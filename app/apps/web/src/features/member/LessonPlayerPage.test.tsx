@@ -348,6 +348,7 @@ describe('LessonPlayerPage', () => {
               fileName: 'worksheet.pdf',
               contentType: 'application/pdf',
               sizeBytes: 4096,
+              status: 'ready',
               createdAt: '2026-08-03T12:00:00.000Z',
               downloadPath: '/api/student/lessons/l1/attachments/attachment-1/download',
             }],

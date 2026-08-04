@@ -486,10 +486,10 @@ export const pl: Messages = {
     storageInstructionB2:
       'Utwórz klucz aplikacji ograniczony do bucketu z uprawnieniami readFiles, writeFiles i deleteFiles. Identyfikatora klucza użyj jako access key ID. W CORS bucketu dodaj Content-Type do AllowedHeaders.',
     storageInstructionMinio:
-      'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie. W CORS bucketu dodaj Content-Type do AllowedHeaders.',
+      'Utwórz klucz dostępu, którego polityka zezwala na S3 PutObject, GetObject i DeleteObject w tym buckecie. W CORS bucketu dodaj Content-Type do AllowedHeaders. Przesyłanie z przeglądarki wymaga HTTPS, chyba że MinIO ma ten sam origin co Together. Prywatny endpoint wymaga też STORAGE_ALLOW_PRIVATE_ENDPOINTS=true na serwerze.',
     storageInstructionLink: 'Otwórz instrukcję dostawcy',
     storageProbeDescription:
-      'Together wyśle mały plik testowy, odczyta go bajt po bajcie i usunie. Na tym etapie nic nie zostanie zapisane.',
+      'Together wyśle mały plik testowy, odczyta go bajt po bajcie, usunie i sprawdzi CORS dla przeglądarki. Na tym etapie nic nie zostanie zapisane.',
     storageProbeStart: 'Uruchom test na żywo',
     storageProbeSuccess: 'Zapis, odczyt i usunięcie powiodły się. Możesz teraz zapisać konfigurację.',
     storageSave: 'Zapisz zaszyfrowaną konfigurację',
@@ -753,6 +753,7 @@ export const pl: Messages = {
     uploadAttachment: 'Dodaj załącznik',
     uploadingAttachment: 'Przesyłanie…',
     attachmentSize: ({ kilobytes }) => format('{kilobytes} KB', { kilobytes }),
+    attachmentPending: 'przesyłanie nieukończone',
     deleteAttachment: ({ name }) => format('usuń załącznik {name}', { name }),
     invalidBlocks: 'Nieprawidłowe bloki lekcji',
     blockNoun: ({ count }) => plural(count, 'blok', 'bloki', 'bloków'),

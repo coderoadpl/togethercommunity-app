@@ -479,8 +479,7 @@ export const deleteLesson = async (
 
   const references = await collectLessonReferences(tenant.value, lesson, deps);
 
-  const attachments = await deleteLessonAttachmentObjects(ctx, lesson.id, deps);
-  if (!attachments.ok) return attachments;
+  await deleteLessonAttachmentObjects(ctx, lesson.id, deps);
 
   const deleted = await deps.lessons.delete(tenant.value, lesson.id);
   if (!deleted) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));

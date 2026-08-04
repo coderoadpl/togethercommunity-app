@@ -675,6 +675,7 @@ export interface Messages {
     uploadAttachment: string;
     uploadingAttachment: string;
     attachmentSize: (params: { kilobytes: number }) => string;
+    attachmentPending: string;
     deleteAttachment: (params: { name: string }) => string;
     invalidBlocks: string;
     blockNoun: (params: { count: number }) => string;

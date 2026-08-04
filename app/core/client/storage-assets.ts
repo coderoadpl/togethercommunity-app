@@ -15,6 +15,19 @@ interface PresignedUpload {
   headers: Record<string, string>;
 }
 
+const fetchBody = async (body: BodyInit): Promise<BodyInit> => {
+  if (
+    typeof body === 'object' &&
+    body !== null &&
+    'arrayBuffer' in body &&
+    typeof body.arrayBuffer === 'function' &&
+    (!('stream' in body) || typeof body.stream !== 'function')
+  ) {
+    return new Uint8Array(await body.arrayBuffer());
+  }
+  return body;
+};
+
 export const uploadPresignedStorageAsset = async <Started, Completed>(
   input: StorageAssetUploadInput,
   fetchImpl: typeof fetch,
@@ -31,7 +44,7 @@ export const uploadPresignedStorageAsset = async <Started, Completed>(
     uploaded = await fetchImpl(upload.url, {
       method: 'PUT',
       headers: upload.headers,
-      body: input.body,
+      body: await fetchBody(input.body),
       signal: signal ?? null,
     });
   } catch (cause) {

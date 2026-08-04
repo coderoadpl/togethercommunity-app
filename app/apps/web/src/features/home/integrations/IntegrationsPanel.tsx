@@ -246,10 +246,12 @@ const ProviderTest = ({
   provider,
   ready,
   hint,
+  showHint = true,
 }: {
   provider: IntegrationTestInput['provider'];
   ready: boolean;
   hint?: string;
+  showHint?: boolean;
 }) => {
   const t = useTranslations();
   const test = useMutation(actions.testIntegration);
@@ -270,7 +272,7 @@ const ProviderTest = ({
       >
         {test.isPending ? t.integrations.testing : t.integrations.testConnection}
       </Button>
-      {!ready && hint !== undefined ? (
+      {showHint && !ready && hint !== undefined ? (
         <Typography variant="caption" component="p" data-testid={`${provider}-test-hint`}>
           {hint}
         </Typography>
@@ -311,9 +313,7 @@ export const IntegrationsPanel = () => {
     (settings.data?.settings.bunnyStreamLibraryId ?? null) !== null;
   const storageReady =
     storedSecrets !== undefined &&
-    (previewFor(storedSecrets, 's3.configuration') !== null ||
-      (previewFor(storedSecrets, 's3.accessKeyId') !== null &&
-        previewFor(storedSecrets, 's3.secretAccessKey') !== null));
+    previewFor(storedSecrets, 's3.configuration') !== null;
 
   return (
     <PanelPage title={t.integrations.heading} description={t.integrations.intro}>
@@ -344,7 +344,12 @@ export const IntegrationsPanel = () => {
             </Typography>
           </FormControl>
 
-          <ProviderTest provider="payment" ready={stripeReady} hint={t.integrations.saveKeysFirst} />
+          <ProviderTest
+            provider="payment"
+            ready={stripeReady}
+            hint={t.integrations.saveKeysFirst}
+            showHint={!secrets.isPending && !secrets.isError}
+          />
         </SectionCard>
 
         <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
@@ -439,7 +444,12 @@ export const IntegrationsPanel = () => {
           ) : (
             <StorageWizard configured={storageReady} />
           )}
-          <ProviderTest provider="storage" ready={storageReady} hint={t.integrations.s3SaveFirst} />
+          <ProviderTest
+            provider="storage"
+            ready={storageReady}
+            hint={t.integrations.s3SaveFirst}
+            showHint={!secrets.isPending && !secrets.isError}
+          />
         </SectionCard>
     </PanelPage>
   );

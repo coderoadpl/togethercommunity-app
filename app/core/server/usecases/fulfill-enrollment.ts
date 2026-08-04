@@ -77,7 +77,7 @@ export const fulfillEnrollment = async (
         tenantId: tenant.id,
         to: member.value.email,
         payload: {
-          kind: 'welcome-set-password',
+          kind: 'welcome-sign-in',
           language: input.language,
           tenantName: tenant.name,
           actionUrl: created.url,

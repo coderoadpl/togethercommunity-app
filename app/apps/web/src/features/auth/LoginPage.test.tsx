@@ -65,17 +65,20 @@ describe('LoginPage', () => {
       'expired',
       pl.emailVerification.expired,
     ],
-    [
-      '/login?error=INVALID_TOKEN',
-      'invalid',
-      pl.emailVerification.invalid,
-    ],
     ['/login?error=USER_NOT_FOUND', 'providerError', pl.emailVerification.providerError],
     ['/login?error=INVALID_USER', 'providerError', pl.emailVerification.providerError],
   ] as const)('renders the %s verification outcome', async (entry, outcome, message) => {
     await renderLoginPage(false, entry);
 
     expect(await screen.findByTestId(`email-verification-${outcome}`)).toHaveTextContent(message);
+  });
+
+  it('shows an expired magic-link error with the replacement form ready', async () => {
+    await renderLoginPage(false, '/login?error=INVALID_TOKEN');
+
+    expect(screen.getByRole('alert')).toHaveTextContent(pl.auth.magicLinkExpired);
+    expect(screen.getByLabelText(pl.auth.magicLinkEmailLabel)).toHaveFocus();
+    expect(screen.queryByTestId('email-verification-invalid')).not.toBeInTheDocument();
   });
 
   it('does not present an unrelated login error as an email-verification failure', async () => {

@@ -23,7 +23,9 @@ import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.j
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
 
 const now = '2026-07-14T10:00:00.000Z';
-const tenantA = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 };
+const tenantA = {
+  id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: 'active', plan: 'hosted', contentVersion: 1,
+} as const;
 
 const product = (tenantId: string): Product => ({
   id: 'product-1',
@@ -181,6 +183,8 @@ const harness = (
     tenants: {
       findById: async () => null,
       findBySlug: async () => null,
+      findSole: async () => null,
+      hasAny: async () => false,
       findSettings: async () => null,
       updateSettings: async (_tenantId, next) => next,
       createTenantWithOwnerGrant: async () => {

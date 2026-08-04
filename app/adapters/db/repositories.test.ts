@@ -982,9 +982,36 @@ describe('invoice repository', () => {
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
     const repo = createTenantRepository(db);
-    expect(await repo.findBySlug('acme')).toMatchObject({ id: ACME, slug: 'acme' });
+    expect(await repo.findBySlug('acme')).toMatchObject({
+      id: ACME,
+      slug: 'acme',
+      status: 'active',
+      plan: 'self_hosted',
+    });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
+    const previousVersion = (await repo.findById(ACME))?.contentVersion;
+    expect(await repo.findSole()).toBeNull();
+    expect(await repo.hasAny()).toBe(true);
+    expect(await repo.createTenantWithOwnerGrant(
+      {
+        tenant: {
+          id: 'tenant-bootstrap-rejected',
+          slug: 'bootstrap-rejected',
+          name: 'Rejected',
+          createdAt: NOW,
+        },
+        ownerGrant: {
+          id: 'admin-bootstrap-rejected',
+          userId: 'user-acme-owner',
+          staffRole: 'owner',
+        },
+      },
+      { requireEmpty: true },
+    )).toBeNull();
+    expect(await repo.findById('tenant-bootstrap-rejected')).toBeNull();
     const updated = await repo.updateSettings(ACME, {
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       billingPortalUrl: 'https://billing.acme.test',
       bunnyStreamLibraryId: 'lib-1',
       logoUrl: null,
@@ -1002,19 +1029,36 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
-    expect(updated).toMatchObject({ billingPortalUrl: 'https://billing.acme.test', bunnyStreamLibraryId: 'lib-1' });
+    expect(updated).toMatchObject({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      billingPortalUrl: 'https://billing.acme.test',
+      bunnyStreamLibraryId: 'lib-1',
+    });
     expect(await repo.findSettings(ACME)).toMatchObject({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
       bunnyStreamLibraryId: 'lib-1',
       invoiceVatMode: 'exempt',
       invoiceVatRatePercent: null,
       invoiceExemptionBasisKind: 'other_statute',
       invoiceExemptionBasis: '§ 1 rozporządzenia',
     });
+    expect((await repo.findById(ACME))?.contentVersion).toBe((previousVersion ?? 0) + 1);
   });
 
   it('rejects unsupported persisted VAT modes', async () => {
     await expect(db.execute(sql`
       UPDATE tenants SET invoice_vat_mode = 'reverse_charge' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+  });
+
+  it('rejects unsupported tenant lifecycle values', async () => {
+    await expect(db.execute(sql`
+      UPDATE tenants SET status = 'deleted' WHERE id = ${ACME}
+    `)).rejects.toThrow();
+    await expect(db.execute(sql`
+      UPDATE tenants SET plan = 'enterprise' WHERE id = ${ACME}
     `)).rejects.toThrow();
   });
 
@@ -1936,7 +1980,11 @@ describe('member erasure repository', () => {
     });
 
     const consentRows = await db.select().from(consents).where(eq(consents.id, 'consent-rodo'));
-    expect(consentRows[0]).toMatchObject({ userId: 'user-rodo-buyer', email: 'jan.kowalski@together.dev' });
+    expect(consentRows[0]).toMatchObject({
+      userId: 'user-rodo-buyer',
+      email: 'jan.kowalski@together.dev',
+    });
+    expect(new Date(consentRows[0]?.retentionStartedAt ?? '').toISOString()).toBe(REMOVAL_AT);
 
     const suppressionRows = await db.select().from(suppressions).where(eq(suppressions.sourceRef, 'mem-rodo'));
     expect(suppressionRows).toMatchObject([{

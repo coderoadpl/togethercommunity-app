@@ -76,6 +76,37 @@ describe('CheckoutPage', () => {
     expect(screen.getByText(pl.checkout.productionNote)).toBeInTheDocument();
   });
 
+  it('renders tenant social links after the payment controls', async () => {
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            ...offerBody,
+            tenant: {
+              ...offerBody.tenant,
+              branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+              socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+            },
+          },
+        }),
+      ),
+      http.get('/api/public/payment-config', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { stripeConfigured: false, simulatedPaymentsEnabled: true },
+        }),
+      ),
+    );
+
+    renderWithProviders(<CheckoutPage productId="course-1" />);
+
+    const submit = await screen.findByRole('button', { name: pl.checkout.submitIdle });
+    const socialLink = await screen.findByRole('link', { name: 'YouTube' });
+    expect(submit.compareDocumentPosition(socialLink))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('uses free-claim copy for a zero-price product', async () => {
     server.use(
       http.get('/api/public/offer', () =>

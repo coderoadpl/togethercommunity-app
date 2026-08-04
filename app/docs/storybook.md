@@ -33,10 +33,9 @@ fixtures outside the layered runtime graph. For
 `apps/web/src/stories/**`, `boundaries/element-types`,
 `boundaries/external`, `together/query-descriptors-only`,
 `together/sx-layout-only`, and `no-restricted-globals` are disabled.
-For `.storybook/**` and `lostpixel.config.ts`, the `boundaries/*` rules are
-disabled. This is the only repository location where the layered graph is not
-enforced, and the exception is bounded to those directories and configuration
-files.
+For `.storybook/**`, the `boundaries/*` rules are disabled. These are the only
+repository locations where the layered graph is not enforced, and the exceptions
+are bounded to the story and Storybook configuration directories.
 
 ## Dependency freeze
 
@@ -53,23 +52,11 @@ Canonical route pixels belong to `tasks/visual-goldens/` and the deterministic
 [visual regression policy](visual-regression.md). The hosted advisory track is
 Argos.
 
-`tasks/lost-pixel-baselines/` is an advisory, partial, macOS-authored local
-snapshot. It is not a golden set or a merge signal and must never be added to a
-gate or branch protection. Missing baselines are expected rather than defects;
-`pnpm run visual:stories` reports unbaselined stories as additions.
-
-The story-shot regime differs materially from the route goldens: it uses a
-`0.01` threshold, four concurrent shots, one flakiness retry, a fixed
-500-millisecond wait, no frozen clock, locale, timezone, or color scheme, no
-image-size assertion, no platform guard, and the older Chromium bundled with
-`lost-pixel`. Reviewers apply the determinism policy only to
-`tasks/visual-goldens/`.
-
-Now that Argos is live, the likely next owner decision is to remove
-`lost-pixel`, `lostpixel.config.ts`, `tasks/lost-pixel-baselines/`, and the
-`visual:stories*` scripts, eliminating roughly 31 lockfile entries and the
-second Chromium. That decision is recorded here but is not executed in this
-batch.
+Lost Pixel, its copied story baselines, and the replacement story-shot commands
+are retired. Storybook has no committed PNG baseline or screenshot comparison
+path. `pnpm run storybook:build` verifies that the catalogue compiles, while
+pixel ownership and authoring remain exclusively with `pnpm run visual` and
+`pnpm run visual:update`.
 
 ## Merge gate
 

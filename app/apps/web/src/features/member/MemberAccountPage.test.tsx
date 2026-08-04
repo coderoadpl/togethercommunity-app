@@ -24,7 +24,9 @@ const stubMe = () =>
 
 const stubSettings = (billingPortalUrl: string | null) =>
   http.get('*/api/tenant/settings', () =>
-    HttpResponse.json({ ok: true, data: { settings: { billingPortalUrl, bunnyStreamLibraryId: null } } }),
+    HttpResponse.json({ ok: true, data: { settings: {
+      name: 'Akademia', socialLinks: [], billingPortalUrl, bunnyStreamLibraryId: null,
+    } } }),
   );
 
 const stubBillingOrders = (orders: unknown[] = []) =>

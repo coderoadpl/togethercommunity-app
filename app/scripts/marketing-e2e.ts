@@ -151,7 +151,7 @@ const idSchema = z.object({ id: z.string() });
 const consentRowsSchema = z.array(z.object({ id: z.string(), email: z.string(), status: z.string(), previous_id: z.string().nullable() }));
 const sendRowsSchema = z.array(z.object({
   id: z.string(), email: z.string(), status: z.string(), skip_reason: z.string().nullable(),
-  consent_row_id: z.string(), ses_message_id: z.string().nullable(), delivery_status: z.string().nullable(),
+  consent_row_id: z.string().nullable(), ses_message_id: z.string().nullable(), delivery_status: z.string().nullable(),
 }));
 const campaignRowSchema = z.object({ status: z.string(), to_send: z.number().int(), sent: z.number().int(), failed: z.number().int() });
 const schedulerRunRowSchema = z.object({

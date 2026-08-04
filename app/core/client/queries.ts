@@ -422,6 +422,8 @@ export const meQuery = (api: ApiClient) =>
     call: ({ signal }) => api.me(signal),
   });
 
+export const meInvalidates = () => ({ queryKey: meScopes.all() });
+
 export const healthQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: healthScopes.all(),
@@ -439,6 +441,8 @@ export const publicOfferQuery = (api: ApiClient) =>
     queryKey: publicOfferScopes.all(),
     call: ({ signal }) => api.publicOffer(signal),
   });
+
+export const publicOfferInvalidates = () => ({ queryKey: publicOfferScopes.all() });
 
 export const publicPaymentConfigQuery = (api: ApiClient) =>
   defineQuery({

@@ -81,7 +81,11 @@ export const fulfillEnrollment = async (
           language: input.language,
           tenantName: tenant.name,
           actionUrl: created.url,
-          ...(settings === null ? {} : { branding: { logoUrl: settings.logoUrl, accentColor: settings.accentColor } }),
+          ...(settings === null ? {} : { branding: {
+            logoUrl: settings.logoUrl,
+            accentColor: settings.accentColor,
+            socialLinks: settings.socialLinks,
+          } }),
         },
         now: deps.clock.nowIso(),
       });

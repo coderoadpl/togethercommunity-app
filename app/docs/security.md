@@ -25,10 +25,8 @@ only successful public-offer responses opt into revalidated shared caching.
 contains only this reviewed advisory:
 
 - `GHSA-67mh-4wv8-2f99` affects esbuild's development server. The production
-  audit reaches the old esbuild through `better-auth` and `drizzle-kit`; the
-  development tree also reaches esbuild through Lost Pixel. Together does not
-  invoke esbuild's development server from application code. `drizzle-kit`
-  resolves esbuild 0.25 only from 1.0, which in turn requires `drizzle-orm` 1.0
-  while `better-auth` still declares a `drizzle-orm` 0.45 peer, so revisit when
-  `better-auth` supports `drizzle-orm` 1.0, and when Lost Pixel is removed as
-  planned in [Storybook](storybook.md).
+  audit reaches the old esbuild through `better-auth` and `drizzle-kit`.
+  Together does not invoke esbuild's development server from application code.
+  `drizzle-kit` resolves esbuild 0.25 only from 1.0, which in turn requires
+  `drizzle-orm` 1.0 while `better-auth` still declares a `drizzle-orm` 0.45
+  peer, so revisit when `better-auth` supports `drizzle-orm` 1.0.

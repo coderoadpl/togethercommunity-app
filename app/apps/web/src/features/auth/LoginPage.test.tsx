@@ -58,6 +58,35 @@ describe('LoginPage', () => {
     );
   });
 
+  it('renders tenant social links after the sign-in form', async () => {
+    server.use(
+      http.get('/api/public/offer', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            tenant: {
+              slug: 'akademia',
+              name: 'Akademia Samouka',
+              branding: { logoUrl: null, accentColor: null, faviconUrl: null },
+              socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@akademia' }],
+              support: { url: null },
+            },
+            contentVersion: 1,
+            products: [],
+          },
+        }),
+      ),
+    );
+
+    await renderLoginPage();
+
+    const form = screen.getByLabelText(pl.auth.emailLabel).closest('form');
+    const socialLink = await screen.findByRole('link', { name: 'YouTube' });
+    expect(form).not.toBeNull();
+    expect(form?.compareDocumentPosition(socialLink) ?? 0)
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it('shows demo credentials only when dev magic-link exposure is enabled', async () => {
     await renderLoginPage(true);
 

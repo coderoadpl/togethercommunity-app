@@ -1,0 +1,22 @@
+{
+	on_demand_tls {
+		ask http://app:48732/internal/domain-check
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy app:48730
+}
+
+http:// {
+	@local host localhost 127.0.0.1
+	handle @local {
+		reverse_proxy app:48730
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}

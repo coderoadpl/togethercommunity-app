@@ -140,7 +140,7 @@ const deps = (repo: EntityVersionRepository): ContentHistoryDeps => ({
   courses,
   modules,
   userDisplays: {
-    findDisplayNames: async (userIds) =>
+    findDisplayNames: async (_tenantId, userIds) =>
       new Map(userIds.map((userId) => [userId, userId === 'u1' ? 'Ada Creator' : userId])),
   },
 });

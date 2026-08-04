@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { selectDevSinkPurge } from './composition.js';
+import { selectDevSinkPurge, selectTenantCreationMode, selectTenantRouting } from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -12,18 +12,47 @@ describe('tenant creation policy', () => {
     expect(envSchema.safeParse({ TENANT_CREATION: 'staff' }).success).toBe(false);
   });
 
-  it('requires closed tenant creation in production', () => {
-    const parsed = envSchema.safeParse({
+  it('turns open production configuration into first-tenant bootstrap mode', () => {
+    const env = envSchema.parse({
       NODE_ENV: 'production',
+      APP_ENV: 'self-host',
       TENANT_CREATION: 'open',
+      BETTER_AUTH_SECRET: 'self-host-secret-with-at-least-16-chars',
+      SECRETS_MASTER_KEY: 'self-host-master-key',
+      KSEF_ENVIRONMENT: 'production',
+      EMAIL_DISPATCH_SECRET: 'self-host-email-dispatch-secret',
+      MARKETING_TICK_SECRET: 'self-host-marketing-tick-secret',
+      CRON_SECRET: 'self-host-cron-secret',
     });
 
-    expect(parsed.success).toBe(false);
-    if (!parsed.success) {
-      expect(parsed.error.flatten().fieldErrors.TENANT_CREATION).toContain(
-        'TENANT_CREATION must be closed in production',
-      );
-    }
+    expect(selectTenantCreationMode(env)).toBe('bootstrap');
+  });
+
+  it('keeps open creation outside production and honors closed mode everywhere', () => {
+    expect(selectTenantCreationMode(envSchema.parse({ TENANT_CREATION: 'open' }))).toBe('open');
+    expect(selectTenantCreationMode(envSchema.parse({ TENANT_CREATION: 'closed' }))).toBe('closed');
+  });
+});
+
+describe('tenant routing mode', () => {
+  it('defaults to single-tenant mode when APP_BASE_DOMAIN is absent or empty', () => {
+    expect(envSchema.parse({}).APP_BASE_DOMAIN).toBeUndefined();
+    expect(envSchema.parse({ APP_BASE_DOMAIN: '' }).APP_BASE_DOMAIN).toBeUndefined();
+    expect(envSchema.parse({ APP_BASE_DOMAIN: 'example.com' }).APP_BASE_DOMAIN).toBe('example.com');
+  });
+
+  it('falls back to the app host as base domain when none is configured', () => {
+    expect(selectTenantRouting(envSchema.parse({ APP_BASE_URL: 'https://learn.example.com' }))).toEqual({
+      baseDomain: 'learn.example.com',
+      singleTenantMode: true,
+    });
+  });
+
+  it('keeps subdomain routing when a base domain is configured', () => {
+    expect(selectTenantRouting(envSchema.parse({
+      APP_BASE_DOMAIN: 'together.com',
+      APP_BASE_URL: 'https://together.com',
+    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false });
   });
 });
 
@@ -94,6 +123,15 @@ describe('development sink policy', () => {
 
     expect(selectDevSinkPurge(env, create)).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('consent evidence purge policy', () => {
+  it('requires an explicit operator opt-in', () => {
+    expect(envSchema.parse({}).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(false);
+    expect(envSchema.parse({
+      CONSENT_EVIDENCE_PURGE_ENABLED: 'true',
+    }).CONSENT_EVIDENCE_PURGE_ENABLED).toBe(true);
   });
 });
 

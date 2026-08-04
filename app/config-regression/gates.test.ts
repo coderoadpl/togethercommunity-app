@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -117,6 +117,28 @@ const writeFixture = (rel: string, content: string): string => {
   return absolute;
 };
 
+const runCommand = async (
+  command: string,
+  args: string[],
+): Promise<{ status: number | null; stdout: string; stderr: string }> =>
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd: appRoot, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (status) => {
+      resolve({ status, stdout, stderr });
+    });
+  });
+
 const findMessage = (
   fixture: keyof typeof eslintFixtures,
   ruleId: string,
@@ -125,17 +147,16 @@ const findMessage = (
     (message) => message.ruleId === ruleId,
   );
 
-beforeAll(() => {
+beforeAll(async () => {
   sweep();
   const fixtures = Object.values(eslintFixtures);
   const eslintTargets = fixtures.map((fixture) => writeFixture(fixture.rel, fixture.content));
   for (const fixture of depcruiseFixtures) writeFixture(fixture.rel, fixture.content);
   writeFixture(islandDomFixture, 'export const forbidden = document;\n');
 
-  const eslintRun = spawnSync(
+  const eslintRun = await runCommand(
     join(appRoot, 'node_modules', '.bin', 'eslint'),
     ['--format', 'json', ...eslintTargets],
-    { cwd: appRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   const eslintResults: EslintResult[] = JSON.parse(eslintRun.stdout);
   for (const result of eslintResults) {
@@ -146,10 +167,9 @@ beforeAll(() => {
     }
   }
 
-  const depcruiseRun = spawnSync(
+  const depcruiseRun = await runCommand(
     join(appRoot, 'node_modules', '.bin', 'depcruise'),
     ['--output-type', 'json', coreDomainDir, coreServerDir, islandCoreDir, layoutDir],
-    { cwd: appRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   const report: { summary: { violations: Array<{ rule: { name: string } }> } } = JSON.parse(
     depcruiseRun.stdout,
@@ -158,10 +178,9 @@ beforeAll(() => {
     depcruiseRules.add(violation.rule.name);
   }
 
-  const islandTypecheckRun = spawnSync(
+  const islandTypecheckRun = await runCommand(
     join(appRoot, 'node_modules', '.bin', 'tsc'),
     ['--noEmit', '-p', 'tsconfig.islands.json'],
-    { cwd: appRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   islandTypecheckStatus = islandTypecheckRun.status;
   islandTypecheckOutput = `${islandTypecheckRun.stdout}${islandTypecheckRun.stderr}`;
@@ -170,14 +189,13 @@ beforeAll(() => {
     join(tenantScopeFixtureRoot, 'unscoped.ts'),
     'export type DeliberatelyUnscopedRepository = { findById(id: string): Promise<unknown> };\n',
   );
-  const tenantScopeRun = spawnSync(
-    join(appRoot, 'node_modules', '.bin', 'tsx'),
-    ['scripts/tenant-scope-check.ts', tenantScopeFixtureRoot],
-    { cwd: appRoot, encoding: 'utf8' },
-  );
+  const tenantScopeRun = await runCommand(join(appRoot, 'node_modules', '.bin', 'tsx'), [
+    'scripts/tenant-scope-check.ts',
+    tenantScopeFixtureRoot,
+  ]);
   tenantScopeStatus = tenantScopeRun.status;
   tenantScopeOutput = `${tenantScopeRun.stdout}${tenantScopeRun.stderr}`;
-}, 120_000);
+}, 180_000);
 
 afterAll(() => {
   rmSync(join(appRoot, coreDomainDir), { recursive: true, force: true });

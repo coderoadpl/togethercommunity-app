@@ -57,11 +57,11 @@ kept synchronized by reviewing upstream changes to these paths:
   Together migrates to zod 4 or the auth dependency graph no longer requires
   it, and review peer warnings on every dependency change until then.
 - pnpm does not run dependency build scripts. The empty
-  `onlyBuiltDependencies` allow-list is intentional; `esbuild`, `msw`,
-  `unrs-resolver`, and `odiff-bin` are recorded in `ignoredBuiltDependencies`
-  so changes to the blocked set require review. The visual suite uses
-  `pixelmatch`; selecting lost-pixel's odiff engine also requires explicitly
-  approving and rebuilding `odiff-bin`.
+  `onlyBuiltDependencies` allow-list is intentional; `esbuild`, `msw`, and
+  `unrs-resolver` are recorded in `ignoredBuiltDependencies` so changes to the
+  blocked set require review. The visual suite compares PNGs with `pixelmatch`,
+  which needs no native build step; adopting a native comparison engine would
+  require an owner decision and a new `ignoredBuiltDependencies` review.
 - pnpm rejects releases younger than three days. The override versions excluded
   from that delay preserve the reviewed npm resolution set during migration.
   Remove an exclusion together with its override once the direct or transitive

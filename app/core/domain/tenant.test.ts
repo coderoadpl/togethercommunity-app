@@ -3,9 +3,27 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveInvoiceVat,
   resolveTenantSocial,
+  tenantSchema,
   tenantSettingsSchema,
   updateTenantSettingsInputSchema,
 } from './tenant.js';
+
+describe('tenantSchema', () => {
+  it('requires declared lifecycle status and plan values', () => {
+    const tenant = {
+      id: 'tenant-1',
+      slug: 'acme',
+      name: 'Acme',
+      status: 'active',
+      plan: 'self_hosted',
+      contentVersion: 1,
+    };
+
+    expect(tenantSchema.parse(tenant)).toEqual(tenant);
+    expect(tenantSchema.safeParse({ ...tenant, status: 'deleted' }).success).toBe(false);
+    expect(tenantSchema.safeParse({ ...tenant, plan: 'enterprise' }).success).toBe(false);
+  });
+});
 
 describe('updateTenantSettingsInputSchema', () => {
   it('leaves omitted fields undefined so the use-case can keep the stored value', () => {
@@ -56,10 +74,41 @@ describe('updateTenantSettingsInputSchema', () => {
       invoiceExemptionBasis: 'x'.repeat(257),
     }).success).toBe(false);
   });
+
+  it('accepts a renamed tenant and social profiles without exposing a slug update', () => {
+    expect(updateTenantSettingsInputSchema.parse({
+      name: '  Acme Academy  ',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+      slug: 'renamed-slug',
+    })).toEqual({
+      name: 'Acme Academy',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+    });
+  });
+
+  it('rejects empty names, malformed profile urls and more than eight links', () => {
+    expect(updateTenantSettingsInputSchema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(updateTenantSettingsInputSchema.safeParse({
+      socialLinks: [{ label: 'YouTube', url: 'not-a-url' }],
+    }).success).toBe(false);
+    expect(updateTenantSettingsInputSchema.safeParse({
+      socialLinks: [{ label: 'YouTube', url: 'javascript:alert(1)' }],
+    }).success).toBe(false);
+    expect(updateTenantSettingsInputSchema.safeParse({
+      socialLinks: Array.from({ length: 9 }, (_, index) => ({
+        label: `Profile ${String(index)}`,
+        url: `https://social.example.com/${String(index)}`,
+      })),
+    }).success).toBe(false);
+  });
 });
 
 describe('resolveInvoiceVat', () => {
-  const base = tenantSettingsSchema.parse({ billingPortalUrl: null, bunnyStreamLibraryId: null });
+  const base = tenantSettingsSchema.parse({
+    name: 'Acme',
+    billingPortalUrl: null,
+    bunnyStreamLibraryId: null,
+  });
 
   it('distinguishes configured, unset, and incomplete treatments', () => {
     expect(resolveInvoiceVat({ ...base, invoiceVatRatePercent: 23 })).toEqual({
@@ -92,10 +141,14 @@ describe('resolveInvoiceVat', () => {
 });
 
 describe('resolveTenantSocial', () => {
-  const tenant = { id: 'tenant-1', slug: 'acme', name: 'Acme', contentVersion: 1 };
+  const tenant = {
+    id: 'tenant-1', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1,
+  } as const;
 
   it('falls back to the tenant name and logo', () => {
     expect(resolveTenantSocial(tenant, {
+      name: 'Acme',
+      socialLinks: [],
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       logoUrl: '/logo.svg',
@@ -117,6 +170,8 @@ describe('resolveTenantSocial', () => {
 
   it('prefers configured social metadata', () => {
     expect(resolveTenantSocial(tenant, {
+      name: 'Acme',
+      socialLinks: [],
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       logoUrl: '/logo.svg',
@@ -139,7 +194,13 @@ describe('resolveTenantSocial', () => {
 
 describe('tenantSettingsSchema', () => {
   it('accepts a fully-cleared settings row', () => {
-    expect(tenantSettingsSchema.parse({ billingPortalUrl: null, bunnyStreamLibraryId: null })).toEqual({
+    expect(tenantSettingsSchema.parse({
+      name: 'Acme',
+      billingPortalUrl: null,
+      bunnyStreamLibraryId: null,
+    })).toEqual({
+      name: 'Acme',
+      socialLinks: [],
       billingPortalUrl: null,
       bunnyStreamLibraryId: null,
       logoUrl: null,

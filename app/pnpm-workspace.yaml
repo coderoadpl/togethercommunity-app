@@ -4,11 +4,12 @@ minimumReleaseAgeExclude:
   - smol-toml@1.7.1
   - unbash@4.0.4
   - yoctocolors@2.2.0
+  - hono@4.12.34
+  - undici@7.29.0
 onlyBuiltDependencies: []
 ignoredBuiltDependencies:
   - esbuild
   - msw
-  - odiff-bin
   - unrs-resolver
 auditConfig:
   ignoreGhsas:

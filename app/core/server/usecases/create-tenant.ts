@@ -5,6 +5,7 @@ import {
   isReservedTenantSlug,
   ok,
   slugReserved,
+  tenantSchema,
   validation,
   type AppError,
   type Result,
@@ -21,8 +22,10 @@ export interface CreateTenantDeps {
   tenants: TenantRepository;
   ids: IdGenerator;
   clock: Clock;
-  tenantCreationMode: 'open' | 'closed';
+  tenantCreationMode: TenantCreationMode;
 }
+
+export type TenantCreationMode = 'open' | 'bootstrap' | 'closed';
 
 export const createTenant = async (
   ctx: Ctx,
@@ -34,33 +37,43 @@ export const createTenant = async (
   if (deps.tenantCreationMode === 'closed') {
     return err(forbidden('Tenant creation is closed on this instance'));
   }
+  if (deps.tenantCreationMode === 'bootstrap' && await deps.tenants.hasAny()) {
+    return err(forbidden('Tenant creation is closed after the first workspace'));
+  }
 
   const slug = input.slug.trim().toLowerCase();
-  const name = input.name.trim();
+  const parsedName = tenantSchema.shape.name.safeParse(input.name);
 
   if (!slugPattern.test(slug)) {
     return errValidation('Tenant slug must be 3-63 lowercase letters, numbers or hyphens');
   }
   if (isReservedTenantSlug(slug)) return err(slugReserved(`Tenant slug "${slug}" is reserved`));
-  if (name.length === 0) return errValidation('Tenant name is required');
+  if (!parsedName.success) return errValidation('Tenant name must be 1-100 characters');
 
   const existing = await deps.tenants.findBySlug(slug);
   if (existing) return err(appError('conflict', `Tenant "${slug}" already exists`));
 
   const tenantId = deps.ids.nextId();
-  const tenant = await deps.tenants.createTenantWithOwnerGrant({
-    tenant: {
-      id: tenantId,
-      slug,
-      name,
-      createdAt: deps.clock.nowIso(),
+  const tenant = await deps.tenants.createTenantWithOwnerGrant(
+    {
+      tenant: {
+        id: tenantId,
+        slug,
+        name: parsedName.data,
+        createdAt: deps.clock.nowIso(),
+      },
+      ownerGrant: {
+        id: deps.ids.nextId(),
+        userId: ctx.identity.userId,
+        staffRole: 'owner',
+      },
     },
-    ownerGrant: {
-      id: deps.ids.nextId(),
-      userId: ctx.identity.userId,
-      staffRole: 'owner',
-    },
-  });
+    { requireEmpty: deps.tenantCreationMode === 'bootstrap' },
+  );
+
+  if (tenant === null) {
+    return err(forbidden('Tenant creation is closed after the first workspace'));
+  }
 
   return ok(tenant);
 };

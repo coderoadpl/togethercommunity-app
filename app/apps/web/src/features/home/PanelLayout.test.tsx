@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -206,6 +206,15 @@ describe('Creator panel routing', () => {
     await renderPanelAt('/panel/members');
 
     expect(await screen.findByTestId('tenant-name')).toHaveTextContent('Acme');
+    expect(screen.getByTestId('panel-brand-lockup')).toHaveAttribute(
+      'src',
+      '/brand/together-horizontal-dark.svg',
+    );
+    const banner = screen.getByTestId('panel-brand-lockup').closest('header');
+    if (banner === null) throw new Error('Panel lockup must render inside the app bar');
+    expect(within(banner).getByTestId('color-scheme-switcher')).toBeInTheDocument();
+    expect(within(banner).getByTestId('language-switcher')).toBeInTheDocument();
+    expect(within(screen.getByRole('contentinfo')).queryByTestId('color-scheme-switcher')).toBeNull();
     const alwaysVisibleSectionIds = [
       'dashboard',
       'courses',
@@ -372,6 +381,7 @@ describe('Creator panel routing', () => {
 
     await userEvent.click(await screen.findByTestId('user-menu'));
     expect(await screen.findByTestId('user-menu-email')).toHaveTextContent('creator@together.dev');
+    expect(screen.getByText(pl.tenant.roleOwner)).toHaveClass('MuiChip-label');
     expect(screen.getByTestId('sign-out')).toBeInTheDocument();
   });
 });

@@ -85,8 +85,8 @@ describe('deriveBrandPalette', () => {
     const accents = [ACCENT, '#000000', '#172554', '#B3261E', '#1C8A5A'];
     for (const accent of accents) {
       const palette = deriveBrandPalette(accent, 'dark');
-      expect(contrastRatio(palette.main, '#141210')).toBeGreaterThanOrEqual(3);
-      expect(contrastRatio(palette.dark, '#1E1B18')).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(palette.main, '#101113')).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(palette.dark, '#17181B')).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(palette.main, palette.contrastText)).toBeGreaterThanOrEqual(4.5);
     }
   });

@@ -24,6 +24,12 @@ declare module '@mui/material/styles' {
     statusAccent?: string;
     moneyColor?: string;
     primaryActive?: string;
+    emberCta?: {
+      main: string;
+      hover: string;
+      active: string;
+      contrastText: string;
+    };
     /** Focus-ring base color; themes that set it let applyBranding tint focus with the tenant accent. */
     focusRing?: string;
   }
@@ -33,6 +39,12 @@ declare module '@mui/material/styles' {
     statusAccent?: string;
     moneyColor?: string;
     primaryActive?: string;
+    emberCta?: {
+      main: string;
+      hover: string;
+      active: string;
+      contrastText: string;
+    };
     focusRing?: string;
   }
 }
@@ -171,8 +183,12 @@ interface ShadcnTokens {
   ember: string;
   emberHover: string;
   emberActive: string;
-  emberType: string;
   emberInk: string;
+  primary: string;
+  primaryHover: string;
+  primaryActive: string;
+  primaryType: string;
+  primaryInk: string;
   ring: string;
   destructive: string;
   destructiveDark: string;
@@ -192,23 +208,27 @@ interface ShadcnTokens {
 }
 
 const SHADCN_LIGHT: ShadcnTokens = {
-  background: '#FAF8F5',
+  background: '#FAFAF9',
   surface: '#FFFFFF',
   overlay: '#FFFFFF',
-  muted: '#F2EEE8',
-  pressed: '#EDE8E1',
+  muted: '#F4F4F2',
+  pressed: '#ECEBE9',
   input: '#FFFFFF',
   toggleSelected: '#FFFFFF',
-  ink: '#1B1613',
-  inkSoft: '#6A6156',
-  disabledText: '#8A8177',
-  border: '#E7E2DA',
-  borderStrong: '#D8D1C7',
+  ink: '#1B1A18',
+  inkSoft: '#63615C',
+  disabledText: '#8A8781',
+  border: '#E6E5E2',
+  borderStrong: '#D6D4D0',
   ember: '#E8682A',
   emberHover: '#DA5D22',
   emberActive: '#D8571F',
-  emberType: '#AD440A',
   emberInk: '#1C120B',
+  primary: '#1B1A18',
+  primaryHover: '#2F2D2A',
+  primaryActive: '#3B3936',
+  primaryType: '#1B1A18',
+  primaryInk: '#FFFFFF',
   ring: '#E8682A',
   destructive: '#C21E1E',
   destructiveDark: '#A81A1A',
@@ -223,29 +243,33 @@ const SHADCN_LIGHT: ShadcnTokens = {
   shadowXs: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
   shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
   shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
-  tooltipBackground: '#1B1613',
+  tooltipBackground: '#1B1A18',
   tooltipText: '#FFFFFF',
 };
 
 const SHADCN_DARK: ShadcnTokens = {
-  background: '#141210',
-  surface: '#1E1B18',
-  overlay: '#262220',
-  muted: '#26211C',
-  pressed: '#38312A',
-  input: '#141210',
-  toggleSelected: '#38312A',
-  ink: '#F4EFE9',
-  inkSoft: '#A9A29A',
-  disabledText: '#756E66',
-  border: '#2E2A26',
-  borderStrong: '#423C35',
+  background: '#101113',
+  surface: '#17181B',
+  overlay: '#1D1F22',
+  muted: '#1B1D20',
+  pressed: '#26282D',
+  input: '#101113',
+  toggleSelected: '#26282D',
+  ink: '#EDEEF0',
+  inkSoft: '#A0A3A8',
+  disabledText: '#686C72',
+  border: '#26282C',
+  borderStrong: '#33363C',
   ember: '#E8682A',
   emberHover: '#EE7B40',
   emberActive: '#EE7B40',
-  emberType: '#F49A5E',
   emberInk: '#1C120B',
-  ring: '#F49A5E',
+  primary: '#EDEEF0',
+  primaryHover: '#D9DBDE',
+  primaryActive: '#C9CCD0',
+  primaryType: '#EDEEF0',
+  primaryInk: '#101113',
+  ring: '#E8682A',
   destructive: '#F0857A',
   destructiveDark: '#F0857A',
   destructiveContrast: '#2A0F0B',
@@ -259,8 +283,8 @@ const SHADCN_DARK: ShadcnTokens = {
   shadowXs: '0 1px 2px 0 rgba(0, 0, 0, 0.45)',
   shadowMd: '0 4px 10px -2px rgba(0, 0, 0, 0.55)',
   shadowLg: '0 12px 24px -6px rgba(0, 0, 0, 0.60)',
-  tooltipBackground: '#F4EFE9',
-  tooltipText: '#1B1815',
+  tooltipBackground: '#EDEEF0',
+  tooltipText: '#16171A',
 };
 
 const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
@@ -278,11 +302,15 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
     disabledText: SHADCN_DISABLED_TEXT,
     border: SHADCN_BORDER,
     borderStrong: SHADCN_BORDER_STRONG,
-    ember: SHADCN_PRIMARY,
-    emberHover: SHADCN_PRIMARY_HOVER,
-    emberActive: SHADCN_PRIMARY_ACTIVE,
-    emberType: SHADCN_PRIMARY_TYPE,
-    emberInk: SHADCN_PRIMARY_INK,
+    ember: SHADCN_EMBER,
+    emberHover: SHADCN_EMBER_HOVER,
+    emberActive: SHADCN_EMBER_ACTIVE,
+    emberInk: SHADCN_EMBER_INK,
+    primary: SHADCN_PRIMARY,
+    primaryHover: SHADCN_PRIMARY_HOVER,
+    primaryActive: SHADCN_PRIMARY_ACTIVE,
+    primaryType: SHADCN_PRIMARY_TYPE,
+    primaryInk: SHADCN_PRIMARY_INK,
     ring: SHADCN_RING,
     destructive: SHADCN_DESTRUCTIVE,
     destructiveDark: SHADCN_DESTRUCTIVE_DARK,
@@ -304,6 +332,12 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
     headerRule: `1px solid ${SHADCN_BORDER}`,
     focusRing: SHADCN_RING,
     primaryActive: SHADCN_PRIMARY_ACTIVE,
+    emberCta: {
+      main: SHADCN_EMBER,
+      hover: SHADCN_EMBER_HOVER,
+      active: SHADCN_EMBER_ACTIVE,
+      contrastText: SHADCN_EMBER_INK,
+    },
     palette: {
       mode: scheme,
       contrastThreshold: CONTRAST_THRESHOLD,
@@ -340,6 +374,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
       action: {
         disabled: SHADCN_DISABLED_TEXT,
         disabledBackground: SHADCN_PRESSED,
+        hover: SHADCN_MUTED,
+        selected: SHADCN_PRESSED,
       },
       divider: SHADCN_BORDER,
     },
@@ -433,21 +469,14 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
                 boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.18)',
               },
             },
-            '&.Mui-disabled': scheme === 'dark'
-              ? {
-                  backgroundColor: theme.palette.primary.main,
-                  color: theme.palette.primary.contrastText,
-                  boxShadow: 'none',
-                  opacity: 0.5,
-                }
-              : {
-                  backgroundColor: SHADCN_PRESSED,
-                  color: SHADCN_DISABLED_TEXT,
-                  boxShadow: 'none',
-                  cursor: 'not-allowed',
-                  opacity: 1,
-                  pointerEvents: 'auto',
-                },
+            '&.Mui-disabled': {
+              backgroundColor: SHADCN_PRESSED,
+              color: SHADCN_DISABLED_TEXT,
+              boxShadow: 'none',
+              cursor: 'not-allowed',
+              opacity: 1,
+              pointerEvents: 'auto',
+            },
           }),
           outlined: {
             border: `1px solid ${SHADCN_BORDER}`,
@@ -558,7 +587,8 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
           root: ({ theme }) => ({
             color: theme.palette.primary.dark,
             fontWeight: 500,
-            textDecorationColor: SHADCN_BORDER_STRONG,
+            textDecorationColor: alpha(theme.palette.primary.dark, 0.35),
+            '&:hover': { textDecorationColor: theme.palette.primary.dark },
             '&[aria-current="true"]': { fontWeight: 600 },
             '&:focus-visible': {
               outline: 'none',
@@ -641,20 +671,20 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
       MuiTabs: {
         styleOverrides: {
           root: { minHeight: 40 },
-          indicator: ({ theme }) => ({ backgroundColor: theme.palette.primary.dark, height: 2 }),
+          indicator: { backgroundColor: SHADCN_INK, height: 2 },
         },
       },
       MuiTab: {
         styleOverrides: {
-          root: ({ theme }) => ({
+          root: {
             minHeight: 40,
             padding: '0.5rem 0.85rem',
             color: SHADCN_INK_SOFT,
             fontSize: '0.875rem',
             fontWeight: 500,
             textTransform: 'none',
-            '&.Mui-selected': { color: theme.palette.primary.dark },
-          }),
+            '&.Mui-selected': { color: SHADCN_INK },
+          },
         },
       },
       MuiList: {
@@ -798,10 +828,10 @@ const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
       MuiLinearProgress: {
         styleOverrides: {
           root: { height: 6, borderRadius: 999, backgroundColor: SHADCN_BORDER },
-          bar: ({ theme }) => ({
+          bar: {
             borderRadius: 999,
-            backgroundColor: scheme === 'dark' ? theme.palette.primary.main : theme.palette.primary.dark,
-          }),
+            backgroundColor: SHADCN_INK,
+          },
         },
       },
       MuiTooltip: {
@@ -2667,14 +2697,29 @@ export const CheckoutPriceOption = styled(Paper, {
 })<{ selected: boolean }>(({ selected, theme }) => ({
   ...(selected
     ? {
-        borderColor: theme.palette.primary.main,
-        backgroundColor: alpha(theme.palette.primary.main, 0.06),
+        borderColor: theme.palette.text.primary,
+        backgroundColor: theme.palette.action.selected,
       }
     : {}),
 }));
 
 export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
-  color: theme.palette.primary.dark,
+  color: theme.palette.text.primary,
+}));
+
+export const EmberCtaButton = styled(Button)(({ theme }) => ({
+  backgroundColor: theme.emberCta?.main ?? theme.palette.primary.main,
+  color: theme.emberCta?.contrastText ?? theme.palette.primary.contrastText,
+  '&:hover': {
+    backgroundColor: theme.emberCta?.hover ?? theme.palette.primary.light,
+  },
+  '&:active': {
+    backgroundColor: theme.emberCta?.active ?? theme.palette.primary.dark,
+  },
+  '&.Mui-disabled': {
+    backgroundColor: theme.palette.action.disabledBackground,
+    color: theme.palette.action.disabled,
+  },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -2723,15 +2768,10 @@ export const ChecklistDoneLabel = styled('span')(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
+export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.text.primary }));
 
 export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({
   borderBottom: theme.headerRule ?? `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
-}));
-
-export const TenantSwatch = styled(Box)(({ theme }) => ({
-  backgroundColor: theme.palette.primary.main,
-  boxShadow: `0.3rem 0.3rem 0 ${alpha(theme.palette.primary.main, 0.09)}`,
 }));
 
 /** Live accent preview in the branding settings; transparent until a valid color is typed. */
@@ -2752,10 +2792,10 @@ export const AppBarTitle = styled(Typography)<AsElement>({
   lineHeight: 1.2,
 });
 
-export const AppBarWordmark = styled(Typography)<AsElement>({
-  fontSize: '0.68rem',
-  letterSpacing: '0.16em',
-  textTransform: 'uppercase',
+export const AppBarWordmark = styled('img')({
+  display: 'block',
+  height: 15,
+  width: 'auto',
   opacity: 0.62,
 });
 
@@ -2765,11 +2805,6 @@ export const TenantListItemText = styled(ListItemText)({
 
 export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });
 
-/**
- * Sidebar section entry. The selected state derives entirely from the active
- * theme's primary token (tint fill + accent rail + accent text), so it reads
- * coherently across all registered modes without any hard-coded color.
- */
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   marginBottom: 2,
@@ -2777,13 +2812,12 @@ export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   paddingBottom: 8,
   color: theme.palette.text.secondary,
   '& .MuiListItemIcon-root': { color: 'inherit', minWidth: 34 },
-  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.06) },
+  '&:hover': { backgroundColor: theme.palette.action.hover },
   '&.Mui-selected': {
-    color: theme.palette.primary.dark,
-    backgroundColor: alpha(theme.palette.primary.main, 0.1),
-    boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
-    '& .MuiListItemIcon-root': { color: theme.palette.primary.dark },
-    '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.16) },
+    color: theme.palette.text.primary,
+    backgroundColor: theme.palette.action.selected,
+    '& .MuiListItemIcon-root': { color: theme.palette.text.primary },
+    '&:hover': { backgroundColor: theme.palette.action.hover },
   },
 }));
 
@@ -2810,7 +2844,7 @@ export const UnreadDot = styled('span')(({ theme }) => ({
   height: 8,
   marginTop: 6,
   borderRadius: '50%',
-  backgroundColor: theme.palette.primary.main,
+  backgroundColor: theme.palette.text.primary,
   flexShrink: 0,
 }));
 
@@ -2839,7 +2873,7 @@ export const CompletionPartialIcon = styled(SvgIcon)(({ theme }) => ({
 }));
 
 export const SearchHighlight = styled('mark')(({ theme }) => ({
-  backgroundColor: alpha(theme.palette.primary.main, 0.28),
+  backgroundColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.22 : 0.14),
   color: 'inherit',
   borderRadius: 2,
   padding: '0 1px',
@@ -2852,14 +2886,14 @@ export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92r
 export const ReorderCard = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'dropTarget',
 })<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
-  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.text.primary, 0.08) : undefined,
 }));
 
 export const ReorderRow = styled(ListItem, {
   shouldForwardProp: (prop) => prop !== 'dropTarget',
 })<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
   borderRadius: theme.shape.borderRadius,
-  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.text.primary, 0.08) : undefined,
 }));
 
 export const ReorderDragHandle = styled('span', {
@@ -2891,8 +2925,8 @@ export const CourseCardRoot = styled(Box)<AsElement & { to?: string }>(({ theme 
   borderRadius: theme.shape.borderRadius,
   transition: 'border-color 120ms ease, box-shadow 120ms ease',
   '&:hover': {
-    borderColor: alpha(theme.palette.primary.main, 0.55),
-    boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.18)}`,
+    borderColor: theme.palette.text.primary,
+    boxShadow: `0 1px 0 ${alpha(theme.palette.text.primary, 0.12)}`,
   },
   '&:focus-visible': {
     outline: 'none',
@@ -2925,8 +2959,8 @@ export const CourseCardCoverFallback = styled(Box)(({ theme }) => ({
   alignItems: 'center',
   justifyContent: 'center',
   aspectRatio: '16 / 9',
-  backgroundColor: alpha(theme.palette.primary.main, 0.08),
-  color: theme.palette.primary.main,
+  backgroundColor: alpha(theme.palette.text.primary, 0.06),
+  color: theme.palette.text.primary,
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
@@ -2985,9 +3019,12 @@ export const StatTile = styled(Box)(({ theme }) => ({
 
 export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'stretch',
+  flexDirection: 'column',
   justifyContent: 'flex-start',
-  gap: '0.75rem',
+  gap: '0.2rem',
+  height: '100%',
+  minHeight: '7rem',
   padding: '0.9rem 1rem',
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
@@ -3004,7 +3041,7 @@ export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
 
 export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.3rem',
-  color: theme.palette.primary.dark,
+  color: theme.palette.text.primary,
 }));
 
 export const StatTileValue = styled(Typography)<AsElement>(({ theme }) => ({
@@ -3041,8 +3078,11 @@ export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
   height: 6,
   borderRadius: 999,
-  backgroundColor: alpha(theme.palette.primary.main, 0.14),
-  '& .MuiLinearProgress-bar': { borderRadius: 999 },
+  backgroundColor: theme.palette.divider,
+  '& .MuiLinearProgress-bar': {
+    borderRadius: 999,
+    backgroundColor: theme.palette.text.primary,
+  },
 }));
 
 export const LessonDurationText = styled('span')(({ theme }) => ({
@@ -3059,8 +3099,8 @@ export const CourseCompletedNote = styled(Typography)<AsElement>(({ theme }) => 
 }));
 
 export const EmptyStateIcon = styled(SvgIcon)(({ theme }) => ({
-  fontSize: '2.6rem',
-  color: theme.palette.text.disabled,
+  fontSize: '1.15rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const EmptyStateContent = styled(Stack)({
@@ -3109,7 +3149,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
-  '& a': { color: theme.palette.primary.dark },
+  '& a': { color: theme.palette.text.primary },
   '& pre': {
     overflowX: 'auto',
     padding: '0.75rem',
@@ -3139,7 +3179,7 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
 }));
 
 export const ReplyIndent = styled(Box)(({ theme }) => ({
-  borderLeft: `2px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+  borderLeft: `2px solid ${alpha(theme.palette.text.primary, 0.2)}`,
   paddingLeft: '1rem',
   marginLeft: '0.35rem',
 }));
@@ -3152,9 +3192,9 @@ export const AuthorChip = styled('span')(({ theme }) => ({
   fontWeight: 700,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: theme.palette.primary.dark,
-  backgroundColor: alpha(theme.palette.primary.main, 0.12),
-  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+  color: theme.palette.text.primary,
+  backgroundColor: alpha(theme.palette.text.primary, 0.08),
+  border: `1px solid ${alpha(theme.palette.text.primary, 0.25)}`,
 }));
 
 export const PostAuthorName = styled(Typography)<AsElement>({

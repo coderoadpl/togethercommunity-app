@@ -138,6 +138,13 @@ describe('DashboardPanel', () => {
     expect(screen.getByTestId('dashboard-tile-revenue')).toHaveTextContent('147');
     expect(screen.getByTestId('dashboard-tile-subscriptions')).toHaveTextContent('2');
     expect(screen.getByTestId('dashboard-tile-orders')).toHaveTextContent('4');
+    expect(screen.getByTestId('dashboard-tile-products-headline')).toHaveTextContent('2');
+    expect(screen.getByTestId('dashboard-tile-products-label')).toHaveTextContent(pl.sections.products);
+    expect(screen.getByTestId('dashboard-tile-products-detail')).toHaveTextContent(
+      pl.dashboard.publishedDraft({ published: 1, draft: 1 }),
+    );
+    expect(screen.getByTestId('dashboard-tile-revenue')).toHaveTextContent('zł');
+    expect(screen.getByTestId('dashboard-tile-subscriptions')).not.toHaveTextContent('zł');
 
     const recent = screen.getAllByTestId('dashboard-member-row');
     expect(recent).toHaveLength(5);

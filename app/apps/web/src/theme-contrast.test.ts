@@ -15,42 +15,57 @@ const themes = {
 const themeFor = (scheme: ResolvedColorScheme) => themes[scheme];
 
 describe('Together theme contrast', () => {
-  it('uses the two-hex ember rule in both schemes', () => {
+  it('uses neutral primary actions and reserves ember for the checkout CTA and focus ring', () => {
     const light = themeFor('light');
     const dark = themeFor('dark');
 
-    expect(light.palette.primary.main).toBe('#E8682A');
-    expect(light.palette.primary.dark).toBe('#AD440A');
-    expect(light.palette.primary.contrastText).toBe('#1C120B');
-    expect(dark.palette.primary.main).toBe('#E8682A');
-    expect(dark.palette.primary.dark).toBe('#F49A5E');
-    expect(dark.palette.primary.contrastText).toBe('#1C120B');
-    expectRatio('#1C120B', '#E8682A', 5.65);
+    expect(light.palette.primary).toMatchObject({
+      main: '#1B1A18',
+      light: '#2F2D2A',
+      dark: '#1B1A18',
+      contrastText: '#FFFFFF',
+    });
+    expect(dark.palette.primary).toMatchObject({
+      main: '#EDEEF0',
+      light: '#D9DBDE',
+      dark: '#EDEEF0',
+      contrastText: '#101113',
+    });
+    expect(light.primaryActive).toBe('#3B3936');
+    expect(dark.primaryActive).toBe('#C9CCD0');
+    expect(light.focusRing).toBe('#E8682A');
+    expect(dark.focusRing).toBe('#E8682A');
+    expect(light.emberCta).toEqual({
+      main: '#E8682A',
+      hover: '#DA5D22',
+      active: '#D8571F',
+      contrastText: '#1C120B',
+    });
+    expect(dark.emberCta).toEqual({
+      main: '#E8682A',
+      hover: '#EE7B40',
+      active: '#EE7B40',
+      contrastText: '#1C120B',
+    });
   });
 
-  it('uses the flat light disabled-state tokens and the dark opacity mechanism', () => {
+  it('uses flat readable disabled-state tokens in both schemes', () => {
     const light = themeFor('light');
     const dark = themeFor('dark');
 
-    expect(light.palette.action.disabled).toBe('#8A8177');
-    expect(light.palette.action.disabledBackground).toBe('#EDE8E1');
-    expectRatio('#8A8177', '#EDE8E1', 3.14);
-    expectRatio('#8A8177', '#FFFFFF', 3.83);
-    expect(dark.palette.action.disabled).toBe('#756E66');
-    expectRatio('#756E66', '#141210', 3.72);
-    expectRatio('#756E66', '#1E1B18', 3.41);
+    expect(light.palette.action.disabled).toBe('#8A8781');
+    expect(light.palette.action.disabledBackground).toBe('#ECEBE9');
+    expect(dark.palette.action.disabled).toBe('#686C72');
+    expect(dark.palette.action.disabledBackground).toBe('#26282D');
+    expectRatio('#8A8781', '#ECEBE9', 3.01);
+    expectRatio('#686C72', '#26282D', 2.79);
   });
 
-  it('reproduces every light text-token contrast pair', () => {
-    const backgrounds = ['#FAF8F5', '#FFFFFF', '#F2EEE8'] as const;
+  it('reproduces the quiet-paper contrast pairs', () => {
+    const backgrounds = ['#FAFAF9', '#FFFFFF', '#F4F4F2', '#ECEBE9'] as const;
     const cases = [
-      ['#1B1613', [16.92, 17.94, 15.52]],
-      ['#6A6156', [5.73, 6.07, 5.26]],
-      ['#AD440A', [5.49, 5.82, 5.04]],
-      ['#147036', [5.83, 6.18, 5.34]],
-      ['#C21E1E', [5.66, 6, 5.19]],
-      ['#A34D08', [5.47, 5.8, 5.02]],
-      ['#0E7490', [5.05, 5.36, 4.64]],
+      ['#1B1A18', [16.65, 17.39, 15.79, 14.60]],
+      ['#63615C', [5.92, 6.19, 5.62, 5.19]],
     ] as const;
 
     for (const [foreground, expected] of cases) {
@@ -58,24 +73,25 @@ describe('Together theme contrast', () => {
         expectRatio(foreground, background, expected[index] ?? 0);
       });
     }
-    expectRatio('#FFFFFF', '#147036', 6.18);
-    expectRatio('#FFFFFF', '#C21E1E', 6);
-    expectRatio('#231303', '#D97706', 5.65);
-    expectRatio('#FFFFFF', '#0E7490', 5.36);
+    expectRatio('#C21E1E', '#FAFAF9', 5.75);
+    expectRatio('#147036', '#FAFAF9', 5.91);
+    expectRatio('#A34D08', '#FAFAF9', 5.55);
+    expectRatio('#0E7490', '#FAFAF9', 5.13);
+    expectRatio('#FFFFFF', '#1B1A18', 17.39);
+    expectRatio('#FFFFFF', '#2F2D2A', 13.73);
+    expectRatio('#FFFFFF', '#3B3936', 11.51);
+    expectRatio('#1C120B', '#E8682A', 5.65);
     expectRatio('#1C120B', '#DA5D22', 4.88);
     expectRatio('#1C120B', '#D8571F', 4.65);
-    expectRatio('#E8682A', '#FAF8F5', 3.07);
+    expectRatio('#E8682A', '#FAFAF9', 3.12);
     expectRatio('#E8682A', '#FFFFFF', 3.26);
-    expectRatio('#E8682A', '#F2EEE8', 2.82);
-    expectRatio('#AD440A', '#E7E2DA', 4.51);
   });
 
-  it('reproduces every dark text-token contrast pair', () => {
-    const backgrounds = ['#141210', '#1E1B18', '#262220'] as const;
+  it('reproduces the deep-ink contrast pairs', () => {
+    const backgrounds = ['#101113', '#17181B', '#1D1F22', '#26282D'] as const;
     const cases = [
-      ['#F4EFE9', [16.35, 14.99, 13.79]],
-      ['#A9A29A', [7.41, 6.79, 6.25]],
-      ['#F49A5E', [8.57, 7.86, 7.23]],
+      ['#EDEEF0', [16.27, 15.29, 14.23, 12.70]],
+      ['#A0A3A8', [7.47, 7.02, 6.53, 5.83]],
     ] as const;
 
     for (const [foreground, expected] of cases) {
@@ -83,17 +99,19 @@ describe('Together theme contrast', () => {
         expectRatio(foreground, background, expected[index] ?? 0);
       });
     }
-    expectRatio('#55C382', '#141210', 8.47);
-    expectRatio('#55C382', '#1E1B18', 7.77);
-    expectRatio('#F0857A', '#141210', 7.42);
-    expectRatio('#F0857A', '#1E1B18', 6.81);
-    expectRatio('#E5A84B', '#141210', 8.93);
-    expectRatio('#E5A84B', '#1E1B18', 8.19);
-    expectRatio('#85B8DC', '#141210', 8.8);
-    expectRatio('#85B8DC', '#1E1B18', 8.07);
-    expectRatio('#E8682A', '#141210', 5.74);
-    expectRatio('#E8682A', '#1E1B18', 5.26);
-    expectRatio('#1C120B', '#EE7B40', 6.61);
-    expectRatio('#1B1815', '#F4EFE9', 15.46);
+    expectRatio('#F0857A', '#101113', 7.50);
+    expectRatio('#F0857A', '#17181B', 7.05);
+    expectRatio('#55C382', '#101113', 8.56);
+    expectRatio('#55C382', '#17181B', 8.04);
+    expectRatio('#E5A84B', '#101113', 9.03);
+    expectRatio('#E5A84B', '#17181B', 8.48);
+    expectRatio('#85B8DC', '#101113', 8.89);
+    expectRatio('#85B8DC', '#17181B', 8.36);
+    expectRatio('#101113', '#EDEEF0', 16.27);
+    expectRatio('#101113', '#D9DBDE', 13.62);
+    expectRatio('#101113', '#C9CCD0', 11.72);
+    expectRatio('#E8682A', '#101113', 5.80);
+    expectRatio('#E8682A', '#17181B', 5.45);
+    expectRatio('#16171A', '#EDEEF0', 15.44);
   });
 });

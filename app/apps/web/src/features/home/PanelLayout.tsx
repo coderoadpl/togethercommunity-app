@@ -45,7 +45,6 @@ import {
   createThemeForMode,
   Eyebrow,
   PanelNavItem,
-  TenantSwatch,
 } from '../../theme.js';
 import {
   AccountIcon,
@@ -403,24 +402,30 @@ const UserMenu = ({
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{
+          paper: { sx: { minWidth: '15rem', maxWidth: '20rem', mt: '0.35rem' } },
+          list: { sx: { py: '0.35rem' } },
+        }}
       >
-        <Box sx={{ px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
+        <Box sx={{ px: '1rem', py: '0.75rem' }}>
           <Eyebrow variant="overline" component="p">
             {t.panel.signedInAs}
           </Eyebrow>
           <BreakAllText variant="body2" data-testid="user-menu-email">
             {email}
           </BreakAllText>
-          <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.5rem' }} />
+          <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.625rem' }} />
         </Box>
         <Divider />
-        <Box sx={{ display: { xs: 'block', sm: 'none' }, px: '1rem', py: '0.5rem' }}>
+        <Box sx={{ display: { xs: 'grid', sm: 'none' }, gap: '0.5rem', px: '1rem', py: '0.75rem' }}>
           <LanguageSwitcher inline />
+          <ColorSchemeSwitcher compact />
         </Box>
         <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
         <MenuItem
           data-testid="sign-out"
           disabled={pending}
+          sx={{ minHeight: '44px', px: '1rem' }}
           onClick={() => {
             setAnchorEl(null);
             onSignOut();
@@ -468,10 +473,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       mobileNavigationCloseLabel={t.panel.closeNavigation}
       navigation={nav}
       footer={(
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <ColorSchemeSwitcher />
-          <BuildStamp />
-        </Box>
+        <BuildStamp />
       )}
       header={
         <>
@@ -489,17 +491,23 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
               </IconButton>
             </Tooltip>
           )}
-          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
           <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <AppBarTitle component="span" noWrap data-testid="tenant-name">
               {tenant.name}
             </AppBarTitle>
-            <AppBarWordmark component="span" variant="h3">{t.common.appName}</AppBarWordmark>
+            <AppBarWordmark
+              src={theme.palette.mode === 'dark'
+                ? '/brand/together-horizontal-dark.svg'
+                : '/brand/together-horizontal-light.svg'}
+              alt={t.common.appName}
+              data-testid="panel-brand-lockup"
+            />
           </Box>
           <Box sx={{ flex: 1 }} />
           <Box
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
           >
+            <ColorSchemeSwitcher compact />
             <LanguageSwitcher inline />
           </Box>
           <NotificationBell />
@@ -536,10 +544,7 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
       state={{ kind: 'error', message, retry: { label: t.common.retry, onRetry } }}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
       footer={(
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <ColorSchemeSwitcher />
-          <BuildStamp />
-        </Box>
+        <BuildStamp />
       )}
       header={
         <>
@@ -557,8 +562,12 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
               </IconButton>
             </Tooltip>
           )}
-          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
-          <AppBarWordmark component="span" variant="h3">{t.common.appName}</AppBarWordmark>
+          <AppBarWordmark
+            src={theme.palette.mode === 'dark'
+              ? '/brand/together-horizontal-dark.svg'
+              : '/brand/together-horizontal-light.svg'}
+            alt={t.common.appName}
+          />
         </>
       }
     />

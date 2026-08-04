@@ -465,6 +465,7 @@ describe('CheckoutPage', () => {
     renderCheckout('course-1');
 
     expect(await screen.findByRole('button', { name: /^Zapłać/ })).toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Symuluj płatność/ })).toBeInTheDocument();
     expect(screen.getByText(pl.checkout.simulatedPaymentDevNote)).toBeInTheDocument();
   });

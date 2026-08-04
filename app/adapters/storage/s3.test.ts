@@ -29,6 +29,7 @@ const storageResponse = (
 ) => ({
   ok: status < 400,
   status,
+  body: { cancel: async () => undefined },
   headers: {
     get: (name: string) => responseHeaders[name.toLowerCase()] ?? null,
   },

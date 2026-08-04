@@ -716,7 +716,7 @@ describe('course management use-cases', () => {
     ]);
   });
 
-  it('keeps the lesson and its attachment keys when storage cleanup fails', async () => {
+  it('deletes the lesson even when storage cleanup fails', async () => {
     const lessons = [lesson('l1', 't-acme')];
     const d = deps({
       lessons,
@@ -736,8 +736,8 @@ describe('course management use-cases', () => {
 
     await expect(
       deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
-    expect(lessons).toHaveLength(1);
+    ).resolves.toMatchObject({ ok: true, value: { lessonId: 'l1' } });
+    expect(lessons).toHaveLength(0);
   });
 
   it('reports not found when deleting a missing lesson', async () => {

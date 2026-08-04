@@ -41,7 +41,13 @@ const fakeBucket = (failure?: {
   body: string;
   headers?: Record<string, string>;
 }) => {
-  const requests: Array<{ method: string; url: string; headers?: Record<string, string> }> = [];
+  const requests: Array<{
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    dispatcher?: unknown;
+    redirect?: 'error';
+  }> = [];
   const objects = new Map<string, string>();
   const fetchStorage = async (
     url: string,
@@ -49,9 +55,17 @@ const fakeBucket = (failure?: {
       method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
       body?: string;
       headers?: Record<string, string>;
+      dispatcher?: unknown;
+      redirect?: 'error';
     },
   ) => {
-    requests.push({ method: init.method, url, ...(init.headers === undefined ? {} : { headers: init.headers }) });
+    requests.push({
+      method: init.method,
+      url,
+      ...(init.headers === undefined ? {} : { headers: init.headers }),
+      ...(init.dispatcher === undefined ? {} : { dispatcher: init.dispatcher }),
+      ...(init.redirect === undefined ? {} : { redirect: init.redirect }),
+    });
     const path = new URL(url).pathname;
     if (failure !== undefined && failure.method === init.method) {
       return storageResponse(failure.status, failure.body, failure.headers);
@@ -187,13 +201,24 @@ describe('createS3StorageProvider', () => {
   });
 
   it('presigns PUT uploads and signs DELETE requests', async () => {
-    const requests: Array<{ url: string; method: string }> = [];
+    const requests: Array<{
+      url: string;
+      method: string;
+      dispatcher?: unknown;
+      redirect?: 'error';
+    }> = [];
     const storage = createS3StorageProvider(
       resolver,
       {
         now: () => new Date('2026-07-20T12:00:00.000Z'),
+        lookupAddresses: async () => ['52.216.0.1'],
         fetchStorage: async (url, init) => {
-          requests.push({ url, method: init.method });
+          requests.push({
+            url,
+            method: init.method,
+            ...(init.dispatcher === undefined ? {} : { dispatcher: init.dispatcher }),
+            ...(init.redirect === undefined ? {} : { redirect: init.redirect }),
+          });
           return storageResponse(204, '');
         },
       },
@@ -207,6 +232,8 @@ describe('createS3StorageProvider', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.method).toBe('DELETE');
     expect(requests[0]?.url).toContain('X-Amz-Signature=');
+    expect(requests[0]?.dispatcher).toBeDefined();
+    expect(requests[0]?.redirect).toBe('error');
   });
 
   it('reads the stored object size through a signed HEAD request', async () => {
@@ -214,6 +241,7 @@ describe('createS3StorageProvider', () => {
     const storage = createS3StorageProvider(resolver, {
       now: () => new Date('2026-08-03T12:00:00.000Z'),
       fetchStorage: bucket.fetchStorage,
+      allowPrivateEndpoints: true,
     });
     const target = storage.objectUrl(MINIO_CONFIGURATION, 'attachments/file.txt').toString();
     await bucket.fetchStorage(target, { method: 'PUT', body: 'actual bytes' });
@@ -226,9 +254,11 @@ describe('createS3StorageProvider', () => {
     })).resolves.toEqual({ ok: true, value: { sizeBytes: 12 } });
     expect(bucket.requests.at(-1)?.method).toBe('HEAD');
     expect(bucket.requests.at(-1)?.url).toContain('X-Amz-Signature=');
+    expect(bucket.requests.at(-1)?.dispatcher).toBeDefined();
+    expect(bucket.requests.at(-1)?.redirect).toBe('error');
   });
 
-  it('uses the shared diagnostic contract after checking both stored credentials', async () => {
+  it('keeps legacy credentials healthy but requires wizard configuration for the connection test', async () => {
     const keys: string[] = [];
     const storage = createS3StorageProvider({
       resolve: async (_tenantId, key) => {
@@ -243,17 +273,29 @@ describe('createS3StorageProvider', () => {
       ok: true,
       value: { healthy: true },
     });
-    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toEqual({
-      ok: true,
-      value: { code: 'storage.available', message: 'Storage credentials are available.' },
+    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured' },
     });
     expect(keys).toEqual([
       's3.accessKeyId',
       's3.secretAccessKey',
       's3.configuration',
-      's3.accessKeyId',
-      's3.secretAccessKey',
     ]);
+  });
+
+  it.each(['s3.accessKeyId', 's3.secretAccessKey'])('maps a missing %s to not configured', async (missingKey) => {
+    const storage = createS3StorageProvider({
+      resolve: async (_tenantId, key) =>
+        key === missingKey || key === 's3.configuration'
+          ? err(notFound('missing'))
+          : ok('configured'),
+    });
+
+    await expect(storage.test({ tenantId: 'tenant-1' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'integration_not_configured' },
+    });
   });
 
   it('writes, reads back and deletes one signed scratch object during the live probe', async () => {
@@ -275,13 +317,15 @@ describe('createS3StorageProvider', () => {
         message: 'Storage completed the write, read and delete probe.',
       },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['OPTIONS', 'PUT', 'GET', 'DELETE']);
-    expect(bucket.requests[0]?.headers).toEqual({
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests[3]?.headers).toEqual({
       Origin: 'http://localhost:48730',
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
     });
     for (const request of bucket.requests) {
+      expect(request.dispatcher).toBeDefined();
+      expect(request.redirect).toBe('error');
       expect(request.url).toContain('X-Amz-Signature=');
       expect(request.url.startsWith(
         'http://127.0.0.1:19000/together-test/together-probe/probe-id.txt?',
@@ -298,6 +342,7 @@ describe('createS3StorageProvider', () => {
         now: () => new Date('2026-08-03T12:00:00.000Z'),
         fetchStorage: bucket.fetchStorage,
         probeKey: () => 'probe-id',
+        lookupAddresses: async () => ['52.219.170.0'],
       },
     );
 
@@ -333,7 +378,7 @@ describe('createS3StorageProvider', () => {
       ok: false,
       error: { code: 'integration_auth', details: { providerCode: 'storage.credentials' } },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['OPTIONS', 'PUT', 'GET', 'DELETE']);
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE']);
     expect(bucket.objects.size).toBe(0);
   });
 
@@ -399,6 +444,53 @@ describe('createS3StorageProvider', () => {
     expect(requests).toEqual([]);
   });
 
+  it('rejects public hostnames that resolve to private addresses', async () => {
+    const requests: string[] = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['203.0.113.8', '169.254.169.254'],
+      fetchStorage: async (url) => {
+        requests.push(url);
+        return storageResponse(204, '');
+      },
+    });
+
+    await expect(storage.probe({
+      ...MINIO_CONFIGURATION,
+      endpoint: 'https://storage.example.test',
+    })).resolves.toMatchObject({
+      ok: false,
+      error: { details: { providerCode: 'storage.unavailable' } },
+    });
+    expect(requests).toEqual([]);
+  });
+
+  it.each(['DELETE', 'HEAD'] as const)('revalidates and blocks a rebound hostname before %s', async (method) => {
+    const requests: string[] = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['169.254.169.254'],
+      fetchStorage: async (url) => {
+        requests.push(url);
+        return storageResponse(204, '');
+      },
+    });
+    const input = {
+      url: 'https://storage.example.test/bucket/object.pdf',
+      accessKeyId: 'access-key',
+      secretAccessKey: 'secret-key',
+      region: 'eu-central-1',
+    };
+
+    const result = method === 'DELETE'
+      ? await storage.delete(input)
+      : await storage.head(input);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'integration_unavailable', details: { providerCode: 'storage.unavailable' } },
+    });
+    expect(requests).toEqual([]);
+  });
+
   it('maps a failed browser preflight to the CORS diagnostic', async () => {
     const bucket = fakeBucket({
       method: 'OPTIONS',
@@ -419,8 +511,8 @@ describe('createS3StorageProvider', () => {
       ok: false,
       error: { details: { providerCode: 'storage.cors' } },
     });
-    expect(bucket.requests).toHaveLength(1);
-    expect(bucket.requests[0]?.headers).toEqual({
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests[3]?.headers).toEqual({
       Origin: 'https://app.together.example',
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
@@ -459,7 +551,7 @@ describe('createS3StorageProvider', () => {
       ok: true,
       value: { healthy: true },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['OPTIONS', 'PUT', 'GET', 'DELETE']);
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
   });
 
   it('reports the stored configuration as invalid instead of leaking its content', async () => {

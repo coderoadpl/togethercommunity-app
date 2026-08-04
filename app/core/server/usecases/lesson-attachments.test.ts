@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  LESSON_ATTACHMENT_MAX_BYTES,
   computeCourseModuleName,
   err,
   integrationUnavailable,
@@ -323,6 +324,25 @@ describe('lesson attachments', () => {
       completeLessonAttachmentUpload(owner, lesson.id, started.value.attachment.id, deps),
     ).resolves.toMatchObject({ ok: true, value: { status: 'ready', sizeBytes: 8192 } });
     expect(attachments.rows[0]?.sizeBytes).toBe(8192);
+  });
+
+  it('deletes an uploaded object whose authoritative size is out of range', async () => {
+    const { attachments, deps, removed } = testDeps(LESSON_ATTACHMENT_MAX_BYTES + 1);
+    const owner = ctx({ staffRole: 'owner', memberId: null });
+    const started = await beginLessonAttachmentUpload(owner, lesson.id, {
+      fileName: 'oversized.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 1024,
+    }, deps);
+    if (!started.ok) throw new Error(started.error.message);
+
+    await expect(
+      completeLessonAttachmentUpload(owner, lesson.id, started.value.attachment.id, deps),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(removed).toEqual([
+      'https://storage.example.test/creator-files/lesson-attachments/lesson-1/attachment-1/oversized.pdf',
+    ]);
+    expect(attachments.rows[0]?.status).toBe('pending');
   });
 
   it('keeps an upload pending when the stored object cannot be verified', async () => {

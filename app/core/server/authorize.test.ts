@@ -8,6 +8,7 @@ const identity = (tenantId: string | null): Identity => ({
   userId: 'user-1',
   email: 'person@example.test',
   name: 'Person',
+  emailVerified: true,
   tenantId,
   tenantSlug: tenantId === null ? null : 'tenant',
   tenantName: tenantId === null ? null : 'Tenant',
@@ -39,6 +40,23 @@ describe('authorize', () => {
     expect(authorize({ identity: dualIdentity }, 'member:billing:read')).toBeNull();
     expect(authorize({ identity: identity('tenant-1') }, 'member:billing:read')).toMatchObject({
       code: 'forbidden',
+    });
+  });
+
+  it('withholds only tenant:create from an unverified granted principal', () => {
+    const unverified = { ...identity(null), emailVerified: false };
+    expect(authorize({ identity: unverified }, 'tenant:create')).toEqual({
+      code: 'forbidden',
+      message: 'tenant:create requires a verified email address',
+    });
+    expect(authorize({ identity: unverified }, 'tenant:list-own')).toBeNull();
+  });
+
+  it('preserves principal denial before checking verification', () => {
+    const unverified = { ...identity(null), emailVerified: false };
+    expect(authorize({ identity: unverified, capabilities: [] }, 'tenant:create')).toEqual({
+      code: 'forbidden',
+      message: 'tenant:create is not permitted',
     });
   });
 });

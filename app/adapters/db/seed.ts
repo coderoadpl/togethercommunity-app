@@ -138,7 +138,7 @@ const ensureCreator = async (email: string, name: string): Promise<string> => {
   const [row] = await db.select().from(user).where(eq(user.email, email)).limit(1);
   if (!row) throw new Error(`Seeded creator not found: ${email}`);
   const seededAt = new Date(seedClock.nowIso());
-  await db.update(user).set({ createdAt: seededAt, updatedAt: seededAt }).where(eq(user.id, row.id));
+  await db.update(user).set({ emailVerified: true, createdAt: seededAt, updatedAt: seededAt }).where(eq(user.id, row.id));
   await db.update(account).set({ createdAt: seededAt, updatedAt: seededAt }).where(eq(account.userId, row.id));
   return row.id;
 };

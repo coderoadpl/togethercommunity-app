@@ -1261,8 +1261,7 @@ export const discussionInvalidates = () => ({ queryKey: discussionScopes.all() }
 export const signUpMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'sign-up'],
-    call: (input: { name: string; email: string; password: string; termsAccepted?: boolean }) =>
-      auth.signUp(input),
+    call: (input: Parameters<AuthClientPort['signUp']>[0]) => auth.signUp(input),
   });
 
 export const signInMutation = (auth: AuthClientPort) =>
@@ -1275,6 +1274,13 @@ export const requestMagicLinkMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'magic-link'],
     call: (input: { email: string; callbackURL: string; language?: string }) => auth.requestMagicLink(input),
+  });
+
+export const sendVerificationEmailMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'send-verification-email'],
+    call: (input: Parameters<AuthClientPort['sendVerificationEmail']>[0]) =>
+      auth.sendVerificationEmail(input),
   });
 
 export const requestPasswordResetMutation = (auth: AuthClientPort) =>

@@ -22,6 +22,7 @@ const ctx = {
     userId: 'user-1',
     email: 'owner@tenant.test',
     name: 'Owner',
+    emailVerified: true,
     tenantId: 'tenant-1',
     tenantSlug: 'tenant',
     tenantName: 'Tenant',

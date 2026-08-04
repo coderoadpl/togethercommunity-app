@@ -135,6 +135,27 @@ export const resetPassword = (
   });
 };
 
+export const verifyEmail = (
+  language: string,
+  input: { actionUrl: string },
+): EmailMessage => {
+  const actionLink = link(input.actionUrl, languageOrDefault(language) === 'en' ? 'Verify email' : 'Potwierdź e-mail');
+
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: 'Verify your email address',
+      html: `<p>Hello!</p><p>Confirm that this email address belongs to you:</p><p>${actionLink}</p><p>You can sign in and use Together before confirming it. Verification is required only to create a new workspace.</p><p>The link expires in one hour.</p>`,
+      text: `Hello!\n\nConfirm that this email address belongs to you:\n${input.actionUrl}\n\nYou can sign in and use Together before confirming it. Verification is required only to create a new workspace.\n\nThe link expires in one hour.`,
+    });
+  }
+
+  return emailMessageSchema.parse({
+    subject: 'Potwierdź swój adres e-mail',
+    html: `<p>Cześć!</p><p>Potwierdź, że ten adres e-mail należy do Ciebie:</p><p>${actionLink}</p><p>Możesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest wymagana tylko do utworzenia nowej przestrzeni.</p><p>Link jest ważny przez godzinę.</p>`,
+    text: `Cześć!\n\nPotwierdź, że ten adres e-mail należy do Ciebie:\n${input.actionUrl}\n\nMożesz logować się i korzystać z Together przed potwierdzeniem adresu. Weryfikacja jest wymagana tylko do utworzenia nowej przestrzeni.\n\nLink jest ważny przez godzinę.`,
+  });
+};
+
 export const threadReply = (
   language: string,
   input: { tenantName: string; lessonName: string; authorDisplay: string; snippet: string; url: string },

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BASE_ERROR_CODES } from 'better-auth';
 import { and, eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
@@ -16,6 +17,7 @@ import { InMemorySchedulerRunRepository } from '#core/server/testing/marketing-f
 import {
   createAuth,
   createAuthPort,
+  EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES,
   isAdditionalTwoFactorPath,
   isSensitivePasskeyPath,
   isSuccessfulPasswordVerification,
@@ -459,6 +461,15 @@ const buildAuth = (options: {
 };
 
 describe('auth cookie scope', () => {
+  it('composes soft email verification without blocking password sign-in', async () => {
+    const { auth } = buildAuth();
+    const options = (await auth.$context).options;
+    expect(options.emailAndPassword?.requireEmailVerification).toBe(false);
+    expect(options.emailVerification?.sendOnSignUp).toBe(true);
+    expect(options.emailVerification?.autoSignInAfterVerification).toBe(true);
+    expect(options.emailVerification?.sendVerificationEmail).toBeTypeOf('function');
+  });
+
   it('keeps cookies host-only in single-tenant mode on a non-localhost domain', async () => {
     const { auth } = buildAuth({
       baseDomain: 'learn.example.com',
@@ -484,7 +495,7 @@ describe('auth cookie scope', () => {
 const signUp = (
   auth: ReturnType<typeof buildAuth>['auth'],
   email: string,
-  options: { termsAccepted?: unknown; password?: string } = {},
+  options: { termsAccepted?: unknown; password?: string; callbackURL?: string } = {},
 ) =>
   auth.handler(
     new Request('http://studio.localhost:48730/api/auth/sign-up/email', {
@@ -499,6 +510,7 @@ const signUp = (
         name: 'Ada',
         email,
         password: options.password ?? SIGN_UP_PASSWORD,
+        callbackURL: options.callbackURL ?? 'http://studio.localhost:48730/login?verification=verified',
         ...(options.termsAccepted === undefined ? {} : { termsAccepted: options.termsAccepted }),
       }),
     }),
@@ -607,6 +619,136 @@ describe('raised password floor', () => {
   }, 30000);
 });
 
+describe('soft email verification', () => {
+  it('keeps redirect error outcomes aligned with Better Auth', () => {
+    expect(BASE_ERROR_CODES.TOKEN_EXPIRED.code).toBe('TOKEN_EXPIRED');
+    expect(BASE_ERROR_CODES.INVALID_TOKEN.code).toBe('INVALID_TOKEN');
+  });
+
+  it('queues a bilingual tenant-host link on signup while leaving sign-in available', async () => {
+    const { auth, authPort, emails, flushEmails } = buildAuth();
+    const email = `verification-signup-${Date.now()}@together.dev`;
+    auth.setEmailVerificationDeliveryContext(email, {
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+
+    const signedUp = await signUp(auth, email);
+    await flushEmails();
+
+    expect(signedUp.status).toBe(200);
+    const signedIn = await auth.handler(new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        host: 'studio.localhost:48730',
+        origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: SIGN_UP_PASSWORD }),
+    }));
+    expect(signedIn.status).toBe(200);
+
+    const session = await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}`,
+    }));
+    expect(session).toMatchObject({ email, emailVerified: false });
+
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Verify your email address');
+    const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    expect(new URL(actionUrl).host).toBe('studio.localhost:48730');
+
+    const verified = await auth.handler(new Request(actionUrl));
+    expect(verified.status).toBe(302);
+    const { internalAdapter } = await auth.$context;
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
+  });
+
+  it('resends a Polish verification link through the outbox', async () => {
+    const { auth, emails, flushEmails } = buildAuth();
+    const email = `verification-resend-${Date.now()}@together.dev`;
+    await signUp(auth, email);
+    await flushEmails();
+    auth.setEmailVerificationDeliveryContext(email, {
+      language: 'pl',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+
+    const response = await auth.api.sendVerificationEmail({
+      body: { email, callbackURL: 'http://studio.localhost:48730/login?verification=verified' },
+      headers: new Headers({ 'x-forwarded-for': `198.51.100.${signUpIpSuffix++}` }),
+    });
+    await flushEmails();
+
+    expect(response.status).toBe(true);
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Potwierdź swój adres e-mail');
+    expect(message?.text).toContain('studio.localhost:48730');
+  });
+
+  it('returns indistinguishable resend responses for known and unknown addresses', async () => {
+    const { auth, emails, flushEmails } = buildAuth();
+    const knownEmail = `verification-known-${Date.now()}@together.dev`;
+    const unknownEmail = `verification-unknown-${Date.now()}@together.dev`;
+    await signUp(auth, knownEmail);
+    const request = (email: string, ip: string) => auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/send-verification-email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': ip,
+        },
+        body: JSON.stringify({
+          email,
+          callbackURL: 'http://studio.localhost:48730/login?verification=verified',
+        }),
+      }),
+    );
+
+    const knownResponse = await request(knownEmail, '198.51.100.224');
+    const unknownResponse = await request(unknownEmail, '198.51.100.225');
+    const knownBody = await knownResponse.json();
+    const unknownBody = await unknownResponse.json();
+    await flushEmails();
+
+    expect(knownResponse.status).toBe(200);
+    expect(unknownResponse.status).toBe(knownResponse.status);
+    expect(unknownBody).toEqual(knownBody);
+    expect(await emails.findByRecipient(normalizeEmail(knownEmail))).not.toBeNull();
+    expect(await emails.findByRecipient(normalizeEmail(unknownEmail))).toBeNull();
+  });
+
+  it('caps pending verification delivery contexts created by address enumeration', async () => {
+    const { auth, emails, flushEmails } = buildAuth();
+    const email = `verification-context-cap-${Date.now()}@together.dev`;
+    await signUp(auth, email);
+    await flushEmails();
+    auth.setEmailVerificationDeliveryContext(email, {
+      language: 'en',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    for (let index = 0; index < EMAIL_VERIFICATION_CONTEXT_MAX_ENTRIES; index += 1) {
+      auth.setEmailVerificationDeliveryContext(`enumerated-verification-${index}@together.dev`, {
+        language: 'en',
+        baseUrl: 'http://studio.localhost:48730',
+      });
+    }
+
+    await auth.api.sendVerificationEmail({
+      body: { email, callbackURL: 'http://studio.localhost:48730/login?verification=verified' },
+      headers: new Headers({ 'x-forwarded-for': `198.51.100.${signUpIpSuffix++}` }),
+    });
+    await flushEmails();
+
+    const message = await emails.findByRecipient(normalizeEmail(email));
+    expect(message?.subject).toBe('Potwierdź swój adres e-mail');
+    const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    expect(new URL(actionUrl).host).toBe('localhost:48730');
+  });
+});
+
 describe('email sign-up consent', () => {
   it('rejects signup before account creation when configured legal terms are not accepted', async () => {
     const recordedEmails: string[] = [];
@@ -674,12 +816,14 @@ describe('email sign-up consent', () => {
 
 describe('createAuthPort.ensureUser', () => {
   it('creates a passwordless account once and is idempotent on the same email', async () => {
-    const { authPort } = buildAuth();
+    const { auth, authPort } = buildAuth();
     const email = `ensure-${Date.now()}@together.dev`;
 
     const first = await authPort.ensureUser(email);
     expect(first.created).toBe(true);
     expect(first.userId.length).toBeGreaterThan(0);
+    const { internalAdapter } = await auth.$context;
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(false);
 
     const second = await authPort.ensureUser(email.toUpperCase());
     expect(second.created).toBe(false);
@@ -736,6 +880,21 @@ describe('createAuthPort.requestMagicLink', () => {
 
     const link = await magicLinks.findByEmail(normalizeEmail(email));
     expect(new URL(link?.url ?? '').host).toBe('localhost:48730');
+  });
+
+  it('marks a magic-link-created account verified when the link is consumed', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    const email = `magic-verified-${Date.now()}@together.dev`;
+
+    await authPort.requestMagicLink({ email, callbackURL: 'http://localhost:48730/my' });
+    const { internalAdapter } = await auth.$context;
+    expect(await internalAdapter.findUserByEmail(email)).toBeNull();
+
+    const link = await magicLinks.findByEmail(normalizeEmail(email));
+    const response = await auth.handler(new Request(link?.url ?? ''));
+
+    expect(response.status).toBe(302);
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
   });
 });
 

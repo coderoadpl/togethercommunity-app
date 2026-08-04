@@ -18,6 +18,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
     userId: 'u1',
     email: 'owner@together.dev',
     name: 'Owner',
+    emailVerified: true,
     tenantId,
     tenantSlug: tenantId ? 'acme' : null,
     tenantName: tenantId ? 'Acme' : null,

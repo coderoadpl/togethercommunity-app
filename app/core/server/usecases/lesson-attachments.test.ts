@@ -45,6 +45,7 @@ const identity = (overrides: Partial<Identity> = {}): Identity => ({
   userId: 'user-1',
   email: 'member@example.test',
   name: 'Member',
+  emailVerified: true,
   tenantId: 'tenant-1',
   tenantSlug: 'acme',
   tenantName: 'Acme',

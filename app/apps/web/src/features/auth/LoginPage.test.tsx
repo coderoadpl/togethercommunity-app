@@ -21,18 +21,18 @@ const stubAuthConfig = (exposeMagicLinks = false) =>
           passkeysEnabled: true,
           totpEnabled: true,
           exposeMagicLinks,
-          tenantCreationEnabled: true,
         },
       }),
     ),
   );
 
-const renderLoginPage = async (exposeMagicLinks = false) => {
+const renderLoginPage = async (exposeMagicLinks = false, initialEntry = '/login') => {
   stubAuthConfig(exposeMagicLinks);
+  window.history.pushState({}, '', initialEntry);
   const rootRoute = createRootRoute({ component: LoginPage });
   const router = createRouter({
     routeTree: rootRoute,
-    history: createMemoryHistory({ initialEntries: ['/login'] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
   await router.load();
   return renderWithProviders(<RouterProvider router={router} />);
@@ -56,6 +56,32 @@ describe('LoginPage', () => {
       'href',
       '/forgot-password',
     );
+  });
+
+  it.each([
+    ['/login?verification=verified', 'verified', pl.emailVerification.verified],
+    [
+      '/login?error=TOKEN_EXPIRED',
+      'expired',
+      pl.emailVerification.expired,
+    ],
+    [
+      '/login?error=INVALID_TOKEN',
+      'invalid',
+      pl.emailVerification.invalid,
+    ],
+    ['/login?error=USER_NOT_FOUND', 'providerError', pl.emailVerification.providerError],
+    ['/login?error=INVALID_USER', 'providerError', pl.emailVerification.providerError],
+  ] as const)('renders the %s verification outcome', async (entry, outcome, message) => {
+    await renderLoginPage(false, entry);
+
+    expect(await screen.findByTestId(`email-verification-${outcome}`)).toHaveTextContent(message);
+  });
+
+  it('does not present an unrelated login error as an email-verification failure', async () => {
+    await renderLoginPage(false, '/login?error=SOCIAL_PROVIDER_FAILURE');
+
+    expect(screen.queryByTestId(/^email-verification-/u)).not.toBeInTheDocument();
   });
 
   it('renders tenant social links after the sign-in form', async () => {

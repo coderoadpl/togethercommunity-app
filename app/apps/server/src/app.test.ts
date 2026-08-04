@@ -8,7 +8,9 @@ import {
   TENANT_HEADER,
 } from '#core/contract/index.js';
 import {
+  BETTER_AUTH_EMAIL_VERIFICATION_PATH,
   BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
 import type { AppDeps, MarketingAppDeps } from './composition.js';
 import { buildApp } from './app.js';
@@ -112,6 +114,7 @@ const deps = (input: {
       handler: async () => new Response(null, { status: 404 }),
       setMagicLinkDeliveryContext: () => undefined,
       setResetPasswordDeliveryContext: () => undefined,
+      setEmailVerificationDeliveryContext: () => undefined,
     },
     authPort: {
       getAuthenticatedUser: input.getAuthenticatedUser ?? (async () => {
@@ -631,6 +634,7 @@ const scopedApp = (
         userId: 'user-1',
         email: 'user@acme.test',
         name: 'User',
+        emailVerified: true,
       }),
     },
     tenantAccess: {
@@ -2014,7 +2018,7 @@ describe('single-tenant mode', () => {
       singleTenantMode: true,
       authPort: {
         ...base.authPort,
-        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner' }),
+        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner', emailVerified: true }),
       },
       tenantAccess: {
         ...base.tenantAccess,
@@ -2250,6 +2254,7 @@ describe('free lesson preview route', () => {
           userId: 'other-tenant-user',
           email: 'other@example.com',
           name: 'Other Tenant User',
+          emailVerified: true,
         }),
       }),
     );
@@ -2290,7 +2295,6 @@ describe('public auth-config route', () => {
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: false,
-        tenantCreationEnabled: true,
       },
     });
   });
@@ -2318,29 +2322,23 @@ describe('public auth-config route', () => {
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
   });
 
-  it('reports bootstrap tenant creation only while no tenant exists', async () => {
-    const empty = buildApp({ ...deps({ tenants: [] }), tenantCreationMode: 'bootstrap' });
-    const populated = buildApp({ ...deps(), tenantCreationMode: 'bootstrap' });
-
-    const emptyBody: unknown = await (await empty.request(API_PATHS.authConfig)).json();
-    const populatedBody: unknown = await (await populated.request(API_PATHS.authConfig)).json();
-
-    expect(emptyBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: true } });
-    expect(populatedBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: false } });
-  });
 });
 
 type RequestMagicLinkInput = Parameters<AppDeps['authPort']['requestMagicLink']>[0];
 type DeliveryContext = Parameters<AppDeps['auth']['setMagicLinkDeliveryContext']>[1];
+type VerificationDeliveryContext = Parameters<AppDeps['auth']['setEmailVerificationDeliveryContext']>[1];
 
 interface Captured {
   request: RequestMagicLinkInput | null;
   context: { email: string; context: DeliveryContext } | null;
+  verificationContext: { email: string; context: VerificationDeliveryContext } | null;
 }
 
-const capturingApp = (): { app: ReturnType<typeof buildApp>; captured: Captured } => {
-  const captured: Captured = { request: null, context: null };
-  const base = deps();
+const capturingApp = (
+  input: Parameters<typeof deps>[0] = {},
+): { app: ReturnType<typeof buildApp>; captured: Captured } => {
+  const captured: Captured = { request: null, context: null, verificationContext: null };
+  const base = deps(input);
   const app = buildApp({
     ...base,
     authPort: {
@@ -2353,6 +2351,9 @@ const capturingApp = (): { app: ReturnType<typeof buildApp>; captured: Captured 
       ...base.auth,
       setMagicLinkDeliveryContext: (email, context) => {
         captured.context = { email, context };
+      },
+      setEmailVerificationDeliveryContext: (email, context) => {
+        captured.verificationContext = { email, context };
       },
     },
     devMagicLinks: {
@@ -2984,6 +2985,83 @@ describe('tenant-host magic links on login', () => {
     });
     expect(captured.context?.context.tenantName).toBeUndefined();
   });
+});
+
+describe('tenant-host email verification', () => {
+  it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
+    'rebases %s delivery to the requesting host',
+    async (path) => {
+      const { app, captured } = capturingApp();
+
+      await app.request(path, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'acme.localhost:48730',
+          [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+        },
+        body: JSON.stringify({ email: 'account@together.dev' }),
+      });
+
+      expect(captured.verificationContext).toEqual({
+        email: 'account@together.dev',
+        context: { language: 'en', baseUrl: 'http://acme.localhost:48730' },
+      });
+    },
+  );
+
+  it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
+    'rebases %s delivery to a verified custom domain',
+    async (path) => {
+      const { app, captured } = capturingApp({
+        domains: [{
+          id: 'domain-acme',
+          tenantId: acme.id,
+          domain: 'learn.acme.example',
+          kind: 'custom',
+          verified: true,
+        }],
+      });
+
+      await app.request(path, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'learn.acme.example',
+          'x-forwarded-proto': 'https',
+          [MAGIC_LINK_LANGUAGE_HEADER]: 'en',
+        },
+        body: JSON.stringify({ email: 'custom-domain@together.dev' }),
+      });
+
+      expect(captured.verificationContext).toEqual({
+        email: 'custom-domain@together.dev',
+        context: { language: 'en', baseUrl: 'https://learn.acme.example' },
+      });
+    },
+  );
+
+  it.each([BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH])(
+    'keeps %s delivery on the configured base URL for tenant-header routing',
+    async (path) => {
+      const { app, captured } = capturingApp();
+
+      await app.request(path, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          host: 'localhost:48730',
+          [TENANT_HEADER]: 'globex',
+        },
+        body: JSON.stringify({ email: 'tenant-header@together.dev' }),
+      });
+
+      expect(captured.verificationContext).toEqual({
+        email: 'tenant-header@together.dev',
+        context: { language: 'pl', baseUrl: 'http://localhost:48730' },
+      });
+    },
+  );
 });
 
 describe('scheduler operator routes', () => {

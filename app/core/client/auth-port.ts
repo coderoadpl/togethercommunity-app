@@ -23,6 +23,12 @@ export interface PasswordResetRequest {
   language?: string;
 }
 
+interface VerificationEmailRequest {
+  email: string;
+  callbackURL: string;
+  language?: string;
+}
+
 /**
  * Client-side auth port. Web (and future mobile/Electron) programs against
  * this interface; the Better Auth client adapter implements it.
@@ -35,9 +41,12 @@ export interface AuthClientPort {
     email: string;
     password: string;
     termsAccepted?: boolean;
+    callbackURL?: string;
+    language?: string;
   }): Promise<WriteResult<AuthSessionResult>>;
   signIn(input: { email: string; password: string }): Promise<WriteResult<AuthSessionResult>>;
   requestMagicLink(input: { email: string; callbackURL: string; language?: string }): Promise<WriteResult<void>>;
+  sendVerificationEmail(input: VerificationEmailRequest): Promise<WriteResult<void>>;
   /** Send a password-reset email (used by members to set or reset their password). */
   requestPasswordReset(input: PasswordResetRequest): Promise<WriteResult<void>>;
   /** Consume a reset token and set a new password. */

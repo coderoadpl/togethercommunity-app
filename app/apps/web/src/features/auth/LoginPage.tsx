@@ -20,6 +20,7 @@ import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
+import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
@@ -216,6 +217,7 @@ export const LoginPage = () => {
 
   return (
     <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+        <EmailVerificationResult />
         <Stack component="form" onSubmit={submit} useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="login-email">{t.auth.emailLabel}</FormLabel>

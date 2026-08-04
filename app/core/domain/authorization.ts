@@ -113,6 +113,11 @@ export type Principal = (typeof PRINCIPALS)[number];
 
 export type CapabilityMatrix = Record<Principal, readonly Capability[]>;
 
+const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = ['tenant:create'];
+
+export const requiresVerifiedEmail = (capability: Capability): boolean =>
+  VERIFIED_EMAIL_CAPABILITIES.includes(capability);
+
 const sharedStaffCapabilities = [
   'tenant:create',
   'tenant:list-own',

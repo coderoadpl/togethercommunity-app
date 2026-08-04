@@ -149,6 +149,9 @@ const expectError = (result: Run, label: string, exitCode: number, errorCode: st
 };
 
 const authSchema = z.object({ token: z.string().min(1).nullable() });
+const devEmailResultSchema = z.object({
+  email: z.object({ to: z.string().email(), subject: z.string(), text: z.string() }).nullable(),
+});
 const exportedMemberSchema = z.object({
   id: z.string(),
   email: z.string().email(),
@@ -256,6 +259,29 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     authSchema,
   );
   assert(betaRegister.token !== null, 'beta registration should store a token');
+  expectError(
+    await cli(['tenant', 'create', 'Beta School', '--slug', 'beta'], betaHome),
+    'beta tenant create before verification',
+    EXIT_CODE_BY_ERROR_CODE.forbidden,
+    'forbidden',
+  );
+  let betaVerificationUrl = '';
+  const betaVerificationDeadline = Date.now() + 10000;
+  while (Date.now() < betaVerificationDeadline && betaVerificationUrl === '') {
+    const delivered = expectOk(
+      await cli(['dev', 'email', '--to', 'beta@together.dev'], betaHome),
+      'beta verification email inspect',
+      devEmailResultSchema,
+    ).email;
+    betaVerificationUrl = delivered?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+    if (betaVerificationUrl === '') await delay(100);
+  }
+  assert(betaVerificationUrl !== '', 'beta should receive a verification email with a callback URL');
+  const betaVerification = await fetch(betaVerificationUrl, { redirect: 'manual' });
+  assert(
+    betaVerification.status === 302,
+    `beta verification callback should redirect, got ${betaVerification.status}`,
+  );
   const betaTenant = expectOk(
     await cli(['tenant', 'create', 'Beta School', '--slug', 'beta'], betaHome),
     'beta tenant create',

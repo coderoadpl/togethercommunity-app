@@ -22,6 +22,7 @@ const identity = (
   userId: 'user-1',
   email: 'person@example.test',
   name: 'Person',
+  emailVerified: true,
   tenantId: staffRole === null && memberId === null ? null : 'tenant-1',
   tenantSlug: staffRole === null && memberId === null ? null : 'tenant',
   tenantName: staffRole === null && memberId === null ? null : 'Tenant',

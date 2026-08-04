@@ -10,6 +10,7 @@ const identity = (tenantId: string | null, memberId: string | null): Identity =>
   userId: 'u1',
   email: 'buyer@together.dev',
   name: 'Buyer',
+  emailVerified: true,
   tenantId,
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme' : null,

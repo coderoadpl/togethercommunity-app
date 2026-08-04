@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 94. Route rows: 200. Exported `Ctx` use-case rows: 174.
+Closed capability count: 94. Route rows: 213. Exported `Ctx` use-case rows: 188.
 
 ## Human-readable diff
 
@@ -123,7 +123,12 @@ no changes
 | `POST /api/members/erasure-requests/:requestId/reject` | member:remove | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/tenants` | tenant:list-own | owner, admin, member, authenticated | owner, admin, member, authenticated | yes | identity middleware + use-case guard |
 | `GET /api/products` | product:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/products/:productId/downloads` | product:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/products/:productId/downloads/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/products/:productId/downloads/:assetId/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `DELETE /api/products/:productId/downloads/:assetId` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/my/products` | member:product:read | member | member | yes | identity middleware + use-case guard |
+| `GET /api/my/products/:productId/downloads/:assetId` | member:product:read | member | member | yes | identity middleware + use-case guard |
 | `GET /api/members` | member:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/members/export` | member:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/members/ban` | member:ban | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -146,6 +151,8 @@ no changes
 | `GET /api/onboarding` | tenant:onboarding:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/onboarding/dismiss` | tenant:onboarding:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/storage/probe` | integration:test | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/integrations/storage/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/stripe/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ifirma/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/integrations/ksef/test` | integration:test | owner | owner | yes | identity middleware + use-case guard |
@@ -189,8 +196,14 @@ no changes
 | `POST /api/lessons/update` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/lessons/references` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `DELETE /api/lessons/:lessonId` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/lessons/:lessonId/attachments` | course:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/lessons/:lessonId/attachments/upload` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/lessons/:lessonId/attachments/:attachmentId/complete` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `DELETE /api/lessons/:lessonId/attachments/:attachmentId` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/student/courses` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/student/courses/:courseId/structure` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/:lessonId/attachments` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
+| `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/complete` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
 | `POST /api/student/lessons/uncomplete` | lesson:play | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `POST /api/student/progress/last-viewed` | member:progress:self-write | member | member | yes | identity middleware + use-case guard |
@@ -297,6 +310,13 @@ no changes
 | `invoices.ts#refreshInvoiceStatus` | invoice:write | owner, admin | owner, admin | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testIfirmaConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
 | `invoices.ts#testKsefConnection` | integration:test | owner | owner | yes | core/server/usecases/invoices.ts authorization call |
+| `lesson-attachments.ts#beginLessonAttachmentUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#completeLessonAttachmentUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#listLessonAttachments` | course:read | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#listMemberLessonAttachments` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#getLessonAttachmentDownload` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#deleteLessonAttachment` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
+| `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
 | `marketing-email.ts#listMarketingConsentDefinitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -372,6 +392,11 @@ no changes
 | `orders.ts#exportOrders` | order:export | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `orders.ts#getSalesSummary` | sales:read | owner, admin | owner, admin | yes | core/server/usecases/orders.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
+| `product-downloads.ts#beginProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#completeProductDownloadUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#listProductDownloadAssets` | product:read | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#getProductDownload` | member:product:read | member | member | yes | core/server/usecases/product-downloads.ts authorization call |
+| `product-downloads.ts#deleteProductDownloadAsset` | product:write | owner, admin | owner, admin | yes | core/server/usecases/product-downloads.ts authorization call |
 | `product-prices.ts#listProductPrices` | product:price:read | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#createProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
 | `product-prices.ts#deactivateProductPrice` | product:price:write | owner, admin | owner, admin | yes | core/server/usecases/product-prices.ts authorization call |
@@ -398,6 +423,8 @@ no changes
 | `spaces.ts#unfollowSpace` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#reactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#unreactToPost` | space:interact | owner, admin, member | owner, admin, member | yes | core/server/usecases/spaces.ts authorization call |
+| `storage-configuration.ts#probeStorageConnection` | integration:test | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
+| `storage-configuration.ts#configureStorageConnection` | tenant:secret:write | owner | owner | yes | core/server/usecases/storage-configuration.ts authorization call |
 | `support.ts#sendSupportMessage` | support:request | owner, admin, member | owner, admin, member | yes | core/server/usecases/support.ts authorization call |
 | `tenant-secrets.ts#setTenantSecret` | tenant:secret:write | owner | owner | yes | core/server/usecases/tenant-secrets.ts authorization call |
 | `tenant-secrets.ts#getTenantSecretsMasked` | tenant:secret:read | owner, admin | owner, admin | yes | core/server/usecases/tenant-secrets.ts authorization call |
@@ -413,11 +440,11 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:112` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:765` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:767` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1201` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1201` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:124` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:822` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:824` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1258` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1258` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:35` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:74` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -452,7 +479,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:48` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-erasure-requests.ts:53` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/my-products.ts:53` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
+| member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |
 | member-scope | `core/server/usecases/progress.ts:49` | `return ok({ tenantId: tenant.value, memberId: ctx.identity.memberId });` |
 | staff-role | `core/server/usecases/resolve-identity.ts:78` | `staffRole: staffGrant?.staffRole ?? null,` |

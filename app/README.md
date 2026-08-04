@@ -149,7 +149,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->235<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->239<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution
@@ -216,6 +216,30 @@ same notification endpoints — no server-side configuration needed.
 
 E-mail delivery of thread replies rides the same notification-channel port and
 is toggled with `NOTIFY_EMAIL` (see `.env.example`).
+
+## S3-compatible storage
+
+The integrations panel walks the tenant owner through provider choice,
+connection fields and a live probe that writes, reads back and deletes one
+scratch object before the configuration is encrypted as the `s3.configuration`
+tenant secret. AWS S3, Cloudflare R2, Backblaze B2 and MinIO are covered by
+per-provider key instructions in the wizard. The same two steps are available
+from the CLI:
+
+```bash
+pnpm --silent run cli --tenant studio storage probe --provider minio \
+  --endpoint http://localhost:9000 --region us-east-1 --bucket studio-files \
+  --access-key-id '<id>' --secret-access-key '<secret>'
+pnpm --silent run cli --tenant studio storage configure --provider minio \
+  --endpoint http://localhost:9000 --region us-east-1 --bucket studio-files \
+  --access-key-id '<id>' --secret-access-key '<secret>'
+```
+
+`pnpm run e2e:storage` runs the probe and its failure paths against a throwaway
+MinIO container; point `STORAGE_E2E_*` at a real bucket to run the same
+verification against a provider account. Runtime probes reject loopback,
+link-local and private-network endpoints by default. Self-hosted MinIO on a
+trusted private network requires `STORAGE_ALLOW_PRIVATE_ENDPOINTS=true`.
 
 ## Stripe test mode
 

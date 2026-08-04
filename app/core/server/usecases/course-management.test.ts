@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import type {
-  Course,
-  CourseLesson,
-  CourseModule,
-  Identity,
-  MemberCourseProgress,
-  Product,
-  StaffRole,
+import {
+  err,
+  integrationUnavailable,
+  ok,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
+  type Identity,
+  type LessonAttachment,
+  type MemberCourseProgress,
+  type Product,
+  type StaffRole,
 } from '#core/domain/index.js';
 
 import type {
@@ -228,15 +232,59 @@ const deps = (input: {
   ids?: string[];
   versions?: EntityVersionRecord[];
   contentVersionBumps?: string[];
+  attachments?: LessonAttachment[];
+  removedObjects?: string[];
+  storageDeleteFails?: boolean;
 } = {}): CourseManagementDeps => {
   const ids = input.ids ?? ['generated-id'];
   const versions = input.versions ?? [];
+  const attachments = input.attachments ?? [];
   return {
     courses: courseRepo(input.courses ?? [], versions),
     modules: moduleRepo(input.modules ?? [], versions),
     lessons: lessonRepo(input.lessons ?? [], versions),
     products: productRepo(input.products ?? [], versions, input.contentVersionBumps),
     progress: progressRepo(input.progress ?? []),
+    attachments: {
+      create: async (_tenantId, attachment) => {
+        attachments.push(attachment);
+      },
+      findById: async (tenantId, attachmentId) =>
+        attachments.find((item) => item.tenantId === tenantId && item.id === attachmentId) ?? null,
+      listByLesson: async (tenantId, lessonId) =>
+        attachments.filter((item) => item.tenantId === tenantId && item.lessonId === lessonId),
+      listReadyByLesson: async (tenantId, lessonId) =>
+        attachments.filter(
+          (item) => item.tenantId === tenantId && item.lessonId === lessonId && item.status === 'ready',
+        ),
+      markReady: async () => null,
+      delete: async () => false,
+    },
+    storage: {
+      objectUrl: (configuration, key) =>
+        new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+      probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+      presignPut: (request) => ok(request.url),
+      presignGet: (request) => ok(request.url),
+      delete: async (request) => {
+        if (input.storageDeleteFails) return err(integrationUnavailable('Storage unavailable'));
+        input.removedObjects?.push(request.url);
+        return ok({ deleted: true });
+      },
+      head: async () => ok({ sizeBytes: 1 }),
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'storage.available', message: 'ok' }),
+    },
+    secretResolver: {
+      resolve: async () => ok(JSON.stringify({
+        provider: 'minio',
+        endpoint: 'https://storage.example.test/prefix',
+        region: 'eu-central-1',
+        bucket: 'creator-files',
+        accessKeyId: 'access-key',
+        secretAccessKey: 'secret-key',
+      })),
+    },
     ids: {
       nextId: () => {
         const next = ids.shift();
@@ -637,10 +685,23 @@ describe('course management use-cases', () => {
       { ...product('p2', 't-acme'), accessItems: [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }] },
     ];
     const lessons = [lesson('l1', 't-acme'), lesson('l2', 't-acme')];
+    const removedObjects: string[] = [];
     const d = deps({
       lessons,
       modules,
       products,
+      attachments: [{
+        id: 'attachment-1',
+        tenantId: 't-acme',
+        lessonId: 'l1',
+        fileName: 'handout.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: 'lesson-attachments/l1/attachment-1/handout.pdf',
+        status: 'ready',
+        createdAt: now,
+      }],
+      removedObjects,
       ids: ['snap-module', 'snap-p1', 'snap-p2'],
     });
 
@@ -650,6 +711,33 @@ describe('course management use-cases', () => {
     expect(modules[0]?.chapters[0]?.contents.map((content) => content.id)).toEqual(['ct2']);
     expect(products[0]?.accessItems).toEqual([{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }]);
     expect(products[1]?.accessItems).toEqual([]);
+    expect(removedObjects).toEqual([
+      'https://storage.example.test/prefix/creator-files/lesson-attachments/l1/attachment-1/handout.pdf',
+    ]);
+  });
+
+  it('deletes the lesson even when storage cleanup fails', async () => {
+    const lessons = [lesson('l1', 't-acme')];
+    const d = deps({
+      lessons,
+      storageDeleteFails: true,
+      attachments: [{
+        id: 'attachment-1',
+        tenantId: 't-acme',
+        lessonId: 'l1',
+        fileName: 'handout.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 1024,
+        storageKey: 'lesson-attachments/l1/attachment-1/handout.pdf',
+        status: 'ready',
+        createdAt: now,
+      }],
+    });
+
+    await expect(
+      deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d),
+    ).resolves.toMatchObject({ ok: true, value: { lessonId: 'l1' } });
+    expect(lessons).toHaveLength(0);
   });
 
   it('reports not found when deleting a missing lesson', async () => {

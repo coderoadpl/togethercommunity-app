@@ -79,6 +79,8 @@ import type {
   TenantCreateInput,
   TenantSecretDeleteInput,
   IntegrationTestInput,
+  StorageConfigureInput,
+  StorageProbeInput,
   StripeConfigureInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
@@ -86,7 +88,14 @@ import type {
 import type { MemberExportFormat, NewProductInput, OrderExportFormat } from '#core/domain/index.js';
 
 import type { AuthClientPort, AuthSessionResult } from './auth-port.js';
-import { unwrap, type ApiClient, type ReadResult, type WriteResult } from './http.js';
+import {
+  unwrap,
+  type ApiClient,
+  type ProductDownloadFileUpload,
+  type ReadResult,
+  type WriteResult,
+} from './http.js';
+import type { LessonAttachmentFileUpload } from './http.js';
 
 /**
  * Identity helpers that type descriptors against `@tanstack/query-core` option
@@ -180,6 +189,11 @@ const productPricesScopes = {
   list: (productId: string) => ['product-prices', 'list', productId] as const,
 };
 
+const productDownloadsScopes = {
+  all: () => ['product-downloads'] as const,
+  list: (productId: string) => ['product-downloads', 'list', productId] as const,
+};
+
 const salesScopes = {
   all: () => ['sales'] as const,
   orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
@@ -251,6 +265,7 @@ const contentHistoryScopes = {
 const lessonsScopes = {
   all: () => ['lessons'] as const,
   references: (lessonId: string) => ['lessons', 'references', lessonId] as const,
+  attachments: (lessonId: string) => ['lessons', 'attachments', lessonId] as const,
 };
 
 const studentScopes = {
@@ -258,6 +273,7 @@ const studentScopes = {
   courses: () => ['student', 'courses'] as const,
   courseStructure: (courseId: string) => ['student', 'course-structure', courseId] as const,
   lesson: (lessonId: string) => ['student', 'lesson', lessonId] as const,
+  attachments: (lessonId: string) => ['student', 'attachments', lessonId] as const,
   nextLesson: (lessonId: string) => ['student', 'next-lesson', lessonId] as const,
   progress: (courseId: string) => ['student', 'progress', courseId] as const,
 };
@@ -533,6 +549,28 @@ export const deactivateProductPriceMutation = (api: ApiClient) =>
     mutationKey: [...productPricesScopes.all(), 'deactivate'],
     call: (input: ProductPriceDeactivateInput) => api.deactivateProductPrice(input),
   });
+
+export const productDownloadAssetsQuery = (api: ApiClient, productId: string) =>
+  defineQuery({
+    queryKey: productDownloadsScopes.list(productId),
+    call: ({ signal }) => api.listProductDownloadAssets(productId, signal),
+  });
+
+export const uploadProductDownloadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productDownloadsScopes.all(), 'upload'],
+    call: (input: ProductDownloadFileUpload) => api.uploadProductDownload(input),
+  });
+
+export const deleteProductDownloadMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productDownloadsScopes.all(), 'delete'],
+    call: (input: { productId: string; assetId: string }) => api.deleteProductDownload(input),
+  });
+
+export const productDownloadAssetsInvalidates = (productId: string) => ({
+  queryKey: productDownloadsScopes.list(productId),
+});
 
 export const ordersQuery = (api: ApiClient, input: OrdersListQueryInput) =>
   defineQuery({
@@ -826,6 +864,24 @@ export const deleteLessonMutation = (api: ApiClient) =>
     call: (lessonId: string) => api.deleteLesson(lessonId),
   });
 
+export const lessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: lessonsScopes.attachments(lessonId),
+    call: ({ signal }) => api.listLessonAttachments(lessonId, signal),
+  });
+
+export const uploadLessonAttachmentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'upload-attachment'],
+    call: (input: LessonAttachmentFileUpload) => api.uploadLessonAttachment(input),
+  });
+
+export const deleteLessonAttachmentMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...lessonsScopes.all(), 'delete-attachment'],
+    call: (input: { lessonId: string; attachmentId: string }) => api.deleteLessonAttachment(input),
+  });
+
 export const updateProductAccessItemsMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productsScopes.all(), 'access-items'],
@@ -854,6 +910,12 @@ export const studentLessonQuery = (api: ApiClient, lessonId: string) =>
   defineQuery({
     queryKey: studentScopes.lesson(lessonId),
     call: ({ signal }) => api.studentLesson(lessonId, signal),
+  });
+
+export const studentLessonAttachmentsQuery = (api: ApiClient, lessonId: string) =>
+  defineQuery({
+    queryKey: studentScopes.attachments(lessonId),
+    call: ({ signal }) => api.studentLessonAttachments(lessonId, signal),
   });
 
 export const nextLessonQuery = (api: ApiClient, lessonId: string) =>
@@ -1076,6 +1138,18 @@ export const testIntegrationMutation = (api: ApiClient) =>
     call: (input: IntegrationTestInput) => api.testIntegration(input),
   });
 
+export const probeStorageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'storage-probe'],
+    call: (input: StorageProbeInput) => api.probeStorage(input),
+  });
+
+export const configureStorageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'storage-configure'],
+    call: (input: StorageConfigureInput) => api.configureStorage(input),
+  });
+
 export const configureStripeMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...tenantSecretsScopes.all(), 'configure-stripe'],
@@ -1148,6 +1222,10 @@ export const coursesInvalidates = () => ({ queryKey: coursesScopes.lists() });
 export const modulesInvalidates = () => ({ queryKey: modulesScopes.all() });
 
 export const lessonsInvalidates = () => ({ queryKey: lessonsScopes.all() });
+
+export const lessonAttachmentsInvalidates = (lessonId: string) => ({
+  queryKey: lessonsScopes.attachments(lessonId),
+});
 
 /** The invalidation filter product mutations apply after they settle. */
 export const productsInvalidates = () => ({ queryKey: productsScopes.all() });

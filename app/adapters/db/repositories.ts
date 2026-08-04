@@ -5,6 +5,7 @@ import {
   computeCourseModuleName,
   billingDataSchema,
   courseLessonSchema,
+  lessonAttachmentSchema,
   courseModuleSchema,
   courseSchema,
   entityHistoryEntrySchema,
@@ -17,6 +18,7 @@ import {
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
+  productDownloadAssetSchema,
   postSchema,
   postReportSchema,
   REACTION_EMOJIS,
@@ -31,6 +33,7 @@ import {
   termsConsentSchema,
   type Course,
   type CourseLesson,
+  type LessonAttachment,
   type CourseModule,
   type CheckoutConsentCapture,
   type MemberCourseProgress,
@@ -41,6 +44,7 @@ import {
   type Order,
   type OrderListItem,
   type ProductPrice,
+  type ProductDownloadAsset,
   type Post,
   type PostReport,
   type Product,
@@ -55,6 +59,7 @@ import {
 } from '#core/domain/index.js';
 import type {
   CourseLessonRepository,
+  LessonAttachmentRepository,
   CourseModuleRepository,
   CourseRepository,
   CheckoutConsentCaptureRepository,
@@ -75,6 +80,7 @@ import type {
   MemberOrderListReader,
   PaymentRefundRepository,
   ProductPriceRepository,
+  ProductDownloadAssetRepository,
   PostRepository,
   PostReportRepository,
   PostSearchRow,
@@ -109,6 +115,7 @@ import {
   couponRedemptions,
   coupons,
   courseLessons,
+  lessonAttachments,
   courseModules,
   courses,
   devEmails,
@@ -131,6 +138,7 @@ import {
   posts,
   productGrants,
   productPrices,
+  productDownloadAssets,
   processedPaymentEvents,
   products,
   spaces,
@@ -151,6 +159,12 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 };
 
 const parseProduct = (product: Product): Product => productSchema.parse(product);
+
+const parseLessonAttachment = (attachment: LessonAttachment): LessonAttachment =>
+  lessonAttachmentSchema.parse(attachment);
+
+const parseProductDownloadAsset = (asset: ProductDownloadAsset): ProductDownloadAsset =>
+  productDownloadAssetSchema.parse(asset);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
 
@@ -557,6 +571,114 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
       .delete(courseLessons)
       .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, id)))
       .returning({ id: courseLessons.id });
+    return rows.length > 0;
+  },
+});
+
+export const createLessonAttachmentRepository = (db: Db): LessonAttachmentRepository => ({
+  create: async (tenantId, attachment) => {
+    await db.insert(lessonAttachments).values({ ...attachment, tenantId });
+  },
+  findById: async (tenantId, attachmentId) => {
+    const rows = await db
+      .select()
+      .from(lessonAttachments)
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseLessonAttachment(row) : null;
+  },
+  listByLesson: async (tenantId, lessonId) =>
+    (
+      await db
+        .select()
+        .from(lessonAttachments)
+        .where(and(
+          eq(lessonAttachments.tenantId, tenantId),
+          eq(lessonAttachments.lessonId, lessonId),
+        ))
+        .orderBy(asc(lessonAttachments.createdAt))
+    ).map(parseLessonAttachment),
+  listReadyByLesson: async (tenantId, lessonId) =>
+    (
+      await db
+        .select()
+        .from(lessonAttachments)
+        .where(and(
+          eq(lessonAttachments.tenantId, tenantId),
+          eq(lessonAttachments.lessonId, lessonId),
+          eq(lessonAttachments.status, 'ready'),
+        ))
+        .orderBy(asc(lessonAttachments.createdAt))
+    ).map(parseLessonAttachment),
+  markReady: async (tenantId, attachmentId, sizeBytes) => {
+    const rows = await db
+      .update(lessonAttachments)
+      .set({ status: 'ready', sizeBytes })
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseLessonAttachment(row) : null;
+  },
+  delete: async (tenantId, attachmentId) => {
+    const rows = await db
+      .delete(lessonAttachments)
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .returning({ id: lessonAttachments.id });
+    return rows.length > 0;
+  },
+});
+
+export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAssetRepository => ({
+  create: async (tenantId, asset) => {
+    await db.insert(productDownloadAssets).values({ ...asset, tenantId });
+  },
+  findById: async (tenantId, assetId) => {
+    const rows = await db
+      .select()
+      .from(productDownloadAssets)
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseProductDownloadAsset(row) : null;
+  },
+  listByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productDownloadAssets)
+        .where(and(
+          eq(productDownloadAssets.tenantId, tenantId),
+          eq(productDownloadAssets.productId, productId),
+        ))
+        .orderBy(asc(productDownloadAssets.createdAt))
+    ).map(parseProductDownloadAsset),
+  listReadyByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productDownloadAssets)
+        .where(and(
+          eq(productDownloadAssets.tenantId, tenantId),
+          eq(productDownloadAssets.productId, productId),
+          eq(productDownloadAssets.status, 'ready'),
+        ))
+        .orderBy(asc(productDownloadAssets.createdAt))
+    ).map(parseProductDownloadAsset),
+  markReady: async (tenantId, assetId, sizeBytes) => {
+    const rows = await db
+      .update(productDownloadAssets)
+      .set({ status: 'ready', sizeBytes })
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseProductDownloadAsset(row) : null;
+  },
+  delete: async (tenantId, assetId) => {
+    const rows = await db
+      .delete(productDownloadAssets)
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .returning({ id: productDownloadAssets.id });
     return rows.length > 0;
   },
 });

@@ -111,6 +111,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/my/products') return 'member:product:read';
+  if (path.startsWith('/api/my/products/')) return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
   if (path === '/api/members') return 'member:read';
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
@@ -132,8 +133,12 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
   if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
+  if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
+  if (path.startsWith('/api/products/') && path.includes('/downloads')) {
+    return method === 'GET' ? 'product:read' : 'product:write';
+  }
   if (path.endsWith('/publish')) return 'product:publish';
   if (path.endsWith('/access-items')) return 'product:access:write';
   if (path.endsWith('/access-issues')) return 'product:access:read';
@@ -193,7 +198,7 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
   if (path.startsWith('/api/student/')) {
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
@@ -415,10 +420,13 @@ const beforeForUseCase = (
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }
   if (file === 'lesson-media.ts') return tenantActors;
+  if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
+  if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
+  if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts') return owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;

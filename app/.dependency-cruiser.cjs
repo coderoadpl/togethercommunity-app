@@ -18,6 +18,7 @@ const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
 const adapterVideoExternal = 'node_modules/zod(/|$)';
 const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
+const adapterStorageExternal = 'node_modules/undici(/|$)';
 const adapterStorageTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
@@ -268,7 +269,7 @@ module.exports = {
       name: 'adapter-storage-external-allowlist',
       severity: 'error',
       from: { path: '^adapters/storage', pathNot: '\\.test\\.tsx?$' },
-      to: { path: external },
+      to: { path: external, pathNot: adapterStorageExternal },
     },
     {
       name: 'adapter-storage-test-external-allowlist',

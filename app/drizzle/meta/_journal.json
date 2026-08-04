@@ -498,6 +498,20 @@
       "when": 1785800504302,
       "tag": "0070_tenant_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1785804340777,
+      "tag": "0071_lesson_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1785804349551,
+      "tag": "0072_product_download_assets",
+      "breakpoints": true
     }
   ]
 }

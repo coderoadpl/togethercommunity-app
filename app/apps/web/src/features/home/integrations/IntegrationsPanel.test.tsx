@@ -28,24 +28,33 @@ const renderPanel = (
   initial: TenantSecretMasked[] = [],
   initialSettings: TestSettings = defaultSettings,
   initialStripeMode: StripeMode | null = null,
+  secretsState: 'success' | 'pending' | 'error' = 'success',
 ) => {
   let secrets = [...initial];
   let settings = { ...initialSettings };
   let stripeMode = initialStripeMode;
   const testedProviders: string[] = [];
+  const storageSubmissions: unknown[] = [];
   const stripeConfigurations: string[] = [];
 
   server.use(
-    http.get('/api/tenant-secrets', () =>
-      HttpResponse.json({
+    http.get('/api/tenant-secrets', async () => {
+      if (secretsState === 'pending') return new Promise<never>(() => undefined);
+      if (secretsState === 'error') {
+        return HttpResponse.json(
+          { ok: false, error: { code: 'integration_unavailable', message: 'offline' } },
+          { status: 503 },
+        );
+      }
+      return HttpResponse.json({
         ok: true,
         data: {
           secrets,
           stripeMode,
           stripeWebhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-123',
         },
-      }),
-    ),
+      });
+    }),
     http.post('/api/tenant-secrets', async ({ request }) => {
       const body = await request.json();
       const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
@@ -56,6 +65,7 @@ const renderPanel = (
           key === 'bunny.securityKey' ||
           key === 's3.accessKeyId' ||
           key === 's3.secretAccessKey' ||
+          key === 's3.configuration' ||
           key === 'ifirma.invoiceApiKey' ||
           key === 'ifirma.username'
             ? key
@@ -112,6 +122,29 @@ const renderPanel = (
           : 'payment.available';
       return HttpResponse.json({ ok: true, data: { diagnostic: { code, message: 'adapter message' } } });
     }),
+    http.post('/api/integrations/storage/probe', async ({ request }) => {
+      storageSubmissions.push(await request.json());
+      return HttpResponse.json({
+        ok: true,
+        data: { diagnostic: { code: 'storage.available', message: 'probe complete' } },
+      });
+    }),
+    http.post('/api/integrations/storage/configure', async ({ request }) => {
+      storageSubmissions.push(await request.json());
+      const secret: TenantSecretMasked = {
+        key: 's3.configuration',
+        maskedPreview: '••••',
+        updatedAt: '2026-08-03T12:00:00.000Z',
+      };
+      secrets = [...secrets.filter((item) => item.key !== secret.key), secret];
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          diagnostic: { code: 'storage.available', message: 'probe complete' },
+          secret,
+        },
+      });
+    }),
     http.post('/api/integrations/ifirma/test', () =>
       HttpResponse.json({
         ok: true,
@@ -128,12 +161,31 @@ const renderPanel = (
 
   return {
     ...renderWithProviders(<IntegrationsPanel />),
+    storageSubmissions,
     stripeConfigurations,
     testedProviders,
   };
 };
 
+const fillMinioConfiguration = async () => {
+  await userEvent.click(await screen.findByTestId('storage-provider-minio'));
+  await userEvent.click(screen.getByTestId('storage-provider-continue'));
+  await userEvent.type(screen.getByTestId('storage-endpoint'), 'http://localhost:9000');
+  await userEvent.type(screen.getByTestId('storage-bucket'), 'together-test');
+  await userEvent.type(screen.getByTestId('storage-access-key'), 'minio-access');
+  await userEvent.type(screen.getByTestId('storage-secret-key'), 'minio-secret');
+  await userEvent.click(screen.getByTestId('storage-connection-continue'));
+};
+
 describe('IntegrationsPanel', () => {
+  it.each(['pending', 'error'] as const)('does not claim credentials are missing while secrets are %s', async (state) => {
+    renderPanel([], defaultSettings, null, state);
+
+    if (state === 'error') await screen.findAllByRole('alert');
+    expect(screen.queryByTestId('payment-test-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('storage-test-hint')).not.toBeInTheDocument();
+  });
+
   it('shows the per-tenant webhook URL that Together registers automatically', async () => {
     renderPanel();
     const url = await screen.findByTestId('stripe-webhook-url');
@@ -191,12 +243,22 @@ describe('IntegrationsPanel', () => {
     expect(screen.getByTestId('payment-test-connection')).toBeDisabled();
   });
 
+  it('requires the storage wizard when only legacy credentials are stored', async () => {
+    renderPanel([
+      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    expect(await screen.findByTestId('storage-provider-minio')).toBeInTheDocument();
+    expect(screen.getByTestId('storage-test-connection')).toBeDisabled();
+    expect(screen.getByTestId('storage-test-hint')).toHaveTextContent(pl.integrations.s3SaveFirst);
+  });
+
   it('runs storage, email and payment through one diagnostic contract', async () => {
     const { testedProviders } = renderPanel([
       { key: 'stripe.restrictedKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
       { key: 'stripe.webhookSecret', maskedPreview: '••••9876', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 's3.accessKeyId', maskedPreview: '••••KEY1', updatedAt: '2026-07-12T10:00:00.000Z' },
-      { key: 's3.secretAccessKey', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 's3.configuration', maskedPreview: '••••KEY2', updatedAt: '2026-07-12T10:00:00.000Z' },
     ]);
 
     await userEvent.click(await screen.findByTestId('payment-test-connection'));
@@ -207,6 +269,89 @@ describe('IntegrationsPanel', () => {
     expect(await screen.findByTestId('email-test-result')).toHaveTextContent(pl.integrations.emailAvailable);
     expect(await screen.findByTestId('storage-test-result')).toHaveTextContent(pl.integrations.storageAvailable);
     expect(testedProviders).toEqual(['payment', 'email', 'storage']);
+  });
+
+  it('probes MinIO before saving the encrypted storage configuration', async () => {
+    const { storageSubmissions } = renderPanel();
+    await fillMinioConfiguration();
+
+    expect(screen.getByText(pl.integrations.storageProbeDescription)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('storage-probe'));
+    expect(await screen.findByTestId('storage-probe-success')).toHaveTextContent(
+      pl.integrations.storageProbeSuccess,
+    );
+    expect(screen.getByTestId('storage-save')).toBeEnabled();
+
+    await userEvent.click(screen.getByTestId('storage-save'));
+    expect(await screen.findByTestId('storage-save-success')).toHaveTextContent(
+      pl.integrations.storageSaved,
+    );
+    expect(storageSubmissions).toEqual([
+      {
+        provider: 'minio',
+        endpoint: 'http://localhost:9000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      },
+      {
+        provider: 'minio',
+        endpoint: 'http://localhost:9000',
+        region: 'us-east-1',
+        bucket: 'together-test',
+        accessKeyId: 'minio-access',
+        secretAccessKey: 'minio-secret',
+      },
+    ]);
+  });
+
+  it.each([
+    ['aws_s3', pl.integrations.storageInstructionAws, 'docs.aws.amazon.com'],
+    ['cloudflare_r2', pl.integrations.storageInstructionR2, 'developers.cloudflare.com'],
+    ['backblaze_b2', pl.integrations.storageInstructionB2, 'backblaze.com'],
+    ['minio', pl.integrations.storageInstructionMinio, 'min.io'],
+  ])('shows scoped key instructions for %s', async (provider, instructions, host) => {
+    renderPanel();
+    await userEvent.click(await screen.findByTestId(`storage-provider-${provider}`));
+    await userEvent.click(screen.getByTestId('storage-provider-continue'));
+
+    expect(screen.getByText(instructions)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: pl.integrations.storageInstructionLink })).toHaveAttribute(
+      'href',
+      expect.stringContaining(host),
+    );
+  });
+
+  it.each([
+    ['storage.wrong_region', pl.integrations.storageProbeWrongRegion],
+    ['storage.credentials', pl.integrations.storageProbeCredentials],
+    ['storage.bucket', pl.integrations.storageProbeBucket],
+    ['storage.cors', pl.integrations.storageProbeCors],
+    ['storage.unavailable', pl.integrations.storageProbeUnavailable],
+  ])('renders the mapped %s failure without raw SDK text', async (providerCode, message) => {
+    renderPanel();
+    server.use(
+      http.post('/api/integrations/storage/probe', () =>
+        HttpResponse.json(
+          {
+            ok: false,
+            error: {
+              code: 'integration_unavailable',
+              message: 'RAW SDK ERROR',
+              details: { providerCode },
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    await fillMinioConfiguration();
+    await userEvent.click(screen.getByTestId('storage-probe'));
+
+    const alert = await screen.findByTestId('storage-probe-error');
+    expect(alert).toHaveTextContent(message);
+    expect(alert).not.toHaveTextContent('RAW SDK ERROR');
   });
 
   it('guards the Bunny test button until the key and library id are stored', async () => {
@@ -255,18 +400,35 @@ describe('IntegrationsPanel', () => {
     expect(await screen.findByTestId('bunny-test-result')).toHaveTextContent('3 video(s)');
   });
 
-  it('removes a configured secret', async () => {
+  it('removes a configured iFirma invoice API key', async () => {
     renderPanel([
-      { key: 's3.accessKeyId', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+      { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
     ]);
 
-    const field = (await screen.findByTestId('secret-input-s3.accessKeyId')).closest('form');
+    const field = (await screen.findByTestId('secret-input-ifirma.invoiceApiKey')).closest('form');
     expect(field).not.toBeNull();
     if (!field) return;
-    await userEvent.click(within(field).getByTestId('secret-remove-s3.accessKeyId'));
+    await userEvent.click(within(field).getByTestId('secret-remove-ifirma.invoiceApiKey'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('secret-status-s3.accessKeyId')).toHaveTextContent(
+      expect(screen.getByTestId('secret-status-ifirma.invoiceApiKey')).toHaveTextContent(
+        pl.integrations.notConfigured,
+      );
+    });
+  });
+
+  it('removes a configured iFirma username', async () => {
+    renderPanel([
+      { key: 'ifirma.username', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    const field = (await screen.findByTestId('secret-input-ifirma.username')).closest('form');
+    expect(field).not.toBeNull();
+    if (!field) return;
+    await userEvent.click(within(field).getByTestId('secret-remove-ifirma.username'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('secret-status-ifirma.username')).toHaveTextContent(
         pl.integrations.notConfigured,
       );
     });

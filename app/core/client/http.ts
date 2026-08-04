@@ -31,6 +31,8 @@ import {
   healthReadyOutputSchema,
   ifirmaTestConnectionOutputSchema,
   integrationTestOutputSchema,
+  storageConfigureOutputSchema,
+  storageProbeOutputSchema,
   ksefTestConnectionOutputSchema,
   emailDispatchOutputSchema,
   EMAIL_DISPATCH_SECRET_HEADER,
@@ -38,6 +40,14 @@ import {
   lessonsListOutputSchema,
   lessonReferencesOutputSchema,
   lessonDeleteOutputSchema,
+  lessonAttachmentCompleteOutputSchema,
+  lessonAttachmentDeleteOutputSchema,
+  lessonAttachmentUploadOutputSchema,
+  lessonAttachmentsOutputSchema,
+  productDownloadAssetsOutputSchema,
+  productDownloadCompleteOutputSchema,
+  productDownloadDeleteOutputSchema,
+  productDownloadUploadOutputSchema,
   m2mEnrollOutputSchema,
   marketingConsentDefinitionOutputSchema,
   marketingConsentDefinitionDetailOutputSchema,
@@ -152,6 +162,8 @@ import {
   type GrantRevokeInput,
   type HttpMethod,
   type IntegrationTestInput,
+  type StorageConfigureInput,
+  type StorageProbeInput,
   type StripeConfigureInput,
   type LastViewedInput,
   type LessonCompleteInput,
@@ -159,6 +171,8 @@ import {
   type MemberProgressResetInput,
   type LessonCreateInput,
   type LessonUpdateInput,
+  type LessonAttachmentUploadRequest,
+  type ProductDownloadUploadRequest,
   type M2mEnrollRequest,
   type MarketingConsentDefinitionCreateInput,
   type MarketingConsentDefinitionUpdateInput,
@@ -232,6 +246,8 @@ import {
   type Result,
 } from '#core/domain/index.js';
 
+import { uploadPresignedStorageAsset } from './storage-assets.js';
+
 declare const HTTP_METHOD_BRAND: unique symbol;
 
 /**
@@ -260,6 +276,16 @@ export interface ApiClientOptions {
    * SDK-free and makes propagation trivially testable by passing a stub.
    */
   traceparent?: () => string | undefined;
+}
+
+export interface LessonAttachmentFileUpload extends LessonAttachmentUploadRequest {
+  lessonId: string;
+  body: Blob;
+}
+
+export interface ProductDownloadFileUpload extends ProductDownloadUploadRequest {
+  productId: string;
+  body: BodyInit;
 }
 
 const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
@@ -1081,6 +1107,98 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  listLessonAttachments: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.lessonAttachments.method,
+      API_ROUTES.lessonAttachments.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      lessonAttachmentsOutputSchema,
+      undefined,
+      signal,
+    ),
+  uploadLessonAttachment: async (input: LessonAttachmentFileUpload, signal?: AbortSignal) => {
+    return uploadPresignedStorageAsset(
+      input,
+      options.fetchImpl ?? fetch,
+      () => request(
+        options,
+        API_ROUTES.lessonAttachmentUpload.method,
+        API_ROUTES.lessonAttachmentUpload.path.replace(':lessonId', encodeURIComponent(input.lessonId)),
+        lessonAttachmentUploadOutputSchema,
+        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+        signal,
+      ),
+      (started) => started.upload,
+      (started) => request(
+        options,
+        API_ROUTES.lessonAttachmentComplete.method,
+        API_ROUTES.lessonAttachmentComplete.path
+          .replace(':lessonId', encodeURIComponent(input.lessonId))
+          .replace(':attachmentId', encodeURIComponent(started.attachment.id)),
+        lessonAttachmentCompleteOutputSchema,
+        {},
+        signal,
+      ),
+      signal,
+    );
+  },
+  deleteLessonAttachment: (input: { lessonId: string; attachmentId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.lessonAttachmentDelete.method,
+      API_ROUTES.lessonAttachmentDelete.path
+        .replace(':lessonId', encodeURIComponent(input.lessonId))
+        .replace(':attachmentId', encodeURIComponent(input.attachmentId)),
+      lessonAttachmentDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
+  listProductDownloadAssets: (productId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productDownloadAssets.method,
+      API_ROUTES.productDownloadAssets.path.replace(':productId', encodeURIComponent(productId)),
+      productDownloadAssetsOutputSchema,
+      undefined,
+      signal,
+    ),
+  uploadProductDownload: async (input: ProductDownloadFileUpload, signal?: AbortSignal) => {
+    return uploadPresignedStorageAsset(
+      input,
+      options.fetchImpl ?? fetch,
+      () => request(
+        options,
+        API_ROUTES.productDownloadUpload.method,
+        API_ROUTES.productDownloadUpload.path.replace(':productId', encodeURIComponent(input.productId)),
+        productDownloadUploadOutputSchema,
+        { fileName: input.fileName, contentType: input.contentType, sizeBytes: input.sizeBytes },
+        signal,
+      ),
+      (started) => started.upload,
+      (started) => request(
+        options,
+        API_ROUTES.productDownloadComplete.method,
+        API_ROUTES.productDownloadComplete.path
+          .replace(':productId', encodeURIComponent(input.productId))
+          .replace(':assetId', encodeURIComponent(started.asset.id)),
+        productDownloadCompleteOutputSchema,
+        {},
+        signal,
+      ),
+      signal,
+    );
+  },
+  deleteProductDownload: (input: { productId: string; assetId: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.productDownloadDelete.method,
+      API_ROUTES.productDownloadDelete.path
+        .replace(':productId', encodeURIComponent(input.productId))
+        .replace(':assetId', encodeURIComponent(input.assetId)),
+      productDownloadDeleteOutputSchema,
+      undefined,
+      signal,
+    ),
   studentCourses: (signal?: AbortSignal) =>
     request(
       options,
@@ -1105,6 +1223,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.studentLesson.method,
       API_ROUTES.studentLesson.path.replace(':lessonId', encodeURIComponent(lessonId)),
       studentLessonOutputSchema,
+      undefined,
+      signal,
+    ),
+  studentLessonAttachments: (lessonId: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.studentLessonAttachments.method,
+      API_ROUTES.studentLessonAttachments.path.replace(':lessonId', encodeURIComponent(lessonId)),
+      lessonAttachmentsOutputSchema,
       undefined,
       signal,
     ),
@@ -1404,6 +1531,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.integrationTest.method,
       API_ROUTES.integrationTest.path,
       integrationTestOutputSchema,
+      input,
+      signal,
+    ),
+  probeStorage: (input: StorageProbeInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.storageProbe.method,
+      API_ROUTES.storageProbe.path,
+      storageProbeOutputSchema,
+      input,
+      signal,
+    ),
+  configureStorage: (input: StorageConfigureInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.storageConfigure.method,
+      API_ROUTES.storageConfigure.path,
+      storageConfigureOutputSchema,
       input,
       signal,
     ),

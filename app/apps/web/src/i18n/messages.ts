@@ -426,6 +426,37 @@ export interface Messages {
     s3AccessKeyIdLabel: string;
     s3SecretAccessKeyLabel: string;
     s3SaveFirst: string;
+    storageConfigured: string;
+    storageProviderStep: string;
+    storageConnectionStep: string;
+    storageProbeStep: string;
+    storageProviderLabel: string;
+    storageProviderAws: string;
+    storageProviderR2: string;
+    storageProviderB2: string;
+    storageProviderMinio: string;
+    storageEndpointLabel: string;
+    storageRegionLabel: string;
+    storageBucketLabel: string;
+    storageContinue: string;
+    storageBack: string;
+    storageInstructionsHeading: string;
+    storageInstructionAws: string;
+    storageInstructionR2: string;
+    storageInstructionB2: string;
+    storageInstructionMinio: string;
+    storageInstructionLink: string;
+    storageProbeDescription: string;
+    storageProbeStart: string;
+    storageProbeSuccess: string;
+    storageSave: string;
+    storageSaving: string;
+    storageSaved: string;
+    storageProbeWrongRegion: string;
+    storageProbeCredentials: string;
+    storageProbeBucket: string;
+    storageProbeCors: string;
+    storageProbeUnavailable: string;
   };
   products: {
     newProduct: string;
@@ -498,6 +529,15 @@ export interface Messages {
     deactivateConfirm: string;
     creatingPrice: string;
     priceCreated: string;
+    downloadsHeading: string;
+    downloadsDescription: string;
+    downloadsEmpty: string;
+    downloadFileInput: string;
+    uploadDownload: string;
+    uploadingDownload: string;
+    deleteDownload: (params: { name: string }) => string;
+    downloadStatusPending: string;
+    downloadStatusReady: string;
   };
   access: {
     loading: string;
@@ -628,6 +668,15 @@ export interface Messages {
     saving: string;
     saveLesson: string;
     createLesson: string;
+    attachmentsHeading: string;
+    attachmentsHelp: string;
+    attachmentsEmpty: string;
+    attachmentFileInput: string;
+    uploadAttachment: string;
+    uploadingAttachment: string;
+    attachmentSize: (params: { kilobytes: number }) => string;
+    attachmentPending: string;
+    deleteAttachment: (params: { name: string }) => string;
     invalidBlocks: string;
     blockNoun: (params: { count: number }) => string;
     typeVideo: string;
@@ -823,6 +872,8 @@ export interface Messages {
     subscriptionAccessUntil: (params: { date: string }) => string;
     manageSubscription: string;
     coursesEmptyRenewHint: string;
+    downloadsHeading: string;
+    downloadFile: (params: { name: string }) => string;
   };
   courseTree: {
     lockedTooltip: string;
@@ -885,6 +936,8 @@ export interface Messages {
     videoTitle: string;
     embedTitle: string;
     pdfTitle: string;
+    attachmentsHeading: string;
+    downloadAttachment: (params: { name: string }) => string;
   };
   discussion: {
     heading: string;

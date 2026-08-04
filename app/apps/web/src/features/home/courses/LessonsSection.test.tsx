@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   newCourseLessonSchema,
@@ -30,6 +30,14 @@ const renderLessonsAt = async (initialEntry = '/panel/lessons', secrets: TenantS
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
+beforeEach(() => {
+  server.use(
+    http.get('/api/lessons/:lessonId/attachments', () =>
+      HttpResponse.json({ ok: true, data: { attachments: [] } }),
+    ),
+  );
+});
+
 const privacyNoteScenarios: Array<{
   name: string;
   secrets: TenantSecretMasked[];
@@ -49,7 +57,7 @@ const privacyNoteScenarios: Array<{
   },
 ];
 
-describe('LessonsSection pagination', () => {
+describe('LessonsSection pagination', { timeout: 15000 }, () => {
   it('paginates the lesson pool and applies the type filter to the full set', async () => {
     const manyLessons: CourseLesson[] = Array.from({ length: 26 }, (_, index) => ({
       id: `lesson-${index}`,
@@ -77,7 +85,76 @@ describe('LessonsSection pagination', () => {
   });
 });
 
-describe('LessonsSection blocks editor', () => {
+describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
+  it('uploads an attachment directly to storage and completes the lesson record', async () => {
+    const lesson: CourseLesson = {
+      id: 'lesson-1',
+      tenantId: 't1',
+      name: 'Attachment lesson',
+      contents: [],
+      legacyId: null,
+      createdAt: '2026-07-12T10:00:00.000Z',
+    };
+    const readyAttachment = {
+      id: 'attachment-1',
+      lessonId: lesson.id,
+      fileName: 'worksheet.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 7,
+      status: 'ready' as const,
+      createdAt: '2026-08-03T12:00:00.000Z',
+      downloadPath: '/api/student/lessons/lesson-1/attachments/attachment-1/download',
+    };
+    let completed = false;
+    let directUploadCalled = false;
+    server.use(
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [lesson] } })),
+      http.get('/api/lessons/:lessonId/attachments', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { attachments: completed ? [readyAttachment] : [] },
+        }),
+      ),
+      http.post('/api/lessons/:lessonId/attachments/upload', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            attachment: {
+              id: 'attachment-1',
+              lessonId: lesson.id,
+              fileName: 'worksheet.pdf',
+              contentType: 'application/pdf',
+              sizeBytes: 7,
+              status: 'pending',
+              createdAt: '2026-08-03T12:00:00.000Z',
+            },
+            upload: {
+              url: 'https://storage.example.test/upload/attachment-1',
+              headers: { 'content-type': 'application/pdf' },
+              expiresAt: '2026-08-03T12:15:00.000Z',
+            },
+          },
+        }),
+      ),
+      http.put('https://storage.example.test/upload/attachment-1', () => {
+        directUploadCalled = true;
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.post('/api/lessons/:lessonId/attachments/:attachmentId/complete', () => {
+        completed = true;
+        return HttpResponse.json({ ok: true, data: { attachment: readyAttachment } });
+      }),
+    );
+
+    await renderLessonsAt('/panel/lessons/lesson-1');
+    const input = await screen.findByLabelText(pl.lessons.attachmentFileInput);
+    await userEvent.upload(input, new File(['content'], 'worksheet.pdf', { type: 'application/pdf' }));
+
+    await waitFor(() => expect(directUploadCalled).toBe(true));
+    expect(await screen.findByText('worksheet.pdf')).toBeInTheDocument();
+    expect(completed).toBe(true);
+  });
+
   it('adds a video block, reorders it and creates the lesson', async () => {
     let lessons: CourseLesson[] = [];
     let submitted: LessonBlock[] = [];

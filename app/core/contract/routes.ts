@@ -29,6 +29,12 @@ import {
   detachModuleFromCourseInputSchema,
   discussionSchema,
   lessonReferencesSchema,
+  lessonAttachmentMetadataSchema,
+  lessonAttachmentUploadInputSchema,
+  lessonAttachmentViewSchema,
+  productDownloadAssetMetadataSchema,
+  productDownloadAssetViewSchema,
+  productDownloadUploadInputSchema,
   listDiscussionInputSchema,
   listReportsInputSchema,
   createApiKeyInputSchema,
@@ -98,6 +104,7 @@ import {
   sendSupportMessageInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
+  storageConfigurationSchema,
   streamVideoPageSchema,
   tenantApiKeyPublicSchema,
   tenantBrandingSchema,
@@ -312,6 +319,7 @@ export const myProductsOutputSchema = z.object({
   products: z.array(
     z.object({
       id: z.string(),
+      type: productTypeSchema,
       title: z.string(),
       description: z.string(),
       priceCents: z.number().int().nonnegative(),
@@ -320,6 +328,7 @@ export const myProductsOutputSchema = z.object({
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
       subscription: memberSubscriptionSummarySchema.nullable(),
+      downloads: z.array(productDownloadAssetViewSchema),
     }),
   ),
 });
@@ -688,6 +697,56 @@ export const lessonDeleteOutputSchema = z.object({
   references: lessonReferencesSchema,
 });
 
+export const lessonAttachmentUploadRequestSchema = lessonAttachmentUploadInputSchema;
+
+export type LessonAttachmentUploadRequest = z.input<typeof lessonAttachmentUploadRequestSchema>;
+
+export const lessonAttachmentUploadOutputSchema = z.object({
+  attachment: lessonAttachmentMetadataSchema,
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const lessonAttachmentCompleteOutputSchema = z.object({
+  attachment: lessonAttachmentViewSchema,
+});
+
+export const lessonAttachmentsOutputSchema = z.object({
+  attachments: z.array(lessonAttachmentViewSchema),
+});
+
+export const lessonAttachmentDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
+export const productDownloadUploadRequestSchema = productDownloadUploadInputSchema;
+
+export type ProductDownloadUploadRequest = z.input<typeof productDownloadUploadRequestSchema>;
+
+export const productDownloadUploadOutputSchema = z.object({
+  asset: productDownloadAssetMetadataSchema,
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const productDownloadCompleteOutputSchema = z.object({
+  asset: productDownloadAssetMetadataSchema,
+});
+
+export const productDownloadAssetsOutputSchema = z.object({
+  assets: z.array(productDownloadAssetMetadataSchema),
+});
+
+export const productDownloadDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
 });
@@ -960,6 +1019,23 @@ export type IntegrationTestInput = z.input<typeof integrationTestInputSchema>;
 
 export const integrationTestOutputSchema = z.object({
   diagnostic: providerDiagnosticSchema,
+});
+
+export const storageProbeInputSchema = storageConfigurationSchema;
+
+export type StorageProbeInput = z.input<typeof storageProbeInputSchema>;
+
+export const storageProbeOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+});
+
+export const storageConfigureInputSchema = storageConfigurationSchema;
+
+export type StorageConfigureInput = z.input<typeof storageConfigureInputSchema>;
+
+export const storageConfigureOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+  secret: tenantSecretMaskedSchema,
 });
 
 export const stripeConfigureInputSchema = configureStripeInputSchema;
@@ -1242,9 +1318,19 @@ export const API_ROUTES = {
   lessonsUpdate: { method: 'POST', path: '/api/lessons/update' },
   lessonReferences: { method: 'GET', path: '/api/lessons/references' },
   lessonsDelete: { method: 'DELETE', path: '/api/lessons/:lessonId' },
+  lessonAttachments: { method: 'GET', path: '/api/lessons/:lessonId/attachments' },
+  lessonAttachmentUpload: { method: 'POST', path: '/api/lessons/:lessonId/attachments/upload' },
+  lessonAttachmentComplete: { method: 'POST', path: '/api/lessons/:lessonId/attachments/:attachmentId/complete' },
+  lessonAttachmentDelete: { method: 'DELETE', path: '/api/lessons/:lessonId/attachments/:attachmentId' },
+  productDownloadAssets: { method: 'GET', path: '/api/products/:productId/downloads' },
+  productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
+  productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
+  productDownloadDelete: { method: 'DELETE', path: '/api/products/:productId/downloads/:assetId' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
+  studentLessonAttachments: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments' },
+  studentLessonAttachmentDownload: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments/:attachmentId/download' },
   studentLessonComplete: { method: 'POST', path: '/api/student/lessons/complete' },
   studentLessonUncomplete: { method: 'POST', path: '/api/student/lessons/uncomplete' },
   studentLessonNext: { method: 'GET', path: '/api/student/lessons/next' },
@@ -1279,6 +1365,7 @@ export const API_ROUTES = {
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   myProducts: { method: 'GET', path: '/api/my/products' },
+  memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
   memberErasureRequests: { method: 'GET', path: '/api/members/erasure-requests' },
   memberErasureReject: {
@@ -1307,6 +1394,8 @@ export const API_ROUTES = {
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
   integrationTest: { method: 'POST', path: '/api/integrations/test' },
+  storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
+  storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
   stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
@@ -1424,9 +1513,19 @@ export const API_PATHS = {
   lessonsUpdate: API_ROUTES.lessonsUpdate.path,
   lessonReferences: API_ROUTES.lessonReferences.path,
   lessonsDelete: API_ROUTES.lessonsDelete.path,
+  lessonAttachments: API_ROUTES.lessonAttachments.path,
+  lessonAttachmentUpload: API_ROUTES.lessonAttachmentUpload.path,
+  lessonAttachmentComplete: API_ROUTES.lessonAttachmentComplete.path,
+  lessonAttachmentDelete: API_ROUTES.lessonAttachmentDelete.path,
+  productDownloadAssets: API_ROUTES.productDownloadAssets.path,
+  productDownloadUpload: API_ROUTES.productDownloadUpload.path,
+  productDownloadComplete: API_ROUTES.productDownloadComplete.path,
+  productDownloadDelete: API_ROUTES.productDownloadDelete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,
+  studentLessonAttachments: API_ROUTES.studentLessonAttachments.path,
+  studentLessonAttachmentDownload: API_ROUTES.studentLessonAttachmentDownload.path,
   studentLessonComplete: API_ROUTES.studentLessonComplete.path,
   studentLessonUncomplete: API_ROUTES.studentLessonUncomplete.path,
   studentLessonNext: API_ROUTES.studentLessonNext.path,
@@ -1460,6 +1559,7 @@ export const API_PATHS = {
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
   myProducts: API_ROUTES.myProducts.path,
+  memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,
   memberErasureRequests: API_ROUTES.memberErasureRequests.path,
   memberErasureReject: API_ROUTES.memberErasureReject.path,
@@ -1484,6 +1584,8 @@ export const API_PATHS = {
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,
+  storageProbe: API_ROUTES.storageProbe.path,
+  storageConfigure: API_ROUTES.storageConfigure.path,
   stripeConfigure: API_ROUTES.stripeConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,

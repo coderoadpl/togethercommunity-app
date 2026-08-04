@@ -1310,7 +1310,21 @@ export const signOutMutation = (auth: AuthClientPort): MutationDescriptor<void, 
 export const registerPasskeyMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'register-passkey'],
-    call: (input: { name: string }) => auth.registerPasskey(input.name),
+    call: (input: { name: string; password: string }) => auth.registerPasskey(input),
+  });
+
+export const passkeysQuery = (auth: AuthClientPort) =>
+  defineQuery({
+    queryKey: [...authScopes.all(), 'passkeys'],
+    call: () => auth.listPasskeys(),
+  });
+
+export const passkeysInvalidates = () => ({ queryKey: [...authScopes.all(), 'passkeys'] });
+
+export const removePasskeyMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'remove-passkey'],
+    call: (input: { id: string; password: string }) => auth.removePasskey(input),
   });
 
 export const signInWithPasskeyMutation = (auth: AuthClientPort): MutationDescriptor<AuthSessionResult, void> =>
@@ -1329,6 +1343,24 @@ export const verifyTotpMutation = (auth: AuthClientPort) =>
   defineMutation({
     mutationKey: [...authScopes.all(), 'verify-totp'],
     call: (input: { code: string }) => auth.verifyTotp(input.code),
+  });
+
+export const verifyBackupCodeMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'verify-backup-code'],
+    call: (input: { code: string }) => auth.verifyBackupCode(input.code),
+  });
+
+export const disableTwoFactorMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'disable-two-factor'],
+    call: (input: { password: string }) => auth.disableTwoFactor(input.password),
+  });
+
+export const regenerateBackupCodesMutation = (auth: AuthClientPort) =>
+  defineMutation({
+    mutationKey: [...authScopes.all(), 'regenerate-backup-codes'],
+    call: (input: { password: string }) => auth.regenerateBackupCodes(input.password),
   });
 
 export const signInWithGoogleMutation = (auth: AuthClientPort): MutationDescriptor<void, void> =>

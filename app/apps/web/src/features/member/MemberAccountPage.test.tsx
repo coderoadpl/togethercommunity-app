@@ -40,7 +40,13 @@ const stubErasureRequest = () =>
   );
 
 const renderAccount = async () => {
-  server.use(stubErasureRequest());
+  server.use(
+    stubErasureRequest(),
+    http.get('*', ({ request }) =>
+      new URL(request.url).pathname.endsWith('/passkey/list-user-passkeys')
+        ? HttpResponse.json([])
+        : undefined),
+  );
   const rootRoute = createRootRoute({ component: MemberAccountPage });
   const router = createRouter({
     routeTree: rootRoute,
@@ -51,6 +57,16 @@ const renderAccount = async () => {
 };
 
 describe('MemberAccountPage', () => {
+  it('mounts passkey and two-factor management on the member surface', async () => {
+    server.use(stubMe(), stubSettings(null), stubBillingOrders());
+    await renderAccount();
+
+    expect(await screen.findByTestId('account-security-methods')).toBeInTheDocument();
+    expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
+    expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
+    expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
+  });
+
   it('hides the manage-payments link when no billing portal URL is set', async () => {
     server.use(stubMe(), stubSettings(null), stubBillingOrders());
     await renderAccount();
@@ -68,7 +84,7 @@ describe('MemberAccountPage', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
-  it('requests a password reset email', async () => {
+  it('requests password setup from member passkey management', async () => {
     let body: unknown;
     server.use(
       stubMe(),
@@ -81,8 +97,10 @@ describe('MemberAccountPage', () => {
     );
     await renderAccount();
 
-    await userEvent.click(await screen.findByTestId('account-reset-password'));
-    expect(await screen.findByTestId('account-reset-sent')).toHaveTextContent(pl.account.resetSent);
+    await userEvent.click(await screen.findByTestId('passkey-set-password'));
+    expect(await screen.findByTestId('passkey-password-setup-sent')).toHaveTextContent(
+      pl.security.resetSent,
+    );
     expect(body).toEqual({
       email: 'member@together.dev',
       redirectTo: 'http://localhost:3000/reset-password',

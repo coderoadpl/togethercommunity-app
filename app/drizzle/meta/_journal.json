@@ -474,8 +474,15 @@
     {
       "idx": 67,
       "version": "7",
-      "when": 1785796933066,
-      "tag": "0067_dazzling_obadiah_stane",
+      "when": 1785797500975,
+      "tag": "0067_tenant_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1785798504302,
+      "tag": "0068_branding_social_links",
       "breakpoints": true
     }
   ]

@@ -22,8 +22,10 @@ export interface CreateTenantDeps {
   tenants: TenantRepository;
   ids: IdGenerator;
   clock: Clock;
-  tenantCreationMode: 'open' | 'closed';
+  tenantCreationMode: TenantCreationMode;
 }
+
+export type TenantCreationMode = 'open' | 'bootstrap' | 'closed';
 
 export const createTenant = async (
   ctx: Ctx,
@@ -34,6 +36,9 @@ export const createTenant = async (
   if (denial !== null) return err(denial);
   if (deps.tenantCreationMode === 'closed') {
     return err(forbidden('Tenant creation is closed on this instance'));
+  }
+  if (deps.tenantCreationMode === 'bootstrap' && await deps.tenants.hasAny()) {
+    return err(forbidden('Tenant creation is closed after the first workspace'));
   }
 
   const slug = input.slug.trim().toLowerCase();
@@ -49,19 +54,26 @@ export const createTenant = async (
   if (existing) return err(appError('conflict', `Tenant "${slug}" already exists`));
 
   const tenantId = deps.ids.nextId();
-  const tenant = await deps.tenants.createTenantWithOwnerGrant({
-    tenant: {
-      id: tenantId,
-      slug,
-      name: parsedName.data,
-      createdAt: deps.clock.nowIso(),
+  const tenant = await deps.tenants.createTenantWithOwnerGrant(
+    {
+      tenant: {
+        id: tenantId,
+        slug,
+        name: parsedName.data,
+        createdAt: deps.clock.nowIso(),
+      },
+      ownerGrant: {
+        id: deps.ids.nextId(),
+        userId: ctx.identity.userId,
+        staffRole: 'owner',
+      },
     },
-    ownerGrant: {
-      id: deps.ids.nextId(),
-      userId: ctx.identity.userId,
-      staffRole: 'owner',
-    },
-  });
+    { requireEmpty: deps.tenantCreationMode === 'bootstrap' },
+  );
+
+  if (tenant === null) {
+    return err(forbidden('Tenant creation is closed after the first workspace'));
+  }
 
   return ok(tenant);
 };

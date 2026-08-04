@@ -9,6 +9,8 @@ const tenant: Tenant = {
   id: 't-acme',
   slug: 'acme',
   name: 'Acme',
+  status: 'active',
+  plan: 'hosted',
   contentVersion: 7,
 };
 
@@ -49,6 +51,8 @@ const fakeTenants = (branding?: {
 }): TenantRepository => ({
   findById: async () => null,
   findBySlug: async () => null,
+  findSole: async () => null,
+  hasAny: async () => false,
   findSettings: async () =>
     branding === undefined
       ? null

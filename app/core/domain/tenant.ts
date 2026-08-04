@@ -3,11 +3,15 @@ import { z } from 'zod';
 import { staffRoleSchema } from './identity.js';
 
 export const TENANT_NAME_MAX_LENGTH = 100;
+const tenantStatusSchema = z.enum(['active', 'suspended']);
+const tenantPlanSchema = z.enum(['self_hosted', 'hosted', 'hosted_pro']);
 
 export const tenantSchema = z.object({
   id: z.string(),
   slug: z.string(),
   name: z.string().trim().min(1).max(TENANT_NAME_MAX_LENGTH),
+  status: tenantStatusSchema,
+  plan: tenantPlanSchema,
   contentVersion: z.number().int().positive(),
 });
 

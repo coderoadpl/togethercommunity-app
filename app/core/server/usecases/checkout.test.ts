@@ -7,9 +7,19 @@ import {
   type Coupon,
   type Product,
   type ProductPrice,
+  type Tenant,
   type TenantSecret,
 } from '#core/domain/index.js';
 import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
+
+const tenant: Tenant = {
+  id: 'tenant-a',
+  slug: 'alpha',
+  name: 'Alpha',
+  status: 'active',
+  plan: 'hosted',
+  contentVersion: 1,
+};
 
 const product: Product = {
   id: 'product-1',
@@ -108,7 +118,7 @@ describe('createCheckoutSession', () => {
   it('rejects an unpublished product', async () => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id },
       {
@@ -132,7 +142,7 @@ describe('createCheckoutSession', () => {
   ] as const)('rejects a %s price', async (_case, foundPrice) => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, priceId: recurringPrice.id },
       {
@@ -158,7 +168,7 @@ describe('createCheckoutSession', () => {
   ] as const)('rejects a membership checkout %s', async (_case, priceId, foundPrice) => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, ...(priceId === undefined ? {} : { priceId }) },
       {
@@ -176,7 +186,7 @@ describe('createCheckoutSession', () => {
   it('rejects checkout when tenant Stripe secrets are missing', async () => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id },
       {
@@ -190,7 +200,7 @@ describe('createCheckoutSession', () => {
   it('propagates provider failure with its error code', async () => {
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id },
       {
@@ -208,7 +218,7 @@ describe('createCheckoutSession', () => {
     let providerSessions = 0;
     const base = checkoutDeps();
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, email: 'buyer@example.com', couponCode: 'FREE' },
       {
@@ -257,7 +267,7 @@ describe('createCheckoutSession', () => {
     const base = checkoutDeps();
     let providerSessions = 0;
     const result = await (await import('./checkout.js')).createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       {
         productId: product.id,
@@ -347,7 +357,7 @@ describe('createCheckoutSession', () => {
     };
     const checkout = await import('./checkout.js');
     const result = await checkout.createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: 'product-1', email: 'buyer@example.com', language: 'pl' },
       deps,
@@ -422,7 +432,7 @@ describe('createCheckoutSession', () => {
     };
     const checkout = await import('./checkout.js');
     const result = await checkout.createCheckoutSession(
-      { id: 'tenant-a', slug: 'alpha', name: 'Alpha', contentVersion: 1 },
+      tenant,
       'https://alpha.example.com',
       { productId: product.id, priceId: 'price-monthly' },
       deps,

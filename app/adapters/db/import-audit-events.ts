@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, lt, or } from 'drizzle-orm';
 
 import { importAuditEventSchema, type ImportAuditEvent } from '#core/domain/index.js';
 import type { ImportAuditEventRepository } from '#core/server/index.js';
@@ -45,15 +45,37 @@ export const createImportAuditEventRepository = (db: Db): ImportAuditEventReposi
     const row = rows[0];
     return row ? parseEvent(row) : null;
   },
-  listByApiKey: async (tenantId, apiKeyId) =>
-    (
-      await db
-        .select()
-        .from(importAuditEvents)
-        .where(and(
-          eq(importAuditEvents.tenantId, tenantId),
-          eq(importAuditEvents.apiKeyId, apiKeyId),
-        ))
-        .orderBy(desc(importAuditEvents.at), desc(importAuditEvents.id))
-    ).map(parseEvent),
+  listByApiKey: async (tenantId, apiKeyId, query) => {
+    const cursor = query.cursor === undefined
+      ? undefined
+      : await db
+          .select({ id: importAuditEvents.id, at: importAuditEvents.at })
+          .from(importAuditEvents)
+          .where(and(
+            eq(importAuditEvents.tenantId, tenantId),
+            eq(importAuditEvents.apiKeyId, apiKeyId),
+            eq(importAuditEvents.id, query.cursor),
+          ))
+          .limit(1);
+    if (cursor !== undefined && cursor[0] === undefined) return { events: [], nextCursor: null };
+    const boundary = cursor?.[0];
+    const rows = await db
+      .select()
+      .from(importAuditEvents)
+      .where(and(
+        eq(importAuditEvents.tenantId, tenantId),
+        eq(importAuditEvents.apiKeyId, apiKeyId),
+        ...(boundary === undefined ? [] : [or(
+          lt(importAuditEvents.at, boundary.at),
+          and(eq(importAuditEvents.at, boundary.at), lt(importAuditEvents.id, boundary.id)),
+        )]),
+      ))
+      .orderBy(desc(importAuditEvents.at), desc(importAuditEvents.id))
+      .limit(query.limit + 1);
+    const events = rows.slice(0, query.limit).map(parseEvent);
+    return {
+      events,
+      nextCursor: rows.length > query.limit ? events.at(-1)?.id ?? null : null,
+    };
+  },
 });

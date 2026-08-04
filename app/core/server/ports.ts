@@ -510,7 +510,11 @@ export interface ImportAuditEventRepository {
     kind: ImportAuditResourceType,
     importKey: string,
   ): Promise<ImportAuditEvent | null>;
-  listByApiKey(tenantId: string, apiKeyId: string): Promise<ImportAuditEvent[]>;
+  listByApiKey(
+    tenantId: string,
+    apiKeyId: string,
+    query: { cursor?: string; limit: number },
+  ): Promise<{ events: ImportAuditEvent[]; nextCursor: string | null }>;
 }
 
 export type ImportContentMutation =
@@ -551,11 +555,12 @@ export type ImportUsersMutation =
       authUser: {
         action: 'create' | 'keep';
         name: string;
-        emailVerified: true;
+        emailVerified: false;
         credentialAccountId: string;
         legacyPasswordHash: string | null;
       };
       event: ImportAuditEvent;
+      credentialEvent: ImportAuditEvent | null;
     }
   | {
       kind: 'grant';

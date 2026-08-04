@@ -4,6 +4,7 @@ import {
   capabilitiesForApiKey,
   capabilitiesForPrincipal,
   type Identity,
+  type ImportAuditEvent,
   type StaffRole,
   type TenantApiKey,
 } from '#core/domain/index.js';
@@ -12,6 +13,7 @@ import type { Ctx } from '../context.js';
 import type { ApiKeyCrypto, TenantApiKeyRepository } from '../ports.js';
 import {
   createTenantApiKey,
+  listImportAuditForApiKey,
   listTenantApiKeys,
   revokeTenantApiKey,
   type ApiKeyDeps,
@@ -176,6 +178,7 @@ describe('API key scope capabilities', () => {
   it('isolates import capabilities from existing and unscoped keys', () => {
     expect(capabilitiesForApiKey({ scopes: ['import:content', 'import:users'] })).toEqual([
       'import:content-write',
+      'import:validate',
       'import:users-write',
     ]);
     expect(capabilitiesForApiKey({ scopes: null })).not.toContain('import:content-write');
@@ -224,5 +227,64 @@ describe('revokeTenantApiKey', () => {
     ]);
     const result = await revokeTenantApiKey(ctx('admin'), { id: 'key-a' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
+describe('listImportAuditForApiKey', () => {
+  const event: ImportAuditEvent = {
+    id: 'audit-1', tenantId: 't1', apiKeyId: 'key-a', kind: 'member',
+    importKey: 'member-source', resourceId: 'member-source', action: 'credential_created',
+    payloadHash: 'a'.repeat(64), at: NOW,
+  };
+
+  it('lists the selected tenant key audit for the owner', async () => {
+    const h = harness([
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
+    ]);
+    const result = await listImportAuditForApiKey(ctx('owner'), {
+      id: 'key-a', limit: 50,
+    }, {
+      tenantApiKeys: h.deps.tenantApiKeys,
+      importAuditEvents: {
+        listByApiKey: async (tenantId, apiKeyId) => ({
+          events: tenantId === 't1' && apiKeyId === 'key-a' ? [event] : [],
+          nextCursor: null,
+        }),
+      },
+    });
+
+    expect(result).toEqual({ ok: true, value: { events: [event], nextCursor: null } });
+  });
+
+  it('forbids an admin from reading import audit', async () => {
+    const h = harness([
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
+    ]);
+    const result = await listImportAuditForApiKey(ctx('admin'), {
+      id: 'key-a', limit: 50,
+    }, {
+      tenantApiKeys: h.deps.tenantApiKeys,
+      importAuditEvents: {
+        listByApiKey: async () => ({ events: [event], nextCursor: null }),
+      },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('does not expose audit for a key outside the tenant', async () => {
+    const h = harness([
+      { id: 'key-foreign', tenantId: 't2', name: 'Foreign', keyHash: 'hash:f', scopes: ['import:users'], createdAt: NOW, expiresAt: '2026-06-08T00:00:00.000Z', revokedAt: null },
+    ]);
+    const result = await listImportAuditForApiKey(ctx('owner'), {
+      id: 'key-foreign', limit: 50,
+    }, {
+      tenantApiKeys: h.deps.tenantApiKeys,
+      importAuditEvents: {
+        listByApiKey: async () => ({ events: [event], nextCursor: null }),
+      },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });

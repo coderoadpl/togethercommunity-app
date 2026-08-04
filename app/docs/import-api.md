@@ -1,8 +1,8 @@
 # Migration import API
 
-The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, and product grants as **drafts**: content arrives unpublished, members arrive able to log in, and nothing goes live and no e-mail is sent until you act in the panel.
+The import API moves an existing catalog and audience from another platform into Together. You push courses, modules, lessons, products, members, product grants, and course progress as **drafts**: content arrives unpublished, members arrive able to log in, and nothing goes live and no e-mail is sent until you act in the panel.
 
-Use it when you are switching platforms or restoring a bulk export. Do not use it for day-to-day writes — it creates and updates only records it created, never publishes, never deletes, and never reads your tenant data back.
+Use it when you are switching platforms or restoring a bulk export. Do not use it for day-to-day writes — it creates and updates only records it created, never publishes, and never deletes.
 
 ## Import keys
 
@@ -11,7 +11,7 @@ Import keys are created in the panel under **Integrations → Migration API keys
 | Scope | Grants | Does not grant |
 |---|---|---|
 | `import:content` | Draft upsert of courses, modules, lessons, and products | Publishing, deleting, editing anything not created by import, any read, any other API |
-| `import:users` | Upsert of members (with an optional legacy credential) and product grants | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
+| `import:users` | Upsert of members (with an optional legacy credential), product grants, and course progress | Sending e-mail, the enrollment API, the marketing API, reading member lists, editing members not created by import |
 
 - The two scopes are independent. Create one key per scope — a leaked content key then cannot touch members, and a leaked users key cannot touch content.
 - Import scopes cannot be combined with `enrollment`, `marketing`, or `transactional` on the same key. Existing unscoped keys never gain import access.
@@ -32,7 +32,7 @@ Send the key in `x-api-key`. Resolve the tenant through its normal tenant hostna
 | `POST /api/m2m/import/products` | `import:content` | Batch upsert products, always unpublished |
 | `POST /api/m2m/import/members` | `import:users` | Batch upsert members |
 | `POST /api/m2m/import/grants` | `import:users` | Batch upsert product grants |
-| `POST /api/m2m/import/progress` | `import:users` | Batch upsert course progress — not yet enabled, returns `403` |
+| `POST /api/m2m/import/progress` | `import:users` | Batch upsert course progress |
 
 There are no other verbs. There is no listing endpoint and no delete endpoint; review imported records in the panel.
 
@@ -55,7 +55,7 @@ course-<sourceId>   module-<sourceId>   lesson-<sourceId>
 product-<sourceAccessId>   member-<sourceUserId>   grant-<sourceUserId>:<sourceAccessId>
 ```
 
-Records reference each other by `importKey`, never by Together ids. A reference resolves to an already-imported record with that key, or to a native resource whose id equals that key; otherwise the referencing record fails with `not_found`. Created resources get `id` equal to their `importKey`, and `legacyId` from the record when you supply it.
+Records reference each other by `importKey`, never by Together ids. A reference resolves only to a record created by an import for this tenant, or to an eligible record in the same validation call; native resources are never eligible. Otherwise the referencing record fails with `conflict`. Created resources get `id` equal to their `importKey`, and `legacyId` from the record when you supply it.
 
 `createdAt` is optional and preserves the original creation timestamp. It is an import-only privilege — the normal APIs never accept it.
 
@@ -107,7 +107,7 @@ One grant per member and product. Collapse renewals and repeated purchases in yo
 
 ### Progress
 
-Progress is specified but not yet enabled; the endpoint returns `403`. Emit the records now and submit them in a follow-up run — access never depends on progress.
+Progress is explicitly enabled in the initial rollout because Together's CodeRoad dogfood migration requires it. Like grants, progress may reference only import-created members and content; access never depends on progress.
 
 ```jsonl
 {"kind":"progress","importKey":"progress-u789:abc123","memberKey":"member-u789","courseKey":"course-abc123","completedLessonKeys":["lesson-l1"],"lastViewedLessonKey":"lesson-l1","lastViewedModuleKey":"module-m1","lastViewedChapterId":"chapter-m1-0","updatedAt":"2025-11-02T10:00:00Z"}
@@ -134,7 +134,7 @@ x-api-key: together_api_key
 }
 ```
 
-Mixed kinds are allowed and records inside one call may reference each other. The call writes nothing.
+Mixed kinds are allowed when the key holds the scope required by every included kind, and eligible records inside one call may reference each other. A record outside the key's scope receives a per-record `forbidden` error. The call writes nothing.
 
 ```json
 {
@@ -200,7 +200,7 @@ Every write is an upsert keyed by `importKey`, so submitting the same dataset tw
 
 - First submission → `created`.
 - Same payload again → no write, `unchanged`.
-- Different payload → `updated`, but only if the target was created by import for this tenant under the same kind and key, and is still updatable: products must still be unpublished, and a member's credential may only go from empty to set.
+- Different payload → `updated`, but only if the target was created by import for this tenant under the same kind and key, and is still updatable. Products must still be unpublished. Credentials are immutable after member creation.
 - Anything else → `conflict` for that record. In particular, two different source records sharing one `importKey` surface as a conflict rather than silently overwriting each other.
 
 A full re-run of a finished import returns an all-`unchanged` summary. That is the check to run before you call the migration done.
@@ -221,7 +221,7 @@ Request-level failures use HTTP status codes:
 
 - `400` for a malformed envelope, an unknown `datasetVersion`, too many records, or an oversized body.
 - `401` for a missing, invalid, expired, or revoked key.
-- `403` when the key lacks the scope the endpoint requires, or for the not-yet-enabled progress endpoint.
+- `403` when the key lacks the scope the endpoint requires.
 - `404` when the tenant cannot be resolved from the host or `x-tenant`.
 - `429` when a minute, hourly, or daily limit is exceeded.
 
@@ -258,9 +258,10 @@ pbkdf2$25000$<hex salt, 64 characters>$<hex derived key, 1024 characters>
 That is PBKDF2-HMAC-SHA-256, 25 000 iterations, a 512-byte derived key, salt and key hex-encoded. If your platform stores passwords this way (a hex salt plus a hex PBKDF2-SHA-256 hash), your transform reformats the two columns into this string — no derivation, no password knowledge, no user interaction. The first successful login transparently upgrades the stored credential.
 
 - **Plaintext passwords are never accepted.** There is no `password` field, and nothing else derives a hash for you.
-- The value is validated for format only. It is never verified, logged, echoed back, or written to the audit journal.
-- A credential can only go from empty to set. An existing member's credential is never overwritten — a differing hash on a member who already has one fails with `conflict`.
-- An e-mail already belonging to a member of your tenant that was not created under the same `importKey` fails with `conflict`. Deduplicate in your transform.
+- The value is validated for format only. It is never verified, logged, echoed back, or included in an audit payload hash. The audit records only that a credential was created.
+- A credential can be inserted only in the same transaction that creates a brand-new auth user. It can never be added later or written onto a pre-existing platform identity, and it can never be replaced.
+- An imported auth identity starts with an unverified e-mail. The imported credential enables migration login but does not satisfy platform-wide verified-email capabilities.
+- An e-mail already belonging to a pre-existing platform identity cannot be adopted by an import. Deduplicate in your transform and resolve the identity through the normal account flow.
 - If your hashes use bcrypt, argon2, or any other scheme, import those members passwordless and send them a set-password link.
 
 Imported members carry no consent evidence. You are the data controller: import only members you have a legal basis to hold, and notify them on your own terms — the import will not do it for you.

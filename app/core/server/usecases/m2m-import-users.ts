@@ -95,7 +95,7 @@ type PreparedUsersRecord =
       authUser: {
         action: 'create' | 'keep';
         name: string;
-        emailVerified: true;
+        emailVerified: false;
         credentialAccountId: string;
         legacyPasswordHash: string | null;
       };
@@ -144,10 +144,7 @@ const resolveReference = async (
     const imported = await findTarget(tenantId, kind, audit.resourceId, deps);
     if (imported !== null) return ok(imported.id);
   }
-  const native = await findTarget(tenantId, kind, key, deps);
-  return native === null
-    ? err(appError('conflict', `Referenced ${kind} "${key}" was not found`))
-    : ok(native.id);
+  return err(appError('conflict', `Referenced ${kind} "${key}" was not created by import`));
 };
 
 const memberAuditPayload = (record: ImportMemberRecord): unknown =>
@@ -187,15 +184,9 @@ const prepareMember = async (
       return err(appError('conflict', `A tenant member already uses "${record.email}"`));
     }
     const authUser = await deps.importUsers.findAuthUserByEmail(tenantId, record.email);
-    if (passwordHash !== null && authUser !== null) {
-      if (!authUser.hasCredentialAccount || authUser.credentialPassword === null) {
-        return err(appError('conflict', 'An existing user credential cannot be modified'));
-      }
-      if (authUser.credentialPassword !== passwordHash) {
-        return err(appError('conflict', 'An existing credential cannot be overwritten'));
-      }
+    if (authUser !== null) {
+      return err(appError('conflict', 'This member identity cannot be imported'));
     }
-    const userId = authUser?.id ?? newUserId;
     return ok({
       kind: 'member',
       importKey: record.importKey,
@@ -204,16 +195,16 @@ const prepareMember = async (
       resource: {
         id: record.importKey,
         tenantId,
-        userId,
+        userId: newUserId,
         email: record.email,
         displayName: record.displayName,
         legacyId: record.legacyId ?? null,
         createdAt: record.createdAt ?? now,
       },
       authUser: {
-        action: authUser === null ? 'create' : 'keep',
+        action: 'create',
         name: record.displayName,
-        emailVerified: true,
+        emailVerified: false,
         credentialAccountId,
         legacyPasswordHash: passwordHash,
       },
@@ -230,17 +221,14 @@ const prepareMember = async (
   if (authUser === null || authUser.id !== target.userId) {
     return err(appError('conflict', `Imported member "${record.importKey}" has no matching user`));
   }
-  let credentialNeedsWrite = false;
   if (passwordHash !== null) {
     if (!authUser.hasCredentialAccount || authUser.credentialPassword === null) {
-      credentialNeedsWrite = true;
+      return err(appError('conflict', 'An imported member credential cannot be modified'));
     } else if (authUser.credentialPassword !== passwordHash) {
-      return err(appError('conflict', 'An existing credential cannot be overwritten'));
+      return err(appError('conflict', 'An imported member credential cannot be modified'));
     }
   }
-  const action = audit.payloadHash === payloadHash && !credentialNeedsWrite
-    ? 'unchanged'
-    : 'updated';
+  const action = audit.payloadHash === payloadHash ? 'unchanged' : 'updated';
   return ok({
     kind: 'member',
     importKey: record.importKey,
@@ -255,9 +243,9 @@ const prepareMember = async (
     authUser: {
       action: 'keep',
       name: record.displayName,
-      emailVerified: true,
+      emailVerified: false,
       credentialAccountId,
-      legacyPasswordHash: passwordHash,
+      legacyPasswordHash: null,
     },
   });
 };
@@ -538,12 +526,21 @@ const mutationFor = (
     at: deps.clock.nowIso(),
   };
   if (prepared.kind === 'member') {
+    const credentialEvent = prepared.authUser.action === 'create'
+      && prepared.authUser.legacyPasswordHash !== null
+      ? {
+          ...event,
+          id: deps.ids.nextId(),
+          action: 'credential_created' as const,
+        }
+      : null;
     return {
       kind: prepared.kind,
       action: prepared.action,
       resource: prepared.resource,
       authUser: prepared.authUser,
       event,
+      credentialEvent,
     };
   }
   if (prepared.kind === 'grant') {

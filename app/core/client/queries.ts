@@ -12,6 +12,7 @@ import type {
 import type {
   CourseCreateInput,
   ApiKeyCreateInput,
+  ApiKeyImportAuditQuery,
   ApiKeyRevokeInput,
   CheckoutSessionRequest,
   CouponCheckoutValidationRequest,
@@ -242,6 +243,7 @@ const tenantSecretsScopes = {
 const apiKeyScopes = {
   all: () => ['api-keys'] as const,
   lists: () => ['api-keys', 'list'] as const,
+  audit: (input: ApiKeyImportAuditQuery) => ['api-keys', 'audit', input] as const,
 };
 
 const bunnyScopes = {
@@ -1135,6 +1137,12 @@ export const apiKeysQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: apiKeyScopes.lists(),
     call: ({ signal }) => api.listApiKeys(signal),
+  });
+
+export const apiKeyImportAuditQuery = (api: ApiClient, input: ApiKeyImportAuditQuery) =>
+  defineQuery({
+    queryKey: apiKeyScopes.audit(input),
+    call: ({ signal }) => api.listApiKeyImportAudit(input, signal),
   });
 
 export const createApiKeyMutation = (api: ApiClient) =>

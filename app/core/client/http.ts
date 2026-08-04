@@ -4,6 +4,7 @@ import {
   API_ROUTES,
   looseEnvelopeSchema,
   apiKeyCreateOutputSchema,
+  apiKeyImportAuditOutputSchema,
   apiKeyRevokeOutputSchema,
   apiKeysListOutputSchema,
   authConfigOutputSchema,
@@ -156,6 +157,7 @@ import {
   onboardingOutputSchema,
   threadSubscriptionOutputSchema,
   type ApiKeyCreateInput,
+  type ApiKeyImportAuditQuery,
   type ApiKeyRevokeInput,
   type CourseCreateInput,
   type CheckoutSessionRequest,
@@ -1522,6 +1524,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
     request(options, API_ROUTES.devGrant.method, API_ROUTES.devGrant.path, devGrantOutputSchema, input, signal),
   listApiKeys: (signal?: AbortSignal) =>
     request(options, API_ROUTES.apiKeys.method, API_ROUTES.apiKeys.path, apiKeysListOutputSchema, undefined, signal),
+  listApiKeyImportAudit: (input: ApiKeyImportAuditQuery, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const suffix = params.toString();
+    const path = API_ROUTES.apiKeyImportAudit.path.replace(':id', encodeURIComponent(input.id));
+    return request(
+      options,
+      API_ROUTES.apiKeyImportAudit.method,
+      suffix.length > 0 ? `${path}?${suffix}` : path,
+      apiKeyImportAuditOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   createApiKey: (input: ApiKeyCreateInput, signal?: AbortSignal) =>
     request(
       options,

@@ -58,6 +58,7 @@ import {
   paidWithoutGrantRowSchema,
   invoiceSchema,
   importBatchResponseSchema,
+  importAuditEventSchema,
   importValidationResponseSchema,
   importValidateRequestSchema,
   importWriteRequestSchema,
@@ -1033,6 +1034,19 @@ export const apiKeyRevokeOutputSchema = z.object({
   apiKey: tenantApiKeyPublicSchema,
 });
 
+export const apiKeyImportAuditQuerySchema = z.object({
+  id: z.string().min(1),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export type ApiKeyImportAuditQuery = z.input<typeof apiKeyImportAuditQuerySchema>;
+
+export const apiKeyImportAuditOutputSchema = z.object({
+  events: z.array(importAuditEventSchema),
+  nextCursor: z.string().nullable(),
+});
+
 export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
   stripeMode: stripeModeSchema.nullable(),
@@ -1489,6 +1503,7 @@ export const API_ROUTES = {
   apiKeys: { method: 'GET', path: '/api/api-keys' },
   apiKeysCreate: { method: 'POST', path: '/api/api-keys' },
   apiKeyRevoke: { method: 'DELETE', path: '/api/api-keys/:id' },
+  apiKeyImportAudit: { method: 'GET', path: '/api/api-keys/:id/import-audit' },
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
@@ -1694,6 +1709,7 @@ export const API_PATHS = {
   devEmail: API_ROUTES.devEmail.path,
   apiKeys: API_ROUTES.apiKeys.path,
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
+  apiKeyImportAudit: API_ROUTES.apiKeyImportAudit.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
   integrationTest: API_ROUTES.integrationTest.path,

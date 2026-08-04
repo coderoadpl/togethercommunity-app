@@ -231,6 +231,7 @@ const beforeForRoute = (
   }
   if (path === '/api/tenant/settings' && method === 'GET') return tenantActors;
   if (path === '/api/support/message') return tenantActors;
+  if (path === '/api/api-keys/:id/import-audit') return owner;
   if (path === '/api/posts/pin') return staff;
   if (path.startsWith('/api/posts') || path.startsWith('/api/discussion') || path.startsWith('/api/threads') || path.startsWith('/api/notifications')) return tenantActors;
   if (path.startsWith('/api/spaces') && path !== '/api/spaces/staff' && method === 'GET') return tenantActors;

@@ -539,6 +539,11 @@ export const pl: Messages = {
     importKeysRevoking: 'Unieważnianie…',
     importKeysRevokeConfirmTitle: 'Unieważnić ten klucz importu?',
     importKeysRevokeConfirmBody: 'Klucz natychmiast przestanie działać. Tej operacji nie można cofnąć.',
+    importKeysAudit: 'Dziennik importu',
+    importKeysAuditLoading: 'Ładowanie dziennika importu…',
+    importKeysAuditEmpty: 'Ten klucz nie ma zdarzeń importu.',
+    importKeysAuditEvent: ({ kind, importKey, action, at }) =>
+      format('{kind} {importKey} — {action} — {at}', { kind, importKey, action, at }),
     ifirmaHeading: 'IFirma',
     ifirmaDescription:
       'Podłącz iFirmę kluczem API „faktura”. KSeF skonfiguruj bezpośrednio w iFirmie — certyfikat nie trafia do Together.',

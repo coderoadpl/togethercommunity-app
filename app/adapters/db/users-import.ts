@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import {
   importAuditEventSchema,
@@ -22,6 +22,7 @@ import {
   memberCourseProgress,
   members,
   productGrants,
+  tenantAdmins,
   tenantApiKeys,
   user,
 } from './schema.js';
@@ -94,6 +95,7 @@ const ensureAuthUser = async (
   }
   const passwordHash = mutation.authUser.legacyPasswordHash;
   if (passwordHash === null) return true;
+  if (mutation.authUser.action !== 'create') return false;
   const [credential] = await executor
     .select({ id: account.id, password: account.password })
     .from(account)
@@ -112,14 +114,7 @@ const ensureAuthUser = async (
     });
     return true;
   }
-  if (credential.password === passwordHash) return true;
-  if (credential.password !== null) return false;
-  const updated = await executor
-    .update(account)
-    .set({ password: passwordHash })
-    .where(and(eq(account.id, credential.id), isNull(account.password)))
-    .returning({ id: account.id });
-  return updated.length === 1;
+  return false;
 };
 
 const commitMember = async (
@@ -270,7 +265,7 @@ const commitProgress = async (
 };
 
 export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
-  findAuthUserByEmail: async (_tenantId, email) => {
+  findAuthUserByEmail: async (tenantId, email) => {
     const normalizedEmail = normalizeEmail(email);
     const [row] = await db
       .select({
@@ -280,8 +275,19 @@ export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
         credentialPassword: account.password,
       })
       .from(user)
+      .leftJoin(members, and(eq(members.userId, user.id), eq(members.tenantId, tenantId)))
+      .leftJoin(tenantAdmins, and(
+        eq(tenantAdmins.userId, user.id),
+        eq(tenantAdmins.tenantId, tenantId),
+      ))
       .leftJoin(account, and(eq(account.userId, user.id), eq(account.providerId, 'credential')))
-      .where(sql`lower(btrim(${user.email})) = ${normalizedEmail}`)
+      .where(and(
+        sql`lower(btrim(${user.email})) = ${normalizedEmail}`,
+        or(
+          and(isNotNull(members.id), isNull(members.deletedAt)),
+          isNotNull(tenantAdmins.id),
+        ),
+      ))
       .limit(1);
     return row === undefined ? null : {
       id: row.id,
@@ -368,6 +374,9 @@ export const createImportUsersRepository = (db: Db): ImportUsersRepository => ({
             : await commitProgress(tx, tenantId, mutation);
         if (!saved) return 'conflict';
         await insertAuditEvent(tx, tenantId, mutation);
+        if (mutation.kind === 'member' && mutation.credentialEvent !== null) {
+          await insertAuditEvent(tx, tenantId, { ...mutation, event: mutation.credentialEvent });
+        }
         return 'saved';
       });
     } catch (cause) {

@@ -129,10 +129,7 @@ const resolveReference = async (
     const imported = await findTarget(tenantId, kind, audit.resourceId, deps);
     if (imported !== null) return ok(imported.id);
   }
-  const native = await findTarget(tenantId, kind, key, deps);
-  return native === null
-    ? err(appError('conflict', `Referenced ${kind} "${key}" was not found`))
-    : ok(native.id);
+  return err(appError('conflict', `Referenced ${kind} "${key}" was not created by import`));
 };
 
 const resolveKeys = async (
@@ -491,6 +488,7 @@ const emptyPlanCounts = (): Record<ImportKind, number> => ({
 });
 
 const validateImportForTenant = async (
+  ctx: Ctx,
   tenantId: string,
   input: ImportValidateRequest,
   deps: M2mImportValidationDeps,
@@ -517,6 +515,18 @@ const validateImportForTenant = async (
         ...(identity.kind === undefined ? {} : { kind: identity.kind }),
         importKey: identity.importKey,
         error: validation('Invalid import record', parsed.error.flatten()),
+      });
+      continue;
+    }
+    const requiredCapability = importContentKindSchema.safeParse(parsed.data.kind).success
+      ? 'import:content-write'
+      : 'import:users-write';
+    if (ctx.capabilities?.includes(requiredCapability) !== true) {
+      errors.push({
+        index,
+        kind: parsed.data.kind,
+        importKey: parsed.data.importKey,
+        error: appError('forbidden', `${requiredCapability} is required for ${parsed.data.kind} records`),
       });
       continue;
     }
@@ -603,17 +613,8 @@ export const validateM2mImport = async (
   input: ImportValidateRequest,
   deps: M2mImportValidationDeps,
 ): Promise<Result<ImportValidationResponse, AppError>> => {
-  const tenantId = authorizeRequiredTenant(ctx, 'import:content-write');
-  return tenantId.ok ? validateImportForTenant(tenantId.value, input, deps) : tenantId;
-};
-
-export const validateM2mImportForUsers = async (
-  ctx: Ctx,
-  input: ImportValidateRequest,
-  deps: M2mImportValidationDeps,
-): Promise<Result<ImportValidationResponse, AppError>> => {
-  const tenantId = authorizeRequiredTenant(ctx, 'import:users-write');
-  return tenantId.ok ? validateImportForTenant(tenantId.value, input, deps) : tenantId;
+  const tenantId = authorizeRequiredTenant(ctx, 'import:validate');
+  return tenantId.ok ? validateImportForTenant(ctx, tenantId.value, input, deps) : tenantId;
 };
 
 const windowStart = (now: string, durationMs: number): string =>

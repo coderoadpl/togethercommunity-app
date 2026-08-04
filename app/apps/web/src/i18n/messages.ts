@@ -506,6 +506,15 @@ export interface Messages {
     importKeysRevoking: string;
     importKeysRevokeConfirmTitle: string;
     importKeysRevokeConfirmBody: string;
+    importKeysAudit: string;
+    importKeysAuditLoading: string;
+    importKeysAuditEmpty: string;
+    importKeysAuditEvent: (params: {
+      kind: string;
+      importKey: string;
+      action: string;
+      at: string;
+    }) => string;
     ifirmaHeading: string;
     ifirmaDescription: string;
     ifirmaInvoiceApiKeyLabel: string;

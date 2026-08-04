@@ -9,6 +9,7 @@ import {
   validation,
   type AppError,
   type CreateApiKeyInput,
+  type ImportAuditEvent,
   type Result,
   type TenantApiKey,
   type TenantApiKeyPublic,
@@ -16,7 +17,13 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { ApiKeyCrypto, Clock, IdGenerator, TenantApiKeyRepository } from '../ports.js';
+import type {
+  ApiKeyCrypto,
+  Clock,
+  IdGenerator,
+  ImportAuditEventRepository,
+  TenantApiKeyRepository,
+} from '../ports.js';
 
 export interface ApiKeyDeps {
   tenantApiKeys: TenantApiKeyRepository;
@@ -28,6 +35,11 @@ export interface ApiKeyDeps {
 export interface CreatedApiKey {
   apiKey: TenantApiKeyPublic;
   secret: string;
+}
+
+export interface ImportAuditReadDeps {
+  tenantApiKeys: Pick<TenantApiKeyRepository, 'listByTenant'>;
+  importAuditEvents: Pick<ImportAuditEventRepository, 'listByApiKey'>;
 }
 
 export const createTenantApiKey = async (
@@ -90,4 +102,21 @@ export const revokeTenantApiKey = async (
   const revoked = await deps.tenantApiKeys.revoke(tenant.value, input.id, deps.clock.nowIso());
   if (!revoked) return err(notFound(`No API key "${input.id}" in this tenant`));
   return ok(toTenantApiKeyPublic(revoked));
+};
+
+export const listImportAuditForApiKey = async (
+  ctx: Ctx,
+  input: { id: string; cursor?: string; limit: number },
+  deps: ImportAuditReadDeps,
+): Promise<Result<{ events: ImportAuditEvent[]; nextCursor: string | null }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'api-key:write');
+  if (!tenant.ok) return tenant;
+  const keys = await deps.tenantApiKeys.listByTenant(tenant.value);
+  if (!keys.some((key) => key.id === input.id)) {
+    return err(notFound(`No API key "${input.id}" in this tenant`));
+  }
+  return ok(await deps.importAuditEvents.listByApiKey(tenant.value, input.id, {
+    ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+    limit: input.limit,
+  }));
 };

@@ -54,7 +54,7 @@ export const TenantHomePage = () => {
   if (me.isError) {
     return (
       <Container sx={{ maxWidth: '44rem' }}>
-        <Alert sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
+        <Alert severity="error" sx={{ mt: 4 }}>{localizeError(me.error, t)}</Alert>
       </Container>
     );
   }
@@ -169,7 +169,7 @@ const PickTenant = ({ account }: { account: { email: string; emailVerified: bool
             {createTenant.isPending ? t.tenant.creating : t.tenant.createButton}
           </Button>
           {createTenant.isError ? (
-            <Alert>{localizeError(createTenant.error, t)}</Alert>
+            <Alert severity="error">{localizeError(createTenant.error, t)}</Alert>
           ) : null}
           {createdSlug ? (
             <Link href={tenantUrl(createdSlug)}>{t.tenant.open({ url: tenantUrl(createdSlug) })}</Link>

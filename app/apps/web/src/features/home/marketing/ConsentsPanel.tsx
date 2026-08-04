@@ -136,8 +136,8 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
           </Select>
         </FormControl>
       )}
-      {documents.isError ? <Alert>{localizeError(documents.error, t)}</Alert> : null}
-      {create.isError || update.isError ? <Alert>{localizeError(create.error ?? update.error, t)}</Alert> : null}
+      {documents.isError ? <Alert severity="error">{localizeError(documents.error, t)}</Alert> : null}
+      {create.isError || update.isError ? <Alert severity="error">{localizeError(create.error ?? update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };

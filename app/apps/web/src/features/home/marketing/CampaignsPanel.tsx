@@ -260,10 +260,10 @@ const CampaignForm = ({ campaign }: { campaign?: Campaign | undefined }) => {
         </Select>
       </FormControl>
       {consents.isError || products.isError || layouts.isError ? (
-        <Alert>{localizeError(consents.error ?? products.error ?? layouts.error, t)}</Alert>
+        <Alert severity="error">{localizeError(consents.error ?? products.error ?? layouts.error, t)}</Alert>
       ) : null}
-      {preview.isError ? <Alert>{localizeError(preview.error, t)}</Alert> : null}
-      {create.isError || update.isError ? <Alert>{localizeError(create.error ?? update.error, t)}</Alert> : null}
+      {preview.isError ? <Alert severity="error">{localizeError(preview.error, t)}</Alert> : null}
+      {create.isError || update.isError ? <Alert severity="error">{localizeError(create.error ?? update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -313,7 +313,7 @@ export const CampaignActions = ({ campaign }: { campaign: Campaign }) => {
         )}
       </Stack>
       {campaign.pausedReason === null ? null : <Alert severity="warning"><strong>{t.marketing.pausedReason}:</strong> {campaign.pausedReason}</Alert>}
-      {schedule.isError || action.isError || testSend.isError ? <Alert>{localizeError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
+      {schedule.isError || action.isError || testSend.isError ? <Alert severity="error">{localizeError(schedule.error ?? action.error ?? testSend.error, t)}</Alert> : null}
     </SectionCard>
   );
 };

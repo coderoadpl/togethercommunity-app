@@ -206,7 +206,7 @@ const CredentialsForm = ({ configured }: { configured: boolean }) => {
         <FormLabel htmlFor="marketing-ses-region">{t.marketing.regionLabel}</FormLabel>
         <OutlinedInput id="marketing-ses-region" value={region} onChange={(event) => setRegion(event.target.value)} />
       </FormControl>
-      {save.isError ? <Alert>{localizeError(save.error, t)}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
       {test.isError ? <Alert severity="error">{localizeError(test.error, t)}</Alert> : null}
       {test.isSuccess ? <Alert severity="success">{t.marketing.testEmailSent}</Alert> : null}
     </SectionCard>
@@ -450,7 +450,7 @@ export const MarketingSettingsPanel = () => {
             {t.marketing.trackingDocsLink}
           </Link>
         </Alert>
-        {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
+        {update.isError ? <Alert severity="error">{localizeError(update.error, t)}</Alert> : null}
       </SectionCard>
       <SesOnboardingWizard enabled={credentialsConfigured && settings !== null} onChecklist={setLiveChecklist} />
       <SmtpForm configured={result.data.smtpConfigured} />
@@ -462,7 +462,7 @@ export const MarketingSettingsPanel = () => {
         actions={<Button type="submit" variant="contained" disabled={settings === null || update.isPending}>{update.isPending ? t.marketing.saving : t.marketing.saveSettingsAction}</Button>}
       >
         {reputation.isPending ? <Typography variant="body2">{t.marketing.reputationLoading}</Typography> : null}
-        {reputation.isError ? <Alert>{localizeError(reputation.error, t)}</Alert> : null}
+        {reputation.isError ? <Alert severity="error">{localizeError(reputation.error, t)}</Alert> : null}
         {reputation.isSuccess ? <ReputationSummary reputation={reputation.data} /> : null}
         <FormControlLabel
           control={<Switch checked={values.autoPauseOnCritical} disabled={settings === null} onChange={(event) => setAutoPauseOnCritical(event.target.checked)} />}

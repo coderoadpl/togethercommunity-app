@@ -59,8 +59,8 @@ export const SecretField = ({
         onSave={() => setSecret.mutate({ key: secretKey, value })}
         onRemove={() => removeSecret.mutate({ key: secretKey })}
       />
-      {setSecret.isError ? <Alert>{localizeError(setSecret.error, t)}</Alert> : null}
-      {removeSecret.isError ? <Alert>{localizeError(removeSecret.error, t)}</Alert> : null}
+      {setSecret.isError ? <Alert severity="error">{localizeError(setSecret.error, t)}</Alert> : null}
+      {removeSecret.isError ? <Alert severity="error">{localizeError(removeSecret.error, t)}</Alert> : null}
     </>
   );
 };

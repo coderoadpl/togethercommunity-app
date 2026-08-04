@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-import { toLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
+import {
+  isPayloadLegacyCredential,
+  toLegacyPasswordHash,
+} from '#adapters/auth/legacy-password.js';
 import {
   migrateLegacyAccessItem,
   type LegacyAccessItem,
@@ -261,12 +264,12 @@ export const transformUser = (
       .join(' ') || null;
   const salt = legacy.salt ?? '';
   const hash = legacy.hash ?? '';
-  const hasCredential = salt.length > 0 && hash.length > 0;
+  const hasCredential = isPayloadLegacyCredential({ salt, hash });
   if (!hasCredential) {
     anomalies.push({
       kind: 'user-without-credential',
       subject,
-      detail: 'user has no PBKDF2 salt+hash; exported without a password marker',
+      detail: 'user has no valid Payload PBKDF2 salt+hash; exported without a password marker',
     });
   }
   const role = legacy.role === 'admin' ? 'admin' : 'student';
@@ -416,7 +419,7 @@ export interface PdfPointer {
 export interface LessonContentLookups {
   videoById: ReadonlyMap<string, VideoPointer>;
   pdfById: ReadonlyMap<string, PdfPointer>;
-  streamLibraryId: string;
+  streamLibraryId?: string;
 }
 
 export const transformLessonContents = (
@@ -452,7 +455,9 @@ export const transformLessonContents = (
             type: 'video',
             storageKey: video.key,
             streamVideoId: video.bunnyStreamVideoId,
-            streamLibraryId: lookups.streamLibraryId,
+            ...(lookups.streamLibraryId === undefined
+              ? {}
+              : { streamLibraryId: lookups.streamLibraryId }),
             ...(video.bunnyStreamCollectionId !== undefined &&
             video.bunnyStreamCollectionId !== null &&
             video.bunnyStreamCollectionId.length > 0

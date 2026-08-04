@@ -26,6 +26,21 @@ describe('verifyPasswordWithLegacyFallback', () => {
     expect(await verifyPasswordWithLegacyFallback({ hash: stored, password: 'nope' })).toBe(false);
   });
 
+  it('rejects malformed legacy markers without passing them to the native verifier', async () => {
+    await expect(
+      verifyPasswordWithLegacyFallback({
+        hash: `pbkdf2$25000$${salt}$not-a-payload-hash`,
+        password: 'demo1234',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      verifyPasswordWithLegacyFallback({
+        hash: `pbkdf2$999999999$${salt}$${'00'.repeat(512)}`,
+        password: 'demo1234',
+      }),
+    ).resolves.toBe(false);
+  });
+
   it('falls through to the default scheme for non-marker hashes', async () => {
     const modern = await hashPassword('modern-pass');
     expect(await verifyPasswordWithLegacyFallback({ hash: modern, password: 'modern-pass' })).toBe(true);

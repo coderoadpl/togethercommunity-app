@@ -9,6 +9,7 @@ import type {
   ImportedUserOutcome,
   ImportedUserState,
 } from '#adapters/auth/import-credential.js';
+import { isLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
 
 import type { Db } from './client.js';
 import { appendMemberEvent } from './member-events.js';
@@ -746,7 +747,6 @@ const idsByLegacy = <TRow extends { id: string; legacyId: string | null }>(
 };
 
 const dedupeGrants = (grants: BundleGrant[], report: KindReport): BundleGrant[] => {
-  const expiryRank = (value: string | null): string => value ?? '9999-12-31T23:59:59.999Z';
   const byPair = new Map<string, BundleGrant>();
   for (const grant of grants) {
     const key = `${grant.memberLegacyId}::${grant.productLegacyId}`;
@@ -755,16 +755,21 @@ const dedupeGrants = (grants: BundleGrant[], report: KindReport): BundleGrant[] 
       byPair.set(key, grant);
       continue;
     }
-    const currentRank = `${expiryRank(current.expiresAt)}|${current.startsAt ?? ''}|${current.legacyId}`;
-    const nextRank = `${expiryRank(grant.expiresAt)}|${grant.startsAt ?? ''}|${grant.legacyId}`;
-    const winner = nextRank > currentRank ? grant : current;
+    const startsAt = [current.startsAt, grant.startsAt]
+      .flatMap((value) => value ?? [])
+      .sort()
+      .at(0) ?? null;
+    const expiresAt = current.expiresAt === null || grant.expiresAt === null
+      ? null
+      : [current.expiresAt, grant.expiresAt].sort().at(-1) ?? null;
+    const winner = current.legacyId <= grant.legacyId ? current : grant;
     const loser = winner === grant ? current : grant;
-    byPair.set(key, winner);
+    byPair.set(key, { ...winner, startsAt, expiresAt });
     report.dropped += 1;
     report.anomalies.push({
       kind: 'duplicate-grant-pair-dropped',
       subject: `grants/${loser.legacyId}`,
-      detail: `member ${grant.memberLegacyId} already holds product ${grant.productLegacyId} via grant ${winner.legacyId}; the duplicate was dropped`,
+      detail: `member ${grant.memberLegacyId} already holds product ${grant.productLegacyId}; merged ${loser.legacyId} into ${winner.legacyId} using the earliest start and latest expiry`,
     });
   }
   return [...byPair.values()];
@@ -1598,7 +1603,10 @@ const verifyTenant = async (
       const marker = markerByEmail.get(email);
       if (marker === undefined) continue;
       markersTotal += 1;
-      if (passwordByEmail.get(email) === marker) markersVerified += 1;
+      const stored = passwordByEmail.get(email) ?? null;
+      if (stored === marker || (stored !== null && !isLegacyPasswordHash(stored))) {
+        markersVerified += 1;
+      }
     }
   }
 

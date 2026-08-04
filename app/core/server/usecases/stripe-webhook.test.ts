@@ -17,7 +17,7 @@ import {
   type EmailOutboxPayload,
 } from '#core/domain/index.js';
 
-import type { PaymentWebhookEvent } from '../ports.js';
+import type { PaymentProvider, PaymentWebhookEvent } from '../ports.js';
 import { m2mEnroll } from './m2m-enroll.js';
 import { fulfillStripeWebhook, type StripeWebhookDeps } from './stripe-webhook.js';
 import { simulateSubscriptionCycle, simulateSubscriptionFailure } from './subscription-simulate.js';
@@ -140,6 +140,7 @@ const subscriptionEvent = (input: {
   cancelAtPeriodEnd?: boolean;
   status?: string;
   currentPeriodEnd?: string | null;
+  endedAt?: string | null;
 }): PaymentWebhookEvent => ({
   id: input.id,
   type: input.type,
@@ -150,6 +151,7 @@ const subscriptionEvent = (input: {
     status: input.status ?? null,
     cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? false,
     currentPeriodEnd: input.currentPeriodEnd ?? null,
+    endedAt: input.endedAt ?? null,
   },
 });
 
@@ -172,6 +174,7 @@ const harness = (
   let sequence = 0;
   let clockNow = now;
   let refundTransitions = 0;
+  const providerCancellations: Parameters<PaymentProvider['cancelSubscription']>[0][] = [];
 
   const deps: StripeWebhookDeps = {
     authPort: {
@@ -268,6 +271,12 @@ const harness = (
         orders[index] = refunded;
         refundTransitions += 1;
         return refunded;
+      },
+    },
+    payment: {
+      cancelSubscription: async (input) => {
+        providerCancellations.push(input);
+        return ok({ canceled: true, alreadySettled: false });
       },
     },
     subscriptions: {
@@ -450,6 +459,7 @@ const harness = (
     subscriptions,
     sent,
     queued,
+    providerCancellations,
     refundTransitions: () => refundTransitions,
     setNow: (iso: string) => {
       clockNow = iso;
@@ -1054,7 +1064,7 @@ describe('fulfillStripeWebhook', () => {
     expect(h.queued).toEqual([]);
   });
 
-  it('flags cancelAtPeriodEnd on customer.subscription.updated and cancels on deleted without cutting the grant', async () => {
+  it('expires the grant at the paid period end when cancellation is scheduled', async () => {
     const h = await subscribedHarness();
 
     await fulfillStripeWebhook(
@@ -1065,15 +1075,17 @@ describe('fulfillStripeWebhook', () => {
         subscriptionId: 'sub-1',
         cancelAtPeriodEnd: true,
         status: 'active',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
       }),
       h.deps,
     );
     expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
       status: 'active',
       cancelAtPeriodEnd: true,
+      currentPeriodEnd: '1998-08-20T10:00:00.000Z',
     });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-20T10:00:00.000Z');
 
-    const expiresBefore = Array.from(h.grants.values())[0]?.expiresAt;
     await fulfillStripeWebhook(
       tenantA,
       subscriptionEvent({
@@ -1084,18 +1096,213 @@ describe('fulfillStripeWebhook', () => {
       }),
       h.deps,
     );
-    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
-    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(expiresBefore);
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      status: 'canceled',
+      currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+    });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe('1998-08-20T10:00:00.000Z');
     expect(h.orders).toHaveLength(1);
     expect(h.queued).toEqual([
       {
         to: 'buyer@example.com',
         payload: expect.objectContaining({
           kind: 'subscription-ended',
-          accessEndsAt: '1998-08-23T10:00:00.000Z',
+          accessEndsAt: '1998-08-20T10:00:00.000Z',
         }),
       },
     ]);
+  });
+
+  it('revokes the grant at ended_at for an immediate cancellation with a future period end', async () => {
+    const h = await subscribedHarness();
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-immediate-cancel',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      status: 'canceled',
+      currentPeriodEnd: now,
+    });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.queued).toEqual([
+      {
+        to: 'buyer@example.com',
+        payload: expect.objectContaining({
+          kind: 'subscription-ended',
+          accessEndsAt: now,
+        }),
+      },
+    ]);
+  });
+
+  it('uses the stored period end when a canceled event omits current_period_end', async () => {
+    const h = await subscribedHarness();
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-without-period',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: null,
+      }),
+      h.deps,
+    );
+
+    expect(h.subscriptions.get(h.subscription.id)?.currentPeriodEnd).toBe(
+      h.subscription.currentPeriodEnd,
+    );
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(h.subscription.currentPeriodEnd);
+  });
+
+  it('does not send an ended notice when a lifetime grant is unchanged', async () => {
+    const h = await subscribedHarness();
+    const grant = Array.from(h.grants.values())[0];
+    if (grant === undefined) throw new Error('checkout did not create a grant');
+    h.grants.set(`${tenantA.id}:${grant.id}`, { ...grant, expiresAt: null });
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-lifetime-grant',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBeNull();
+    expect(h.queued).toEqual([]);
+  });
+
+  it.each([
+    ['missing', null, now],
+    ['expired', '1998-07-01T10:00:00.000Z', '1998-07-01T10:00:00.000Z'],
+  ] as const)('sends an ended notice when the grant is %s', async (kind, expiresAt, expectedDate) => {
+    const h = await subscribedHarness();
+    const grant = Array.from(h.grants.values())[0];
+    if (grant === undefined) throw new Error('checkout did not create a grant');
+    if (expiresAt === null) h.grants.clear();
+    else h.grants.set(`${tenantA.id}:${grant.id}`, { ...grant, expiresAt });
+
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: `evt-cancel-${kind}-grant`,
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    expect(h.queued).toEqual([
+      {
+        to: 'buyer@example.com',
+        payload: expect.objectContaining({
+          kind: 'subscription-ended',
+          accessEndsAt: expectedDate,
+        }),
+      },
+    ]);
+  });
+
+  it('does not let invoice.paid revive a canceled subscription', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-before-invoice',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    const result = await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-final-invoice',
+        type: 'invoice.paid',
+        invoiceId: 'in-final',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-20T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(result).toEqual({ ok: true, value: { processed: true } });
+    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('canceled');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.orders).toHaveLength(1);
+  });
+
+  it('does not let a failed invoice reopen a provider-canceled subscription', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      subscriptionEvent({
+        id: 'evt-cancel-before-failure',
+        type: 'customer.subscription.deleted',
+        subscriptionId: 'sub-1',
+        status: 'canceled',
+        currentPeriodEnd: '1998-08-20T10:00:00.000Z',
+        endedAt: now,
+      }),
+      h.deps,
+    );
+
+    const failure = await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-failure-after-cancel',
+        type: 'invoice.payment_failed',
+        invoiceId: 'in-failed-after-cancel',
+        subscriptionId: 'sub-1',
+      }),
+      h.deps,
+    );
+    const paid = await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-paid-after-cancel',
+        type: 'invoice.paid',
+        invoiceId: 'in-paid-after-cancel',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-20T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(failure).toEqual({ ok: true, value: { processed: true } });
+    expect(paid).toEqual({ ok: true, value: { processed: true } });
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      status: 'canceled',
+      currentPeriodEnd: now,
+    });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.orders).toHaveLength(1);
+    expect(h.queued).toHaveLength(1);
+    expect(h.queued[0]?.payload.kind).toBe('subscription-ended');
   });
 
   it('marks a refunded order and revokes its grant', async () => {
@@ -1108,6 +1315,91 @@ describe('fulfillStripeWebhook', () => {
     expect(h.orders[0]?.status).toBe('refunded');
     expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
     expect(h.refundTransitions()).toBe(1);
+  });
+
+  it('cancels Stripe before locally canceling a refunded recurring subscription', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-renew-before-refund',
+        type: 'invoice.paid',
+        invoiceId: 'in-renew-before-refund',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-14T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    const refunded = await fulfillStripeWebhook(
+      tenantA,
+      adjustmentEvent({
+        id: 'evt-refund-recurring',
+        paymentIntentId: 'pi-in-renew-before-refund',
+      }),
+      h.deps,
+    );
+    const latePaid = await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-late-paid-after-refund',
+        type: 'invoice.paid',
+        invoiceId: 'in-late-after-refund',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-10-14T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+
+    expect(refunded).toEqual({ ok: true, value: { processed: true } });
+    expect(latePaid).toEqual({ ok: true, value: { processed: true } });
+    expect(h.providerCancellations).toEqual([
+      {
+        tenantId: tenantA.id,
+        providerSubscriptionId: 'sub-1',
+        idempotencyKey: `payment-adjustment-evt-refund-recurring-${h.subscription.id}`,
+      },
+    ]);
+    expect(h.subscriptions.get(h.subscription.id)).toMatchObject({
+      status: 'canceled',
+      currentPeriodEnd: '1998-09-14T10:00:00.000Z',
+    });
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(now);
+    expect(h.orders.map((order) => order.status)).toEqual(['paid', 'refunded']);
+  });
+
+  it('keeps local recurring access intact when Stripe cancellation fails', async () => {
+    const h = await subscribedHarness();
+    await fulfillStripeWebhook(
+      tenantA,
+      invoiceEvent({
+        id: 'evt-renew-before-failed-refund',
+        type: 'invoice.paid',
+        invoiceId: 'in-renew-before-failed-refund',
+        subscriptionId: 'sub-1',
+        periodEnd: '1998-09-14T10:00:00.000Z',
+      }),
+      h.deps,
+    );
+    h.deps.payment.cancelSubscription = async () => err(validation('Stripe is unavailable'));
+    const grantBefore = Array.from(h.grants.values())[0]?.expiresAt;
+
+    const refunded = await fulfillStripeWebhook(
+      tenantA,
+      adjustmentEvent({
+        id: 'evt-refund-provider-failure',
+        paymentIntentId: 'pi-in-renew-before-failed-refund',
+      }),
+      h.deps,
+    );
+
+    expect(refunded).toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: 'Stripe is unavailable' },
+    });
+    expect(h.subscriptions.get(h.subscription.id)?.status).toBe('active');
+    expect(Array.from(h.grants.values())[0]?.expiresAt).toBe(grantBefore);
+    expect(h.orders.map((order) => order.status)).toEqual(['paid', 'paid']);
   });
 
   it('applies a duplicate refund delivery exactly once', async () => {

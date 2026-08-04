@@ -28,6 +28,7 @@ export interface TenantScopeSource {
 
 export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'AutomationIdempotencyRepository.sweepExpired': 'A platform worker removes expired keys across all tenants.',
+  'ConsentEvidenceRetentionRepository.listExpiredTenantIds': 'A platform retention worker discovers tenants with expired consent evidence.',
   'EmailOutboxRepository.claimBatch': 'A platform dispatcher leases deliverable messages across all tenants.',
   'EmailOutboxRepository.enqueue': 'The atomic input carries a nullable tenantId because platform email has no tenant.',
   'EmailOutboxRepository.markFailed': 'The dispatcher updates only the message held by its run lease.',
@@ -52,6 +53,8 @@ export const TENANT_SCOPE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'TenantDomainRepository.listVerifiedDomains': 'Domain routing builds a platform-wide verified-domain index.',
   'TenantRepository.createTenantWithOwnerGrant': 'Tenant provisioning creates the tenant boundary and its first grant atomically.',
   'TenantRepository.findBySlug': 'Tenant resolution must look up a tenant before a tenant ID exists.',
+  'TenantRepository.findSole': 'Single-tenant resolution must identify the sole tenant before a tenant ID exists.',
+  'TenantRepository.hasAny': 'Bootstrap admission checks whether any tenant exists before creating the tenant boundary.',
   'TenantSesSettingsRepository.findByWebhookToken': 'The signed provider webhook token resolves the owning tenant.',
   'TenantAccessReader.findStaffGrant': 'Tenant resolution may start from a slug before a tenant ID exists.',
   'TenantAccessReader.listTenantsForStaff': 'Sign-in discovers the tenants available to a platform user.',

@@ -6,13 +6,6 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  issues: write
-  statuses: write
-
 concurrency:
   group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
@@ -21,6 +14,11 @@ jobs:
   cla:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      statuses: write
     steps:
       - if: >-
           github.event_name == 'pull_request_target' ||
@@ -34,4 +32,4 @@ jobs:
           branch: cla-signatures
           path-to-signatures: signatures/version1/cla.json
           path-to-document: https://github.com/coderoadpl/togethercommunity-app/blob/main/CLA.md
-          allowlist: chomamateusz,chomamateusz-agent,bot*
+          allowlist: chomamateusz,chomamateusz-agent,dependabot[bot],renovate[bot]

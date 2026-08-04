@@ -35,8 +35,9 @@ with:
 The signature is recorded once in this repository and covers your later
 contributions, so the bot asks only on your first pull request. Comment
 `recheck` if the bot needs to re-evaluate a pull request. The bot reports a
-status check, and a pull request cannot be merged until everyone who
-contributed to it has signed.
+status check, and a pull request will not be merged until everyone who
+contributed to it has signed; the check is enforced procedurally until a
+ruleset marks it required.
 
 Do not submit code, assets, or other material that you do not have the right to
 contribute. Identify any third-party material and its license in the pull

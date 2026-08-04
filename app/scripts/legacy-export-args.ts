@@ -1,6 +1,3 @@
-export const DEFAULT_BACKUPS_DIR =
-  '~/legacy-backups';
-
 export class BackupArgError extends Error {}
 
 export const resolveBackupsDir = (
@@ -15,5 +12,11 @@ export const resolveBackupsDir = (
     }
     return value;
   }
-  return env['BACKUPS_DIR'] ?? DEFAULT_BACKUPS_DIR;
+  const fromEnv = env['TOGETHER_LEGACY_BACKUPS_DIR'];
+  if (fromEnv === undefined || fromEnv === '') {
+    throw new BackupArgError(
+      'no backups directory: pass --backup <dir> or set TOGETHER_LEGACY_BACKUPS_DIR',
+    );
+  }
+  return fromEnv;
 };

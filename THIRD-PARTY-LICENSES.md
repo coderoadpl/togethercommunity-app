@@ -9,6 +9,29 @@ applicable attribution notices from dependency `NOTICE` files. When
 distributing Together, review installed Apache-2.0 dependencies and reproduce
 their applicable notices in the distribution.
 
+## Project-level notices
+
+**Foundation files synchronized from
+[coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch)** are
+included under the MIT license, © 2026 Mateusz Choma. `FOUNDATION.md` lists the
+synchronized paths: `app/eslint.config.js`, `app/eslint-plugin-together/`,
+`app/.dependency-cruiser.cjs`, `app/tsconfig*.json`, the `app/package.json`
+gate scripts, `app/scripts/doc-lint.ts`, `app/scripts/smoke*.ts`,
+`app/config-regression/`, `.github/workflows/`, and the agent instruction
+files.
+
+**sharp / libvips.** The dev-only Argos upload tooling installs sharp's
+prebuilt libvips binaries (`@img/sharp-libvips-*`, LGPL-3.0-or-later,
+dynamically linked; the related `@img/sharp-*` prebuilds carry the same
+notice). They never enter the product bundle and are the one recorded
+exception to the permissive-only dependency policy.
+
+**`app/adapters/invoicing/xsd/`** holds the official Polish Ministry of Finance
+FA(3) schemas. They are public administrative documents, redistributed
+unmodified so invoices can be validated locally.
+
+## npm dependencies
+
 - [@adobe/css-tools@4.5.0](https://github.com/adobe/css-tools#readme) - MIT
 - [@ampproject/remapping@2.3.0](https://github.com/ampproject/remapping#readme) - Apache-2.0
 - [@argos-ci/api-client@0.27.0](https://github.com/argos-ci/argos-javascript/blob/main/packages/api-client/README.md) - MIT

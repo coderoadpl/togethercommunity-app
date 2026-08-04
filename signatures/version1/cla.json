@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+   "signedContributors": [
+      {
+         "name": "jankowskaweronika",
+         "id": 124098892,
+         "comment_id": 5196971551,
+         "created_at": "2026-08-04T19:55:00Z",
+         "repoId": 1324226256,
+         "pullRequestNo": 1
+      }
+   ]
 }

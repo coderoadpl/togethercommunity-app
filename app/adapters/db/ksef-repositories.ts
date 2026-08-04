@@ -7,6 +7,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { uniqueViolation } from './pg-errors.js';
 import {
   fiscalArtifacts,
   ksefNumberAllocations,
@@ -149,6 +150,9 @@ export const createKsefSubmissionJobRepository = (
           .returning()
       )[0];
       return claimed ?? null;
+    }).catch((cause: unknown) => {
+      if (uniqueViolation(cause, 'ksef_submission_jobs_one_running_per_tenant_uidx')) return null;
+      throw cause;
     }),
   reschedule: async (tenantId, jobId, input) => {
     await db

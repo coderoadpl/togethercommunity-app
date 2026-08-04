@@ -400,7 +400,7 @@ describe('IntegrationsPanel', () => {
     expect(await screen.findByTestId('bunny-test-result')).toHaveTextContent('3 video(s)');
   });
 
-  it('removes a configured secret', async () => {
+  it('removes a configured iFirma invoice API key', async () => {
     renderPanel([
       { key: 'ifirma.invoiceApiKey', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
     ]);
@@ -412,6 +412,23 @@ describe('IntegrationsPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('secret-status-ifirma.invoiceApiKey')).toHaveTextContent(
+        pl.integrations.notConfigured,
+      );
+    });
+  });
+
+  it('removes a configured iFirma username', async () => {
+    renderPanel([
+      { key: 'ifirma.username', maskedPreview: '••••2345', updatedAt: '2026-07-12T10:00:00.000Z' },
+    ]);
+
+    const field = (await screen.findByTestId('secret-input-ifirma.username')).closest('form');
+    expect(field).not.toBeNull();
+    if (!field) return;
+    await userEvent.click(within(field).getByTestId('secret-remove-ifirma.username'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('secret-status-ifirma.username')).toHaveTextContent(
         pl.integrations.notConfigured,
       );
     });

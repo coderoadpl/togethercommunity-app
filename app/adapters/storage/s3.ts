@@ -1,4 +1,8 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
+import { promises as dns } from 'node:dns';
+import { isIP, type LookupFunction } from 'node:net';
+
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 
 import {
   err,
@@ -62,6 +66,8 @@ type FetchStorage = (
     method: 'DELETE' | 'GET' | 'HEAD' | 'OPTIONS' | 'PUT';
     body?: string;
     headers?: Record<string, string>;
+    dispatcher?: Dispatcher;
+    redirect?: 'error';
   },
 ) => Promise<StorageResponse>;
 
@@ -71,6 +77,7 @@ interface StorageProviderOptions {
   probeKey?: () => string;
   corsOrigin?: string;
   allowPrivateEndpoints?: boolean;
+  lookupAddresses?: (hostname: string) => Promise<string[]>;
 }
 
 const probeError = (
@@ -119,14 +126,13 @@ const sendProbeRequest = async (
   fetchStorage: FetchStorage,
   url: string,
   init: { method: 'DELETE' | 'GET' | 'PUT'; body?: string },
+  dispatcher: Dispatcher,
 ): Promise<Result<StorageResponse, AppError>> => {
   let response: StorageResponse;
   try {
-    response = await fetchStorage(url, init);
-  } catch (cause) {
-    return err(
-      probeError('storage.unavailable', `The storage endpoint is unreachable: ${String(cause)}`),
-    );
+    response = await fetchStorage(url, { ...init, dispatcher, redirect: 'error' });
+  } catch {
+    return err(probeError('storage.unavailable', 'The storage endpoint is unreachable.'));
   }
   if (response.ok) return ok(response);
   const body = await response.text().catch(() => '');
@@ -164,35 +170,72 @@ const privateAddress = (address: string): boolean => {
     normalized.startsWith('ff');
 };
 
-const validateProbeEndpoint = (
+const validateProbeEndpoint = async (
   endpoint: string,
   allowPrivateEndpoints: boolean,
-): Result<undefined, AppError> => {
-  if (allowPrivateEndpoints) return ok(undefined);
+  lookupAddresses: (hostname: string) => Promise<string[]>,
+): Promise<Result<{ address: string }, AppError>> => {
   const hostname = new URL(endpoint).hostname.replace(/^\[|\]$/g, '');
-  const blocked = hostname === 'localhost' || hostname.endsWith('.localhost') || privateAddress(hostname);
-  return blocked
-    ? err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'))
-    : ok(undefined);
+  if (
+    !allowPrivateEndpoints &&
+    (hostname === 'localhost' || hostname.endsWith('.localhost') || privateAddress(hostname))
+  ) {
+    return err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'));
+  }
+  if (isIP(hostname) !== 0) return ok({ address: hostname });
+  let addresses: string[];
+  try {
+    addresses = await lookupAddresses(hostname);
+  } catch {
+    return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
+  }
+  if (addresses.length === 0) {
+    return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
+  }
+  if (addresses.some((address) => isIP(address) === 0)) {
+    return err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'));
+  }
+  if (!allowPrivateEndpoints && addresses.some(privateAddress)) {
+    return err(probeError('storage.unavailable', 'Private storage endpoints are disabled.'));
+  }
+  const address = addresses[0];
+  return address === undefined
+    ? err(probeError('storage.unavailable', 'The storage endpoint hostname could not be resolved.'))
+    : ok({ address });
+};
+
+const pinnedDispatcher = ({ address }: { address: string }): Dispatcher => {
+  const family = isIP(address);
+  const pinnedLookup: LookupFunction = (_hostname, options, callback) => {
+    if (options.all === true) {
+      callback(null, [{ address, family }]);
+      return;
+    }
+    callback(null, address, family);
+  };
+  return new Agent({ connect: { lookup: pinnedLookup } });
 };
 
 const verifyCors = async (
   fetchStorage: FetchStorage,
   url: string,
   corsOrigin: string,
+  dispatcher: Dispatcher,
 ): Promise<Result<undefined, AppError>> => {
   let response: StorageResponse;
   try {
     response = await fetchStorage(url, {
       method: 'OPTIONS',
+      dispatcher,
+      redirect: 'error',
       headers: {
         Origin: corsOrigin,
         'Access-Control-Request-Method': 'PUT',
         'Access-Control-Request-Headers': 'content-type',
       },
     });
-  } catch (cause) {
-    return err(probeError('storage.unavailable', `The storage endpoint is unreachable: ${String(cause)}`));
+  } catch {
+    return err(probeError('storage.unavailable', 'The storage endpoint is unreachable.'));
   }
   const allowedOrigin = response.headers.get('access-control-allow-origin');
   const allowedMethods = response.headers.get('access-control-allow-methods')
@@ -233,6 +276,7 @@ const liveProbe = async (
   now: () => Date,
   keyFactory: () => string,
   corsOrigin: string,
+  dispatcher: Dispatcher,
 ): Promise<Result<ProviderDiagnostic, AppError>> => {
   const key = `together-probe/${keyFactory()}.txt`;
   const url = objectUrl(configuration, key);
@@ -245,24 +289,23 @@ const liveProbe = async (
       expiresInSeconds: PROBE_EXPIRY_SECONDS,
     }, now);
 
-  const cors = await verifyCors(fetchStorage, signed('PUT'), corsOrigin);
-  if (!cors.ok) return cors;
-
   const uploaded = await sendProbeRequest(fetchStorage, signed('PUT'), {
     method: 'PUT',
     body: expected,
-  });
+  }, dispatcher);
   if (!uploaded.ok) return uploaded;
 
-  const read = await sendProbeRequest(fetchStorage, signed('GET'), { method: 'GET' });
+  const read = await sendProbeRequest(fetchStorage, signed('GET'), { method: 'GET' }, dispatcher);
   const readBack = read.ok ? await read.value.text() : null;
-  const removed = await sendProbeRequest(fetchStorage, signed('DELETE'), { method: 'DELETE' });
+  const removed = await sendProbeRequest(fetchStorage, signed('DELETE'), { method: 'DELETE' }, dispatcher);
 
   if (!read.ok) return read;
   if (readBack !== expected) {
     return err(probeError('storage.unavailable', 'The storage probe read back different content.'));
   }
   if (!removed.ok) return removed;
+  const cors = await verifyCors(fetchStorage, signed('PUT'), corsOrigin, dispatcher);
+  if (!cors.ok) return cors;
   return ok({
     code: 'storage.available',
     message: 'Storage completed the write, read and delete probe.',
@@ -359,8 +402,16 @@ const checkCredentials = async (resolver: TenantSecretResolver, tenantId: string
     resolver.resolve(tenantId, 's3.accessKeyId'),
     resolver.resolve(tenantId, 's3.secretAccessKey'),
   ]);
-  if (!accessKeyId.ok) return accessKeyId;
-  if (!secretAccessKey.ok) return secretAccessKey;
+  if (!accessKeyId.ok) {
+    return accessKeyId.error.code === 'not_found'
+      ? err(integrationNotConfigured('Storage credentials are not configured.'))
+      : accessKeyId;
+  }
+  if (!secretAccessKey.ok) {
+    return secretAccessKey.error.code === 'not_found'
+      ? err(integrationNotConfigured('Storage credentials are not configured.'))
+      : secretAccessKey;
+  }
   return ok({ healthy: true as const });
 };
 
@@ -394,18 +445,22 @@ export const createS3StorageProvider = (
   options: StorageProviderOptions = {},
 ): StorageProvider => {
   const now = options.now ?? (() => new Date());
-  const fetchStorage = options.fetchStorage ?? fetch;
+  const fetchStorage = options.fetchStorage ?? undiciFetch;
   const probeKey = options.probeKey ?? randomUUID;
   const corsOrigin = new URL(options.corsOrigin ?? 'http://localhost:48730').origin;
   const allowPrivateEndpoints = options.allowPrivateEndpoints ?? false;
+  const lookupAddresses = options.lookupAddresses ?? (async (hostname: string) =>
+    (await dns.lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address));
   const probe = async (input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>> => {
     const target = objectUrl(input, 'together-probe');
-    const safeEndpoint = validateProbeEndpoint(input.endpoint, allowPrivateEndpoints);
-    if (!safeEndpoint.ok) return safeEndpoint;
-    const safeTarget = validateProbeEndpoint(target.origin, allowPrivateEndpoints);
-    return safeTarget.ok
-      ? liveProbe(input, fetchStorage, now, probeKey, corsOrigin)
-      : safeTarget;
+    const safeTarget = await validateProbeEndpoint(target.origin, allowPrivateEndpoints, lookupAddresses);
+    if (!safeTarget.ok) return safeTarget;
+    const dispatcher = pinnedDispatcher(safeTarget.value);
+    try {
+      return await liveProbe(input, fetchStorage, now, probeKey, corsOrigin, dispatcher);
+    } finally {
+      await dispatcher.close();
+    }
   };
 
   return {
@@ -417,19 +472,19 @@ export const createS3StorageProvider = (
       const signed = presign('DELETE', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
       try {
-        const response = await fetchStorage(signed.value, { method: 'DELETE' });
+        const response = await fetchStorage(signed.value, { method: 'DELETE', redirect: 'error' });
         return response.ok
           ? ok({ deleted: true })
           : err(integrationUnavailable(`S3 rejected the delete request with status ${String(response.status)}`));
-      } catch (cause) {
-        return err(integrationUnavailable(`Could not reach S3: ${String(cause)}`));
+      } catch {
+        return err(integrationUnavailable('Could not reach S3.'));
       }
     },
     head: async (input) => {
       const signed = presign('HEAD', { ...input, expiresInSeconds: 60 }, now);
       if (!signed.ok) return signed;
       try {
-        const response = await fetchStorage(signed.value, { method: 'HEAD' });
+        const response = await fetchStorage(signed.value, { method: 'HEAD', redirect: 'error' });
         if (!response.ok) {
           return err(integrationUnavailable(`S3 rejected the object metadata request with status ${String(response.status)}`));
         }
@@ -438,8 +493,8 @@ export const createS3StorageProvider = (
           return err(integrationUnavailable('S3 returned invalid object size metadata.'));
         }
         return ok({ sizeBytes: Number(contentLength) });
-      } catch (cause) {
-        return err(integrationUnavailable(`Could not reach S3: ${String(cause)}`));
+      } catch {
+        return err(integrationUnavailable('Could not reach S3.'));
       }
     },
     healthcheck: ({ tenantId }) => checkCredentials(resolver, tenantId),

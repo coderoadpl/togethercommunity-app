@@ -101,6 +101,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
       fileName: 'worksheet.pdf',
       contentType: 'application/pdf',
       sizeBytes: 7,
+      status: 'ready' as const,
       createdAt: '2026-08-03T12:00:00.000Z',
       downloadPath: '/api/student/lessons/lesson-1/attachments/attachment-1/download',
     };
@@ -124,6 +125,7 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
               fileName: 'worksheet.pdf',
               contentType: 'application/pdf',
               sizeBytes: 7,
+              status: 'pending',
               createdAt: '2026-08-03T12:00:00.000Z',
             },
             upload: {

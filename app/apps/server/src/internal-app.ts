@@ -354,6 +354,7 @@ const lessonAttachmentMetadata = (attachment: LessonAttachment): LessonAttachmen
   fileName: attachment.fileName,
   contentType: attachment.contentType,
   sizeBytes: attachment.sizeBytes,
+  status: attachment.status,
   createdAt: attachment.createdAt,
 });
 
@@ -1472,7 +1473,9 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       c.req.param('assetId'),
       deps,
     );
-    return result.ok ? c.redirect(result.value, 302) : respond(result);
+    if (!result.ok) return respond(result);
+    c.header('Cache-Control', 'no-store');
+    return c.redirect(result.value, 302);
   });
 
   app.get(API_PATHS.members, async (c) => {
@@ -2212,7 +2215,9 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       c.req.param('attachmentId'),
       deps,
     );
-    return result.ok ? c.redirect(result.value, 302) : respond(result);
+    if (!result.ok) return respond(result);
+    c.header('Cache-Control', 'no-store');
+    return c.redirect(result.value, 302);
   });
 
   app.post(API_PATHS.studentLessonComplete, async (c) => {

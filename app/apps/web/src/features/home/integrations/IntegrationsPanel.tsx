@@ -150,10 +150,12 @@ const ProviderTest = ({
   provider,
   ready,
   hint,
+  showHint = true,
 }: {
   provider: IntegrationTestInput['provider'];
   ready: boolean;
   hint?: string;
+  showHint?: boolean;
 }) => {
   const t = useTranslations();
   const test = useMutation(actions.testIntegration);
@@ -174,7 +176,7 @@ const ProviderTest = ({
       >
         {test.isPending ? t.integrations.testing : t.integrations.testConnection}
       </Button>
-      {!ready && hint !== undefined ? (
+      {showHint && !ready && hint !== undefined ? (
         <Typography variant="caption" component="p" data-testid={`${provider}-test-hint`}>
           {hint}
         </Typography>
@@ -255,7 +257,12 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
             </Typography>
           </FormControl>
 
-          <ProviderTest provider="payment" ready={stripeReady} hint={t.integrations.saveKeysFirst} />
+          <ProviderTest
+            provider="payment"
+            ready={stripeReady}
+            hint={t.integrations.saveKeysFirst}
+            showHint={!secrets.isPending && !secrets.isError}
+          />
         </SectionCard>
 
         <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
@@ -350,7 +357,12 @@ export const IntegrationsPanel = ({ tenantId }: { tenantId: string }) => {
           ) : (
             <StorageWizard configured={storageReady} />
           )}
-          <ProviderTest provider="storage" ready={storageReady} hint={t.integrations.s3SaveFirst} />
+          <ProviderTest
+            provider="storage"
+            ready={storageReady}
+            hint={t.integrations.s3SaveFirst}
+            showHint={!secrets.isPending && !secrets.isError}
+          />
         </SectionCard>
     </PanelPage>
   );

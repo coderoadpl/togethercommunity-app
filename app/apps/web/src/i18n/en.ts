@@ -473,10 +473,10 @@ export const en: Messages = {
     storageInstructionB2:
       'Create a bucket-scoped application key with readFiles, writeFiles and deleteFiles capabilities. Use the key ID as the access key ID. Set bucket CORS AllowedHeaders to include Content-Type.',
     storageInstructionMinio:
-      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type.',
+      'Create an access key whose policy permits S3 PutObject, GetObject and DeleteObject for this bucket. Set bucket CORS AllowedHeaders to include Content-Type. Private endpoints require STORAGE_ALLOW_PRIVATE_ENDPOINTS=true on the server.',
     storageInstructionLink: 'Open provider instructions',
     storageProbeDescription:
-      'Together will upload a small scratch object, read it back byte for byte, and delete it. Nothing is saved yet.',
+      'Together will upload a small scratch object, read it back byte for byte, delete it, and verify browser CORS. Nothing is saved yet.',
     storageProbeStart: 'Run live probe',
     storageProbeSuccess: 'Write, read and delete all succeeded. You can now save this configuration.',
     storageSave: 'Save encrypted configuration',
@@ -732,6 +732,7 @@ export const en: Messages = {
     uploadAttachment: 'Add attachment',
     uploadingAttachment: 'Uploading…',
     attachmentSize: ({ kilobytes }) => format('{kilobytes} KB', { kilobytes }),
+    attachmentPending: 'upload incomplete',
     deleteAttachment: ({ name }) => format('delete attachment {name}', { name }),
     invalidBlocks: 'Invalid lesson blocks',
     blockNoun: ({ count }) => plural(count, 'block', 'blocks'),

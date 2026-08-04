@@ -120,4 +120,22 @@ describe('SMTP transactional e-mail adapter', () => {
     });
     expect(verify).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    { code: 'EAUTH' },
+    { responseCode: 454 },
+    { responseCode: 534 },
+    { responseCode: 535 },
+    { responseCode: 538 },
+  ])('classifies SMTP authentication failures without exposing provider text', async (failure) => {
+    const email = createSmtpEmailPort(settings, () => ({
+      verify: async () => { throw failure; },
+      sendMail: async () => ({ messageId: '<unused@example.test>' }),
+    }));
+
+    await expect(email.test()).resolves.toEqual({
+      ok: false,
+      error: { code: 'integration_auth', message: 'SMTP rejected the credentials.' },
+    });
+  });
 });

@@ -42,11 +42,8 @@ describe('Vercel platform entry boundary', () => {
     const cspFor = (source: string) => vercel.headers
       .find((entry) => entry.source === source)
       ?.headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
-    const panelCsp = cspFor('/panel(.*)');
-    const otherPageCsp = cspFor('/((?!api/|u/|marketing/|legal/|panel).*)');
-    expect(panelCsp).toContain("default-src 'self'");
-    expect(panelCsp).toContain("connect-src 'self' https:;");
-    expect(otherPageCsp).toContain("connect-src 'self' https://*.sentry.io;");
-    expect(otherPageCsp).not.toContain("connect-src 'self' https:;");
+    const spaCsp = cspFor('/((?!api/|u/|marketing/|legal/).*)');
+    expect(spaCsp).toContain("default-src 'self'");
+    expect(spaCsp).toContain("connect-src 'self' https:;");
   });
 });

@@ -28,8 +28,10 @@ import type {
   ProductPriceHistoryRepository,
   CheckoutConsentCaptureRepository,
   EmailOutboxRepository,
+  PaymentProvider,
   PaymentTransactionPort,
 } from '../ports.js';
+import { tenantUrl } from '../tenant-url.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import {
@@ -37,6 +39,7 @@ import {
   failSubscriptionPayment,
   renewSubscriptionPeriod,
   startSubscription,
+  syncGrantToSubscription,
   updateSubscriptionFromProvider,
   type SubscriptionLifecycleDeps,
 } from './subscription-lifecycle.js';
@@ -50,6 +53,7 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
   couponCheckoutSessions?: CouponCheckoutSessionRepository;
   priceHistory?: ProductPriceHistoryRepository;
   checkoutConsentCaptures?: CheckoutConsentCaptureRepository;
+  payment: Pick<PaymentProvider, 'cancelSubscription'>;
   paymentTransaction: PaymentTransactionPort;
 }
 
@@ -59,6 +63,7 @@ const enqueueSubscriptionNotice = async (
   tenant: Tenant,
   subscription: MemberSubscription | null,
   kind: 'subscription-payment-failed' | 'subscription-ended',
+  accessEndsAt: string,
   deps: StripeWebhookDeps,
 ): Promise<Result<void, AppError>> => {
   if (subscription === null) return ok(undefined);
@@ -68,10 +73,13 @@ const enqueueSubscriptionNotice = async (
     deps.tenants.findSettings(tenant.id),
   ]);
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
-  const tenantBaseUrl = new URL(deps.appBaseUrl);
-  tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
+  const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
   const branding =
-    settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+    settings === null ? undefined : {
+      logoUrl: settings.logoUrl,
+      accentColor: settings.accentColor,
+      socialLinks: settings.socialLinks,
+    };
   const payload =
     kind === 'subscription-payment-failed'
       ? {
@@ -79,7 +87,7 @@ const enqueueSubscriptionNotice = async (
           language: DEFAULT_LANGUAGE,
           tenantName: tenant.name,
           productTitle: product.title,
-          accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
+          accessEndsAt,
           billingPortalUrl: settings?.billingPortalUrl ?? null,
           ...(branding === undefined ? {} : { branding }),
         }
@@ -88,8 +96,8 @@ const enqueueSubscriptionNotice = async (
           language: DEFAULT_LANGUAGE,
           tenantName: tenant.name,
           productTitle: product.title,
-          accessEndsAt: graceExpiresAt(subscription.currentPeriodEnd),
-          offerUrl: tenantBaseUrl.toString(),
+          accessEndsAt,
+          offerUrl: tenantBaseUrl,
           ...(branding === undefined ? {} : { branding }),
         };
   const queued = await deps.emailOutbox.enqueue({
@@ -104,7 +112,7 @@ const enqueueSubscriptionNotice = async (
   return ok(undefined);
 };
 
-const HANDLED_EVENT_TYPES = new Set([
+export const STRIPE_WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
   'invoice.paid',
   'invoice.payment_failed',
@@ -112,7 +120,9 @@ const HANDLED_EVENT_TYPES = new Set([
   'customer.subscription.deleted',
   'charge.refunded',
   'charge.dispute.created',
-]);
+] as const;
+
+export const HANDLED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 
 interface CouponPaymentContext {
   coupon: Coupon;
@@ -427,6 +437,7 @@ const applyInvoiceEvent = async (
     ...(event.invoice?.currency == null ? {} : { currency: event.invoice.currency.toUpperCase() }),
   };
   if (event.type === 'invoice.paid') {
+    if (subscription.status === 'canceled') return ok({ processed: true });
     const existingOrder = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, {
       invoice: event.objectId,
     });
@@ -480,11 +491,13 @@ const applyInvoiceEvent = async (
       }
     }
   } else {
+    if (subscription.status === 'canceled') return ok({ processed: true });
     await failSubscriptionPayment(tenant.id, cycle, deps);
     const notified = await enqueueSubscriptionNotice(
       tenant,
       subscription,
       'subscription-payment-failed',
+      graceExpiresAt(subscription.currentPeriodEnd),
       deps,
     );
     if (!notified.ok) return notified;
@@ -506,6 +519,30 @@ const applyPaymentAdjustment = async (
   };
   const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, providerObjectIds);
   if (!order) return ok({ processed: false });
+
+  const providerSubscriptionId = order.providerObjectIds['subscription'];
+  const invoiceId = order.providerObjectIds['invoice'];
+  let subscriptionToCancel: MemberSubscription | null = null;
+  if (order.kind === 'recurring' && providerSubscriptionId && invoiceId) {
+    const latest = await deps.paymentRefunds.findLatestSubscriptionOrder(
+      tenant.id,
+      providerSubscriptionId,
+    );
+    if (latest?.id === order.id) {
+      subscriptionToCancel = await deps.subscriptions.findByProviderSubscriptionId(
+        tenant.id,
+        providerSubscriptionId,
+      );
+      if (subscriptionToCancel !== null && subscriptionToCancel.status !== 'canceled') {
+        const canceled = await deps.payment.cancelSubscription({
+          tenantId: tenant.id,
+          providerSubscriptionId,
+          idempotencyKey: `payment-adjustment-${event.id}-${subscriptionToCancel.id}`,
+        });
+        if (!canceled.ok) return canceled;
+      }
+    }
+  }
 
   if (order.status !== 'refunded') {
     const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
@@ -543,26 +580,12 @@ const applyPaymentAdjustment = async (
     if (grant) await deps.grants.revokeGrant(tenant.id, grant.id, deps.clock.nowIso());
   }
 
-  const providerSubscriptionId = order.providerObjectIds['subscription'];
-  const invoiceId = order.providerObjectIds['invoice'];
-  if (order.kind === 'recurring' && providerSubscriptionId && invoiceId) {
-    const latest = await deps.paymentRefunds.findLatestSubscriptionOrder(
+  if (subscriptionToCancel !== null) {
+    await updateSubscriptionFromProvider(
       tenant.id,
-      providerSubscriptionId,
+      { subscription: subscriptionToCancel, cancelAtPeriodEnd: false, canceled: true },
+      deps,
     );
-    if (latest?.id === order.id) {
-      const subscription = await deps.subscriptions.findByProviderSubscriptionId(
-        tenant.id,
-        providerSubscriptionId,
-      );
-      if (subscription) {
-        await updateSubscriptionFromProvider(
-          tenant.id,
-          { subscription, cancelAtPeriodEnd: false, canceled: true },
-          deps,
-        );
-      }
-    }
   }
   return ok({ processed: true });
 };
@@ -578,18 +601,35 @@ const applySubscriptionEvent = async (
 
   const canceled =
     event.type === 'customer.subscription.deleted' || event.subscription?.status === 'canceled';
+  const periodEnd = event.subscription?.currentPeriodEnd ?? subscription.currentPeriodEnd;
+  const endedAt = event.subscription?.endedAt ?? null;
+  const paidThrough = canceled && endedAt !== null && endedAt < periodEnd ? endedAt : periodEnd;
+  const grantBefore =
+    event.type === 'customer.subscription.deleted'
+      ? await deps.grants.findGrant(tenant.id, subscription.memberId, subscription.productId)
+      : null;
   const updated = await updateSubscriptionFromProvider(
     tenant.id,
     {
       subscription,
       cancelAtPeriodEnd: event.subscription?.cancelAtPeriodEnd ?? subscription.cancelAtPeriodEnd,
-      currentPeriodEnd: event.subscription?.currentPeriodEnd ?? null,
+      currentPeriodEnd: canceled ? paidThrough : periodEnd,
       canceled,
     },
     deps,
   );
-  if (event.type === 'customer.subscription.deleted') {
-    const notified = await enqueueSubscriptionNotice(tenant, updated, 'subscription-ended', deps);
+  const accessEndsAt = await syncGrantToSubscription(tenant.id, updated, paidThrough, deps);
+  if (
+    event.type === 'customer.subscription.deleted' &&
+    (grantBefore === null || grantBefore.expiresAt !== null)
+  ) {
+    const notified = await enqueueSubscriptionNotice(
+      tenant,
+      updated,
+      'subscription-ended',
+      accessEndsAt ?? grantBefore?.expiresAt ?? paidThrough,
+      deps,
+    );
     if (!notified.ok) return notified;
   }
   return ok({ processed: true });

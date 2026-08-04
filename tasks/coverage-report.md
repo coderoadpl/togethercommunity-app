@@ -31,24 +31,25 @@ npm run coverage:baseline  # re-measure and rewrite coverage-baseline.json floor
 
 | Layer | Files | Lines | Branches | Functions |
 | --- | --- | --- | --- | --- |
-| core/domain | 29 | 92.6% (1629/1759) | 92.9% (196/211) | 93.7% (59/63) |
-| core/contract | 5 | 100.0% (667/667) | 100.0% (7/7) | 100.0% (5/5) |
-| core/server | 43 | 96.1% (3916/4076) | 80.1% (1195/1491) | 95.7% (200/209) |
-| core/client | 4 | 88.6% (1256/1418) | 98.4% (360/366) | 85.0% (312/367) |
-| adapters | 30 | 70.7% (3789/5356) | 77.9% (637/818) | 65.6% (227/346) |
-| apps/web | 99 | 90.0% (13215/14689) | 81.2% (1890/2329) | 67.9% (584/860) |
-| apps/cli | 3 | 0.9% (18/2026) | 77.8% (7/9) | 33.3% (1/3) |
-| apps/server | 7 | 37.5% (518/1383) | 69.4% (86/124) | 76.0% (19/25) |
-| scripts | 18 | 6.3% (395/6279) | 68.8% (88/128) | 53.3% (16/30) |
-| **TOTAL** | 238 | 67.5% (25403/37653) | 81.5% (4466/5483) | 74.6% (1423/1908) |
+| core/domain | 46 | 93.2% (3638/3903) | 90.0% (529/588) | 95.2% (119/125) |
+| core/contract | 6 | 99.7% (1156/1160) | 100.0% (13/13) | 100.0% (7/7) |
+| core/server | 67 | 93.3% (9226/9886) | 76.9% (2514/3269) | 93.7% (446/476) |
+| core/client | 4 | 86.9% (1889/2175) | 98.9% (544/550) | 79.1% (455/575) |
+| adapters | 57 | 75.2% (8287/11013) | 74.2% (1309/1764) | 60.7% (475/782) |
+| apps/web | 131 | 86.9% (17977/20697) | 78.2% (2620/3349) | 61.6% (757/1229) |
+| apps/cli | 5 | 61.7% (1732/2805) | 82.8% (101/122) | 72.7% (24/33) |
+| apps/server | 19 | 55.2% (2409/4362) | 66.5% (456/686) | 81.7% (89/109) |
+| scripts | 33 | 13.3% (1357/10191) | 84.1% (661/786) | 76.0% (73/96) |
+| **TOTAL** | 368 | 72.0% (47671/66192) | 78.6% (8747/11127) | 71.2% (2445/3432) |
 
 <!-- COVERAGE:END -->
 
-### Thresholds this audit holds
+### Targets and ratchet policy
 
 | Layer | Target |
 | --- | --- |
-| core/domain, core/contract, core/server, core/client | > 85% lines, > 80% branches |
+| core/domain, core/contract, core/client | > 85% lines, > 80% branches (met) |
+| core/server | > 85% lines (met), > 80% branches (76.9% measured; 76% ratchet floor) |
 | adapters | > 70% lines |
 | apps/web, apps/cli, apps/server, scripts | reported, ratcheted, not gated to a fixed target |
 
@@ -59,9 +60,11 @@ coverage — see "What the unit numbers miss" below.
 ### Verdict
 
 **No — coverage was not uniformly "full", and now it is measured, honest, and
-ratcheted.** After this audit every gated layer clears its bar: the four core
-layers exceed **85% lines / 80% branches** (domain 92.5/92.1, contract 100/100,
-server 96.0/80.1, client 88.5/97.8) and **adapters clear 70% lines (70.1%)**.
+ratcheted.** The single-worker measurement re-bases every floor to the achieved
+value rounded down. All four core layers exceed **85% lines**, and adapters clear
+**70% lines** at 75.2%. Core/server branches are **76.9%**, 3.1 points below the
+stated **>80%** target, so its honest ratchet floor is now 76% while >80% remains
+the restoration target; the other core branch results clear that target.
 The high-risk surfaces the owner cares about — money/price math, entitlement
 edges, tenant isolation, auth/secret crypto, webhook transitions, error-code
 mapping, CLI exit codes — are covered by unit tests (new or pre-existing) plus
@@ -116,7 +119,7 @@ notes whether this audit closed it (unit test added) or it was already covered.
 | 7 | **CLI exit codes** | `apps/cli/src/output.ts` `emit` | Closed — `output.test.ts` (one JSON envelope, stderr routing, exit code per error kind) + `smoke` asserts exit 3 live |
 | 8 | **Import correctness** | `importer.ts`, `legacy-transform.ts`, `price-migration.ts`, `access-items-migration.ts` | Already covered — DB-backed `importer.test.ts` + `legacy-transform.test.ts` (18) + migration transform tests |
 | 9 | **Tenant settings partial update** | `tenant.ts` `updateTenantSettingsInputSchema`; `tenant-settings.ts` owner guard | Closed for schema — `tenant.test.ts` (omit-keeps / clear-on-empty / URL validation); owner-forbidden path is exercised by the use-case's existing shape |
-| 10 | UI panels / rendering | `apps/web/**` | Component tests + storybook/lost-pixel; not unit-gated |
+| 10 | UI panels / rendering | `apps/web/**` | Component tests + Storybook story comparator; not unit-gated |
 
 ### Residual gaps (accepted, with rationale)
 

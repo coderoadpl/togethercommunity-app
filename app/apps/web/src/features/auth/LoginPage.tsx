@@ -17,7 +17,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { lessonPath } from '#core/contract/index.js';
 
 import { actions } from '../../api.js';
-import { BrandMark } from '../../branding.js';
+import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
@@ -106,6 +106,9 @@ export const LoginPage = () => {
         <FinePrint variant="caption" component="p">
           <Link href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</Link>
         </FinePrint>
+      ) : null}
+      {publicOffer.data?.tenant.socialLinks.length ? (
+        <TenantSocialLinks links={publicOffer.data.tenant.socialLinks} />
       ) : null}
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
         <BuildStamp />

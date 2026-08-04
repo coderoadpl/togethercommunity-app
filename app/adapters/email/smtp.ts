@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-import { integrationUnavailable, ok } from '#core/domain/index.js';
+import { err, integrationAuth, integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailPort } from '#core/server/index.js';
 
 export interface SmtpEmailSettings {
@@ -12,7 +12,8 @@ export interface SmtpEmailSettings {
   from: string;
 }
 
-export interface SmtpTransport {
+interface SmtpTransport {
+  verify(): Promise<unknown>;
   sendMail(input: {
     from: string;
     to: string;
@@ -30,6 +31,17 @@ export type SmtpTransportFactory = (settings: {
   auth?: { user: string; pass: string };
 }) => SmtpTransport;
 
+const smtpConnectionFailure = (cause: unknown): AppError => {
+  if (typeof cause === 'object' && cause !== null) {
+    const code = 'code' in cause ? cause.code : null;
+    const responseCode = 'responseCode' in cause ? cause.responseCode : null;
+    if (code === 'EAUTH' || [454, 534, 535, 538].includes(Number(responseCode))) {
+      return integrationAuth('SMTP rejected the credentials.');
+    }
+  }
+  return integrationUnavailable('Could not connect to SMTP.');
+};
+
 export const createSmtpEmailPort = (
   settings: SmtpEmailSettings,
   createTransport: SmtpTransportFactory = nodemailer.createTransport,
@@ -42,7 +54,22 @@ export const createSmtpEmailPort = (
       ? {}
       : { auth: { user: settings.user, pass: settings.password } }),
   });
+  const healthcheck = async (): Promise<Result<{ healthy: true }, AppError>> => {
+    try {
+      await transport.verify();
+      return ok({ healthy: true });
+    } catch (cause) {
+      return err(smtpConnectionFailure(cause));
+    }
+  };
   return {
+    healthcheck,
+    test: async () => {
+      const healthy = await healthcheck();
+      return healthy.ok
+        ? ok({ code: 'email.available', message: 'SMTP accepted the connection settings.' })
+        : healthy;
+    },
     send: async (message) => {
       try {
         const sent = await transport.sendMail({

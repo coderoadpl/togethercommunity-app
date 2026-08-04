@@ -115,8 +115,11 @@ const lesson = (id: string): CourseLesson => ({
 const product = (id: string, accessItems: Product['accessItems']): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: id,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,
@@ -567,11 +570,13 @@ const deps = (
     findStaffGrant: async (userId, lookup) =>
       'tenantId' in lookup && lookup.tenantId === 't1' && staffUserIds.includes(userId)
         ? {
-            tenant: { id: 't1', slug: 'tenant', name: 'Tenant', contentVersion: 1 },
+            tenant: {
+              id: 't1', slug: 'tenant', name: 'Tenant', status: 'active', plan: 'hosted', contentVersion: 1,
+            },
             staffRole: 'admin',
           }
         : null,
-    findMember: async (userId, tenantId) => members.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
+    findMember: async (tenantId, userId) => members.find((member) => member.tenantId === tenantId && member.userId === userId) ?? null,
   };
   return {
     posts: new FakePosts(),

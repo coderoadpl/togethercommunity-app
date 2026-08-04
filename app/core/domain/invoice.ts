@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ksefInvoiceDataSchema } from './ksef.js';
 
-export const invoiceStatusSchema = z.enum([
+const invoiceStatusSchema = z.enum([
   'requested',
   'queued',
   'submitting',
@@ -29,9 +29,8 @@ export const invoiceSchema = z.object({
 });
 
 export type Invoice = z.infer<typeof invoiceSchema>;
-export type InvoiceStatus = z.infer<typeof invoiceStatusSchema>;
 
-export const invoiceEventTypeSchema = z.enum([
+const invoiceEventTypeSchema = z.enum([
   'requested',
   'provider_created',
   'issued',

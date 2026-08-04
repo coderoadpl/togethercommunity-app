@@ -111,12 +111,15 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/me/data-export') return 'member:data-export:self-read';
   if (path === '/api/me/erasure-request') return 'member:erasure:self-request';
   if (path === '/api/my/products') return 'member:product:read';
+  if (path.startsWith('/api/my/products/')) return 'member:product:read';
   if (path === '/api/members/ban') return 'member:ban';
   if (path === '/api/members') return 'member:read';
   if (path === '/api/members/erasure-requests') return 'member:erasure:read';
   if (/^\/api\/members\/erasure-requests\/:requestId\/reject$/.test(path)) return 'member:remove';
   if (path === '/api/members/export') return 'member:export';
+  if (path.endsWith('/commerce') && path.startsWith('/api/members/')) return 'member:commerce:read';
   if (path.endsWith('/grants') && path.startsWith('/api/members/')) return 'member:grant:read';
+  if (path.endsWith('/timeline') && path.startsWith('/api/members/')) return 'member:timeline:read';
   if (path.endsWith('/learning-summary')) return 'member:learning:read';
   if (path.endsWith('/progress-reset')) return 'member:progress:manage';
   if (path.startsWith('/api/members/') && method === 'DELETE') return 'member:remove';
@@ -128,9 +131,14 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenant/settings') return method === 'GET' ? 'tenant:settings:read' : 'tenant:settings:write';
   if (path === '/api/support/message') return 'support:request';
   if (path.startsWith('/api/onboarding')) return method === 'GET' ? 'tenant:onboarding:read' : 'tenant:onboarding:write';
+  if (path === '/api/integrations/stripe/configure') return 'tenant:secret:write';
   if (path === '/api/integrations/bunny/videos') return 'course:read';
+  if (path === '/api/integrations/storage/configure') return 'tenant:secret:write';
   if (path.startsWith('/api/integrations/')) return 'integration:test';
   if (path === '/api/products') return method === 'GET' ? 'product:read' : 'product:write';
+  if (path.startsWith('/api/products/') && path.includes('/downloads')) {
+    return method === 'GET' ? 'product:read' : 'product:write';
+  }
   if (path.endsWith('/publish')) return 'product:publish';
   if (path.endsWith('/access-items')) return 'product:access:write';
   if (path.endsWith('/access-issues')) return 'product:access:read';
@@ -190,7 +198,7 @@ const beforeForRoute = (
     return publicPrincipal;
   }
   if (path === '/api/me' || path === '/api/tenants') return allHumans;
-  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path === '/api/my/products' || path.startsWith('/api/me/invoices/')) return member;
+  if (path === '/api/me/billing-orders' || path === '/api/me/data-export' || path === '/api/me/erasure-request' || path.startsWith('/api/my/products') || path.startsWith('/api/me/invoices/')) return member;
   if (path.startsWith('/api/student/')) {
     return capabilityForRoute(method, path) === 'lesson:play' ? tenantActors : member;
   }
@@ -248,7 +256,6 @@ export interface CollectedUseCase {
 }
 
 const AUTHORIZATION_UTILITIES = new Set([
-  'community-access.ts#memberScope',
   'community-access.ts#requireActor',
   'community-access.ts#requireMemberOrStaff',
   'community-access.ts#requireUnbannedMember',
@@ -391,7 +398,6 @@ const marketingTenantContextUseCases = new Set([
   'confirmMarketingConsent',
   'getMarketingEligibility',
   'getUnsubscribePreferences',
-  'purgeStalePendingConsents',
   'recordCheckoutMarketingConsents',
   'recordMarketingConsent',
   'saveMarketingConsentPreferences',
@@ -414,10 +420,14 @@ const beforeForUseCase = (
     return name === 'resolveMemberEntitlements' ? member : tenantActors;
   }
   if (file === 'lesson-media.ts') return tenantActors;
+  if (file === 'lesson-attachments.ts') return capability === 'lesson:play' ? tenantActors : staff;
+  if (file === 'product-downloads.ts') return capability === 'member:product:read' ? member : staff;
   if (file === 'progress.ts') return name === 'resetMemberCourseProgress' ? staff : member;
   if (file === 'tenant-settings.ts') return name === 'getTenantSettings' ? tenantActors : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
+  if (file === 'storage-configuration.ts') return owner;
+  if (file === 'configure-stripe.ts') return owner;
   if (capability === 'integration:test') return owner;
   if (file === 'community-access.ts' || file === 'community.ts') return tenantActors;
   if (file === 'moderation.ts') return capability === 'community:report' ? tenantActors : staff;
@@ -543,6 +553,10 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The `member` and `authenticated` matrix rows carried historically derived edge capabilities (`scheduler:dispatch`, `webhook:process`, `marketing:campaign:dispatch`, and `marketing:message:send`) that were not reachable through any session route (verified 2026-07-29). Narrowed 2026-07-29, owner-approved O-08. `marketing:message:read` stays on both rows: `claimIdempotencyKey` and `completeIdempotentRequest` remain classified as session-reachable use-cases and still require it.',
     '',
     'SPEC D5 deliberately delegates report resolution to `community:moderate`; a future owner review may retain that binding or replace it with a report-specific capability.',
+    '',
+    '`member:timeline:read` is the union capability for the consolidated member timeline: order, grant, learning-progress, and transactional or marketing delivery events. Any future role split must grant it only when that role may read every included slice.',
+    '',
+    '`member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.',
     '',
     `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
     '',

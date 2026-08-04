@@ -40,9 +40,13 @@ import type {
   CourseRepository,
   EntityVersionRecord,
   IdGenerator,
+  LessonAttachmentRepository,
   MemberCourseProgressRepository,
   ProductRepository,
+  StorageProvider,
+  TenantSecretResolver,
 } from '../ports.js';
+import { deleteLessonAttachmentObjects } from './lesson-attachments.js';
 
 export interface CourseManagementDeps {
   courses: CourseRepository;
@@ -50,6 +54,9 @@ export interface CourseManagementDeps {
   lessons: CourseLessonRepository;
   products: ProductRepository;
   progress: MemberCourseProgressRepository;
+  attachments: LessonAttachmentRepository;
+  storage: StorageProvider;
+  secretResolver: TenantSecretResolver;
   ids: IdGenerator;
   clock: Clock;
 }
@@ -476,6 +483,8 @@ export const deleteLesson = async (
   if (!lesson) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));
 
   const references = await collectLessonReferences(tenant.value, lesson, deps);
+
+  await deleteLessonAttachmentObjects(ctx, lesson.id, deps);
 
   const deleted = await deps.lessons.delete(tenant.value, lesson.id);
   if (!deleted) return err(notFound(`No lesson "${parsed.data.id}" in this tenant`));

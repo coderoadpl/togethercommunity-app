@@ -27,7 +27,7 @@ const baseDomainUrl = (): string => {
   return `${protocol}//${appBaseDomain()}${port ? `:${port}` : ''}`;
 };
 
-export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
+export const RegisterPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -38,16 +38,16 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const onTenantHost = hostHasTenantSubdomain(hostname ?? window.location.hostname);
-  const offer = useQuery({ ...actions.publicOffer, enabled: onTenantHost });
-  const legal = onTenantHost ? offer.data?.tenant.legal ?? null : null;
+  const offer = useQuery(actions.publicOffer);
+  const onOtherTenantHost = hostHasTenantSubdomain(hostname);
+  const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
 
   const signUp = useMutation({
     ...actions.signUp,
     onSuccess: async () => {
       await queryClient.invalidateQueries();
-      if (onTenantHost) {
+      if (onOtherTenantHost) {
         setRegisteredOnTenant(true);
         return;
       }
@@ -74,7 +74,7 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
     return (
       <FocusCard eyebrow={t.auth.registeredTitle}>
           <Typography variant="body1" sx={{ mb: '1.4rem' }}>
-            {t.auth.registeredOnTenantBody({ host: window.location.hostname })}
+            {t.auth.registeredOnTenantBody({ host: hostname })}
           </Typography>
           <Stack useFlexGap spacing="0.9rem">
             <Button variant="contained" fullWidth component="a" href={baseDomainUrl()}>
@@ -93,7 +93,7 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
 
   return (
     <FocusCard
-      eyebrow={t.auth.createAccountEyebrow({ host: window.location.hostname })}
+      eyebrow={t.auth.createAccountEyebrow({ host: hostname })}
       onSubmit={submit}
       footer={
         <FinePrint variant="caption" component="p">
@@ -141,7 +141,7 @@ export const RegisterPage = ({ hostname }: { hostname?: string } = {}) => {
             type="submit"
             variant="contained"
             fullWidth
-            disabled={signUp.isPending}
+            disabled={signUp.isPending || offer.isPending}
             sx={{ mt: '0.4rem' }}
           >
             {signUp.isPending ? t.auth.creatingAccount : t.auth.createAccount}

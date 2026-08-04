@@ -1,5 +1,10 @@
 # Accessibility runtime scan (axe-core)
 
+Historical record of the axe-core era. axe-core is MPL-2.0 and has since been
+removed; `pnpm run a11y` now runs the in-house checks described in
+[app/docs/accessibility.md](../app/docs/accessibility.md), with the same
+pass/fail contract.
+
 `npm run a11y` boots the real server against a seeded database and runs
 axe-core (WCAG 2.0/2.1 level A + AA, plus best-practice) over the key screens
 across **all 7 themes** at desktop 1440, with the member-facing screens

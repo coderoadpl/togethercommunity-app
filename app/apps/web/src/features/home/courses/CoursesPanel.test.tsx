@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -96,6 +96,14 @@ const lesson = (over: Partial<CourseLesson> = {}): CourseLesson => ({
   createdAt: '2026-07-12T10:00:00.000Z',
   ...over,
 });
+
+/** jsdom implements neither DataTransfer nor drag sequencing, so the payload is a stub the handlers can write to. */
+const drag = (handle: HTMLElement, target: HTMLElement) => {
+  const dataTransfer = { dropEffect: 'none', effectAllowed: 'uninitialized', setData: () => undefined };
+  fireEvent.dragStart(handle, { dataTransfer });
+  fireEvent.dragOver(target, { dataTransfer });
+  fireEvent.drop(target, { dataTransfer });
+};
 
 describe('CoursesPanel courses tab', () => {
   it('lists courses and creates a new one', async () => {
@@ -241,7 +249,7 @@ describe('CoursesPanel courses tab', () => {
     expect(screen.getByText(pl.courses.duplicateLessonWarning)).toBeInTheDocument();
   });
 
-  it('reorders modules with the up/down controls', async () => {
+  it('reorders modules with the keyboard-accessible controls', async () => {
     let courses = [course({ moduleOrder: ['module-1', 'module-2'] })];
     const modules = [
       courseModule({ id: 'module-1', title: 'Module One' }),
@@ -268,9 +276,12 @@ describe('CoursesPanel courses tab', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: pl.courses.manage }));
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: pl.courses.moveModuleDown({ name: 'Module One' }) }),
-    );
+    const moveDown = await screen.findByRole('button', {
+      name: pl.courses.moveModuleDown({ name: 'Module One' }),
+    });
+    moveDown.focus();
+    expect(moveDown).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
 
     await waitFor(() => expect(sentOrder).toEqual(['module-2', 'module-1']));
     await waitFor(() => {
@@ -278,6 +289,305 @@ describe('CoursesPanel courses tab', () => {
       if (!firstCard) throw new Error('no module card rendered');
       expect(within(firstCard).getByText('Module Two')).toBeInTheDocument();
     });
+  });
+
+  it('persists module ordering changed by drag', async () => {
+    let courses = [course({ moduleOrder: ['module-1', 'module-2'] })];
+    const modules = [
+      courseModule({ id: 'module-1', title: 'Module One' }),
+      courseModule({ id: 'module-2', title: 'Module Two' }),
+    ];
+    let sentOrder: string[] | undefined;
+    let updateCalls = 0;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/courses/update', async ({ request }) => {
+        updateCalls += 1;
+        const body = updateCourseInputSchema.parse(await request.json());
+        sentOrder = body.moduleOrder;
+        const current = courses[0];
+        if (!current) return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } });
+        const updated = { ...current, moduleOrder: body.moduleOrder ?? current.moduleOrder };
+        courses = [updated];
+        return HttpResponse.json({ ok: true, data: { course: updated } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    const cards = await screen.findAllByTestId('module-card');
+    const handle = screen.getByTestId('module-drag-handle-module-1');
+    const target = cards[1];
+    if (!target) throw new Error('module drag target missing');
+
+    const restingBackground = getComputedStyle(target).backgroundColor;
+    const dataTransfer = { dropEffect: 'none', effectAllowed: 'uninitialized', setData: () => undefined };
+    fireEvent.dragStart(handle, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    expect(getComputedStyle(target).backgroundColor).not.toBe(restingBackground);
+
+    const targetChild = within(target).getByText('Module Two');
+    const internalDragLeave = createEvent.dragLeave(target, { dataTransfer });
+    Object.defineProperty(internalDragLeave, 'relatedTarget', { value: targetChild });
+    fireEvent(target, internalDragLeave);
+    expect(getComputedStyle(target).backgroundColor).not.toBe(restingBackground);
+    fireEvent.dragLeave(target, { dataTransfer, relatedTarget: document.body });
+    expect(getComputedStyle(target).backgroundColor).toBe(restingBackground);
+
+    drag(handle, target);
+
+    await waitFor(() => expect(sentOrder).toEqual(['module-2', 'module-1']));
+    await waitFor(() => {
+      const firstCard = screen.getAllByTestId('module-card')[0];
+      if (!firstCard) throw new Error('no module card rendered');
+      expect(within(firstCard).getByText('Module Two')).toBeInTheDocument();
+    });
+    expect(updateCalls).toBe(1);
+  });
+
+  it('rolls an optimistic module drag back when persistence fails', async () => {
+    const courses = [course({ moduleOrder: ['module-1', 'module-2'] })];
+    const modules = [
+      courseModule({ id: 'module-1', title: 'Module One' }),
+      courseModule({ id: 'module-2', title: 'Module Two' }),
+    ];
+    let coursesRequests = 0;
+    let releaseRequest: () => void = () => undefined;
+    const requestHeld = new Promise<void>((resolve) => {
+      releaseRequest = () => resolve();
+    });
+    let releaseRefetch: () => void = () => undefined;
+    const refetchHeld = new Promise<void>((resolve) => {
+      releaseRefetch = () => resolve();
+    });
+    server.use(
+      http.get('/api/courses', async () => {
+        coursesRequests += 1;
+        if (coursesRequests > 1) await refetchHeld;
+        return HttpResponse.json({ ok: true, data: { courses } });
+      }),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/courses/update', async () => {
+        await requestHeld;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'save failed' } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    const cards = await screen.findAllByTestId('module-card');
+    const target = cards[1];
+    if (!target) throw new Error('module drop target missing');
+    drag(screen.getByTestId('module-drag-handle-module-1'), target);
+
+    await waitFor(() => {
+      const firstCard = screen.getAllByTestId('module-card')[0];
+      if (!firstCard) throw new Error('no module card rendered');
+      expect(within(firstCard).getByText('Module Two')).toBeInTheDocument();
+    });
+
+    releaseRequest();
+
+    try {
+      await waitFor(() => {
+        const firstCard = screen.getAllByTestId('module-card')[0];
+        if (!firstCard) throw new Error('no module card rendered');
+        expect(within(firstCard).getByText('Module One')).toBeInTheDocument();
+      });
+    } finally {
+      releaseRefetch();
+    }
+  });
+
+  it('persists lesson ordering changed by drag', async () => {
+    const chapters = [
+      {
+        id: 'ch1',
+        name: 'Chapter',
+        contents: [
+          { id: 'ct1', name: 'First lesson', lessonId: 'lesson-1' },
+          { id: 'ct2', name: 'Second lesson', lessonId: 'lesson-2' },
+        ],
+      },
+    ];
+    let modules = [courseModule({ chapters })];
+    let sentContentOrder: string[] | undefined;
+    let updateCalls = 0;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { lessons: [lesson(), lesson({ id: 'lesson-2', name: 'Second lesson' })] },
+        }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules/update', async ({ request }) => {
+        updateCalls += 1;
+        const body = updateCourseModuleInputSchema.parse(await request.json());
+        const current = modules[0];
+        if (!current) return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } });
+        sentContentOrder = body.chapters?.[0]?.contents.map((content) => content.id);
+        const updated = { ...current, chapters: body.chapters ?? current.chapters };
+        modules = [updated];
+        return HttpResponse.json({ ok: true, data: { module: updated } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    const handle = await screen.findByTestId('lesson-drag-handle-ct1');
+    const target = screen.getByTestId('lesson-content-ct2');
+    const restingBackground = getComputedStyle(target).backgroundColor;
+    const dataTransfer = { dropEffect: 'none', effectAllowed: 'uninitialized', setData: () => undefined };
+    fireEvent.dragStart(handle, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    expect(getComputedStyle(target).backgroundColor).not.toBe(restingBackground);
+
+    const targetChild = within(target).getAllByText('Second lesson')[0];
+    if (!targetChild) throw new Error('lesson drop target child missing');
+    const internalDragLeave = createEvent.dragLeave(target, { dataTransfer });
+    Object.defineProperty(internalDragLeave, 'relatedTarget', { value: targetChild });
+    fireEvent(target, internalDragLeave);
+    expect(getComputedStyle(target).backgroundColor).not.toBe(restingBackground);
+    fireEvent.dragLeave(target, { dataTransfer, relatedTarget: document.body });
+    expect(getComputedStyle(target).backgroundColor).toBe(restingBackground);
+
+    drag(handle, target);
+
+    await waitFor(() => expect(sentContentOrder).toEqual(['ct2', 'ct1']));
+    await waitFor(() => {
+      const firstContent = screen.getAllByTestId(/^lesson-content-/)[0];
+      if (!firstContent) throw new Error('lesson content missing');
+      expect(firstContent).toHaveTextContent('Second lesson');
+    });
+    expect(updateCalls).toBe(1);
+
+    const moveDown = screen.getByRole('button', {
+      name: pl.courses.moveContentDown({ name: 'Second lesson' }),
+    });
+    moveDown.focus();
+    expect(moveDown).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+
+    await waitFor(() => expect(sentContentOrder).toEqual(['ct1', 'ct2']));
+  });
+
+  it('rolls an optimistic lesson drag back when persistence fails', async () => {
+    const chapters = [
+      {
+        id: 'ch1',
+        name: 'Chapter',
+        contents: [
+          { id: 'ct1', name: 'First lesson', lessonId: 'lesson-1' },
+          { id: 'ct2', name: 'Second lesson', lessonId: 'lesson-2' },
+        ],
+      },
+    ];
+    const modules = [courseModule({ chapters })];
+    let modulesRequests = 0;
+    let releaseRequest: () => void = () => undefined;
+    const requestHeld = new Promise<void>((resolve) => {
+      releaseRequest = () => resolve();
+    });
+    let releaseRefetch: () => void = () => undefined;
+    const refetchHeld = new Promise<void>((resolve) => {
+      releaseRefetch = () => resolve();
+    });
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', async () => {
+        modulesRequests += 1;
+        if (modulesRequests > 1) await refetchHeld;
+        return HttpResponse.json({ ok: true, data: { modules } });
+      }),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { lessons: [lesson(), lesson({ id: 'lesson-2', name: 'Second lesson' })] },
+        }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules/update', async () => {
+        await requestHeld;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'save failed' } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    drag(await screen.findByTestId('lesson-drag-handle-ct1'), screen.getByTestId('lesson-content-ct2'));
+
+    await waitFor(() => {
+      const firstContent = screen.getAllByTestId(/^lesson-content-/)[0];
+      if (!firstContent) throw new Error('lesson content missing');
+      expect(firstContent).toHaveTextContent('Second lesson');
+    });
+
+    releaseRequest();
+
+    try {
+      await waitFor(() => {
+        const firstContent = screen.getAllByTestId(/^lesson-content-/)[0];
+        if (!firstContent) throw new Error('lesson content missing');
+        expect(firstContent).toHaveTextContent('First lesson');
+      });
+    } finally {
+      releaseRefetch();
+    }
+  });
+
+  it('rejects a lesson drop into another chapter', async () => {
+    const chapters = [
+      {
+        id: 'ch1',
+        name: 'First chapter',
+        contents: [{ id: 'ct1', name: 'First lesson', lessonId: 'lesson-1' }],
+      },
+      {
+        id: 'ch2',
+        name: 'Second chapter',
+        contents: [{ id: 'ct2', name: 'Second lesson', lessonId: 'lesson-2' }],
+      },
+    ];
+    const modules = [courseModule({ chapters })];
+    let updateCalls = 0;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses: [course()] } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules } })),
+      http.get('/api/lessons', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { lessons: [lesson(), lesson({ id: 'lesson-2', name: 'Second lesson' })] },
+        }),
+      ),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/modules/update', () => {
+        updateCalls += 1;
+        return HttpResponse.json({ ok: true, data: { module: modules[0] } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    const handle = await screen.findByTestId('lesson-drag-handle-ct1');
+    const target = screen.getByTestId('lesson-content-ct2');
+    const dataTransfer = { dropEffect: 'none', effectAllowed: 'uninitialized', setData: () => undefined };
+    fireEvent.dragStart(handle, { dataTransfer });
+    const dragOverEvent = createEvent.dragOver(target, { dataTransfer });
+    fireEvent(target, dragOverEvent);
+    fireEvent.drop(target, { dataTransfer });
+
+    expect(dragOverEvent.defaultPrevented).toBe(false);
+    expect(updateCalls).toBe(0);
+    expect(screen.getByTestId('lesson-content-ct1')).toHaveTextContent('First lesson');
+    expect(target).toHaveTextContent('Second lesson');
   });
 
   it('detaches a module from the course', async () => {

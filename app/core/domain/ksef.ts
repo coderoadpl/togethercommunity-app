@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-export const ksefEnvironmentSchema = z.enum(['test', 'production']);
-export const ksefSubmissionStateSchema = z.enum([
+const ksefEnvironmentSchema = z.enum(['test', 'production']);
+const ksefSubmissionStateSchema = z.enum([
   'queued',
   'session_opened',
   'submitting',
@@ -11,13 +11,6 @@ export const ksefSubmissionStateSchema = z.enum([
   'rejected',
   'numbering_conflict',
 ]);
-
-export const ksefStatusSchema = z.object({
-  code: z.number().int(),
-  description: z.string(),
-  details: z.array(z.string()).default([]),
-  extensions: z.record(z.unknown()).default({}),
-});
 
 export const ksefInvoiceDataSchema = z.object({
   environment: ksefEnvironmentSchema,
@@ -59,7 +52,12 @@ export const ksefInvoiceDataSchema = z.object({
 
 export type KsefEnvironment = z.infer<typeof ksefEnvironmentSchema>;
 export type KsefInvoiceData = z.infer<typeof ksefInvoiceDataSchema>;
-export type KsefStatus = z.infer<typeof ksefStatusSchema>;
+export type KsefStatus = {
+  code: number;
+  description: string;
+  details: string[];
+  extensions: Record<string, unknown>;
+};
 
 export interface FiscalArtifact {
   key: string;

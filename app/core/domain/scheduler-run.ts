@@ -3,11 +3,11 @@ import { z } from 'zod';
 const nonNegativeInteger = z.number().int().nonnegative();
 const isoDateTime = z.string().datetime();
 
-export const schedulerRunKindSchema = z.enum(['marketing_tick', 'outbox_dispatch']);
-export const schedulerRunTriggerSchema = z.enum(['cron', 'dev', 'manual']);
-export const schedulerRunStatusSchema = z.enum(['running', 'completed', 'failed']);
+const schedulerRunKindSchema = z.enum(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge']);
+const schedulerRunTriggerSchema = z.enum(['cron', 'dev', 'manual']);
+const schedulerRunStatusSchema = z.enum(['running', 'completed', 'failed']);
 
-export const schedulerRunTotalsSchema = z.object({
+const schedulerRunTotalsSchema = z.object({
   campaignsTouched: nonNegativeInteger,
   sendsAttempted: nonNegativeInteger,
   sent: nonNegativeInteger,
@@ -46,6 +46,7 @@ export const schedulerRunTenantSchema = z.object({
   tenantId: z.string().min(1),
   campaignsTouched: nonNegativeInteger,
   batchSize: nonNegativeInteger,
+  purged: nonNegativeInteger.nullable().optional(),
   sent: nonNegativeInteger,
   failed: nonNegativeInteger,
   skipped: nonNegativeInteger,
@@ -55,7 +56,7 @@ export const schedulerRunTenantSchema = z.object({
   createdAt: isoDateTime,
 });
 
-export const schedulerRunCursorSchema = z.string().min(1).superRefine((value, ctx) => {
+const schedulerRunCursorSchema = z.string().min(1).superRefine((value, ctx) => {
   const parts = value.split('~');
   try {
     if (
@@ -97,6 +98,5 @@ export type SchedulerRunTotals = z.output<typeof schedulerRunTotalsSchema>;
 export type SchedulerRun = z.output<typeof schedulerRunSchema>;
 export type SchedulerRunTenant = z.output<typeof schedulerRunTenantSchema>;
 export type SchedulerRunListQuery = z.output<typeof schedulerRunListQuerySchema>;
-export type SchedulerRunListQueryInput = z.input<typeof schedulerRunListQuerySchema>;
 export type SchedulerRunTenantItem = z.output<typeof schedulerRunTenantItemSchema>;
 export type SchedulerRunTenantSummary = z.output<typeof schedulerRunTenantSummarySchema>;

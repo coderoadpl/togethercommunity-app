@@ -19,8 +19,11 @@ import { ProductAccessEditor } from './ProductAccessEditor.js';
 const product: Product = {
   id: 'product-1',
   tenantId: 't1',
+  type: 'course',
+  slug: 'bundle',
   title: 'Bundle',
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: false,

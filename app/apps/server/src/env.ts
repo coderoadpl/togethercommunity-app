@@ -11,6 +11,7 @@ export const envSchema = z
     NODE_ENV: z.string().optional(),
     APP_ENV: z.string().optional(),
     PORT: z.coerce.number().int().positive().default(48730),
+    INTERNAL_PORT: z.coerce.number().int().positive().optional(),
     DATABASE_URL: z
       .string()
       .default('postgres://together:together@localhost:48912/together'),
@@ -22,7 +23,7 @@ export const envSchema = z
         }),
       })
       .default('node-postgres'),
-    APP_BASE_DOMAIN: z.string().default('localhost'),
+    APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: optionalNonEmptyString,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
@@ -45,6 +46,10 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    STORAGE_ALLOW_PRIVATE_ENDPOINTS: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     TOGETHER_VISUAL_CLOCK: z.string().datetime({ offset: true }).optional(),
     EMAIL_PROVIDER: z.enum(['ses', 'smtp', 'dev']).default('dev'),
     EMAIL_FROM: optionalNonEmptyString,
@@ -63,6 +68,10 @@ export const envSchema = z
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),
     EMAIL_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(2000).default(1000),
     KSEF_DISPATCH_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
+    CONSENT_EVIDENCE_PURGE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     EMAIL_DISPATCH_ATTEMPTS_CAP: z.coerce.number().int().positive().default(5),
     EMAIL_DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(1000),
     EMAIL_DISPATCH_BACKOFF_CAP_MS: z.coerce.number().int().positive().default(900000),
@@ -91,13 +100,6 @@ export const envSchema = z
     }
     const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
     if (!production) return;
-    if (env.TENANT_CREATION !== 'closed') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TENANT_CREATION'],
-        message: 'TENANT_CREATION must be closed in production',
-      });
-    }
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

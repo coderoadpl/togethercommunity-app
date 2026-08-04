@@ -17,24 +17,33 @@ import {
   Select,
   Stack,
   Switch,
-  Tab,
-  Tabs,
   Tooltip,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import DOMPurify from 'dompurify';
 
-import { lessonBlockSchema, type CourseLesson, type LessonBlock } from '#core/domain/index.js';
+import {
+  inspectVideoEmbedUrl,
+  lessonBlockSchema,
+  type CourseLesson,
+  type LessonBlock,
+  type VideoEmbedUrlInspection,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
-import { Eyebrow, LessonHtmlContent } from '../../../theme.js';
+import {
+  Eyebrow,
+  LessonMediaClip,
+  LessonMediaFrame,
+  LessonMediaIframe,
+} from '../../../theme.js';
 import { BunnyVideoPickerDialog } from './BunnyVideoPickerDialog.js';
 import { errorMessage, MutationError } from './feedback.js';
 
@@ -123,12 +132,31 @@ const toBlock = (draft: BlockDraft): unknown => {
   }
 };
 
+const embedUrlErrorMessage = (inspection: VideoEmbedUrlInspection, t: Messages): string | null => {
+  switch (inspection.kind) {
+    case 'invalid-url':
+      return t.lessons.embedInvalidUrl;
+    case 'invalid-provider':
+      return inspection.provider === 'youtube'
+        ? t.lessons.embedInvalidYoutubeUrl
+        : t.lessons.embedInvalidVimeoUrl;
+    case 'supported':
+    case 'unsupported':
+      return null;
+  }
+};
+
 const parseBlocks = (
   drafts: BlockDraft[],
   t: Messages,
 ): { ok: true; blocks: LessonBlock[] } | { ok: false; message: string } => {
   const blocks: LessonBlock[] = [];
   for (const draft of drafts) {
+    if (draft.type === 'embed') {
+      const inspection = inspectVideoEmbedUrl(draft.embedUrl);
+      const message = embedUrlErrorMessage(inspection, t);
+      if (message !== null) return { ok: false, message };
+    }
     const parsed = lessonBlockSchema.safeParse(toBlock(draft));
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? t.lessons.invalidBlocks };
     blocks.push(parsed.data);
@@ -136,129 +164,29 @@ const parseBlocks = (
   return { ok: true, blocks };
 };
 
-const HtmlBlockEditor = ({
-  index,
-  value,
-  onChange,
-}: {
-  index: number;
-  value: string;
-  onChange: (html: string) => void;
-}) => {
-  const t = useTranslations();
-  const [tab, setTab] = useState<'edit' | 'preview'>('edit');
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const surround = (before: string, after: string, placeholder: string) => {
-    const element = inputRef.current;
-    const start = element?.selectionStart ?? value.length;
-    const end = element?.selectionEnd ?? value.length;
-    const selected = value.slice(start, end) || placeholder;
-    onChange(`${value.slice(0, start)}${before}${selected}${after}${value.slice(end)}`);
-    requestAnimationFrame(() => {
-      if (element === null) return;
-      element.focus();
-      const caret = start + before.length;
-      element.setSelectionRange(caret, caret + selected.length);
-    });
-  };
-
-  const tools = [
-    {
-      key: 'bold',
-      label: t.lessons.htmlToolbarBold,
-      apply: () => surround('<strong>', '</strong>', t.lessons.htmlPlaceholderBold),
-    },
-    {
-      key: 'italic',
-      label: t.lessons.htmlToolbarItalic,
-      apply: () => surround('<em>', '</em>', t.lessons.htmlPlaceholderItalic),
-    },
-    {
-      key: 'heading',
-      label: t.lessons.htmlToolbarHeading,
-      apply: () => surround('<h3>', '</h3>', t.lessons.htmlPlaceholderHeading),
-    },
-    {
-      key: 'list',
-      label: t.lessons.htmlToolbarList,
-      apply: () => surround('<ul>\n  <li>', '</li>\n</ul>', t.lessons.htmlPlaceholderList),
-    },
-    {
-      key: 'code',
-      label: t.lessons.htmlToolbarCode,
-      apply: () => surround('<code>', '</code>', t.lessons.htmlPlaceholderCode),
-    },
-  ];
-
-  return (
-    <Stack useFlexGap spacing="0.6rem">
-      <Tabs
-        value={tab}
-        onChange={(_event, next: 'edit' | 'preview') => setTab(next)}
-        aria-label={t.lessons.htmlTabsAria}
-      >
-        <Tab value="edit" label={t.lessons.htmlEditTab} />
-        <Tab value="preview" label={t.lessons.htmlPreviewTab} />
-      </Tabs>
-      {tab === 'edit' ? (
-        <>
-          <Stack
-            direction="row"
-            useFlexGap
-            spacing="0.35rem"
-            sx={{ flexWrap: 'wrap' }}
-            data-testid="html-toolbar"
-          >
-            {tools.map((tool) => (
-              <Button key={tool.key} size="small" variant="outlined" onClick={tool.apply}>
-                {tool.label}
-              </Button>
-            ))}
-          </Stack>
-          <FormControl fullWidth size="small">
-            <FormLabel htmlFor={`block-${index}-html`}>{t.lessons.htmlLabel}</FormLabel>
-            <OutlinedInput
-              id={`block-${index}-html`}
-              size="small"
-              value={value}
-              multiline
-              minRows={4}
-              inputRef={inputRef}
-              onChange={(event) => onChange(event.target.value)}
-            />
-          </FormControl>
-        </>
-      ) : value.trim().length === 0 ? (
-        <Typography variant="caption" data-testid="html-preview-empty">
-          {t.lessons.htmlPreviewEmpty}
-        </Typography>
-      ) : (
-        <LessonHtmlContent
-          data-testid="html-preview"
-          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(value) }}
-        />
-      )}
-    </Stack>
-  );
-};
-
 const VideoBlockFields = ({
   draft,
   index,
   onChange,
   field,
+  showPrivacyNote,
 }: {
   draft: Extract<BlockDraft, { type: 'video' }>;
   index: number;
   onChange: (next: BlockDraft) => void;
   field: (label: string, key: string, value: string, update: (value: string) => void) => ReactElement;
+  showPrivacyNote: boolean;
 }) => {
   const t = useTranslations();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <Stack useFlexGap spacing="0.6rem">
+      {showPrivacyNote ? (
+        <Typography variant="caption" color="text.secondary" role="note">
+          {t.integrations.bunnySecurityHint}
+        </Typography>
+      ) : null}
       <Box>
         <Button
           size="small"
@@ -296,15 +224,64 @@ const VideoBlockFields = ({
   );
 };
 
-const BlockFields = ({
+const EmbedBlockFields = ({
   draft,
   index,
   onChange,
 }: {
-  draft: BlockDraft;
+  draft: Extract<BlockDraft, { type: 'embed' }>;
   index: number;
   onChange: (next: BlockDraft) => void;
 }) => {
+  const t = useTranslations();
+  const inspection = inspectVideoEmbedUrl(draft.embedUrl);
+  const error = draft.embedUrl.length === 0 ? null : embedUrlErrorMessage(inspection, t);
+  return (
+    <Stack useFlexGap spacing="0.6rem">
+      <FormControl fullWidth size="small" error={error !== null}>
+        <FormLabel htmlFor={`block-${index}-embedUrl`}>{t.lessons.embedUrlLabel}</FormLabel>
+        <OutlinedInput
+          id={`block-${index}-embedUrl`}
+          size="small"
+          value={draft.embedUrl}
+          onChange={(event) => onChange({ ...draft, embedUrl: event.target.value })}
+        />
+        {error === null ? null : <FormHelperText>{error}</FormHelperText>}
+      </FormControl>
+      {inspection.kind === 'supported' ? (
+        <LessonMediaFrame sx={{ aspectRatio: '16 / 9' }}>
+          <LessonMediaClip>
+            <LessonMediaIframe
+              src={inspection.embedUrl}
+              title={t.lessons.embedPreviewTitle}
+              allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+              allowFullScreen
+              data-testid="embed-preview"
+            />
+          </LessonMediaClip>
+        </LessonMediaFrame>
+      ) : null}
+      {inspection.kind === 'supported' ? (
+        <Typography variant="caption" color="text.secondary" role="note">
+          {inspection.provider === 'youtube' ? t.lessons.youtubePrivacyNote : t.lessons.vimeoPrivacyNote}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+};
+
+const BlockFields = ({
+  draft,
+  index,
+  onChange,
+  showBunnyPrivacyNote,
+}: {
+  draft: BlockDraft;
+  index: number;
+  onChange: (next: BlockDraft) => void;
+  showBunnyPrivacyNote: boolean;
+}) => {
+  const t = useTranslations();
   const field = (label: string, key: string, value: string, update: (value: string) => void, multiline = false) => (
     <FormControl fullWidth size="small">
       <FormLabel htmlFor={`block-${index}-${key}`}>{label}</FormLabel>
@@ -321,9 +298,17 @@ const BlockFields = ({
 
   switch (draft.type) {
     case 'video':
-      return <VideoBlockFields draft={draft} index={index} onChange={onChange} field={field} />;
+      return (
+        <VideoBlockFields
+          draft={draft}
+          index={index}
+          onChange={onChange}
+          field={field}
+          showPrivacyNote={showBunnyPrivacyNote}
+        />
+      );
     case 'embed':
-      return field('embedUrl', 'embedUrl', draft.embedUrl, (embedUrl) => onChange({ ...draft, embedUrl }));
+      return <EmbedBlockFields draft={draft} index={index} onChange={onChange} />;
     case 'pdf':
       return (
         <Stack useFlexGap spacing="0.6rem">
@@ -340,18 +325,106 @@ const BlockFields = ({
       );
     case 'html':
       return (
-        <HtmlBlockEditor
-          index={index}
+        <HtmlEditor
+          id={`block-${index}-html`}
           value={draft.html}
           onChange={(html) => onChange({ ...draft, html })}
+          fieldLabel={t.lessons.htmlLabel}
+          size="small"
         />
       );
   }
 };
 
+const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const attachments = useQuery(actions.lessonAttachments(lessonId));
+  const refresh = async () => {
+    await queryClient.invalidateQueries(actions.lessonAttachmentsInvalidates(lessonId));
+  };
+  const upload = useMutation({
+    ...actions.uploadLessonAttachment,
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    ...actions.deleteLessonAttachment,
+    onSettled: refresh,
+  });
+  const selectFile = (file: File | undefined) => {
+    if (file === undefined) return;
+    upload.mutate({
+      lessonId,
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      sizeBytes: file.size,
+      body: file,
+    });
+  };
+
+  return (
+    <Stack useFlexGap spacing="0.75rem" data-testid="lesson-attachments-editor">
+      <Box>
+        <Eyebrow variant="overline" component="h4">
+          {t.lessons.attachmentsHeading}
+        </Eyebrow>
+        <Typography variant="body2" color="text.secondary">
+          {t.lessons.attachmentsHelp}
+        </Typography>
+      </Box>
+      {attachments.isPending ? (
+        <Typography variant="caption">{t.common.loading}</Typography>
+      ) : attachments.isError ? (
+        <MutationError error={attachments.error} />
+      ) : attachments.data.attachments.length === 0 ? (
+        <Typography variant="caption" data-testid="lesson-attachments-empty">
+          {t.lessons.attachmentsEmpty}
+        </Typography>
+      ) : (
+        <List disablePadding>
+          {attachments.data.attachments.map((attachment) => (
+            <ListItem key={attachment.id} disableGutters>
+              <ListItemText
+                primary={attachment.fileName}
+                secondary={`${t.lessons.attachmentSize({ kilobytes: Math.max(1, Math.ceil(attachment.sizeBytes / 1024)) })}${attachment.status === 'pending' ? ` · ${t.lessons.attachmentPending}` : ''}`}
+              />
+              <Button
+                size="small"
+                color="error"
+                aria-label={t.lessons.deleteAttachment({ name: attachment.fileName })}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate({ lessonId, attachmentId: attachment.id })}
+              >
+                {t.common.remove}
+              </Button>
+            </ListItem>
+          ))}
+        </List>
+      )}
+      <Box>
+        <Button component="label" variant="outlined" disabled={upload.isPending}>
+          {upload.isPending ? t.lessons.uploadingAttachment : t.lessons.uploadAttachment}
+          <input
+            hidden
+            type="file"
+            aria-label={t.lessons.attachmentFileInput}
+            onChange={(event) => {
+              selectFile(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+        </Button>
+      </Box>
+      {upload.isError ? <MutationError error={upload.error} /> : null}
+      {remove.isError ? <MutationError error={remove.error} /> : null}
+    </Stack>
+  );
+};
+
 const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved: (lessonId: string) => void }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const tenantSecrets = useQuery(actions.tenantSecrets);
   const [name, setName] = useState(lesson?.name ?? '');
   const [duration, setDuration] = useState(
     lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
@@ -361,6 +434,8 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const [addType, setAddType] = useState<BlockType>('video');
   const [validationError, setValidationError] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const showBunnyPrivacyNote =
+    tenantSecrets.isSuccess && !tenantSecrets.data.secrets.some((secret) => secret.key === 'bunny.securityKey');
 
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.lessonsInvalidates());
@@ -504,7 +579,12 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
                   {t.common.remove}
                 </Button>
               </Stack>
-              <BlockFields draft={block} index={index} onChange={(next) => changeBlock(index, next)} />
+              <BlockFields
+                draft={block}
+                index={index}
+                onChange={(next) => changeBlock(index, next)}
+                showBunnyPrivacyNote={showBunnyPrivacyNote}
+              />
             </Paper>
           ))}
         </Stack>
@@ -532,6 +612,13 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           {t.lessons.addBlock}
         </Button>
       </Stack>
+
+      {lesson === null ? null : (
+        <>
+          <Divider />
+          <LessonAttachmentsEditor lessonId={lesson.id} />
+        </>
+      )}
 
       <Stack direction="row" useFlexGap spacing="0.75rem">
         <Button type="submit" variant="contained" disabled={pending || name.trim().length === 0}>

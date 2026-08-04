@@ -1,13 +1,15 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { emailEventSchema, type Campaign, type CampaignSend, type ConsentDefinition, type ConsentDefinitionVersion, type EmailLayout, type MarketingConsent, type Suppression, type TenantDocument, type TenantDocumentVersion } from '#core/domain/index.js';
+import { consentEvidenceRetentionCutoff } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import { createEmailEventRepository } from './email-events.js';
 import { createEmailSendRepository } from './email-sends.js';
+import { createConsentEvidenceRetentionRepository } from './consent-evidence-retention.js';
+import { createMemberEventRepository } from './member-events.js';
 import { createSchedulerRunRepository } from './scheduler-runs.js';
 import {
   createAutomationIdempotencyRepository,
@@ -21,36 +23,25 @@ import {
   createSuppressionRepository,
   createTenantDocumentRepository,
 } from './marketing-repositories.js';
-import { emailOutbox, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
-import * as dbSchema from './schema.js';
-import { uniqueTestDatabaseName } from './test-database-name.js';
+import { campaignSends, consents, emailOutbox, marketingConsents, members, schedulerRuns, tenantSesSettings, tenants } from './schema.js';
+import { createTestDatabase } from './test-database-name.js';
 
-const TEST_DB = uniqueTestDatabaseName('together_marketing_repositories_test');
 const baseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
-const testUrl = (() => { const url = new URL(baseUrl); url.pathname = `/${TEST_DB}`; return url.toString(); })();
 const NOW = '2026-07-22T00:00:00.000Z';
+const STALE_CONSENT_AT = '2020-07-21T10:00:00.000Z';
 let db: Db;
-let dbPool: pg.Pool;
+let testUrl: string;
+let closeTestDatabase: () => Promise<void>;
 
 afterAll(async () => {
-  await dbPool.end();
-  const admin = new pg.Client({ connectionString: baseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.end();
+  await closeTestDatabase();
 });
 
 beforeAll(async () => {
-  const admin = new pg.Client({ connectionString: baseUrl });
-  await admin.connect();
-  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB} WITH (FORCE)`);
-  await admin.query(`CREATE DATABASE ${TEST_DB}`);
-  await admin.end();
-  const pool = new pg.Pool({ connectionString: testUrl });
-  await migrate(drizzle(pool), { migrationsFolder: 'drizzle' });
-  await pool.end();
-  dbPool = new pg.Pool({ connectionString: testUrl });
-  db = drizzle(dbPool, { schema: dbSchema });
+  const testDatabase = await createTestDatabase('together_marketing_repositories_test', baseUrl);
+  db = testDatabase.db;
+  testUrl = testDatabase.url;
+  closeTestDatabase = testDatabase.close;
   await db.insert(tenants).values([
     { id: 'tenant-a', slug: 'tenant-a', name: 'A', createdAt: NOW },
     { id: 'tenant-b', slug: 'tenant-b', name: 'B', createdAt: NOW },
@@ -256,8 +247,105 @@ describe('marketing database repositories', () => {
     const second = campaigns.acquireLease('tenant-a', 'campaign-tenant-a', {
       workerId: 'worker-b', now: NOW, lockedUntil: '2026-07-22T00:01:00.000Z',
     });
-    expect(await Promise.all([first, second])).toEqual([true, false]);
+    const outcomes = await Promise.all([first, second]);
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+    expect(await campaigns.findById('tenant-a', 'campaign-tenant-a')).toMatchObject({
+      lockedBy: outcomes[0] ? 'worker-a' : 'worker-b',
+      lockedUntil: '2026-07-22T00:01:00.000Z',
+    });
     expect(await campaigns.findById('tenant-b', 'campaign-tenant-a')).toBeNull();
+  });
+
+  it('purges expired terms and marketing evidence without crossing tenants', async () => {
+    await db.insert(tenants).values([
+      { id: 'retention-a', slug: 'retention-a', name: 'Retention A', createdAt: NOW },
+      { id: 'retention-b', slug: 'retention-b', name: 'Retention B', createdAt: NOW },
+    ]);
+    const definitions = createConsentDefinitionRepository(db);
+    await definitions.create('retention-a', definition('retention-a'), version('retention-a'));
+    await definitions.create('retention-b', definition('retention-b'), version('retention-b'));
+    await createCampaignRepository(db).create('retention-a', campaign('retention-a'));
+    const retentionStartedAt = '2020-07-21T10:00:00.000Z';
+    await db.insert(consents).values([
+      {
+        id: 'terms-retention-a', tenantId: 'retention-a', userId: 'user-a', email: 'a@example.test',
+        source: 'register', termsUrl: 'https://example.test/terms', privacyUrl: null,
+        acceptedAt: '2020-01-01T00:00:00.000Z', retentionStartedAt,
+      },
+      {
+        id: 'terms-retention-b', tenantId: 'retention-b', userId: 'user-b', email: 'b@example.test',
+        source: 'register', termsUrl: 'https://example.test/terms', privacyUrl: null,
+        acceptedAt: '2020-01-01T00:00:00.000Z', retentionStartedAt,
+      },
+    ]);
+    const evidence = (tenantId: string, id: string, email: string): MarketingConsent => ({
+      id, tenantId, memberId: null, email, definitionId: `definition-${tenantId}`,
+      definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url' as const, url: 'https://example.test/legal' },
+      status: 'withdrawn' as const, previousId: null, source: 'preference_page' as const,
+      evidence: { collectedAt: retentionStartedAt, proofRef: 'withdrawal' },
+      occurredAt: retentionStartedAt,
+    });
+    const marketing = createMarketingConsentRepository(db);
+    await marketing.record('retention-a', evidence('retention-a', 'marketing-retention-a', 'a@example.test'));
+    await marketing.record('retention-b', evidence('retention-b', 'marketing-retention-b', 'b@example.test'));
+    await db.insert(campaignSends).values({
+      id: 'send-retention-a', tenantId: 'retention-a', campaignId: 'campaign-retention-a',
+      source: 'broadcast', memberId: null, email: 'a@example.test', subject: 'Subject',
+      consentRowId: 'marketing-retention-a', unsubscribeTokenId: null, status: 'sent',
+      skipReason: null, sesMessageId: null, deliveryStatus: null, deliveryOccurredAt: null,
+      idempotencySource: null, renderedBodyPurgedAt: null, createdAt: NOW, sentAt: NOW,
+    });
+    const repository = createConsentEvidenceRetentionRepository(db);
+
+    await expect(repository.listExpiredTenantIds(
+      consentEvidenceRetentionCutoff('2026-12-31T22:59:59.999Z'),
+    )).resolves.toEqual([]);
+    const cutoff = consentEvidenceRetentionCutoff('2026-12-31T23:00:00.000Z');
+    await expect(repository.listExpiredTenantIds(cutoff)).resolves.toEqual(['retention-a', 'retention-b']);
+    const purgeOptions = { batchSize: 1, deadlineMs: Date.now() + 60_000 };
+    await expect(repository.purgeExpired('retention-a', cutoff, purgeOptions)).resolves.toBe(2);
+    await expect(repository.purgeExpired('retention-a', cutoff, purgeOptions)).resolves.toBe(0);
+    await expect(repository.listExpiredTenantIds(cutoff)).resolves.toEqual(['retention-b']);
+    await expect(db.select({ id: consents.id }).from(consents)
+      .where(eq(consents.tenantId, 'retention-a'))).resolves.toEqual([]);
+    await expect(db.select({ id: marketingConsents.id }).from(marketingConsents)
+      .where(eq(marketingConsents.tenantId, 'retention-b'))).resolves.toEqual([{ id: 'marketing-retention-b' }]);
+    await expect(db.select({ consentRowId: campaignSends.consentRowId }).from(campaignSends)
+      .where(eq(campaignSends.id, 'send-retention-a'))).resolves.toEqual([{ consentRowId: null }]);
+  });
+
+  it('purges stale pending consent evidence referenced by a skipped campaign send', async () => {
+    const tenantId = 'retention-pending';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Pending retention', createdAt: NOW });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'marketing-retention-pending', tenantId, memberId: null, email: 'pending@example.test',
+      definitionId: `definition-${tenantId}`, definitionVersion: 1, wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' }, status: 'granted',
+      previousId: null, source: 'api', evidence: { collectedAt: STALE_CONSENT_AT, proofRef: 'pending' },
+      occurredAt: STALE_CONSENT_AT,
+    };
+    const repository = createMarketingConsentRepository(db);
+    await repository.record(tenantId, consent);
+    await db.insert(campaignSends).values({
+      id: 'send-retention-pending', tenantId, campaignId: `campaign-${tenantId}`, source: 'broadcast',
+      memberId: null, email: consent.email, subject: 'Subject', consentRowId: consent.id,
+      unsubscribeTokenId: null, status: 'skipped', skipReason: 'pending_confirmation', sesMessageId: null,
+      deliveryStatus: null, deliveryOccurredAt: null, idempotencySource: null, renderedBodyPurgedAt: null,
+      createdAt: NOW, sentAt: null,
+    });
+
+    await expect(repository.purgeStalePending(
+      tenantId,
+      '2021-01-01T00:00:00.000Z',
+      [consent.definitionId],
+    )).resolves.toBe(1);
+    await expect(repository.findById(tenantId, consent.id)).resolves.toBeNull();
+    await expect(db.select({ consentRowId: campaignSends.consentRowId }).from(campaignSends)
+      .where(eq(campaignSends.id, 'send-retention-pending')))
+      .resolves.toEqual([{ consentRowId: null }]);
   });
 
   it('claims idempotency keys by unique insert and returns original metadata on reuse', async () => {
@@ -552,19 +640,25 @@ describe('marketing database repositories', () => {
   it('indexes normalized exact recipient lookups for both send projections', async () => {
     const client = new pg.Client({ connectionString: testUrl });
     await client.connect();
-    const result = await client.query<{ indexname: string }>(`
-      select indexname
-      from pg_indexes
-      where schemaname = 'public'
-        and indexname in (
-          'campaign_sends_tenant_email_created_id_idx',
-          'email_outbox_tenant_normalized_to_created_id_idx'
-        )
-      order by indexname
-    `);
-    await client.end();
+    const rows = await (async () => {
+      try {
+        const result = await client.query<{ indexname: string }>(`
+          select indexname
+          from pg_indexes
+          where schemaname = 'public'
+            and indexname in (
+              'campaign_sends_tenant_email_created_id_idx',
+              'email_outbox_tenant_normalized_to_created_id_idx'
+            )
+          order by indexname
+        `);
+        return result.rows;
+      } finally {
+        await client.end();
+      }
+    })();
 
-    expect(result.rows.map((row) => row.indexname)).toEqual([
+    expect(rows.map((row) => row.indexname)).toEqual([
       'campaign_sends_tenant_email_created_id_idx',
       'email_outbox_tenant_normalized_to_created_id_idx',
     ]);
@@ -612,5 +706,77 @@ describe('marketing database repositories', () => {
       { version: 2, content: '# Revised second', publishedAt: null },
     ]);
     expect(await repository.findById('tenant-b', document.id)).toBeNull();
+  });
+
+  it('emits a typed member event when a marketing email is sent', async () => {
+    const tenantId = 'tenant-marketing-member-event';
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Member event', createdAt: NOW });
+    await db.insert(members).values({
+      id: 'member-marketing-email',
+      tenantId,
+      userId: 'user-marketing-email',
+      email: 'member-marketing@example.test',
+      createdAt: NOW,
+    });
+    await createConsentDefinitionRepository(db).create(tenantId, definition(tenantId), version(tenantId));
+    await createCampaignRepository(db).create(tenantId, campaign(tenantId));
+    const consent: MarketingConsent = {
+      id: 'consent-marketing-member-event',
+      tenantId,
+      memberId: 'member-marketing-email',
+      email: 'member-marketing@example.test',
+      definitionId: `definition-${tenantId}`,
+      definitionVersion: 1,
+      wordingSnapshot: 'Newsletter',
+      documentRefSnapshot: { mode: 'url', url: 'https://example.test/legal' },
+      status: 'confirmed',
+      previousId: null,
+      source: 'api',
+      evidence: { collectedAt: NOW, proofRef: 'fixture' },
+      occurredAt: NOW,
+    };
+    await createMarketingConsentRepository(db).record(tenantId, consent);
+    const pending: CampaignSend = {
+      id: 'marketing-member-event',
+      tenantId,
+      campaignId: `campaign-${tenantId}`,
+      source: 'broadcast',
+      memberId: 'member-marketing-email',
+      email: consent.email,
+      subject: 'Campaign subject',
+      consentRowId: consent.id,
+      unsubscribeTokenId: null,
+      status: 'pending',
+      skipReason: null,
+      sesMessageId: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+      idempotencySource: null,
+      renderedBodyPurgedAt: null,
+      createdAt: NOW,
+      sentAt: null,
+    };
+    const sends = createCampaignSendRepository(db);
+    await sends.claimRecipient(tenantId, pending);
+    await sends.update(tenantId, {
+      ...pending,
+      status: 'sent',
+      sesMessageId: 'ses-marketing-member-event',
+      sentAt: NOW,
+    });
+
+    expect(await createMemberEventRepository(db).listForMember(
+      tenantId,
+      'member-marketing-email',
+    )).toContainEqual(expect.objectContaining({
+      type: 'email-sent',
+      payload: {
+        sendId: 'marketing-member-event',
+        mailKind: 'marketing',
+        subject: 'Campaign subject',
+        source: 'broadcast',
+        transport: 'tenant-ses',
+      },
+    }));
   });
 });

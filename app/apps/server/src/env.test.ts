@@ -4,6 +4,7 @@ import {
   createMultipleTenantsReporter,
   selectAuthTrustedProxyHeader,
   selectDeploymentAuthOrigins,
+  selectDeploymentIdentity,
   selectDevSinkPurge,
   selectTenantCreationMode,
   selectTenantRouting,
@@ -54,6 +55,45 @@ describe('production posture detection', () => {
   it('applies the same precedence to the boot-time schema', () => {
     expect(envSchema.safeParse({ NODE_ENV: 'production' }).success).toBe(false);
     expect(envSchema.parse({ NODE_ENV: 'production', APP_ENV: 'preview' }).KSEF_ENVIRONMENT).toBe('test');
+  });
+});
+
+describe('deployment identity', () => {
+  it('derives diagnostics without exposing database connection details', () => {
+    const identity = selectDeploymentIdentity({
+      NODE_ENV: 'production',
+      APP_ENV: 'preview',
+      APP_COMMIT_SHA: 'commit-sha',
+      DATABASE_URL: 'postgres://operator:secret@db.example:5432/together',
+    });
+    const sameHost = selectDeploymentIdentity({
+      NODE_ENV: 'development',
+      APP_ENV: undefined,
+      APP_COMMIT_SHA: undefined,
+      DATABASE_URL: 'postgres://different:credentials@db.example:6432/other',
+    });
+
+    expect(identity).toEqual({
+      environment: 'preview',
+      production: false,
+      commit: 'commit-sha',
+      databaseFingerprint: 'b1bfbb98b4f7',
+    });
+    expect(sameHost).toEqual({
+      environment: 'unset',
+      production: false,
+      commit: null,
+      databaseFingerprint: identity.databaseFingerprint,
+    });
+  });
+
+  it('uses a null fingerprint when the database URL has no hostname', () => {
+    expect(selectDeploymentIdentity({
+      NODE_ENV: 'development',
+      APP_ENV: undefined,
+      APP_COMMIT_SHA: undefined,
+      DATABASE_URL: 'postgres:///together',
+    }).databaseFingerprint).toBeNull();
   });
 });
 

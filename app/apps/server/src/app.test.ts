@@ -592,6 +592,12 @@ const deps = (input: {
     health: { pingDatabase: async () => input.databaseUp ?? true },
     appVersion: '0.1.0-test',
     commitSha: 'test-sha',
+    deploymentIdentity: {
+      environment: 'preview',
+      production: false,
+      commit: 'test-sha',
+      databaseFingerprint: 'b1bfbb98b4f7',
+    },
     tenantCreationMode: 'open',
     ids: { nextId: () => `id-${String(++nextId)}` },
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
@@ -1456,13 +1462,17 @@ describe('automatic invoice dispatch route', () => {
 describe('health route', () => {
   it('keeps the compatibility endpoint and exposes deploy attestation', async () => {
     const up = await buildApp(deps()).request(API_PATHS.health);
-    expect(await up.json()).toMatchObject({
+    expect(await up.json()).toEqual({
       ok: true,
       data: {
         status: 'ok',
         database: 'up',
         version: '0.1.0-test',
         sha: 'test-sha',
+        environment: 'preview',
+        production: false,
+        commit: 'test-sha',
+        databaseFingerprint: 'b1bfbb98b4f7',
       },
     });
 

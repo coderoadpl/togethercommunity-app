@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { createDb } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
@@ -237,6 +237,13 @@ interface AuthConfig {
   googleEnabled: boolean;
 }
 
+interface DeploymentIdentity {
+  environment: string;
+  production: boolean;
+  commit: string | null;
+  databaseFingerprint: string | null;
+}
+
 interface KsefAppDeps {
   environment: KsefEnvironment;
   credentials: KsefCredentialResolver;
@@ -332,6 +339,7 @@ export interface AppDeps {
   health: HealthPort;
   appVersion: string;
   commitSha: string;
+  deploymentIdentity: DeploymentIdentity;
   tenantCreationMode: TenantCreationMode;
   ids: IdGenerator;
   clock: Clock;
@@ -471,6 +479,25 @@ export const selectTrustedAuthOrigins = (input: {
         ])),
     ...input.customDomains.map((domain) => `https://${domain}`),
   ];
+};
+
+export const selectDeploymentIdentity = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'APP_COMMIT_SHA' | 'DATABASE_URL'>,
+): DeploymentIdentity => {
+  let hostname: string | null = null;
+  try {
+    hostname = new URL(env.DATABASE_URL).hostname || null;
+  } catch {
+    hostname = null;
+  }
+  return {
+    environment: env.APP_ENV ?? 'unset',
+    production: isProductionEnvironment(env),
+    commit: env.APP_COMMIT_SHA ?? null,
+    databaseFingerprint: hostname === null
+      ? null
+      : createHash('sha256').update(hostname).digest('hex').slice(0, 12),
+  };
 };
 
 /**
@@ -928,6 +955,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
+    deploymentIdentity: selectDeploymentIdentity(env),
     tenantCreationMode,
     ids,
     clock,

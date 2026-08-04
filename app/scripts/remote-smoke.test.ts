@@ -9,7 +9,16 @@ describe('remote smoke', () => {
       if (url.endsWith('/api/health')) {
         return Response.json({
           ok: true,
-          data: { status: 'ok', database: 'up', version: '0.1.0', sha: 'abc123' },
+          data: {
+            status: 'ok',
+            database: 'up',
+            version: '0.1.0',
+            sha: 'abc123',
+            environment: 'production',
+            production: true,
+            commit: 'abc123',
+            databaseFingerprint: 'b1bfbb98b4f7',
+          },
         });
       }
       if (url.endsWith('/api/public/offer')) {
@@ -52,7 +61,16 @@ describe('remote smoke', () => {
     const request = vi.fn(async () =>
       Response.json({
         ok: true,
-        data: { status: 'ok', database: 'up', version: '0.1.0', sha: 'old-sha' },
+        data: {
+          status: 'ok',
+          database: 'up',
+          version: '0.1.0',
+          sha: 'old-sha',
+          environment: 'production',
+          production: true,
+          commit: 'old-sha',
+          databaseFingerprint: 'b1bfbb98b4f7',
+        },
       }),
     );
 

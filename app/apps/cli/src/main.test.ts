@@ -130,6 +130,10 @@ beforeEach(() => {
     database: 'up',
     version: '0.1.0',
     sha: 'cafe1234',
+    environment: 'test',
+    production: false,
+    commit: 'cafe1234',
+    databaseFingerprint: null,
   }));
   h.configureStorage.mockReset();
   h.configureStorage.mockResolvedValue(ok({

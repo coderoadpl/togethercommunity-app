@@ -57,7 +57,10 @@ const noTenantOffer = http.get('/api/public/offer', () =>
 afterEach(() => vi.unstubAllEnvs());
 
 describe('RegisterPage', () => {
-  it('keeps platform signup enabled on the configured base domain without resolving a tenant', async () => {
+  it.each([
+    ['configured base domain', 'togethercommunity.app'],
+    ['derived start host', 'start.togethercommunity.app'],
+  ])('keeps platform signup enabled on the %s without resolving a tenant', async (_surface, hostname) => {
     vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
     let offerCalls = 0;
     server.use(
@@ -70,7 +73,7 @@ describe('RegisterPage', () => {
       }),
     );
 
-    await renderRegisterPage('togethercommunity.app');
+    await renderRegisterPage(hostname);
 
     expect(screen.getByText(pl.auth.createAccountPlatformEyebrow)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: pl.auth.createAccount })).toBeEnabled();

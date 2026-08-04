@@ -353,6 +353,7 @@ export interface AppDeps {
   clock: Clock;
   logger: { error(message: string): void };
   baseDomain: string;
+  platformHost: string | null;
   singleTenantMode: boolean;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
@@ -409,11 +410,17 @@ export const selectDevSinkPurge = (
 
 export const selectTenantRouting = (
   env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
-): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: TenantCreationMode } => {
+): {
+  baseDomain: string;
+  platformHost: string | null;
+  singleTenantMode: boolean;
+  tenantCreationMode: TenantCreationMode;
+} => {
   const singleTenantMode = env.APP_BASE_DOMAIN === undefined;
   const creationMode = selectTenantCreationMode(env);
   return {
     baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
+    platformHost: env.APP_BASE_DOMAIN === undefined ? null : `start.${env.APP_BASE_DOMAIN}`,
     singleTenantMode,
     tenantCreationMode: singleTenantMode && creationMode === 'open' ? 'closed' : creationMode,
   };
@@ -513,7 +520,7 @@ export const selectDeploymentIdentity = (
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
 export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps => {
-  const { baseDomain, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
+  const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const tenants = createTenantRepository(db, singleTenantMode
@@ -835,7 +842,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
-        { tenantDomains, tenants, baseDomain, singleTenantMode },
+        { tenantDomains, tenants, baseDomain, platformHost, singleTenantMode },
       );
       if (!resolved.ok) return resolved;
       if (resolved.value === null) return ok({ required: false });
@@ -845,7 +852,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
-        { tenantDomains, tenants, baseDomain, singleTenantMode },
+        { tenantDomains, tenants, baseDomain, platformHost, singleTenantMode },
       );
       if (!resolved.ok) return resolved;
       if (resolved.value === null) return ok({ recorded: false });
@@ -975,6 +982,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     clock,
     logger,
     baseDomain,
+    platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {

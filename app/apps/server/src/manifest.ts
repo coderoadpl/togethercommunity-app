@@ -9,7 +9,7 @@ import type { AppDeps } from './composition.js';
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 type ManifestDeps = Pick<
   AppDeps,
-  'baseDomain' | 'singleTenantMode' | 'tenantDomains' | 'tenants'
+  'baseDomain' | 'platformHost' | 'singleTenantMode' | 'tenantDomains' | 'tenants'
 >;
 
 const PLATFORM_NAME = 'Together';

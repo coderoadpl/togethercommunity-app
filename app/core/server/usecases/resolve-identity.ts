@@ -31,6 +31,7 @@ export interface ResolveIdentityDeps {
   tenants: TenantRepository;
   /** e.g. "localhost" in dev, "together.example" in prod. */
   baseDomain: string;
+  platformHost: string | null;
   singleTenantMode: boolean;
 }
 

@@ -4,7 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { en } from '../../i18n/en.js';
 import { pl } from '../../i18n/pl.js';
-import { hostHasTenantSubdomain, tenantUrl } from '../../lib/tenant.js';
+import {
+  hostHasTenantSubdomain,
+  isConfiguredBaseDomainHost,
+  tenantUrl,
+  usesPlatformAuthSurface,
+} from '../../lib/tenant.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { TenantGate } from './TenantNotFoundPage.js';
@@ -61,6 +66,39 @@ describe('tenantUrl', () => {
       'https://coderoad.togethercommunity.app',
     );
   });
+
+  it('keeps tenant links on the configured base domain from the start host', () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+
+    expect(tenantUrl('acme', new URL('https://start.togethercommunity.app'))).toBe(
+      'https://acme.togethercommunity.app',
+    );
+  });
+});
+
+describe('platform host helpers', () => {
+  it('recognizes both the configured base domain and its start host', () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+
+    expect(isConfiguredBaseDomainHost('togethercommunity.app')).toBe(true);
+    expect(isConfiguredBaseDomainHost('START.TOGETHERCOMMUNITY.APP')).toBe(true);
+    expect(isConfiguredBaseDomainHost('acme.togethercommunity.app')).toBe(false);
+  });
+
+  it('uses the platform auth surface on the base and start hosts only', () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+
+    expect(usesPlatformAuthSurface('togethercommunity.app')).toBe(true);
+    expect(usesPlatformAuthSurface('start.togethercommunity.app')).toBe(true);
+    expect(usesPlatformAuthSurface('acme.togethercommunity.app')).toBe(false);
+  });
+
+  it('keeps the existing single-tenant platform fallback without configuration', () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', '');
+
+    expect(isConfiguredBaseDomainHost('start.example.com')).toBe(false);
+    expect(usesPlatformAuthSurface('start.example.com')).toBe(true);
+  });
 });
 
 describe('hostHasTenantSubdomain', () => {
@@ -70,6 +108,10 @@ describe('hostHasTenantSubdomain', () => {
 
   it('is true for a single-label tenant subdomain', () => {
     expect(hostHasTenantSubdomain('acme.togethercommunity.app', 'togethercommunity.app')).toBe(true);
+  });
+
+  it('is false on the derived platform host', () => {
+    expect(hostHasTenantSubdomain('start.togethercommunity.app', 'togethercommunity.app')).toBe(false);
   });
 
   it('supports the localhost fallback', () => {
@@ -85,6 +127,11 @@ describe('hostHasTenantSubdomain', () => {
 describe('TenantGate', () => {
   it('renders the app on the apex domain without probing', () => {
     renderWithProviders(<TenantGate hostname="localhost">{children}</TenantGate>);
+    expect(screen.getByText('APP')).toBeInTheDocument();
+  });
+
+  it('renders the app on the platform host without probing', () => {
+    renderWithProviders(<TenantGate hostname="start.localhost">{children}</TenantGate>);
     expect(screen.getByText('APP')).toBeInTheDocument();
   });
 

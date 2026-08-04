@@ -37,6 +37,7 @@ const tenant = (name = 'Acme'): Tenant => ({
 
 const deps = (tenants: Tenant[], accentColor: string | null = null): ManifestDeps => ({
   baseDomain: 'localhost',
+  platformHost: 'start.localhost',
   singleTenantMode: false,
   tenantDomains: {
     findByDomain: async () => null,

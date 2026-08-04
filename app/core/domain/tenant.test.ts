@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isReservedTenantSlug,
   resolveInvoiceVat,
   resolveTenantSocial,
   tenantSchema,
   tenantSettingsSchema,
   updateTenantSettingsInputSchema,
 } from './tenant.js';
+
+describe('isReservedTenantSlug', () => {
+  it('reserves the platform host label', () => {
+    expect(isReservedTenantSlug('start')).toBe(true);
+    expect(isReservedTenantSlug('starter')).toBe(false);
+  });
+});
 
 describe('tenantSchema', () => {
   it('requires declared lifecycle status and plan values', () => {

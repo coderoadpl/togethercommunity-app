@@ -1445,21 +1445,19 @@ describe('server edge security baseline', () => {
     const result = await app.request(API_PATHS.health);
 
     expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
-    expect(result.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
-    expect(result.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
+    expect(result.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
     expect(result.headers.get('x-content-type-options')).toBe('nosniff');
     expect(result.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
     expect(result.headers.get('cache-control')).toBe('no-store');
   });
 
-  it('allows tenant bucket connections only on panel documents', async () => {
+  it('allows tenant bucket connections for every SPA entry path', async () => {
     const app = buildApp(deps());
     const panel = await app.request('/panel/lessons/lesson-1');
     const checkout = await app.request('/checkout/product-1');
 
     expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
-    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
-    expect(checkout.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
+    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
@@ -1600,6 +1598,7 @@ describe('lesson attachment download route', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('https://download.example.test/signed');
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
   it('returns an API envelope when the use-case rejects the attachment', async () => {
@@ -1674,6 +1673,7 @@ describe('purchased product download route', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+    expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
   it('returns 403 for an unentitled member', async () => {

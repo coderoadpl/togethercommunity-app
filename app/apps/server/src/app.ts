@@ -19,7 +19,6 @@ import { recordException, telemetryMiddleware } from './telemetry.js';
 
 type Vars = { Variables: { identity: Identity; secureHeadersNonce?: string } };
 const betterAuthPathPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
-const isPanelPath = (path: string): boolean => path === '/panel' || path.startsWith('/panel/');
 
 const routePathMatches = (routePath: string, requestPath: string): boolean => {
   const routeSegments = routePath.split('/');
@@ -44,9 +43,7 @@ export const buildApp = (deps: AppDeps) => {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", NONCE],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: isPanelPath(c.req.path)
-          ? ["'self'", 'https:']
-          : ["'self'", 'https://*.sentry.io'],
+        connectSrc: ["'self'", 'https:'],
         fontSrc: ["'self'", 'data:'],
         imgSrc: ["'self'", 'data:', 'https:'],
         frameSrc: ['https:'],

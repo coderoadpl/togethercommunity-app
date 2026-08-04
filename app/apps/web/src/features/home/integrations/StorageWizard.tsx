@@ -59,7 +59,7 @@ const defaultsFor = (provider: StorageProviderKind) => {
   if (provider === 'aws_s3') return { endpoint: 'https://s3.eu-central-1.amazonaws.com', region: 'eu-central-1' };
   if (provider === 'cloudflare_r2') return { endpoint: '', region: 'auto' };
   if (provider === 'backblaze_b2') return { endpoint: '', region: '' };
-  return { endpoint: 'http://localhost:9000', region: 'us-east-1' };
+  return { endpoint: '', region: 'us-east-1' };
 };
 
 const isProbeErrorCode = (value: string): value is StorageProbeErrorCode =>

@@ -347,7 +347,7 @@ const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
   });
   const remove = useMutation({
     ...actions.deleteLessonAttachment,
-    onSuccess: refresh,
+    onSettled: refresh,
   });
   const selectFile = (file: File | undefined) => {
     if (file === undefined) return;
@@ -384,7 +384,7 @@ const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
             <ListItem key={attachment.id} disableGutters>
               <ListItemText
                 primary={attachment.fileName}
-                secondary={t.lessons.attachmentSize({ kilobytes: Math.max(1, Math.ceil(attachment.sizeBytes / 1024)) })}
+                secondary={`${t.lessons.attachmentSize({ kilobytes: Math.max(1, Math.ceil(attachment.sizeBytes / 1024)) })}${attachment.status === 'pending' ? ` · ${t.lessons.attachmentPending}` : ''}`}
               />
               <Button
                 size="small"

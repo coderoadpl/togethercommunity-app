@@ -479,13 +479,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     secretResolver,
     production ? createResendEmailPort : () => email,
   );
-  const sesTest = createTenantSesTransactionalResolver(sesSettings, tenantMarketingCredentials);
-  const smtpTest = createSmtpTransactionalResolver(sesSettings, secretResolver);
-  const resendTest = createResendTransactionalResolver(sesSettings, secretResolver);
   const emailTransports = createEmailIntegrationTransportResolver({
-    smtp: smtpTest,
-    ses: sesTest,
-    resend: resendTest,
+    smtp: smtpTransactional,
+    ses: tenantSesTransactional,
+    resend: resendTransactional,
   });
   const transactionalEmail = createLayeredTransactionalEmailSender({
     tenantSes: tenantSesTransactional,

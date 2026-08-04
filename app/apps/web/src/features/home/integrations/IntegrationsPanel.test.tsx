@@ -18,6 +18,7 @@ interface TestSettings {
 const renderPanel = (
   initial: TenantSecretMasked[] = [],
   initialSettings: TestSettings = { billingPortalUrl: null, bunnyStreamLibraryId: null },
+  secretsState: 'success' | 'pending' | 'error' = 'success',
 ) => {
   let secrets = [...initial];
   let settings = { ...initialSettings };
@@ -25,7 +26,15 @@ const renderPanel = (
   const storageSubmissions: unknown[] = [];
 
   server.use(
-    http.get('/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets } })),
+    http.get('/api/tenant-secrets', async () => {
+      if (secretsState === 'pending') return new Promise<never>(() => undefined);
+      return secretsState === 'error'
+        ? HttpResponse.json(
+            { ok: false, error: { code: 'integration_unavailable', message: 'offline' } },
+            { status: 503 },
+          )
+        : HttpResponse.json({ ok: true, data: { secrets } });
+    }),
     http.post('/api/tenant-secrets', async ({ request }) => {
       const body = await request.json();
       const key = typeof body === 'object' && body !== null && 'key' in body ? String(body.key) : '';
@@ -119,6 +128,7 @@ const renderPanel = (
 const fillMinioConfiguration = async () => {
   await userEvent.click(await screen.findByTestId('storage-provider-minio'));
   await userEvent.click(screen.getByTestId('storage-provider-continue'));
+  await userEvent.type(screen.getByTestId('storage-endpoint'), 'http://localhost:9000');
   await userEvent.type(screen.getByTestId('storage-bucket'), 'together-test');
   await userEvent.type(screen.getByTestId('storage-access-key'), 'minio-access');
   await userEvent.type(screen.getByTestId('storage-secret-key'), 'minio-secret');
@@ -126,6 +136,14 @@ const fillMinioConfiguration = async () => {
 };
 
 describe('IntegrationsPanel', () => {
+  it.each(['pending', 'error'] as const)('does not claim credentials are missing while secrets are %s', async (state) => {
+    renderPanel([], undefined, state);
+
+    if (state === 'error') await screen.findAllByRole('alert');
+    expect(screen.queryByTestId('payment-test-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('storage-test-hint')).not.toBeInTheDocument();
+  });
+
   it('shows the per-tenant webhook URL to paste into Stripe', async () => {
     renderPanel();
     const url = await screen.findByTestId('stripe-webhook-url');

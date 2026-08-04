@@ -21,7 +21,6 @@ export type LessonAttachment = z.infer<typeof lessonAttachmentSchema>;
 export const lessonAttachmentMetadataSchema = lessonAttachmentSchema.omit({
   tenantId: true,
   storageKey: true,
-  status: true,
 });
 
 export type LessonAttachmentMetadata = z.infer<typeof lessonAttachmentMetadataSchema>;

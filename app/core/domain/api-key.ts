@@ -41,15 +41,7 @@ export type CreateApiKeyInput = z.input<typeof createApiKeyInputSchema>;
 
 const capabilitiesByScope: Record<TenantApiKeyScope, readonly Capability[]> = {
   enrollment: ['enrollment:create'],
-  marketing: [
-    'marketing:consent:read',
-    'marketing:consent:write',
-    'marketing:message:read',
-    'marketing:message:send',
-    'marketing:layout:read',
-    'marketing:suppression:read',
-    'marketing:suppression:write',
-  ],
+  marketing: capabilitiesForPrincipal('api-key').filter((capability) => capability !== 'enrollment:create'),
   transactional: capabilitiesForPrincipal('transactional-api-key'),
 };
 

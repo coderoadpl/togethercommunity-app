@@ -593,12 +593,25 @@ describe('marketing e-mail use-case integration', () => {
     const deps = await setup();
     await sendMarketingMessages(ctx, [{ to: 'member@example.test', memberId: 'member-1', campaignId: 'campaign-1', source: 'broadcast', consentDefinitionId: definition.id, subject: 'Hi', bodyHtml: '<p>Hi</p>', data: {} }], deps);
     const topicArn = 'arn:topic:tenant-1';
+    const emailHmac = deps.hmac.compute('tenant-1', 'member@example.test');
+    await deps.suppressions.record('tenant-1', {
+      id: 'unsubscribe-before-bounce',
+      tenantId: 'tenant-1',
+      email: 'member@example.test',
+      emailHmac,
+      reason: 'unsubscribe_global',
+      sourceRef: null,
+      meta: null,
+      createdAt: NOW,
+      liftedAt: null,
+      liftedBy: null,
+    });
     const hard = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'fake-ses-message', kind: 'bounce', bounceType: 'Permanent', status: null, occurredAt: NOW, raw: { event: 1 } }, deps);
     expect(hard).toEqual(ok({ processed: true }));
     const send = await deps.sends.correlateBySesMessageId('tenant-1', 'fake-ses-message');
     expect((await deps.events.listByRef('tenant-1', 'marketing', send?.id ?? '')).map((item) => item.type))
       .toEqual(['queued', 'claimed', 'rendered', 'accepted', 'bounced', 'suppressed_written']);
-    expect(await deps.suppressions.isSuppressed('tenant-1', deps.hmac.compute('tenant-1', 'member@example.test'))).toBe(true);
+    expect(await deps.suppressions.findActive('tenant-1', emailHmac)).toMatchObject({ reason: 'hard_bounce' });
     const missing = await applyVerifiedSesEvent(ctx, { topicArn, messageId: 'unknown', kind: 'complaint', occurredAt: NOW, raw: {} }, deps);
     expect(missing).toEqual(ok({ processed: false }));
     const mismatch = await applyVerifiedSesEvent(ctx, { topicArn: 'wrong', messageId: 'unknown', kind: 'complaint', occurredAt: NOW, raw: {} }, deps);

@@ -54,14 +54,16 @@ const ctx = (key: TenantApiKey): Ctx => ({
   capabilities: capabilitiesForApiKey(key),
 });
 
-const harness = (options: { transport?: boolean; perMinute?: number } = {}) => {
+const harness = (options: { transport?: boolean; perMinute?: number; perDay?: number } = {}) => {
   let sequence = 0;
   const events = new InMemoryEmailEventRepository();
   const outbox = new InMemoryEmailOutboxRepository(events);
   const suppressions = new InMemorySuppressionRepository(events);
   const counts = new Map<string, number>();
+  const rateLimitClaims: Array<'minute' | 'day'> = [];
   const rateLimits: ApiKeyRateLimitRepository = {
     claim: async (_tenantId, claim) => {
+      rateLimitClaims.push(claim.period);
       const key = `${claim.apiKeyId}:${claim.period}:${claim.windowStartedAt}`;
       const count = counts.get(key) ?? 0;
       if (count >= claim.limit) return false;
@@ -72,7 +74,7 @@ const harness = (options: { transport?: boolean; perMinute?: number } = {}) => {
   const deps: M2mTransactionalEmailDeps = {
     idempotency: new InMemoryAutomationIdempotencyRepository(),
     rateLimits,
-    limits: { perMinute: options.perMinute ?? 60, perDay: 5000 },
+    limits: { perMinute: options.perMinute ?? 60, perDay: options.perDay ?? 5000 },
     transports: {
       resolve: async () => options.transport === false ? null : {
         send: async () => ok({ messageId: 'provider-1' }),
@@ -88,7 +90,7 @@ const harness = (options: { transport?: boolean; perMinute?: number } = {}) => {
     clock: { nowIso: () => NOW },
     hash: { compute: (value) => `hash:${value}` },
   };
-  return { deps, outbox, suppressions, events };
+  return { deps, outbox, suppressions, events, rateLimitClaims };
 };
 
 describe('transactional M2M e-mail', () => {
@@ -119,6 +121,36 @@ describe('transactional M2M e-mail', () => {
     const replay = await sendM2mTransactionalMessage(ctx(key), key, input(), h.deps);
     expect(first).toEqual({ ok: true, value: { messageId: 'id-1', replayed: false } });
     expect(replay).toEqual({ ok: true, value: { messageId: 'id-1', replayed: true } });
+    expect(h.outbox.items).toHaveLength(1);
+    expect(h.rateLimitClaims).toEqual(['day', 'minute']);
+  });
+
+  it('keeps an in-flight idempotent request incomplete until enqueue succeeds', async () => {
+    const h = harness();
+    const key = apiKey();
+    const enqueue = h.outbox.enqueue.bind(h.outbox);
+    let reachedEnqueue: () => void = () => undefined;
+    let finishEnqueue: () => void = () => undefined;
+    const enqueueReached = new Promise<void>((resolve) => { reachedEnqueue = resolve; });
+    const enqueueFinished = new Promise<void>((resolve) => { finishEnqueue = resolve; });
+    h.outbox.enqueue = async (queued) => {
+      reachedEnqueue();
+      await enqueueFinished;
+      return enqueue(queued);
+    };
+
+    const firstRequest = sendM2mTransactionalMessage(ctx(key), key, input(), h.deps);
+    await enqueueReached;
+    expect(await sendM2mTransactionalMessage(ctx(key), key, input(), h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', details: { retryable: true } },
+    });
+    finishEnqueue();
+    expect(await firstRequest).toEqual({ ok: true, value: { messageId: 'id-1', replayed: false } });
+    expect(await sendM2mTransactionalMessage(ctx(key), key, input(), h.deps)).toEqual({
+      ok: true,
+      value: { messageId: 'id-1', replayed: true },
+    });
     expect(h.outbox.items).toHaveLength(1);
   });
 
@@ -167,16 +199,50 @@ describe('transactional M2M e-mail', () => {
       liftedBy: null,
     });
     expect(await sendM2mTransactionalMessage(ctx(key), key, input(), unsubscribe.deps)).toMatchObject({ ok: true });
+    expect(await unsubscribe.suppressions.record('tenant-1', {
+      id: 'suppression-3',
+      tenantId: 'tenant-1',
+      email: 'buyer@example.test',
+      emailHmac: 'tenant-1:buyer@example.test',
+      reason: 'complaint',
+      sourceRef: 'message-1',
+      meta: null,
+      createdAt: NOW,
+      liftedAt: null,
+      liftedBy: null,
+    })).toBe(true);
+    expect(await unsubscribe.suppressions.findActive('tenant-1', 'tenant-1:buyer@example.test'))
+      .toMatchObject({ reason: 'complaint', sourceRef: 'message-1' });
+    expect(await sendM2mTransactionalMessage(ctx(key), key, input('order-2'), unsubscribe.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'suppressed', details: { reason: 'complaint' } },
+    });
   });
 
   it('rate-limits new requests per API key and returns a retry interval', async () => {
     const h = harness({ perMinute: 1 });
     const key = apiKey();
     expect(await sendM2mTransactionalMessage(ctx(key), key, input('order-1'), h.deps)).toMatchObject({ ok: true });
+    expect(await sendM2mTransactionalMessage(ctx(key), key, input('order-1'), h.deps)).toMatchObject({
+      ok: true,
+      value: { replayed: true },
+    });
     expect(await sendM2mTransactionalMessage(ctx(key), key, input('order-2'), h.deps)).toMatchObject({
       ok: false,
       error: { code: 'rate_limited', details: { period: 'minute', retryAfterSeconds: 30 } },
     });
+    expect(h.rateLimitClaims).toEqual(['day', 'minute', 'day', 'minute']);
+  });
+
+  it('does not claim the minute window after the daily window rejects', async () => {
+    const h = harness({ perDay: 1 });
+    const key = apiKey();
+    expect(await sendM2mTransactionalMessage(ctx(key), key, input('order-1'), h.deps)).toMatchObject({ ok: true });
+    expect(await sendM2mTransactionalMessage(ctx(key), key, input('order-2'), h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited', details: { period: 'day' } },
+    });
+    expect(h.rateLimitClaims).toEqual(['day', 'minute', 'day']);
   });
 
   it('rejects a key without the transactional scope', async () => {

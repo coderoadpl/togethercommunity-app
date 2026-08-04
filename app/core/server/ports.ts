@@ -1578,6 +1578,7 @@ export interface TokenGenerator {
 
 export interface AutomationIdempotencyRepository {
   claim(tenantId: string, record: AutomationIdempotencyKey): Promise<AutomationIdempotencyKey | null>;
+  complete(tenantId: string, key: string, resourceId: string): Promise<void>;
   release(tenantId: string, key: string): Promise<void>;
   sweepExpired(now: string): Promise<number>;
 }

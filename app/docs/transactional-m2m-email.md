@@ -27,6 +27,7 @@ x-api-key: together_api_key
 ```
 
 At least one of `html` or `text` is required. Custom headers are not accepted. The key is rate-limited independently from other tenant API keys.
+The complete JSON request body is limited to 512 KiB, including field names and JSON encoding overhead.
 
 A new message returns `202 Accepted`:
 

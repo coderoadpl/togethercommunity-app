@@ -5,6 +5,7 @@ import { API_PATHS } from '#core/contract/index.js';
 import {
   CONTENT_BODY_LIMIT,
   DEFAULT_API_BODY_LIMIT,
+  M2M_TRANSACTIONAL_BODY_LIMIT,
   PUBLIC_FORM_BODY_LIMIT,
   WEBHOOK_BODY_LIMIT,
   requestBodyLimit,
@@ -26,6 +27,11 @@ describe('request body limits', () => {
   it('accepts provider maxima while keeping webhooks bounded', () => {
     expect(requestBodyLimit('POST', '/api/webhooks/stripe/t-acme')).toBe(WEBHOOK_BODY_LIMIT);
     expect(requestBodyLimit('POST', '/api/webhooks/ses/token')).toBe(WEBHOOK_BODY_LIMIT);
+  });
+
+  it('allows transactional M2M messages up to their explicit request limit', () => {
+    expect(requestBodyLimit('POST', API_PATHS.m2mTransactionalMessagesCreate))
+      .toBe(M2M_TRANSACTIONAL_BODY_LIMIT);
   });
 
   it('caps public HTML mutations outside the API prefix', () => {

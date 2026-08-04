@@ -844,15 +844,18 @@ const transactionalM2mApp = (options: {
   configured.tenantApiKeys = {
     listByTenant: async () => [],
     create: async () => undefined,
-    findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:transactional-key' ? {
-      id: 'transactional-key-id',
-      tenantId,
-      name: 'orders-app',
-      keyHash: hash,
-      scopes: [...(options.scopes ?? ['transactional'])],
-      createdAt: '1998-08-10T00:00:00.000Z',
-      revokedAt: null,
-    } : null,
+    findActiveByHash: async (tenantId, hash) => {
+      if (tenantId !== 't-acme' || !['hash:transactional-key', 'hash:other-transactional-key'].includes(hash)) return null;
+      return {
+        id: hash === 'hash:transactional-key' ? 'transactional-key-id' : 'other-transactional-key-id',
+        tenantId,
+        name: hash === 'hash:transactional-key' ? 'orders-app' : 'billing-app',
+        keyHash: hash,
+        scopes: [...(options.scopes ?? ['transactional'])],
+        createdAt: '1998-08-10T00:00:00.000Z',
+        revokedAt: null,
+      };
+    },
     revoke: async () => null,
   };
   configured.emailTransports = {
@@ -1152,6 +1155,10 @@ describe('marketing HTTP surfaces', () => {
       ok: true,
       data: { send: { id: messageId, sourceApp: 'orders-app' }, events: [{ type: 'queued' }] },
     });
+    const otherAppStatus = await app.request(`/api/m2m/transactional/messages/${encodeURIComponent(messageId)}`, {
+      headers: { host: 'acme.localhost:48730', 'x-api-key': 'other-transactional-key' },
+    });
+    expect(otherAppStatus.status).toBe(404);
     const replay = await app.request('/api/m2m/transactional/messages', request);
     expect(replay.status).toBe(200);
     expect(await replay.json()).toEqual(firstBody);

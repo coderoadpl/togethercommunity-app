@@ -1350,6 +1350,9 @@ export const emailOutbox = pgTable(
   (table) => [
     index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt),
     index('email_outbox_tenant_created_id_idx').on(table.tenantId, table.createdAt, table.id),
+    index('email_outbox_tenant_source_app_created_id_idx')
+      .on(table.tenantId, table.sourceApp, table.createdAt, table.id)
+      .where(sql`${table.sourceApp} is not null`),
     index('email_outbox_tenant_normalized_to_created_id_idx')
       .on(table.tenantId, sql`lower(btrim(${table.to}))`, table.createdAt, table.id),
     uniqueIndex('email_outbox_ses_message_id_uidx')

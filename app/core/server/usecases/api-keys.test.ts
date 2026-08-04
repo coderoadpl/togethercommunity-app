@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, StaffRole, TenantApiKey } from '#core/domain/index.js';
+import {
+  capabilitiesForApiKey,
+  capabilitiesForPrincipal,
+  type Identity,
+  type StaffRole,
+  type TenantApiKey,
+} from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { ApiKeyCrypto, TenantApiKeyRepository } from '../ports.js';
@@ -93,6 +99,14 @@ describe('createTenantApiKey', () => {
     const h = harness();
     const result = await createTenantApiKey(ctx('owner'), { name: '  ' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('API key scope capabilities', () => {
+  it('derives the marketing scope from the legacy API-key principal', () => {
+    expect(capabilitiesForApiKey({ scopes: ['marketing'] })).toEqual(
+      capabilitiesForPrincipal('api-key').filter((capability) => capability !== 'enrollment:create'),
+    );
   });
 });
 

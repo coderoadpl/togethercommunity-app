@@ -269,6 +269,7 @@ export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppD
     if (!authenticated.ok) return response(authenticated);
     return response(await getM2mTransactionalMessage(
       authenticated.value.ctx,
+      authenticated.value.apiKey,
       { id: c.req.param('id') },
       { sends: marketing.value.emailSends, events: marketing.value.events },
     ));

@@ -56,8 +56,8 @@ const claimRateLimit = async (
   deps: Pick<M2mTransactionalEmailDeps, 'rateLimits' | 'limits'>,
 ): Promise<Result<void, AppError>> => {
   const windows = [
-    { period: 'minute' as const, durationMs: 60_000, limit: deps.limits.perMinute },
     { period: 'day' as const, durationMs: 86_400_000, limit: deps.limits.perDay },
+    { period: 'minute' as const, durationMs: 60_000, limit: deps.limits.perMinute },
   ];
   for (const window of windows) {
     const startedAt = windowStart(now, window.durationMs);
@@ -99,8 +99,6 @@ export const sendM2mTransactionalMessage = async (
   const parsed = m2mTransactionalMessageInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid transactional e-mail payload', parsed.error.flatten()));
   const now = deps.clock.nowIso();
-  const rateLimit = await claimRateLimit(apiKey.id, tenantId.value, now, deps);
-  if (!rateLimit.ok) return rateLimit;
   const messageId = deps.ids.nextId();
   const hash = deps.hash.compute(JSON.stringify(parsed.data));
   const existing = await deps.idempotency.claim(tenantId.value, {
@@ -110,18 +108,24 @@ export const sendM2mTransactionalMessage = async (
     requestMethod: 'POST',
     requestPath,
     requestHash: hash,
-    resourceId: messageId,
+    resourceId: null,
     claimedAt: now,
     expiresAt: new Date(Date.parse(now) + idempotencyTtlSeconds * 1000).toISOString(),
   });
   if (existing !== null) {
-    if (
+    const matchesRequest =
       existing.requestMethod === 'POST'
       && existing.requestPath === requestPath
-      && existing.requestHash === hash
-      && existing.resourceId !== null
-      && existing.resourceId !== undefined
-    ) return ok({ messageId: existing.resourceId, replayed: true });
+      && existing.requestHash === hash;
+    if (matchesRequest && existing.resourceId !== null && existing.resourceId !== undefined) {
+      return ok({ messageId: existing.resourceId, replayed: true });
+    }
+    if (matchesRequest) {
+      return err(appError('conflict', 'Idempotent request is still being processed', {
+        claimedAt: existing.claimedAt,
+        retryable: true,
+      }));
+    }
     return err(appError('conflict', 'Idempotency key was already used', {
       requestMethod: existing.requestMethod,
       requestPath: existing.requestPath,
@@ -130,6 +134,11 @@ export const sendM2mTransactionalMessage = async (
     }));
   }
   const release = async () => deps.idempotency.release(tenantId.value, parsed.data.idempotencyKey);
+  const rateLimit = await claimRateLimit(apiKey.id, tenantId.value, now, deps);
+  if (!rateLimit.ok) {
+    await release();
+    return rateLimit;
+  }
   if (!await tenantTransportConfigured(tenantId.value, deps.transports)) {
     await release();
     return err(integrationNotConfigured('Configure tenant SES, SMTP or Resend before using the transactional e-mail API'));
@@ -174,18 +183,20 @@ export const sendM2mTransactionalMessage = async (
     await release();
     return queued;
   }
+  await deps.idempotency.complete(tenantId.value, parsed.data.idempotencyKey, queued.value.id);
   return ok({ messageId: queued.value.id, replayed: false });
 };
 
 export const getM2mTransactionalMessage = async (
   ctx: Ctx,
+  apiKey: TenantApiKey,
   input: { id: string },
   deps: { sends: EmailSendRepository; events: EmailEventRepository },
 ) => {
   const tenantId = authorizeRequiredTenant(ctx, 'transactional:message:read');
   if (!tenantId.ok) return tenantId;
   const send = await deps.sends.findById(tenantId.value, 'transactional', input.id);
-  if (send === null || send.sourceApp === null) return err(notFound('Transactional message was not found'));
+  if (send === null || send.sourceApp !== apiKey.name) return err(notFound('Transactional message was not found'));
   const events = await deps.events.listByRef(tenantId.value, 'transactional', input.id);
   return ok({ send, events });
 };

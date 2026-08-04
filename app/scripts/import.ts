@@ -120,7 +120,7 @@ const bundleUserSchema = z.object({
   legacyId,
   email: z.string().min(3),
   name: z.string().nullable(),
-  payloadPasswordMarker: z.string().min(1).nullable(),
+  legacyPasswordMarker: z.string().min(1).nullable(),
   role: z.enum(['admin', 'student']),
 });
 

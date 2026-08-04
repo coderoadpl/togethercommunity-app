@@ -71,10 +71,10 @@ const buildBundle = (): TenantBundle => ({
       legacyId: ids.u1,
       email: EMAIL_1,
       name: 'Jan Import',
-      payloadPasswordMarker: MARKER,
+      legacyPasswordMarker: MARKER,
       role: 'student',
     },
-    { legacyId: ids.u2, email: EMAIL_2, name: null, payloadPasswordMarker: null, role: 'student' },
+    { legacyId: ids.u2, email: EMAIL_2, name: null, legacyPasswordMarker: null, role: 'student' },
   ],
   courses: [
     {
@@ -151,7 +151,7 @@ const buildBundle = (): TenantBundle => ({
       legacyId: ids.g1dup,
       memberLegacyId: ids.u1,
       productLegacyId: ids.p1,
-      startsAt: '2024-01-01T00:00:00.000Z',
+      startsAt: '2023-12-01T00:00:00.000Z',
       expiresAt: '2024-06-01T00:00:00.000Z',
     },
     {
@@ -366,6 +366,7 @@ describe('importer', () => {
       .where(eq(productGrants.tenantId, TENANT_ID));
     expect(grantRowsAll).toHaveLength(2);
     const winner = grantRowsAll.find((row) => row.legacyId === ids.g1);
+    expect(winner?.startsAt).toBe('2023-12-01T00:00:00.000Z');
     expect(winner?.expiresAt).toBeNull();
     expect(grantRowsAll.some((row) => row.legacyId === ids.g1dup)).toBe(false);
     expect(
@@ -712,7 +713,7 @@ describe('importer', () => {
         legacyId: nativeLegacyId,
         email: nativeEmail,
         name: 'Native Buyer',
-        payloadPasswordMarker: MARKER,
+        legacyPasswordMarker: MARKER,
         role: 'student',
       },
     ];

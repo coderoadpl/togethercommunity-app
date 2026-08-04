@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-import { toLegacyPasswordHash } from '#adapters/auth/legacy-password.js';
+import {
+  isLegacyPbkdf2Credential,
+  toLegacyPasswordHash,
+} from '#adapters/auth/legacy-password.js';
 import {
   migrateLegacyAccessItem,
   type LegacyAccessItem,
@@ -245,7 +248,7 @@ export interface ExportedUser {
   legacyId: string;
   email: string;
   name: string | null;
-  payloadPasswordMarker: string | null;
+  legacyPasswordMarker: string | null;
   role: 'admin' | 'student';
 }
 
@@ -261,12 +264,12 @@ export const transformUser = (
       .join(' ') || null;
   const salt = legacy.salt ?? '';
   const hash = legacy.hash ?? '';
-  const hasCredential = salt.length > 0 && hash.length > 0;
+  const hasCredential = isLegacyPbkdf2Credential({ salt, hash });
   if (!hasCredential) {
     anomalies.push({
       kind: 'user-without-credential',
       subject,
-      detail: 'user has no PBKDF2 salt+hash; exported without a password marker',
+      detail: 'user has no valid legacy PBKDF2 salt+hash; exported without a password marker',
     });
   }
   const role = legacy.role === 'admin' ? 'admin' : 'student';
@@ -282,7 +285,7 @@ export const transformUser = (
       legacyId: legacy._id,
       email: legacy.email,
       name,
-      payloadPasswordMarker: hasCredential ? toLegacyPasswordHash({ salt, hash }) : null,
+      legacyPasswordMarker: hasCredential ? toLegacyPasswordHash({ salt, hash }) : null,
       role,
     },
     anomalies,

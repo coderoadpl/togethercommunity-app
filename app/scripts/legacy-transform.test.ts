@@ -271,8 +271,8 @@ describe('transformUser', () => {
     expect(anomalies).toEqual([]);
     expect(user.legacyId).toBe('507f1f77bcf86cd799439011');
     expect(user.name).toBe('Jan Kowalski');
-    expect(user.payloadPasswordMarker).not.toBeNull();
-    const marker = user.payloadPasswordMarker ?? '';
+    expect(user.legacyPasswordMarker).not.toBeNull();
+    const marker = user.legacyPasswordMarker ?? '';
     expect(
       await verifyPasswordWithLegacyFallback({ hash: marker, password: 'secret-legacy-pass' }),
     ).toBe(true);
@@ -284,7 +284,7 @@ describe('transformUser', () => {
       legacyUserSchema.parse({ _id: '507f1f77bcf86cd799439012', email: 'x@example.com' }),
     );
     expect(user.role).toBe('student');
-    expect(user.payloadPasswordMarker).toBeNull();
+    expect(user.legacyPasswordMarker).toBeNull();
     const kinds = anomalies.map((anomaly) => anomaly.kind).sort();
     expect(kinds).toEqual(['user-role-backfilled', 'user-without-credential']);
   });

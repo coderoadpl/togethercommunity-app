@@ -518,14 +518,17 @@ const signUp = (
   );
 
 describe('raised password floor', () => {
-  it('keeps an imported eight-character credential valid for sign-in but rejects it as a new password', async () => {
+  it('rehashes an imported credential on sign-in while rejecting its short password for new writes', async () => {
     const { auth } = buildAuth();
     const db = createDb('node-postgres', connectionString);
     const suffix = crypto.randomUUID();
     const userId = `pre-floor-user-${suffix}`;
     const email = `pre-floor-${suffix}@together.dev`;
     const password = 'oldpass8';
-    const passwordHash = deriveLegacyPasswordHash(password, `pre-floor-salt-${suffix}`);
+    const passwordHash = deriveLegacyPasswordHash(
+      password,
+      suffix.replaceAll('-', '').repeat(2),
+    );
     expect(password).toHaveLength(8);
     expect(password.length).toBeLessThan(PASSWORD_MIN_LENGTH);
     await db.insert(user).values({ id: userId, name: 'Pre-floor account', email });
@@ -616,7 +619,9 @@ describe('raised password floor', () => {
       .select({ password: account.password })
       .from(account)
       .where(eq(account.userId, userId));
-    expect(credentials).toEqual([{ password: passwordHash }]);
+    expect(credentials).toHaveLength(1);
+    expect(credentials[0]?.password).not.toBe(passwordHash);
+    expect(credentials[0]?.password).not.toContain('pbkdf2$');
   }, 30000);
 });
 
@@ -1218,14 +1223,14 @@ describe('change password', () => {
     expect(newPassword.status).toBe(200);
   }, 30000);
 
-  it('accepts and migrates an imported Payload PBKDF2 credential', async () => {
+  it('accepts and migrates an imported imported PBKDF2 credential', async () => {
     const { auth } = buildAuth();
     const db = createDb('node-postgres', connectionString);
     const email = `change-legacy-${Date.now()}@together.dev`;
     const signedUp = await signUp(auth, email, { password: TEMPORARY_PASSWORD });
     const token = signedUp.headers.get('set-auth-token');
     const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
-    const legacyPassword = deriveLegacyPasswordHash('legacy-password', 'legacy-change-password-salt');
+    const legacyPassword = deriveLegacyPasswordHash('legacy-password', 'ab'.repeat(32));
     await db
       .update(account)
       .set({ password: legacyPassword })
@@ -1260,7 +1265,7 @@ describe('change password', () => {
 
     expect(changed.status).toBe(200);
     expect(credentials[0]?.password).not.toBeNull();
-    expect(credentials[0]?.password).not.toContain('payload-pbkdf2$');
+    expect(credentials[0]?.password).not.toContain('pbkdf2$');
     const signedIn = await auth.handler(
       new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
         method: 'POST',

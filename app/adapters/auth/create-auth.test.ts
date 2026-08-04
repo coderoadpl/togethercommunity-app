@@ -1223,7 +1223,7 @@ describe('change password', () => {
     expect(newPassword.status).toBe(200);
   }, 30000);
 
-  it('accepts and migrates an imported Payload PBKDF2 credential', async () => {
+  it('accepts and migrates an imported imported PBKDF2 credential', async () => {
     const { auth } = buildAuth();
     const db = createDb('node-postgres', connectionString);
     const email = `change-legacy-${Date.now()}@together.dev`;

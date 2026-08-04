@@ -8,8 +8,6 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { API_PATHS } from '#core/contract/index.js';
 
-import type { ThemeMode } from '../apps/web/src/theme.js';
-
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
@@ -17,6 +15,9 @@ const webDistDir = join(rootDir, 'dist/web');
 const outputDir = join(rootDir, 'tasks/theme-screenshots');
 
 const languageStorageKey = 'together-language';
+const colorSchemeStorageKey = 'together-color-scheme';
+const capturedColorSchemes = ['light', 'dark'] as const;
+type CapturedColorScheme = (typeof capturedColorSchemes)[number];
 const checkoutProductId = 'product-studio-kurs-101';
 const minPngBytes = 20 * 1024;
 
@@ -156,22 +157,32 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 const newModeContext = async (
   browser: Browser,
   viewport: { width: number; height: number },
+  colorScheme: CapturedColorScheme,
 ): Promise<BrowserContext> => {
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 2, colorScheme });
   await context.addInitScript(
-    (langKey) => {
+    ({ languageKey, schemeKey, scheme }) => {
       try {
-        window.localStorage.setItem(langKey, 'en');
+        window.localStorage.setItem(languageKey, 'en');
+        window.localStorage.setItem(schemeKey, scheme);
       } catch {
         // storage disabled — the choice simply won't persist
       }
     },
-    languageStorageKey,
+    {
+      languageKey: languageStorageKey,
+      schemeKey: colorSchemeStorageKey,
+      scheme: colorScheme,
+    },
   );
   return context;
 };
 
-const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: string, mode: ThemeMode): Promise<void> => {
+const captureCreatorPanel = async (
+  context: BrowserContext,
+  studioBaseUrl: string,
+  colorScheme: CapturedColorScheme,
+): Promise<void> => {
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
@@ -183,24 +194,28 @@ const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: strin
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
   assert(
     (await page.getByTestId('tenant-name').textContent()) === 'Studio Demo',
-    `creator sign-in did not open the Studio workspace (${mode})`,
+    `creator sign-in did not open the Studio workspace (${colorScheme})`,
   );
   await page.getByTestId('dashboard-tiles').waitFor({ state: 'visible', timeout: 20000 });
   await page.getByTestId('dashboard-member-row').first().waitFor({ state: 'visible', timeout: 20000 });
-  await shoot(page, `${mode}-panel.png`);
+  await shoot(page, `${colorScheme}-panel.png`);
 
   await page.close();
 };
 
-const captureCheckout = async (context: BrowserContext, studioBaseUrl: string, mode: ThemeMode): Promise<void> => {
+const captureCheckout = async (
+  context: BrowserContext,
+  studioBaseUrl: string,
+  colorScheme: CapturedColorScheme,
+): Promise<void> => {
   const page = await context.newPage();
 
   await page.goto(`${studioBaseUrl}/checkout/${checkoutProductId}`, { waitUntil: 'load' });
   await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
   await page
-    .getByRole('button', { name: 'Simulate payment (dev)' })
+    .locator('button[type="submit"]', { hasText: /Pay|Simulate/ })
     .waitFor({ state: 'visible', timeout: 20000 });
-  await shoot(page, `${mode}-checkout.png`);
+  await shoot(page, `${colorScheme}-checkout.png`);
 
   await page.close();
 };
@@ -225,16 +240,17 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const viewport = { width: 1440, height: 900 };
 
-  const mode: ThemeMode = 'shadcn';
-  console.log(`shots:themes: capturing Shadcn (${mode})...`);
+  for (const colorScheme of capturedColorSchemes) {
+    console.log(`shots:themes: capturing Shadcn (${colorScheme})...`);
 
-  const panelContext = await newModeContext(browser, viewport);
-  await captureCreatorPanel(panelContext, studioBaseUrl, mode);
-  await panelContext.close();
+    const panelContext = await newModeContext(browser, viewport, colorScheme);
+    await captureCreatorPanel(panelContext, studioBaseUrl, colorScheme);
+    await panelContext.close();
 
-  const checkoutContext = await newModeContext(browser, viewport);
-  await captureCheckout(checkoutContext, studioBaseUrl, mode);
-  await checkoutContext.close();
+    const checkoutContext = await newModeContext(browser, viewport, colorScheme);
+    await captureCheckout(checkoutContext, studioBaseUrl, colorScheme);
+    await checkoutContext.close();
+  }
 
   console.log(`\nshots:themes: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s) -> ${outputDir}`);
 } catch (error) {

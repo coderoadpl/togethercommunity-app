@@ -34,6 +34,8 @@ const meWithTenant = {
   tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null, banned: false },
 };
 
+const MarketingTestRoute = () => <div data-testid="marketing-route" />;
+
 const stubViewport = (isDesktop: boolean) => {
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: isDesktop,
@@ -101,6 +103,11 @@ const renderPanelAt = async (
     component: PanelIntegrationsRoute,
   });
   const settingsRoute = createRoute({ getParentRoute: () => layoutRoute, path: 'settings', component: PanelSettingsRoute });
+  const marketingRoute = createRoute({
+    getParentRoute: () => layoutRoute,
+    path: 'marketing/campaigns',
+    component: MarketingTestRoute,
+  });
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       layoutRoute.addChildren([
@@ -112,6 +119,7 @@ const renderPanelAt = async (
         salesRoute,
         integrationsRoute,
         settingsRoute,
+        marketingRoute,
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
@@ -191,7 +199,7 @@ describe('Creator panel routing', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
   });
 
-  it('renders the grouped sidebar, keeps marketing collapsed, and marks the active item', async () => {
+  it('renders every group as an accessible toggle with the intended defaults', async () => {
     stubViewport(true);
     commonHandlers();
 
@@ -223,16 +231,18 @@ describe('Creator panel routing', () => {
     for (const id of alwaysVisibleSectionIds) {
       expect(screen.getByTestId(`section-${id}`)).toBeInTheDocument();
     }
-    expect(screen.getByTestId('group-content')).toHaveTextContent(pl.navigationGroups.content);
-    expect(screen.getByTestId('group-offer')).toHaveTextContent(pl.navigationGroups.offer);
-    expect(screen.getByTestId('group-community')).toHaveTextContent(pl.navigationGroups.community);
-    expect(screen.getByTestId('group-sales')).toHaveTextContent(pl.navigationGroups.sales);
     for (const [id, label] of Object.entries(pl.navigationGroups)) {
-      expect(screen.getByTestId(`group-${id}`).querySelector('.MuiTypography-overline'))
-        .toHaveTextContent(label);
+      const group = screen.getByTestId(`group-${id}`);
+      expect(group.querySelector('.MuiTypography-overline')).toHaveTextContent(label);
+      expect(group).toHaveAttribute('aria-controls', `panel-navigation-${id}`);
+      expect(group).toHaveAttribute('tabindex', '0');
+      expect(group.querySelector('svg')).toBeInTheDocument();
     }
     expect(screen.queryByTestId('group-configuration')).toBeNull();
-    expect(screen.getByTestId('group-content')).not.toHaveAttribute('tabindex');
+    expect(screen.getByTestId('group-content')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('group-offer')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('group-community')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('group-sales')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'false');
     for (const id of marketingSectionIds) {
       expect(screen.queryByTestId(`section-${id}`)).not.toBeInTheDocument();
@@ -254,6 +264,68 @@ describe('Creator panel routing', () => {
     expect(await screen.findByTestId('reports-open-count')).toHaveTextContent('3');
     expect(screen.getByRole('heading', { name: pl.members.heading, level: 1 })).toBeInTheDocument();
     expect(screen.getByTestId('build-stamp')).toBeInTheDocument();
+  });
+
+  it('persists each group preference across panel mounts', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    const firstRender = await renderPanelAt('/panel/products');
+    await screen.findByTestId('tenant-name');
+
+    await userEvent.click(screen.getByTestId('group-content'));
+
+    expect(screen.getByTestId('group-content')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('section-courses')).not.toBeInTheDocument();
+    firstRender.unmount();
+
+    await renderPanelAt('/panel/products');
+
+    expect(await screen.findByTestId('group-content')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('section-courses')).not.toBeInTheDocument();
+    expect(screen.getByTestId('group-offer')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('temporarily expands the active group without changing its stored preference', async () => {
+    stubViewport(true);
+    commonHandlers();
+
+    const { router } = await renderPanelAt('/panel/products');
+    expect(await screen.findByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'false');
+
+    await router.navigate({ to: '/panel/marketing/campaigns' });
+
+    expect(await screen.findByTestId('marketing-route')).toBeInTheDocument();
+    expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('section-marketingCampaigns')).toHaveAttribute('aria-current', 'page');
+
+    await router.navigate({ to: '/panel/products' });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByTestId('section-marketingCampaigns')).not.toBeInTheDocument();
+    });
+  });
+
+  it('uses the same collapsible group controls in the mobile drawer', async () => {
+    stubViewport(false);
+    commonHandlers();
+
+    await renderPanelAt('/panel/products');
+    await userEvent.click(await screen.findByTestId('open-navigation'));
+
+    for (const id of Object.keys(pl.navigationGroups)) {
+      expect(screen.getByTestId(`group-${id}`)).toHaveAttribute(
+        'aria-controls',
+        `panel-navigation-${id}`,
+      );
+    }
+
+    await userEvent.click(screen.getByTestId('group-content'));
+
+    expect(screen.getByTestId('group-content')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('section-courses')).not.toBeInTheDocument();
   });
 
   it('shows the dashboard overview at /panel index', async () => {

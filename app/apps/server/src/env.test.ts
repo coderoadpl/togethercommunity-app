@@ -8,7 +8,35 @@ import {
   selectTenantRouting,
   selectTrustedAuthOrigins,
 } from './composition.js';
-import { envSchema } from './env.js';
+import { envSchema, isProductionEnvironment } from './env.js';
+
+describe('production posture detection', () => {
+  it('treats an unlabelled NODE_ENV=production deployment as production', () => {
+    expect(isProductionEnvironment({ NODE_ENV: 'production' })).toBe(true);
+    expect(isProductionEnvironment({ NODE_ENV: 'production', APP_ENV: '' })).toBe(true);
+    expect(isProductionEnvironment({ NODE_ENV: 'production', APP_ENV: 'self-host' })).toBe(true);
+  });
+
+  it('honours an explicit production APP_ENV regardless of NODE_ENV', () => {
+    expect(isProductionEnvironment({ APP_ENV: 'production' })).toBe(true);
+    expect(isProductionEnvironment({ NODE_ENV: 'development', APP_ENV: 'production' })).toBe(true);
+  });
+
+  it('lets a named preview environment opt out of the production posture', () => {
+    expect(isProductionEnvironment({ NODE_ENV: 'production', APP_ENV: 'preview' })).toBe(false);
+    expect(isProductionEnvironment({ NODE_ENV: 'production', APP_ENV: 'staging' })).toBe(false);
+  });
+
+  it('stays outside production when neither variable names one', () => {
+    expect(isProductionEnvironment({})).toBe(false);
+    expect(isProductionEnvironment({ NODE_ENV: 'development', APP_ENV: 'development' })).toBe(false);
+  });
+
+  it('applies the same precedence to the boot-time schema', () => {
+    expect(envSchema.safeParse({ NODE_ENV: 'production' }).success).toBe(false);
+    expect(envSchema.parse({ NODE_ENV: 'production', APP_ENV: 'preview' }).KSEF_ENVIRONMENT).toBe('test');
+  });
+});
 
 describe('tenant creation policy', () => {
   it('defaults open outside production and accepts only declared modes', () => {

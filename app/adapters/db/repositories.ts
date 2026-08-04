@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
@@ -728,12 +728,32 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
 });
 
 export const createUserDisplayReader = (db: Db): UserDisplayReader => ({
-  findDisplayNames: async (userIds) => {
+  findDisplayNames: async (tenantId, userIds) => {
     if (userIds.length === 0) return new Map();
     const rows = await db
       .select({ id: user.id, name: user.name, email: user.email })
       .from(user)
-      .where(inArray(user.id, userIds));
+      .where(
+        and(
+          inArray(user.id, userIds),
+          or(
+            exists(
+              db
+                .select({ id: tenantAdmins.id })
+                .from(tenantAdmins)
+                .where(
+                  and(eq(tenantAdmins.tenantId, tenantId), eq(tenantAdmins.userId, user.id)),
+                ),
+            ),
+            exists(
+              db
+                .select({ id: members.id })
+                .from(members)
+                .where(and(eq(members.tenantId, tenantId), eq(members.userId, user.id))),
+            ),
+          ),
+        ),
+      );
     return new Map(
       rows.map((row) => [row.id, row.name.trim().length > 0 ? row.name.trim() : row.email]),
     );
@@ -3056,7 +3076,7 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
       const row = rows[0];
       return row ? toMembership(row) : null;
     },
-    findMember: async (userId, tenantId) => {
+    findMember: async (tenantId, userId) => {
       const rows = await db
         .select()
         .from(members)

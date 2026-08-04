@@ -230,7 +230,7 @@ const notifySubscribers = async (
     if (subscriber.userId === post.authorUserId || subscriber.mutedAt !== null) continue;
     const [staffGrant, member] = await Promise.all([
       deps.tenantAccess.findStaffGrant(subscriber.userId, { tenantId }),
-      deps.tenantAccess.findMember(subscriber.userId, tenantId),
+      deps.tenantAccess.findMember(tenantId, subscriber.userId),
     ]);
     const memberCanAccess =
       member !== null && (await subscriberCanAccessContext(tenantId, member.id, post, deps));
@@ -321,7 +321,7 @@ const notifyLessonQuestionStaff = async (
 const resolvePostAuthorDisplay = async (ctx: Ctx, deps: CommunityDeps): Promise<string> => {
   const tenantId = ctx.identity.tenantId;
   if (tenantId !== null && ctx.identity.memberId !== null) {
-    const member = await deps.tenantAccess.findMember(ctx.identity.userId, tenantId);
+    const member = await deps.tenantAccess.findMember(tenantId, ctx.identity.userId);
     const override = member?.displayName?.trim() ?? '';
     if (override.length > 0) return override;
   }

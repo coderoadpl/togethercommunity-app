@@ -50,6 +50,7 @@ import {
   createTenantApiKeyRepository,
   createTenantRepository,
   createTenantSecretRepository,
+  createUserDisplayReader,
 } from './repositories.js';
 import { createMemberEventRepository } from './member-events.js';
 import {
@@ -1069,7 +1070,21 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       { userId: 'user-acme-owner', email: 'owner-acme@together.dev' },
     ]);
     expect(await reader.findStaffGrant('user-acme-owner', { tenantSlug: 'globex' })).toBeNull();
-    expect(await reader.findMember('user-acme-member', ACME)).toMatchObject({ id: 'mem-acme' });
+    expect(await reader.findMember(ACME, 'user-acme-member')).toMatchObject({ id: 'mem-acme' });
+  });
+
+  it('limits user display names to identities belonging to the tenant', async () => {
+    const reader = createUserDisplayReader(db);
+    const displays = await reader.findDisplayNames(ACME, [
+      'user-acme-owner',
+      'user-acme-member',
+      'user-globex-owner',
+      'user-globex-member',
+    ]);
+    expect(displays).toEqual(new Map([
+      ['user-acme-owner', 'Acme Owner'],
+      ['user-acme-member', 'Acme Member'],
+    ]));
   });
 
   it('stores and revokes API keys by hash within the tenant', async () => {

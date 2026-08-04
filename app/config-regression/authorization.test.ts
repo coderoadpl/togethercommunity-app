@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 import { collectPermissionInventory } from '../scripts/permission-inventory.js';
 import { collectRuntimeRoutes } from '../scripts/generate-route-table.mjs';
+import {
+  auditTenantRepositoryScopes,
+  collectTenantScopeSources,
+} from '../scripts/tenant-scope-check.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const useCasesRoot = join(appRoot, 'core', 'server', 'usecases');
@@ -119,5 +123,110 @@ describe('authorization fail-closed probes', () => {
       })
       .map((route) => route.subject);
     expect(offenders).toEqual([]);
+  });
+
+  it('covers every repository method with tenant scope or a justified platform exception', () => {
+    const audit = auditTenantRepositoryScopes(collectTenantScopeSources());
+    expect(audit.scoped.map((method) => method.subject)).toEqual(
+      expect.arrayContaining([
+        'ProductRepository.listByTenant',
+        'MemberErasurePort.pseudonymize',
+        'TenantSecretResolver.resolve',
+        'UserDisplayReader.findDisplayNames',
+      ]),
+    );
+    expect(audit.violations).toEqual([]);
+    expect(audit.staleExceptions).toEqual([]);
+    expect(audit.staleExcludedPorts).toEqual([]);
+  });
+
+  it('rejects unscoped interface and type-alias ports in a standalone source', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{
+        file: 'synthetic.ts',
+        source: `
+          interface DeliberatelyUnscopedReader { findById(id: string): Promise<unknown>; }
+          type DeliberatelyUnscopedRepository = { findById(id: string): Promise<unknown> };
+        `,
+      }],
+      {},
+      {},
+    );
+    expect(audit.violations.map((violation) => violation.subject)).toEqual(
+      expect.arrayContaining([
+        'DeliberatelyUnscopedReader.findById',
+        'DeliberatelyUnscopedRepository.findById',
+      ]),
+    );
+  });
+
+  it('accepts required tenant object fields but rejects weak direct tenant parameters', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{
+        file: 'synthetic.ts',
+        source: `
+          interface ParameterShapesRepository {
+            direct(tenantId: string): Promise<void>;
+            object(input: { tenantId: string; id: string }): Promise<void>;
+            nullableObject(input: { tenantId: string | null }): Promise<void>;
+            optional(tenantId?: string): Promise<void>;
+            nullable(tenantId: string | null): Promise<void>;
+            optionalObject(input: { tenantId?: string }): Promise<void>;
+          }
+        `,
+      }],
+      {},
+      {},
+    );
+    expect(audit.scoped.map((method) => method.method)).toEqual([
+      'direct',
+      'object',
+    ]);
+    expect(audit.violations.map((violation) => violation.method)).toEqual([
+      'nullableObject',
+      'optional',
+      'nullable',
+      'optionalObject',
+    ]);
+  });
+
+  it('resolves named tenant inputs and audits intersection type aliases', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{
+        file: 'synthetic.ts',
+        source: `
+          interface ScopedInput { tenantId: string; id: string }
+          type NullableInput = { tenantId: string | null };
+          interface NamedInputRepository {
+            scoped(input: ScopedInput): Promise<void>;
+            nullable(input: NullableInput): Promise<void>;
+          }
+          type IntersectionRepository = { marker: string } & {
+            scoped(input: ScopedInput): Promise<void>;
+            unscoped(id: string): Promise<void>;
+          };
+        `,
+      }],
+      {},
+      {},
+    );
+    expect(audit.scoped.map((method) => method.subject)).toEqual([
+      'NamedInputRepository.scoped',
+      'IntersectionRepository.scoped',
+    ]);
+    expect(audit.violations.map((method) => method.subject)).toEqual([
+      'NamedInputRepository.nullable',
+      'IntersectionRepository.unscoped',
+    ]);
+  });
+
+  it('keeps excluded ports current after their callable members are removed', () => {
+    const audit = auditTenantRepositoryScopes(
+      [{ file: 'synthetic.ts', source: 'interface Clock { readonly now: string }' }],
+      {},
+      { Clock: 'Time source with no persistence access.' },
+    );
+    expect(audit.excludedPorts).toEqual(['Clock']);
+    expect(audit.staleExcludedPorts).toEqual([]);
   });
 });

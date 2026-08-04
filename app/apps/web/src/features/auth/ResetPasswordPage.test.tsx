@@ -11,6 +11,8 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ResetPasswordPage } from './ResetPasswordPage.js';
 
+const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
+
 const renderResetPage = async (search: string) => {
   window.history.replaceState({}, '', `/reset-password${search}`);
   const rootRoute = createRootRoute({ component: ResetPasswordPage });
@@ -35,17 +37,17 @@ describe('ResetPasswordPage', () => {
     }));
 
     await renderResetPage('?token=valid-token');
-    await userEvent.type(screen.getByTestId('reset-password'), 'newpassword123');
-    await userEvent.type(screen.getByTestId('reset-password-confirm'), 'newpassword123');
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByTestId('reset-success')).toBeInTheDocument();
-    expect(body).toEqual({ token: 'valid-token', newPassword: 'newpassword123' });
+    expect(body).toEqual({ token: 'valid-token', newPassword: VALID_PASSWORD });
   });
 
   it('blocks submission when the two passwords do not match', async () => {
     await renderResetPage('?token=valid-token');
-    await userEvent.type(screen.getByTestId('reset-password'), 'newpassword123');
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
     await userEvent.type(screen.getByTestId('reset-password-confirm'), 'different123');
     await userEvent.click(screen.getByTestId('reset-submit'));
 
@@ -94,8 +96,8 @@ describe('ResetPasswordPage', () => {
       { status: 400 },
     )));
     await renderResetPage('?token=consumed-token');
-    await userEvent.type(screen.getByTestId('reset-password'), 'newpassword123');
-    await userEvent.type(screen.getByTestId('reset-password-confirm'), 'newpassword123');
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByTestId('reset-invalid-token')).toHaveTextContent(
@@ -109,8 +111,8 @@ describe('ResetPasswordPage', () => {
       { status: 400 },
     )));
     await renderResetPage('?token=valid-token');
-    await userEvent.type(screen.getByTestId('reset-password'), 'newpassword123');
-    await userEvent.type(screen.getByTestId('reset-password-confirm'), 'newpassword123');
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(pl.errors.messageValidation);
@@ -123,8 +125,8 @@ describe('ResetPasswordPage', () => {
       return HttpResponse.json({ status: true });
     }));
     await renderResetPage('?token=valid-token');
-    await userEvent.type(screen.getByTestId('reset-password'), 'newpassword123');
-    await userEvent.type(screen.getByTestId('reset-password-confirm'), 'newpassword123');
+    await userEvent.type(screen.getByTestId('reset-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('reset-password-confirm'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('reset-submit'));
 
     expect(await screen.findByRole('button', { name: pl.resetPassword.submitPending })).toBeDisabled();

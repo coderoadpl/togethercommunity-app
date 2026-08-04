@@ -11,12 +11,15 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { RegisterPage } from './RegisterPage.js';
 
 const HomeAfterRegistration = () => <div>Home after registration</div>;
+const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 const renderRegisterPage = async (hostname?: string) => {
   const rootRoute = createRootRoute({ component: Outlet });
@@ -68,7 +71,9 @@ describe('RegisterPage', () => {
     await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'short');
     await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
-    expect(await screen.findByText(pl.auth.passwordTooShort({ min: 8 }))).toBeInTheDocument();
+    expect(
+      await screen.findByText(pl.auth.passwordTooShort({ min: PASSWORD_MIN_LENGTH })),
+    ).toBeInTheDocument();
     expect(requested).toBe(false);
   });
 
@@ -81,7 +86,7 @@ describe('RegisterPage', () => {
     await renderRegisterPage();
     await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
     await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo1234');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
@@ -106,7 +111,7 @@ describe('RegisterPage', () => {
     await userEvent.click(await screen.findByRole('checkbox'));
     await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Creator');
     await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'new@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo1234');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
     expect(await screen.findByText('Home after registration')).toBeInTheDocument();
@@ -145,7 +150,7 @@ describe('RegisterPage', () => {
 
     await userEvent.type(screen.getByLabelText(pl.auth.nameLabel), 'New Member');
     await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'member@together.dev');
-    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo1234');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), VALID_PASSWORD);
     await userEvent.click(checkbox);
     await userEvent.click(screen.getByRole('button', { name: pl.auth.createAccount }));
 
@@ -154,7 +159,7 @@ describe('RegisterPage', () => {
       {
         name: 'New Member',
         email: 'member@together.dev',
-        password: 'demo1234',
+        password: VALID_PASSWORD,
         termsAccepted: true,
       },
     ]);

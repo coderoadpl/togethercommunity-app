@@ -91,7 +91,7 @@ describe('LoginPage', () => {
     await renderLoginPage(true);
 
     expect(await screen.findByText('creator@together.dev')).toBeInTheDocument();
-    expect(screen.getByText('demo1234')).toBeInTheDocument();
+    expect(screen.getByText('demo-password-15')).toBeInTheDocument();
   });
 
   it('links public preview lessons to the registered player route', async () => {

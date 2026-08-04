@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
-import { err, normalizeEmail, ok, validation } from '#core/domain/index.js';
+import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, validation } from '#core/domain/index.js';
 import { createDb } from '#adapters/db/client.js';
 import { account, user, verification } from '#adapters/db/schema.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
@@ -30,6 +30,15 @@ const connectionString =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 
 let signUpIpSuffix = 1;
+
+const passwordFixture = (value: string): string =>
+  value.padEnd(PASSWORD_MIN_LENGTH, 'x');
+const SIGN_UP_PASSWORD = passwordFixture('signup-password');
+const OLD_PASSWORD = passwordFixture('old-password');
+const NEW_PASSWORD = passwordFixture('new-password');
+const NATIVE_PASSWORD = passwordFixture('native-password');
+const TEMPORARY_PASSWORD = passwordFixture('temporary-password');
+const CURRENT_PASSWORD = passwordFixture('current-password');
 
 const totpCode = (secret: string): string => {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -100,7 +109,7 @@ describe('real-provider sign-in and passkey proofs', () => {
   it('challenges password and magic-link sign-ins and redeems each backup code once', async () => {
     const { auth } = buildAuth();
     const email = `two-factor-${Date.now()}@together.dev`;
-    const password = 'password-1234';
+    const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
     const token = signedUp.headers.get('set-auth-token') ?? '';
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) => auth.handler(
@@ -209,7 +218,7 @@ describe('real-provider sign-in and passkey proofs', () => {
   it('issues and accepts the prefixed challenge cookie used by HTTPS deployments', async () => {
     const { auth } = buildAuth({ secureCookies: true });
     const email = `secure-two-factor-${Date.now()}@together.dev`;
-    const password = 'password-1234';
+    const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
     const token = signedUp.headers.get('set-auth-token') ?? '';
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) => auth.handler(
@@ -255,7 +264,7 @@ describe('real-provider sign-in and passkey proofs', () => {
     async (path) => {
       const { auth } = buildAuth();
       const email = `additional-two-factor-${path.replaceAll('/', '-')}-${Date.now()}@together.dev`;
-      const password = 'password-1234';
+      const password = passwordFixture('password-1234');
       const signedUp = await signUp(auth, email, { password });
       const token = signedUp.headers.get('set-auth-token') ?? '';
       const post = (endpointPath: string, body: unknown) => auth.handler(
@@ -325,7 +334,7 @@ describe('real-provider sign-in and passkey proofs', () => {
   it('requires a fresh user-bound password proof before passkey registration', async () => {
     const { auth } = buildAuth();
     const email = `passkey-proof-${Date.now()}@together.dev`;
-    const password = 'password-1234';
+    const password = passwordFixture('password-1234');
     const signedUp = await signUp(auth, email, { password });
     const sessionCookie = signedUp.headers.getSetCookie()
       .find((entry) => entry.startsWith('better-auth.session_token='))
@@ -489,11 +498,114 @@ const signUp = (
       body: JSON.stringify({
         name: 'Ada',
         email,
-        password: options.password ?? 'secret12',
+        password: options.password ?? SIGN_UP_PASSWORD,
         ...(options.termsAccepted === undefined ? {} : { termsAccepted: options.termsAccepted }),
       }),
     }),
   );
+
+describe('raised password floor', () => {
+  it('keeps an imported eight-character credential valid for sign-in but rejects it as a new password', async () => {
+    const { auth } = buildAuth();
+    const db = createDb('node-postgres', connectionString);
+    const suffix = crypto.randomUUID();
+    const userId = `pre-floor-user-${suffix}`;
+    const email = `pre-floor-${suffix}@together.dev`;
+    const password = 'oldpass8';
+    const passwordHash = deriveLegacyPasswordHash(password, `pre-floor-salt-${suffix}`);
+    expect(password).toHaveLength(8);
+    expect(password.length).toBeLessThan(PASSWORD_MIN_LENGTH);
+    await db.insert(user).values({ id: userId, name: 'Pre-floor account', email });
+    await db.insert(account).values({
+      id: `pre-floor-account-${suffix}`,
+      accountId: userId,
+      providerId: 'credential',
+      userId,
+      password: passwordHash,
+    });
+
+    const signedIn = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.201',
+        },
+        body: JSON.stringify({ email, password }),
+      }),
+    );
+    const token = signedIn.headers.get('set-auth-token');
+
+    expect(signedIn.status).toBe(200);
+    expect(token).not.toBeNull();
+    expect(await auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${token ?? ''}` }),
+    })).not.toBeNull();
+
+    const changed = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token ?? ''}`,
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.202',
+        },
+        body: JSON.stringify({
+          currentPassword: password,
+          newPassword: password,
+          revokeOtherSessions: false,
+        }),
+      }),
+    );
+    const resetRequested = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.203',
+        },
+        body: JSON.stringify({
+          email,
+          redirectTo: 'http://studio.localhost:48730/reset-password',
+        }),
+      }),
+    );
+    const resetTokens = await db
+      .select({ identifier: verification.identifier })
+      .from(verification)
+      .where(eq(verification.value, userId));
+    const resetToken = resetTokens.find((row) => row.identifier.startsWith('reset-password:'));
+    if (!resetToken) throw new Error('Password reset token was not created');
+    const reset = await auth.handler(
+      new Request('http://studio.localhost:48730/api/auth/reset-password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          'x-forwarded-for': '198.51.100.204',
+        },
+        body: JSON.stringify({
+          token: resetToken.identifier.slice('reset-password:'.length),
+          newPassword: password,
+        }),
+      }),
+    );
+
+    expect(changed.status).toBe(400);
+    expect(await changed.json()).toMatchObject({ code: 'PASSWORD_TOO_SHORT' });
+    expect(resetRequested.status).toBe(200);
+    expect(reset.status).toBe(400);
+    expect(await reset.json()).toMatchObject({ code: 'PASSWORD_TOO_SHORT' });
+    const credentials = await db
+      .select({ password: account.password })
+      .from(account)
+      .where(eq(account.userId, userId));
+    expect(credentials).toEqual([{ password: passwordHash }]);
+  }, 30000);
+});
 
 describe('email sign-up consent', () => {
   it('rejects signup before account creation when configured legal terms are not accepted', async () => {
@@ -781,7 +893,7 @@ describe('reset password email', () => {
     expect(passwordOptions?.resetPasswordTokenExpiresIn).toBe(PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS);
     expect(passwordOptions?.revokeSessionsOnPasswordReset).toBe(true);
     const email = `reset-session-${Date.now()}@together.dev`;
-    const signedUp = await signUp(auth, email, { password: 'old-password' });
+    const signedUp = await signUp(auth, email, { password: OLD_PASSWORD });
     const sessionToken = signedUp.headers.get('set-auth-token');
     const requestedAt = Date.now();
     await auth.api.requestPasswordReset({
@@ -811,7 +923,7 @@ describe('reset password email', () => {
           origin: 'http://studio.localhost:48730',
           'x-forwarded-for': '198.51.100.222',
         },
-        body: JSON.stringify({ token, newPassword: 'new-password' }),
+        body: JSON.stringify({ token, newPassword: NEW_PASSWORD }),
       }),
     );
     const consumed = await auth.handler(
@@ -822,7 +934,7 @@ describe('reset password email', () => {
           origin: 'http://studio.localhost:48730',
           'x-forwarded-for': '198.51.100.223',
         },
-        body: JSON.stringify({ token, newPassword: 'another-password' }),
+        body: JSON.stringify({ token, newPassword: passwordFixture('another-password') }),
       }),
     );
 
@@ -838,7 +950,7 @@ describe('change password', () => {
   it('rotates the caller token, revokes the other session, and replaces the accepted password', async () => {
     const { auth } = buildAuth();
     const email = `change-password-${Date.now()}@together.dev`;
-    const first = await signUp(auth, email, { password: 'old-password' });
+    const first = await signUp(auth, email, { password: OLD_PASSWORD });
     const firstToken = first.headers.get('set-auth-token');
     const second = await auth.handler(
       new Request('http://studio.localhost:48730/api/auth/sign-in/email', {
@@ -848,7 +960,7 @@ describe('change password', () => {
           origin: 'http://studio.localhost:48730',
           'x-forwarded-for': '198.51.100.210',
         },
-        body: JSON.stringify({ email, password: 'old-password' }),
+        body: JSON.stringify({ email, password: OLD_PASSWORD }),
       }),
     );
     const secondToken = second.headers.get('set-auth-token');
@@ -865,8 +977,8 @@ describe('change password', () => {
           'x-forwarded-for': '198.51.100.211',
         },
         body: JSON.stringify({
-          currentPassword: 'old-password',
-          newPassword: 'new-password',
+          currentPassword: OLD_PASSWORD,
+          newPassword: NEW_PASSWORD,
           revokeOtherSessions: true,
         }),
       }),
@@ -891,7 +1003,7 @@ describe('change password', () => {
           origin: 'http://studio.localhost:48730',
           'x-forwarded-for': '198.51.100.212',
         },
-        body: JSON.stringify({ email, password: 'old-password' }),
+        body: JSON.stringify({ email, password: OLD_PASSWORD }),
       }),
     );
     const newPassword = await auth.handler(
@@ -902,7 +1014,7 @@ describe('change password', () => {
           origin: 'http://studio.localhost:48730',
           'x-forwarded-for': '198.51.100.213',
         },
-        body: JSON.stringify({ email, password: 'new-password' }),
+        body: JSON.stringify({ email, password: NEW_PASSWORD }),
       }),
     );
 
@@ -914,7 +1026,7 @@ describe('change password', () => {
     const { auth } = buildAuth();
     const db = createDb('node-postgres', connectionString);
     const email = `change-legacy-${Date.now()}@together.dev`;
-    const signedUp = await signUp(auth, email, { password: 'temporary-password' });
+    const signedUp = await signUp(auth, email, { password: TEMPORARY_PASSWORD });
     const token = signedUp.headers.get('set-auth-token');
     const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
     const legacyPassword = deriveLegacyPasswordHash('legacy-password', 'legacy-change-password-salt');
@@ -937,7 +1049,7 @@ describe('change password', () => {
         },
         body: JSON.stringify({
           currentPassword: 'legacy-password',
-          newPassword: 'native-password',
+          newPassword: NATIVE_PASSWORD,
           revokeOtherSessions: false,
         }),
       }),
@@ -961,7 +1073,7 @@ describe('change password', () => {
           origin: 'http://studio.localhost:48730',
           'x-forwarded-for': '198.51.100.215',
         },
-        body: JSON.stringify({ email, password: 'native-password' }),
+        body: JSON.stringify({ email, password: NATIVE_PASSWORD }),
       }),
     );
     expect(signedIn.status).toBe(200);
@@ -970,7 +1082,7 @@ describe('change password', () => {
   it('allows twenty attempts per minute before rate limiting the endpoint', async () => {
     const { auth } = buildAuth();
     const email = `change-rate-limit-${Date.now()}@together.dev`;
-    const signedUp = await signUp(auth, email, { password: 'current-password' });
+    const signedUp = await signUp(auth, email, { password: CURRENT_PASSWORD });
     const token = signedUp.headers.get('set-auth-token');
     const attempt = () =>
       auth.handler(
@@ -984,7 +1096,7 @@ describe('change password', () => {
           },
           body: JSON.stringify({
             currentPassword: 'wrong-password',
-            newPassword: 'new-password',
+            newPassword: NEW_PASSWORD,
             revokeOtherSessions: false,
           }),
         }),

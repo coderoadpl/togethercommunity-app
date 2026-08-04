@@ -42,6 +42,7 @@ import {
   type RunResult,
   tsxBin,
 } from './server-harness.js';
+import { passwordFixture } from './password-fixture.js';
 
 type Run = RunResult;
 
@@ -182,7 +183,18 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   steps += 1;
 
   const alfaRegister = expectOk(
-    await cli(['register', '--name', 'Alfa Creator', '--email', 'alfa@together.dev', '--password', 'Demo1234!'], alfaHome),
+    await cli(
+      [
+        'register',
+        '--name',
+        'Alfa Creator',
+        '--email',
+        'alfa@together.dev',
+        '--password',
+        passwordFixture('Demo1234!'),
+      ],
+      alfaHome,
+    ),
     'alfa register',
     authSchema,
   );
@@ -228,7 +240,18 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   steps += 1;
 
   const betaRegister = expectOk(
-    await cli(['register', '--name', 'Beta Creator', '--email', 'beta@together.dev', '--password', 'Demo1234!'], betaHome),
+    await cli(
+      [
+        'register',
+        '--name',
+        'Beta Creator',
+        '--email',
+        'beta@together.dev',
+        '--password',
+        passwordFixture('Demo1234!'),
+      ],
+      betaHome,
+    ),
     'beta register',
     authSchema,
   );

@@ -4,10 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
+
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { MemberAccountPage } from './MemberAccountPage.js';
+
+const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
 
 const stubMe = () =>
   http.get('*/api/me', () =>
@@ -121,8 +125,8 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
-    await userEvent.type(screen.getByTestId('change-new-password'), 'new-password');
-    await userEvent.type(screen.getByTestId('change-confirm-password'), 'new-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await screen.findByTestId('change-password-success')).toHaveTextContent(
@@ -130,7 +134,7 @@ describe('MemberAccountPage', () => {
     );
     expect(body).toEqual({
       currentPassword: 'current-password',
-      newPassword: 'new-password',
+      newPassword: VALID_PASSWORD,
       revokeOtherSessions: false,
     });
     expect(screen.getByTestId('account-reset-password')).toBeInTheDocument();
@@ -150,8 +154,8 @@ describe('MemberAccountPage', () => {
     await renderAccount();
 
     await userEvent.type(await screen.findByTestId('change-current-password'), 'current-password');
-    await userEvent.type(screen.getByTestId('change-new-password'), 'new-password');
-    await userEvent.type(screen.getByTestId('change-confirm-password'), 'new-password');
+    await userEvent.type(screen.getByTestId('change-new-password'), VALID_PASSWORD);
+    await userEvent.type(screen.getByTestId('change-confirm-password'), VALID_PASSWORD);
     await userEvent.click(screen.getByTestId('change-password-submit'));
 
     expect(await screen.findByTestId('change-password-remote-error')).toHaveTextContent(

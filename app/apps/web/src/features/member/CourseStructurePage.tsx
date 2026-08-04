@@ -140,15 +140,26 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
       title={course.name}
       eyebrow={t.courseTree.courseSyllabus}
       width="wide"
+      mobileRail="split"
+      railLeading={
+        <CourseProgressCard
+          courseId={courseId}
+          structure={course}
+          lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
+        />
+      }
       rail={
         <>
-          <CourseProgressCard
-            courseId={courseId}
-            structure={course}
-            lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
-          />
-          {hasModules && <CourseDiscussionSearch courseId={courseId} structure={course} />}
-          {hasModules && <CurriculumCard courseId={courseId} structure={course} />}
+          {hasModules && (
+            <Box sx={{ order: { md: 2 } }}>
+              <CurriculumCard courseId={courseId} structure={course} />
+            </Box>
+          )}
+          {hasModules && (
+            <Box sx={{ order: { md: 1 } }}>
+              <CourseDiscussionSearch courseId={courseId} structure={course} />
+            </Box>
+          )}
         </>
       }
     >

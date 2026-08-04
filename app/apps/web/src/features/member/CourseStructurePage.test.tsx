@@ -218,11 +218,13 @@ describe('CourseStructurePage', () => {
     const partial = screen.getByTestId('lesson-button-l3');
     expect(partial.tagName).toBe('A');
     expect(within(partial).getByTestId('lock-open')).toBeInTheDocument();
+    expect(within(partial).getByText(pl.courseTree.accessPartiallyUnlocked)).toBeInTheDocument();
 
     const locked = screen.getByTestId('lesson-button-l4');
     expect(locked.tagName).not.toBe('A');
     expect(locked).toHaveClass('Mui-disabled');
     expect(within(locked).getByTestId('lock-closed')).toBeInTheDocument();
+    expect(within(locked).getByText(pl.courseTree.accessLocked)).toBeInTheDocument();
   });
 
   it('shows completion checkmarks per lesson, chapter and module', async () => {
@@ -231,22 +233,49 @@ describe('CourseStructurePage', () => {
 
     const completedLesson = await screen.findByTestId('lesson-button-l1');
     expect(within(completedLesson).getByTestId('completion-full')).toBeInTheDocument();
+    expect(within(completedLesson).getByText(pl.courseTree.completionComplete)).toBeInTheDocument();
 
     const module = screen.getByTestId('module-toggle-m1');
     expect(within(module).getByTestId('completion-partial')).toBeInTheDocument();
+    expect(within(module).getByText(pl.courseTree.completionPartial)).toBeInTheDocument();
 
     const chapter = screen.getByTestId('chapter-toggle-c1');
     expect(within(chapter).getByTestId('completion-partial')).toBeInTheDocument();
   });
 
-  it('collapses a module when its header is clicked', async () => {
+  it('exposes module disclosure state and toggles it from the keyboard', async () => {
     mockPage();
     const user = userEvent.setup();
     await renderPage(<CourseStructurePage courseId="course-1" />);
 
     expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
-    await user.click(screen.getByTestId('module-toggle-m1'));
+    const toggle = screen.getByTestId('module-toggle-m1');
+    expect(toggle.tagName).toBe('BUTTON');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAttribute('aria-controls', 'course-tree-module-m1');
+    toggle.focus();
+    await user.keyboard('{Enter}');
     await waitFor(() => expect(screen.queryByText('Intro to Variables')).not.toBeInTheDocument());
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.keyboard(' ');
+    expect(await screen.findByText('Intro to Variables')).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('places one progress card before a mobile curriculum and discussion tail', async () => {
+    mockPage();
+    await renderPage(<CourseStructurePage courseId="course-1" />);
+
+    const leading = await screen.findByTestId('member-rail-leading');
+    const trailing = screen.getByTestId('member-rail-trailing');
+    const curriculum = within(trailing).getByTestId('curriculum-card');
+    const discussion = within(trailing).getByTestId('course-discussion-search');
+
+    expect(within(leading).getByTestId('course-progress-card')).toBeInTheDocument();
+    expect(screen.getAllByTestId('course-progress-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('curriculum-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('course-discussion-search')).toHaveLength(1);
+    expect(curriculum.parentElement?.nextElementSibling).toContainElement(discussion);
   });
 
   it('filters to matching lessons, auto-expands and highlights the match', async () => {

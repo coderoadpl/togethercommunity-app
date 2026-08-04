@@ -22,19 +22,54 @@ import type {
 } from '#core/domain/index.js';
 
 import { useTranslations } from '../../i18n/index.js';
-import { LessonDurationText, TreeChapterTitle, TreeModuleTitle } from '../../theme.js';
+import {
+  LessonDurationText,
+  TreeChapterTitle,
+  TreeModuleTitle,
+  VisuallyHidden,
+} from '../../theme.js';
 import { Highlighted } from './highlight.js';
 import { Caret, CompletionFull, CompletionPartial, LockClosed, LockOpen } from './tree-icons.js';
 
 const AccessMark = ({ status }: { status: AccessStatus }) => {
-  if (status === 'not-accessible') return <LockClosed />;
-  if (status === 'partially-accessible') return <LockOpen />;
+  const t = useTranslations();
+  if (status === 'not-accessible') {
+    return (
+      <>
+        <LockClosed />
+        <VisuallyHidden>{t.courseTree.accessLocked}</VisuallyHidden>
+      </>
+    );
+  }
+  if (status === 'partially-accessible') {
+    return (
+      <>
+        <LockOpen />
+        <VisuallyHidden>{t.courseTree.accessPartiallyUnlocked}</VisuallyHidden>
+      </>
+    );
+  }
   return null;
 };
 
 const CompletionMark = ({ status }: { status: CompletionStatus }) => {
-  if (status === 'fully-completed') return <CompletionFull />;
-  if (status === 'partially-completed') return <CompletionPartial />;
+  const t = useTranslations();
+  if (status === 'fully-completed') {
+    return (
+      <>
+        <CompletionFull />
+        <VisuallyHidden>{t.courseTree.completionComplete}</VisuallyHidden>
+      </>
+    );
+  }
+  if (status === 'partially-completed') {
+    return (
+      <>
+        <CompletionPartial />
+        <VisuallyHidden>{t.courseTree.completionPartial}</VisuallyHidden>
+      </>
+    );
+  }
   return null;
 };
 
@@ -143,36 +178,43 @@ const ChapterNode = ({
   open: boolean;
   onToggle: () => void;
   currentLessonId?: string | undefined;
-}) => (
-  <Box component="li" sx={{ listStyle: 'none' }}>
-    <ListItemButton
-      onClick={onToggle}
-      data-testid={`chapter-toggle-${chapter.id}`}
-      sx={{ pl: '2rem', pr: '0.75rem', columnGap: '0.4rem' }}
-    >
-      <Caret open={open} />
-      <TreeChapterTitle sx={{ flex: 1, minWidth: 0 }}>{chapter.name}</TreeChapterTitle>
-      <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem' }}>
-        <CompletionMark status={chapter.completionStatus} />
-        <AccessMark status={chapter.accessStatus} />
-      </Stack>
-    </ListItemButton>
-    <Collapse in={open} unmountOnExit>
-      <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
-        {chapter.lessons.map((lesson) => (
-          <Box component="li" key={lesson.contentId} sx={{ listStyle: 'none' }}>
-            <LessonRow
-              lesson={lesson}
-              courseId={courseId}
-              search={search}
-              currentLessonId={currentLessonId}
-            />
-          </Box>
-        ))}
-      </List>
-    </Collapse>
-  </Box>
-);
+}) => {
+  const contentId = `course-tree-chapter-${chapter.id}`;
+  return (
+    <Box component="li" sx={{ listStyle: 'none' }}>
+      <ListItemButton
+        component="button"
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={contentId}
+        data-testid={`chapter-toggle-${chapter.id}`}
+        sx={{ pl: '2rem', pr: '0.75rem', columnGap: '0.4rem' }}
+      >
+        <Caret open={open} />
+        <TreeChapterTitle sx={{ flex: 1, minWidth: 0 }}>{chapter.name}</TreeChapterTitle>
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', columnGap: '0.35rem' }}>
+          <CompletionMark status={chapter.completionStatus} />
+          <AccessMark status={chapter.accessStatus} />
+        </Stack>
+      </ListItemButton>
+      <Collapse id={contentId} in={open} unmountOnExit>
+        <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
+          {chapter.lessons.map((lesson) => (
+            <Box component="li" key={lesson.contentId} sx={{ listStyle: 'none' }}>
+              <LessonRow
+                lesson={lesson}
+                courseId={courseId}
+                search={search}
+                currentLessonId={currentLessonId}
+              />
+            </Box>
+          ))}
+        </List>
+      </Collapse>
+    </Box>
+  );
+};
 
 const ModuleNode = ({
   module,
@@ -190,10 +232,15 @@ const ModuleNode = ({
   currentLessonId?: string | undefined;
 }) => {
   const open = isOpen(module.id);
+  const contentId = `course-tree-module-${module.id}`;
   return (
     <Box component="li" sx={{ listStyle: 'none' }}>
       <ListItemButton
+        component="button"
+        type="button"
         onClick={() => onToggle(module.id)}
+        aria-expanded={open}
+        aria-controls={contentId}
         data-testid={`module-toggle-${module.id}`}
         sx={{ pl: '0.75rem', pr: '0.75rem', columnGap: '0.4rem' }}
       >
@@ -204,7 +251,7 @@ const ModuleNode = ({
           <AccessMark status={module.accessStatus} />
         </Stack>
       </ListItemButton>
-      <Collapse in={open} unmountOnExit>
+      <Collapse id={contentId} in={open} unmountOnExit>
         <List disablePadding component="ul" sx={{ m: 0, p: 0 }}>
           {module.chapters.map((chapter) => (
             <ChapterNode

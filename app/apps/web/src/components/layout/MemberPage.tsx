@@ -21,11 +21,13 @@ export interface MemberPageProps {
   breadcrumbs?: BreadcrumbItem[];
   /** Sticky right column (24rem) on md+. */
   rail?: ReactNode;
+  railLeading?: ReactNode;
   /**
    * Where the rail lands on xs: 'before' (course overview — progress summary
-   * leads) or 'after' (lesson player — the lesson itself must come first).
+   * leads), 'after' (lesson player — the lesson itself must come first), or
+   * 'split' (leading rail content, main content, trailing rail content).
    */
-  mobileRail?: 'before' | 'after';
+  mobileRail?: 'before' | 'after' | 'split';
   /** Persistent bottom tab bar, xs only (decision D4); caller supplies the tabs. */
   bottomNav?: ReactNode;
   state?: PageState;
@@ -50,6 +52,7 @@ export const MemberPage = ({
   nav,
   breadcrumbs,
   rail,
+  railLeading,
   mobileRail = 'before',
   bottomNav,
   state,
@@ -58,6 +61,8 @@ export const MemberPage = ({
 }: MemberPageProps) => {
   const statusOnly = state !== undefined && state.kind !== 'ready';
   const body = statusOnly ? <StatusView state={state} /> : children;
+  const hasRail = rail !== undefined || railLeading !== undefined;
+  const splitRail = mobileRail === 'split' && railLeading !== undefined;
 
   return (
     <Container
@@ -91,7 +96,7 @@ export const MemberPage = ({
         </Eyebrow>
       </LedgerHeader>
 
-      {rail !== undefined && !statusOnly ? (
+      {hasRail && !statusOnly ? (
         <Box
           sx={{
             mt: '2.5rem',
@@ -103,7 +108,13 @@ export const MemberPage = ({
         >
           <Box
             component="main"
-            sx={{ order: { xs: mobileRail === 'before' ? 2 : 1, md: 1 }, minWidth: 0 }}
+            sx={{
+              order: {
+                xs: mobileRail === 'before' || splitRail ? 2 : 1,
+                md: 1,
+              },
+              minWidth: 0,
+            }}
           >
             {body}
           </Box>
@@ -112,6 +123,7 @@ export const MemberPage = ({
             useFlexGap
             sx={{
               rowGap: '1.5rem',
+              display: { xs: splitRail ? 'contents' : 'flex', md: 'flex' },
               order: { xs: mobileRail === 'before' ? 1 : 2, md: 2 },
               position: { md: 'sticky' },
               top: { md: '1.5rem' },
@@ -119,7 +131,25 @@ export const MemberPage = ({
               overflowY: { md: 'auto' },
             }}
           >
-            {rail}
+            {splitRail ? (
+              <>
+                <Box data-testid="member-rail-leading" sx={{ minWidth: 0, order: { xs: 1 } }}>
+                  {railLeading}
+                </Box>
+                <Stack
+                  useFlexGap
+                  data-testid="member-rail-trailing"
+                  sx={{ minWidth: 0, rowGap: '1.5rem', order: { xs: 3 } }}
+                >
+                  {rail}
+                </Stack>
+              </>
+            ) : (
+              <>
+                {railLeading}
+                {rail}
+              </>
+            )}
           </Stack>
         </Box>
       ) : (

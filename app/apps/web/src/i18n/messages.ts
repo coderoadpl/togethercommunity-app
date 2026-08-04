@@ -992,6 +992,10 @@ export interface Messages {
     courseNotFound: string;
     lessonDuration: (params: { minutes: number }) => string;
     unlockAccess: string;
+    accessLocked: string;
+    accessPartiallyUnlocked: string;
+    completionComplete: string;
+    completionPartial: string;
   };
   courseOverview: {
     progressTitle: string;

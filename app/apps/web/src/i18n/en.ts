@@ -1117,6 +1117,10 @@ export const en: Messages = {
     courseNotFound: 'Course not found',
     lessonDuration: ({ minutes }) => format('{minutes} min', { minutes }),
     unlockAccess: 'Unlock access',
+    accessLocked: 'Locked',
+    accessPartiallyUnlocked: 'Partially unlocked',
+    completionComplete: 'Completed',
+    completionPartial: 'Partially completed',
   },
   courseOverview: {
     progressTitle: 'Your progress',

@@ -495,7 +495,16 @@ After item 16 creates the branch, set Vercel Production Branch Tracking to
 the `main`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
 to Preview with branch `main`, and its database URL must come exclusively
 from the database integration, which creates and manages a dedicated branch
-per git branch. A third verified trap sits on the GitHub side: when the
+per git branch. A fourth verified trap is member-role mapping on the hosting
+team: when a git identity that pushes or merges (including a machine account
+merging pull requests) maps to a hosting-team member whose role cannot create
+deployments (a read-only viewer seat), the platform silently drops every
+deployment that identity triggers — no record, no error. An UNMAPPED git
+identity deploys fine, so adding a viewer seat for an active git account is
+strictly worse than no seat. Keep deploy-triggering git identities either
+unmapped or mapped to a role that may create deployments, and re-test a push
+after any team-membership change. A third verified trap sits on the GitHub
+side: when the
 hosting provider's GitHub App requests updated permissions, the pending
 request can silently stop ALL deployment creation for the installation —
 pushes produce no deployment records and deploy-hook jobs die without a

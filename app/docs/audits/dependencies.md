@@ -3,7 +3,7 @@
 ## Run contract
 
 - **Cadence:** automated checks on every protected-branch change, advisory
-  Scorecard weekly, and manual review monthly and before a release.
+  Scorecard and Renovate weekly, and manual review monthly and before a release.
 - **Owner:** the dependency maintainer performs the audit; the repository owner
   accepts advisories, license exceptions, and major-upgrade risk.
 - **Output format:** a Markdown audit record using the fields required by the
@@ -24,22 +24,30 @@
 | `pnpm run lock-lint` | Detects repository-defined lockfile drift. It does not establish artifact provenance. |
 | `pnpm run license-lint` | Enforces the encoded permissive-license policy and documented exceptions. It cannot decide whether a new exception is acceptable. |
 | OpenSSF Scorecard 5.5.0 | Adds advisory dependency-update, pinned-dependency, token-permission, and license signals. Findings require manual triage. |
+| Renovate | Groups non-major, pin, and digest updates in one weekly pull request, keeps majors separate, and performs weekly lockfile maintenance. Every pull request remains subject to the full gates and permissive-license policy. |
+
+The repository-root Renovate configuration discovers Together's pnpm root at
+`app/`. Its three-day release cooldown mirrors `minimumReleaseAge: 4320` in
+`app/pnpm-workspace.yaml`. Renovate may keep at most three pull requests open at
+once. The configuration remains inert until the repository owner installs and
+authorizes the Renovate GitHub App.
 
 ## Manual checks
 
 1. Reconcile `package.json`, the lockfile, direct imports, build tooling, and
    runtime deployment so production, development, and transitive exposure are
    distinguished.
-2. Search OSV and the GitHub Advisory Database for unresolved packages and
+2. Confirm Renovate targets the `app/` pnpm root, respects the three-day
+   cooldown, and leaves major updates outside the non-major group.
+3. Search OSV and the GitHub Advisory Database for unresolved packages and
    review every accepted item against the rationale and revisit condition in
    the authoritative [security posture](../security.md).
-3. Assess exploit reachability, affected operating systems and code paths,
+4. Assess exploit reachability, affected operating systems and code paths,
    available fixes, upgrade breakage, and whether an override masks a stale
    direct dependency.
-4. Review package licenses and notices under Together's repository policy;
+5. Review package licenses and notices under Together's repository policy;
    tools cannot authorize an exception or determine clean-room suitability.
-5. Check whether released artifacts carry SLSA v1.2 provenance. Describe an
+6. Check whether released artifacts carry SLSA v1.2 provenance. Describe an
    absent provenance record as a gap, not Build L1 evidence.
-6. Record advisory-database coverage, private packages, and unbuilt deployment
+7. Record advisory-database coverage, private packages, and unbuilt deployment
    paths as blind spots.
-

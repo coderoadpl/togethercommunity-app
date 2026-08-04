@@ -125,7 +125,6 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver): Payme
               cancelAtPeriodEnd: object.cancel_at_period_end ?? false,
               currentPeriodEnd: epochToIso(object.current_period_end),
               endedAt: epochToIso(object.ended_at),
-              canceledAt: epochToIso(object.canceled_at),
             }
           : null,
     });

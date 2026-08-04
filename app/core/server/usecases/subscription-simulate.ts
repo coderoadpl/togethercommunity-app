@@ -59,7 +59,6 @@ export const simulateSubscriptionCycle = async (
           cancelAtPeriodEnd: true,
           currentPeriodEnd: found.value.currentPeriodEnd,
           endedAt: found.value.currentPeriodEnd,
-          canceledAt: found.value.currentPeriodEnd,
         },
       }
     : {

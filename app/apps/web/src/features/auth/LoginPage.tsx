@@ -21,12 +21,13 @@ import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
 
-export const LoginPage = () => {
+export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const magicLinkExpired = invalidTokenFromLocation();
@@ -42,7 +43,11 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   const authConfig = useQuery(actions.authConfig);
-  const publicOffer = useQuery(actions.publicOffer);
+  const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
+  const publicOffer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
+  const eyebrow = usesPlatformAuthSurface(hostname)
+    ? t.auth.signInPlatformEyebrow
+    : t.auth.signInEyebrow({ host: hostname });
 
   const signIn = useMutation({
     ...actions.signIn,
@@ -114,6 +119,12 @@ export const LoginPage = () => {
 
   const footer = (
     <>
+      {authConfig.isError || publicOffer.isError ? (
+        <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1.25rem' }}>
+          {authConfig.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(authConfig.error, t), retry: { label: t.common.retry, onRetry: () => void authConfig.refetch() } }} /> : null}
+          {publicOffer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(publicOffer.error, t), retry: { label: t.common.retry, onRetry: () => void publicOffer.refetch() } }} /> : null}
+        </Stack>
+      ) : null}
       {authConfig.data?.exposeMagicLinks ? (
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
           {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
@@ -145,8 +156,6 @@ export const LoginPage = () => {
       {publicOffer.data?.tenant.socialLinks.length ? (
         <TenantSocialLinks links={publicOffer.data.tenant.socialLinks} />
       ) : null}
-      {authConfig.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(authConfig.error, t), retry: { label: t.common.retry, onRetry: () => void authConfig.refetch() } }} /> : null}
-      {publicOffer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(publicOffer.error, t), retry: { label: t.common.retry, onRetry: () => void publicOffer.refetch() } }} /> : null}
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: '1.2rem' }}>
         <BuildStamp />
       </Box>
@@ -155,7 +164,7 @@ export const LoginPage = () => {
 
   if (requestedMagicEmail) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
           <CardTitle variant="h1">{t.auth.magicLinkRequested}</CardTitle>
           <Typography variant="body1">
@@ -179,7 +188,7 @@ export const LoginPage = () => {
 
   if (twoFactorRequired) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
           <CardTitle variant="h1">{t.auth.twoFactorTitle}</CardTitle>
           <Typography variant="body1">{t.auth.twoFactorIntro}</Typography>
@@ -221,7 +230,7 @@ export const LoginPage = () => {
   }
 
   return (
-    <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+    <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         {magicLinkExpired ? (
           <Alert severity="error" sx={{ mb: '1rem' }}>
             {t.auth.magicLinkExpired}

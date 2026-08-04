@@ -9,7 +9,7 @@ import {
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
@@ -54,7 +54,29 @@ const noTenantOffer = http.get('/api/public/offer', () =>
     { status: 404 },
   ));
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe('RegisterPage', () => {
+  it('keeps platform signup enabled on the configured base domain without resolving a tenant', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    let offerCalls = 0;
+    server.use(
+      http.get('/api/public/offer', () => {
+        offerCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } },
+          { status: 404 },
+        );
+      }),
+    );
+
+    await renderRegisterPage('togethercommunity.app');
+
+    expect(screen.getByText(pl.auth.createAccountPlatformEyebrow)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.auth.createAccount })).toBeEnabled();
+    expect(offerCalls).toBe(0);
+  });
+
   it('blocks a password below the shared minimum', async () => {
     let requested = false;
     server.use(

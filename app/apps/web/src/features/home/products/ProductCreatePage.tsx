@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
-  Box,
   Button,
   FormControl,
   FormHelperText,
@@ -23,6 +22,7 @@ import {
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { errorCodeOf, localizeError, useTranslations } from '../../../i18n/index.js';
 import { PanelBackLink } from '../PanelBackLink.js';
 import { productTypeLabel } from './product-type.js';
@@ -135,12 +135,11 @@ export const ProductCreatePage = () => {
           <FormHelperText>{t.products.coverUrlHint}</FormHelperText>
         </FormControl>
         {coverPreviewUrl === null ? null : (
-          <Box
-            component="img"
+          <CoverPreview
+            key={coverPreviewUrl}
             src={coverPreviewUrl}
-            alt={title === '' ? t.products.coverUrlLabel : title}
-            data-testid="product-cover-preview"
-            sx={{ width: '100%', maxHeight: 320, objectFit: 'cover' }}
+            label={title === '' ? t.products.coverUrlLabel : title}
+            testId="product-cover-preview"
           />
         )}
         <Button type="submit" variant="contained" disabled={createProduct.isPending}>

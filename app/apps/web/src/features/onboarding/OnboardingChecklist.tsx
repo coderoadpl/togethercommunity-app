@@ -1,4 +1,4 @@
-import { Alert, Button, Collapse, List, ListItem, ListItemButton, ListItemIcon, ListItemText, SvgIcon } from '@mui/material';
+import { Alert, Button, List, ListItem, ListItemButton, ListItemIcon, ListItemText, SvgIcon } from '@mui/material';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -59,7 +59,7 @@ export const OnboardingChecklist = () => {
       title={t.onboarding.title}
       description={t.onboarding.progress({ done, total: steps.length })}
       data-testid="onboarding-checklist"
-      actions={
+      headerActions={
         <>
           {complete ? (
             <Button
@@ -82,8 +82,9 @@ export const OnboardingChecklist = () => {
         </>
       }
     >
-      <Collapse in={stepsVisible} unmountOnExit>
-        <List disablePadding>
+      {stepsVisible || dismiss.isError ? (
+        <>
+          {stepsVisible ? <List disablePadding>
           {steps.map((step) => (
             <ListItem key={step.id} disableGutters disablePadding data-testid={`onboarding-step-${step.id}`}>
               <ListItemButton onClick={() => void navigate({ to: step.target })}>
@@ -109,9 +110,10 @@ export const OnboardingChecklist = () => {
               </ListItemButton>
             </ListItem>
           ))}
-        </List>
-      </Collapse>
-      {dismiss.isError ? <Alert severity="error">{localizeError(dismiss.error, t)}</Alert> : null}
+          </List> : null}
+          {dismiss.isError ? <Alert severity="error">{localizeError(dismiss.error, t)}</Alert> : null}
+        </>
+      ) : null}
     </SectionCard>
   );
 };

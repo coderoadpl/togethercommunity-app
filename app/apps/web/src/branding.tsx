@@ -7,6 +7,7 @@ import type { TenantBranding, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { useTranslations } from './i18n/index.js';
+import { isConfiguredBaseDomainHost } from './lib/tenant.js';
 import { applyBranding } from './theme-branding.js';
 import { CompactWordmark, Wordmark } from './theme.js';
 
@@ -14,12 +15,12 @@ import { CompactWordmark, Wordmark } from './theme.js';
  * Branding rides on the public offer the SPA already fetches at boot
  * (TenantGate), so reading it here costs no extra request.
  */
-const useTenantOffer = (): {
+const useTenantOffer = (enabled = !isConfiguredBaseDomainHost(window.location.hostname)): {
   name: string;
   branding: TenantBranding;
   socialLinks: TenantSocialLink[];
 } | null => {
-  const offer = useQuery(actions.publicOffer);
+  const offer = useQuery({ ...actions.publicOffer, enabled });
   if (offer.data === undefined) return null;
   return {
     name: offer.data.tenant.name,
@@ -37,7 +38,7 @@ export const TenantSocialLinks = ({
   links?: TenantSocialLink[];
 } = {}) => {
   const t = useTranslations();
-  const tenantLinks = useTenantOffer()?.socialLinks ?? [];
+  const tenantLinks = useTenantOffer(providedLinks === undefined)?.socialLinks ?? [];
   const links = providedLinks ?? tenantLinks;
   if (links.length === 0) return null;
   return (
@@ -91,9 +92,15 @@ export const TenantLogo = () => {
   );
 };
 
-export const BrandMark = ({ size = 'display' }: { size?: 'display' | 'compact' }) => {
+export const BrandMark = ({
+  size = 'display',
+  tenantAware = true,
+}: {
+  size?: 'display' | 'compact';
+  tenantAware?: boolean;
+}) => {
   const theme = useTheme();
-  const tenant = useTenantOffer();
+  const tenant = useTenantOffer(tenantAware);
   const compact = size === 'compact';
   if (tenant === null) {
     return (

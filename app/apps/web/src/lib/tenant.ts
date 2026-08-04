@@ -3,6 +3,14 @@ type TenantLocation = Pick<Location, 'hostname' | 'port' | 'protocol'>;
 const configuredAppBaseDomain = (): string | undefined =>
   import.meta.env.VITE_APP_BASE_DOMAIN || undefined;
 
+export const isConfiguredBaseDomainHost = (hostname: string): boolean => {
+  const baseDomain = configuredAppBaseDomain();
+  return baseDomain !== undefined && hostname.toLowerCase() === baseDomain.toLowerCase();
+};
+
+export const usesPlatformAuthSurface = (hostname: string): boolean =>
+  configuredAppBaseDomain() === undefined || isConfiguredBaseDomainHost(hostname);
+
 /** Base domain the SPA is served under (e.g. `localhost`, `together.example`). */
 export const appBaseDomain = (): string => configuredAppBaseDomain() ?? 'localhost';
 

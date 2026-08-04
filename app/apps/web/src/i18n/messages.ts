@@ -103,7 +103,9 @@ export interface Messages {
   };
   auth: {
     signInTitle: string;
+    signInPlatformEyebrow: string;
     signInEyebrow: (params: { host: string }) => string;
+    createAccountPlatformEyebrow: string;
     createAccountEyebrow: (params: { host: string }) => string;
     emailLabel: string;
     passwordLabel: string;

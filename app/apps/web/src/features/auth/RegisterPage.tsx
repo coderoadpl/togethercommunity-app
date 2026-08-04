@@ -20,7 +20,7 @@ import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
+import { appBaseDomain, hostHasTenantSubdomain, isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 
 const baseDomainUrl = (): string => {
@@ -40,7 +40,8 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const offer = useQuery(actions.publicOffer);
+  const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
+  const offer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
   const onOtherTenantHost = hostHasTenantSubdomain(hostname);
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -97,7 +98,9 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
 
   return (
     <FocusCard
-      eyebrow={t.auth.createAccountEyebrow({ host: hostname })}
+      eyebrow={usesPlatformAuthSurface(hostname)
+        ? t.auth.createAccountPlatformEyebrow
+        : t.auth.createAccountEyebrow({ host: hostname })}
       onSubmit={submit}
       footer={
         <FinePrint variant="caption" component="p">
@@ -146,7 +149,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
             type="submit"
             variant="contained"
             fullWidth
-            disabled={signUp.isPending || offer.isPending}
+            disabled={signUp.isPending || (resolveTenantOffer && offer.isPending)}
             sx={{ mt: '0.4rem' }}
           >
             {signUp.isPending ? t.auth.creatingAccount : t.auth.createAccount}

@@ -102,7 +102,9 @@ export const en: Messages = {
   },
   auth: {
     signInTitle: 'Sign in',
+    signInPlatformEyebrow: 'Sign in',
     signInEyebrow: ({ host }) => format('Sign in · workspace {host}', { host }),
+    createAccountPlatformEyebrow: 'Create account',
     createAccountEyebrow: ({ host }) => format('Create account · workspace {host}', { host }),
     emailLabel: 'Email',
     passwordLabel: 'Password',

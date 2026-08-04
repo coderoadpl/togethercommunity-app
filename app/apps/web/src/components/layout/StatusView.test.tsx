@@ -30,7 +30,9 @@ describe('StatusView', () => {
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent('Coś poszło nie tak');
-    await user.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }));
+    const retry = screen.getByRole('button', { name: 'Spróbuj ponownie' });
+    expect(retry).toHaveClass('MuiButton-fullWidth');
+    await user.click(retry);
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 

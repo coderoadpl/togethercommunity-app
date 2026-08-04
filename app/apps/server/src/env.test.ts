@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { selectDevSinkPurge, selectTenantCreationMode, selectTenantRouting } from './composition.js';
+import { createMultipleTenantsReporter, selectBaseTrustedOrigins, selectDevSinkPurge, selectTenantCreationMode, selectTenantRouting } from './composition.js';
 import { envSchema } from './env.js';
 
 describe('tenant creation policy', () => {
@@ -45,14 +45,65 @@ describe('tenant routing mode', () => {
     expect(selectTenantRouting(envSchema.parse({ APP_BASE_URL: 'https://learn.example.com' }))).toEqual({
       baseDomain: 'learn.example.com',
       singleTenantMode: true,
+      tenantCreationMode: 'closed',
     });
+  });
+
+  it('closes tenant creation in single-tenant mode even when the environment requests open creation', () => {
+    expect(selectTenantRouting(envSchema.parse({
+      APP_BASE_URL: 'https://learn.example.com',
+      TENANT_CREATION: 'open',
+    })).tenantCreationMode).toBe('closed');
+  });
+
+  it('uses bootstrap creation in production single-tenant mode', () => {
+    expect(selectTenantRouting(envSchema.parse({
+      NODE_ENV: 'production',
+      APP_ENV: 'self-host',
+      APP_BASE_URL: 'https://learn.example.com',
+      TENANT_CREATION: 'open',
+      BETTER_AUTH_SECRET: 'self-host-secret-with-at-least-16-chars',
+      SECRETS_MASTER_KEY: 'self-host-master-key',
+      KSEF_ENVIRONMENT: 'production',
+      EMAIL_DISPATCH_SECRET: 'self-host-email-dispatch-secret',
+      MARKETING_TICK_SECRET: 'self-host-marketing-tick-secret',
+      CRON_SECRET: 'self-host-cron-secret',
+    })).tenantCreationMode).toBe('bootstrap');
   });
 
   it('keeps subdomain routing when a base domain is configured', () => {
     expect(selectTenantRouting(envSchema.parse({
       APP_BASE_DOMAIN: 'together.com',
       APP_BASE_URL: 'https://together.com',
-    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false });
+    }))).toEqual({ baseDomain: 'together.com', singleTenantMode: false, tenantCreationMode: 'open' });
+  });
+
+  it('does not trust sibling subdomains in single-tenant mode', () => {
+    expect(selectBaseTrustedOrigins({
+      appBaseUrl: 'https://learn.example.com',
+      baseDomain: 'learn.example.com',
+      port: 48730,
+      singleTenantMode: true,
+    })).toEqual(['https://learn.example.com']);
+  });
+
+  it('trusts tenant subdomains when subdomain routing is configured', () => {
+    expect(selectBaseTrustedOrigins({
+      appBaseUrl: 'https://example.com',
+      baseDomain: 'example.com',
+      port: 48730,
+      singleTenantMode: false,
+    })).toContain('https://*.example.com');
+  });
+
+  it('reports multiple tenants only once per composition boot', () => {
+    const write = vi.fn();
+    const report = createMultipleTenantsReporter(write);
+
+    report();
+    report();
+
+    expect(write).toHaveBeenCalledTimes(1);
   });
 });
 

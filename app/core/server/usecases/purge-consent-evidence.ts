@@ -13,7 +13,6 @@ export const CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS = 5_000;
 
 const WARSAW_JANUARY_OFFSET_MS = 60 * 60 * 1000;
 
-// Art. 118 of the Polish Civil Code uses the Warsaw calendar year, whose January boundary is UTC+1.
 export const consentEvidenceRetentionCutoff = (now: string): string => {
   const year = new Date(Date.parse(now) + WARSAW_JANUARY_OFFSET_MS).getUTCFullYear();
   return new Date(Date.UTC(year - 6, 0, 1) - WARSAW_JANUARY_OFFSET_MS).toISOString();
@@ -117,6 +116,7 @@ export const purgeExpiredConsentEvidence = async (
         tenantId: metrics.tenantId,
         campaignsTouched: 0,
         batchSize: metrics.purged,
+        purged: metrics.purged,
         sent: 0,
         failed: 0,
         skipped: 0,

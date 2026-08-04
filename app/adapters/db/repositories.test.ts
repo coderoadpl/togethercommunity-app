@@ -981,7 +981,12 @@ describe('invoice repository', () => {
 
 describe('tenant, api-key, secret and processed-event repositories', () => {
   it('reads tenants by id and slug and round-trips settings', async () => {
-    const repo = createTenantRepository(db);
+    let multipleTenantWarnings = 0;
+    const repo = createTenantRepository(db, {
+      onMultipleTenants: () => {
+        multipleTenantWarnings += 1;
+      },
+    });
     expect(await repo.findBySlug('acme')).toMatchObject({
       id: ACME,
       slug: 'acme',
@@ -989,8 +994,9 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       plan: 'self_hosted',
     });
     expect(await repo.findById(GLOBEX)).toMatchObject({ slug: 'globex' });
-    const previousVersion = (await repo.findById(ACME))?.contentVersion;
     expect(await repo.findSole()).toBeNull();
+    expect(multipleTenantWarnings).toBe(1);
+    const previousVersion = (await repo.findById(ACME))?.contentVersion;
     expect(await repo.hasAny()).toBe(true);
     expect(await repo.createTenantWithOwnerGrant(
       {

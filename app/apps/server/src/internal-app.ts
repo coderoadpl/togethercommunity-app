@@ -1283,6 +1283,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
           emailOutbox: deps.emailOutbox,
           appBaseUrl: deps.appBaseUrl,
           baseDomain: deps.baseDomain,
+          singleTenantMode: deps.singleTenantMode,
           dispatchEmail: deps.dispatchEmail,
         },
       },

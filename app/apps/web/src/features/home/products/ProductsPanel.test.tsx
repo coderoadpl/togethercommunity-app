@@ -220,6 +220,7 @@ const renderProductsPanel = async (
   await router.load();
   return {
     ...renderWithProviders(<RouterProvider router={router} />),
+    router,
     created,
     directUploadCalled: () => directUploadCalled,
     updatedProduct: () => updatedProduct,
@@ -277,6 +278,17 @@ describe('ProductsPanel', () => {
         coverUrl: 'https://cdn.test/cover.jpg',
       }),
     ]);
+  });
+
+  it('continues the onboarding product flow at the price editor', async () => {
+    const { router } = await renderProductsPanel([], '/panel/products/new#prices');
+
+    await userEvent.type(await screen.findByLabelText(pl.products.titleLabel), 'Priced Workshop');
+    await userEvent.click(screen.getByRole('button', { name: pl.products.create }));
+
+    expect(await screen.findByTestId('prices-section')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/panel/products/product-2');
+    expect(router.state.location.hash).toBe('prices');
   });
 
   it('shows a duplicate slug error on the slug field', async () => {

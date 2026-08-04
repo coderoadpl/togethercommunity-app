@@ -190,6 +190,13 @@ export interface Messages {
     aria: string;
     comingSoon: string;
   };
+  navigationGroups: {
+    content: string;
+    offer: string;
+    community: string;
+    sales: string;
+    marketing: string;
+  };
   reports: {
     heading: string;
     loading: string;
@@ -235,6 +242,14 @@ export interface Messages {
       firstMember: string;
       paymentsConfigured: string;
     };
+  };
+  settingsNavigation: {
+    aria: string;
+    company: string;
+    legal: string;
+    brand: string;
+    security: string;
+    diagnostics: string;
   };
   sales: {
     loading: string;
@@ -812,6 +827,7 @@ export interface Messages {
     exporting: string;
     loading: string;
     empty: string;
+    checkoutLinkAction: string;
     searchPlaceholder: string;
     noMatches: string;
     grantFilterAria: string;

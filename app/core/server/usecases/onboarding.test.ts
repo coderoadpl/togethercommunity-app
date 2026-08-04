@@ -157,7 +157,13 @@ describe('getCreatorOnboarding', () => {
     expect(result.value.dismissed).toBe(false);
     expect(result.value.steps).toHaveLength(5);
     expect(result.value.steps.every((step) => !step.done)).toBe(true);
-    expect(result.value.steps.every((step) => step.target.startsWith('/panel/'))).toBe(true);
+    expect(result.value.steps.map((step) => step.target)).toEqual([
+      '/panel/courses/new',
+      '/panel/products/new#prices',
+      '/panel/products#product-actions',
+      '/panel/members#invite-members',
+      '/panel/integrations#payments',
+    ]);
   });
 
   it('computes each step from existing tenant data', async () => {

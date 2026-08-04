@@ -100,6 +100,8 @@ export const MembersPanel = () => {
 
   const openMember = (memberId: string) =>
     void navigate({ to: '/panel/members/$memberId', params: { memberId } });
+  const openCheckoutLinks = () =>
+    void navigate({ to: '/panel/products', hash: 'product-actions' });
 
   const visibleMembers = (members.data?.members ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -132,6 +134,7 @@ export const MembersPanel = () => {
       }
     >
       <ErasureRequestsSection />
+      <Stack id="invite-members" sx={{ scrollMarginTop: '1rem' }}>
       <ListSection
         toolbar={{
           search: (
@@ -162,7 +165,19 @@ export const MembersPanel = () => {
         }}
         pagination={members.isSuccess && visibleMembers.length > 0 ? <ListPagination paged={paged} testId="members-pagination" /> : undefined}
         isEmpty={members.isSuccess && members.data.members.length === 0}
-        empty={<StatusView state={{ kind: 'empty', title: t.members.empty }} />}
+        empty={(
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: t.members.empty,
+              action: (
+                <Button onClick={openCheckoutLinks}>
+                  {t.members.checkoutLinkAction}
+                </Button>
+              ),
+            }}
+          />
+        )}
         noMatches={members.isSuccess && members.data.members.length > 0 && visibleMembers.length === 0 ? <Typography variant="body1">{t.members.noMatches}</Typography> : undefined}
       >
         {members.isPending ? (
@@ -226,6 +241,7 @@ export const MembersPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
+      </Stack>
       {exportError !== null ? <Alert severity="error">{exportError}</Alert> : null}
       {failedSubscriptionIds.length > 0 ? (
         <Alert severity="warning" data-testid="member-remove-cancellation-warning">

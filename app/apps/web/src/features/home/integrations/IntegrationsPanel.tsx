@@ -394,6 +394,7 @@ export const IntegrationsPanel = () => {
   return (
     <PanelPage title={t.integrations.heading} description={t.integrations.intro}>
         {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
+        <Box id="payments" sx={{ scrollMarginTop: '1rem' }}>
         <SectionCard title={t.integrations.stripeHeading} description={t.integrations.stripeDescription}>
 
           {secrets.isPending ? (
@@ -428,6 +429,7 @@ export const IntegrationsPanel = () => {
             showHint={!secrets.isPending && !secrets.isError}
           />
         </SectionCard>
+        </Box>
 
         <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
           <ProviderTest provider="email" ready />

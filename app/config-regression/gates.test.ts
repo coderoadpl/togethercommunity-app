@@ -184,15 +184,14 @@ beforeAll(async () => {
   );
   islandTypecheckStatus = islandTypecheckRun.status;
   islandTypecheckOutput = `${islandTypecheckRun.stdout}${islandTypecheckRun.stderr}`;
-
   writeFileSync(
     join(tenantScopeFixtureRoot, 'unscoped.ts'),
     'export type DeliberatelyUnscopedRepository = { findById(id: string): Promise<unknown> };\n',
   );
-  const tenantScopeRun = await runCommand(join(appRoot, 'node_modules', '.bin', 'tsx'), [
-    'scripts/tenant-scope-check.ts',
-    tenantScopeFixtureRoot,
-  ]);
+  const tenantScopeRun = await runCommand(
+    join(appRoot, 'node_modules', '.bin', 'tsx'),
+    ['scripts/tenant-scope-check.ts', tenantScopeFixtureRoot],
+  );
   tenantScopeStatus = tenantScopeRun.status;
   tenantScopeOutput = `${tenantScopeRun.stdout}${tenantScopeRun.stderr}`;
 }, 180_000);

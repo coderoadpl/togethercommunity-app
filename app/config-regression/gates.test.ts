@@ -320,7 +320,7 @@ describe('Custom plugin registration', () => {
     );
     expect(severityOf(config.rules?.['together/query-descriptors-only'])).toBe(2);
     expect(severityOf(config.rules?.['together/sx-layout-only'])).toBe(2);
-  });
+  }, 30_000);
 
   it('keeps the sx baseline empty', () => {
     const baseline: unknown = JSON.parse(

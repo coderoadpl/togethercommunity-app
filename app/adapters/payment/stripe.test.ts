@@ -438,7 +438,17 @@ describe('verifyWebhookEvent', () => {
       id: 'sub_2',
       status: 'canceled',
       cancel_at_period_end: true,
-    }, { subscription: { id: 'sub_2', status: 'canceled', cancelAtPeriodEnd: true } }],
+      current_period_end: 1_800_000_000,
+      ended_at: 1_800_000_000,
+    }, {
+      subscription: {
+        id: 'sub_2',
+        status: 'canceled',
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: '2027-01-15T08:00:00.000Z',
+        endedAt: '2027-01-15T08:00:00.000Z',
+      },
+    }],
     ['charge.refunded', {
       id: 'ch_1',
       payment_intent: 'pi_1',

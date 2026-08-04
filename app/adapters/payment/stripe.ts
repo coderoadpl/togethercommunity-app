@@ -189,6 +189,7 @@ const toSubscriptionEvent = (eventId: string, type: string, object: unknown): Pa
       status: subscription.data.status ?? null,
       cancelAtPeriodEnd: subscription.data.cancel_at_period_end ?? false,
       currentPeriodEnd: epochToIso(periodEnd),
+      endedAt: epochToIso(subscription.data.ended_at),
     },
   };
 };

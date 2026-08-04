@@ -23,14 +23,32 @@ describe('createApiClient', () => {
 
       return jsonResponse({
         ok: true,
-        data: { status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up' },
+        data: {
+          status: 'ok',
+          version: '0.1.0',
+          sha: 'cafe1234',
+          database: 'up',
+          environment: 'production',
+          production: true,
+          commit: 'cafe1234',
+          databaseFingerprint: 'b1bfbb98b4f7',
+        },
       });
     };
     const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
 
     await expect(client.health()).resolves.toEqual({
       ok: true,
-      value: { status: 'ok', version: '0.1.0', sha: 'cafe1234', database: 'up' },
+      value: {
+        status: 'ok',
+        version: '0.1.0',
+        sha: 'cafe1234',
+        database: 'up',
+        environment: 'production',
+        production: true,
+        commit: 'cafe1234',
+        databaseFingerprint: 'b1bfbb98b4f7',
+      },
     });
   });
 
@@ -128,7 +146,19 @@ describe('createApiClient', () => {
     let seen: Headers | undefined;
     const fetchImpl: typeof fetch = async (_input, init) => {
       seen = new Headers(init?.headers);
-      return jsonResponse({ ok: true, data: { status: 'ok', version: '0.1.0', database: 'up' } });
+      return jsonResponse({
+        ok: true,
+        data: {
+          status: 'ok',
+          version: '0.1.0',
+          sha: 'test-sha',
+          database: 'up',
+          environment: 'test',
+          production: false,
+          commit: null,
+          databaseFingerprint: null,
+        },
+      });
     };
     const client = createApiClient({ baseUrl: '', fetchImpl, traceparent: () => traceparent });
 
@@ -141,7 +171,19 @@ describe('createApiClient', () => {
     let seen: Headers | undefined;
     const fetchImpl: typeof fetch = async (_input, init) => {
       seen = new Headers(init?.headers);
-      return jsonResponse({ ok: true, data: { status: 'ok', version: '0.1.0', database: 'up' } });
+      return jsonResponse({
+        ok: true,
+        data: {
+          status: 'ok',
+          version: '0.1.0',
+          sha: 'test-sha',
+          database: 'up',
+          environment: 'test',
+          production: false,
+          commit: null,
+          databaseFingerprint: null,
+        },
+      });
     };
     const client = createApiClient({ baseUrl: '', fetchImpl, traceparent: () => undefined });
 

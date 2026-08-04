@@ -291,6 +291,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         status: 'ok' as const,
         ...attestation,
         database: (await deps.health.pingDatabase()) ? ('up' as const) : ('down' as const),
+        ...deps.deploymentIdentity,
       }),
     ),
   );

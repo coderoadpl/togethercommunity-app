@@ -169,6 +169,10 @@ export const healthReadyOutputSchema = attestationSchema.extend({
 export const healthOutputSchema = attestationSchema.extend({
   status: z.literal('ok'),
   database: z.enum(['up', 'down']),
+  environment: z.string(),
+  production: z.boolean(),
+  commit: z.string().nullable(),
+  databaseFingerprint: z.string().regex(/^[0-9a-f]{12}$/).nullable(),
 });
 
 export const emailDispatchOutputSchema = z.object({

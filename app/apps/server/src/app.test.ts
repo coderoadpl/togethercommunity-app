@@ -632,6 +632,7 @@ const deps = (input: {
     clock: { nowIso: () => '1998-07-12T00:00:00.000Z' },
     logger: input.logger ?? { error: () => undefined },
     baseDomain: 'localhost',
+    platformHost: 'start.localhost',
     singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },

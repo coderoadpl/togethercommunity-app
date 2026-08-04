@@ -5,7 +5,10 @@ const configuredAppBaseDomain = (): string | undefined =>
 
 export const isConfiguredBaseDomainHost = (hostname: string): boolean => {
   const baseDomain = configuredAppBaseDomain();
-  return baseDomain !== undefined && hostname.toLowerCase() === baseDomain.toLowerCase();
+  if (baseDomain === undefined) return false;
+  const host = hostname.toLowerCase();
+  const base = baseDomain.toLowerCase();
+  return host === base || host === `start.${base}`;
 };
 
 export const usesPlatformAuthSurface = (hostname: string): boolean =>
@@ -39,7 +42,7 @@ export const tenantUrl = (slug: string, location: TenantLocation = window.locati
 export const hostHasTenantSubdomain = (hostname: string, baseDomain: string = appBaseDomain()): boolean => {
   const host = hostname.toLowerCase();
   const base = baseDomain.toLowerCase();
-  if (host === base) return false;
+  if (host === base || host === `start.${base}`) return false;
   if (!host.endsWith(`.${base}`)) return false;
   const sub = host.slice(0, -(base.length + 1));
   return sub.length > 0 && !sub.includes('.');

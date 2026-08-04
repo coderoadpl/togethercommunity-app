@@ -51,7 +51,7 @@ const sends: EmailSendProjection[] = [
     kind: 'transactional',
     recipient: 'member@example.test',
     subject: 'Welcome',
-    source: 'welcome-set-password',
+    source: 'welcome-sign-in',
     status: 'sent',
     skipReason: null,
     failureCode: null,

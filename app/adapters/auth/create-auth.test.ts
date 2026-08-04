@@ -21,6 +21,7 @@ import {
   isAdditionalTwoFactorPath,
   isSensitivePasskeyPath,
   isSuccessfulPasswordVerification,
+  MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
   PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
   passwordResetOriginMatches,
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
@@ -913,6 +914,42 @@ describe('createAuthPort.createEnrollmentMagicLink', () => {
 
     expect(new URL(created.url).host).toBe('studio.localhost:48730');
     expect(new URL(created.url).host).not.toBe('localhost:48730');
+  });
+
+  it('expires enrollment links after one hour and redirects reused tokens to login', async () => {
+    const { auth, authPort } = buildAuth();
+    const db = createDb('node-postgres', connectionString);
+    const email = `enrollment-expiry-${Date.now()}@together.dev`;
+    const requestedAt = Date.now();
+
+    const created = await authPort.createEnrollmentMagicLink({
+      email,
+      callbackURL: 'http://studio.localhost:48730/',
+      baseUrl: 'http://studio.localhost:48730',
+      tenantName: 'Studio',
+      language: 'en',
+    });
+    const token = new URL(created.url).searchParams.get('token') ?? '';
+    const tokens = await db
+      .select({ expiresAt: verification.expiresAt })
+      .from(verification)
+      .where(eq(verification.identifier, token));
+    const expiresIn = (tokens[0]?.expiresAt.getTime() ?? 0) - requestedAt;
+
+    expect(expiresIn).toBeGreaterThanOrEqual(
+      MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS * 1000 - 2000,
+    );
+    expect(expiresIn).toBeLessThanOrEqual(
+      MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS * 1000 + 2000,
+    );
+    expect((await auth.handler(new Request(created.url))).status).toBe(302);
+
+    const reused = await auth.handler(new Request(created.url));
+
+    expect(reused.status).toBe(302);
+    expect(reused.headers.get('location')).toBe(
+      'http://studio.localhost:48730/login?error=INVALID_TOKEN',
+    );
   });
 });
 

@@ -1,13 +1,27 @@
-/** URL of a sibling tenant on the same base domain (acme.localhost → studio.localhost). */
-export const tenantUrl = (slug: string): string => {
-  const { protocol, hostname, port } = window.location;
-  const parts = hostname.split('.');
-  const base = parts.length > 1 ? parts.slice(1).join('.') : hostname;
-  return `${protocol}//${slug}.${base}${port ? `:${port}` : ''}`;
-};
+type TenantLocation = Pick<Location, 'hostname' | 'port' | 'protocol'>;
+
+const configuredAppBaseDomain = (): string | undefined =>
+  import.meta.env.VITE_APP_BASE_DOMAIN || undefined;
 
 /** Base domain the SPA is served under (e.g. `localhost`, `together.example`). */
-export const appBaseDomain = (): string => import.meta.env.VITE_APP_BASE_DOMAIN ?? 'localhost';
+export const appBaseDomain = (): string => configuredAppBaseDomain() ?? 'localhost';
+
+const tenantBaseDomain = (hostname: string): string => {
+  const configuredBase = configuredAppBaseDomain();
+  if (configuredBase !== undefined) return configuredBase;
+  const fallbackBase = appBaseDomain();
+  const host = hostname.toLowerCase();
+  const base = fallbackBase.toLowerCase();
+  if (host === base || host.endsWith(`.${base}`)) return fallbackBase;
+  const parts = hostname.split('.');
+  return parts.length > 2 ? parts.slice(1).join('.') : hostname;
+};
+
+export const tenantUrl = (slug: string, location: TenantLocation = window.location): string => {
+  const { protocol, hostname, port } = location;
+  const base = tenantBaseDomain(hostname);
+  return `${protocol}//${slug}.${base}${port ? `:${port}` : ''}`;
+};
 
 /**
  * Whether the current host addresses a tenant subdomain (`acme.localhost`)

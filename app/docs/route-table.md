@@ -68,6 +68,11 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/m2m/marketing/templates` | self-authenticating | read | marketing templates |
 | `POST /api/internal/marketing/tick` | self-authenticating | mutating | marketing tick |
 | `GET /api/internal/marketing/tick` | self-authenticating | read | api internal marketing tick |
+| `POST /api/m2m/import/validate` | self-authenticating | mutating | m2m import validate |
+| `POST /api/m2m/import/courses` | self-authenticating | mutating | m2m import courses |
+| `POST /api/m2m/import/modules` | self-authenticating | mutating | m2m import modules |
+| `POST /api/m2m/import/lessons` | self-authenticating | mutating | m2m import lessons |
+| `POST /api/m2m/import/products` | self-authenticating | mutating | m2m import products |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

@@ -51,6 +51,8 @@ import {
   m2mEnrollOutputSchema,
   m2mTransactionalMessageOutputSchema,
   m2mTransactionalMessageStatusOutputSchema,
+  m2mImportBatchOutputSchema,
+  m2mImportValidationOutputSchema,
   marketingConsentDefinitionOutputSchema,
   marketingConsentDefinitionDetailOutputSchema,
   marketingConsentDefinitionsOutputSchema,
@@ -252,6 +254,8 @@ import {
   type MemberExportFormat,
   type NewProductInput,
   type Result,
+  type ImportValidateRequest,
+  type ImportWriteRequest,
 } from '#core/domain/index.js';
 
 import { uploadPresignedStorageAsset } from './storage-assets.js';
@@ -1658,6 +1662,51 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.m2mTransactionalMessage.path.replace(':id', encodeURIComponent(id)),
       m2mTransactionalMessageStatusOutputSchema,
       undefined,
+      signal,
+    ),
+  validateM2mImport: (input: ImportValidateRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportValidate.method,
+      API_ROUTES.m2mImportValidate.path,
+      m2mImportValidationOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mCourses: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportCourses.method,
+      API_ROUTES.m2mImportCourses.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mModules: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportModules.method,
+      API_ROUTES.m2mImportModules.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mLessons: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportLessons.method,
+      API_ROUTES.m2mImportLessons.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mProducts: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportProducts.method,
+      API_ROUTES.m2mImportProducts.path,
+      m2mImportBatchOutputSchema,
+      input,
       signal,
     ),
   getTenantSettings: (signal?: AbortSignal) =>

@@ -513,13 +513,33 @@ export interface ImportAuditEventRepository {
   listByApiKey(tenantId: string, apiKeyId: string): Promise<ImportAuditEvent[]>;
 }
 
+export type ImportContentMutation =
+  | { kind: 'course'; action: 'created' | 'updated' | 'unchanged'; resource: Course; event: ImportAuditEvent }
+  | { kind: 'module'; action: 'created' | 'updated' | 'unchanged'; resource: CourseModule; event: ImportAuditEvent }
+  | { kind: 'lesson'; action: 'created' | 'updated' | 'unchanged'; resource: CourseLesson; event: ImportAuditEvent }
+  | { kind: 'product'; action: 'created' | 'updated' | 'unchanged'; resource: Product; event: ImportAuditEvent };
+
+export interface ImportContentRepository {
+  commit(
+    tenantId: string,
+    mutation: ImportContentMutation,
+  ): Promise<'saved' | 'conflict' | 'slug_taken'>;
+}
+
 export interface ApiKeyRateLimitRepository {
   claim(tenantId: string, input: {
     apiKeyId: string;
-    period: 'minute' | 'day';
+    period: 'minute' | 'hour' | 'day';
     windowStartedAt: string;
     limit: number;
+    cost?: number;
   }): Promise<boolean>;
+  release(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'hour' | 'day';
+    windowStartedAt: string;
+    cost?: number;
+  }): Promise<void>;
 }
 
 export interface TenantSecretRepository {

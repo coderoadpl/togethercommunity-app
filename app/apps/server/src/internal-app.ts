@@ -309,6 +309,7 @@ import {
 import type { AppDeps } from './composition.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerAuthenticatedMarketingRoutes } from './marketing-routes.js';
+import { registerM2mImportRoutes } from './import-routes.js';
 import { createNotificationEventStream, SSE_HEADERS } from './notifications-sse.js';
 import { respond } from './respond.js';
 import {
@@ -869,6 +870,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
   });
 
   registerAuthenticatedMarketingRoutes(app, deps);
+  registerM2mImportRoutes(app, deps);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),

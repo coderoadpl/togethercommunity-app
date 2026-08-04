@@ -57,6 +57,10 @@ import {
   orderReconciliationQuerySchema,
   paidWithoutGrantRowSchema,
   invoiceSchema,
+  importBatchResponseSchema,
+  importValidationResponseSchema,
+  importValidateRequestSchema,
+  importWriteRequestSchema,
   priceIntervalSchema,
   priceKindSchema,
   productPriceSchema,
@@ -1162,6 +1166,14 @@ export const m2mTransactionalMessageStatusOutputSchema = z.object({
   events: z.array(emailEventSchema),
 });
 
+export const m2mImportWriteRequestSchema = importWriteRequestSchema;
+
+export const m2mImportValidateRequestSchema = importValidateRequestSchema;
+
+export const m2mImportBatchOutputSchema = importBatchResponseSchema;
+
+export const m2mImportValidationOutputSchema = importValidationResponseSchema;
+
 export const marketingConsentDefinitionCreateInputSchema = z.object({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   label: z.string().trim().min(1),
@@ -1492,6 +1504,11 @@ export const API_ROUTES = {
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
   m2mTransactionalMessagesCreate: { method: 'POST', path: '/api/m2m/transactional/messages' },
   m2mTransactionalMessage: { method: 'GET', path: '/api/m2m/transactional/messages/:id' },
+  m2mImportValidate: { method: 'POST', path: '/api/m2m/import/validate' },
+  m2mImportCourses: { method: 'POST', path: '/api/m2m/import/courses' },
+  m2mImportModules: { method: 'POST', path: '/api/m2m/import/modules' },
+  m2mImportLessons: { method: 'POST', path: '/api/m2m/import/lessons' },
+  m2mImportProducts: { method: 'POST', path: '/api/m2m/import/products' },
   marketingMessagesCreate: { method: 'POST', path: '/api/m2m/marketing/messages' },
   marketingMessages: { method: 'GET', path: '/api/m2m/marketing/messages' },
   marketingMessage: { method: 'GET', path: '/api/m2m/marketing/messages/:id' },
@@ -1688,6 +1705,11 @@ export const API_PATHS = {
   m2mEnroll: API_ROUTES.m2mEnroll.path,
   m2mTransactionalMessagesCreate: API_ROUTES.m2mTransactionalMessagesCreate.path,
   m2mTransactionalMessage: API_ROUTES.m2mTransactionalMessage.path,
+  m2mImportValidate: API_ROUTES.m2mImportValidate.path,
+  m2mImportCourses: API_ROUTES.m2mImportCourses.path,
+  m2mImportModules: API_ROUTES.m2mImportModules.path,
+  m2mImportLessons: API_ROUTES.m2mImportLessons.path,
+  m2mImportProducts: API_ROUTES.m2mImportProducts.path,
   marketingMessagesCreate: API_ROUTES.marketingMessagesCreate.path,
   marketingMessages: API_ROUTES.marketingMessages.path,
   marketingMessage: API_ROUTES.marketingMessage.path,

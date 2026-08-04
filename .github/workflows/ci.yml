@@ -38,13 +38,13 @@ jobs:
       NODE_OPTIONS: --max-old-space-size=6144
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: app/package.json
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -79,13 +79,13 @@ jobs:
     env:
       DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: app/package.json
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -93,7 +93,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run smoke
       - id: setup-chrome
-        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
       - run: '"$CHROME_PATH" --version'
@@ -130,13 +130,13 @@ jobs:
     env:
       E2E_DATABASE_URL: postgres://together:together@localhost:5432/together
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: app/package.json
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
@@ -144,7 +144,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - if: matrix.suite == 'auth' || matrix.suite == 'coupon'
         id: setup-chrome
-        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
       - if: matrix.suite == 'auth' || matrix.suite == 'coupon'
@@ -182,20 +182,20 @@ jobs:
       E2E_DATABASE_URL: postgres://together:together@localhost:5432/together
       HAS_ARGOS: ${{ secrets.ARGOS_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: app/package.json
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - id: setup-chrome
-        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd
+        uses: browser-actions/setup-chrome@2e1d749697dd1612b833dba4a722266286fbefcd # v2.1.2
         with:
           chrome-version: 151.0.7922.47
       - run: '"$CHROME_PATH" --version'

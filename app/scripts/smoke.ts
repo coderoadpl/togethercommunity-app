@@ -666,6 +666,63 @@ const proveCliPasswordRotation = async (port: number, homes: string[]): Promise<
   );
 };
 
+const proveEmailVerificationResend = async (port: number, homes: string[]): Promise<void> => {
+  const url = `http://localhost:${port}`;
+  const home = mkdtempSync(join(tmpdir(), 'smoke-email-verification-'));
+  homes.push(home);
+  const cli = (args: string[]): Promise<Run> =>
+    run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
+  const email = 'email-verification-smoke@together.dev';
+
+  expectOk(
+    await cli([
+      'register',
+      '--name',
+      'Email Verification Smoke',
+      '--email',
+      email,
+      '--password',
+      'verification-password',
+      '--language',
+      'pl',
+    ]),
+    'email verification: register known address',
+  );
+  expectOk(
+    await cli(['resend-verification-email', '--email', email, '--language', 'en']),
+    'email verification: resend known address',
+  );
+
+  let delivered: z.infer<typeof devEmailResultSchema>['email'] = null;
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && delivered?.subject !== 'Verify your email address') {
+    delivered = devEmailResultSchema.parse(
+      expectOk(
+        await cli(['dev', 'email', '--to', email]),
+        'email verification: inspect known delivery',
+      ),
+    ).email;
+    if (delivered?.subject !== 'Verify your email address') await delay(100);
+  }
+  assert(delivered !== null, 'email verification: known address did not receive an email');
+  assert(
+    delivered.subject === 'Verify your email address',
+    'email verification: resend did not apply the requested language',
+  );
+
+  const actionUrl = delivered.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+  assert(actionUrl !== '', 'email verification: delivery did not contain a provider callback URL');
+  const callbackUrl = new URL(actionUrl);
+  assert(callbackUrl.host === `localhost:${port}`, 'email verification: provider callback used the wrong host');
+  const callback = await fetch(actionUrl, { redirect: 'manual' });
+  const redirect = callback.headers.get('location');
+  assert(callback.status === 302 && redirect !== null, 'email verification: provider callback did not redirect');
+  const me = z.object({ emailVerified: z.boolean() }).parse(
+    expectOk(await cli(['whoami']), 'email verification: inspect verified account'),
+  );
+  assert(me.emailVerified, 'email verification: provider callback did not verify the account');
+};
+
 const provePasswordReset = async (port: number, homes: string[]): Promise<void> => {
   const url = `http://localhost:${port}`;
   const home = mkdtempSync(join(tmpdir(), 'smoke-password-reset-'));
@@ -1334,6 +1391,8 @@ try {
   await driveSpacesFlow(port, homes);
   console.log('smoke: proving password rotation with two isolated CLI homes...');
   await proveCliPasswordRotation(port, homes);
+  console.log('smoke: proving provider-validated email verification resend...');
+  await proveEmailVerificationResend(port, homes);
   console.log('smoke: proving provider-validated password reset...');
   await provePasswordReset(port, homes);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);

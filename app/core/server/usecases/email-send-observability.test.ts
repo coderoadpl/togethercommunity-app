@@ -15,6 +15,7 @@ const identity = (staffRole: Identity['staffRole'] = 'owner'): Ctx => ({ identit
   userId: 'staff-1',
   email: 'staff@example.test',
   name: 'Staff',
+  emailVerified: true,
   tenantId: 'tenant-1',
   tenantSlug: 'alpha',
   tenantName: 'Alpha',

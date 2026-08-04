@@ -16,6 +16,7 @@ const identity: Identity = {
   userId: 'u1',
   email: 'demo@example.com',
   name: 'Demo',
+  emailVerified: true,
   tenantId: null,
   tenantSlug: null,
   tenantName: null,
@@ -121,6 +122,38 @@ describe('createTenant', () => {
     });
     expect(store.tenants).toEqual([]);
     expect(store.ownerGrants).toEqual([]);
+  });
+
+  it('allows an unverified account to create the first workspace atomically', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity: { ...identity, emailVerified: false } },
+      { slug: 'new-co', name: 'New Co' },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { slug: 'new-co' } });
+    expect(store.ownerGrants).toHaveLength(1);
+  });
+
+  it('requires verification from an unverified account after the first workspace', async () => {
+    const existing: Tenant = {
+      id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 1,
+    };
+    const store = fakeTenants([existing]);
+
+    const result = await createTenant(
+      { identity: { ...identity, emailVerified: false } },
+      { slug: 'new-co', name: 'New Co' },
+      deps(store.repo),
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'forbidden', message: 'tenant:create requires a verified email address' },
+    });
+    expect(store.tenants).toEqual([existing]);
   });
 
   it('allows production bootstrap only while the tenant store is empty', async () => {

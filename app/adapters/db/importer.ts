@@ -1755,6 +1755,7 @@ const runSpotChecks = async (
           userId: memberRow.userId,
           email: memberRow.email,
           name: memberRow.displayName ?? memberRow.email,
+          emailVerified: true,
           tenantId,
           tenantSlug,
           tenantName,

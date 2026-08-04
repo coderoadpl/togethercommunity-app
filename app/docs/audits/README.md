@@ -30,6 +30,10 @@ these specifications.
 | [Accessibility](accessibility.md) | Before a release and after material UI changes | Web owner | WCAG 2.2 AA; Together in-house [a11y checks](../../scripts/a11y-checks.ts) |
 | [Performance](performance.md) | Quarterly instrument review; then before a release | Web owner | Core Web Vitals |
 
+The 2026-08-04 email-verification review is recorded in both the
+[completeness](completeness.md#email-verification-evidence--2026-08-04) and
+[consistency](consistency.md#email-verification-evidence--2026-08-04) audits.
+
 ## Operating doctrine
 
 - Run the tool-performed checks named by the spec, preserving their raw output

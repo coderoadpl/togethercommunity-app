@@ -21,6 +21,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   userId: 'u1',
   email: 'creator@together.dev',
   name: 'Creator',
+  emailVerified: true,
   tenantId,
   tenantSlug: tenantId ? 'studio' : null,
   tenantName: tenantId ? 'Studio' : null,

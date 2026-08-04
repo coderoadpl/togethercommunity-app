@@ -46,7 +46,7 @@ const EMPTY_SETTINGS: StoredSettings = {
   privacyUrl: null,
 };
 
-const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
+const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS, emailVerified = true) => {
   let settings = { ...initial };
   let secrets: Array<{ key: string; maskedPreview: string; updatedAt: string }> = [];
   const updates: unknown[] = [];
@@ -97,6 +97,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
       value={{
         tenant: { id: 'tenant-akademia', slug: 'akademia', name: 'Akademia', staffRole: 'owner', memberId: null },
         email: 'creator3@together.dev',
+        emailVerified,
       }}
     >
       <SettingsPanel />
@@ -145,6 +146,24 @@ describe('SettingsPanel security', () => {
     expect(screen.getByLabelText(pl.security.passkeyPasswordLabel)).toBeInTheDocument();
     expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
     expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
+  });
+
+  it('shows the creator verification state and resends the link', async () => {
+    let body: unknown;
+    server.use(http.post('*', async ({ request }) => {
+      body = await request.json();
+      return HttpResponse.json({ status: true });
+    }));
+    renderPanel(EMPTY_SETTINGS, false);
+
+    expect(await screen.findByText(pl.emailVerification.pending({ email: 'creator3@together.dev' })))
+      .toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('resend-verification-email'));
+    expect(await screen.findByText(pl.emailVerification.sent)).toBeInTheDocument();
+    expect(body).toEqual({
+      email: 'creator3@together.dev',
+      callbackURL: 'http://localhost:3000/login?verification=verified',
+    });
   });
 
   it('changes the creator password and keeps the reset path mounted', async () => {

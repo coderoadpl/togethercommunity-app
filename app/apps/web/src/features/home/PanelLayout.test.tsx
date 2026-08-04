@@ -28,6 +28,7 @@ import { PanelLayout } from './PanelLayout.js';
 const meWithTenant = {
   userId: 'u1',
   email: 'creator@together.dev',
+  emailVerified: true,
   name: 'Demo',
   tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: null, banned: false },
 };

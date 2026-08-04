@@ -33,6 +33,7 @@ const ctx: Ctx = { identity: {
   userId: 'staff-1',
   email: 'staff@example.test',
   name: 'Staff',
+  emailVerified: true,
   tenantId: 'tenant-1',
   tenantSlug: 'tenant',
   tenantName: 'Tenant',

@@ -9,6 +9,7 @@ const identity = (tenantId: string | null, staffRole: StaffRole | null): Identit
   userId: 'u1',
   email: 'demo@example.com',
   name: 'Demo',
+  emailVerified: true,
   tenantId,
   tenantSlug: tenantId ? 'acme' : null,
   tenantName: tenantId ? 'Acme Inc' : null,

@@ -453,15 +453,15 @@ launch checklist.
 **STATUS:** owner-action
 
 The release topology targets an owner-approved `main` to `production` pull
-request, but that wall is not live. As of 2026-08-04, the remote has no
-`production` branch, and the current plan for this private repository does not
-make GitHub rulesets or branch protection available. The requirement is
-procedural until the repository plan and configuration can enforce it; an agent
-must not be described as technically unable to approve or release its own work.
+request, but that wall is not live. As of 2026-08-05, the remote has no
+`production` branch and no ruleset. GitHub enforces rulesets and branch
+protection on public repositories on the Free plan, so nothing but the missing
+configuration blocks enforcement. The requirement is procedural until the owner
+creates it; an agent must not be described as technically unable to approve or
+release its own work.
 
-Before launch, move the private repository to a plan that supports the required
-enforcement, create `production` from the owner-approved `main` commit, and add
-a rule that requires a pull request, independent owner approval, and the
+Before launch, create `production` from the owner-approved `main` commit, and
+add a rule that requires a pull request, independent owner approval, and the
 required CI checks. Disallow direct pushes, force pushes, deletion, and
 unreviewed bypasses. Inspect the live rule through the GitHub UI or API and
 record the rule, approving owner, pull request, `main` SHA, and resulting

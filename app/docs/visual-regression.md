@@ -66,12 +66,12 @@ rows and points reviewers to the Files tab when further changes are omitted.
 When a pull request reverts all baseline changes, an existing sticky comment
 reports that none remain.
 
-The parity map's upstream public-repository design uses
-`raw.githubusercontent.com` image URLs. This private repository instead uses
-authenticated `github.com` raw URLs and wraps each preview in a commit-pinned
-blob link. GitHub's comment image proxy cannot use a signed-in reviewer's
-credentials, so inline previews do not render for this private repository. Use
-the pinned blob links for gallery review.
+The parity map's upstream design uses `raw.githubusercontent.com` image URLs.
+The gallery instead emits commit-pinned `github.com/<owner>/<repo>/raw/<sha>/`
+image URLs and wraps each preview in a matching blob link. Now that the
+repository is public both URL forms are reachable without credentials, so
+inline previews render; the pinned blob links remain the reliable fallback
+whenever GitHub's comment image proxy declines a preview.
 
 The publisher runs only trusted base-ref workflow code, never checks out or
 executes pull-request head code, and is the only gallery job with

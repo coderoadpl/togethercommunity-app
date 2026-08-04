@@ -32,8 +32,8 @@
    number and authenticated PDF; we store refs, proxy downloads, and
    surface status.
 4. **Direct KSeF adapter (COMMITTED follow-up slice — owner: "jedno i
-   drugie"; SPIKED successfully 2026-07-27, full report + working e2e script:
-   `~/private-archive/ksef-spike/REPORT.md`).** Same InvoicingPort.
+   drugie"; SPIKED successfully 2026-07-27, full report + working e2e script
+   w prywatnych artefaktach audytowych właściciela).** Same InvoicingPort.
    Confirmed design from the spike:
    - **BYO secret = tenant-generated KSeF TOKEN** (`InvoiceWrite`) + context
      NIP in tenant_secrets — NOT a certificate (no cert custody; token-auth

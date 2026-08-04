@@ -1,8 +1,8 @@
 # agentproofarch upgrade plan (2026-07-28)
 
 > Owner request 2026-07-27: adapt the whole app to the latest agentproofarch.
-> Discovery artifacts (source of detail for every item id below):
-> `~/private-archive/agentproofarch-upgrade/INVENTORY.md` (496 lines,
+> Discovery artifacts (source of detail for every item id below, prywatne
+> artefakty audytowe właściciela): `INVENTORY.md` (496 lines,
 > all 13 ADRs + skeleton diff since the 2026-07-12 fork) and
 > `IMPACT-MAP.md` (verdict ADOPT/ADAPT/SKIP/CONFLICT for every relevant item,
 > with file refs and effort). ~320 upstream commits reviewed.

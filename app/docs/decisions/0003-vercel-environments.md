@@ -29,8 +29,9 @@ the migration path to another driver are defined in
 | Production | `production` | Vercel Production Branch | Neon production branch |
 
 This table is the target release topology, not evidence of live configuration.
-As of 2026-08-04, the remote has no `production` branch and the current private
-repository plan does not provide ruleset or branch-protection enforcement.
+As of 2026-08-05, the remote has no `production` branch and no ruleset. GitHub
+enforces rulesets and branch protection on public repositories on the Free plan,
+so the wall is available as soon as the owner configures it.
 Creation of the branch and wall, verification of the hosting boundary, and
 manual SHA attestation are tracked in items 16–18 of the
 [go-live checklist](../go-live-checklist.md#16-production-branch-and-approval-wall).

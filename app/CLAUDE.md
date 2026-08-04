@@ -41,12 +41,18 @@ Visual verification has zero retries.
 
 ## Licensing & IP policy (owner decision 2026-07-21 — HARD RULES)
 
-- Together targets a Fair Source license (FSL/BSL family). 100% copyright
-  ownership of this codebase: NO third-party copyleft (GPL/AGPL) code may
-  enter the repo — including "translated" or ported code.
+- Together targets a Fair Source license (FSL/BSL family). 100% ownership of
+  the application code; the foundation synchronized from
+  coderoadpl/agentproofarch is included under its MIT license
+  (© 2026 Mateusz Choma) — see THIRD-PARTY-LICENSES.md. NO third-party
+  copyleft (GPL/AGPL) code may enter the repo — including "translated" or
+  ported code.
 - Dependencies: permissive licenses only (MIT / Apache-2.0 / BSD / ISC).
   CHECK THE LICENSE of every new dependency before adding it; if it is not
   clearly permissive, do not add it — flag to the owner instead.
+  Accepted exception: sharp's prebuilt libvips binaries
+  (`@img/sharp-libvips-*`, LGPL-3.0-or-later, dynamically linked) — recorded
+  in THIRD-PARTY-LICENSES.md.
 - Clean-room discipline for AGPL inspiration sources (inventory in the owner's private materials):
   reading agents produce behavioral specs in their own words; implementing
   agents work from specs only and never open those sources. No a-prior-art-tool-like

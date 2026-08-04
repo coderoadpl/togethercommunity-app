@@ -529,7 +529,9 @@ export interface Messages {
     noMatches: string;
     publish: string;
     unpublish: string;
-    publishNeedsAccess: string;
+    publishNeedsDelivery: string;
+    publishCheckingDelivery: string;
+    publishDeliveryUnavailable: string;
     publishNeedsActivePrice: string;
     publishCheckingPrice: string;
     publishPriceUnavailable: string;

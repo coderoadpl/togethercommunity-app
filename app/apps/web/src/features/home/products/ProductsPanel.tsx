@@ -22,7 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
-import type { Product, ProductAccessIssues } from '#core/domain/index.js';
+import type { Product, ProductAccessIssues, StaffSpace } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
@@ -68,9 +68,15 @@ const CopyLinkGlyph = () => (
 const ProductRow = ({
   product,
   issue,
+  spaces,
+  spacesPending,
+  spacesError,
 }: {
   product: Product;
   issue?: ProductAccessIssues | undefined;
+  spaces: StaffSpace[];
+  spacesPending: boolean;
+  spacesError: boolean;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -79,6 +85,10 @@ const ProductRow = ({
   const [copyFallbackUrl, setCopyFallbackUrl] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<'publish' | 'unpublish' | null>(null);
   const prices = useQuery({ ...actions.productPrices(product.id), enabled: !product.published });
+  const downloads = useQuery({
+    ...actions.productDownloadAssets(product.id),
+    enabled: !product.published && product.type === 'digital_download',
+  });
 
   const publishProduct = useMutation({
     ...actions.publishProduct,
@@ -103,11 +113,27 @@ const ProductRow = ({
 
   const accessCount = product.accessItems.length;
   const activePrice = prices.data?.prices.find((price) => price.active);
+  const hasGatedSpace = spaces.some(
+    (space) => space.visibility === 'product' && space.productIds.includes(product.id),
+  );
+  const hasReadyDownload = downloads.data?.assets.some((asset) => asset.status === 'ready') ?? false;
+  const hasDelivery = accessCount > 0 || hasGatedSpace || hasReadyDownload;
+  const deliveryPending = !hasDelivery
+    && (spacesPending || (product.type === 'digital_download' && downloads.isPending));
+  const deliveryError = !hasDelivery
+    && !deliveryPending
+    && (spacesError || (product.type === 'digital_download' && downloads.isError));
   const checkoutUrl = `${window.location.origin}/checkout/${product.id}`;
   const publishBlockers = product.published
     ? []
     : [
-        ...(accessCount === 0 ? [t.products.publishNeedsAccess] : []),
+        ...(hasDelivery
+          ? []
+          : deliveryPending
+            ? [t.products.publishCheckingDelivery]
+            : deliveryError
+              ? [t.products.publishDeliveryUnavailable]
+              : [t.products.publishNeedsDelivery]),
         ...(prices.isPending
           ? [t.products.publishCheckingPrice]
           : prices.isError
@@ -279,6 +305,10 @@ export const ProductsPanel = () => {
   const t = useTranslations();
   const products = useQuery(actions.products);
   const accessIssues = useQuery(actions.productAccessIssues);
+  const spaces = useQuery({
+    ...actions.staffSpaces,
+    enabled: products.data?.products.some((product) => !product.published) ?? false,
+  });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
   const query = useDebouncedValue(search);
@@ -342,6 +372,9 @@ export const ProductsPanel = () => {
                 key={product.id}
                 product={product}
                 issue={accessIssues.data?.issues.find((entry) => entry.productId === product.id)}
+                spaces={spaces.data?.spaces ?? []}
+                spacesPending={spaces.isPending}
+                spacesError={spaces.isError}
               />
             ))}
           </Stack>

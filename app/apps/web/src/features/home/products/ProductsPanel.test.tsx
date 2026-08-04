@@ -12,6 +12,7 @@ import {
   type ProductAccessIssues,
   type ProductPrice,
   type ProductDownloadAssetMetadata,
+  type StaffSpace,
 } from '#core/domain/index.js';
 
 import { pl } from '../../../i18n/pl.js';
@@ -57,10 +58,12 @@ const renderProductsPanel = async (
   initialEntry = '/panel/products',
   seededProducts = initialProducts,
   seededPrices = initialPrices,
+  seededAssets: ProductDownloadAssetMetadata[] = [],
+  seededSpaces: StaffSpace[] = [],
 ) => {
   let products = [...seededProducts];
   let prices = [...seededPrices];
-  let assets: ProductDownloadAssetMetadata[] = [];
+  let assets = [...seededAssets];
   let directUploadCalled = false;
   let updatedProduct: Product | null = null;
   const created: Product[] = [];
@@ -108,6 +111,9 @@ const renderProductsPanel = async (
     ),
     http.get('/api/products/:productId/downloads', () =>
       HttpResponse.json({ ok: true, data: { assets } }),
+    ),
+    http.get('/api/spaces/staff', () =>
+      HttpResponse.json({ ok: true, data: { spaces: seededSpaces } }),
     ),
     http.post('/api/products/:productId/downloads/upload', () =>
       HttpResponse.json({
@@ -341,15 +347,79 @@ describe('ProductsPanel', () => {
     expect(await screen.findByTestId('product-type-draft-1')).toHaveTextContent(pl.products.typeCourse);
   });
 
-  it('shows publish blockers for missing access and an inactive price', async () => {
+  it('shows publish blockers for missing delivery and an inactive price', async () => {
     const product = initialProducts[0];
     if (product === undefined) throw new Error('Expected the base product fixture');
     await renderProductsPanel([], '/panel/products', [{ ...product, accessItems: [] }], []);
 
     const publish = await screen.findByRole('button', { name: pl.products.publish });
     expect(publish).toBeDisabled();
-    expect(screen.getByText(pl.products.publishNeedsAccess)).toBeInTheDocument();
+    expect(await screen.findByText(pl.products.publishNeedsDelivery)).toBeInTheDocument();
     expect(await screen.findByText(pl.products.publishNeedsActivePrice)).toBeInTheDocument();
+  });
+
+  it('allows publishing a digital product delivered by a ready download', async () => {
+    const baseProduct = initialProducts[0];
+    const basePrice = initialPrices[0];
+    if (baseProduct === undefined || basePrice === undefined) throw new Error('Expected base product fixtures');
+    const product: Product = {
+      ...baseProduct,
+      id: 'download-1',
+      type: 'digital_download',
+      slug: 'workbook',
+      accessItems: [],
+    };
+    const price: ProductPrice = { ...basePrice, id: 'price-download-1', productId: product.id };
+    const asset: ProductDownloadAssetMetadata = {
+      id: 'asset-1',
+      productId: product.id,
+      fileName: 'workbook.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 7,
+      status: 'ready',
+      createdAt: '2026-07-12T12:00:00.000Z',
+    };
+    await renderProductsPanel([], '/panel/products', [product], [price], [asset]);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: pl.products.publish })).toBeEnabled());
+    expect(screen.queryByText(pl.products.publishNeedsDelivery)).not.toBeInTheDocument();
+  });
+
+  it('allows publishing a membership delivered by a product-gated space', async () => {
+    const baseProduct = initialProducts[0];
+    const basePrice = initialPrices[0];
+    if (baseProduct === undefined || basePrice === undefined) throw new Error('Expected base product fixtures');
+    const product: Product = {
+      ...baseProduct,
+      id: 'membership-1',
+      type: 'membership',
+      slug: 'creator-club',
+      accessItems: [],
+    };
+    const price: ProductPrice = {
+      ...basePrice,
+      id: 'price-membership-1',
+      productId: product.id,
+      kind: 'recurring',
+      interval: 'month',
+    };
+    const space: StaffSpace = {
+      id: 'space-1',
+      tenantId: 't1',
+      slug: 'clubhouse',
+      name: 'Clubhouse',
+      description: null,
+      visibility: 'product',
+      productIds: [product.id],
+      position: 0,
+      archivedAt: null,
+      createdAt: '2026-07-12T12:00:00.000Z',
+      stats: { posts: 0, followers: 0 },
+    };
+    await renderProductsPanel([], '/panel/products', [product], [price], [], [space]);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: pl.products.publish })).toBeEnabled());
+    expect(screen.queryByText(pl.products.publishNeedsDelivery)).not.toBeInTheDocument();
   });
 
   it('offers a selectable checkout URL when clipboard writing fails', async () => {

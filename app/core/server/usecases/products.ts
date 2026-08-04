@@ -21,9 +21,11 @@ import type {
   Clock,
   EntityVersionRecord,
   IdGenerator,
+  ProductDownloadAssetRepository,
   ProductMetadataRepository,
   ProductPriceRepository,
   ProductRepository,
+  SpaceRepository,
 } from '../ports.js';
 import { authorizeTenant } from '../authorize.js';
 
@@ -36,6 +38,8 @@ export interface ProductDeps {
 export interface ProductPublicationDeps {
   products: ProductRepository;
   prices: Pick<ProductPriceRepository, 'listActiveByProducts'>;
+  downloadAssets: Pick<ProductDownloadAssetRepository, 'listReadyByProduct'>;
+  spaces: Pick<SpaceRepository, 'list'>;
 }
 
 export interface ProductUpdateDeps extends ProductDeps {
@@ -144,10 +148,19 @@ export const publishProduct = async (
   const existing = await deps.products.findById(tenant.value, input.id);
   if (!existing) return err(notFound(`No product "${input.id}" in this tenant`));
   if (existing.published) return ok(existing);
-  if (existing.accessItems.length === 0) {
-    return err(validation('Product requires at least one access grant before publishing'));
+  const [activePrices, readyDownloads, spaces] = await Promise.all([
+    deps.prices.listActiveByProducts(tenant.value, [existing.id]),
+    existing.type === 'digital_download'
+      ? deps.downloadAssets.listReadyByProduct(tenant.value, existing.id)
+      : Promise.resolve([]),
+    deps.spaces.list(tenant.value),
+  ]);
+  const hasDelivery = existing.accessItems.length > 0
+    || readyDownloads.length > 0
+    || spaces.some((space) => space.visibility === 'product' && space.productIds.includes(existing.id));
+  if (!hasDelivery) {
+    return err(validation('Product requires at least one delivery mechanism before publishing'));
   }
-  const activePrices = await deps.prices.listActiveByProducts(tenant.value, [existing.id]);
   if (activePrices.length === 0) {
     return err(validation('Product requires an active price before publishing'));
   }

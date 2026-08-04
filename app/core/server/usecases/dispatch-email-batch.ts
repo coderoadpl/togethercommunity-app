@@ -112,7 +112,12 @@ export const dispatchEmailBatch = async (
           }));
         }
         const sent = rendered.success
-          ? await deps.email.send({ tenantId: item.tenantId, to: item.to, ...rendered.data })
+          ? await deps.email.send({
+              tenantId: item.tenantId,
+              to: item.to,
+              tenantTransportRequired: item.tenantTransportRequired,
+              ...rendered.data,
+            })
           : err(internal(`Invalid email outbox payload: ${rendered.error.message}`));
         if (sent.ok) {
           const marked = await deps.emailOutbox.markSent({

@@ -1,0 +1,1 @@
+CREATE INDEX "email_outbox_tenant_source_app_created_id_idx" ON "email_outbox" USING btree ("tenant_id","source_app","created_at","id") WHERE "email_outbox"."source_app" is not null;

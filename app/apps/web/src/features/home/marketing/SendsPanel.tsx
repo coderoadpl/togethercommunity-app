@@ -87,6 +87,7 @@ export const SendsPanel = () => {
   const [status, setStatus] = useState<'all' | EmailSendStatus>('all');
   const [deliveryStatus, setDeliveryStatus] = useState<'all' | EmailDeliveryStatus>('all');
   const [transport, setTransport] = useState<'all' | TransactionalEmailTransport>('all');
+  const [sourceApp, setSourceApp] = useState('');
   const [campaignId, setCampaignId] = useState('all');
   const [pageSize, setPageSize] = useState(25);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -94,6 +95,7 @@ export const SendsPanel = () => {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const debouncedSearch = useDebouncedValue(search);
+  const debouncedSourceApp = useDebouncedValue(sourceApp);
 
   const filters = {
     ...(kind === 'all' ? {} : { kind }),
@@ -102,6 +104,7 @@ export const SendsPanel = () => {
     ...(transport === 'all' ? {} : { transport }),
     ...(campaignId === 'all' ? {} : { campaignId }),
     ...(runId.length === 0 ? {} : { runId }),
+    ...(debouncedSourceApp.length === 0 ? {} : { sourceApp: debouncedSourceApp }),
     ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
   };
   const sends = useQuery(actions.emailSends({
@@ -246,6 +249,16 @@ export const SendsPanel = () => {
               </FormControl>
               <TextField
                 size="small"
+                label={t.marketing.sourceApp}
+                value={sourceApp}
+                onChange={(event) => {
+                  setSourceApp(event.target.value.trimStart());
+                  resetPagination();
+                }}
+                sx={{ minWidth: '12rem' }}
+              />
+              <TextField
+                size="small"
                 label={t.marketing.runIdFilter}
                 value={runId}
                 onChange={(event) => {
@@ -338,6 +351,7 @@ export const SendsPanel = () => {
                   <TableCell>{t.marketing.deliveryStatusLabel}</TableCell>
                   <TableCell>{t.marketing.transportLabel}</TableCell>
                   <TableCell>{t.marketing.source}</TableCell>
+                  <TableCell>{t.marketing.sourceApp}</TableCell>
                   <TableCell>{t.marketing.sentTime}</TableCell>
                   <TableCell />
                 </TableRow>
@@ -366,6 +380,7 @@ export const SendsPanel = () => {
                       </Stack>
                     </TableCell>
                     <TableCell><SendCampaign send={send} /></TableCell>
+                    <TableCell>{send.sourceApp ?? '—'}</TableCell>
                     <TableCell>{send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)}</TableCell>
                     <TableCell align="right">
                       <Button
@@ -416,6 +431,7 @@ export const SendDetailPage = () => {
             [t.marketing.deliveryStatusLabel, deliveryStatusLabel(send.deliveryStatus, t)],
             [t.marketing.transportLabel, transportLabel(send.transport, t)],
             [t.marketing.source, send.campaignName ?? send.source],
+            [t.marketing.sourceApp, send.sourceApp ?? '—'],
             [t.marketing.sentTime, send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)],
             [t.marketing.createdTime, formatDateTime(send.createdAt, language)],
             [t.marketing.sesMessageId, send.sesMessageId ?? '—'],

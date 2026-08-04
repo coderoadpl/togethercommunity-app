@@ -356,8 +356,16 @@ describe('marketing database repositories', () => {
       expiresAt: '1998-07-23T00:00:00.000Z',
     };
     expect(await repository.claim('tenant-a', record)).toBeNull();
-    expect(await repository.claim('tenant-a', { ...record, id: 'idem-2' })).toEqual(record);
-    expect(await repository.claim('tenant-b', { ...record, id: 'idem-3', tenantId: 'tenant-b' })).toBeNull();
+    expect(await repository.claim('tenant-a', { ...record, id: 'idem-2' })).toEqual({
+      ...record,
+      resourceId: null,
+    });
+    await repository.complete('tenant-a', record.key, 'message-1');
+    expect(await repository.claim('tenant-a', { ...record, id: 'idem-3' })).toEqual({
+      ...record,
+      resourceId: 'message-1',
+    });
+    expect(await repository.claim('tenant-b', { ...record, id: 'idem-4', tenantId: 'tenant-b' })).toBeNull();
   });
 
   it('atomically shares SES rate and daily quota claims across workers', async () => {
@@ -409,6 +417,50 @@ describe('marketing database repositories', () => {
       'tenant-a',
       'marketing',
       'send-event-a',
+    )).map((item) => item.type)).toEqual(['suppressed_written']);
+  });
+
+  it('upgrades an active global unsubscribe when a delivery suppression arrives', async () => {
+    const repository = createSuppressionRepository(db);
+    const base: Suppression = {
+      id: 'suppression-upgrade-a',
+      tenantId: 'tenant-a',
+      email: 'upgrade@example.test',
+      emailHmac: 'email-hmac-upgrade-a',
+      reason: 'unsubscribe_global',
+      sourceRef: null,
+      meta: null,
+      createdAt: NOW,
+      liftedAt: null,
+      liftedBy: null,
+    };
+    const event = emailEventSchema.parse({
+      id: 'suppression-upgrade-event-a',
+      tenantId: 'tenant-a',
+      mailKind: 'transactional',
+      refId: 'transactional-upgrade-a',
+      type: 'suppressed_written',
+      occurredAt: NOW,
+      meta: { reason: 'complaint' },
+      createdAt: NOW,
+    });
+
+    expect(await repository.record('tenant-a', base)).toBe(true);
+    expect(await repository.record('tenant-a', {
+      ...base,
+      id: 'suppression-upgrade-b',
+      reason: 'complaint',
+      sourceRef: 'transactional-upgrade-a',
+    }, event)).toBe(true);
+    expect(await repository.findActive('tenant-a', base.emailHmac)).toMatchObject({
+      id: base.id,
+      reason: 'complaint',
+      sourceRef: 'transactional-upgrade-a',
+    });
+    expect((await createEmailEventRepository(db).listByRef(
+      'tenant-a',
+      'transactional',
+      'transactional-upgrade-a',
     )).map((item) => item.type)).toEqual(['suppressed_written']);
   });
 
@@ -606,6 +658,7 @@ describe('marketing database repositories', () => {
       status: 'sent', attempts: 1, nextAttemptAt: '1998-07-22T03:00:00.000Z', lastError: null,
       createdAt: '1998-07-22T03:00:00.000Z', sentAt: '1998-07-22T03:00:30.000Z',
       sesMessageId: 'ses-transactional-view', deliveryStatus: null, deliveryOccurredAt: null,
+      sourceApp: 'orders-app', tenantTransportRequired: true,
     });
     await createEmailEventRepository(db).append(tenantId, emailEventSchema.parse({
       id: 'transactional-send-view-accepted',
@@ -634,6 +687,8 @@ describe('marketing database repositories', () => {
       .toHaveLength(2);
     expect((await repository.listPage(tenantId, { runId: 'other-run', limit: 25 })).sends)
       .toHaveLength(0);
+    expect((await repository.listPage(tenantId, { sourceApp: 'orders-app', limit: 25 })).sends)
+      .toMatchObject([{ id: 'transactional-send-view', sourceApp: 'orders-app' }]);
     expect(await repository.findById('tenant-b', 'marketing', 'marketing-send-view')).toBeNull();
   });
 

@@ -86,6 +86,8 @@ export const CAPABILITIES = [
   'marketing:suppression:write',
   'marketing:delivery:read',
   'marketing:reputation:read',
+  'transactional:message:read',
+  'transactional:message:send',
   'scheduler:read',
   'scheduler:dispatch',
   'checkout:read',
@@ -103,6 +105,7 @@ export const PRINCIPALS = [
   'member',
   'authenticated',
   'api-key',
+  'transactional-api-key',
   'operator-secret',
   'webhook',
   'token',
@@ -245,6 +248,10 @@ export const ROLE_CAPABILITIES: CapabilityMatrix = {
     'marketing:suppression:read',
     'marketing:suppression:write',
     'enrollment:create',
+  ],
+  'transactional-api-key': [
+    'transactional:message:read',
+    'transactional:message:send',
   ],
   'operator-secret': [
     'scheduler:read',

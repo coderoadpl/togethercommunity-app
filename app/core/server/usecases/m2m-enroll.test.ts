@@ -318,6 +318,7 @@ const apiKeyRow = (overrides: Partial<TenantApiKey>): TenantApiKey => ({
   tenantId: 't1',
   name: 'CI key',
   keyHash: 'hash:secret',
+  scopes: null,
   createdAt: NOW,
   revokedAt: null,
   ...overrides,

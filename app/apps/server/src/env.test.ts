@@ -456,6 +456,22 @@ describe('consent evidence purge policy', () => {
   });
 });
 
+describe('transactional M2M rate limits', () => {
+  it('uses safe defaults and accepts positive overrides', () => {
+    expect(envSchema.parse({})).toMatchObject({
+      M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: 60,
+      M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: 5000,
+    });
+    expect(envSchema.parse({
+      M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: '10',
+      M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: '100',
+    })).toMatchObject({
+      M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE: 10,
+      M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY: 100,
+    });
+  });
+});
+
 describe('visual clock policy', () => {
   it('accepts an explicit timestamp outside production', () => {
     const parsed = envSchema.safeParse({

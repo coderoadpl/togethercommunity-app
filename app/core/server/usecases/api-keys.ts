@@ -45,6 +45,7 @@ export const createTenantApiKey = async (
     tenantId: tenant.value,
     name: parsed.data.name,
     keyHash: deps.apiKeyCrypto.hash(secret),
+    scopes: parsed.data.scopes ?? null,
     createdAt: deps.clock.nowIso(),
     revokedAt: null,
   };

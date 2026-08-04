@@ -55,6 +55,7 @@ import {
   InMemoryConsentDefinitionRepository,
   InMemoryEmailLayoutRepository,
   InMemoryEmailEventRepository,
+  InMemoryEmailOutboxRepository,
   InMemoryMarketingAudienceRepository,
   InMemoryMarketingConsentRepository,
   InMemorySchedulerRunRepository,
@@ -217,6 +218,10 @@ const deps = (input: {
       findActiveByHash: async () => null,
       revoke: async () => null,
     },
+    apiKeyRateLimits: {
+      claim: async () => true,
+    },
+    m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
     apiKeyCrypto: {
       generateSecret: () => 'secret',
       hash: (secret) => `hash:${secret}`,
@@ -815,11 +820,58 @@ const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> 
     create: async () => undefined,
     findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
       id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+      scopes: null,
       createdAt: '1998-07-22T00:00:00.000Z', revokedAt: null,
     } : null,
     revoke: async () => null,
   };
   return buildApp(configured);
+};
+
+const transactionalM2mApp = (options: {
+  scopes?: readonly ('enrollment' | 'marketing' | 'transactional')[];
+  transport?: boolean;
+  perMinute?: number;
+} = {}) => {
+  const configured = deps();
+  const marketing = marketingDeps();
+  const events = new InMemoryEmailEventRepository();
+  marketing.events = events;
+  const outbox = new InMemoryEmailOutboxRepository(events);
+  const counts = new Map<string, number>();
+  configured.marketing = marketing;
+  configured.emailOutbox = outbox;
+  configured.tenantApiKeys = {
+    listByTenant: async () => [],
+    create: async () => undefined,
+    findActiveByHash: async (tenantId, hash) => {
+      if (tenantId !== 't-acme' || !['hash:transactional-key', 'hash:other-transactional-key'].includes(hash)) return null;
+      return {
+        id: hash === 'hash:transactional-key' ? 'transactional-key-id' : 'other-transactional-key-id',
+        tenantId,
+        name: hash === 'hash:transactional-key' ? 'orders-app' : 'billing-app',
+        keyHash: hash,
+        scopes: [...(options.scopes ?? ['transactional'])],
+        createdAt: '1998-08-10T00:00:00.000Z',
+        revokedAt: null,
+      };
+    },
+    revoke: async () => null,
+  };
+  configured.emailTransports = {
+    resolve: async () => options.transport === false ? null : configured.email,
+  };
+  configured.m2mTransactionalRateLimits = { perMinute: options.perMinute ?? 60, perDay: 5000 };
+  configured.apiKeyRateLimits = {
+    claim: async (_tenantId, claim) => {
+      const key = `${claim.apiKeyId}:${claim.period}:${claim.windowStartedAt}`;
+      const count = counts.get(key) ?? 0;
+      if (count >= claim.limit) return false;
+      counts.set(key, count + 1);
+      return true;
+    },
+  };
+  return { app: buildApp(configured), marketing, outbox };
 };
 
 const ksefApp = (
@@ -982,6 +1034,7 @@ describe('marketing HTTP surfaces', () => {
       create: async () => undefined,
       findActiveByHash: async (tenantId, hash) => tenantId === acme.id && hash === 'hash:marketing-key' ? {
         id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
+        scopes: null,
         createdAt: '1998-07-22T00:00:00.000Z', revokedAt: null,
       } : null,
       revoke: async () => null,
@@ -1044,6 +1097,138 @@ describe('marketing HTTP surfaces', () => {
     const invalid = { method: 'POST', headers: { ...headers, 'Idempotency-Key': 'same', 'content-type': 'application/json' }, body: '{}' };
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
     expect((await app.request('/api/m2m/marketing/messages', invalid)).status).toBe(400);
+  });
+
+  it('accepts transactional M2M mail and replays the original outbox id', async () => {
+    const { app, marketing, outbox } = transactionalM2mApp();
+    const request = {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        'x-api-key': 'transactional-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: 'buyer@example.test',
+        subject: 'Receipt',
+        text: 'Paid',
+        idempotencyKey: 'order-1',
+      }),
+    };
+    const first = await app.request('/api/m2m/transactional/messages', request);
+    expect(first.status).toBe(202);
+    const firstBody = z.object({
+      ok: z.literal(true),
+      data: z.object({ messageId: z.string().min(1), statusUrl: z.string().min(1) }),
+    }).parse(await first.json());
+    expect(firstBody).toMatchObject({
+      ok: true,
+      data: { statusUrl: expect.stringMatching(/^\/api\/m2m\/transactional\/messages\//) },
+    });
+    const messageId = firstBody.data.messageId;
+    marketing.emailSends.findById = async () => ({
+      id: messageId,
+      tenantId: 't-acme',
+      kind: 'transactional',
+      recipient: 'buyer@example.test',
+      subject: 'Receipt',
+      source: 'm2m-transactional',
+      sourceApp: 'orders-app',
+      status: 'queued',
+      skipReason: null,
+      failureCode: null,
+      failureMessage: null,
+      deliveryStatus: null,
+      deliveryOccurredAt: null,
+      campaignId: null,
+      campaignName: null,
+      sesMessageId: null,
+      transport: 'platform',
+      createdAt: '1998-08-10T00:00:00.000Z',
+      sentAt: null,
+    });
+    const status = await app.request(`/api/m2m/transactional/messages/${encodeURIComponent(messageId)}`, {
+      headers: { host: 'acme.localhost:48730', 'x-api-key': 'transactional-key' },
+    });
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      ok: true,
+      data: { send: { id: messageId, sourceApp: 'orders-app' }, events: [{ type: 'queued' }] },
+    });
+    const otherAppStatus = await app.request(`/api/m2m/transactional/messages/${encodeURIComponent(messageId)}`, {
+      headers: { host: 'acme.localhost:48730', 'x-api-key': 'other-transactional-key' },
+    });
+    expect(otherAppStatus.status).toBe(404);
+    const replay = await app.request('/api/m2m/transactional/messages', request);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(firstBody);
+    expect(outbox.items).toHaveLength(1);
+    expect(outbox.items[0]).toMatchObject({ sourceApp: 'orders-app', tenantTransportRequired: true });
+  });
+
+  it.each([
+    { options: { scopes: ['enrollment'] as const }, status: 403, code: 'forbidden' },
+    { options: { transport: false }, status: 412, code: 'integration_not_configured' },
+  ])('rejects transactional M2M mail when its prerequisite is missing', async ({ options, status, code }) => {
+    const { app, outbox } = transactionalM2mApp(options);
+    const response = await app.request('/api/m2m/transactional/messages', {
+      method: 'POST',
+      headers: {
+        host: 'acme.localhost:48730',
+        'x-api-key': 'transactional-key',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: 'buyer@example.test',
+        subject: 'Receipt',
+        text: 'Paid',
+        idempotencyKey: 'order-1',
+      }),
+    });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code } });
+    expect(outbox.items).toHaveLength(0);
+  });
+
+  it('returns suppression details and rate-limit Retry-After for transactional M2M mail', async () => {
+    const suppressed = transactionalM2mApp();
+    await suppressed.marketing.suppressions.record('t-acme', {
+      id: 'suppression-1',
+      tenantId: 't-acme',
+      email: 'buyer@example.test',
+      emailHmac: 't-acme:buyer@example.test',
+      reason: 'complaint',
+      sourceRef: null,
+      meta: null,
+      createdAt: '1998-08-10T00:00:00.000Z',
+      liftedAt: null,
+      liftedBy: null,
+    });
+    const headers = {
+      host: 'acme.localhost:48730',
+      'x-api-key': 'transactional-key',
+      'content-type': 'application/json',
+    };
+    const body = (idempotencyKey: string) => JSON.stringify({
+      to: 'buyer@example.test', subject: 'Receipt', text: 'Paid', idempotencyKey,
+    });
+    const blocked = await suppressed.app.request('/api/m2m/transactional/messages', {
+      method: 'POST', headers, body: body('suppressed-1'),
+    });
+    expect(blocked.status).toBe(422);
+    expect(await blocked.json()).toMatchObject({
+      ok: false,
+      error: { code: 'suppressed', details: { reason: 'complaint' } },
+    });
+    const limited = transactionalM2mApp({ perMinute: 1 });
+    expect((await limited.app.request('/api/m2m/transactional/messages', {
+      method: 'POST', headers, body: body('rate-1'),
+    })).status).toBe(202);
+    const rateLimited = await limited.app.request('/api/m2m/transactional/messages', {
+      method: 'POST', headers, body: body('rate-2'),
+    });
+    expect(rateLimited.status).toBe(429);
+    expect(Number(rateLimited.headers.get('retry-after'))).toBeGreaterThan(0);
   });
 
   it.each([

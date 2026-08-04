@@ -62,6 +62,8 @@ export const createEmailOutboxRepository = (
           payload,
           nextAttemptAt: input.now,
           createdAt: input.now,
+          sourceApp: input.sourceApp ?? null,
+          tenantTransportRequired: input.tenantTransportRequired ?? false,
         });
         if (input.tenantId !== null) {
           await tx.insert(emailEvents).values(emailEventSchema.parse({
@@ -108,6 +110,8 @@ export const createEmailOutboxRepository = (
             transport: emailOutbox.transport,
             deliveryStatus: emailOutbox.deliveryStatus,
             deliveryOccurredAt: emailOutbox.deliveryOccurredAt,
+            sourceApp: emailOutbox.sourceApp,
+            tenantTransportRequired: emailOutbox.tenantTransportRequired,
           })
           .from(emailOutbox)
           .where(
@@ -257,6 +261,8 @@ export const createEmailOutboxRepository = (
       transport: emailOutbox.transport,
       deliveryStatus: emailOutbox.deliveryStatus,
       deliveryOccurredAt: emailOutbox.deliveryOccurredAt,
+      sourceApp: emailOutbox.sourceApp,
+      tenantTransportRequired: emailOutbox.tenantTransportRequired,
     }).from(emailOutbox).where(and(
       eq(emailOutbox.tenantId, tenantId),
       eq(emailOutbox.sesMessageId, sesMessageId),

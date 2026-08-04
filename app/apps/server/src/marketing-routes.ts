@@ -7,11 +7,13 @@ import {
   API_KEY_HEADER,
   capabilitiesForPrincipal,
   HTTP_STATUS_BY_ERROR_CODE,
+  m2mTransactionalMessageRequestSchema,
   TENANT_HEADER,
   toEnvelope,
 } from '#core/contract/index.js';
 import {
   appError,
+  capabilitiesForApiKey,
   err,
   marketingAutomationMessagesSchema,
   marketingConsentApiSchema,
@@ -28,6 +30,7 @@ import {
   type Identity,
   type Result,
   type Tenant,
+  type TenantApiKey,
 } from '#core/domain/index.js';
 import {
   addManualSuppression,
@@ -41,7 +44,9 @@ import {
   recordMarketingConsent,
   resolveTenant,
   saveMarketingConsentPreferences,
+  sendM2mTransactionalMessage,
   sendMarketingMessages,
+  getM2mTransactionalMessage,
   unsubscribeAllMarketing,
   unsubscribeOneClick,
   type Ctx,
@@ -85,7 +90,7 @@ const tokenCtx = (tenant: Tenant): Ctx => ({
 export const authenticateMarketingApiKey = async (
   headers: Headers,
   deps: AppDeps,
-): Promise<Result<{ tenant: Tenant; ctx: Ctx }, AppError>> => {
+): Promise<Result<{ tenant: Tenant; apiKey: TenantApiKey; ctx: Ctx }, AppError>> => {
   const resolved = await resolveTenant(headers.get('host') ?? '', headers.get(TENANT_HEADER), deps);
   if (!resolved.ok) return resolved;
   if (resolved.value === null) return err(tenantNotFound());
@@ -95,9 +100,10 @@ export const authenticateMarketingApiKey = async (
   return authenticated.ok
     ? ok({
         tenant: resolved.value.tenant,
+        apiKey: authenticated.value,
         ctx: {
           identity: apiIdentity(resolved.value.tenant),
-          capabilities: capabilitiesForPrincipal('api-key'),
+          capabilities: capabilitiesForApiKey(authenticated.value),
         },
       })
     : authenticated;
@@ -217,6 +223,58 @@ const unsubscribeDeps = (deps: AppDeps, marketing: MarketingAppDeps) => ({
 });
 
 export const registerAuthenticatedMarketingRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
+  app.post('/api/m2m/transactional/messages', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
+    if (!authenticated.ok) return response(authenticated);
+    const parsed = m2mTransactionalMessageRequestSchema.safeParse(await readJson(c.req.raw));
+    if (!parsed.success) return response(err(validation('Invalid transactional e-mail payload', parsed.error.flatten())));
+    const sent = await sendM2mTransactionalMessage(
+      authenticated.value.ctx,
+      authenticated.value.apiKey,
+      parsed.data,
+      {
+        idempotency: marketing.value.idempotency,
+        rateLimits: deps.apiKeyRateLimits,
+        limits: deps.m2mTransactionalRateLimits,
+        transports: deps.emailTransports,
+        suppressions: marketing.value.suppressions,
+        hmac: marketing.value.hmac,
+        outbox: deps.emailOutbox,
+        events: marketing.value.events,
+        ids: deps.ids,
+        clock: deps.clock,
+        hash: { compute: (value) => createHash('sha256').update(value).digest('hex') },
+      },
+    );
+    if (!sent.ok) {
+      const retryAfterSeconds = sent.error.code === 'rate_limited'
+        && typeof sent.error.details === 'object'
+        && sent.error.details !== null
+        && typeof Reflect.get(sent.error.details, 'retryAfterSeconds') === 'number'
+        ? String(Reflect.get(sent.error.details, 'retryAfterSeconds'))
+        : null;
+      return response(sent, undefined, retryAfterSeconds === null ? undefined : { 'retry-after': retryAfterSeconds });
+    }
+    if (!sent.value.replayed) deps.dispatchEmail();
+    const statusUrl = `/api/m2m/transactional/messages/${encodeURIComponent(sent.value.messageId)}`;
+    return response(ok({ messageId: sent.value.messageId, statusUrl }), sent.value.replayed ? 200 : 202);
+  });
+
+  app.get('/api/m2m/transactional/messages/:id', async (c) => {
+    const marketing = requireMarketing(deps);
+    if (!marketing.ok) return response(marketing);
+    const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
+    if (!authenticated.ok) return response(authenticated);
+    return response(await getM2mTransactionalMessage(
+      authenticated.value.ctx,
+      authenticated.value.apiKey,
+      { id: c.req.param('id') },
+      { sends: marketing.value.emailSends, events: marketing.value.events },
+    ));
+  });
+
   app.post('/api/m2m/marketing/messages', async (c) => {
     const marketingResult = requireMarketing(deps);
     if (!marketingResult.ok) return response(marketingResult);

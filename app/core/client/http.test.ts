@@ -109,6 +109,31 @@ describe('createApiClient', () => {
     });
   });
 
+  it('preserves source-app and transport filters in send-log exports', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe(
+        'https://api.example.test/api/marketing/sends/export?format=csv&kind=transactional&transport=smtp&sourceApp=orders-app',
+      );
+      expect(init).toMatchObject({ method: 'GET', credentials: 'include' });
+      return jsonResponse({
+        ok: true,
+        data: {
+          filename: 'email-sends-alpha.csv',
+          mimeType: 'text/csv; charset=utf-8',
+          content: 'source_app\norders-app',
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+
+    await expect(client.exportEmailSends({
+      format: 'csv',
+      kind: 'transactional',
+      transport: 'smtp',
+      sourceApp: 'orders-app',
+    })).resolves.toMatchObject({ ok: true, value: { filename: 'email-sends-alpha.csv' } });
+  });
+
   it('returns the contract AppError from a non-2xx envelope', async () => {
     const fetchImpl: typeof fetch = async () =>
       jsonResponse({ ok: false, error: { code: 'unauthorized', message: 'Login required' } }, 401);

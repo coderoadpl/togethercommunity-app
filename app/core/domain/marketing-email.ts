@@ -561,6 +561,7 @@ export const automationIdempotencyKeySchema = z.object({
   requestMethod: z.string().min(1),
   requestPath: z.string().min(1),
   requestHash: z.string().min(1),
+  resourceId: z.string().min(1).nullable().optional(),
   claimedAt: isoDateTimeSchema,
   expiresAt: isoDateTimeSchema,
 });

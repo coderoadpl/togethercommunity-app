@@ -126,6 +126,7 @@ import {
   emailSendExportQuerySchema,
   emailSendListQuerySchema,
   emailSendProjectionSchema,
+  m2mTransactionalMessageInputSchema,
   schedulerRunListQuerySchema,
   schedulerRunSchema,
   schedulerRunTenantItemSchema,
@@ -1126,6 +1127,20 @@ export const m2mEnrollOutputSchema = z.object({
   magicLink: magicLinkSchema.nullable(),
 });
 
+export const m2mTransactionalMessageRequestSchema = m2mTransactionalMessageInputSchema;
+
+export type M2mTransactionalMessageRequest = z.input<typeof m2mTransactionalMessageRequestSchema>;
+
+export const m2mTransactionalMessageOutputSchema = z.object({
+  messageId: z.string().min(1),
+  statusUrl: z.string().min(1),
+});
+
+export const m2mTransactionalMessageStatusOutputSchema = z.object({
+  send: emailSendProjectionSchema,
+  events: z.array(emailEventSchema),
+});
+
 export const marketingConsentDefinitionCreateInputSchema = z.object({
   key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   label: z.string().trim().min(1),
@@ -1452,6 +1467,8 @@ export const API_ROUTES = {
   bunnyTestConnection: { method: 'POST', path: '/api/integrations/bunny/test' },
   stripeWebhook: { method: 'POST', path: '/api/webhooks/stripe/:tenantId' },
   m2mEnroll: { method: 'POST', path: '/api/m2m/enroll' },
+  m2mTransactionalMessagesCreate: { method: 'POST', path: '/api/m2m/transactional/messages' },
+  m2mTransactionalMessage: { method: 'GET', path: '/api/m2m/transactional/messages/:id' },
   marketingMessagesCreate: { method: 'POST', path: '/api/m2m/marketing/messages' },
   marketingMessages: { method: 'GET', path: '/api/m2m/marketing/messages' },
   marketingMessage: { method: 'GET', path: '/api/m2m/marketing/messages/:id' },
@@ -1644,6 +1661,8 @@ export const API_PATHS = {
   bunnyTestConnection: API_ROUTES.bunnyTestConnection.path,
   stripeWebhook: API_ROUTES.stripeWebhook.path,
   m2mEnroll: API_ROUTES.m2mEnroll.path,
+  m2mTransactionalMessagesCreate: API_ROUTES.m2mTransactionalMessagesCreate.path,
+  m2mTransactionalMessage: API_ROUTES.m2mTransactionalMessage.path,
   marketingMessagesCreate: API_ROUTES.marketingMessagesCreate.path,
   marketingMessages: API_ROUTES.marketingMessages.path,
   marketingMessage: API_ROUTES.marketingMessage.path,

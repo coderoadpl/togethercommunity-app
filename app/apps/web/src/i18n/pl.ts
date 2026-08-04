@@ -1548,7 +1548,7 @@ export const pl: Messages = {
     deliveryStatusLabel: 'dostarczenie', transportLabel: 'transport', transportTenantSes: 'własny SES',
     transportSmtp: 'SMTP', transportResend: 'Resend', transportPlatform: 'SES platformy', limitedTracking: 'ograniczone śledzenie',
     campaignLabel: 'kampania', recipient: 'Odbiorca', subject: 'Temat',
-    source: 'Źródło', sentTime: 'Wysłano', createdTime: 'Utworzono', notSent: 'nie wysłano',
+    source: 'Źródło', sourceApp: 'Aplikacja źródłowa', sentTime: 'Wysłano', createdTime: 'Utworzono', notSent: 'nie wysłano',
     noDeliveryStatus: 'brak zdarzenia dostarczenia', deliveryDelivered: 'dostarczona', deliveryBounced: 'odbita',
     deliveryComplained: 'zgłoszona jako spam', statusQueued: 'w kolejce', statusPending: 'oczekująca',
     statusSending: 'wysyłanie', statusSent: 'wysłana', statusFailed: 'nieudana', statusSkipped: 'pominięta',

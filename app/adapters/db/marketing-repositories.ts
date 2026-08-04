@@ -505,18 +505,29 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
 
 export const createSuppressionRepository = (db: Db): SuppressionRepository => ({
   record: async (tenantId, suppression, event) => {
-    try {
-      await db.transaction(async (tx) => {
-        await tx.insert(suppressions).values(suppressionSchema.parse({ ...suppression, tenantId }));
-        if (event !== undefined) {
-          await tx.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
-        }
-      });
+    const parsed = suppressionSchema.parse({ ...suppression, tenantId });
+    return db.transaction(async (tx) => {
+      const [inserted] = await tx.insert(suppressions).values(parsed).onConflictDoNothing().returning({ id: suppressions.id });
+      const [upgraded] = inserted === undefined && ['hard_bounce', 'complaint', 'erasure'].includes(parsed.reason)
+        ? await tx.update(suppressions).set({
+            email: parsed.email,
+            reason: parsed.reason,
+            sourceRef: parsed.sourceRef,
+            meta: parsed.meta,
+            createdAt: parsed.createdAt,
+          }).where(and(
+            eq(suppressions.tenantId, tenantId),
+            eq(suppressions.emailHmac, parsed.emailHmac),
+            isNull(suppressions.liftedAt),
+            inArray(suppressions.reason, ['manual', 'unsubscribe_global']),
+          )).returning({ id: suppressions.id })
+        : [];
+      if (inserted === undefined && upgraded === undefined) return false;
+      if (event !== undefined) {
+        await tx.insert(emailEvents).values(emailEventSchema.parse({ ...event, tenantId }));
+      }
       return true;
-    } catch (cause) {
-      if (uniqueViolation(cause)) return false;
-      throw cause;
-    }
+    });
   },
   findActive: async (tenantId, emailHmac) => {
     const [row] = await db.select().from(suppressions).where(and(eq(suppressions.tenantId, tenantId), eq(suppressions.emailHmac, emailHmac), isNull(suppressions.liftedAt))).limit(1);
@@ -585,6 +596,13 @@ export const createAutomationIdempotencyRepository = (db: Db): AutomationIdempot
     if (inserted !== undefined) return null;
     const [existing] = await db.select().from(marketingIdempotencyKeys).where(and(eq(marketingIdempotencyKeys.tenantId, tenantId), eq(marketingIdempotencyKeys.key, parsed.key))).limit(1);
     return existing === undefined ? null : parseIdempotency(existing);
+  },
+  complete: async (tenantId, key, resourceId) => {
+    await db.update(marketingIdempotencyKeys).set({ resourceId }).where(and(
+      eq(marketingIdempotencyKeys.tenantId, tenantId),
+      eq(marketingIdempotencyKeys.key, key),
+      isNull(marketingIdempotencyKeys.resourceId),
+    ));
   },
   release: async (tenantId, key) => { await db.delete(marketingIdempotencyKeys).where(and(eq(marketingIdempotencyKeys.tenantId, tenantId), eq(marketingIdempotencyKeys.key, key))); },
   sweepExpired: async (now) => (await db.delete(marketingIdempotencyKeys).where(lte(marketingIdempotencyKeys.expiresAt, now)).returning({ id: marketingIdempotencyKeys.id })).length,

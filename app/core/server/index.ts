@@ -14,6 +14,7 @@ export * from './usecases/grant-window.js';
 export * from './usecases/grants.js';
 export * from './usecases/api-keys.js';
 export * from './usecases/m2m-enroll.js';
+export * from './usecases/m2m-transactional-email.js';
 export * from './usecases/fulfill-enrollment.js';
 export * from './usecases/my-products.js';
 export * from './usecases/members.js';

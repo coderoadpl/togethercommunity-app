@@ -707,7 +707,25 @@ export class InMemorySuppressionRepository implements SuppressionRepository {
 
   async record(tenantId: string, suppression: Suppression, event?: EmailEvent): Promise<boolean> {
     if (!sameTenant(tenantId, suppression)) return false;
-    if (this.rows.some((row) => row.tenantId === tenantId && row.emailHmac === suppression.emailHmac && row.liftedAt === null)) return false;
+    const activeIndex = this.rows.findIndex((row) => row.tenantId === tenantId && row.emailHmac === suppression.emailHmac && row.liftedAt === null);
+    if (activeIndex >= 0) {
+      const active = this.rows[activeIndex];
+      if (
+        active === undefined
+        || !['manual', 'unsubscribe_global'].includes(active.reason)
+        || !['hard_bounce', 'complaint', 'erasure'].includes(suppression.reason)
+      ) return false;
+      this.rows[activeIndex] = {
+        ...active,
+        email: suppression.email,
+        reason: suppression.reason,
+        sourceRef: suppression.sourceRef,
+        meta: structuredClone(suppression.meta),
+        createdAt: suppression.createdAt,
+      };
+      if (event !== undefined && this.events !== undefined) await this.events.append(tenantId, event);
+      return true;
+    }
     this.rows.push(structuredClone(suppression));
     if (event !== undefined && this.events !== undefined) await this.events.append(tenantId, event);
     return true;
@@ -758,7 +776,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     private readonly attemptsCap = 3,
   ) {}
 
-  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>> {
+  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean }): Promise<Result<{ id: string }, AppError>> {
     this.items.push({
       ...structuredClone(input),
       attempts: 0,
@@ -767,6 +785,8 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
       transport: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
+      sourceApp: input.sourceApp ?? null,
+      tenantTransportRequired: input.tenantTransportRequired ?? false,
     });
     if (input.tenantId !== null) {
       this.events.associateEmail(input.tenantId, 'transactional', input.id, input.to);
@@ -1072,6 +1092,11 @@ export class InMemoryAutomationIdempotencyRepository implements AutomationIdempo
     if (existing !== undefined) return structuredClone(existing);
     this.rows.push(structuredClone(record));
     return null;
+  }
+
+  async complete(tenantId: string, key: string, resourceId: string): Promise<void> {
+    const row = this.rows.find((item) => item.tenantId === tenantId && item.key === key);
+    if (row !== undefined && (row.resourceId === null || row.resourceId === undefined)) row.resourceId = resourceId;
   }
 
   async release(tenantId: string, key: string): Promise<void> {

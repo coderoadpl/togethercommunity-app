@@ -162,6 +162,26 @@ describe('renderEmailOutboxPayload', () => {
     }
   });
 
+  it('renders API-submitted content and a canonical reply-to header', () => {
+    const rendered = renderEmailOutboxPayload({
+      kind: 'm2m-transactional',
+      subject: 'Receipt',
+      text: 'Paid',
+      replyTo: 'support@example.test',
+    });
+    expect(rendered).toEqual({
+      success: true,
+      data: {
+        subject: 'Receipt',
+        html: '<pre>Paid</pre>',
+        text: 'Paid',
+        headers: { 'Reply-To': 'support@example.test' },
+      },
+    });
+    expect(renderEmailOutboxPayload({ kind: 'm2m-transactional', subject: 'Missing body' }).success)
+      .toBe(false);
+  });
+
   it('fails on an unknown payload kind', () => {
     const rendered = renderEmailOutboxPayload({ kind: 'nonsense', language: 'pl' });
     expect(rendered.success).toBe(false);

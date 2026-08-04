@@ -10,6 +10,30 @@ const brandingSchema = z.object({
   socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
 });
 
+const m2mTransactionalMessageFields = {
+  to: z.string().email(),
+  subject: z.string().trim().min(1).max(200),
+  html: z.string().min(1).max(1_000_000).optional(),
+  text: z.string().min(1).max(500_000).optional(),
+  replyTo: z.string().email().optional(),
+  idempotencyKey: z.string().trim().min(1).max(200),
+};
+
+export const m2mTransactionalMessageInputSchema = z.object(m2mTransactionalMessageFields).strict().refine((value) => value.html !== undefined || value.text !== undefined, {
+  message: 'At least one of html or text is required',
+  path: ['html'],
+});
+
+export type M2mTransactionalMessageInput = z.input<typeof m2mTransactionalMessageInputSchema>;
+
+const m2mTransactionalPayloadSchema = z.object({
+  kind: z.literal('m2m-transactional'),
+  subject: m2mTransactionalMessageFields.subject,
+  html: m2mTransactionalMessageFields.html,
+  text: m2mTransactionalMessageFields.text,
+  replyTo: m2mTransactionalMessageFields.replyTo,
+}).strict();
+
 export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('welcome-sign-in'), language: z.string(), tenantName: z.string(), actionUrl: z.string().url(), branding: brandingSchema.optional() }),
   z.object({ kind: z.literal('reset-password'), language: z.string(), actionUrl: z.string().url() }),
@@ -24,14 +48,35 @@ export const emailOutboxPayloadSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('member-erasure-request'), language: z.string(), tenantName: z.string(), memberEmail: z.string().email(), requestedAt: z.string().datetime(), dueAt: z.string().datetime(), panelUrl: z.string().url() }),
   z.object({ kind: z.literal('reputation-alert'), language: z.string(), tenantName: z.string(), status: z.enum(['warn', 'critical']), hardBounceRate: z.number().nonnegative().nullable(), complaintRate: z.number().nonnegative().nullable(), windowStart: z.string().datetime(), windowEnd: z.string().datetime(), dashboardUrl: z.string().url() }),
   z.object({ kind: z.literal('marketing-consent-confirmation'), wording: z.string().min(1), confirmationUrl: z.string().url() }),
+  m2mTransactionalPayloadSchema,
 ]);
 
 export type EmailOutboxPayload = z.output<typeof emailOutboxPayloadSchema>;
+
+const textFromHtml = (html: string): string => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() || html;
+
+const htmlFromText = (value: string): string => `<pre>${value.replace(/[&<>]/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;',
+})[character] ?? character)}</pre>`;
 
 export const renderEmailOutboxPayload = (raw: unknown) => {
   const payload = emailOutboxPayloadSchema.safeParse(raw);
   if (!payload.success) return payload;
   const value = payload.data;
+  if (value.kind === 'm2m-transactional') {
+    if (value.html === undefined && value.text === undefined) return emailMessageSchema.safeParse({});
+    return {
+      success: true as const,
+      data: {
+        ...emailMessageSchema.parse({
+          subject: value.subject,
+          html: value.html ?? htmlFromText(value.text ?? ''),
+          text: value.text ?? textFromHtml(value.html ?? ''),
+        }),
+        ...(value.replyTo === undefined ? {} : { headers: { 'Reply-To': value.replyTo } }),
+      },
+    };
+  }
   const message = value.kind === 'welcome-sign-in'
     ? welcomeSignIn(value.language, { tenantName: value.tenantName, actionUrl: value.actionUrl, ...(value.branding === undefined ? {} : { branding: value.branding }) })
     : value.kind === 'reset-password'

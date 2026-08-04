@@ -201,7 +201,7 @@ const captureBuyerJourney = async (
 
   await page.goto(`${studioBaseUrl}/checkout/${productId}`, { waitUntil: 'load' });
   await page.getByText('Kurs Together 101').first().waitFor({ state: 'visible', timeout: 20000 });
-  const simulateButton = page.getByRole('button', { name: 'Simulate payment (dev)' });
+  const simulateButton = page.locator('button[type="submit"]', { hasText: /Pay|Simulate/ });
   await simulateButton.waitFor({ state: 'visible', timeout: 20000 });
   await shoot(page, '04-checkout.png');
 

@@ -1238,12 +1238,14 @@ describe('change password', () => {
     expect(signedIn.status).toBe(200);
   }, 30000);
 
-  it('allows twenty attempts per minute before rate limiting the endpoint', async () => {
-    const { auth } = buildAuth();
+  it('shares the endpoint limit across auth instances', async () => {
+    const { auth: firstAuth } = buildAuth();
     const email = `change-rate-limit-${Date.now()}@together.dev`;
-    const signedUp = await signUp(auth, email, { password: CURRENT_PASSWORD });
+    const signedUp = await signUp(firstAuth, email, { password: CURRENT_PASSWORD });
     const token = signedUp.headers.get('set-auth-token');
-    const attempt = () =>
+    const random = crypto.randomUUID().replaceAll('-', '');
+    const ip = `2001:db8:${random.slice(0, 4)}:${random.slice(4, 8)}:${random.slice(8, 12)}:${random.slice(12, 16)}:${random.slice(16, 20)}:1`;
+    const attempt = (auth: ReturnType<typeof buildAuth>['auth']) =>
       auth.handler(
         new Request('http://studio.localhost:48730/api/auth/change-password', {
           method: 'POST',
@@ -1251,7 +1253,7 @@ describe('change password', () => {
             authorization: `Bearer ${token ?? ''}`,
             'content-type': 'application/json',
             origin: 'http://studio.localhost:48730',
-            'x-forwarded-for': '198.51.100.216',
+            'x-forwarded-for': ip,
           },
           body: JSON.stringify({
             currentPassword: 'wrong-password',
@@ -1262,7 +1264,13 @@ describe('change password', () => {
       );
 
     const statuses: number[] = [];
-    for (let count = 0; count < 21; count += 1) statuses.push((await attempt()).status);
+    for (let count = 0; count < 10; count += 1) {
+      statuses.push((await attempt(firstAuth)).status);
+    }
+    const { auth: secondAuth } = buildAuth();
+    for (let count = 10; count < 21; count += 1) {
+      statuses.push((await attempt(secondAuth)).status);
+    }
 
     expect(statuses.slice(0, 20)).not.toContain(429);
     expect(statuses[20]).toBe(429);
@@ -1273,11 +1281,17 @@ describe('email-endpoint rate limiting', () => {
   it('returns 429 once the magic-link window limit is exceeded and stays available below it', async () => {
     const { auth } = buildAuth();
     const email = `rate-limit-${Date.now()}@together.dev`;
+    const random = crypto.randomUUID().replaceAll('-', '');
+    const ip = `2001:db8:${random.slice(0, 4)}:${random.slice(4, 8)}:${random.slice(8, 12)}:${random.slice(12, 16)}:${random.slice(16, 20)}:1`;
     const hammer = () =>
       auth.handler(
         new Request('http://localhost:48730/api/auth/sign-in/magic-link', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', origin: 'http://localhost:48730' },
+          headers: {
+            'content-type': 'application/json',
+            origin: 'http://localhost:48730',
+            'x-forwarded-for': ip,
+          },
           body: JSON.stringify({ email, callbackURL: '/my' }),
         }),
       );

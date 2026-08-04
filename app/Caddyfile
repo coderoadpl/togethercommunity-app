@@ -8,13 +8,17 @@ https:// {
 	tls {
 		on_demand
 	}
-	reverse_proxy app:48730
+	reverse_proxy app:48730 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }
 
 http:// {
 	@local host localhost 127.0.0.1
 	handle @local {
-		reverse_proxy app:48730
+		reverse_proxy app:48730 {
+			header_up X-Forwarded-For {remote_host}
+		}
 	}
 	handle {
 		redir https://{host}{uri} permanent

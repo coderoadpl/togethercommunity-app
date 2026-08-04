@@ -53,6 +53,7 @@ import {
 } from '#core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import { trustedAuthRequest } from './auth-network.js';
 import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
 import {
@@ -583,9 +584,11 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         ...(branding === undefined ? {} : { branding }),
       });
     }
-    return deps.auth.handler(
+    return deps.auth.handler(trustedAuthRequest(
+      c,
       new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
-    );
+      deps.authTrustedProxyHeader,
+    ));
   });
 
   app.post(BETTER_AUTH_PASSWORD_RESET_PATH, async (c) => {
@@ -608,9 +611,11 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
       });
     }
-    return deps.auth.handler(
+    return deps.auth.handler(trustedAuthRequest(
+      c,
       new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
-    );
+      deps.authTrustedProxyHeader,
+    ));
   });
 
   app.on('POST', [BETTER_AUTH_SIGN_UP_PATH, BETTER_AUTH_EMAIL_VERIFICATION_PATH], async (c) => {
@@ -633,12 +638,16 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
         baseUrl: magicLinkBaseUrl(host, forwardedProto, source, deps.appBaseUrl),
       });
     }
-    return deps.auth.handler(
+    return deps.auth.handler(trustedAuthRequest(
+      c,
       new Request(c.req.url, { method: 'POST', headers: c.req.raw.headers, body: rawBody }),
-    );
+      deps.authTrustedProxyHeader,
+    ));
   });
 
-  app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) => deps.auth.handler(c.req.raw));
+  app.on(['GET', 'POST'], BETTER_AUTH_API_PATH_PATTERN, (c) =>
+    deps.auth.handler(trustedAuthRequest(c, c.req.raw, deps.authTrustedProxyHeader)),
+  );
 
   registerPublicMarketingRoutes(app, deps);
 

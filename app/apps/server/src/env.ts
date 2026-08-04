@@ -5,6 +5,17 @@ const optionalNonEmptyString = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const optionalHeaderName = z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.string().regex(/^[a-z0-9-]+$/).optional(),
+);
+
+const isLocalHostname = (hostname: string): boolean =>
+  hostname === 'localhost'
+  || hostname.endsWith('.localhost')
+  || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+  || hostname === '[::1]';
+
 /** Parse, don't cast: the process refuses to boot on invalid configuration. */
 export const envSchema = z
   .object({
@@ -26,6 +37,7 @@ export const envSchema = z
     APP_BASE_DOMAIN: optionalNonEmptyString,
     APP_BASE_URL: z.string().url().default('http://localhost:48730'),
     APP_COMMIT_SHA: optionalNonEmptyString,
+    AUTH_TRUSTED_PROXY_HEADER: optionalHeaderName,
     TENANT_CREATION: z.enum(['open', 'closed']).default('open'),
     BETTER_AUTH_SECRET: z.string().min(16).default('dev-only-secret-do-not-use-in-prod'),
     // 32-byte AES-256-GCM key, base64. Generate: openssl rand -base64 32
@@ -98,6 +110,14 @@ export const envSchema = z
         message: 'EMAIL_FROM must be set when EMAIL_PROVIDER=smtp',
       });
     }
+    const appUrl = new URL(env.APP_BASE_URL);
+    if (appUrl.protocol !== 'https:' && !isLocalHostname(appUrl.hostname)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['APP_BASE_URL'],
+        message: 'APP_BASE_URL must use https outside local development',
+      });
+    }
     const production = env.NODE_ENV === 'production' || env.APP_ENV === 'production';
     if (!production) return;
     if (env.BETTER_AUTH_SECRET === 'dev-only-secret-do-not-use-in-prod') {
@@ -105,6 +125,13 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['BETTER_AUTH_SECRET'],
         message: 'BETTER_AUTH_SECRET must be set to a production secret',
+      });
+    }
+    if (env.AUTH_TRUSTED_PROXY_HEADER === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AUTH_TRUSTED_PROXY_HEADER'],
+        message: 'AUTH_TRUSTED_PROXY_HEADER must be set to direct or a protected header in production',
       });
     }
     if (env.SECRETS_MASTER_KEY === 'dG9nZXRoZXItZGV2LXNlY3JldHMtbWFzdGVyLWtleSE=') {

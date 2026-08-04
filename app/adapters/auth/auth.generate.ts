@@ -16,6 +16,7 @@ export const auth = betterAuth({
     { provider: 'pg' },
   ),
   secret: 'generate-only-secret',
+  rateLimit: { storage: 'database' },
   emailAndPassword: { enabled: true },
   plugins: [
     bearer(),

@@ -1,11 +1,12 @@
 import { useEffect, type ReactNode } from 'react';
-import { Box } from '@mui/material';
+import { Box, Link, Stack } from '@mui/material';
 import { ThemeProvider, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
-import type { TenantBranding } from '#core/domain/index.js';
+import type { TenantBranding, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from './api.js';
+import { useTranslations } from './i18n/index.js';
 import { applyBranding } from './theme-branding.js';
 import { Wordmark } from './theme.js';
 
@@ -13,19 +14,65 @@ import { Wordmark } from './theme.js';
  * Branding rides on the public offer the SPA already fetches at boot
  * (TenantGate), so reading it here costs no extra request.
  */
-const useTenantOffer = (): { name: string; branding: TenantBranding } | null => {
+const useTenantOffer = (): {
+  name: string;
+  branding: TenantBranding;
+  socialLinks: TenantSocialLink[];
+} | null => {
   const offer = useQuery(actions.publicOffer);
   if (offer.data === undefined) return null;
-  return { name: offer.data.tenant.name, branding: offer.data.tenant.branding };
+  return {
+    name: offer.data.tenant.name,
+    branding: offer.data.tenant.branding,
+    socialLinks: offer.data.tenant.socialLinks,
+  };
 };
 
 export const useTenantBranding = (): TenantBranding | null =>
   useTenantOffer()?.branding ?? null;
 
-/** Tenant logo for the member header (LedgerHeader slot); nothing without branding. */
+export const TenantSocialLinks = ({
+  links: providedLinks,
+}: {
+  links?: TenantSocialLink[];
+} = {}) => {
+  const t = useTranslations();
+  const tenantLinks = useTenantOffer()?.socialLinks ?? [];
+  const links = providedLinks ?? tenantLinks;
+  if (links.length === 0) return null;
+  return (
+    <Stack
+      component="nav"
+      direction="row"
+      useFlexGap
+      aria-label={t.branding.socialLinksAria}
+      data-testid="tenant-social-links"
+      sx={{ flexWrap: 'wrap', gap: '0.5rem 1rem', mt: '1rem' }}
+    >
+      {links.map((item) => (
+        <Link key={`${item.label}:${item.url}`} href={item.url} target="_blank" rel="noreferrer">
+          {item.label}
+        </Link>
+      ))}
+    </Stack>
+  );
+};
+
 export const TenantLogo = () => {
   const tenant = useTenantOffer();
-  if (tenant === null || tenant.branding.logoUrl === null) return null;
+  if (tenant === null) return null;
+  if (tenant.branding.logoUrl === null) {
+    return (
+      <Wordmark
+        component="p"
+        variant="h6"
+        data-testid="tenant-name-mark"
+        sx={{ mb: '0.9rem' }}
+      >
+        {tenant.name}
+      </Wordmark>
+    );
+  }
   return (
     <Box
       component="img"
@@ -44,13 +91,19 @@ export const TenantLogo = () => {
   );
 };
 
-/** FocusCard brand slot (login/checkout): tenant logo, or the stock wordmark. */
 export const BrandMark = () => {
   const tenant = useTenantOffer();
-  if (tenant === null || tenant.branding.logoUrl === null) {
+  if (tenant === null) {
     return (
       <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
         Together
+      </Wordmark>
+    );
+  }
+  if (tenant.branding.logoUrl === null) {
+    return (
+      <Wordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
+        {tenant.name}
       </Wordmark>
     );
   }

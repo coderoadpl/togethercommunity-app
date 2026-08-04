@@ -9,6 +9,8 @@ Recurring repository reviews are defined in the [audit roster](docs/audits/READM
 
 ## Quickstart (local demo)
 
+For a production Docker install, use the one-page [self-host guide](docs/self-host.md).
+
 ```bash
 pnpm install --frozen-lockfile               # Node.js 24
 pnpm run db:up        # Postgres 16
@@ -147,7 +149,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->232<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->235<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

@@ -105,6 +105,7 @@ import {
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
+  tenantSocialLinkSchema,
   tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
@@ -237,6 +238,7 @@ export const publicOfferOutputSchema = z.object({
     slug: z.string(),
     name: z.string(),
     branding: tenantBrandingSchema.default({}),
+    socialLinks: z.array(tenantSocialLinkSchema).default([]),
     legal: publicLegalUrlsSchema.default({}),
     support: tenantSupportPublicSchema.default({ url: null }),
   }),
@@ -585,7 +587,7 @@ export const devEmailOutputSchema = z.object({
 
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
-  name: z.string(),
+  name: tenantSchema.shape.name,
 });
 
 export type TenantCreateInput = z.input<typeof tenantCreateInputSchema>;

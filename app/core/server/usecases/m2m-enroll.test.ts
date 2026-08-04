@@ -141,6 +141,7 @@ const harness = (options: {
         findById: async () => null,
         findBySlug: async () => null,
         findSole: async () => null,
+        hasAny: async () => false,
         findSettings: async () => null,
         updateSettings: async (_tenantId, next) => next,
         createTenantWithOwnerGrant: async () => {

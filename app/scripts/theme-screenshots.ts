@@ -220,6 +220,128 @@ const captureCheckout = async (
   await page.close();
 };
 
+const signInMember = async (page: Page, studioBaseUrl: string, email: string): Promise<void> => {
+  await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
+  const emailInput = page.locator('#magic-link-email');
+  await emailInput.waitFor({ state: 'visible', timeout: 20000 });
+  await emailInput.fill(email);
+  await emailInput.press('Enter');
+  const sent = page.getByTestId('magic-link-sent');
+  await sent.waitFor({ state: 'visible', timeout: 20000 });
+  const magicLink = sent.locator('a[href]').first();
+  await magicLink.waitFor({ state: 'visible', timeout: 20000 });
+  const href = await magicLink.getAttribute('href');
+  assert(href !== null && href.length > 0, `login page did not expose a dev magic link for ${email}`);
+  await page.goto(href, { waitUntil: 'load' });
+  await page.waitForURL('**/my', { timeout: 20000 });
+};
+
+const captureDarkLoginStates = async (
+  browser: Browser,
+  studioBaseUrl: string,
+  viewport: { width: number; height: number },
+): Promise<void> => {
+  const context = await newModeContext(browser, viewport, 'dark');
+  const page = await context.newPage();
+
+  await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
+  await page.locator('#magic-link-email').waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, 'dark-login.png');
+
+  await page.getByTestId('login-email').fill('creator@together.dev');
+  await page.getByTestId('login-password').fill('invalid-password');
+  await page.getByTestId('signin-submit').click();
+  await page.getByRole('alert').last().waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, 'dark-error-alert.png');
+
+  await context.close();
+};
+
+const captureDarkCreatorStates = async (
+  browser: Browser,
+  studioBaseUrl: string,
+  viewport: { width: number; height: number },
+): Promise<void> => {
+  const context = await newModeContext(browser, viewport, 'dark');
+  const page = await context.newPage();
+
+  await page.goto(`${studioBaseUrl}/login`, { waitUntil: 'load' });
+  await page.getByTestId('login-email').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('login-email').fill('creator@together.dev');
+  await page.getByTestId('login-password').fill('demo-password-15');
+  await page.getByTestId('signin-submit').click();
+  await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });
+
+  const coursesNav = page.getByTestId('section-courses');
+  await coursesNav.click();
+  await page.waitForURL('**/panel/courses', { timeout: 20000 });
+  await page.getByTestId('course-row').first().waitFor({ state: 'visible', timeout: 20000 });
+  assert((await coursesNav.getAttribute('aria-current')) === 'page', 'courses navigation item is not selected');
+  await page.getByTestId('section-products').hover();
+  await shoot(page, 'dark-panel-sidebar.png');
+
+  await page.getByTestId('user-menu').hover();
+  await page.getByRole('tooltip').waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, 'dark-tooltip.png');
+
+  await page.getByTestId('section-spaces').click();
+  await page.waitForURL('**/panel/spaces', { timeout: 20000 });
+  await page.getByTestId('space-archive-space-studio-spolecznosc').waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('space-archive-space-studio-spolecznosc').click();
+  await page.getByRole('dialog').waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, 'dark-dialog.png');
+
+  await context.close();
+};
+
+const captureDarkMemberStates = async (
+  browser: Browser,
+  studioBaseUrl: string,
+  viewport: { width: number; height: number },
+): Promise<void> => {
+  const context = await newModeContext(browser, viewport, 'dark');
+  const page = await context.newPage();
+
+  await signInMember(page, studioBaseUrl, 'kursant.aktywny@together.dev');
+  await page.getByTestId('course-card-course-js').waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, 'dark-member-course-grid.png');
+
+  await page.goto(`${studioBaseUrl}/my/courses/course-js/lessons/lesson-js-zmienne-1`, { waitUntil: 'load' });
+  await page.getByTestId('lesson-block-0').waitFor({ state: 'visible', timeout: 20000 });
+  await shoot(page, 'dark-lesson-page.png');
+
+  await page.setViewportSize({ width: viewport.width, height: 1400 });
+  const discussion = page.getByTestId('discussion-section');
+  await discussion.waitFor({ state: 'visible', timeout: 20000 });
+  await page.getByTestId('discussion-thread-post-js-zmienne-q').waitFor({ state: 'visible', timeout: 20000 });
+  const bounds = await discussion.boundingBox();
+  if (bounds !== null) {
+    await page.evaluate((top) => window.scrollTo(0, Math.max(0, top - 24)), bounds.y);
+  }
+  await shoot(page, 'dark-discussion-thread.png');
+
+  await context.close();
+};
+
+const captureDarkWarningChip = async (
+  browser: Browser,
+  studioBaseUrl: string,
+  viewport: { width: number; height: number },
+): Promise<void> => {
+  const context = await newModeContext(browser, viewport, 'dark');
+  const page = await context.newPage();
+
+  await signInMember(page, studioBaseUrl, 'kursant.wygasly@together.dev');
+  await page.goto(`${studioBaseUrl}/my/products`, { waitUntil: 'load' });
+  const warningChip = page.getByTestId('grant-status-product-js-full');
+  await warningChip.waitFor({ state: 'visible', timeout: 20000 });
+  await warningChip.scrollIntoViewIfNeeded();
+  await shoot(page, 'dark-warning-chip.png');
+
+  await context.close();
+};
+
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 let browser: Browser | null = null;
@@ -251,6 +373,12 @@ try {
     await captureCheckout(checkoutContext, studioBaseUrl, colorScheme);
     await checkoutContext.close();
   }
+
+  console.log('shots:themes: capturing verification surfaces (dark)...');
+  await captureDarkLoginStates(browser, studioBaseUrl, viewport);
+  await captureDarkCreatorStates(browser, studioBaseUrl, viewport);
+  await captureDarkMemberStates(browser, studioBaseUrl, viewport);
+  await captureDarkWarningChip(browser, studioBaseUrl, viewport);
 
   console.log(`\nshots:themes: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s) -> ${outputDir}`);
 } catch (error) {

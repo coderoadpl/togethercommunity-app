@@ -35,7 +35,6 @@ import {
   type AppError
 } from '#core/domain/index.js';
 import {
-  autoIssueOnPayment,
   enforceTermsConsent,
   fulfillStripeWebhook,
   getPaymentConfig,
@@ -54,7 +53,6 @@ import {
 
 import type { AppDeps } from './composition.js';
 import { trustedAuthRequest } from './auth-network.js';
-import { dispatchKsefInBackground } from './ksef-dispatch.js';
 import { registerPublicMarketingRoutes } from './marketing-routes.js';
 import {
   PUBLIC_REVALIDATED_CACHE_CONTROL,
@@ -267,35 +265,6 @@ const recordFulfilledCheckoutConsents = async (
     ...(capture.ip === undefined ? {} : { ip: capture.ip }),
     ...(capture.userAgent === undefined ? {} : { userAgent: capture.userAgent }),
   });
-};
-
-const autoIssueFulfilledOrder = async (
-  deps: AppDeps,
-  tenantId: string,
-  event: PaymentWebhookEvent,
-): Promise<void> => {
-  try {
-    if (event.objectId === null || deps.orderDetails === undefined) return;
-    const providerObjectIds = event.type === 'invoice.paid'
-      ? { invoice: event.objectId }
-      : { checkoutSession: event.objectId };
-    const order = await deps.paymentRefunds.findOrderByProviderObjectIds(tenantId, providerObjectIds);
-    if (order === null) return;
-    await autoIssueOnPayment(tenantId, order, {
-      invoices: deps.invoices,
-      invoicing: deps.invoicing,
-      orderDetails: deps.orderDetails,
-      tenants: deps.tenants,
-      tenantSecrets: deps.tenantSecrets,
-      secretCrypto: deps.secretCrypto,
-      ids: deps.ids,
-      clock: deps.clock,
-      ...(deps.ksef === undefined ? {} : { ksef: deps.ksef }),
-    });
-    dispatchKsefInBackground(deps.ksef, deps.logger, 'payment fulfilment');
-  } catch (cause) {
-    deps.logger.error(`[invoice-auto] tenant=${tenantId} unexpected=${String(cause)}`);
-  }
 };
 
 export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
@@ -543,7 +512,6 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
       );
       if (!fulfilled.ok) return respondPublic(fulfilled);
       await recordFulfilledCheckoutConsents(deps, tenant.value.tenant, event);
-      await autoIssueFulfilledOrder(deps, tenant.value.tenant.id, event);
     }
     return respondPublic(session);
   });
@@ -670,8 +638,6 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     });
     if (fulfilled.ok && fulfilled.value.processed) {
       await recordFulfilledCheckoutConsents(deps, tenant, event.value);
-      const effect = () => autoIssueFulfilledOrder(deps, tenant.id, event.value);
-      deps.deferredEffects.schedule(effect);
     }
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });

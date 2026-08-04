@@ -59,6 +59,37 @@ export interface StripeWebhookDeps extends FulfillEnrollmentDeps, SubscriptionLi
 
 const WEBHOOK_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
+const enqueueAutoInvoice = async (
+  tenantId: string,
+  event: PaymentWebhookEvent,
+  deps: StripeWebhookDeps,
+  transactionDeps: Parameters<Parameters<PaymentTransactionPort['run']>[0]>[0],
+): Promise<void> => {
+  if (event.objectId === null) return;
+  if (event.type !== 'checkout.session.completed' && event.type !== 'invoice.paid') return;
+  const providerObjectIds = event.type === 'invoice.paid'
+    ? { invoice: event.objectId }
+    : { checkoutSession: event.objectId };
+  const order = await transactionDeps.paymentRefunds.findOrderByProviderObjectIds(
+    tenantId,
+    providerObjectIds,
+  );
+  if (order === null) return;
+  const now = deps.clock.nowIso();
+  await transactionDeps.autoInvoiceJobs.enqueue(tenantId, {
+    id: deps.ids.nextId(),
+    tenantId,
+    webhookEventId: event.id,
+    orderId: order.id,
+    status: 'queued',
+    attempts: 0,
+    nextAttemptAt: now,
+    lockedAt: null,
+    lastError: null,
+    createdAt: now,
+  });
+};
+
 const enqueueSubscriptionNotice = async (
   tenant: Tenant,
   subscription: MemberSubscription | null,
@@ -673,6 +704,7 @@ export const fulfillStripeWebhook = async (
               ? await applyPaymentAdjustment(tenant, event, branchDeps)
               : await applySubscriptionEvent(tenant, event, branchDeps);
       if (result.ok && result.value.processed) {
+        await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
         await transactionDeps.processedPaymentEvents.finalize(
           tenant.id,
           event.id,

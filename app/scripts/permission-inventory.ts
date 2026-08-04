@@ -78,7 +78,11 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/u/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/marketing/confirm/')) return method === 'GET' ? 'marketing:consent:read' : 'marketing:consent:write';
   if (path.startsWith('/legal/')) return 'legal:read';
-  if (path === '/api/internal/dispatch-email' || path === '/api/internal/dispatch-ksef') return 'scheduler:dispatch';
+  if (
+    path === '/api/internal/dispatch-email'
+    || path === '/api/internal/dispatch-auto-invoices'
+    || path === '/api/internal/dispatch-ksef'
+  ) return 'scheduler:dispatch';
   if (path.startsWith('/api/internal/scheduler-runs')) return 'scheduler:read';
   if (path === '/api/public/terms-consent') return 'terms:accept';
   if (path === '/api/tenants' && method === 'POST') return 'tenant:create';

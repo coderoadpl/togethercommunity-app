@@ -2,6 +2,7 @@ import { internal, type AppError, type Result } from '#core/domain/index.js';
 import type { EnrollmentTransactionPort, PaymentTransactionPort } from '#core/server/index.js';
 
 import { createCouponRedemptionRepository } from './coupon-repositories.js';
+import { createAutoInvoiceJobRepository } from './auto-invoice-jobs.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
 import {
   createMemberRepository,
@@ -54,6 +55,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           paymentRefunds: createPaymentRefundRepository(tx),
           couponRedemptions: createCouponRedemptionRepository(tx),
           emailOutbox,
+          autoInvoiceJobs: createAutoInvoiceJobRepository(tx),
           processedPaymentEvents: createProcessedPaymentEventRepository(tx),
           enrollmentTransaction,
         });

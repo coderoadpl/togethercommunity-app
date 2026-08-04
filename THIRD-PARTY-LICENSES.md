@@ -686,7 +686,7 @@ invoices can be checked locally.
 - [dom-accessibility-api@0.5.16](https://github.com/eps1lon/dom-accessibility-api#readme) - MIT
 - [dom-accessibility-api@0.6.3](https://github.com/eps1lon/dom-accessibility-api#readme) - MIT
 - [dom-helpers@5.2.1](https://github.com/react-bootstrap/dom-helpers#readme) - MIT
-- [dompurify@3.4.12](https://github.com/cure53/DOMPurify) - (MPL-2.0 OR Apache-2.0)
+- [dompurify@3.4.13](https://github.com/cure53/DOMPurify) - (MPL-2.0 OR Apache-2.0)
 - [dot-prop@9.0.0](https://github.com/sindresorhus/dot-prop#readme) - MIT
 - [drizzle-kit@0.31.10](https://orm.drizzle.team) - MIT
 - [drizzle-orm@0.45.2](https://orm.drizzle.team) - Apache-2.0

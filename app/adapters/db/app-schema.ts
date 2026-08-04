@@ -856,13 +856,50 @@ export const tenantApiKeys = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
-    scopes: jsonb('scopes').$type<Array<'enrollment' | 'marketing' | 'transactional'>>(),
+    scopes: jsonb('scopes').$type<Array<
+      'enrollment' | 'marketing' | 'transactional' | 'import:content' | 'import:users'
+    >>(),
     createdAt: text('created_at').notNull(),
+    expiresAt: text('expires_at'),
     revokedAt: text('revoked_at'),
   },
   (table) => [
     index('tenant_api_keys_tenantId_idx').on(table.tenantId),
     uniqueIndex('tenant_api_keys_key_hash_uidx').on(table.keyHash),
+  ],
+);
+
+export const importAuditEvents = pgTable(
+  'import_audit_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    apiKeyId: text('api_key_id')
+      .notNull()
+      .references(() => tenantApiKeys.id, { onDelete: 'no action' }),
+    kind: text('kind', {
+      enum: ['course', 'module', 'lesson', 'product', 'member', 'grant', 'progress'],
+    }).notNull(),
+    importKey: text('import_key').notNull(),
+    resourceId: text('resource_id').notNull(),
+    action: text('action', { enum: ['created', 'updated', 'unchanged'] }).notNull(),
+    payloadHash: text('payload_hash').notNull(),
+    at: text('at').notNull(),
+  },
+  (table) => [
+    index('import_audit_events_tenant_api_key_at_idx').on(
+      table.tenantId,
+      table.apiKeyId,
+      table.at,
+    ),
+    index('import_audit_events_tenant_kind_import_key_at_idx').on(
+      table.tenantId,
+      table.kind,
+      table.importKey,
+      table.at,
+    ),
   ],
 );
 

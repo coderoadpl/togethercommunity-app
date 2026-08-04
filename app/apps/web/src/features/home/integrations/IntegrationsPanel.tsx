@@ -20,6 +20,7 @@ import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../comp
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { SecretField } from './SecretField.js';
 import { StorageWizard } from './StorageWizard.js';
+import { ImportApiKeys } from './ImportApiKeys.js';
 
 const previewFor = (
   secrets: { key: TenantSecretKey; maskedPreview: string }[] | undefined,
@@ -433,6 +434,13 @@ export const IntegrationsPanel = () => {
 
         <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
           <ProviderTest provider="email" ready />
+        </SectionCard>
+
+        <SectionCard
+          title={t.integrations.importKeysHeading}
+          description={t.integrations.importKeysDescription}
+        >
+          <ImportApiKeys />
         </SectionCard>
 
         <SectionCard

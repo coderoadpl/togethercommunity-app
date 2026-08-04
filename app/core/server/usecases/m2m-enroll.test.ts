@@ -320,11 +320,16 @@ const apiKeyRow = (overrides: Partial<TenantApiKey>): TenantApiKey => ({
   keyHash: 'hash:secret',
   scopes: null,
   createdAt: NOW,
+  expiresAt: null,
   revokedAt: null,
   ...overrides,
 });
 
-const apiKeyDeps = (rows: TenantApiKey[]): { tenantApiKeys: TenantApiKeyRepository; apiKeyCrypto: ApiKeyCrypto } => ({
+const apiKeyDeps = (rows: TenantApiKey[]): {
+  tenantApiKeys: TenantApiKeyRepository;
+  apiKeyCrypto: ApiKeyCrypto;
+  clock: { nowIso(): string };
+} => ({
   tenantApiKeys: {
     listByTenant: async (tenantId) => rows.filter((r) => r.tenantId === tenantId),
     create: async () => undefined,
@@ -336,6 +341,7 @@ const apiKeyDeps = (rows: TenantApiKey[]): { tenantApiKeys: TenantApiKeyReposito
     generateSecret: () => 'secret',
     hash: (secret) => `hash:${secret}`,
   },
+  clock: { nowIso: () => NOW },
 });
 
 describe('authenticateApiKey', () => {
@@ -356,6 +362,15 @@ describe('authenticateApiKey', () => {
 
   it('rejects a revoked key', async () => {
     const result = await authenticateApiKey('t1', 'secret', apiKeyDeps([apiKeyRow({ revokedAt: NOW })]));
+    expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+
+  it('rejects an expired key', async () => {
+    const result = await authenticateApiKey(
+      't1',
+      'secret',
+      apiKeyDeps([apiKeyRow({ expiresAt: '1998-05-31T23:59:59.999Z' })]),
+    );
     expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
   });
 

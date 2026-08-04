@@ -35,6 +35,7 @@ const apiKey = (scopes: TenantApiKey['scopes'] = ['transactional']): TenantApiKe
   keyHash: 'hash',
   scopes,
   createdAt: NOW,
+  expiresAt: null,
   revokedAt: null,
 });
 

@@ -20,6 +20,7 @@ import type {
   Post,
   PostReport,
   ProcessedPaymentEvent,
+  ImportAuditEvent,
   Product,
   ProductGrant,
   ProductPrice,
@@ -56,6 +57,7 @@ import {
   createUserDisplayReader,
 } from './repositories.js';
 import { createMemberEventRepository } from './member-events.js';
+import { createImportAuditEventRepository } from './import-audit-events.js';
 import {
   createCouponRedemptionRepository,
   createCouponStatsRepository,
@@ -1110,6 +1112,7 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       keyHash: 'hash-abc',
       scopes: null,
       createdAt: NOW,
+      expiresAt: null,
       revokedAt: null,
     };
     await repo.create(ACME, apiKey);
@@ -1122,6 +1125,47 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
     expect(await rateLimits.claim(ACME, { ...claim, windowStartedAt: '1998-07-22T00:01:00.000Z' })).toBe(true);
     await repo.revoke(ACME, 'key-acme', NOW);
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toBeNull();
+  });
+
+  it('appends and tenant-scopes import audit events', async () => {
+    const apiKeys = createTenantApiKeyRepository(db);
+    await apiKeys.create(ACME, {
+      id: 'key-import-acme',
+      tenantId: ACME,
+      name: 'Migration',
+      keyHash: 'hash-import-acme',
+      scopes: ['import:content'],
+      createdAt: NOW,
+      expiresAt: FUTURE,
+      revokedAt: null,
+    });
+    const repo = createImportAuditEventRepository(db);
+    const first: ImportAuditEvent = {
+      id: 'import-audit-1',
+      tenantId: ACME,
+      apiKeyId: 'key-import-acme',
+      kind: 'course',
+      importKey: 'course-source-1',
+      resourceId: 'course-source-1',
+      action: 'created',
+      payloadHash: 'a'.repeat(64),
+      at: NOW,
+    };
+    const second: ImportAuditEvent = {
+      ...first,
+      id: 'import-audit-2',
+      action: 'unchanged',
+      payloadHash: 'b'.repeat(64),
+      at: '1998-07-14T10:01:00.000Z',
+    };
+    await repo.append(ACME, first);
+    await repo.append(ACME, second);
+
+    expect(await repo.listByApiKey(ACME, 'key-import-acme')).toEqual([second, first]);
+    expect(await repo.listByApiKey(GLOBEX, 'key-import-acme')).toEqual([]);
+    expect(await repo.findLatestByImportKey(ACME, 'course', 'course-source-1')).toEqual(second);
+    expect(await repo.findLatestByImportKey(GLOBEX, 'course', 'course-source-1')).toBeNull();
+    await expect(repo.append(GLOBEX, { ...first, id: 'import-audit-cross-tenant' })).rejects.toThrow();
   });
 
   it('upserts and deletes tenant secrets by key', async () => {

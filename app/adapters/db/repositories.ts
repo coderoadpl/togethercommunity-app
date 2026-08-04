@@ -2603,6 +2603,7 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
       keyHash: apiKey.keyHash,
       scopes: apiKey.scopes,
       createdAt: apiKey.createdAt,
+      expiresAt: apiKey.expiresAt,
       revokedAt: apiKey.revokedAt,
     });
   },

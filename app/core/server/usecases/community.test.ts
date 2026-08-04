@@ -982,6 +982,10 @@ describe('community guard and error branches', () => {
     expect(await createPost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await editPost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await deletePost(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await listNotifications(memberCtx, { cursor: 'not-a-cursor' }, d)).toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
     expect(await subscribeThread(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(await markNotificationRead(memberCtx, {}, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
   });

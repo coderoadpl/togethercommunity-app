@@ -495,7 +495,15 @@ After item 16 creates the branch, set Vercel Production Branch Tracking to
 the `main`-branch Preview deployment: it must carry `APP_ENV=staging` scoped
 to Preview with branch `main`, and its database URL must come exclusively
 from the database integration, which creates and manages a dedicated branch
-per git branch. Two verified traps: the integration only participates in
+per git branch. A third verified trap sits on the GitHub side: when the
+hosting provider's GitHub App requests updated permissions, the pending
+request can silently stop ALL deployment creation for the installation —
+pushes produce no deployment records and deploy-hook jobs die without a
+trace, while billing and the project's git connection look healthy. Check
+the organization's installed GitHub Apps for a "Permission updates
+requested" badge before any deeper debugging, and re-approve deliberately
+(restrict the app to the repositories that need it). Two verified database
+traps: the integration only participates in
 push-triggered deployments, so a manual redeploy silently falls back to
 whatever static database variable is in scope, and a static Preview-scoped
 database URL therefore must not exist at all — remove the Preview scope from

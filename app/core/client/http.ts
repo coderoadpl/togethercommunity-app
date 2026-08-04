@@ -1709,6 +1709,33 @@ export const createApiClient = (options: ApiClientOptions) => ({
       input,
       signal,
     ),
+  importM2mMembers: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportMembers.method,
+      API_ROUTES.m2mImportMembers.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mGrants: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportGrants.method,
+      API_ROUTES.m2mImportGrants.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
+  importM2mProgress: (input: ImportWriteRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mImportProgress.method,
+      API_ROUTES.m2mImportProgress.path,
+      m2mImportBatchOutputSchema,
+      input,
+      signal,
+    ),
   getTenantSettings: (signal?: AbortSignal) =>
     request(
       options,

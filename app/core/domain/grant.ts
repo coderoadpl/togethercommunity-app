@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { Product } from './product.js';
 
-const grantSourceSchema = z.enum(['simulated', 'manual', 'stripe']);
+const grantSourceSchema = z.enum(['simulated', 'manual', 'stripe', 'import']);
 
 export type GrantSource = z.infer<typeof grantSourceSchema>;
 

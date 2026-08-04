@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 98. Route rows: 230. Exported `Ctx` use-case rows: 196.
+Closed capability count: 98. Route rows: 233. Exported `Ctx` use-case rows: 197.
 
 ## Human-readable diff
 
@@ -94,6 +94,9 @@ no changes
 | `POST /api/m2m/import/modules` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/lessons` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `POST /api/m2m/import/products` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/members` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/grants` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/progress` | import:users-write | import-users-api-key | import-users-api-key | yes | Tenant API key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -336,6 +339,7 @@ no changes
 | `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
 | `lesson-playback.ts#getLessonPlayback` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-playback.ts authorization call |
+| `m2m-import-users.ts#importM2mUsers` | import:users-write | import-users-api-key | import-users-api-key | yes | core/server/usecases/m2m-import-users.ts authorization call |
 | `m2m-import.ts#importM2mContent` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
 | `m2m-import.ts#validateM2mImport` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
 | `m2m-import.ts#validateM2mImportForUsers` | import:users-write | import-users-api-key | import-users-api-key | yes | core/server/usecases/m2m-import.ts authorization call |

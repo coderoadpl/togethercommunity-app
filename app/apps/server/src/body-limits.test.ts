@@ -41,6 +41,9 @@ describe('request body limits', () => {
     expect(requestBodyLimit('POST', API_PATHS.m2mImportModules)).toBe(M2M_IMPORT_BODY_LIMIT);
     expect(requestBodyLimit('POST', API_PATHS.m2mImportLessons)).toBe(M2M_IMPORT_BODY_LIMIT);
     expect(requestBodyLimit('POST', API_PATHS.m2mImportProducts)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportMembers)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportGrants)).toBe(M2M_IMPORT_BODY_LIMIT);
+    expect(requestBodyLimit('POST', API_PATHS.m2mImportProgress)).toBe(M2M_IMPORT_BODY_LIMIT);
     expect(requestBodyLimit('POST', API_PATHS.m2mImportValidate)).toBe(M2M_IMPORT_VALIDATE_BODY_LIMIT);
   });
 

@@ -26,7 +26,7 @@ export const memberEventRegistry = defineMemberEventRegistry({
   grant: z.object({
     grantId: z.string().min(1),
     productId: z.string().min(1),
-    source: z.enum(['simulated', 'manual', 'stripe']),
+    source: z.enum(['simulated', 'manual', 'stripe', 'import']),
     startsAt: z.string().datetime(),
     expiresAt: z.string().datetime().nullable(),
   }).strict(),

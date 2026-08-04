@@ -9,6 +9,7 @@ import { createMemberErasureRequestRepository } from '#adapters/db/member-erasur
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
 import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
 import { createImportContentRepository } from '#adapters/db/content-import.js';
+import { createImportUsersRepository } from '#adapters/db/users-import.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -160,6 +161,7 @@ import type {
   IdGenerator,
   ImportAuditEventRepository,
   ImportContentRepository,
+  ImportUsersRepository,
   InvoiceRepository,
   InvoicingPort,
   ContentHash,
@@ -307,6 +309,7 @@ export interface AppDeps {
   tenantApiKeys: TenantApiKeyRepository;
   importAuditEvents: ImportAuditEventRepository;
   importContent: ImportContentRepository;
+  importUsers: ImportUsersRepository;
   contentHash: ContentHash;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
   m2mTransactionalRateLimits: { perMinute: number; perDay: number };
@@ -913,6 +916,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantApiKeys: createTenantApiKeyRepository(db),
     importAuditEvents: createImportAuditEventRepository(db),
     importContent: createImportContentRepository(db),
+    importUsers: createImportUsersRepository(db),
     contentHash,
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     m2mTransactionalRateLimits: {

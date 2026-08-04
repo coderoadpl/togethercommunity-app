@@ -3,8 +3,9 @@ import {
   canonicalImportPayload,
   computeCourseModuleName,
   err,
-  importContentRecordSchema,
   importContentKindSchema,
+  importKindSchema,
+  importRecordSchema,
   importCourseRecordSchema,
   importLessonRecordSchema,
   importModuleRecordSchema,
@@ -24,7 +25,6 @@ import {
   type ImportBatchResponse,
   type ImportBatchResult,
   type ImportContentKind,
-  type ImportContentRecord,
   type ImportCourseRecord,
   type ImportLessonRecord,
   type ImportModuleRecord,
@@ -32,6 +32,8 @@ import {
   type ImportValidationResponse,
   type ImportValidateRequest,
   type ImportWriteRequest,
+  type ImportKind,
+  type ImportRecord,
   type Product,
   type Result,
   type TenantApiKey,
@@ -52,6 +54,11 @@ import type {
   ImportContentRepository,
   ProductRepository,
 } from '../ports.js';
+import {
+  emptyImportReferenceMaps,
+  prepareM2mUsersValidationRecord,
+  type M2mImportUsersReaders,
+} from './m2m-import-users.js';
 
 type ImportReaders = {
   courses: Pick<CourseRepository, 'findById'>;
@@ -62,7 +69,7 @@ type ImportReaders = {
   hash: ContentHash;
 };
 
-export type M2mImportValidationDeps = ImportReaders;
+export type M2mImportValidationDeps = ImportReaders & M2mImportUsersReaders & { clock: Clock };
 
 export type M2mImportContentDeps = ImportReaders & {
   importContent: ImportContentRepository;
@@ -359,10 +366,10 @@ const prepareRecord = async (
   return prepareProduct(tenantId, importProductRecordSchema.parse(record), payloadHash, references, deps, now);
 };
 
-const recordIdentity = (value: unknown, index: number): { kind?: ImportContentKind; importKey: string } => {
+const recordIdentity = (value: unknown, index: number): { kind?: ImportKind; importKey: string } => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return { importKey: `record-${index}` };
   const record = Object.fromEntries(Object.entries(value));
-  const kind = importContentKindSchema.safeParse(record['kind']);
+  const kind = importKindSchema.safeParse(record['kind']);
   const importKey = typeof record['importKey'] === 'string' ? record['importKey'] : `record-${index}`;
   return { ...(kind.success ? { kind: kind.data } : {}), importKey };
 };
@@ -469,15 +476,18 @@ export const importM2mContent = async (
   return ok({ results, summary: summarize(results) });
 };
 
-const payloadWithoutKind = (record: ImportContentRecord): unknown => {
+const payloadWithoutKind = (record: ImportRecord): unknown => {
   return Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'kind'));
 };
 
-const emptyPlanCounts = (): Record<ImportContentKind, number> => ({
+const emptyPlanCounts = (): Record<ImportKind, number> => ({
   course: 0,
   module: 0,
   lesson: 0,
   product: 0,
+  member: 0,
+  grant: 0,
+  progress: 0,
 });
 
 const validateImportForTenant = async (
@@ -492,13 +502,15 @@ const validateImportForTenant = async (
   const unchanged = emptyPlanCounts();
   const errors: ImportValidationResponse['errors'] = [];
   const warnings: ImportValidationResponse['warnings'] = [];
-  const references = emptyReferenceMaps();
-  const parsedRecords = new Map<number, ImportContentRecord>();
+  const references = emptyImportReferenceMaps();
+  const parsedRecords = new Map<number, ImportRecord>();
+  const recordsByKey = new Map<string, ImportRecord>();
   const seen = new Set<string>();
+  const memberEmails = new Map<string, string>();
   for (let index = 0; index < envelope.data.records.length; index += 1) {
     const raw = envelope.data.records[index];
     const identity = recordIdentity(raw, index);
-    const parsed = importContentRecordSchema.safeParse(raw);
+    const parsed = importRecordSchema.safeParse(raw);
     if (!parsed.success) {
       errors.push({
         index,
@@ -507,6 +519,19 @@ const validateImportForTenant = async (
         error: validation('Invalid import record', parsed.error.flatten()),
       });
       continue;
+    }
+    if (parsed.data.kind === 'member') {
+      const emailOwner = memberEmails.get(parsed.data.email);
+      if (emailOwner !== undefined && emailOwner !== parsed.data.importKey) {
+        errors.push({
+          index,
+          kind: parsed.data.kind,
+          importKey: parsed.data.importKey,
+          error: appError('conflict', `Another record in this call uses "${parsed.data.email}"`),
+        });
+        continue;
+      }
+      memberEmails.set(parsed.data.email, parsed.data.importKey);
     }
     const uniqueKey = `${parsed.data.kind}:${parsed.data.importKey}`;
     if (seen.has(uniqueKey)) {
@@ -520,19 +545,30 @@ const validateImportForTenant = async (
     }
     seen.add(uniqueKey);
     parsedRecords.set(index, parsed.data);
+    recordsByKey.set(uniqueKey, parsed.data);
     references[parsed.data.kind].set(parsed.data.importKey, parsed.data.importKey);
   }
   for (const [index, record] of parsedRecords) {
-    const payloadHash = deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(record)));
-    const prepared = await prepareRecord(
-      tenantId,
-      record.kind,
-      payloadWithoutKind(record),
-      payloadHash,
-      references,
-      deps,
-      record.createdAt ?? new Date(0).toISOString(),
-    );
+    const prepared = importContentKindSchema.safeParse(record.kind).success
+      ? await prepareRecord(
+          tenantId,
+          importContentKindSchema.parse(record.kind),
+          payloadWithoutKind(record),
+          deps.hash.sha256(canonicalImportPayload(payloadWithoutKind(record))),
+          references,
+          deps,
+          'createdAt' in record && record.createdAt !== undefined
+            ? record.createdAt
+            : deps.clock.nowIso(),
+        )
+      : await prepareM2mUsersValidationRecord(
+          tenantId,
+          record,
+          references,
+          deps,
+          deps.clock.nowIso(),
+          recordsByKey,
+        );
     if (!prepared.ok) {
       errors.push({ index, kind: record.kind, importKey: record.importKey, error: prepared.error });
       continue;
@@ -540,6 +576,18 @@ const validateImportForTenant = async (
     if (prepared.value.action === 'created') create[record.kind] += 1;
     if (prepared.value.action === 'updated') update[record.kind] += 1;
     if (prepared.value.action === 'unchanged') unchanged[record.kind] += 1;
+    if (
+      record.kind === 'grant'
+      && record.expiresAt !== null
+      && Date.parse(record.expiresAt) < Date.parse(deps.clock.nowIso())
+    ) {
+      warnings.push({
+        index,
+        kind: record.kind,
+        importKey: record.importKey,
+        message: 'expiresAt is in the past — grant will import as expired',
+      });
+    }
   }
   errors.sort((left, right) => left.index - right.index);
   return ok({
@@ -577,7 +625,10 @@ const retryAfter = (now: string, startedAt: string, durationMs: number): number 
 export const claimM2mImportRateLimit = async (
   tenantId: string,
   apiKey: TenantApiKey,
-  input: { mode: 'validate' } | { mode: 'content'; recordCount: number },
+  input:
+    | { mode: 'validate' }
+    | { mode: 'content'; recordCount: number }
+    | { mode: 'users'; kind: 'member' | 'grant' | 'progress'; recordCount: number },
   deps: M2mImportRateLimitDeps,
 ): Promise<Result<void, AppError>> => {
   const now = deps.clock.nowIso();
@@ -606,18 +657,19 @@ export const claimM2mImportRateLimit = async (
     limit: 60,
   });
   if (!minuteClaimed) {
-    return err(appError('rate_limited', 'Content import request rate limit exceeded', {
+    return err(appError('rate_limited', 'Import request rate limit exceeded', {
       period: 'minute',
       retryAfterSeconds: retryAfter(now, minuteStartedAt, minuteDurationMs),
     }));
   }
   const dayDurationMs = 86_400_000;
   const dayStartedAt = windowStart(now, dayDurationMs);
+  const dailyLimit = input.mode === 'users' && input.kind === 'member' ? 2_000 : 20_000;
   const dayClaimed = await deps.rateLimits.claim(tenantId, {
     apiKeyId: apiKey.id,
     period: 'day',
     windowStartedAt: dayStartedAt,
-    limit: 20_000,
+    limit: dailyLimit,
     cost: input.recordCount,
   });
   if (dayClaimed) return ok(undefined);
@@ -626,7 +678,7 @@ export const claimM2mImportRateLimit = async (
     period: 'minute',
     windowStartedAt: minuteStartedAt,
   });
-  return err(appError('rate_limited', 'Content import daily record limit exceeded', {
+  return err(appError('rate_limited', 'Import daily record limit exceeded', {
     period: 'day',
     retryAfterSeconds: retryAfter(now, dayStartedAt, dayDurationMs),
   }));

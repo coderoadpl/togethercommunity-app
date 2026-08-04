@@ -16,6 +16,7 @@ i reguły architektury; dokumenty nadal opisują kierunek dalszego rozwoju.
 |---|---|
 | `tasks/prd-together.md` | **Aktualny PRD** — założenia, zasady, fazy, user stories, wymagania |
 | `docs/ses-onboarding.md` | Konfiguracja SES, gotowe odpowiedzi do wniosku AWS i awaryjne opcje SMTP |
+| [`SECURITY.md`](SECURITY.md) | Prywatne zgłaszanie podatności, zakres i aktualna polityka wsparcia |
 | [coderoadpl/agentproofarch](https://github.com/coderoadpl/agentproofarch) | **Architektura normatywna** (osobne repo) — warstwy, porty, CLI, deploy Vercel/Docker |
 | `research/2026-07-02-alternatives.md` | Research konkurencji: open source, płatny SaaS, rynek PL, nisza BYO |
 | `.ai/` | Poprzednia iteracja projektu (VI 2025) — archiwum, zastąpiona przez `tasks/prd-together.md` |

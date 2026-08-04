@@ -446,3 +446,69 @@ guards for payment, e-mail, and secure-cookie defaults remain the owner actions
 in items 5 through 7. Other audited backlog items remain in
 [`tasks/audit-convergence-r4.md`](../../tasks/audit-convergence-r4.md) and are
 not added to this launch checklist.
+
+### 16. Production branch and approval wall
+
+**STATUS:** owner-action
+
+The release topology targets an owner-approved `main` to `production` pull
+request, but that wall is not live. As of 2026-08-04, the remote has no
+`production` branch, and the current plan for this private repository does not
+make GitHub rulesets or branch protection available. The requirement is
+procedural until the repository plan and configuration can enforce it; an agent
+must not be described as technically unable to approve or release its own work.
+
+Before launch, move the private repository to a plan that supports the required
+enforcement, create `production` from the owner-approved `main` commit, and add
+a rule that requires a pull request, independent owner approval, and the
+required CI checks. Disallow direct pushes, force pushes, deletion, and
+unreviewed bypasses. Inspect the live rule through the GitHub UI or API and
+record the rule, approving owner, pull request, `main` SHA, and resulting
+`production` SHA in the launch record.
+
+Until those steps are complete, do not claim an enforced production-promotion
+wall. Any rehearsal remains subject to the documented owner-approval procedure
+and does not satisfy the SIL-3-shaped launch requirement by itself. The target
+topology and the distinction between decision and live state are recorded in
+[ADR-0003](decisions/0003-vercel-environments.md).
+
+### 17. Production hosting account boundary
+
+**STATUS:** owner-action
+
+Create and link production under a paid commercial hosting team or account
+whose membership is reviewed by the owner. Verify that no agent has a hosting
+login, CLI session, deployment token, database credential, or production
+secret. Preview and staging must not reuse the production hosting, database, or
+credential boundary.
+
+After item 16 creates the branch, set Vercel Production Branch Tracking to
+`production` and verify that a `main` merge creates staging only. Review the
+live hosting-team membership, Git integration, environment scopes, and
+production branch setting; repository files cannot prove any of them. Record
+the owner who performed the review and the target project and team in the
+launch record.
+
+### 18. Manual deployed-SHA attestation
+
+**STATUS:** pre-launch-verify
+
+`smoke:remote` is a manual command, no workflow invokes it, and its SHA
+comparison is silently skipped when `EXPECTED_SHA` is absent. For launch,
+`EXPECTED_SHA` is mandatory. Fetch the promoted branch, resolve its exact head,
+and run the command against the deployed production URL:
+
+```sh
+git fetch origin production
+BASE_URL=https://deployment.example \
+SMOKE_TENANT=acme \
+EXPECTED_SHA="$(git rev-parse origin/production)" \
+pnpm run smoke:remote
+```
+
+Do not accept the deployment if the command fails, if `EXPECTED_SHA` was
+omitted, or if the health attestation reports another commit. Retain the
+command result together with the deployment URL, expected SHA, actual health
+SHA, and approving owner. Repeat the same mandatory-SHA check on staging before
+promotion and on production after promotion. This owner sign-off is a manual
+post-deployment attestation, not an automated CI or hosting gate.

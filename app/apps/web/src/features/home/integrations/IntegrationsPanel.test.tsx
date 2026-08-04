@@ -11,11 +11,18 @@ import { server } from '../../../test/server.js';
 import { IntegrationsPanel } from './IntegrationsPanel.js';
 
 interface TestSettings {
+  name: string;
+  socialLinks: [];
   billingPortalUrl: string | null;
   bunnyStreamLibraryId: string | null;
 }
 
-const defaultSettings: TestSettings = { billingPortalUrl: null, bunnyStreamLibraryId: null };
+const defaultSettings: TestSettings = {
+  name: 'Akademia',
+  socialLinks: [],
+  billingPortalUrl: null,
+  bunnyStreamLibraryId: null,
+};
 
 const renderPanel = (
   initial: TenantSecretMasked[] = [],

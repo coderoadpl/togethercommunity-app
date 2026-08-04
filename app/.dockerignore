@@ -1,0 +1,10 @@
+.env
+.git
+.github
+.storybook
+coverage
+dist
+node_modules
+storybook-static
+test-results
+

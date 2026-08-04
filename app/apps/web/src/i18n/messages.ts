@@ -1169,6 +1169,8 @@ export interface Messages {
   branding: {
     heading: string;
     intro: string;
+    nameLabel: string;
+    nameHint: string;
     logoLabel: string;
     logoPlaceholder: string;
     accentLabel: string;
@@ -1177,6 +1179,16 @@ export interface Messages {
     previewHint: string;
     faviconLabel: string;
     faviconPlaceholder: string;
+    profileLinksHeading: string;
+    profileLinksIntro: (input: { count: number }) => string;
+    socialLinkLabel: string;
+    socialLinkLabelPlaceholder: string;
+    socialLinkUrl: string;
+    socialLinkUrlPlaceholder: string;
+    socialLinkUrlInvalid: string;
+    addSocialLink: string;
+    removeSocialLink: string;
+    socialLinksAria: string;
     socialHeading: string;
     ogTitleLabel: string;
     ogTitleHint: string;
@@ -1344,14 +1356,16 @@ export interface Messages {
       breakdown: string;
       campaignsTouched: string;
       batchSize: string;
+      evidencePurged: string;
       budget: string;
       errors: string;
       noErrors: string;
       viewSends: string;
       counts: (params: { sent: number; failed: number; skipped: number }) => string;
+      purgeCount: (params: { purged: number }) => string;
       budgetUsage: (params: { computed: number; used: number }) => string;
       milliseconds: (params: { value: number }) => string;
-      kinds: Record<'marketing_tick' | 'outbox_dispatch', string>;
+      kinds: Record<'marketing_tick' | 'outbox_dispatch' | 'consent_evidence_purge', string>;
       triggers: Record<'cron' | 'dev' | 'manual', string>;
       statuses: Record<'running' | 'completed' | 'failed', string>;
     };

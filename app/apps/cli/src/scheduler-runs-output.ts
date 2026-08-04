@@ -39,7 +39,8 @@ export const formatSchedulerRuns = (runs: SchedulerRun[]): string =>
 const formatTenant = (tenant: SchedulerRunTenant): string => [
   `${tenant.tenantId}: campaigns ${String(tenant.campaignsTouched)}, batch ${String(tenant.batchSize)}, `
     + `budget ${String(tenant.budgetUsed)}/${String(tenant.budgetComputed)}, `
-    + `sent ${String(tenant.sent)}, failed ${String(tenant.failed)}, skipped ${String(tenant.skipped)}`,
+    + `sent ${String(tenant.sent)}, failed ${String(tenant.failed)}, skipped ${String(tenant.skipped)}`
+    + (tenant.purged === undefined || tenant.purged === null ? '' : `, purged ${String(tenant.purged)}`),
   ...(tenant.errors.length === 0 ? [] : tenant.errors.map((error) => `  error: ${error}`)),
 ].join('\n');
 

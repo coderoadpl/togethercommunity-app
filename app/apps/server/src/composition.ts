@@ -14,6 +14,7 @@ import {
   createKsefSubmissionJobRepository,
 } from '#adapters/db/ksef-repositories.js';
 import { createSchedulerRunRepository } from '#adapters/db/scheduler-runs.js';
+import { createConsentEvidenceRetentionRepository } from '#adapters/db/consent-evidence-retention.js';
 import {
   createAutomationIdempotencyRepository,
   createCampaignRepository,
@@ -163,13 +164,13 @@ import type {
   MemberErasureRequestRepository,
   MemberErasurePort,
   MemberEventRepository,
-  MemberOrderListReader,
   MemberRepository,
   MemberSubscriptionRepository,
   MarketingAudienceRepository,
   MarketingConsentRepository,
   MarketingThrottleRepository,
   MarketingSesCredentialResolver,
+  MemberOrderListReader,
   NotificationChannelPort,
   NotificationRepository,
   OrderRepository,
@@ -178,12 +179,12 @@ import type {
   PostRepository,
   PostReportRepository,
   PurchaseRepository,
+  ProductBatchReader,
   ProductGrantRepository,
   ProductPriceRepository,
   ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
-  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   RealtimeBusPort,
@@ -208,8 +209,9 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
+  TenantCreationMode,
 } from '#core/server/index.js';
-import { campaignTick, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -314,12 +316,13 @@ export interface AppDeps {
   health: HealthPort;
   appVersion: string;
   commitSha: string;
-  tenantCreationMode: Env['TENANT_CREATION'];
+  tenantCreationMode: TenantCreationMode;
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void };
   deferredEffects: { schedule(effect: () => Promise<void>): void };
   baseDomain: string;
+  singleTenantMode: boolean;
   appBaseUrl: string;
   devEndpoints: DevEndpoints;
   authConfig: AuthConfig;
@@ -372,11 +375,26 @@ export const selectDevSinkPurge = (
 ): DevSinkPurge | undefined =>
   env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? undefined : create();
 
+export const selectTenantRouting = (
+  env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL'>,
+): { baseDomain: string; singleTenantMode: boolean } => ({
+  baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
+  singleTenantMode: env.APP_BASE_DOMAIN === undefined,
+});
+
+export const selectTenantCreationMode = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
+): TenantCreationMode => {
+  if (env.TENANT_CREATION === 'closed') return 'closed';
+  return env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? 'bootstrap' : 'open';
+};
+
 /**
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
 export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps => {
+  const { baseDomain, singleTenantMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
   const tenants = createTenantRepository(db);
@@ -440,6 +458,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   const emailEvents = createEmailEventRepository(db);
   const emailSends = createEmailSendRepository(db);
   const schedulerRuns = createSchedulerRunRepository(db);
+  const consentEvidenceRetention = createConsentEvidenceRetentionRepository(db);
   const definitions = createConsentDefinitionRepository(db);
   const marketingConsents = createMarketingConsentRepository(db);
   const confirmations = createConsentConfirmationTokenRepository(db);
@@ -569,13 +588,13 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
     const url = new URL(env.APP_BASE_URL);
-    url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
+    if (!singleTenantMode) url.hostname = `${tenantSlug}.${baseDomain}`;
     url.pathname = '/panel/marketing';
     return url.toString();
   };
-  const dispatchScheduledMarketing = (trigger: 'cron' | 'dev' | 'manual') => {
+  const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
-    return runScheduledMarketingJobs({
+    const marketing = await runScheduledMarketingJobs({
       now,
       pendingOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
       renderedBodiesOlderThan: new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -618,11 +637,25 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
           },
         ),
     });
+    const purged = env.CONSENT_EVIDENCE_PURGE_ENABLED
+      ? await purgeExpiredConsentEvidence(
+          {
+            trigger,
+            minIntervalMs: CONSENT_EVIDENCE_PURGE_INTERVAL_MS,
+            batchSize: CONSENT_EVIDENCE_PURGE_BATCH_SIZE,
+            timeBudgetMs: CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS,
+          },
+          { retention: consentEvidenceRetention, runs: schedulerRuns, ids, clock },
+        )
+      : ok({ purged: 0, tenantsProcessed: 0 });
+    if (!marketing.ok) return marketing;
+    if (!purged.ok) return purged;
+    return marketing;
   };
   const realtimeBus = createRealtimeBus();
   const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
     const url = new URL(env.APP_BASE_URL);
-    if (tenantSlug !== null) url.hostname = `${tenantSlug}.${env.APP_BASE_DOMAIN}`;
+    if (!singleTenantMode && tenantSlug !== null) url.hostname = `${tenantSlug}.${baseDomain}`;
     url.pathname = pathname;
     return url.toString();
   };
@@ -645,17 +678,17 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
 
   const baseTrustedOrigins = [
     env.APP_BASE_URL,
-    `http://*.${env.APP_BASE_DOMAIN}`,
-    `https://*.${env.APP_BASE_DOMAIN}`,
+    `http://*.${baseDomain}`,
+    `https://*.${baseDomain}`,
     // Wildcard entries above don't match origins carrying an explicit port.
-    `http://*.${env.APP_BASE_DOMAIN}:${env.PORT}`,
-    `https://*.${env.APP_BASE_DOMAIN}:${env.PORT}`,
+    `http://*.${baseDomain}:${env.PORT}`,
+    `https://*.${baseDomain}:${env.PORT}`,
   ];
 
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
-    baseDomain: env.APP_BASE_DOMAIN,
+    baseDomain,
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     emailOutbox,
@@ -668,7 +701,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
-        { tenantDomains, tenants, baseDomain: env.APP_BASE_DOMAIN },
+        { tenantDomains, tenants, baseDomain, singleTenantMode },
       );
       if (!resolved.ok) return resolved;
       if (resolved.value === null) return ok({ required: false });
@@ -678,7 +711,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       const resolved = await resolveTenant(
         request.headers.get('host') ?? new URL(request.url).host,
         request.headers.get(TENANT_HEADER),
-        { tenantDomains, tenants, baseDomain: env.APP_BASE_DOMAIN },
+        { tenantDomains, tenants, baseDomain, singleTenantMode },
       );
       if (!resolved.ok) return resolved;
       if (resolved.value === null) return ok({ recorded: false });
@@ -784,7 +817,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
-    tenantCreationMode: env.TENANT_CREATION,
+    tenantCreationMode: selectTenantCreationMode(env),
     ids,
     clock,
     logger,
@@ -793,7 +826,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
         queueMicrotask(() => { void effect(); });
       },
     },
-    baseDomain: env.APP_BASE_DOMAIN,
+    baseDomain,
+    singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
     devEndpoints: {
       simulatedPayments: env.SIMULATED_PAYMENTS,

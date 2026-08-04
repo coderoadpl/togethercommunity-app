@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
@@ -11,6 +11,8 @@ import { PanelContextProvider } from '../panel-context.js';
 import { SettingsPanel } from './SettingsPanel.js';
 
 interface StoredSettings {
+  name: string;
+  socialLinks: Array<{ label: string; url: string }>;
   billingPortalUrl: string | null;
   bunnyStreamLibraryId: string | null;
   logoUrl: string | null;
@@ -29,6 +31,8 @@ interface StoredSettings {
 }
 
 const EMPTY_SETTINGS: StoredSettings = {
+  name: 'Akademia',
+  socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   logoUrl: null,
@@ -80,7 +84,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
       })),
   );
 
-  renderWithProviders(
+  const { queryClient } = renderWithProviders(
     <PanelContextProvider
       value={{
         tenant: { id: 'tenant-akademia', slug: 'akademia', name: 'Akademia', staffRole: 'owner', memberId: null },
@@ -91,7 +95,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
     </PanelContextProvider>,
   );
 
-  return { updates };
+  return { queryClient, updates };
 };
 
 describe('SettingsPanel build information', () => {
@@ -243,6 +247,8 @@ describe('SettingsPanel VAT exemption', () => {
   });
 });
 
+const BRANDING_TEST_TIMEOUT = 10_000;
+
 describe('SettingsPanel branding', () => {
   it('saves logo, accent color and favicon through the settings endpoint', async () => {
     const { updates } = renderPanel();
@@ -254,6 +260,8 @@ describe('SettingsPanel branding', () => {
 
     expect(await screen.findByTestId('branding-saved')).toHaveTextContent(pl.branding.saved);
     expect(updates).toContainEqual({
+      name: 'Akademia',
+      socialLinks: [],
       logoUrl: 'https://cdn.example.com/logo.svg',
       accentColor: '#0E7490',
       faviconUrl: 'https://cdn.example.com/favicon.svg',
@@ -261,7 +269,7 @@ describe('SettingsPanel branding', () => {
       ogDescription: null,
       ogImageUrl: null,
     });
-  });
+  }, BRANDING_TEST_TIMEOUT);
 
   it('saves and reloads social metadata through the settings endpoint', async () => {
     const { updates } = renderPanel();
@@ -276,6 +284,8 @@ describe('SettingsPanel branding', () => {
 
     expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
     expect(updates).toContainEqual({
+      name: 'Akademia',
+      socialLinks: [],
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
@@ -283,7 +293,47 @@ describe('SettingsPanel branding', () => {
       ogDescription: 'Praktyczna nauka',
       ogImageUrl: 'https://cdn.example.com/social.png',
     });
-  });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('renames the tenant and round-trips social profiles without a slug field', async () => {
+    const { queryClient, updates } = renderPanel();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const name = await screen.findByTestId('branding-name');
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Akademia Praktyków');
+    await userEvent.click(screen.getByTestId('branding-social-add'));
+    await userEvent.type(screen.getByTestId('branding-social-label-0'), 'YouTube');
+    await userEvent.type(
+      screen.getByTestId('branding-social-url-0'),
+      'https://youtube.com/@akademia',
+    );
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
+    expect(updates).toContainEqual(expect.objectContaining({
+      name: 'Akademia Praktyków',
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@akademia' }],
+    }));
+    expect(updates.some((update) => typeof update === 'object' && update !== null && 'slug' in update))
+      .toBe(false);
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['me'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['public-offer'] });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('marks a non-http profile URL before sending settings', async () => {
+    const { updates } = renderPanel();
+
+    await screen.findByTestId('branding-name');
+    await userEvent.click(screen.getByTestId('branding-social-add'));
+    await userEvent.type(screen.getByTestId('branding-social-label-0'), 'Profile');
+    await userEvent.type(screen.getByTestId('branding-social-url-0'), 'ftp://social.example.com/acme');
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByText(pl.branding.socialLinkUrlInvalid)).toBeInTheDocument();
+    expect(screen.getByTestId('branding-social-url-0')).toHaveAttribute('aria-invalid', 'true');
+    expect(updates).toHaveLength(0);
+  }, BRANDING_TEST_TIMEOUT);
 
   it('previews the accent in the swatch as you type', async () => {
     renderPanel();
@@ -292,8 +342,8 @@ describe('SettingsPanel branding', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('branding-accent-swatch')).toHaveStyle({ backgroundColor: '#0E7490' });
-    });
-  });
+    }, { timeout: 5_000 });
+  }, BRANDING_TEST_TIMEOUT);
 
   it('rejects a malformed accent color without calling the API', async () => {
     const { updates } = renderPanel();
@@ -304,7 +354,7 @@ describe('SettingsPanel branding', () => {
     expect(await screen.findByText(pl.branding.accentInvalid)).toBeInTheDocument();
     expect(screen.queryByTestId('branding-saved')).not.toBeInTheDocument();
     expect(updates).toHaveLength(0);
-  });
+  }, BRANDING_TEST_TIMEOUT);
 
   it('clears branding by saving empty fields', async () => {
     const { updates } = renderPanel({
@@ -323,6 +373,8 @@ describe('SettingsPanel branding', () => {
 
     expect(await screen.findByTestId('branding-saved')).toBeInTheDocument();
     expect(updates).toContainEqual({
+      name: 'Akademia',
+      socialLinks: [],
       logoUrl: null,
       accentColor: null,
       faviconUrl: null,
@@ -330,5 +382,5 @@ describe('SettingsPanel branding', () => {
       ogDescription: null,
       ogImageUrl: null,
     });
-  });
+  }, BRANDING_TEST_TIMEOUT);
 });

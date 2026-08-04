@@ -8,7 +8,9 @@ import { resolveIdentity } from './resolve-identity.js';
 const user = { userId: 'u1', email: 'demo@example.com', name: 'Demo' };
 
 const acme: Membership = {
-  tenant: { id: 't-acme', slug: 'acme', name: 'Acme Inc', contentVersion: 1 },
+  tenant: {
+    id: 't-acme', slug: 'acme', name: 'Acme Inc', status: 'active', plan: 'hosted', contentVersion: 1,
+  },
   staffRole: 'owner',
 };
 
@@ -47,7 +49,10 @@ const fakeDomains = (domains: TenantDomain[]): TenantDomainRepository => ({
 const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
   findBySlug: async (slug) => tenantList.find((tenant) => tenant.slug === slug) ?? null,
+  findSole: async () => tenantList.length === 1 ? tenantList[0] ?? null : null,
+  hasAny: async () => tenantList.length > 0,
   findSettings: async () => ({
+    name: 'Acme', socialLinks: [],
     billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
     accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
     ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -58,6 +63,8 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
     id: input.tenant.id,
     slug: input.tenant.slug,
     name: input.tenant.name,
+    status: 'active',
+    plan: 'self_hosted',
     contentVersion: 1,
   }),
 });
@@ -90,9 +97,22 @@ const deps = (
   tenants: fakeTenants(tenantRows),
   tenantDomains: fakeDomains(domains),
   baseDomain: 'localhost',
+  singleTenantMode: false,
 });
 
 describe('resolveIdentity', () => {
+  it('resolves an authorized user into the sole tenant without a configured base domain', async () => {
+    const result = await resolveIdentity(user, { host: 'localhost:48730', tenantHeader: null }, {
+      ...deps([acme]),
+      singleTenantMode: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { tenantId: 't-acme', tenantSlug: 'acme', staffRole: 'owner' },
+    });
+  });
+
   it('rejects anonymous requests', async () => {
     const result = await resolveIdentity(null, { host: 'localhost', tenantHeader: null }, deps([]));
     expect(result).toMatchObject({ ok: false, error: { code: 'unauthorized' } });

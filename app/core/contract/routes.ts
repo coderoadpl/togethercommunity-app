@@ -250,6 +250,11 @@ export const publicOfferOutputSchema = z.object({
     support: tenantSupportPublicSchema.default({ url: null }),
   }),
   contentVersion: z.number().int().positive(),
+  previewLessons: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    courseId: z.string(),
+  })).default([]),
   products: z.array(
     z.object({
       id: z.string(),
@@ -765,6 +770,7 @@ export const courseStructureOutputSchema = z.object({
 
 export const studentLessonOutputSchema = z.object({
   lesson: playableCourseLessonSchema,
+  authenticated: z.boolean(),
 });
 
 export const lessonCompleteInputSchema = z.object({

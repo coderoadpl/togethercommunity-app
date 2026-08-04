@@ -140,9 +140,10 @@ export const getAccessibleLesson = async (
 ): Promise<Result<CourseLesson, AppError>> => {
   const tenant = authorizeTenant(ctx, 'lesson:play');
   if (!tenant.ok) return tenant;
+  const lesson = await deps.lessons.findById(tenant.value, lessonId);
+  if (lesson?.isPreview === true) return ok(lesson);
   const access = await isLessonAccessible(ctx, lessonId, deps);
   if (!access.ok) return access;
-  const lesson = await deps.lessons.findById(tenant.value, lessonId);
   if (!lesson) return err(notFound(`No lesson "${lessonId}" in this tenant`));
   return ok(lesson);
 };

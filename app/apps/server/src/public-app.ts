@@ -12,16 +12,19 @@ import {
   checkoutSessionRequestSchema,
   couponCheckoutValidationRequestSchema,
   publicOfferOutputSchema,
+  studentLessonOutputSchema,
   STRIPE_WEBHOOK_PATH_PATTERN,
   TENANT_HEADER
 } from '#core/contract/index.js';
 import {
+  capabilitiesForPrincipal,
   err,
   internal,
   languageSchema,
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
   tenantNotFound,
+  unauthorized,
   unavailable,
   validation,
   type EmailBranding,
@@ -34,8 +37,10 @@ import {
   enforceTermsConsent,
   fulfillStripeWebhook,
   getPaymentConfig,
+  getPlayableLesson,
   getPublicOffer,
   recordCheckoutMarketingConsents,
+  resolveIdentity,
   resolveTenant,
   startCheckoutSession,
   validateCheckoutSelection,
@@ -60,9 +65,14 @@ const registerOpenCors = (
   app: Hono<Vars>,
   path: string,
   method: 'GET' | 'POST',
+  excludedPath?: string,
 ): void => {
-  app.options(path, () =>
-    new Response(null, {
+  app.options(path, async (c, next) => {
+    if (c.req.path === excludedPath) {
+      await next();
+      return c.res;
+    }
+    return new Response(null, {
       status: 204,
       headers: {
         'access-control-allow-origin': '*',
@@ -70,14 +80,21 @@ const registerOpenCors = (
         'access-control-allow-headers': `${TENANT_HEADER}, content-type, if-none-match`,
         'access-control-max-age': '60',
       },
-    }),
-  );
-  app.use(path, cors({
+    });
+  });
+  const middleware = cors({
     origin: '*',
     allowMethods: [method],
     allowHeaders: [TENANT_HEADER, 'content-type', 'if-none-match'],
     maxAge: 60,
-  }));
+  });
+  app.use(path, async (c, next) => {
+    if (c.req.path === excludedPath) {
+      await next();
+      return;
+    }
+    return middleware(c, next);
+  });
 };
 
 const publicHeaders = (etag?: string): Headers => {
@@ -122,10 +139,13 @@ const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBran
 
 const magicLinkRequestBodySchema = z.object({ email: z.string().email() });
 
-const checkoutIdentity = (tenant: { id: string; slug: string; name: string; }): Identity => ({
-  userId: 'checkout',
-  email: 'checkout@invalid.test',
-  name: 'Checkout',
+const anonymousIdentity = (
+  actor: 'Checkout' | 'Preview',
+  tenant: { id: string; slug: string; name: string; },
+): Identity => ({
+  userId: actor.toLowerCase(),
+  email: `${actor.toLowerCase()}@invalid.test`,
+  name: actor,
   tenantId: tenant.id,
   tenantSlug: tenant.slug,
   tenantName: tenant.name,
@@ -162,7 +182,7 @@ const recordCheckoutConsents = async (
   const proofRef = `product:${input.productId};order:${input.orderId}`;
   try {
     const recorded = await recordCheckoutMarketingConsents(
-      { identity: checkoutIdentity(input.tenant) },
+      { identity: anonymousIdentity('Checkout', input.tenant) },
       {
         email: input.email,
         selectedDefinitionIds: input.selectedDefinitionIds,
@@ -300,6 +320,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
   );
 
   registerOpenCors(app, API_PATHS.publicOffer, 'GET');
+  registerOpenCors(app, API_PATHS.studentLesson, 'GET', API_PATHS.studentLessonNext);
   registerOpenCors(app, API_PATHS.publicPaymentConfig, 'GET');
   registerOpenCors(app, API_PATHS.couponCheckoutValidation, 'POST');
   registerOpenCors(app, API_PATHS.checkoutSession, 'POST');
@@ -317,6 +338,7 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
 
     const result = await getPublicOffer(tenant.value.tenant, {
       products: deps.products,
+      lessons: deps.lessons,
       prices: deps.prices,
       tenants: deps.tenants,
       definitions: deps.marketing?.definitions,
@@ -326,6 +348,48 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     const parsed = publicOfferOutputSchema.safeParse(result.value);
     if (!parsed.success) return respondPublic(err(internal('Public offer response does not match the contract')), etag);
     return respondPublic(ok(parsed.data), etag);
+  });
+
+  app.get(API_PATHS.studentLesson, async (c, next) => {
+    if (c.req.path === API_PATHS.studentLessonNext) {
+      await next();
+      return;
+    }
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok) return respondPublic(tenant);
+    if (!tenant.value) return respondPublic(err(tenantNotFound()));
+
+    const user = await deps.authPort.getAuthenticatedUser(c.req.raw.headers);
+    const identity = await resolveIdentity(
+      user,
+      { host: c.req.header('host') ?? '', tenantHeader: c.req.header(TENANT_HEADER) ?? null },
+      deps,
+    );
+    let authenticated = false;
+    let ctx: Parameters<typeof getPlayableLesson>[0] = {
+      identity: anonymousIdentity('Preview', tenant.value.tenant),
+      capabilities: capabilitiesForPrincipal('public'),
+    };
+    if (user !== null) {
+      if (!identity.ok) {
+        if (identity.error.code === 'internal' || identity.error.code === 'unavailable') {
+          return respondPublic(identity);
+        }
+      } else {
+        authenticated = true;
+        ctx = { identity: identity.value };
+      }
+    }
+    const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);
+    if (!result.ok) {
+      return respondPublic(user === null && result.error.code === 'forbidden'
+        ? err(unauthorized())
+        : result);
+    }
+    const parsed = studentLessonOutputSchema.safeParse({ lesson: result.value, authenticated });
+    return parsed.success
+      ? respondPublic(ok(parsed.data))
+      : respondPublic(err(internal('Preview lesson response does not match the contract')));
   });
 
   app.get(API_PATHS.publicPaymentConfig, async (c) => {

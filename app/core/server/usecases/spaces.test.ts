@@ -476,6 +476,7 @@ const emptyModules: CourseModuleRepository = {
 
 const emptyLessons: CourseLessonRepository = {
   list: async () => [],
+  listPreviews: async () => [],
   findById: async () => null,
   findByIds: async () => [],
   create: async () => undefined,

@@ -512,6 +512,13 @@
       "when": 1785804349551,
       "tag": "0072_product_download_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1785813418520,
+      "tag": "0073_lesson_free_preview",
+      "breakpoints": true
     }
   ]
 }

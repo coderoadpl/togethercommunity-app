@@ -58,6 +58,7 @@ const pdfLesson: CourseLesson = {
   id: 'l1',
   tenantId: 't1',
   name: 'Lesson with documents',
+  isPreview: false,
   contents: [
     { type: 'pdf', pdfUrl: S3_PDF_URL, name: 'Handout' },
     { type: 'pdf', pdfUrl: PUBLIC_PDF_URL },
@@ -142,6 +143,7 @@ const modulesRepo: CourseModuleRepository = {
 
 const lessonsRepo: CourseLessonRepository = {
   list: async () => [pdfLesson],
+  listPreviews: async () => [],
   findById: async (_t, id) => (id === 'l1' ? pdfLesson : null),
   findByIds: async () => [pdfLesson],
   create: async () => undefined,
@@ -332,5 +334,42 @@ describe('getPlayableLesson', () => {
     const result = await getPlayableLesson(ctx({ memberId: null }), 'l1', deps());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('forbidden');
+  });
+
+  it('allows an anonymous preview while denying a paid lesson from the same course', async () => {
+    const preview = { ...pdfLesson, id: 'preview', isPreview: true };
+    const paid = { ...pdfLesson, id: 'paid', isPreview: false };
+    const courseModule: CourseModule = {
+      ...m1,
+      chapters: [{
+        id: 'ch1',
+        name: 'Chapter 1',
+        contents: [
+          { id: 'content-preview', name: preview.name, lessonId: preview.id },
+          { id: 'content-paid', name: paid.name, lessonId: paid.id },
+        ],
+      }],
+    };
+    const anonymous: Ctx = {
+      identity: identity({ memberId: null }),
+      capabilities: ['lesson:play'],
+    };
+    const repository: CourseLessonRepository = {
+      ...lessonsRepo,
+      list: async () => [preview, paid],
+      findById: async (_tenantId, id) => [preview, paid].find((lesson) => lesson.id === id) ?? null,
+      findByIds: async () => [preview, paid],
+    };
+    const moduleRepository: CourseModuleRepository = {
+      ...modulesRepo,
+      list: async () => [courseModule],
+      findById: async (_tenantId, id) => (id === courseModule.id ? courseModule : null),
+      findByIds: async () => [courseModule],
+    };
+
+    await expect(getPlayableLesson(anonymous, preview.id, deps({ lessons: repository, modules: moduleRepository })))
+      .resolves.toMatchObject({ ok: true, value: { id: preview.id, isPreview: true } });
+    await expect(getPlayableLesson(anonymous, paid.id, deps({ lessons: repository, modules: moduleRepository })))
+      .resolves.toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

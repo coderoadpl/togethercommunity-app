@@ -263,12 +263,13 @@ export const LessonPlayerPage = ({
 }) => {
   const t = useTranslations();
   const lesson = useQuery(actions.studentLesson(lessonId));
-  const structure = useQuery(actions.courseStructure(courseId));
-  const progress = useQuery(actions.studentProgress(courseId));
-  const next = useQuery(actions.nextLesson(lessonId));
+  const authenticated = lesson.data?.authenticated === true || isForbidden(lesson.error);
+  const structure = useQuery({ ...actions.courseStructure(courseId), enabled: authenticated });
+  const progress = useQuery({ ...actions.studentProgress(courseId), enabled: authenticated });
+  const next = useQuery({ ...actions.nextLesson(lessonId), enabled: authenticated });
   const attachments = useQuery({
     ...actions.studentLessonAttachments(lessonId),
-    enabled: lesson.isSuccess,
+    enabled: authenticated && lesson.isSuccess,
   });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -291,7 +292,7 @@ export const LessonPlayerPage = ({
   const lastViewed = useMutation(actions.updateLastViewed);
   const lastViewedRef = useRef(false);
   useEffect(() => {
-    if (lastViewedRef.current || !lesson.isSuccess || structure.isPending) return;
+    if (!authenticated || lastViewedRef.current || !lesson.isSuccess || structure.isPending) return;
     lastViewedRef.current = true;
     lastViewed.mutate({
       courseId,
@@ -299,7 +300,7 @@ export const LessonPlayerPage = ({
       moduleId: location?.module?.id,
       chapterId: location?.chapter?.id,
     });
-  }, [lesson.isSuccess, structure.isPending, location, courseId, lessonId, lastViewed]);
+  }, [authenticated, lesson.isSuccess, structure.isPending, location, courseId, lessonId, lastViewed]);
 
   const [optimisticDone, setOptimisticDone] = useState<boolean | null>(null);
   const completedFromServer =
@@ -333,6 +334,7 @@ export const LessonPlayerPage = ({
   if (lesson.isPending) {
     return (
       <MemberSurface
+        authenticated={false}
         title={t.lesson.loading}
         eyebrow={t.lesson.eyebrow}
         width="wide"
@@ -362,6 +364,7 @@ export const LessonPlayerPage = ({
     }
     return (
       <MemberSurface
+        authenticated={authenticated}
         title={t.lesson.unavailable}
         eyebrow={t.lesson.eyebrow}
         width="wide"
@@ -392,6 +395,7 @@ export const LessonPlayerPage = ({
 
   return (
     <MemberSurface
+      authenticated={authenticated}
       title={lesson.data.lesson.name}
       eyebrow={t.lesson.eyebrow}
       width="wide"
@@ -460,32 +464,34 @@ export const LessonPlayerPage = ({
           </SectionCard>
         ) : null}
 
-        <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
+        {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem', pt: '1.5rem' }}>
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
             useFlexGap
             sx={{ alignItems: { sm: 'center' }, columnGap: '1rem', rowGap: '1rem' }}
           >
-            {completed ? (
-              <Button
-                variant="outlined"
-                data-testid="unmark-complete"
-                onClick={() => uncomplete.mutate({ lessonId })}
-                disabled={uncomplete.isPending}
-                startIcon={<CompletionFull />}
-                title={t.lesson.unmarkCompletedHint}
-              >
-                {t.lesson.unmarkCompleted}
-              </Button>
-            ) : (
-              <Button
-                variant="outlined"
-                data-testid="mark-complete"
-                onClick={() => complete.mutate({ lessonId })}
-                disabled={complete.isPending}
-              >
-                {t.lesson.markCompleted}
-              </Button>
+            {progress.isSuccess && (
+              completed ? (
+                <Button
+                  variant="outlined"
+                  data-testid="unmark-complete"
+                  onClick={() => uncomplete.mutate({ lessonId })}
+                  disabled={uncomplete.isPending}
+                  startIcon={<CompletionFull />}
+                  title={t.lesson.unmarkCompletedHint}
+                >
+                  {t.lesson.unmarkCompleted}
+                </Button>
+              ) : (
+                <Button
+                  variant="outlined"
+                  data-testid="mark-complete"
+                  onClick={() => complete.mutate({ lessonId })}
+                  disabled={complete.isPending}
+                >
+                  {t.lesson.markCompleted}
+                </Button>
+              )
             )}
             {nextHref !== null && (
               <Button
@@ -511,9 +517,9 @@ export const LessonPlayerPage = ({
                 </Link>
               ))}
           </Stack>
-        </LessonFooterBar>
+        </LessonFooterBar>}
 
-        <DiscussionSection lessonId={lessonId} />
+        {authenticated && <DiscussionSection lessonId={lessonId} />}
       </Box>
     </MemberSurface>
   );

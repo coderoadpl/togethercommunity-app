@@ -43,6 +43,8 @@ const noPrices = {
   setActive: async () => null,
 };
 
+const noLessons = { listPreviews: async () => [] };
+
 const fakeTenants = (branding?: {
   logoUrl: string | null;
   accentColor: string | null;
@@ -99,6 +101,7 @@ describe('getPublicOffer', () => {
         product('other', 't-other', true),
       ]),
       prices: noPrices,
+      lessons: noLessons,
       tenants: fakeTenants(),
     });
 
@@ -114,6 +117,7 @@ describe('getPublicOffer', () => {
           support: { url: null },
         },
         contentVersion: 7,
+        previewLessons: [],
         products: [
           {
             id: 'published',
@@ -156,10 +160,26 @@ describe('getPublicOffer', () => {
     });
   });
 
+  it('exposes only lessons marked as free previews', async () => {
+    const lessons = [{ id: 'preview', name: 'Try for free', courseId: 'course-1' }];
+    const result = await getPublicOffer(tenant, {
+      products: fakeProducts([]),
+      prices: noPrices,
+      lessons: { listPreviews: async () => lessons },
+      tenants: fakeTenants(),
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { previewLessons: [{ id: 'preview', name: 'Try for free', courseId: 'course-1' }] },
+    });
+  });
+
   it('takes a resolved tenant instead of an identity-scoped context', async () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([]),
       prices: noPrices,
+      lessons: noLessons,
       tenants: fakeTenants(),
     });
 
@@ -178,6 +198,7 @@ describe('getPublicOffer', () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([]),
       prices: noPrices,
+      lessons: noLessons,
       tenants: fakeTenants(branding),
     });
 
@@ -192,6 +213,7 @@ describe('getPublicOffer', () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([]),
       prices: noPrices,
+      lessons: noLessons,
       tenants: fakeTenants({ logoUrl: null, accentColor: null, faviconUrl: null, socialLinks }),
     });
 
@@ -246,6 +268,7 @@ describe('getPublicOffer', () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([attached]),
       prices: noPrices,
+      lessons: noLessons,
       tenants: fakeTenants(),
       definitions,
     });
@@ -302,6 +325,7 @@ describe('getPublicOffer', () => {
     const result = await getPublicOffer(tenant, {
       products: fakeProducts([attached]),
       prices: noPrices,
+      lessons: noLessons,
       tenants: fakeTenants(),
       definitions,
       documents: {

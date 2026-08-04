@@ -107,6 +107,7 @@ const lesson: CourseLesson = {
   id: 'lesson-1',
   tenantId: 'tenant-1',
   name: 'Variables',
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: '2026-07-01T10:00:00.000Z',
@@ -144,6 +145,7 @@ const courses: CourseRepository = {
 
 const lessons: CourseLessonRepository = {
   list: async () => [lesson],
+  listPreviews: async () => [],
   findById: async (_tenantId, id) => id === lesson.id ? lesson : null,
   findByIds: async (_tenantId, ids) => ids.includes(lesson.id) ? [lesson] : [],
   create: async () => undefined,

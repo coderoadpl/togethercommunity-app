@@ -227,7 +227,11 @@ describe('Creator panel routing', () => {
     expect(screen.getByTestId('group-offer')).toHaveTextContent(pl.navigationGroups.offer);
     expect(screen.getByTestId('group-community')).toHaveTextContent(pl.navigationGroups.community);
     expect(screen.getByTestId('group-sales')).toHaveTextContent(pl.navigationGroups.sales);
-    expect(screen.getByTestId('group-configuration')).toHaveTextContent(pl.navigationGroups.configuration);
+    for (const [id, label] of Object.entries(pl.navigationGroups)) {
+      expect(screen.getByTestId(`group-${id}`).querySelector('.MuiTypography-overline'))
+        .toHaveTextContent(label);
+    }
+    expect(screen.queryByTestId('group-configuration')).toBeNull();
     expect(screen.getByTestId('group-content')).not.toHaveAttribute('tabindex');
     expect(screen.getByTestId('group-marketing')).toHaveAttribute('aria-expanded', 'false');
     for (const id of marketingSectionIds) {

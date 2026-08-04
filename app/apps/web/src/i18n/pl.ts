@@ -203,7 +203,6 @@ export const pl: Messages = {
     community: 'Społeczność',
     sales: 'Sprzedaż',
     marketing: 'Marketing',
-    configuration: 'Konfiguracja',
   },
   reports: {
     heading: 'Zgłoszenia treści',
@@ -255,7 +254,7 @@ export const pl: Messages = {
   settingsNavigation: {
     aria: 'Sekcje ustawień',
     company: 'Firma',
-    legal: 'Legal',
+    legal: 'Prawne',
     brand: 'Marka',
     security: 'Bezpieczeństwo',
     diagnostics: 'Diagnostyka',
@@ -914,6 +913,7 @@ export const pl: Messages = {
     exporting: 'Eksportowanie…',
     loading: 'ładowanie uczestników…',
     empty: 'Brak uczestników.',
+    checkoutLinkAction: 'Przejdź do produktów po link do zakupu',
     searchPlaceholder: 'Szukaj po e-mailu lub nazwie…',
     noMatches: 'Żaden uczestnik nie pasuje do filtrów.',
     grantFilterAria: 'Filtr dostępów',

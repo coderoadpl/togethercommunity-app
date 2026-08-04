@@ -100,6 +100,8 @@ export const MembersPanel = () => {
 
   const openMember = (memberId: string) =>
     void navigate({ to: '/panel/members/$memberId', params: { memberId } });
+  const openCheckoutLinks = () =>
+    void navigate({ to: '/panel/products', hash: 'product-actions' });
 
   const visibleMembers = (members.data?.members ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -169,8 +171,8 @@ export const MembersPanel = () => {
               kind: 'empty',
               title: t.members.empty,
               action: (
-                <Button component="a" href="/panel/products#product-actions">
-                  {t.products.copyCheckoutLink}
+                <Button onClick={openCheckoutLinks}>
+                  {t.members.checkoutLinkAction}
                 </Button>
               ),
             }}

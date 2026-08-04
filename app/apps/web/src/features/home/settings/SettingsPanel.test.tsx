@@ -145,6 +145,19 @@ describe('SettingsPanel information architecture', () => {
     );
     expect(document.querySelector('#support')).not.toBeNull();
   });
+
+  it('opens the security tab from its deep link', async () => {
+    window.history.replaceState(null, '', '/panel/settings#security');
+
+    renderPanel();
+
+    expect(await screen.findByRole('tab', { name: pl.settingsNavigation.security })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(await screen.findByTestId('security-reset-password')).toBeInTheDocument();
+    expect(screen.getByTestId('passkey-name')).toBeInTheDocument();
+  });
 });
 
 describe('SettingsPanel build information', () => {

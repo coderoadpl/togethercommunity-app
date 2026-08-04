@@ -59,7 +59,7 @@ const useMembers = () =>
   server.use(http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members } })));
 
 describe('MembersPanel', () => {
-  it('offers the existing checkout-link action when there are no members', async () => {
+  it('offers a dedicated checkout-link navigation action when there are no members', async () => {
     server.use(
       http.get('/api/members', () => HttpResponse.json({ ok: true, data: { members: [] } })),
     );
@@ -67,10 +67,8 @@ describe('MembersPanel', () => {
     renderWithProviders(<MembersPanel />);
 
     expect(await screen.findByText(pl.members.empty)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: pl.products.copyCheckoutLink })).toHaveAttribute(
-      'href',
-      '/panel/products#product-actions',
-    );
+    expect(screen.getByRole('button', { name: pl.members.checkoutLinkAction })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: pl.members.checkoutLinkAction })).toBeNull();
   });
 
   it('renders the members table newest-first with emails and product counts', async () => {

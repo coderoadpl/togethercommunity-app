@@ -17,6 +17,7 @@ import {
   SvgIcon,
   ThemeProvider,
   Tooltip,
+  Typography,
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
@@ -102,8 +103,7 @@ type NavigationGroupId =
   | 'offer'
   | 'community'
   | 'sales'
-  | 'marketing'
-  | 'configuration';
+  | 'marketing';
 
 interface NavigationGroupDescriptor {
   id: NavigationGroupId;
@@ -112,6 +112,7 @@ interface NavigationGroupDescriptor {
 }
 
 const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
+const settingsDescriptor: SectionDescriptor = { id: 'settings', to: '/panel/settings' };
 
 const sectionDescriptors: NavigationGroupDescriptor[] = [
   {
@@ -155,10 +156,6 @@ const sectionDescriptors: NavigationGroupDescriptor[] = [
       { id: 'marketingDocuments', to: '/panel/marketing/documents' },
       { id: 'marketingSettings', to: '/panel/marketing/settings' },
     ],
-  },
-  {
-    id: 'configuration',
-    sections: [{ id: 'settings', to: '/panel/settings' }],
   },
 ];
 
@@ -224,6 +221,21 @@ const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
   </SvgIcon>
 );
 
+const navigationGroupHeaderSx = {
+  alignItems: 'center',
+  display: 'flex',
+  minHeight: '2rem',
+  mt: '0.5rem',
+  px: '1rem',
+  py: 0,
+};
+
+const NavigationGroupLabel = ({ label }: { label: string }) => (
+  <Typography variant="overline" component="span">
+    {label}
+  </Typography>
+);
+
 const NavigationItem = ({
   descriptor,
   pathname,
@@ -284,12 +296,9 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
               aria-expanded={marketingOpen}
               aria-controls="panel-navigation-marketing"
               onClick={() => setMarketingOpen((open) => !open)}
-              sx={{ minHeight: '2rem', mt: '0.5rem', px: '1rem' }}
+              sx={navigationGroupHeaderSx}
             >
-              <ListItemText
-                primary={t.navigationGroups[group.id]}
-                slotProps={{ primary: { variant: 'overline' } }}
-              />
+              <NavigationGroupLabel label={t.navigationGroups[group.id]} />
               <ExpandIcon expanded={marketingOpen} />
             </ListItemButton>
           ) : (
@@ -297,9 +306,9 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
               component="div"
               disableSticky
               data-testid={`group-${group.id}`}
-              sx={{ pt: '0.75rem', px: '1rem' }}
+              sx={navigationGroupHeaderSx}
             >
-              {t.navigationGroups[group.id]}
+              <NavigationGroupLabel label={t.navigationGroups[group.id]} />
             </ListSubheader>
           )}
           <Collapse
@@ -325,6 +334,12 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
           </Collapse>
         </Box>
       ))}
+      <NavigationItem
+        descriptor={settingsDescriptor}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        openReportCount={undefined}
+      />
       {openReports.isError ? (
         <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
       ) : null}

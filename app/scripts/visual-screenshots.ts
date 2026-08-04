@@ -297,7 +297,7 @@ const SCREENS: ScreenSpec[] = [
   {
     name: 'panel-settings-security',
     auth: 'creator',
-    path: '/panel/settings',
+    path: '/panel/settings#security',
     ready: (page) => page.getByTestId('security-reset-password').waitFor(visible),
     settled: async (page) => {
       await page

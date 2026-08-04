@@ -197,7 +197,6 @@ export const en: Messages = {
     community: 'Community',
     sales: 'Sales',
     marketing: 'Marketing',
-    configuration: 'Configuration',
   },
   reports: {
     heading: 'Content reports',
@@ -899,6 +898,7 @@ export const en: Messages = {
     exporting: 'Exporting…',
     loading: 'loading members…',
     empty: 'No members yet.',
+    checkoutLinkAction: 'Get your checkout link',
     searchPlaceholder: 'Search by email or name…',
     noMatches: 'No members match your filters.',
     grantFilterAria: 'Grant filter',

@@ -196,7 +196,6 @@ export interface Messages {
     community: string;
     sales: string;
     marketing: string;
-    configuration: string;
   };
   reports: {
     heading: string;
@@ -828,6 +827,7 @@ export interface Messages {
     exporting: string;
     loading: string;
     empty: string;
+    checkoutLinkAction: string;
     searchPlaceholder: string;
     noMatches: string;
     grantFilterAria: string;

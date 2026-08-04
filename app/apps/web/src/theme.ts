@@ -51,8 +51,8 @@ const CONTRAST_THRESHOLD = 4.5;
 
 /**
  * Shadcn is the only maintained base theme (owner decision 2026-07-29); the
- * other six stay compiled and selectable as unmaintained BYO-theme examples
- * for future tenant theming, with Steady Frame as the showcase reference.
+ * other six stay compiled as unmaintained Storybook-only BYO-theme examples,
+ * with Steady Frame as the showcase reference.
  * See docs/decisions/0010-shadcn-base-theme.md.
  */
 export const MODES = [

@@ -32,7 +32,6 @@ const updateMode = process.argv.includes('--update');
 const argosCaptureMode = process.argv.includes('--argos-capture');
 const goldenAuthoringPlatform = 'darwin';
 
-const themeStorageKey = 'together-theme-mode';
 const languageStorageKey = 'together-language';
 
 const SEED_BASE_TIME = '2026-07-01T12:00:00.000Z';
@@ -219,10 +218,7 @@ const SCREENS: ScreenSpec[] = [
     name: 'account',
     auth: 'member',
     path: '/account',
-    ready: async (page) => {
-      await page.getByTestId('account-email').waitFor(visible);
-      await page.getByTestId('theme-selector').waitFor(visible);
-    },
+    ready: (page) => page.getByTestId('account-email').waitFor(visible),
   },
   {
     name: 'course-not-found',
@@ -622,18 +618,17 @@ const stubNonDeterministicRequests = async (context: BrowserContext): Promise<vo
   });
 };
 
-const applyChrome = async (context: BrowserContext, mode: ThemeMode): Promise<void> => {
+const applyChrome = async (context: BrowserContext): Promise<void> => {
   await context.addInitScript(
-    ([themeKey, themeValue, langKey]) => {
+    (langKey) => {
       Object.defineProperty(window, 'EventSource', { configurable: true, value: undefined });
       try {
-        window.localStorage.setItem(themeKey, themeValue);
         window.localStorage.setItem(langKey, 'pl');
       } catch {
         // storage disabled — the choice simply won't persist
       }
     },
-    [themeStorageKey, mode, languageStorageKey] as const,
+    languageStorageKey,
   );
 };
 
@@ -702,7 +697,7 @@ const bootstrapAuthState = async (
   signIn: (page: Page, baseUrl: string) => Promise<void>,
 ): Promise<StorageState> => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  await applyChrome(context, 'shadcn');
+  await applyChrome(context);
   const page = await context.newPage();
   await signIn(page, studioBaseUrl);
   const state = await context.storageState();
@@ -791,7 +786,7 @@ try {
           reducedMotion: 'reduce',
           ...(storageState === undefined ? {} : { storageState }),
         });
-        await applyChrome(context, theme);
+        await applyChrome(context);
         await stubNonDeterministicRequests(context);
         const page = await context.newPage();
         await page.clock.setFixedTime(new Date(SEED_BASE_TIME));

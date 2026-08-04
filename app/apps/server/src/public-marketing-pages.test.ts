@@ -41,7 +41,8 @@ describe('public marketing pages', () => {
     expect(html).toContain('name="consent" value="newsletter" checked');
     expect(html).toContain('.languages a{display:inline-flex');
     expect(html).toContain('min-height:44px');
-    expect(html).toContain('<script nonce="test-nonce">');
+    expect(html).toContain('--bg:#fafafa;--surface:#fff;--ink:#09090b');
+    expect(html).not.toContain('together-theme-mode');
   });
 
   it('renders hosted markdown as prose while escaping markup and unsafe links', () => {

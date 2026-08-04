@@ -8,7 +8,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { API_PATHS } from '#core/contract/index.js';
 
-import { MODES, type ThemeMode } from '../apps/web/src/theme.js';
+import type { ThemeMode } from '../apps/web/src/theme.js';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tsxBin = join(rootDir, 'node_modules/.bin/tsx');
@@ -16,7 +16,6 @@ const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
 const outputDir = join(rootDir, 'tasks/theme-screenshots');
 
-const themeStorageKey = 'together-theme-mode';
 const languageStorageKey = 'together-language';
 const checkoutProductId = 'product-studio-kurs-101';
 const minPngBytes = 20 * 1024;
@@ -157,19 +156,17 @@ const shoot = async (page: Page, name: string): Promise<void> => {
 const newModeContext = async (
   browser: Browser,
   viewport: { width: number; height: number },
-  mode: ThemeMode,
 ): Promise<BrowserContext> => {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
   await context.addInitScript(
-    ([themeKey, themeValue, langKey]) => {
+    (langKey) => {
       try {
-        window.localStorage.setItem(themeKey, themeValue);
         window.localStorage.setItem(langKey, 'en');
       } catch {
         // storage disabled — the choice simply won't persist
       }
     },
-    [themeStorageKey, mode, languageStorageKey] as const,
+    languageStorageKey,
   );
   return context;
 };
@@ -228,17 +225,16 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const viewport = { width: 1440, height: 900 };
 
-  for (const { id: mode, label } of MODES) {
-    console.log(`shots:themes: capturing ${label} (${mode})...`);
+  const mode: ThemeMode = 'shadcn';
+  console.log(`shots:themes: capturing Shadcn (${mode})...`);
 
-    const panelContext = await newModeContext(browser, viewport, mode);
-    await captureCreatorPanel(panelContext, studioBaseUrl, mode);
-    await panelContext.close();
+  const panelContext = await newModeContext(browser, viewport);
+  await captureCreatorPanel(panelContext, studioBaseUrl, mode);
+  await panelContext.close();
 
-    const checkoutContext = await newModeContext(browser, viewport, mode);
-    await captureCheckout(checkoutContext, studioBaseUrl, mode);
-    await checkoutContext.close();
-  }
+  const checkoutContext = await newModeContext(browser, viewport);
+  await captureCheckout(checkoutContext, studioBaseUrl, mode);
+  await checkoutContext.close();
 
   console.log(`\nshots:themes: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s) -> ${outputDir}`);
 } catch (error) {

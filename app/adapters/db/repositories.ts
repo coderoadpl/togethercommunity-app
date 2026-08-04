@@ -2669,6 +2669,8 @@ export const createTenantRepository = (
   findSettings: async (tenantId) => {
     const rows = await db
       .select({
+        name: tenants.name,
+        socialLinks: tenants.socialLinks,
         billingPortalUrl: tenants.billingPortalUrl,
         bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
         logoUrl: tenants.logoUrl,
@@ -2697,6 +2699,8 @@ export const createTenantRepository = (
     const row = rows[0];
     return row
       ? {
+          name: row.name,
+          socialLinks: row.socialLinks,
           billingPortalUrl: row.billingPortalUrl,
           bunnyStreamLibraryId: row.bunnyStreamLibraryId,
           logoUrl: row.logoUrl,
@@ -2740,6 +2744,9 @@ export const createTenantRepository = (
     await db
       .update(tenants)
       .set({
+        name: settings.name,
+        socialLinks: settings.socialLinks,
+        contentVersion: sql`${tenants.contentVersion} + 1`,
         billingPortalUrl: settings.billingPortalUrl,
         bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
         logoUrl: settings.logoUrl,
@@ -2764,6 +2771,8 @@ export const createTenantRepository = (
       })
       .where(eq(tenants.id, tenantId));
     return {
+      name: settings.name,
+      socialLinks: settings.socialLinks,
       billingPortalUrl: settings.billingPortalUrl,
       bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
       logoUrl: settings.logoUrl,
@@ -2787,8 +2796,13 @@ export const createTenantRepository = (
       invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
-  createTenantWithOwnerGrant: async (input) =>
+  createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
+      if (options?.requireEmpty === true) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
+        const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
+        if (existing.length > 0) return null;
+      }
       const rows = await tx
         .insert(tenants)
         .values(input.tenant)
@@ -2810,6 +2824,10 @@ export const createTenantRepository = (
       });
       return tenant;
     }),
+  hasAny: async () => {
+    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({

@@ -50,7 +50,9 @@ const fakeTenants = (tenantList: Tenant[]): TenantRepository => ({
   findById: async (tenantId) => tenantList.find((tenant) => tenant.id === tenantId) ?? null,
   findBySlug: async (slug) => tenantList.find((tenant) => tenant.slug === slug) ?? null,
   findSole: async () => tenantList.length === 1 ? tenantList[0] ?? null : null,
+  hasAny: async () => tenantList.length > 0,
   findSettings: async () => ({
+    name: 'Acme', socialLinks: [],
     billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
     accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
     ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,

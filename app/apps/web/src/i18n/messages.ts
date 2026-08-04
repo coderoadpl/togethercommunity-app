@@ -1169,6 +1169,8 @@ export interface Messages {
   branding: {
     heading: string;
     intro: string;
+    nameLabel: string;
+    nameHint: string;
     logoLabel: string;
     logoPlaceholder: string;
     accentLabel: string;
@@ -1177,6 +1179,16 @@ export interface Messages {
     previewHint: string;
     faviconLabel: string;
     faviconPlaceholder: string;
+    profileLinksHeading: string;
+    profileLinksIntro: (input: { count: number }) => string;
+    socialLinkLabel: string;
+    socialLinkLabelPlaceholder: string;
+    socialLinkUrl: string;
+    socialLinkUrlPlaceholder: string;
+    socialLinkUrlInvalid: string;
+    addSocialLink: string;
+    removeSocialLink: string;
+    socialLinksAria: string;
     socialHeading: string;
     ogTitleLabel: string;
     ogTitleHint: string;

@@ -6,6 +6,8 @@ import type { TenantRepository, TermsConsentRepository } from '../ports.js';
 import { enforceTermsConsent, tenantLegalUrls, validateTermsConsent } from './terms-consent.js';
 
 const settings = (overrides: Partial<TenantSettings> = {}): TenantSettings => ({
+  name: 'Acme',
+  socialLinks: [],
   billingPortalUrl: null,
   bunnyStreamLibraryId: null,
   logoUrl: null,
@@ -27,6 +29,7 @@ const harness = (stored: TenantSettings | null) => {
     findById: async () => null,
     findBySlug: async () => null,
     findSole: async () => null,
+    hasAny: async () => false,
     findSettings: async () => stored,
     updateSettings: async (_tenantId, next) => next,
     createTenantWithOwnerGrant: async () => {

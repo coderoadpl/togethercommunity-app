@@ -71,7 +71,11 @@ const enqueueSubscriptionNotice = async (
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
   const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
   const branding =
-    settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+    settings === null ? undefined : {
+      logoUrl: settings.logoUrl,
+      accentColor: settings.accentColor,
+      socialLinks: settings.socialLinks,
+    };
   const payload =
     kind === 'subscription-payment-failed'
       ? {

@@ -179,12 +179,12 @@ import type {
   PostRepository,
   PostReportRepository,
   PurchaseRepository,
+  ProductBatchReader,
   ProductGrantRepository,
   ProductPriceRepository,
   ProductPriceHistoryRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
-  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   RealtimeBusPort,
@@ -209,6 +209,7 @@ import type {
   ThreadSubscriptionRepository,
   UserDisplayReader,
   VideoLibraryPort,
+  TenantCreationMode,
 } from '#core/server/index.js';
 import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
@@ -315,7 +316,7 @@ export interface AppDeps {
   health: HealthPort;
   appVersion: string;
   commitSha: string;
-  tenantCreationMode: Env['TENANT_CREATION'];
+  tenantCreationMode: TenantCreationMode;
   ids: IdGenerator;
   clock: Clock;
   logger: { error(message: string): void };
@@ -375,12 +376,19 @@ export const selectDevSinkPurge = (
   env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? undefined : create();
 
 export const selectTenantRouting = (
-  env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'TENANT_CREATION'>,
-): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: Env['TENANT_CREATION'] } => ({
+  env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
+): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: TenantCreationMode } => ({
   baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
   singleTenantMode: env.APP_BASE_DOMAIN === undefined,
-  tenantCreationMode: env.APP_BASE_DOMAIN === undefined ? 'closed' : env.TENANT_CREATION,
+  tenantCreationMode: env.APP_BASE_DOMAIN === undefined ? 'closed' : selectTenantCreationMode(env),
 });
+
+export const selectTenantCreationMode = (
+  env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
+): TenantCreationMode => {
+  if (env.TENANT_CREATION === 'closed') return 'closed';
+  return env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? 'bootstrap' : 'open';
+};
 
 export const createMultipleTenantsReporter = (
   write: (message: string) => void = (message) => { process.stderr.write(message); },

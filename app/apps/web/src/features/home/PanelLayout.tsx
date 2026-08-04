@@ -395,6 +395,10 @@ const UserMenu = ({
           <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.5rem' }} />
         </Box>
         <Divider />
+        <Box sx={{ display: { xs: 'block', sm: 'none' }, px: '1rem', py: '0.5rem' }}>
+          <LanguageSwitcher inline />
+        </Box>
+        <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
         <MenuItem
           data-testid="sign-out"
           disabled={pending}
@@ -442,6 +446,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
+      mobileNavigationCloseLabel={t.panel.closeNavigation}
       navigation={nav}
       footer={(
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -508,6 +513,7 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
+      mobileNavigationCloseLabel={t.panel.closeNavigation}
       state={{ kind: 'error', message, retry: { label: t.common.retry, onRetry } }}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
       footer={(

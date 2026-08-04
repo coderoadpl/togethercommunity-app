@@ -80,7 +80,28 @@ describe('coupon sales surfaces', () => {
       ),
     );
 
-    renderWithProviders(<CouponsPanel />);
+    const root = createRootRoute();
+    const listPage = createRoute({
+      getParentRoute: () => root,
+      path: '/panel/sales/coupons',
+      component: CouponsPanel,
+    });
+    const createPage = createRoute({
+      getParentRoute: () => root,
+      path: '/panel/sales/coupons/new',
+      component: () => <div>create</div>,
+    });
+    const detailPage = createRoute({
+      getParentRoute: () => root,
+      path: '/panel/sales/coupons/$couponId',
+      component: () => <div>detail</div>,
+    });
+    const router = createRouter({
+      routeTree: root.addChildren([listPage, createPage, detailPage]),
+      history: createMemoryHistory({ initialEntries: ['/panel/sales/coupons'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByTestId('coupon-row')).toHaveTextContent('PARTNER20');
     expect(screen.getByTestId('coupon-row')).toHaveTextContent('80,00');
@@ -159,7 +180,18 @@ describe('coupon sales surfaces', () => {
       }),
     );
 
-    renderWithProviders(<CouponDetailPage couponId="coupon-1" />);
+    const root = createRootRoute();
+    const detailPage = createRoute({
+      getParentRoute: () => root,
+      path: '/panel/sales/coupons/$couponId',
+      component: () => <CouponDetailPage couponId="coupon-1" />,
+    });
+    const router = createRouter({
+      routeTree: root.addChildren([detailPage]),
+      history: createMemoryHistory({ initialEntries: ['/panel/sales/coupons/coupon-1'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
 
     expect(await screen.findByText('50%')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: pl.coupons.archive }));

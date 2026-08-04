@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
+import { Alert, Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Tooltip } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -85,8 +85,10 @@ export const MemberAccountMenu = () => {
           </ListItemIcon>
           <ListItemText primary={t.tenant.signOut} />
         </MenuItem>
-        {signOut.isError ? <Alert severity="error">{localizeError(signOut.error, t)}</Alert> : null}
       </Menu>
+      <Snackbar open={signOut.isError} autoHideDuration={6000} onClose={() => signOut.reset()}>
+        <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizeError(signOut.error, t) : ''}</Alert>
+      </Snackbar>
     </>
   );
 };

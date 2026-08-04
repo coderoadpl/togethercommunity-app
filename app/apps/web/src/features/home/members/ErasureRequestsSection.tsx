@@ -44,6 +44,8 @@ export const ErasureRequestsSection = () => {
     },
   });
 
+  if (requests.isSuccess && requests.data.requests.length === 0) return null;
+
   return (
     <>
       <SectionCard title={t.members.erasureRequestsHeading}>
@@ -53,8 +55,6 @@ export const ErasureRequestsSection = () => {
           <StatusView
             state={{ kind: 'error', message: localizeError(requests.error, t), retry: { label: t.common.retry, onRetry: () => void requests.refetch() } }}
           />
-        ) : requests.data.requests.length === 0 ? (
-          <Typography>{t.members.erasureRequestsEmpty}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
             {requests.data.requests.map((request) => {

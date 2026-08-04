@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, Link, Paper, Stack } from '@mui/material';
+import { Alert, Box, Button, Chip, Link as MuiLink, Paper, Stack } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import { REACTION_EMOJIS, type ReactionEmoji, type ReactionSummary, type SpaceFeedItem } from '#core/domain/index.js';
@@ -128,9 +128,9 @@ const FeedPost = ({
           <PostMetaText component="span" data-testid={`reply-count-${item.id}`}>
             {t.discussion.replyCount({ count: item.replyCount })}
           </PostMetaText>
-          <Link href={`/community/${spaceId}/posts/${item.id}`} data-testid={`open-thread-${item.id}`}>
+          <MuiLink component={Link} to={`/community/${encodeURIComponent(spaceId)}/posts/${encodeURIComponent(item.id)}`} data-testid={`open-thread-${item.id}`}>
             {t.community.openThread}
-          </Link>
+          </MuiLink>
           {canPin ? (
             <Button
               size="small"
@@ -212,7 +212,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           kind: 'not-found',
           title: t.community.spaceNotFoundTitle,
           body: t.community.spaceNotFoundBody,
-          action: <Link href="/community">{t.community.backToSpaces}</Link>,
+          action: <MuiLink component={Link} to="/community">{t.community.backToSpaces}</MuiLink>,
         }}
       />
     );

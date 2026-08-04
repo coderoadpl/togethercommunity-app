@@ -24,6 +24,7 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import {
   Eyebrow,
   ReorderCard,
@@ -753,6 +754,15 @@ const CourseDetailsSection = ({ course }: { course: Course }) => {
             setImageUrl(event.target.value);
           }}
         />
+        {imageUrl.trim() === '' ? null : (
+          <Box
+            component="img"
+            src={imageUrl.trim()}
+            alt={t.courses.imagePreview}
+            data-testid="course-image-preview"
+            sx={{ display: 'block', mt: '0.75rem', width: '100%', maxWidth: '30rem', aspectRatio: '16 / 9', objectFit: 'cover' }}
+          />
+        )}
       </FormControl>
       {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
       {save.isError ? (
@@ -820,10 +830,10 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const detachModule = useMutation({ ...actions.detachModule, onSuccess: invalidateTree });
 
   if (modules.isPending || lessons.isPending) {
-    return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
+    return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
-  if (modules.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
-  if (lessons.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
+  if (modules.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
+  if (lessons.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const attached = orderAttachedModules(
     course,
@@ -852,14 +862,13 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   return (
     <PanelPage
       title={course.name}
-      backTo={{
-        label: t.courses.allCourses,
-        href: '/panel/courses',
-        onClick: (event) => {
+      backTo={<PanelBackLink
+        to="/panel/courses"
+        onClick={(event) => {
           event.preventDefault();
           onBack();
-        },
-      }}
+        }}
+      >{t.courses.allCourses}</PanelBackLink>}
       action={
         <Button
           variant="contained"
@@ -877,7 +886,7 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
       <HistoryPanel courseId={course.id} />
 
       <Box component="section">
-        <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
+        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
           {t.courses.modulesHeading}
         </Typography>
         {reorderModules.isError ? <MutationError error={reorderModules.error} /> : null}

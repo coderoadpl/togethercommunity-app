@@ -98,8 +98,8 @@ describe('email transport wizard', () => {
     const user = userEvent.setup();
     renderWithProviders(<MarketingSettingsPanel />);
 
-    expect(within((await screen.findByText('Zestaw konfiguracji SES')).closest('li') ?? document.body).getByText('gotowe')).toBeInTheDocument();
-    expect(within(screen.getByText('Subskrypcja SNS').closest('li') ?? document.body).getByText('gotowe')).toBeInTheDocument();
+    expect(within((await screen.findByText('Zestaw konfiguracji SES')).closest('li') ?? document.body).getByText('Gotowe')).toBeInTheDocument();
+    expect(within(screen.getByText('Subskrypcja SNS').closest('li') ?? document.body).getByText('Gotowe')).toBeInTheDocument();
     expect(screen.getByText(/Weryfikacja nieaktualna/)).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: 'Sprawdź status w AWS' }));

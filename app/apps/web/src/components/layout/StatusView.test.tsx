@@ -13,6 +13,7 @@ describe('StatusView', () => {
   it('renders the loading label', () => {
     render(<StatusView state={{ kind: 'loading', label: 'Wczytywanie…' }} data-testid="status" />);
     expect(screen.getByTestId('status')).toHaveTextContent('Wczytywanie…');
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('renders the error message with a working retry action', async () => {

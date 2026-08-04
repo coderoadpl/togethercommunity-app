@@ -64,6 +64,7 @@ export const ReportsPanel = () => {
             data-testid={`reports-status-${value}`}
             label={statusLabel(value)}
             color={status === value ? 'primary' : 'default'}
+            aria-pressed={status === value}
             onClick={() => setStatus(value)}
           />
         ))}

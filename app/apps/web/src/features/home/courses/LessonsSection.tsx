@@ -39,6 +39,7 @@ import { matchesQuery, SearchField, useDebouncedValue } from '../../../component
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import {
   Eyebrow,
   LessonMediaClip,
@@ -198,14 +199,14 @@ const VideoBlockFields = ({
           {t.lessons.videoPickFromBunny}
         </Button>
       </Box>
-      {field('storageKey', 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
-      {field('streamVideoId', 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
+      {field(`${t.lessons.storageKeyLabel} — ${t.lessons.technicalFieldHint({ field: 'storageKey' })}`, 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
+      {field(`${t.lessons.streamVideoIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamVideoId' })}`, 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
         onChange({ ...draft, streamVideoId }),
       )}
-      {field('streamLibraryId', 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
+      {field(`${t.lessons.streamLibraryIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamLibraryId' })}`, 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
         onChange({ ...draft, streamLibraryId }),
       )}
-      {field('streamCollectionId', 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
+      {field(`${t.lessons.streamCollectionIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamCollectionId' })}`, 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
         onChange({ ...draft, streamCollectionId }),
       )}
       {pickerOpen ? (
@@ -313,15 +314,15 @@ const BlockFields = ({
     case 'pdf':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field('pdfUrl', 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }))}
-          {field('name', 'name', draft.name, (name) => onChange({ ...draft, name }))}
+          {field(`${t.lessons.pdfUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'pdfUrl' })}`, 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }))}
+          {field(`${t.lessons.fileNameLabel} — ${t.lessons.technicalFieldHint({ field: 'name' })}`, 'name', draft.name, (name) => onChange({ ...draft, name }))}
         </Stack>
       );
     case 'link':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field('url', 'url', draft.url, (url) => onChange({ ...draft, url }))}
-          {field('description', 'description', draft.description, (description) => onChange({ ...draft, description }))}
+          {field(`${t.lessons.linkUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'url' })}`, 'url', draft.url, (url) => onChange({ ...draft, url }))}
+          {field(`${t.lessons.linkDescriptionLabel} — ${t.lessons.technicalFieldHint({ field: 'description' })}`, 'description', draft.description, (description) => onChange({ ...draft, description }))}
         </Stack>
       );
     case 'html':
@@ -741,6 +742,7 @@ export const LessonsSection = () => {
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.lessons.searchPlaceholder}
             placeholder={t.lessons.searchPlaceholder}
             testId="lessons-search"
           />
@@ -822,7 +824,7 @@ export const LessonCreatePage = () => {
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={t.lessons.newLesson} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }}>
+    <PanelPage title={t.lessons.newLesson} backTo={<PanelBackLink to="/panel/lessons">{t.lessons.allLessons}</PanelBackLink>}>
       <LessonForm
         lesson={null}
         onSaved={(lessonId) => void navigate({ to: '/panel/lessons/$lessonId', params: { lessonId } })}
@@ -836,7 +838,7 @@ export const LessonEditPage = ({ lesson }: { lesson: CourseLesson }) => {
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={lesson.name} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }}>
+    <PanelPage title={lesson.name} backTo={<PanelBackLink to="/panel/lessons">{t.lessons.allLessons}</PanelBackLink>}>
       <LessonForm
         key={lesson.id}
         lesson={lesson}

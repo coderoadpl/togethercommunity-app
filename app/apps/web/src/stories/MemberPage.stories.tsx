@@ -71,11 +71,12 @@ export const LessonWithRail: Story = {
   args: {
     eyebrow: 'JavaScript od zera · Moduł 1',
     title: 'Zmienne i typy',
+    breadcrumbLabel: 'Okruszki',
     width: 'prose',
     nav: memberNav,
     breadcrumbs: [
-      { label: 'Moje kursy', href: '#' },
-      { label: 'JavaScript od zera', href: '#' },
+      { label: 'Moje kursy', link: <Link href="#">Moje kursy</Link> },
+      { label: 'JavaScript od zera', link: <Link href="#">JavaScript od zera</Link> },
       { label: 'Zmienne i typy' },
     ],
     rail: progressRail,
@@ -88,6 +89,7 @@ export const WithBottomTabBar: Story = {
   args: {
     eyebrow: 'Twoja biblioteka',
     title: 'Moje kursy',
+    breadcrumbLabel: 'Okruszki',
     width: 'wide',
     children: (
       <Stack useFlexGap spacing="1rem">
@@ -134,6 +136,7 @@ export const LoadingState: Story = {
   args: {
     eyebrow: 'JavaScript od zera',
     title: 'Zmienne i typy',
+    breadcrumbLabel: 'Okruszki',
     state: { kind: 'loading', label: 'Wczytywanie lekcji…' },
   },
 };

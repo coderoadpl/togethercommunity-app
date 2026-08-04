@@ -71,12 +71,14 @@ const ProductRow = ({
   spaces,
   spacesPending,
   spacesError,
+  accessIssuesUnknown,
 }: {
   product: Product;
   issue?: ProductAccessIssues | undefined;
   spaces: StaffSpace[];
   spacesPending: boolean;
   spacesError: boolean;
+  accessIssuesUnknown: boolean;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
@@ -174,6 +176,9 @@ const ProductRow = ({
         {issue ? (
           <Chip size="small" color="warning" variant="outlined" label={t.products.accessIssuesChip} />
         ) : null}
+        {accessIssuesUnknown ? (
+          <Chip size="small" color="default" variant="outlined" label={t.products.accessIssuesUnknownChip} />
+        ) : null}
         <Box sx={{ flex: 1 }} />
         <Tooltip title={t.products.copyCheckoutLink}>
           <IconButton
@@ -251,8 +256,8 @@ const ProductRow = ({
         <Button
           size="small"
           variant="text"
-          component="a"
-          href={`/panel/products/${encodeURIComponent(product.id)}`}
+          component={Link}
+          to={`/panel/products/${encodeURIComponent(product.id)}`}
         >
           {t.products.manage}
         </Button>
@@ -340,6 +345,7 @@ export const ProductsPanel = () => {
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.products.searchPlaceholder}
             placeholder={t.products.searchPlaceholder}
             testId="products-search"
           />
@@ -380,6 +386,7 @@ export const ProductsPanel = () => {
                 spaces={spaces.data?.spaces ?? []}
                 spacesPending={spaces.isPending}
                 spacesError={spaces.isError}
+                accessIssuesUnknown={accessIssues.isError}
               />
             ))}
           </Stack>

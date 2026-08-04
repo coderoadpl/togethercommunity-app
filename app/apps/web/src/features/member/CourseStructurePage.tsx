@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { Box, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
@@ -120,7 +120,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
               kind: 'not-found',
               title: t.courseTree.courseNotFound,
               body: t.courseTree.courseNotInLibrary,
-              action: <Link href="/my">{t.courseTree.backToMyCourses}</Link>,
+              action: <MuiLink component={Link} to="/my">{t.courseTree.backToMyCourses}</MuiLink>,
             }
           : {
               kind: 'error',

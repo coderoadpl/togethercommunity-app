@@ -5,13 +5,13 @@ import {
   Button,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
@@ -88,7 +88,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
               <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
                 {t.auth.registeredBoughtHint}
               </FinePrint>
-              <Link href="/login">{t.auth.registeredUseMagicLinkCta}</Link>
+              <MuiLink component={Link} to="/login">{t.auth.registeredUseMagicLinkCta}</MuiLink>
             </Box>
           </Stack>
       </FocusCard>
@@ -101,7 +101,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
       onSubmit={submit}
       footer={
         <FinePrint variant="caption" component="p">
-          {t.auth.alreadyHaveAccount} <Link href="/login">{t.auth.signInLink}</Link>
+          {t.auth.alreadyHaveAccount} <MuiLink component={Link} to="/login">{t.auth.signInLink}</MuiLink>
         </FinePrint>
       }
     >

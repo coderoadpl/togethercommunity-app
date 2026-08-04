@@ -25,6 +25,7 @@ import { actions } from '../../../api.js';
 import { ConfirmDialog, ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { useUnsavedChanges } from '../use-unsaved-changes.js';
 import { StatTile, StatTileLabel, StatTileValue } from '../../../theme.js';
 import { CampaignStatusChip, MarketingSummaryRow } from './MarketingSummaryRow.js';
@@ -431,7 +432,7 @@ export const CampaignsPanel = () => {
 
 export const CampaignCreatePage = () => {
   const t = useTranslations();
-  return <PanelPage title={t.marketing.newCampaign} backTo={{ label: t.marketing.allCampaigns, href: '/panel/marketing/campaigns' }}><CampaignForm /></PanelPage>;
+  return <PanelPage title={t.marketing.newCampaign} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}><CampaignForm /></PanelPage>;
 };
 
 export const CampaignDetailPage = () => {
@@ -442,7 +443,7 @@ export const CampaignDetailPage = () => {
   if (campaign.isError) return <PanelPage title={t.marketing.campaignsTitle} state={{ kind: 'error', message: localizeError(campaign.error, t), retry: { label: t.common.retry, onRetry: () => void campaign.refetch() } }} />;
   if (params.campaignId === undefined) return <Navigate to="/panel/marketing/campaigns" />;
   return (
-    <PanelPage title={campaign.data.campaign.name} backTo={{ label: t.marketing.allCampaigns, href: '/panel/marketing/campaigns' }}>
+    <PanelPage title={campaign.data.campaign.name} backTo={<PanelBackLink to="/panel/marketing/campaigns">{t.marketing.allCampaigns}</PanelBackLink>}>
       <CampaignEngagementTiles engagement={campaign.data.campaign.engagement} />
       <CampaignForm campaign={campaign.data.campaign} />
       <CampaignActions campaign={campaign.data.campaign} />

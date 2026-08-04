@@ -6,6 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { useTranslations } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { MutationError } from './feedback.js';
 
 const CreateModuleForm = ({ courseId, onCreated }: { courseId: string; onCreated: () => void }) => {
@@ -68,7 +69,7 @@ export const ModuleCreatePage = ({ courseId, courseName }: { courseId: string; c
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={t.courses.newModule} backTo={{ label: `← ${courseName}`, href: `/panel/courses/${courseId}` }}>
+    <PanelPage title={t.courses.newModule} backTo={<PanelBackLink to={`/panel/courses/${encodeURIComponent(courseId)}`}>{`← ${courseName}`}</PanelBackLink>}>
       <CreateModuleForm
         courseId={courseId}
         onCreated={() => void navigate({ to: '/panel/courses/$courseId', params: { courseId } })}

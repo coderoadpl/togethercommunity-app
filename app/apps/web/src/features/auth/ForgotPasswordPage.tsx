@@ -4,11 +4,12 @@ import {
   Button,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Stack,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { actions } from '../../api.js';
@@ -42,7 +43,7 @@ export const ForgotPasswordPage = () => {
 
   const footer = (
     <FinePrint variant="caption" component="p">
-      <Link href="/login">{t.forgotPassword.backToLogin}</Link>
+      <MuiLink component={Link} to="/login">{t.forgotPassword.backToLogin}</MuiLink>
     </FinePrint>
   );
 

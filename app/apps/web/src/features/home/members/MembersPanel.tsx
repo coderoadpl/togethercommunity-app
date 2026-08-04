@@ -133,7 +133,6 @@ export const MembersPanel = () => {
         </Stack>
       }
     >
-      <ErasureRequestsSection />
       <Stack id="invite-members" sx={{ scrollMarginTop: '1rem' }}>
       <ListSection
         toolbar={{
@@ -141,6 +140,7 @@ export const MembersPanel = () => {
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.members.searchPlaceholder}
             placeholder={t.members.searchPlaceholder}
             testId="members-search"
           />
@@ -242,6 +242,7 @@ export const MembersPanel = () => {
         )}
       </ListSection>
       </Stack>
+      <ErasureRequestsSection />
       {exportError !== null ? <Alert severity="error">{exportError}</Alert> : null}
       {failedSubscriptionIds.length > 0 ? (
         <Alert severity="warning" data-testid="member-remove-cancellation-warning">

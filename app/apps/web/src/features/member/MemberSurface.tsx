@@ -1,9 +1,9 @@
 import type { ComponentProps, ReactNode } from 'react';
-import { Alert, Box, ButtonBase, Link, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { Alert, Box, ButtonBase, Link as MuiLink, Paper, Stack, SvgIcon, Typography } from '@mui/material';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
-import { useRouterState } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 
 import { TenantLogo, TenantSocialLinks } from '../../branding.js';
 import { actions } from '../../api.js';
@@ -30,15 +30,17 @@ const ProductsIcon = () => (
 
 const HeaderNavigation = ({ liveNotifications }: { liveNotifications: boolean }) => {
   const t = useTranslations();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const activeTab = getActiveMemberTab(pathname);
   return (
     <Stack
       direction="row"
       useFlexGap
       sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', columnGap: '1rem' }}
     >
-      <Link href="/my">{t.student.myCourses}</Link>
-      <Link href="/community">{t.community.tab}</Link>
-      <Link href="/my/products">{t.student.myProducts}</Link>
+      <MuiLink component={Link} to="/my" aria-current={activeTab === 'courses' ? 'page' : undefined}>{t.student.myCourses}</MuiLink>
+      <MuiLink component={Link} to="/community" aria-current={activeTab === 'community' ? 'page' : undefined}>{t.community.tab}</MuiLink>
+      <MuiLink component={Link} to="/my/products" aria-current={activeTab === 'products' ? 'page' : undefined}>{t.student.myProducts}</MuiLink>
       <NotificationBell live={liveNotifications} />
       <MemberAccountMenu />
     </Stack>
@@ -57,13 +59,13 @@ const TabLink = ({
   icon: ReactNode;
 }) => (
   <ButtonBase
-    component="a"
-    href={href}
+    component={Link}
+    to={href}
     aria-current={current ? 'page' : undefined}
     sx={{ minWidth: 0, py: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}
   >
     {icon}
-    <Typography variant="caption" component="span">
+    <Typography variant="caption" component="span" noWrap>
       {label}
     </Typography>
   </ButtonBase>
@@ -93,7 +95,7 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
         <TabLink
           href="/my"
-          label={t.student.myCourses}
+          label={t.student.mobileCourses}
           current={activeTab === 'courses'}
           icon={<CoursesIcon />}
         />
@@ -105,11 +107,11 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
         />
         <TabLink
           href="/my/products"
-          label={t.student.myProducts}
+          label={t.student.mobileProducts}
           current={activeTab === 'products'}
           icon={<ProductsIcon />}
         />
-        <NotificationBell tabLabel={t.notifications.heading} live={liveNotifications} />
+        <NotificationBell tabLabel={t.notifications.mobileTab} live={liveNotifications} />
         <TabLink
           href="/account"
           label={t.account.menuAccount}
@@ -121,7 +123,7 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
   );
 };
 
-type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav'> & {
+type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav' | 'breadcrumbLabel'> & {
   authenticated?: boolean;
 };
 
@@ -134,6 +136,7 @@ export const MemberSurface = ({ authenticated = true, ...props }: Props) => {
   return (
     <MemberPage
       {...props}
+      breadcrumbLabel={t.common.breadcrumbs}
       children={(
         <>
           {me.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /> : null}
@@ -145,7 +148,7 @@ export const MemberSurface = ({ authenticated = true, ...props }: Props) => {
       logo={<TenantLogo />}
       nav={authenticated
         ? <HeaderNavigation liveNotifications={!mobile} />
-        : <Link href="/login">{t.auth.signInLink}</Link>}
+        : <MuiLink component={Link} to="/login">{t.auth.signInLink}</MuiLink>}
       bottomNav={authenticated ? <BottomNavigation liveNotifications={mobile} /> : undefined}
     />
   );

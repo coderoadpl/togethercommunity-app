@@ -27,6 +27,8 @@ const currentDir = join(rootDir, 'out/visual/current');
 const diffDir = join(rootDir, 'out/visual/diff');
 const argosDir = join(rootDir, 'out/visual/argos');
 const chromeExecutablePath = process.env['PLAYWRIGHT_CHROME_EXECUTABLE_PATH'];
+const chromeCdpEndpoint = process.env['PLAYWRIGHT_CHROME_CDP_ENDPOINT'];
+const playwrightWsEndpoint = process.env['PLAYWRIGHT_WS_ENDPOINT'];
 
 const updateMode = process.argv.includes('--update');
 const argosCaptureMode = process.argv.includes('--argos-capture');
@@ -40,8 +42,9 @@ const minPngBytes = 10 * 1024;
 const THEMES: ThemeMode[] = ['shadcn'];
 
 const VIEWPORTS = [
-  { name: 'desktop', width: 1440, height: 900 },
-  { name: 'mobile', width: 390, height: 844 },
+  { name: 'desktop', width: 1440, height: 900, scope: 'all' },
+  { name: 'mobile', width: 390, height: 844, scope: 'all' },
+  { name: 'mobile-375', width: 375, height: 812, scope: 'member-checkout' },
 ] as const;
 
 type AuthKind = 'public' | 'member' | 'member-free' | 'creator';
@@ -185,8 +188,9 @@ const SCREENS: ScreenSpec[] = [
     auth: 'member',
     path: '/my',
     ready: async (page) => {
-      await page.getByTestId('course-card-course-js').waitFor(visible);
-      await page.getByTestId('completion-course-js').waitFor(visible);
+      const seededCourseCard = page.locator('a[href="/my/courses/course-js"]');
+      await seededCourseCard.waitFor(visible);
+      await seededCourseCard.getByTestId('completion-course-js').waitFor(visible);
       await waitForUnreadBadge(page);
     },
   },
@@ -240,7 +244,7 @@ const SCREENS: ScreenSpec[] = [
     auth: 'member',
     path: '/my/courses/course-js/lessons/lesson-js-zmienne-1',
     ready: async (page) => {
-      await page.getByLabel('breadcrumb').waitFor(visible);
+      await page.getByTestId('member-breadcrumbs').waitFor(visible);
       await page.getByTestId('discussion-composer').waitFor(visible);
       await page.getByTestId('author-chip-post-js-zmienne-q-r2').waitFor(visible);
     },
@@ -513,11 +517,11 @@ const prepareDatabase = async (): Promise<void> => {
   }
   const migrate = await run(tsxBin, ['adapters/db/migrate.ts'], { DATABASE_URL: devDatabaseUrl });
   assert(migrate.code === 0, `Migration failed:\n${migrate.stdout}${migrate.stderr}`);
-  const seed = await run(tsxBin, ['adapters/db/seed.ts'], {
+  const seed = await run(tsxBin, ['adapters/db/reseed.ts'], {
     DATABASE_URL: devDatabaseUrl,
     SEED_BASE_TIME,
   });
-  assert(seed.code === 0, `Seed failed:\n${seed.stdout}${seed.stderr}`);
+  assert(seed.code === 0, `Reseed failed:\n${seed.stdout}${seed.stderr}`);
 };
 
 const buildWeb = async (): Promise<void> => {
@@ -749,11 +753,15 @@ try {
   console.log(`visual: booting server on port ${port}...`);
   server = await bootServer(port, studioBaseUrl, connectUrl);
 
-  browser = await chromium.launch(
-    chromeExecutablePath
-      ? { executablePath: chromeExecutablePath, headless: true }
-      : { channel: 'chrome', headless: true },
-  );
+  browser = playwrightWsEndpoint !== undefined
+    ? await chromium.connect(playwrightWsEndpoint, { exposeNetwork: '<loopback>' })
+    : chromeCdpEndpoint === undefined
+      ? await chromium.launch(
+          chromeExecutablePath
+            ? { executablePath: chromeExecutablePath, headless: true }
+            : { channel: 'chrome', headless: true },
+        )
+      : await chromium.connectOverCDP(chromeCdpEndpoint);
 
   console.log('visual: signing in the member and creator fixtures...');
   const memberState = await bootstrapAuthState(browser, studioBaseUrl, signInMember);
@@ -772,7 +780,13 @@ try {
   for (const theme of THEMES) {
     for (const viewport of VIEWPORTS) {
       for (const auth of ['public', 'member', 'member-free', 'creator'] satisfies AuthKind[]) {
-        const screens = SCREENS.filter((screen) => screen.auth === auth);
+        const screens = SCREENS.filter((screen) =>
+          screen.auth === auth
+          && (viewport.scope === 'all'
+            || screen.name === 'checkout'
+            || screen.auth === 'member'
+            || screen.auth === 'member-free'),
+        );
         const storageState = stateFor(auth);
         const context = await browser.newContext({
           viewport: { width: viewport.width, height: viewport.height },
@@ -839,7 +853,7 @@ try {
         await context.close();
       }
     }
-    console.log(`visual: captured ${theme} (${SCREENS.length} screens x ${VIEWPORTS.length} viewports)`);
+    console.log(`visual: captured ${theme} (${captured} screenshots)`);
   }
 
   const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);

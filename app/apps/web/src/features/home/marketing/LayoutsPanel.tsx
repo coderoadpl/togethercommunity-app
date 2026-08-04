@@ -9,6 +9,7 @@ import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { MarketingSummaryRow } from './MarketingSummaryRow.js';
 
 const LayoutForm = ({ layout }: { layout?: EmailLayout | undefined }) => {
@@ -65,7 +66,7 @@ export const LayoutsPanel = () => {
 
 export const LayoutCreatePage = () => {
   const t = useTranslations();
-  return <PanelPage title={t.marketing.newLayout} backTo={{ label: t.marketing.allLayouts, href: '/panel/marketing/layouts' }}><LayoutForm /></PanelPage>;
+  return <PanelPage title={t.marketing.newLayout} backTo={<PanelBackLink to="/panel/marketing/layouts">{t.marketing.allLayouts}</PanelBackLink>}><LayoutForm /></PanelPage>;
 };
 
 export const LayoutDetailPage = () => {
@@ -76,5 +77,5 @@ export const LayoutDetailPage = () => {
   if (layouts.isError) return <PanelPage title={t.marketing.layoutsTitle} state={{ kind: 'error', message: localizeError(layouts.error, t), retry: { label: t.common.retry, onRetry: () => void layouts.refetch() } }} />;
   const layout = layouts.data.layouts.find((entry) => entry.id === params.layoutId);
   if (layout === undefined) return <Navigate to="/panel/marketing/layouts" />;
-  return <PanelPage title={layout.name} backTo={{ label: t.marketing.allLayouts, href: '/panel/marketing/layouts' }}><LayoutForm layout={layout} /></PanelPage>;
+  return <PanelPage title={layout.name} backTo={<PanelBackLink to="/panel/marketing/layouts">{t.marketing.allLayouts}</PanelBackLink>}><LayoutForm layout={layout} /></PanelPage>;
 };

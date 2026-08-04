@@ -22,7 +22,14 @@ export const StatusView = ({ state, surface = true, 'data-testid': testId }: Sta
       return null;
     case 'loading':
       return (
-        <Typography variant="h2" component="p" data-testid={testId}>
+        <Typography
+          variant="h2"
+          component="p"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          data-testid={testId}
+        >
           {state.label}
         </Typography>
       );

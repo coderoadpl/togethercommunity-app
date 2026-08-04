@@ -55,8 +55,8 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
         <Button
           size="small"
           variant="text"
-          component="a"
-          href={`/panel/spaces/${encodeURIComponent(space.id)}`}
+          component={Link}
+          to={`/panel/spaces/${encodeURIComponent(space.id)}`}
           data-testid={`space-manage-${space.id}`}
         >
           {t.spacesPanel.manage}

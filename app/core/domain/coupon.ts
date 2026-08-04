@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 import type { PriceKind } from './commerce.js';
+import { SUPPORTED_CURRENCIES } from './product.js';
+
+const couponCurrencySchema = z.enum(SUPPORTED_CURRENCIES);
 
 const couponKindSchema = z.enum(['percent', 'amount']);
 export type CouponKind = z.infer<typeof couponKindSchema>;
@@ -25,8 +28,8 @@ export const couponSchema = z
     tenantId: z.string(),
     code: z.string().min(1),
     kind: couponKindSchema,
-    value: z.number().int().nonnegative(),
-    currency: z.string().regex(/^[A-Z]{3}$/).nullable().optional(),
+    value: z.number().int().positive(),
+    currency: couponCurrencySchema.nullable().optional(),
     scope: couponScopeSchema,
     appliesTo: couponAppliesToSchema,
     recurringDuration: couponRecurringDurationSchema,
@@ -76,8 +79,8 @@ export const couponCreateInputSchema = z
   .object({
     code: z.string().trim().min(1).max(100),
     kind: couponKindSchema,
-    value: z.number().int().nonnegative(),
-    currency: z.string().regex(/^[A-Z]{3}$/).nullable().default(null),
+    value: z.number().int().positive(),
+    currency: couponCurrencySchema.nullable().default(null),
     scope: couponScopeSchema,
     appliesTo: couponAppliesToSchema,
     recurringDuration: couponRecurringDurationSchema.default('first_invoice'),

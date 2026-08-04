@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Box, Chip, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { MemberSpace } from '#core/domain/index.js';
@@ -22,7 +22,7 @@ const isForbidden = (error: Error | null) =>
 const SpaceCard = ({ space }: { space: MemberSpace }) => {
   const t = useTranslations();
   return (
-    <CourseCardRoot component="a" href={`/community/${space.id}`} data-testid={`space-card-${space.id}`}>
+    <CourseCardRoot component={Link} to={`/community/${encodeURIComponent(space.id)}`} data-testid={`space-card-${space.id}`}>
       <Box sx={{ p: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', height: '100%' }}>
         <Stack direction="row" useFlexGap sx={{ alignItems: 'flex-start', columnGap: '0.75rem' }}>
           <CardTitle variant="h2" sx={{ flex: 1, minWidth: 0 }}>

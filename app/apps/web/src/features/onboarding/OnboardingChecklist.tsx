@@ -1,4 +1,5 @@
-import { Alert, Button, List, ListItem, ListItemButton, ListItemIcon, ListItemText, SvgIcon } from '@mui/material';
+import { Alert, Button, Collapse, List, ListItem, ListItemButton, ListItemIcon, ListItemText, SvgIcon } from '@mui/material';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -33,6 +34,7 @@ export const OnboardingChecklist = () => {
   const t = useTranslations();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
   const onboarding = useQuery(actions.onboarding);
   const dismiss = useMutation({
     ...actions.dismissOnboarding,
@@ -49,6 +51,8 @@ export const OnboardingChecklist = () => {
 
   const steps = onboarding.data.onboarding.steps;
   const done = steps.filter((step) => step.done).length;
+  const complete = done === steps.length;
+  const stepsVisible = !complete || expanded;
 
   return (
     <SectionCard
@@ -56,43 +60,57 @@ export const OnboardingChecklist = () => {
       description={t.onboarding.progress({ done, total: steps.length })}
       data-testid="onboarding-checklist"
       actions={
-        <Button
-          variant="text"
-          onClick={() => dismiss.mutate(undefined)}
-          disabled={dismiss.isPending}
-          data-testid="onboarding-dismiss"
-        >
-          {t.onboarding.dismiss}
-        </Button>
+        <>
+          {complete ? (
+            <Button
+              variant="text"
+              aria-expanded={stepsVisible}
+              onClick={() => setExpanded((current) => !current)}
+              data-testid="onboarding-toggle"
+            >
+              {stepsVisible ? t.onboarding.hideSteps : t.onboarding.showSteps}
+            </Button>
+          ) : null}
+          <Button
+            variant="text"
+            onClick={() => dismiss.mutate(undefined)}
+            disabled={dismiss.isPending}
+            data-testid="onboarding-dismiss"
+          >
+            {t.onboarding.dismiss}
+          </Button>
+        </>
       }
     >
-      <List disablePadding>
-        {steps.map((step) => (
-          <ListItem key={step.id} disableGutters disablePadding data-testid={`onboarding-step-${step.id}`}>
-            <ListItemButton onClick={() => void navigate({ to: step.target })}>
-              <ListItemIcon sx={{ minWidth: '2.25rem' }}>
-                <SvgIcon
-                  fontSize="small"
-                  viewBox="0 0 24 24"
-                  color={step.done ? 'success' : 'disabled'}
-                  titleAccess={step.done ? t.onboarding.stepDone : t.onboarding.stepOpen}
-                >
-                  <path d={step.done ? DONE_ICON_PATH : OPEN_ICON_PATH} />
-                </SvgIcon>
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  step.done ? (
-                    <ChecklistDoneLabel>{stepLabel(t.onboarding.steps, step.id)}</ChecklistDoneLabel>
-                  ) : (
-                    stepLabel(t.onboarding.steps, step.id)
-                  )
-                }
-              />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
+      <Collapse in={stepsVisible} unmountOnExit>
+        <List disablePadding>
+          {steps.map((step) => (
+            <ListItem key={step.id} disableGutters disablePadding data-testid={`onboarding-step-${step.id}`}>
+              <ListItemButton onClick={() => void navigate({ to: step.target })}>
+                <ListItemIcon sx={{ minWidth: '2.25rem' }}>
+                  <SvgIcon
+                    fontSize="small"
+                    viewBox="0 0 24 24"
+                    color={step.done ? 'success' : 'disabled'}
+                    titleAccess={step.done ? t.onboarding.stepDone : t.onboarding.stepOpen}
+                  >
+                    <path d={step.done ? DONE_ICON_PATH : OPEN_ICON_PATH} />
+                  </SvgIcon>
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    step.done ? (
+                      <ChecklistDoneLabel>{stepLabel(t.onboarding.steps, step.id)}</ChecklistDoneLabel>
+                    ) : (
+                      stepLabel(t.onboarding.steps, step.id)
+                    )
+                  }
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </Collapse>
       {dismiss.isError ? <Alert severity="error">{localizeError(dismiss.error, t)}</Alert> : null}
     </SectionCard>
   );

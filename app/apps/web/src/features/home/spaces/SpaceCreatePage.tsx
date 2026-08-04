@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { actions } from '../../../api.js';
 import { PanelPage } from '../../../components/layout/index.js';
 import { useTranslations } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { SpaceForm, type SpaceFormValues } from './SpaceForm.js';
 
 export const SpaceCreatePage = () => {
@@ -29,7 +30,7 @@ export const SpaceCreatePage = () => {
     });
 
   return (
-    <PanelPage title={t.spacesPanel.newSpace} backTo={{ label: t.spacesPanel.allSpaces, href: '/panel/spaces' }}>
+    <PanelPage title={t.spacesPanel.newSpace} backTo={<PanelBackLink to="/panel/spaces">{t.spacesPanel.allSpaces}</PanelBackLink>}>
       <SpaceForm
         mode="create"
         initial={{ name: '', slug: '', description: '', visibility: 'members', productIds: [], position: 0 }}

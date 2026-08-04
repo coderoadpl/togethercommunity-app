@@ -19,8 +19,9 @@ describe('reputation summary', () => {
     renderWithProviders(<ReputationSummary reputation={report} />);
 
     expect(screen.getByText('10%')).toBeInTheDocument();
-    expect(screen.getByText('Za mało danych')).toBeInTheDocument();
-    expect(screen.getByText('krytyczny').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
-    expect(screen.getAllByText('za mało danych')[0]?.closest('.MuiChip-root')).toHaveClass('MuiChip-colorDefault');
+    expect(screen.getAllByText('Za mało danych')).toHaveLength(2);
+    expect(screen.getByText('Krytyczny').closest('.MuiChip-root')).toHaveClass('MuiChip-colorError');
+    const insufficientChip = screen.getAllByText('Za mało danych').find((element) => element.closest('.MuiChip-root') !== null);
+    expect(insufficientChip?.closest('.MuiChip-root')).toHaveClass('MuiChip-colorDefault');
   });
 });

@@ -7,7 +7,7 @@ import {
   FormControl,
   FormLabel,
   InputLabel,
-  Link,
+  Link as MuiLink,
   LinearProgress,
   MenuItem,
   OutlinedInput,
@@ -22,7 +22,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import type {
   CouponAppliesTo,
@@ -31,6 +31,7 @@ import type {
   CouponStatsCursor,
   CouponStatsItem,
 } from '#core/domain/index.js';
+import { SUPPORTED_CURRENCIES } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import {
@@ -43,6 +44,7 @@ import {
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatPrice } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 
 const totals = (
   values: Array<{ currency: string; amountCents: number }>,
@@ -110,7 +112,7 @@ export const CouponsPanel = () => {
   return (
     <PanelPage
       title={t.coupons.title}
-      action={<Button href="/panel/sales/coupons/new" variant="contained">{t.coupons.create}</Button>}
+      action={<Button component={Link} to="/panel/sales/coupons/new" variant="contained">{t.coupons.create}</Button>}
       data-testid="coupons-page"
     >
       <ListSection
@@ -121,7 +123,7 @@ export const CouponsPanel = () => {
               kind: 'empty',
               title: t.coupons.empty,
               body: t.coupons.emptyBody,
-              action: <Button href="/panel/sales/coupons/new">{t.coupons.create}</Button>,
+              action: <Button component={Link} to="/panel/sales/coupons/new">{t.coupons.create}</Button>,
             }}
           />
         )}
@@ -139,6 +141,7 @@ export const CouponsPanel = () => {
                 setCursor(null);
                 setPreviousCursors([]);
               }}
+              label={t.coupons.partnerFilter}
               placeholder={t.coupons.partnerFilter}
               testId="coupon-partner-filter"
             />
@@ -192,9 +195,9 @@ export const CouponsPanel = () => {
                     data-testid="coupon-row"
                   >
                     <TableCell>
-                      <Link href={`/panel/sales/coupons/${item.coupon.id}`}>
+                      <MuiLink component={Link} to={`/panel/sales/coupons/${encodeURIComponent(item.coupon.id)}`}>
                         {item.coupon.code}
-                      </Link>
+                      </MuiLink>
                     </TableCell>
                     <TableCell>{couponValue(item.coupon, language)}</TableCell>
                     <TableCell>
@@ -261,7 +264,7 @@ export const CouponCreatePage = () => {
   const [code, setCode] = useState('');
   const [kind, setKind] = useState<CouponKind>('percent');
   const [value, setValue] = useState('');
-  const [currency, setCurrency] = useState('PLN');
+  const [currency, setCurrency] = useState<(typeof SUPPORTED_CURRENCIES)[number]>('PLN');
   const [scopeKind, setScopeKind] = useState<'all' | 'products'>('all');
   const [productIds, setProductIds] = useState<string[]>([]);
   const [appliesTo, setAppliesTo] = useState<CouponAppliesTo>('both');
@@ -272,6 +275,9 @@ export const CouponCreatePage = () => {
   const [maxRedemptions, setMaxRedemptions] = useState('');
   const [maxPerMember, setMaxPerMember] = useState('');
   const [partnerLabel, setPartnerLabel] = useState('');
+  const parsedValue = Number(value);
+  const invalidValue = value !== '' && (!Number.isInteger(parsedValue) || parsedValue <= 0 || (kind === 'percent' && parsedValue > 100));
+  const invalidDates = startsAt !== '' && endsAt !== '' && new Date(startsAt).getTime() >= new Date(endsAt).getTime();
 
   const create = useMutation({
     ...actions.createCoupon,
@@ -286,11 +292,12 @@ export const CouponCreatePage = () => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (invalidValue || invalidDates) return;
     create.mutate({
       code,
       kind,
-      value: Number.parseInt(value, 10),
-      currency: kind === 'amount' ? currency.trim().toUpperCase() : null,
+      value: parsedValue,
+      currency: kind === 'amount' ? currency : null,
       scope: scopeKind === 'all' ? { kind: 'all' } : { kind: 'products', productIds },
       appliesTo,
       recurringDuration,
@@ -305,7 +312,7 @@ export const CouponCreatePage = () => {
   return (
     <PanelPage
       title={t.coupons.createTitle}
-      backTo={{ label: t.coupons.allCoupons, href: '/panel/sales/coupons' }}
+      backTo={<PanelBackLink to="/panel/sales/coupons">{t.coupons.allCoupons}</PanelBackLink>}
     >
       {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
       <SectionCard title={t.coupons.createTitle} onSubmit={submit}>
@@ -338,7 +345,7 @@ export const CouponCreatePage = () => {
             <OutlinedInput
               id="coupon-value"
               type="number"
-              inputProps={{ min: 0, max: kind === 'percent' ? 100 : undefined, step: 1 }}
+              inputProps={{ min: 1, max: kind === 'percent' ? 100 : undefined, step: 1 }}
               value={value}
               onChange={(event) => setValue(event.target.value)}
               required
@@ -347,14 +354,21 @@ export const CouponCreatePage = () => {
         </Stack>
         {kind === 'amount' ? (
           <FormControl fullWidth>
-            <FormLabel htmlFor="coupon-currency">{t.coupons.currency}</FormLabel>
-            <OutlinedInput
-              id="coupon-currency"
+            <InputLabel id="coupon-currency-label">{t.coupons.currency}</InputLabel>
+            <Select
+              labelId="coupon-currency-label"
+              label={t.coupons.currency}
               value={currency}
-              inputProps={{ maxLength: 3 }}
-              onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+              onChange={(event) => {
+                const selected = SUPPORTED_CURRENCIES.find((candidate) => candidate === event.target.value);
+                if (selected !== undefined) setCurrency(selected);
+              }}
               required
-            />
+            >
+              {SUPPORTED_CURRENCIES.map((supportedCurrency) => (
+                <MenuItem key={supportedCurrency} value={supportedCurrency}>{supportedCurrency}</MenuItem>
+              ))}
+            </Select>
           </FormControl>
         ) : null}
         <FormControl fullWidth>
@@ -476,11 +490,15 @@ export const CouponCreatePage = () => {
           disabled={
             create.isPending ||
             value === '' ||
+            invalidValue ||
+            invalidDates ||
             (scopeKind === 'products' && productIds.length === 0)
           }
         >
           {create.isPending ? t.coupons.creating : t.coupons.create}
         </Button>
+        {invalidValue ? <Alert severity="error">{t.coupons.invalidValue}</Alert> : null}
+        {invalidDates ? <Alert severity="error">{t.coupons.invalidDateRange}</Alert> : null}
         {create.isError ? <Alert severity="error">{localizeError(create.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>
@@ -517,7 +535,7 @@ export const CouponDetailPage = ({ couponId }: { couponId: string }) => {
   return (
     <PanelPage
       title={t.coupons.detailTitle({ code: item.coupon.code })}
-      backTo={{ label: t.coupons.allCoupons, href: '/panel/sales/coupons' }}
+      backTo={<PanelBackLink to="/panel/sales/coupons">{t.coupons.allCoupons}</PanelBackLink>}
       action={
         item.coupon.status === 'archived' ? null : (
           <Button

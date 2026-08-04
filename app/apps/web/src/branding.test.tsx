@@ -32,7 +32,7 @@ describe('TenantLogo', () => {
   it('renders the tenant logo in the member header slot', async () => {
     server.use(offerHandler(BRANDED));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo />} />,
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" logo={<TenantLogo />} />,
     );
 
     const logo = await screen.findByTestId('tenant-logo');
@@ -44,7 +44,7 @@ describe('TenantLogo', () => {
   it('renders the tenant name without a logo', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo />} />,
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" logo={<TenantLogo />} />,
     );
 
     expect(await screen.findByTestId('tenant-name-mark')).toHaveTextContent('Akademia Samouka');
@@ -123,7 +123,7 @@ describe('TenantSocialLinks', () => {
       { label: 'Instagram', url: 'https://instagram.com/akademia' },
     ]));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka">
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
         <TenantSocialLinks />
       </MemberPage>,
     );

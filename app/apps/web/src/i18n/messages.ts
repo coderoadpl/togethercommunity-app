@@ -13,6 +13,7 @@ export interface Messages {
     language: string;
     languagePolish: string;
     languageEnglish: string;
+    breadcrumbs: string;
     loading: string;
     theme: string;
     colorScheme: {
@@ -233,6 +234,8 @@ export interface Messages {
     title: string;
     progress: (params: { done: number; total: number }) => string;
     dismiss: string;
+    showSteps: string;
+    hideSteps: string;
     stepDone: string;
     stepOpen: string;
     steps: {
@@ -346,6 +349,8 @@ export interface Messages {
     maxPerMember: string;
     optional: string;
     valuePercent: string;
+    invalidValue: string;
+    invalidDateRange: string;
     valueCents: string;
     currency: string;
     products: string;
@@ -373,9 +378,11 @@ export interface Messages {
   notifications: {
     bell: string;
     heading: string;
+    mobileTab: string;
     empty: string;
     loading: string;
     markAllRead: string;
+    markedAllRead: string;
     threadReply: (params: { author: string; lesson: string }) => string;
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
@@ -581,6 +588,7 @@ export interface Messages {
     hideAccess: string;
     editAccess: string;
     accessIssuesChip: string;
+    accessIssuesUnknownChip: string;
     accessIssuesHeading: string;
     missingCoursesLabel: string;
     missingModulesLabel: string;
@@ -671,6 +679,7 @@ export interface Messages {
     detailsHeading: string;
     titleLabel: string;
     imageUrl: string;
+    imagePreview: string;
     creating: string;
     create: string;
     saveDetails: string;
@@ -764,6 +773,15 @@ export interface Messages {
     previewLabel: string;
     previewHelper: string;
     htmlLabel: string;
+    storageKeyLabel: string;
+    streamVideoIdLabel: string;
+    streamLibraryIdLabel: string;
+    streamCollectionIdLabel: string;
+    pdfUrlLabel: string;
+    fileNameLabel: string;
+    linkUrlLabel: string;
+    linkDescriptionLabel: string;
+    technicalFieldHint: (params: { field: string }) => string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -941,6 +959,8 @@ export interface Messages {
   student: {
     myCourses: string;
     myProducts: string;
+    mobileCourses: string;
+    mobileProducts: string;
     courseLibrary: string;
     productsLibrary: string;
     loadingCourses: string;
@@ -1608,6 +1628,9 @@ export interface Messages {
     archived: string;
     versions: string;
     versionEntry: (params: { version: number; date: string }) => string;
+    versionLabel: (params: { version: number }) => string;
+    viewVersion: string;
+    hideVersion: string;
     documentsTitle: string;
     documentsDescription: string;
     documentsEmpty: string;

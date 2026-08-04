@@ -83,6 +83,23 @@ describe('email transport test message', () => {
   });
 });
 
+describe('email transport test message', () => {
+  it('names the tested transport in PL and EN', () => {
+    expect(emailTransportTest('pl', { transport: 'resend' })).toMatchObject({
+      subject: 'Together — wiadomość testowa (resend)',
+      text: expect.stringContaining('Transport resend jest poprawnie skonfigurowany.'),
+    });
+    expect(emailTransportTest('en', { transport: 'smtp' })).toMatchObject({
+      subject: 'Together test e-mail (smtp)',
+      text: expect.stringContaining('Your smtp transport is configured correctly.'),
+    });
+  });
+
+  it('falls back to Polish for unknown languages', () => {
+    expect(emailTransportTest('de', { transport: 'ses' }).subject).toBe('Together — wiadomość testowa (ses)');
+  });
+});
+
 describe('welcomeSetPassword', () => {
   it('renders the Polish template', () => {
     expect(

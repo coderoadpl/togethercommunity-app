@@ -24,7 +24,12 @@ const connectionString =
 
 let signUpIpSuffix = 1;
 
-const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string[] } = {}) => {
+const buildAuth = (options: {
+  consentRequired?: boolean;
+  recordedEmails?: string[];
+  baseDomain?: string;
+  singleTenantMode?: boolean;
+} = {}) => {
   const db = createDb('node-postgres', connectionString);
   const emailOutbox = createEmailOutboxRepository(db);
   const clock = { nowIso: () => new Date().toISOString() };
@@ -53,7 +58,8 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
   const auth = createAuth(db, {
     secret: 'create-auth-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
-    baseDomain: 'localhost',
+    baseDomain: options.baseDomain ?? 'localhost',
+    singleTenantMode: options.singleTenantMode ?? false,
     trustedOrigins: ['http://localhost:48730', 'http://studio.localhost:48730'],
     secureCookies: false,
     exposeMagicLinks: true,
@@ -81,6 +87,29 @@ const buildAuth = (options: { consentRequired?: boolean; recordedEmails?: string
     flushEmails,
   };
 };
+
+describe('auth cookie scope', () => {
+  it('keeps cookies host-only in single-tenant mode on a non-localhost domain', async () => {
+    const { auth } = buildAuth({
+      baseDomain: 'learn.example.com',
+      singleTenantMode: true,
+    });
+
+    expect((await auth.$context).options.advanced?.crossSubDomainCookies).toBeUndefined();
+  });
+
+  it('shares cookies across tenant subdomains only in multi-tenant mode', async () => {
+    const { auth } = buildAuth({
+      baseDomain: 'example.com',
+      singleTenantMode: false,
+    });
+
+    expect((await auth.$context).options.advanced?.crossSubDomainCookies).toEqual({
+      enabled: true,
+      domain: '.example.com',
+    });
+  });
+});
 
 const signUp = (
   auth: ReturnType<typeof buildAuth>['auth'],

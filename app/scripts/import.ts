@@ -331,6 +331,7 @@ const main = async (): Promise<number> => {
     secret: process.env['BETTER_AUTH_SECRET'] ?? 'dev-only-secret-do-not-use-in-prod',
     baseUrl: 'http://localhost:48730',
     baseDomain: 'localhost',
+    singleTenantMode: false,
     trustedOrigins: () => ['http://localhost:48730'],
     secureCookies: false,
     exposeMagicLinks: false,

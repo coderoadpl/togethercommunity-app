@@ -446,6 +446,7 @@ const harness = (
     clock: { nowIso: () => clockNow },
     appBaseUrl: 'https://alpha.example.com',
     baseDomain: 'example.com',
+    singleTenantMode: false,
     exposeMagicLinks: false,
   };
 

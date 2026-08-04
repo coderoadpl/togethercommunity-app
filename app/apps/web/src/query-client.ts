@@ -7,16 +7,22 @@ import { refreshToastStore } from './refresh-toast.js';
 
 const MAX_RETRIES = 3;
 
+const isExpectedMissingPublicOffer = (error: unknown, queryKey: readonly unknown[]): boolean =>
+  error instanceof ApiError &&
+  error.appError.code === 'tenant_not_found' &&
+  queryKey.length === 1 &&
+  queryKey[0] === 'public-offer';
+
 /**
  * QueryCache is the single global error surface (one notice per failing query,
  * not per observer). Every failure is reported to Sentry (with the active trace
- * id) when configured. With data already on screen we keep it and toast the
- * refresh failure; with no data the query's local render or the root error
- * boundary handles it.
+ * id) when configured, except for the expected missing offer on a multi-tenant
+ * apex. With data already on screen we keep it and toast the refresh failure;
+ * with no data the query's local render or the root error boundary handles it.
  */
 const queryCache = new QueryCache({
   onError: (error, query) => {
-    reportError(error);
+    if (!isExpectedMissingPublicOffer(error, query.queryKey)) reportError(error);
     if (query.state.data === undefined) return;
     refreshToastStore.show(error instanceof ApiError ? error.appError.code : null);
   },

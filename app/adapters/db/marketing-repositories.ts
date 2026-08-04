@@ -38,6 +38,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { appendEmailSentMemberEvents } from './member-events.js';
 import {
   campaigns,
   campaignSends,
@@ -101,7 +102,18 @@ const parseIdempotency = (row: typeof marketingIdempotencyKeys.$inferSelect) => 
 
 export const createMarketingConsentRepository = (db: Db): MarketingConsentRepository => ({
   record: async (tenantId, consent) => {
-    await db.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+    await db.transaction(async (tx) => {
+      await tx.insert(marketingConsents).values(marketingConsentSchema.parse({ ...consent, tenantId }));
+      if (consent.status === 'withdrawn') {
+        await tx.update(marketingConsents).set({ retentionStartedAt: consent.occurredAt }).where(and(
+          eq(marketingConsents.tenantId, tenantId),
+          eq(marketingConsents.email, normalizeEmail(consent.email)),
+          eq(marketingConsents.definitionId, consent.definitionId),
+          isNull(marketingConsents.retentionStartedAt),
+          lte(marketingConsents.occurredAt, consent.occurredAt),
+        ));
+      }
+    });
   },
   listByEmail: async (tenantId, email, definitionId) => {
     const filters = [eq(marketingConsents.tenantId, tenantId), eq(marketingConsents.email, normalizeEmail(email))];
@@ -423,6 +435,18 @@ export const createCampaignSendRepository = (db: Db): CampaignSendRepository => 
         await tx.insert(emailEvents).values(events.map((event) =>
           emailEventSchema.parse({ ...event, tenantId })
         ));
+      }
+      if (row?.status === 'sent' && row.sentAt !== null) {
+        await appendEmailSentMemberEvents(tx, {
+          tenantId,
+          recipient: row.email,
+          sendId: row.id,
+          mailKind: 'marketing',
+          subject: row.subject,
+          source: row.source,
+          transport: 'tenant-ses',
+          occurredAt: new Date(row.sentAt).toISOString(),
+        });
       }
       return row === undefined ? null : parseSend(row);
     });

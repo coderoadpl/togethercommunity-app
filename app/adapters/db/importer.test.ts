@@ -23,6 +23,7 @@ import {
   account,
   courseModules,
   courses,
+  memberEvents,
   memberCourseProgress,
   members,
   orders,
@@ -130,7 +131,7 @@ const buildBundle = (): TenantBundle => ({
     },
     {
       legacyId: ids.p2,
-      title: 'Single lesson access',
+      title: 'Full course access',
       accessItems: [{ level: 'lessons', courseId: ids.c1, lessonIds: [ids.l2] }],
     },
   ],
@@ -366,6 +367,20 @@ describe('importer', () => {
     const winner = grantRowsAll.find((row) => row.legacyId === ids.g1);
     expect(winner?.expiresAt).toBeNull();
     expect(grantRowsAll.some((row) => row.legacyId === ids.g1dup)).toBe(false);
+    expect(
+      await db.select().from(memberEvents).where(eq(memberEvents.tenantId, TENANT_ID)),
+    ).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        memberId: ids.u1,
+        type: 'grant',
+        payload: expect.objectContaining({ grantId: ids.g1, source: 'manual' }),
+      }),
+      expect.objectContaining({
+        memberId: ids.u2,
+        type: 'grant',
+        payload: expect.objectContaining({ grantId: ids.g2, source: 'manual' }),
+      }),
+    ]));
 
     const progressRows = await db
       .select()
@@ -379,6 +394,10 @@ describe('importer', () => {
     const productRows = await db.select().from(products).where(eq(products.tenantId, TENANT_ID));
     expect(productRows).toHaveLength(2);
     expect(productRows.every((row) => !row.published)).toBe(true);
+    expect(productRows.map(({ legacyId, slug }) => ({ legacyId, slug }))).toEqual([
+      { legacyId: ids.p1, slug: 'full-course-access' },
+      { legacyId: ids.p2, slug: 'full-course-access-3aa10f02' },
+    ]);
 
     expect(result.verification?.pass).toBe(true);
     const spotChecks = result.verification?.tenants[0]?.spotChecks ?? [];

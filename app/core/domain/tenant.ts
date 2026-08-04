@@ -2,10 +2,12 @@ import { z } from 'zod';
 
 import { staffRoleSchema } from './identity.js';
 
+export const TENANT_NAME_MAX_LENGTH = 100;
+
 export const tenantSchema = z.object({
   id: z.string(),
   slug: z.string(),
-  name: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(TENANT_NAME_MAX_LENGTH),
   contentVersion: z.number().int().positive(),
 });
 
@@ -59,20 +61,21 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
   faviconUrl: null,
 };
 
-const OG_TITLE_MAX_LENGTH = 70;
-const OG_DESCRIPTION_MAX_LENGTH = 200;
+export const TENANT_OG_TITLE_MAX_LENGTH = 70;
+export const TENANT_OG_DESCRIPTION_MAX_LENGTH = 200;
 export const SOCIAL_LINKS_MAX_COUNT = 8;
+export const SOCIAL_LINK_LABEL_MAX_LENGTH = 40;
 
 export const tenantSocialLinkSchema = z.object({
-  label: z.string().trim().min(1).max(40),
+  label: z.string().trim().min(1).max(SOCIAL_LINK_LABEL_MAX_LENGTH),
   url: z.string().url().regex(/^https?:\/\//iu),
 });
 
 export type TenantSocialLink = z.output<typeof tenantSocialLinkSchema>;
 
 const tenantSocialSchema = z.object({
-  ogTitle: z.string().max(OG_TITLE_MAX_LENGTH).nullable().default(null),
-  ogDescription: z.string().max(OG_DESCRIPTION_MAX_LENGTH).nullable().default(null),
+  ogTitle: z.string().max(TENANT_OG_TITLE_MAX_LENGTH).nullable().default(null),
+  ogDescription: z.string().max(TENANT_OG_DESCRIPTION_MAX_LENGTH).nullable().default(null),
   ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
@@ -171,8 +174,8 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
-  ogTitle: clearableText(OG_TITLE_MAX_LENGTH),
-  ogDescription: clearableText(OG_DESCRIPTION_MAX_LENGTH),
+  ogTitle: clearableText(TENANT_OG_TITLE_MAX_LENGTH),
+  ogDescription: clearableText(TENANT_OG_DESCRIPTION_MAX_LENGTH),
   ogImageUrl: clearableBrandingAssetUrl,
   supportEmail: clearableEmail,
   supportUrl: clearableUrl,

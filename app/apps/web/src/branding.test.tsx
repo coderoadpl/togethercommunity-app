@@ -41,13 +41,13 @@ describe('TenantLogo', () => {
     expect(logo.closest('header')).not.toBeNull();
   });
 
-  it('renders nothing without branding', async () => {
+  it('renders the tenant name without a logo', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(
       <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo hostname="akademia.localhost" />} />,
     );
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Moje kursy' })).toBeInTheDocument();
+    expect(await screen.findByTestId('tenant-name-mark')).toHaveTextContent('Akademia Samouka');
     expect(screen.queryByTestId('tenant-logo')).not.toBeInTheDocument();
   });
 
@@ -67,22 +67,23 @@ describe('BrandMark', () => {
     expect(screen.queryByText('Together')).not.toBeInTheDocument();
   });
 
-  it('falls back to the stock wordmark when unbranded', async () => {
+  it('falls back to the tenant name when unbranded', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(<BrandMark hostname="akademia.localhost" />);
 
-    expect(await screen.findByText('Together')).toBeInTheDocument();
+    expect(await screen.findByTestId('tenant-brand-name')).toHaveTextContent('Akademia Samouka');
+    expect(screen.queryByText('Together')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 
-  it('renders social profiles on the public brand surface', async () => {
+  it('keeps social profiles out of the brand slot', async () => {
     server.use(offerHandler(BRANDED, [
       { label: 'YouTube', url: 'https://youtube.com/@akademia' },
     ]));
     renderWithProviders(<BrandMark hostname="akademia.localhost" />);
 
-    expect(await screen.findByRole('link', { name: 'YouTube' }))
-      .toHaveAttribute('href', 'https://youtube.com/@akademia');
+    expect(await screen.findByTestId('tenant-brand-logo')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'YouTube' })).not.toBeInTheDocument();
   });
 });
 

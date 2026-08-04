@@ -78,6 +78,8 @@ import type {
   SimulatePurchaseInput,
   TenantCreateInput,
   TenantSecretDeleteInput,
+  IntegrationTestInput,
+  StripeConfigureInput,
   TenantSecretSetInput,
   TenantSettingsUpdateInput,
 } from '#core/contract/index.js';
@@ -204,6 +206,8 @@ const membersScopes = {
   all: () => ['members'] as const,
   export: (format: MemberExportFormat) => ['members', 'export', format] as const,
   grants: (memberId: string) => ['members', 'grants', memberId] as const,
+  commerce: (memberId: string) => ['members', 'commerce', memberId] as const,
+  timeline: (memberId: string) => ['members', 'timeline', memberId] as const,
   learningSummary: (memberId: string) => ['members', 'learning-summary', memberId] as const,
 };
 
@@ -384,11 +388,6 @@ export const marketingReputationQuery = (api: ApiClient) => defineQuery({
 export const updateMarketingSesSettingsMutation = (api: ApiClient) => defineMutation({
   mutationKey: [...marketingScopes.settings(), 'update'], call: (input: MarketingSesSettingsUpdateInput) => api.updateMarketingSesSettings(input),
 });
-export const testMarketingSmtpMutation = (api: ApiClient) => defineMutation({
-  mutationKey: [...marketingScopes.settings(), 'smtp-test'],
-  call: api.testMarketingSmtp,
-});
-
 export const emailSendsQuery = (api: ApiClient, input: EmailSendsQueryInput) => defineQuery({
   queryKey: marketingScopes.sends(input), call: ({ signal }) => api.listEmailSends(input, signal),
 });
@@ -422,6 +421,8 @@ export const meQuery = (api: ApiClient) =>
     queryKey: meScopes.all(),
     call: ({ signal }) => api.me(signal),
   });
+
+export const meInvalidates = () => ({ queryKey: meScopes.all() });
 
 export const healthQuery = (api: ApiClient) =>
   defineQuery({
@@ -686,6 +687,18 @@ export const memberGrantsQuery = (api: ApiClient, memberId: string) =>
   defineQuery({
     queryKey: membersScopes.grants(memberId),
     call: ({ signal }) => api.listMemberGrants(memberId, signal),
+  });
+
+export const memberCommerceQuery = (api: ApiClient, memberId: string) =>
+  defineQuery({
+    queryKey: membersScopes.commerce(memberId),
+    call: ({ signal }) => api.memberCommerce(memberId, signal),
+  });
+
+export const memberTimelineQuery = (api: ApiClient, memberId: string) =>
+  defineQuery({
+    queryKey: membersScopes.timeline(memberId),
+    call: ({ signal }) => api.memberTimeline(memberId, signal),
   });
 
 export const memberLearningSummaryQuery = (api: ApiClient, memberId: string) =>
@@ -1047,10 +1060,26 @@ export const deleteTenantSecretMutation = (api: ApiClient) =>
     call: (input: TenantSecretDeleteInput) => api.deleteTenantSecret(input),
   });
 
-export const testStripeConnectionMutation = (api: ApiClient) =>
+export const deleteStripeSecretsMutation = (api: ApiClient) =>
   defineMutation({
-    mutationKey: [...tenantSecretsScopes.all(), 'stripe-test'],
-    call: () => api.testStripeConnection(),
+    mutationKey: [...tenantSecretsScopes.all(), 'delete-stripe'],
+    call: async () => {
+      const webhookSecret = await api.deleteTenantSecret({ key: 'stripe.webhookSecret' });
+      if (!webhookSecret.ok) return webhookSecret;
+      return api.deleteTenantSecret({ key: 'stripe.restrictedKey' });
+    },
+  });
+
+export const testIntegrationMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'provider-test'],
+    call: (input: IntegrationTestInput) => api.testIntegration(input),
+  });
+
+export const configureStripeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...tenantSecretsScopes.all(), 'configure-stripe'],
+    call: (input: StripeConfigureInput) => api.configureStripe(input),
   });
 
 export const testIfirmaConnectionMutation = (api: ApiClient) =>

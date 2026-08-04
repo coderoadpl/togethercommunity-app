@@ -7,6 +7,10 @@ const harness = readFileSync(
   join(import.meta.dirname, '..', 'scripts', 'visual-screenshots.ts'),
   'utf8',
 );
+const comparator = readFileSync(
+  join(import.meta.dirname, '..', 'scripts', 'visual-png-compare.ts'),
+  'utf8',
+);
 
 describe('visual regression determinism', () => {
   it('pins browser rendering inputs', () => {
@@ -33,9 +37,9 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("scale: 'css'");
     expect(harness).toContain('mask: stableMasks(page, screen)');
     expect(harness).toContain("page.getByTestId('build-stamp')");
-    expect(harness).toContain('const PIXELMATCH_THRESHOLD = 0;');
-    expect(harness).toContain('const MAX_DIFF_RATIO = 0;');
-    expect(harness).toContain('includeAA: false');
+    expect(harness).toContain("from './visual-png-compare.js'");
+    expect(comparator).toContain('{ threshold: 0, includeAA: false }');
+    expect(comparator).toContain('if (mismatched === 0) return null;');
   });
 
   it('restricts golden authoring to the declared platform', () => {

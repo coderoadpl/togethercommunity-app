@@ -17,7 +17,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   accentColorSchema,
+  SOCIAL_LINK_LABEL_MAX_LENGTH,
   SOCIAL_LINKS_MAX_COUNT,
+  TENANT_NAME_MAX_LENGTH,
+  TENANT_OG_DESCRIPTION_MAX_LENGTH,
+  TENANT_OG_TITLE_MAX_LENGTH,
   tenantSocialLinkSchema,
 } from '#core/domain/index.js';
 import type { ExemptionBasisKind, TenantSecretKey, TenantSocialLink } from '#core/domain/index.js';
@@ -531,6 +535,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
     ...actions.updateTenantSettings,
     onSuccess: async () => {
       await Promise.all([
+        queryClient.invalidateQueries(actions.meInvalidates()),
         queryClient.invalidateQueries(actions.tenantSettingsInvalidates()),
         queryClient.invalidateQueries(actions.publicOfferInvalidates()),
       ]);
@@ -584,7 +589,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               required
               disabled={disabled}
               onChange={(event) => setName(event.target.value)}
-              inputProps={{ maxLength: 100, 'data-testid': 'branding-name' }}
+              inputProps={{ maxLength: TENANT_NAME_MAX_LENGTH, 'data-testid': 'branding-name' }}
             />
             <Typography variant="caption" component="p">{t.branding.nameHint}</Typography>
           </FormControl>
@@ -636,7 +641,9 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             />
           </FormControl>
           <Typography variant="h6" component="h3">{t.branding.profileLinksHeading}</Typography>
-          <Typography variant="body2">{t.branding.profileLinksIntro}</Typography>
+          <Typography variant="body2">
+            {t.branding.profileLinksIntro({ count: SOCIAL_LINKS_MAX_COUNT })}
+          </Typography>
           {socialLinksValue.map((item, index) => (
             <Stack
               key={index}
@@ -656,7 +663,10 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
                   placeholder={t.branding.socialLinkLabelPlaceholder}
                   onChange={(event) => setSocialLinks(socialLinksValue.map((link, linkIndex) =>
                     linkIndex === index ? { ...link, label: event.target.value } : link))}
-                  inputProps={{ maxLength: 40, 'data-testid': `branding-social-label-${String(index)}` }}
+                  inputProps={{
+                    maxLength: SOCIAL_LINK_LABEL_MAX_LENGTH,
+                    'data-testid': `branding-social-label-${String(index)}`,
+                  }}
                 />
               </FormControl>
               <FormControl fullWidth error={socialLinkUrlErrors.includes(index)}>
@@ -712,7 +722,10 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               value={ogTitleValue}
               disabled={disabled}
               onChange={(event) => setOgTitle(event.target.value)}
-              inputProps={{ maxLength: 70, 'data-testid': 'branding-og-title' }}
+              inputProps={{
+                maxLength: TENANT_OG_TITLE_MAX_LENGTH,
+                'data-testid': 'branding-og-title',
+              }}
             />
             <Typography variant="caption" component="p">{t.branding.ogTitleHint}</Typography>
           </FormControl>
@@ -725,7 +738,10 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
               multiline
               minRows={3}
               onChange={(event) => setOgDescription(event.target.value)}
-              inputProps={{ maxLength: 200, 'data-testid': 'branding-og-description' }}
+              inputProps={{
+                maxLength: TENANT_OG_DESCRIPTION_MAX_LENGTH,
+                'data-testid': 'branding-og-description',
+              }}
             />
             <Typography variant="caption" component="p">
               {t.branding.ogDescriptionHint}

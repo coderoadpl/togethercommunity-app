@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { EmailIntegrationTransport } from './integration.js';
 import { languageSchema, type Language } from './language.js';
 
 export const transactionalLanguageSchema = languageSchema;
@@ -368,6 +369,25 @@ export const memberErasureRequestEmail = (
     subject: `[${input.tenantName}] Wniosek o usunięcie danych`,
     html: `<p>${memberEmail} wysłał(a) wniosek o usunięcie danych.</p><p>Złożono: ${input.requestedAt}<br>Termin: ${input.dueAt}</p><p><a href="${panelUrl}">Sprawdź wniosek</a></p>`,
     text: `${input.memberEmail} wysłał(a) wniosek o usunięcie danych.\nZłożono: ${input.requestedAt}\nTermin: ${input.dueAt}\n${input.panelUrl}`,
+  });
+};
+
+export const emailTransportTest = (
+  language: string,
+  input: { transport: EmailIntegrationTransport | 'platform' },
+): EmailMessage => {
+  const transport = escapeHtml(input.transport);
+  if (languageOrDefault(language) === 'en') {
+    return emailMessageSchema.parse({
+      subject: `Together test e-mail (${input.transport})`,
+      html: `<p>Your ${transport} transport is configured correctly.</p><p>This message was sent from the panel to confirm delivery.</p>`,
+      text: `Your ${input.transport} transport is configured correctly.\n\nThis message was sent from the panel to confirm delivery.`,
+    });
+  }
+  return emailMessageSchema.parse({
+    subject: `Together — wiadomość testowa (${input.transport})`,
+    html: `<p>Transport ${transport} jest poprawnie skonfigurowany.</p><p>Ta wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.</p>`,
+    text: `Transport ${input.transport} jest poprawnie skonfigurowany.\n\nTa wiadomość została wysłana z panelu, aby potwierdzić dostarczanie.`,
   });
 };
 

@@ -34,9 +34,16 @@ const useTenantOffer = (hostname?: string): {
 export const useTenantBranding = (hostname?: string): TenantBranding | null =>
   useTenantOffer(hostname)?.branding ?? null;
 
-export const TenantSocialLinks = ({ hostname }: { hostname?: string } = {}) => {
+export const TenantSocialLinks = ({
+  hostname,
+  links: providedLinks,
+}: {
+  hostname?: string;
+  links?: TenantSocialLink[];
+} = {}) => {
   const t = useTranslations();
-  const links = useTenantOffer(hostname)?.socialLinks ?? [];
+  const tenantLinks = useTenantOffer(hostname)?.socialLinks ?? [];
+  const links = providedLinks ?? tenantLinks;
   if (links.length === 0) return null;
   return (
     <Stack
@@ -56,10 +63,21 @@ export const TenantSocialLinks = ({ hostname }: { hostname?: string } = {}) => {
   );
 };
 
-/** Tenant logo for the member header (LedgerHeader slot); nothing without branding. */
 export const TenantLogo = ({ hostname }: { hostname?: string } = {}) => {
   const tenant = useTenantOffer(hostname);
-  if (tenant === null || tenant.branding.logoUrl === null) return null;
+  if (tenant === null) return null;
+  if (tenant.branding.logoUrl === null) {
+    return (
+      <Wordmark
+        component="p"
+        variant="h6"
+        data-testid="tenant-name-mark"
+        sx={{ mb: '0.9rem' }}
+      >
+        {tenant.name}
+      </Wordmark>
+    );
+  }
   return (
     <Box
       component="img"
@@ -78,37 +96,37 @@ export const TenantLogo = ({ hostname }: { hostname?: string } = {}) => {
   );
 };
 
-/** FocusCard brand slot (login/checkout): tenant logo, or the stock wordmark. */
 export const BrandMark = ({ hostname }: { hostname?: string } = {}) => {
   const tenant = useTenantOffer(hostname);
-  if (tenant === null || tenant.branding.logoUrl === null) {
+  if (tenant === null) {
     return (
-      <>
-        <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-          Together
-        </Wordmark>
-        <TenantSocialLinks {...(hostname === undefined ? {} : { hostname })} />
-      </>
+      <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
+        Together
+      </Wordmark>
+    );
+  }
+  if (tenant.branding.logoUrl === null) {
+    return (
+      <Wordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
+        {tenant.name}
+      </Wordmark>
     );
   }
   return (
-    <>
-      <Box
-        component="img"
-        src={tenant.branding.logoUrl}
-        alt={tenant.name}
-        data-testid="tenant-brand-logo"
-        sx={{
-          display: 'block',
-          height: '2.25rem',
-          maxWidth: '16rem',
-          objectFit: 'contain',
-          objectPosition: 'left center',
-          mb: '0.45rem',
-        }}
-      />
-      <TenantSocialLinks {...(hostname === undefined ? {} : { hostname })} />
-    </>
+    <Box
+      component="img"
+      src={tenant.branding.logoUrl}
+      alt={tenant.name}
+      data-testid="tenant-brand-logo"
+      sx={{
+        display: 'block',
+        height: '2.25rem',
+        maxWidth: '16rem',
+        objectFit: 'contain',
+        objectPosition: 'left center',
+        mb: '0.45rem',
+      }}
+    />
   );
 };
 

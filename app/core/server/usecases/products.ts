@@ -3,6 +3,9 @@ import {
   newProductSchema,
   notFound,
   ok,
+  productSlugFromTitle,
+  productSlugSchema,
+  slugReserved,
   validation,
   type AppError,
   type NewProductInput,
@@ -40,11 +43,18 @@ export const createProduct = async (
   const parsed = newProductSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid product', parsed.error.flatten()));
 
+  const slug = parsed.data.slug ?? productSlugFromTitle(parsed.data.title);
+  if (!productSlugSchema.safeParse(slug).success) {
+    return err(validation('Product slug must contain lowercase letters, numbers and hyphens only'));
+  }
   const product: Product = {
     id: deps.ids.nextId(),
     tenantId: tenant.value,
+    type: parsed.data.type,
+    slug,
     title: parsed.data.title,
     description: parsed.data.description,
+    coverUrl: parsed.data.coverUrl,
     priceCents: parsed.data.priceCents,
     currency: parsed.data.currency,
     published: false,
@@ -53,7 +63,10 @@ export const createProduct = async (
     legacyId: null,
     createdAt: deps.clock.nowIso(),
   };
-  await deps.products.create(tenant.value, product);
+  const inserted = await deps.products.create(tenant.value, product);
+  if (inserted === 'slug_taken') {
+    return err(slugReserved(`A product with slug "${slug}" already exists`));
+  }
   return ok(product);
 };
 

@@ -10,12 +10,16 @@ Thank you for helping improve Together.
 2. Fork the repository and create a focused branch from the current default
    branch.
 3. Use Node.js 24 and run `pnpm install --frozen-lockfile` from `app/`.
-4. Make the change, add or update tests and documentation, and keep commits
+4. Prepare the local database before running any gate: start Docker, then run
+   `pnpm run db:up && pnpm run db:migrate && pnpm run db:seed` from `app/`.
+   The gates expect a migrated and seeded database and fail without one.
+5. Make the change, add or update tests and documentation, and keep commits
    focused.
-5. Run `pnpm run check` from `app/`.
-6. Open a pull request that explains the problem, the solution, and how it was
+6. Run the static gate `pnpm run check` and the runtime gate `pnpm run smoke`
+   from `app/`; both must be green.
+7. Open a pull request that explains the problem, the solution, and how it was
    verified.
-7. Address review feedback and keep the branch current until all required
+8. Address review feedback and keep the branch current until all required
    checks pass.
 
 ## Contributor License Agreement

@@ -1,7 +1,7 @@
 # Foundation provenance
 
 Together derives from the `demo/` reference application in
-[`chomamateusz/agentproofarch`](https://github.com/chomamateusz/agentproofarch).
+[`coderoadpl/agentproofarch`](https://github.com/coderoadpl/agentproofarch).
 
 - Fork commit: `9b4bcd560ac38bb2a98334d31c60f189a98bd9a9`
 - Fork date: 2026-07-12

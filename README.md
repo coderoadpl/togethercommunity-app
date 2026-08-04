@@ -21,7 +21,7 @@ i reguły architektury; dokumenty nadal opisują kierunek dalszego rozwoju.
 
 ## Nazwa i domena
 
-Nazwa: **Together** (zdecydowana). Domena: otwarta kwestia — `together.*` zajęte, do sprawdzenia warianty (`example-domain-a.*` itp.).
+Nazwa: **Together** (zdecydowana). Domena: otwarta kwestia — `together.*` zajęte, warianty domen do sprawdzenia (lista w prywatnych materiałach).
 
 ## Licencja
 

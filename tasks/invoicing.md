@@ -23,10 +23,10 @@
    (panel action on the order) or auto-on-payment (tenant toggle, default
    off) — never platform-automatic without tenant opt-in.
 3. **iFirma adapter (v1 provider — owner decision 2026-07-27, replaces the
-   earlier Fakturownia pick; the owner uses iFirma personally, so the
-   integration is verifiable end-to-end on a real account).** BYO API
-   credentials per tenant (tenant_secrets `ifirma.invoiceApiKey` +
-   `ifirma.username`, AES-GCM as Stripe/Bunny/SES). iFirma issues the
+   earlier Fakturownia pick; the integration is verifiable end-to-end against
+   a live provider account).** BYO API credentials per tenant
+   (tenant_secrets `ifirma.invoiceApiKey` + `ifirma.username`, AES-GCM as
+   Stripe/Bunny/SES). iFirma issues the
    invoice and handles KSeF submission itself (the tenant configures KSeF
    inside iFirma — their certificate never touches us), returns the invoice
    number and authenticated PDF; we store refs, proxy downloads, and

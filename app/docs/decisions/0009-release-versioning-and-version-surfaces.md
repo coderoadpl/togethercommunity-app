@@ -6,13 +6,13 @@ Status: accepted, 2026-07-29. Builds on
 ## Context
 
 Together already has an application version. `package.json` identifies the
-private application as `0.1.0`, and the server includes that version together
+application as `0.1.0`, and the server includes that version together
 with a commit SHA in its health attestation. The CLI and browser previously had
 no local identity surface, which made it harder to distinguish a stale browser
 bundle, a different server deployment, or an invocation of an unexpected CLI
 checkout.
 
-Together is still a private pre-release. It has no public product website, no
+Together is still a pre-release. It has no public product website, no
 published support commitment, and no independently released consumer of its
 HTTP API. A useful application identity must not be mistaken for a compatibility
 promise or for release machinery that does not exist yet.
@@ -40,11 +40,11 @@ necessary only when their concrete triggers occur.
    The package version names the application release. The commit SHA identifies
    the exact build. Neither value substitutes for the other.
 
-2. **The current `0.x` line is pre-release.** While Together remains private,
-   its version communicates build identity and relative release progression,
-   not a public stability guarantee. Major, minor, and patch selection still
-   follows SemVer, including SemVer's allowance for incompatible change before
-   `1.0.0`.
+2. **The current `0.x` line is pre-release.** While Together remains
+   pre-release, its version communicates build identity and relative release
+   progression, not a public stability guarantee. Major, minor, and patch
+   selection still follows SemVer, including SemVer's allowance for
+   incompatible change before `1.0.0`.
 
 3. **A version bump happens only for a deliberate release.** Ordinary merges to
    the staging branch do not change `package.json`. The person cutting a release

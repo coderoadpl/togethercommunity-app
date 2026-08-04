@@ -20,8 +20,11 @@ memberBannedAt: null,
 const product: Product = {
   id: 'p1',
   tenantId: 't1',
+  type: 'course',
+  slug: 'course',
   title: 'Course',
   description: '',
+  coverUrl: null,
   priceCents: 9900,
   currency: 'PLN',
   published: true,
@@ -38,7 +41,7 @@ const harness = () => {
       listByTenant: async () => [product],
       listPublishedByTenant: async () => [product],
       findById: async (tenantId, id) => (tenantId === 't1' && id === 'p1' ? product : null),
-      create: async () => undefined,
+      create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,
@@ -97,6 +100,18 @@ describe('createProductPrice', () => {
       h.deps,
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects a one-time price for a membership', async () => {
+    const h = harness();
+    h.deps.products.findById = async () => ({ ...product, type: 'membership' });
+    const result = await createProductPrice(
+      { identity: identity('owner') },
+      { productId: 'p1', kind: 'one_time', amountCents: 2900 },
+      h.deps,
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.prices).toHaveLength(0);
   });
 
   it('is not found for a product outside the tenant', async () => {

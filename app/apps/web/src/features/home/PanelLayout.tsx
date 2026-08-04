@@ -26,7 +26,7 @@ import { NotificationBell } from '../../NotificationBell.js';
 import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { AppShell, type PageState } from '../../components/layout/index.js';
+import { AppShell, BrandSplash } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
@@ -255,8 +255,6 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  useSuppressGlobalChrome();
-
   const signOut = useMutation({
     ...actions.signOut,
     onSuccess: async () => {
@@ -324,20 +322,18 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   );
 };
 
-const PanelBootstrapShell = ({ state }: { state: PageState }) => {
+const PanelErrorShell = ({ message }: { message: string }) => {
   const t = useTranslations();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  useSuppressGlobalChrome();
 
   return (
     <AppShell
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
-      state={state}
+      state={{ kind: 'error', message }}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
       footer={<BuildStamp />}
       header={
@@ -370,6 +366,8 @@ export const PanelLayout = () => {
   const { mode } = useThemeMode();
   const me = useQuery(actions.me);
 
+  useSuppressGlobalChrome();
+
   const unauthorized = me.error instanceof ApiError && me.error.appError.code === 'unauthorized';
   const tenant = me.data?.tenant ?? null;
   const noTenant = me.isSuccess && !tenant;
@@ -387,18 +385,23 @@ export const PanelLayout = () => {
     [mode, tenant, branding],
   );
 
-  if (me.isPending) {
+  if (me.isPending || unauthorized || noTenant || memberOnly) {
     return (
       <ThemeProvider theme={theme}>
-        <PanelBootstrapShell state={{ kind: 'loading', label: t.tenant.openingWorkspace }} />
+        <BrandSplash
+          ariaLabel={t.bootSplash.opening}
+          buildStamp={<BuildStamp />}
+          tenantLabel={t.bootSplash.tenant({ host: window.location.hostname })}
+          warmingLabel={t.bootSplash.warming}
+          wordmark={t.common.appName}
+        />
       </ThemeProvider>
     );
   }
-  if (unauthorized || noTenant || memberOnly) return null;
   if (me.isError) {
     return (
       <ThemeProvider theme={theme}>
-        <PanelBootstrapShell state={{ kind: 'error', message: localizeError(me.error, t) }} />
+        <PanelErrorShell message={localizeError(me.error, t)} />
       </ThemeProvider>
     );
   }

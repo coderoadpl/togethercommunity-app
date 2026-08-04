@@ -5,6 +5,7 @@ import {
   couponOptionSchema,
   couponSchema,
   couponStatsItemSchema,
+  memberEventSchema,
   normalizeCouponCode,
   type CouponCheckoutSession,
 } from '#core/domain/index.js';
@@ -17,6 +18,7 @@ import type {
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { appendMemberEvent } from './member-events.js';
 import {
   couponCheckoutSessions,
   couponEvents,
@@ -178,8 +180,25 @@ export const createCouponRedemptionRepository = (db: Db): CouponRedemptionReposi
         .insert(orders)
         .values({ ...input.order, tenantId })
         .onConflictDoNothing()
-        .returning({ id: orders.id });
-      if (insertedOrder.length === 0) return false;
+        .returning();
+      const order = insertedOrder[0];
+      if (order === undefined) return false;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `purchase:${order.id}`,
+        tenantId,
+        memberId: order.memberId,
+        type: 'purchase',
+        payload: {
+          orderId: order.id,
+          productId: order.productId,
+          kind: order.kind,
+          status: order.status,
+          amountCents: order.amountCents,
+          currency: order.currency,
+          provider: order.provider,
+        },
+        occurredAt: order.createdAt,
+      }));
       const inserted = await tx
         .insert(couponRedemptions)
         .values({ ...input.redemption, tenantId })

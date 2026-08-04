@@ -218,6 +218,11 @@ const deps = (input: {
       findActiveByHash: async () => null,
       revoke: async () => null,
     },
+    importAuditEvents: {
+      append: async () => undefined,
+      findLatestByImportKey: async () => null,
+      listByApiKey: async () => [],
+    },
     apiKeyRateLimits: {
       claim: async () => true,
     },
@@ -822,7 +827,7 @@ const marketingApp = (marketing = marketingDeps()): ReturnType<typeof buildApp> 
     findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:marketing-key' ? {
       id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
       scopes: null,
-      createdAt: '1998-07-22T00:00:00.000Z', revokedAt: null,
+      createdAt: '1998-07-22T00:00:00.000Z', expiresAt: null, revokedAt: null,
     } : null,
     revoke: async () => null,
   };
@@ -854,6 +859,7 @@ const transactionalM2mApp = (options: {
         keyHash: hash,
         scopes: [...(options.scopes ?? ['transactional'])],
         createdAt: '1998-08-10T00:00:00.000Z',
+        expiresAt: null,
         revokedAt: null,
       };
     },
@@ -1036,7 +1042,7 @@ describe('marketing HTTP surfaces', () => {
       findActiveByHash: async (tenantId, hash) => tenantId === acme.id && hash === 'hash:marketing-key' ? {
         id: 'api-key-1', tenantId, name: 'Marketing', keyHash: hash,
         scopes: null,
-        createdAt: '1998-07-22T00:00:00.000Z', revokedAt: null,
+        createdAt: '1998-07-22T00:00:00.000Z', expiresAt: null, revokedAt: null,
       } : null,
       revoke: async () => null,
     };

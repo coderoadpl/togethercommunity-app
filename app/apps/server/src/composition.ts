@@ -7,6 +7,7 @@ import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
 import { createMemberErasureRequestRepository } from '#adapters/db/member-erasure-requests.js';
 import { createMemberEventRepository } from '#adapters/db/member-events.js';
+import { createImportAuditEventRepository } from '#adapters/db/import-audit-events.js';
 import { createEmailSendRepository } from '#adapters/db/email-sends.js';
 import { createInvoiceRepository } from '#adapters/db/invoice-repositories.js';
 import {
@@ -156,6 +157,7 @@ import type {
   BunnyTokenSigner,
   HealthPort,
   IdGenerator,
+  ImportAuditEventRepository,
   InvoiceRepository,
   InvoicingPort,
   ContentHash,
@@ -301,6 +303,7 @@ export interface AppDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
+  importAuditEvents: ImportAuditEventRepository;
   apiKeyRateLimits: ApiKeyRateLimitRepository;
   m2mTransactionalRateLimits: { perMinute: number; perDay: number };
   apiKeyCrypto: ApiKeyCrypto;
@@ -904,6 +907,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
+    importAuditEvents: createImportAuditEventRepository(db),
     apiKeyRateLimits: createApiKeyRateLimitRepository(db),
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,

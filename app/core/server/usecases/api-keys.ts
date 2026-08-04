@@ -1,6 +1,8 @@
 import {
   createApiKeyInputSchema,
   err,
+  IMPORT_API_KEY_MAX_LIFETIME_MS,
+  isImportApiKeyScope,
   notFound,
   ok,
   toTenantApiKeyPublic,
@@ -39,6 +41,19 @@ export const createTenantApiKey = async (
   const parsed = createApiKeyInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid API key', parsed.error.flatten()));
 
+  const createdAt = deps.clock.nowIso();
+  const expiresAt = parsed.data.expiresAt ?? null;
+  if (expiresAt !== null && Date.parse(expiresAt) <= Date.parse(createdAt)) {
+    return err(validation('API key expiry must be in the future'));
+  }
+  if (
+    expiresAt !== null
+    && parsed.data.scopes?.some(isImportApiKeyScope) === true
+    && Date.parse(expiresAt) - Date.parse(createdAt) > IMPORT_API_KEY_MAX_LIFETIME_MS
+  ) {
+    return err(validation('Import API key expiry cannot exceed 30 days'));
+  }
+
   const secret = deps.apiKeyCrypto.generateSecret();
   const apiKey: TenantApiKey = {
     id: deps.ids.nextId(),
@@ -46,7 +61,8 @@ export const createTenantApiKey = async (
     name: parsed.data.name,
     keyHash: deps.apiKeyCrypto.hash(secret),
     scopes: parsed.data.scopes ?? null,
-    createdAt: deps.clock.nowIso(),
+    createdAt,
+    expiresAt,
     revokedAt: null,
   };
   await deps.tenantApiKeys.create(tenant.value, apiKey);

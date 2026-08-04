@@ -93,6 +93,8 @@ import type {
   Invoice,
   InvoiceEvent,
   InvoiceVatTreatment,
+  ImportAuditEvent,
+  ImportAuditResourceType,
   FiscalArtifact,
   KsefEnvironment,
   KsefStatus,
@@ -499,6 +501,16 @@ export interface TenantApiKeyRepository {
   create(tenantId: string, apiKey: TenantApiKey): Promise<void>;
   findActiveByHash(tenantId: string, keyHash: string): Promise<TenantApiKey | null>;
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
+}
+
+export interface ImportAuditEventRepository {
+  append(tenantId: string, event: ImportAuditEvent): Promise<void>;
+  findLatestByImportKey(
+    tenantId: string,
+    kind: ImportAuditResourceType,
+    importKey: string,
+  ): Promise<ImportAuditEvent | null>;
+  listByApiKey(tenantId: string, apiKeyId: string): Promise<ImportAuditEvent[]>;
 }
 
 export interface ApiKeyRateLimitRepository {

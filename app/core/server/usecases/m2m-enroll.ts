@@ -13,6 +13,7 @@ import {
 
 import type {
   ApiKeyCrypto,
+  Clock,
   OrderRepository,
   ProductPriceRepository,
   TenantApiKeyRepository,
@@ -23,6 +24,7 @@ import { appendOrder } from './subscription-lifecycle.js';
 export interface ApiKeyAuthDeps {
   tenantApiKeys: TenantApiKeyRepository;
   apiKeyCrypto: ApiKeyCrypto;
+  clock: Clock;
 }
 
 export const authenticateApiKey = async (
@@ -34,6 +36,9 @@ export const authenticateApiKey = async (
   if (!secret) return err(unauthorized('Missing API key'));
   const found = await deps.tenantApiKeys.findActiveByHash(tenantId, deps.apiKeyCrypto.hash(secret));
   if (!found) return err(unauthorized('Invalid API key'));
+  if (found.expiresAt !== null && Date.parse(found.expiresAt) <= Date.parse(deps.clock.nowIso())) {
+    return err(unauthorized('Invalid API key'));
+  }
   return ok(found);
 };
 

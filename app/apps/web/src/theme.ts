@@ -2794,8 +2794,9 @@ export const AppBarTitle = styled(Typography)<AsElement>({
 
 export const AppBarWordmark = styled('img')({
   display: 'block',
-  height: 15,
+  height: 20,
   width: 'auto',
+  alignSelf: 'flex-start',
   opacity: 0.62,
 });
 

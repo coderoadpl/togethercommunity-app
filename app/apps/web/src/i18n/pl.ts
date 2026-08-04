@@ -1138,6 +1138,10 @@ export const pl: Messages = {
     courseNotFound: 'Nie znaleziono kursu',
     lessonDuration: ({ minutes }) => format('{minutes} min', { minutes }),
     unlockAccess: 'Odblokuj dostęp',
+    accessLocked: 'Zablokowane',
+    accessPartiallyUnlocked: 'Częściowo odblokowane',
+    completionComplete: 'Ukończone',
+    completionPartial: 'Częściowo ukończone',
   },
   courseOverview: {
     progressTitle: 'Twoje postępy',

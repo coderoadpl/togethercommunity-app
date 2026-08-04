@@ -69,40 +69,51 @@ const TabLink = ({
   </ButtonBase>
 );
 
+export const getActiveMemberTab = (pathname: string) => {
+  if (
+    pathname === '/my'
+    || pathname === '/my/courses'
+    || pathname.startsWith('/my/courses/')
+    || pathname.startsWith('/my/course/')
+  ) {
+    return 'courses';
+  }
+  if (pathname.startsWith('/community')) return 'community';
+  if (pathname === '/my/products' || pathname.startsWith('/my/products/')) return 'products';
+  if (pathname === '/account') return 'account';
+  return null;
+};
+
 const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean }) => {
   const t = useTranslations();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const activeTab = getActiveMemberTab(pathname);
   return (
     <Paper elevation={8} square sx={{ pb: 'env(safe-area-inset-bottom)' }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
         <TabLink
           href="/my"
           label={t.student.myCourses}
-          current={
-            pathname === '/my'
-            || pathname === '/my/courses'
-            || pathname.startsWith('/my/courses/')
-            || pathname.startsWith('/my/course/')
-          }
+          current={activeTab === 'courses'}
           icon={<CoursesIcon />}
         />
         <TabLink
           href="/community"
           label={t.community.tab}
-          current={pathname.startsWith('/community')}
+          current={activeTab === 'community'}
           icon={<CommunityIcon />}
         />
         <TabLink
           href="/my/products"
           label={t.student.myProducts}
-          current={pathname === '/my/products' || pathname.startsWith('/my/products/')}
+          current={activeTab === 'products'}
           icon={<ProductsIcon />}
         />
         <NotificationBell tabLabel={t.notifications.heading} live={liveNotifications} />
         <TabLink
           href="/account"
           label={t.account.menuAccount}
-          current={pathname === '/account'}
+          current={activeTab === 'account'}
           icon={<AccountIcon />}
         />
       </Box>

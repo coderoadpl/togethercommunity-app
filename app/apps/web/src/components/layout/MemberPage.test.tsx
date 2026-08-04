@@ -52,6 +52,26 @@ describe('MemberPage', () => {
     expect(screen.getByText('Opis kursu')).toBeInTheDocument();
   });
 
+  it('splits leading and trailing rail content around the main column on mobile', () => {
+    render(
+      <MemberPage
+        title="Kurs"
+        eyebrow="program kursu"
+        mobileRail="split"
+        railLeading={<div>Postęp</div>}
+        rail={<div>Program</div>}
+      >
+        <p>Opis kursu</p>
+      </MemberPage>,
+    );
+
+    expect(screen.getByTestId('member-rail-leading')).toHaveTextContent('Postęp');
+    expect(screen.getByRole('main')).toHaveTextContent('Opis kursu');
+    expect(screen.getByTestId('member-rail-trailing')).toHaveTextContent('Program');
+    expect(screen.getAllByText('Postęp')).toHaveLength(1);
+    expect(screen.getAllByText('Program')).toHaveLength(1);
+  });
+
   it('renders a StatusView inside the skeleton instead of children for non-ready states', () => {
     render(
       <MemberPage

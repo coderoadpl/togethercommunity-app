@@ -19,6 +19,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
+import { BrandLoader } from '../../components/layout/BrandLoader.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { EmailVerificationStatus } from '../../components/ui/EmailVerificationStatus.js';
@@ -43,13 +44,7 @@ export const TenantHomePage = () => {
   }, [unauthorized, staff, memberOnly, navigate]);
 
   if (me.isPending) {
-    return (
-      <Container sx={{ maxWidth: '44rem' }}>
-        <Typography variant="h2" component="p" sx={{ py: 6 }}>
-          {t.tenant.openingWorkspace}
-        </Typography>
-      </Container>
-    );
+    return <BrandLoader caption={t.tenant.openingWorkspace} />;
   }
   if (unauthorized || staff || memberOnly) return null;
   if (me.isError) {

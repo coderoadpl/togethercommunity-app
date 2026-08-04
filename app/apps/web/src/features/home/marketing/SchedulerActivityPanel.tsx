@@ -215,7 +215,7 @@ export const SchedulerActivityDetailPage = () => {
 
   if (runId === undefined) return <Navigate to="/panel/marketing/activity" />;
   if (detail.isPending) {
-    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'loading', label: t.marketing.activity.loading }} /></PanelPage>;
+    return <PanelPage title={t.marketing.activity.details} state={{ kind: 'loading', label: t.marketing.activity.loading }} />;
   }
   if (detail.isError) {
     return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;

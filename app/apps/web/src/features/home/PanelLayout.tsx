@@ -33,7 +33,7 @@ import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { AppShell, BrandSplash, StatusView } from '../../components/layout/index.js';
+import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
@@ -577,13 +577,7 @@ export const PanelLayout = () => {
   if (me.isPending || unauthorized || noTenant || memberOnly) {
     return (
       <ThemeProvider theme={theme}>
-        <BrandSplash
-          ariaLabel={t.bootSplash.opening}
-          buildStamp={<BuildStamp />}
-          tenantLabel={t.bootSplash.tenant({ host: window.location.hostname })}
-          warmingLabel={t.bootSplash.warming}
-          wordmark={t.common.appName}
-        />
+        <BrandLoader caption={t.bootSplash.opening} />
       </ThemeProvider>
     );
   }

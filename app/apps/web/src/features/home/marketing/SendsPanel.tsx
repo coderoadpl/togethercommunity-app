@@ -418,7 +418,7 @@ export const SendDetailPage = () => {
   });
 
   if (kind === null || sendId === undefined) return <Navigate to="/panel/marketing/sends" />;
-  if (detail.isPending) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'loading', label: t.marketing.sendsLoading }} /></PanelPage>;
+  if (detail.isPending) return <PanelPage title={t.marketing.sendDetails} state={{ kind: 'loading', label: t.marketing.sendsLoading }} />;
   if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
 
   const send = detail.data.send;

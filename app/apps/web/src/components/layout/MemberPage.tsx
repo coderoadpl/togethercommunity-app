@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Box, Breadcrumbs, Container, Stack, Typography } from '@mui/material';
 
 import { Eyebrow, LedgerHeader } from '../../theme.js';
+import { BrandLoader } from './BrandLoader.js';
 import { StatusView, type PageState } from './StatusView.js';
 import { PAGE_WIDTH } from './widths.js';
 
@@ -62,7 +63,11 @@ export const MemberPage = ({
   'data-testid': testId,
 }: MemberPageProps) => {
   const statusOnly = state !== undefined && state.kind !== 'ready';
-  const body = statusOnly ? <StatusView state={state} /> : children;
+  const body = state?.kind === 'loading'
+    ? <BrandLoader scope="container" caption={state.label} />
+    : statusOnly
+      ? <StatusView state={state} />
+      : children;
   const hasRail = rail !== undefined || railLeading !== undefined;
   const splitRail = mobileRail === 'split' && railLeading !== undefined;
 

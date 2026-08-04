@@ -3,7 +3,12 @@ import { createAuthClient } from 'better-auth/client';
 import { magicLinkClient, twoFactorClient } from 'better-auth/client/plugins';
 import { z } from 'zod';
 
-import type { AuthClientPort, AuthSessionResult, TwoFactorEnrollment } from '#core/client/index.js';
+import type {
+  AuthClientPort,
+  AuthSessionResult,
+  PasskeyInfo,
+  TwoFactorEnrollment,
+} from '#core/client/index.js';
 import {
   appError,
   err,
@@ -23,6 +28,26 @@ const twoFactorEnrollmentSchema = z.object({
   totpURI: z.string(),
   backupCodes: z.array(z.string()),
 });
+
+const backupCodesSchema = z.object({ backupCodes: z.array(z.string()) });
+
+const authSessionSchema = z.object({
+  token: z.string().nullable().optional(),
+  twoFactorRedirect: z.boolean().optional(),
+});
+
+const readAuthSession = (data: unknown, token: string | null = null): AuthSessionResult => {
+  const parsed = authSessionSchema.safeParse(data);
+  return {
+    token: token ?? (parsed.success ? (parsed.data.token ?? null) : null),
+    twoFactorRedirect: parsed.success ? (parsed.data.twoFactorRedirect ?? false) : false,
+  };
+};
+
+const readTwoFactorChallengeCookie = (response: Response): string | null =>
+  response.headers.getSetCookie()
+    .find((entry) => /^(?:__Secure-)?better-auth\.two_factor=/u.test(entry))
+    ?.split(';')[0] ?? null;
 
 type SignUpInput = Parameters<AuthClientPort['signUp']>[0];
 type SignInInput = Parameters<AuthClientPort['signIn']>[0];
@@ -84,7 +109,8 @@ const postCliAuth = async (
   path: AuthPath,
   body: SignUpInput | SignInInput,
   onToken: (token: string) => void,
-): Promise<Result<{ token: string | null }, AppError>> => {
+  onChallengeCookie: (cookie: string | null) => void,
+): Promise<Result<AuthSessionResult, AppError>> => {
   let response: Response;
   try {
     response = await fetch(new URL(path, endpoint.baseUrl), {
@@ -102,12 +128,24 @@ const postCliAuth = async (
 
   if (!response.ok) {
     const unauthorizedCode = path === '/api/auth/sign-in/email' ? 'invalid_credentials' : 'unauthorized';
-    return toResult({ token: null }, await readAuthError(response), unauthorizedCode);
+    return toResult(readAuthSession(null), await readAuthError(response), unauthorizedCode);
   }
 
   const token = response.headers.get('set-auth-token');
+  const challengeCookie = readTwoFactorChallengeCookie(response);
+  onChallengeCookie(challengeCookie);
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+  const session = readAuthSession(data, token);
+  if (session.twoFactorRedirect) {
+    return ok({ token: null, twoFactorRedirect: true });
+  }
   if (token) onToken(token);
-  return ok({ token });
+  return ok(session);
 };
 
 const postBrowserSignUp = async (
@@ -125,8 +163,14 @@ const postBrowserSignUp = async (
   } catch (cause) {
     return err(appError('internal', `Network error calling /api/auth/sign-up/email: ${String(cause)}`));
   }
-  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
-  return ok({ token: response.headers.get('set-auth-token') });
+  if (!response.ok) return toResult(readAuthSession(null), await readAuthError(response));
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+  return ok(readAuthSession(data, response.headers.get('set-auth-token')));
 };
 
 /** Better Auth implementation of the client-side auth port. */
@@ -136,12 +180,19 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
     plugins: [magicLinkClient(), passkeyClient(), twoFactorClient()],
   });
 
+  const verifyPasskeyPassword = async (password: string) => {
+    const response = await client.$fetch('/verify-password', {
+      method: 'POST',
+      body: { password },
+    });
+    return toResult(undefined, response.error);
+  };
+
   return {
     signUp: (input) => postBrowserSignUp(baseUrl, input),
     signIn: async ({ email, password }) => {
-      const token = null;
       const response = await client.signIn.email({ email, password });
-      return toResult({ token }, response.error, 'invalid_credentials');
+      return toResult(readAuthSession(response.data), response.error, 'invalid_credentials');
     },
     requestMagicLink: async ({ email, callbackURL, language }) =>
       toResult(
@@ -164,13 +215,33 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
         ).error,
       ),
     resetPassword: async ({ token, newPassword }) =>
-      toResult({ token: null }, (await client.resetPassword({ newPassword, token })).error),
+      toResult(readAuthSession(null), (await client.resetPassword({ newPassword, token })).error),
     changePassword: async (input) =>
       toResult(undefined, (await client.changePassword(input)).error),
     signOut: async () => toResult(undefined, (await client.signOut()).error),
-    registerPasskey: async (name) =>
-      toResult(undefined, (await client.passkey.addPasskey({ name })).error),
-    signInWithPasskey: async () => toResult({ token: null }, (await client.signIn.passkey()).error),
+    registerPasskey: async ({ name, password }) => {
+      const verified = await verifyPasskeyPassword(password);
+      if (!verified.ok) return verified;
+      return toResult(undefined, (await client.passkey.addPasskey({ name })).error);
+    },
+    listPasskeys: async () => {
+      const response = await client.passkey.listUserPasskeys();
+      if (response.error) return toResult<PasskeyInfo[]>([], response.error);
+      return ok((response.data ?? []).map((row) => ({
+        id: row.id,
+        name: row.name ?? '',
+        createdAt: new Date(row.createdAt).toISOString(),
+      })));
+    },
+    removePasskey: async ({ id, password }) => {
+      const verified = await verifyPasskeyPassword(password);
+      if (!verified.ok) return verified;
+      return toResult(undefined, (await client.passkey.deletePasskey({ id })).error);
+    },
+    signInWithPasskey: async () => {
+      const response = await client.signIn.passkey();
+      return toResult(readAuthSession(response.data), response.error);
+    },
     enableTwoFactor: async (password) => {
       const response = await client.twoFactor.enable({ password });
       if (response.error) return toResult<TwoFactorEnrollment>({ totpURI: '', backupCodes: [] }, response.error);
@@ -178,7 +249,23 @@ export const createBetterAuthClientAdapter = (baseUrl: string): AuthClientPort =
       if (!parsed.success) return err(appError('internal', 'Two-factor enrollment response did not match the contract'));
       return ok(parsed.data);
     },
-    verifyTotp: async (code) => toResult({ token: null }, (await client.twoFactor.verifyTotp({ code })).error),
+    verifyTotp: async (code) => {
+      const response = await client.twoFactor.verifyTotp({ code });
+      return toResult(readAuthSession(response.data), response.error);
+    },
+    verifyBackupCode: async (code) => {
+      const response = await client.twoFactor.verifyBackupCode({ code });
+      return toResult(readAuthSession(response.data), response.error);
+    },
+    disableTwoFactor: async (password) =>
+      toResult(undefined, (await client.twoFactor.disable({ password })).error),
+    regenerateBackupCodes: async (password) => {
+      const response = await client.twoFactor.generateBackupCodes({ password });
+      if (response.error) return toResult<string[]>([], response.error);
+      const parsed = backupCodesSchema.safeParse(response.data);
+      if (!parsed.success) return err(appError('internal', 'Backup-code response did not match the contract'));
+      return ok(parsed.data.backupCodes);
+    },
     signInWithGoogle: async () =>
       toResult(undefined, (await client.signIn.social({ provider: 'google' })).error),
   };
@@ -206,6 +293,7 @@ const verifyMagicLinkToken = async (
   endpoint: CliEndpoint,
   token: string,
   onToken: (token: string) => void,
+  onChallengeCookie: (cookie: string | null) => void,
 ): Promise<Result<AuthSessionResult, AppError>> => {
   const url = new URL('/api/auth/magic-link/verify', endpoint.baseUrl);
   url.searchParams.set('token', token);
@@ -215,11 +303,23 @@ const verifyMagicLinkToken = async (
   } catch (cause) {
     return err(appError('internal', `Network error verifying magic link: ${String(cause)}`));
   }
-  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
+  if (response.status >= 400) return toResult(readAuthSession(null), await readAuthError(response));
 
   const sessionToken = response.headers.get('set-auth-token');
+  const challengeCookie = readTwoFactorChallengeCookie(response);
+  onChallengeCookie(challengeCookie);
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+  const session = readAuthSession(data, sessionToken);
+  if (session.twoFactorRedirect || challengeCookie !== null) {
+    return ok({ token: null, twoFactorRedirect: true });
+  }
   if (sessionToken) onToken(sessionToken);
-  return ok({ token: sessionToken });
+  return ok(session);
 };
 
 const postCliPasswordReset = async (
@@ -258,30 +358,42 @@ const postCliResetPassword = async (
   } catch (cause) {
     return err(appError('internal', `Network error resetting password: ${String(cause)}`));
   }
-  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
-  return ok({ token: null });
+  if (!response.ok) return toResult(readAuthSession(null), await readAuthError(response));
+  return ok(readAuthSession(null));
 };
 
-const verifyTotpCli = async (
+const verifySecondFactorCli = async (
   endpoint: CliEndpoint,
+  path: '/api/auth/two-factor/verify-totp' | '/api/auth/two-factor/verify-backup-code',
   code: string,
+  challengeCookie: string | null,
   onToken: (token: string) => void,
 ): Promise<Result<AuthSessionResult, AppError>> => {
   let response: Response;
   try {
-    response = await fetch(new URL('/api/auth/two-factor/verify-totp', endpoint.baseUrl), {
+    response = await fetch(new URL(path, endpoint.baseUrl), {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: endpoint.origin },
+      headers: {
+        'content-type': 'application/json',
+        origin: endpoint.origin,
+        ...(challengeCookie === null ? {} : { cookie: challengeCookie }),
+      },
       body: JSON.stringify({ code }),
       credentials: 'include',
     });
   } catch (cause) {
-    return err(appError('internal', `Network error verifying TOTP code: ${String(cause)}`));
+    return err(appError('internal', `Network error verifying two-factor code: ${String(cause)}`));
   }
-  if (!response.ok) return toResult({ token: null }, await readAuthError(response));
+  if (!response.ok) return toResult(readAuthSession(null), await readAuthError(response));
   const token = response.headers.get('set-auth-token');
   if (token) onToken(token);
-  return ok({ token });
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+  return ok(readAuthSession(data, token));
 };
 
 const postCliSignOut = async (
@@ -341,9 +453,22 @@ export const createCliAuthAdapter = (
 ): CliAuthAdapter => {
   const normalizedBaseUrl = new URL(baseUrl);
   const endpoint = { baseUrl: normalizedBaseUrl, origin: normalizedBaseUrl.origin };
+  let challengeCookie: string | null = null;
   return {
-    signUp: (input) => postCliAuth(endpoint, '/api/auth/sign-up/email', input, onToken),
-    signIn: (input) => postCliAuth(endpoint, '/api/auth/sign-in/email', input, onToken),
+    signUp: (input) => postCliAuth(
+      endpoint,
+      '/api/auth/sign-up/email',
+      input,
+      onToken,
+      (cookie) => { challengeCookie = cookie; },
+    ),
+    signIn: (input) => postCliAuth(
+      endpoint,
+      '/api/auth/sign-in/email',
+      input,
+      onToken,
+      (cookie) => { challengeCookie = cookie; },
+    ),
     requestMagicLink: (input) => postCliMagicLink(endpoint, input),
     requestPasswordReset: (input) => postCliPasswordReset(endpoint, input),
     resetPassword: (input) => postCliResetPassword(endpoint, input),
@@ -353,10 +478,32 @@ export const createCliAuthAdapter = (
       return currentToken === null ? ok(undefined) : postCliSignOut(endpoint, currentToken);
     },
     registerPasskey: async () => err(notSupportedInCli),
+    listPasskeys: async () => err(notSupportedInCli),
+    removePasskey: async () => err(notSupportedInCli),
     signInWithPasskey: async () => err(notSupportedInCli),
     enableTwoFactor: async () => err(notSupportedInCli),
-    verifyTotp: (code) => verifyTotpCli(endpoint, code, onToken),
+    verifyTotp: (code) => verifySecondFactorCli(
+      endpoint,
+      '/api/auth/two-factor/verify-totp',
+      code,
+      challengeCookie,
+      onToken,
+    ),
+    verifyBackupCode: (code) => verifySecondFactorCli(
+      endpoint,
+      '/api/auth/two-factor/verify-backup-code',
+      code,
+      challengeCookie,
+      onToken,
+    ),
+    disableTwoFactor: async () => err(notSupportedInCli),
+    regenerateBackupCodes: async () => err(notSupportedInCli),
     signInWithGoogle: async () => err(notSupportedInCli),
-    verifyMagicLinkToken: (token) => verifyMagicLinkToken(endpoint, token, onToken),
+    verifyMagicLinkToken: (token) => verifyMagicLinkToken(
+      endpoint,
+      token,
+      onToken,
+      (cookie) => { challengeCookie = cookie; },
+    ),
   };
 };

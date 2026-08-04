@@ -275,3 +275,129 @@ describe('CLI password change', () => {
     expect(onToken).not.toHaveBeenCalled();
   });
 });
+
+describe('two-factor and passkey client semantics', () => {
+  it('maps a browser password challenge without treating it as a session', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ twoFactorRedirect: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.signIn({ email: 'member@example.com', password: 'secret12' })).toEqual({
+      ok: true,
+      value: { token: null, twoFactorRedirect: true },
+    });
+  });
+
+  it('verifies a password before deleting a passkey', async () => {
+    const calls: string[] = [];
+    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      calls.push(new URL(String(input)).pathname);
+      return Promise.resolve(new Response(JSON.stringify({ status: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.removePasskey({ id: 'passkey-1', password: 'secret12' }))
+      .toEqual({ ok: true, value: undefined });
+    expect(calls).toEqual([
+      '/api/auth/verify-password',
+      '/api/auth/passkey/delete-passkey',
+    ]);
+  });
+
+  it('carries a secure provisional CLI challenge cookie into backup-code redemption', async () => {
+    const calls: Array<{ path: string; cookie: string | null }> = [];
+    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, cookie: new Headers(init?.headers).get('cookie') });
+      if (path.endsWith('/sign-in/email')) {
+        return Promise.resolve(new Response(JSON.stringify({ twoFactorRedirect: true }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'set-cookie': '__Secure-better-auth.two_factor=signed-challenge; Path=/; Secure; HttpOnly',
+          },
+        }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ token: 'session-token' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'set-auth-token': 'session-token',
+        },
+      }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const onToken = vi.fn();
+    const auth = createCliAuthAdapter('https://api.example', onToken);
+
+    expect(await auth.signIn({ email: 'member@example.com', password: 'secret12' }))
+      .toEqual({ ok: true, value: { token: null, twoFactorRedirect: true } });
+    expect(onToken).not.toHaveBeenCalled();
+    expect(await auth.verifyBackupCode('backup-once')).toEqual({
+      ok: true,
+      value: { token: 'session-token', twoFactorRedirect: false },
+    });
+    expect(onToken).toHaveBeenCalledExactlyOnceWith('session-token');
+    expect(calls).toEqual([
+      { path: '/api/auth/sign-in/email', cookie: null },
+      {
+        path: '/api/auth/two-factor/verify-backup-code',
+        cookie: '__Secure-better-auth.two_factor=signed-challenge',
+      },
+    ]);
+  });
+
+  it('uses the magic-link response body to reject a provisional token as a session', async () => {
+    const calls: Array<{ path: string; cookie: string | null }> = [];
+    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, cookie: new Headers(init?.headers).get('cookie') });
+      if (path.endsWith('/magic-link/verify')) {
+        return Promise.resolve(new Response(JSON.stringify({ twoFactorRedirect: true }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'set-auth-token': 'provisional-token',
+            'set-cookie': '__Secure-better-auth.two_factor=signed-magic-challenge; Path=/; Secure; HttpOnly',
+          },
+        }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ token: 'completed-token' }), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'set-auth-token': 'completed-token',
+        },
+      }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const onToken = vi.fn();
+    const auth = createCliAuthAdapter('https://api.example', onToken);
+
+    expect(await auth.verifyMagicLinkToken('magic-token')).toEqual({
+      ok: true,
+      value: { token: null, twoFactorRedirect: true },
+    });
+    expect(onToken).not.toHaveBeenCalled();
+    expect(await auth.verifyTotp('123456')).toEqual({
+      ok: true,
+      value: { token: 'completed-token', twoFactorRedirect: false },
+    });
+    expect(onToken).toHaveBeenCalledExactlyOnceWith('completed-token');
+    expect(calls).toEqual([
+      { path: '/api/auth/magic-link/verify', cookie: null },
+      {
+        path: '/api/auth/two-factor/verify-totp',
+        cookie: '__Secure-better-auth.two_factor=signed-magic-challenge',
+      },
+    ]);
+  });
+});

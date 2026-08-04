@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
+import { createHmac } from 'node:crypto';
+import { z } from 'zod';
 
 import { err, normalizeEmail, ok, validation } from '#core/domain/index.js';
 import { createDb } from '#adapters/db/client.js';
@@ -14,6 +16,11 @@ import { InMemorySchedulerRunRepository } from '#core/server/testing/marketing-f
 import {
   createAuth,
   createAuthPort,
+  isAdditionalTwoFactorPath,
+  isSensitivePasskeyPath,
+  isSuccessfulPasswordVerification,
+  PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
+  passwordResetOriginMatches,
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
@@ -24,9 +31,363 @@ const connectionString =
 
 let signUpIpSuffix = 1;
 
+const totpCode = (secret: string): string => {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const character of secret.toUpperCase().replace(/=+$/u, '')) {
+    const value = alphabet.indexOf(character);
+    if (value < 0) throw new Error('Invalid base32 secret');
+    bits += value.toString(2).padStart(5, '0');
+  }
+  const bytes = Buffer.alloc(Math.floor(bits.length / 8));
+  for (let index = 0; index < bytes.length; index += 1) {
+    bytes[index] = Number.parseInt(bits.slice(index * 8, index * 8 + 8), 2);
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  const digest = createHmac('sha1', bytes).update(counter).digest();
+  const offset = (digest.at(-1) ?? 0) & 0x0f;
+  const binary = ((digest[offset] ?? 0) & 0x7f) << 24 |
+    (digest[offset + 1] ?? 0) << 16 |
+    (digest[offset + 2] ?? 0) << 8 |
+    (digest[offset + 3] ?? 0);
+  return (binary % 1_000_000).toString().padStart(6, '0');
+};
+
+describe('ASVS authentication policy', () => {
+  it.each([
+    '/callback/google',
+    '/magic-link/verify',
+    '/passkey/verify-authentication',
+    '/sign-in/social',
+  ])('requires the existing two-factor plugin after %s', (path) => {
+    expect(isAdditionalTwoFactorPath(path)).toBe(true);
+  });
+
+  it('does not challenge an ordinary authenticated command', () => {
+    expect(isAdditionalTwoFactorPath('/change-password')).toBe(false);
+  });
+
+  it('confines password-reset redirects to the exact requesting origin', () => {
+    const headers = new Headers({ origin: 'https://one.example' });
+    expect(passwordResetOriginMatches(
+      { redirectTo: 'https://one.example/reset-password' },
+      headers,
+    )).toBe(true);
+    expect(passwordResetOriginMatches(
+      { redirectTo: 'https://two.example/reset-password' },
+      headers,
+    )).toBe(false);
+    expect(passwordResetOriginMatches({ redirectTo: 'not-a-url' }, headers)).toBe(false);
+    expect(passwordResetOriginMatches({ redirectTo: 'https://one.example/reset' }, undefined)).toBe(false);
+  });
+
+  it.each([
+    '/passkey/generate-register-options',
+    '/passkey/verify-registration',
+    '/passkey/delete-passkey',
+  ])('requires a recent user-bound proof for %s', (path) => {
+    expect(isSensitivePasskeyPath(path)).toBe(true);
+  });
+
+  it('recognizes only successful password proof responses', () => {
+    expect(isSuccessfulPasswordVerification({ status: true })).toBe(true);
+    expect(isSuccessfulPasswordVerification({ status: false })).toBe(false);
+  });
+});
+
+describe('real-provider sign-in and passkey proofs', () => {
+  it('challenges password and magic-link sign-ins and redeems each backup code once', async () => {
+    const { auth } = buildAuth();
+    const email = `two-factor-${Date.now()}@together.dev`;
+    const password = 'password-1234';
+    const signedUp = await signUp(auth, email, { password });
+    const token = signedUp.headers.get('set-auth-token') ?? '';
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) => auth.handler(
+      new Request(`http://studio.localhost:48730/api/auth${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+
+    const enabled = await post('/two-factor/enable', { password }, {
+      authorization: `Bearer ${token}`,
+    });
+    const enrollment = z.object({
+      totpURI: z.string(),
+      backupCodes: z.array(z.string()).min(1),
+    }).parse(await enabled.json());
+    const secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+    const verifiedEnrollment = await post('/two-factor/verify-totp', {
+      code: totpCode(secret),
+    }, { authorization: `Bearer ${token}` });
+    expect(verifiedEnrollment.status).toBe(200);
+
+    const challenged = await post('/sign-in/email', { email, password });
+    expect(challenged.status).toBe(200);
+    expect(await challenged.json()).toMatchObject({ twoFactorRedirect: true });
+    const provisionalToken = challenged.headers.get('set-auth-token') ?? '';
+    expect(await auth.api.getSession({
+      headers: new Headers({ authorization: `Bearer ${provisionalToken}` }),
+    })).toBeNull();
+    const challengeCookie = challenged.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor='))
+      ?.split(';')[0] ?? '';
+    expect(challengeCookie).not.toBe('');
+    expect(challenged.headers.getSetCookie().some((entry) =>
+      entry.startsWith('better-auth.session_token=') && entry.includes('Max-Age=0'))).toBe(true);
+
+    const backupCode = enrollment.backupCodes[0] ?? '';
+    const completed = await post('/two-factor/verify-backup-code', {
+      code: backupCode,
+      trustDevice: true,
+    }, {
+      cookie: challengeCookie,
+    });
+    expect(completed.status).toBe(200);
+    expect(completed.headers.get('set-auth-token')).not.toBeNull();
+    const completedCookies = completed.headers.getSetCookie();
+    const completedSessionCookie = completedCookies
+      .find((entry) => entry.startsWith('better-auth.session_token='))
+      ?.split(';')[0] ?? '';
+    const trustDeviceCookie = completedCookies
+      .find((entry) => entry.includes('.trust_device='))
+      ?.split(';')[0] ?? '';
+    expect(completedCookies.some((entry) => entry.includes('.passkey_sensitive='))).toBe(false);
+    expect(trustDeviceCookie).not.toBe('');
+    const passkeyOptions = await auth.handler(new Request(
+      'http://studio.localhost:48730/api/auth/passkey/generate-register-options',
+      {
+        headers: {
+          origin: 'http://studio.localhost:48730',
+          cookie: completedSessionCookie,
+        },
+      },
+    ));
+    expect(passkeyOptions.status).toBe(403);
+
+    const challengedAgain = await post('/sign-in/email', { email, password }, {
+      cookie: trustDeviceCookie,
+    });
+    expect(await challengedAgain.clone().json()).toMatchObject({ twoFactorRedirect: true });
+    const nextChallengeCookie = challengedAgain.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.two_factor='))
+      ?.split(';')[0] ?? '';
+    const replayed = await post('/two-factor/verify-backup-code', { code: backupCode }, {
+      cookie: nextChallengeCookie,
+    });
+    expect(replayed.status).toBe(401);
+    const invalidTotp = await post('/two-factor/verify-totp', { code: 'not-a-code' }, {
+      cookie: nextChallengeCookie,
+    });
+    expect(invalidTotp.status).toBeGreaterThanOrEqual(400);
+
+    auth.setMagicLinkDeliveryContext(email, {
+      language: 'en',
+      mode: 'capture',
+      baseUrl: 'http://studio.localhost:48730',
+    });
+    await post('/sign-in/magic-link', {
+      email,
+      callbackURL: 'http://studio.localhost:48730/my',
+    });
+    const captured = auth.consumeCapturedMagicLink(email);
+    const magicResponse = await auth.handler(new Request(captured?.url ?? '', { redirect: 'manual' }));
+    expect(magicResponse.status).toBe(302);
+    expect(magicResponse.headers.get('location')).toBe(
+      'http://studio.localhost:48730/login?twoFactor=required',
+    );
+    expect(magicResponse.headers.getSetCookie().some((entry) =>
+      entry.startsWith('better-auth.two_factor='))).toBe(true);
+  });
+
+  it('issues and accepts the prefixed challenge cookie used by HTTPS deployments', async () => {
+    const { auth } = buildAuth({ secureCookies: true });
+    const email = `secure-two-factor-${Date.now()}@together.dev`;
+    const password = 'password-1234';
+    const signedUp = await signUp(auth, email, { password });
+    const token = signedUp.headers.get('set-auth-token') ?? '';
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) => auth.handler(
+      new Request(`http://studio.localhost:48730/api/auth${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+
+    const enabled = await post('/two-factor/enable', { password }, {
+      authorization: `Bearer ${token}`,
+    });
+    const enrollment = z.object({
+      totpURI: z.string(),
+      backupCodes: z.array(z.string()).min(1),
+    }).parse(await enabled.json());
+    const secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+    expect((await post('/two-factor/verify-totp', {
+      code: totpCode(secret),
+    }, { authorization: `Bearer ${token}` })).status).toBe(200);
+
+    const challenged = await post('/sign-in/email', { email, password });
+    const challengeCookie = challenged.headers.getSetCookie()
+      .find((entry) => entry.startsWith('__Secure-better-auth.two_factor='))
+      ?.split(';')[0] ?? '';
+    expect(await challenged.json()).toMatchObject({ twoFactorRedirect: true });
+    expect(challengeCookie).not.toBe('');
+
+    const completed = await post('/two-factor/verify-backup-code', {
+      code: enrollment.backupCodes[0] ?? '',
+    }, { cookie: challengeCookie });
+    expect(completed.status).toBe(200);
+    expect(completed.headers.get('set-auth-token')).not.toBeNull();
+  });
+
+  it.each(['/callback/google', '/passkey/verify-authentication', '/sign-in/social'])(
+    'extends the two-factor after hook to %s when the route supplies a new session',
+    async (path) => {
+      const { auth } = buildAuth();
+      const email = `additional-two-factor-${path.replaceAll('/', '-')}-${Date.now()}@together.dev`;
+      const password = 'password-1234';
+      const signedUp = await signUp(auth, email, { password });
+      const token = signedUp.headers.get('set-auth-token') ?? '';
+      const post = (endpointPath: string, body: unknown) => auth.handler(
+        new Request(`http://studio.localhost:48730/api/auth${endpointPath}`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+            origin: 'http://studio.localhost:48730',
+            'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+          },
+          body: JSON.stringify(body),
+        }),
+      );
+      const enabled = await post('/two-factor/enable', { password });
+      const enrollment = z.object({ totpURI: z.string() }).parse(await enabled.json());
+      const secret = new URL(enrollment.totpURI).searchParams.get('secret') ?? '';
+      expect((await post('/two-factor/verify-totp', { code: totpCode(secret) })).status).toBe(200);
+
+      const context = await auth.$context;
+      const found = await context.internalAdapter.findUserByEmail(email);
+      if (found === null) throw new Error('Two-factor test user was not found');
+      const session = await context.internalAdapter.createSession(found.user.id);
+      if (session === null) throw new Error('Two-factor test session was not created');
+      const plugin: unknown = context.options.plugins?.find(
+        (candidate) => candidate.id === 'two-factor',
+      );
+      const hooks = typeof plugin === 'object' && plugin !== null
+        ? Reflect.get(plugin, 'hooks')
+        : undefined;
+      const after = typeof hooks === 'object' && hooks !== null
+        ? Reflect.get(hooks, 'after')
+        : undefined;
+      const hook = z.object({
+        matcher: z.function()
+          .args(z.object({ path: z.string().optional() }))
+          .returns(z.boolean()),
+        handler: z.function().args(z.unknown()).returns(z.promise(z.unknown())),
+      }).parse(Array.isArray(after) ? after[0] : undefined);
+      let pendingSession: unknown = { session, user: found.user };
+
+      expect(hook.matcher({ path })).toBe(true);
+      const challenged = z.object({
+        headers: z.instanceof(Headers),
+        response: z.unknown(),
+      }).parse(await hook.handler({
+        path,
+        headers: new Headers({ origin: 'http://studio.localhost:48730' }),
+        context: {
+          ...context,
+          newSession: pendingSession,
+          setNewSession: (value: unknown) => { pendingSession = value; },
+        },
+        returnHeaders: true,
+      }));
+
+      expect(challenged.response).toMatchObject({ twoFactorRedirect: true });
+      expect(challenged.headers.getSetCookie().some((entry) =>
+        entry.startsWith('better-auth.two_factor='))).toBe(true);
+      expect(pendingSession).toBeNull();
+      expect(await auth.api.getSession({
+        headers: new Headers({ authorization: `Bearer ${session.token}` }),
+      })).toBeNull();
+    },
+  );
+
+  it('requires a fresh user-bound password proof before passkey registration', async () => {
+    const { auth } = buildAuth();
+    const email = `passkey-proof-${Date.now()}@together.dev`;
+    const password = 'password-1234';
+    const signedUp = await signUp(auth, email, { password });
+    const sessionCookie = signedUp.headers.getSetCookie()
+      .find((entry) => entry.startsWith('better-auth.session_token='))
+      ?.split(';')[0] ?? '';
+    const registrationOptions = (proofCookie = '') => auth.handler(
+      new Request(
+        'http://studio.localhost:48730/api/auth/passkey/generate-register-options',
+        {
+          headers: {
+            origin: 'http://studio.localhost:48730',
+            cookie: [sessionCookie, proofCookie].filter(Boolean).join('; '),
+          },
+        },
+      ),
+    );
+
+    expect((await registrationOptions()).status).toBe(403);
+    const rejected = await auth.handler(new Request(
+      'http://studio.localhost:48730/api/auth/verify-password',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          cookie: sessionCookie,
+        },
+        body: JSON.stringify({ password: 'wrong-password' }),
+      },
+    ));
+    expect(rejected.status).toBe(400);
+    expect(rejected.headers.getSetCookie().some((entry) =>
+      entry.includes('.passkey_sensitive='))).toBe(false);
+
+    const verified = await auth.handler(new Request(
+      'http://studio.localhost:48730/api/auth/verify-password',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://studio.localhost:48730',
+          cookie: sessionCookie,
+        },
+        body: JSON.stringify({ password }),
+      },
+    ));
+    const proofCookie = verified.headers.getSetCookie()
+      .find((entry) => entry.includes('.passkey_sensitive='))
+      ?.split(';')[0] ?? '';
+    const proofSetCookie = verified.headers.getSetCookie()
+      .find((entry) => entry.includes('.passkey_sensitive=')) ?? '';
+    expect(proofCookie).not.toBe('');
+    expect(proofSetCookie).toContain(
+      `Max-Age=${String(PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS)}`,
+    );
+    expect((await registrationOptions(proofCookie)).status).toBe(200);
+  });
+});
+
 const buildAuth = (options: {
   consentRequired?: boolean;
   recordedEmails?: string[];
+  secureCookies?: boolean;
   baseDomain?: string;
   singleTenantMode?: boolean;
 } = {}) => {
@@ -61,7 +422,7 @@ const buildAuth = (options: {
     baseDomain: options.baseDomain ?? 'localhost',
     singleTenantMode: options.singleTenantMode ?? false,
     trustedOrigins: ['http://localhost:48730', 'http://studio.localhost:48730'],
-    secureCookies: false,
+    secureCookies: options.secureCookies ?? false,
     exposeMagicLinks: true,
     emailOutbox,
     ids: { nextId: () => crypto.randomUUID() },
@@ -285,6 +646,25 @@ describe('createAuthPort.createEnrollmentMagicLink', () => {
 });
 
 describe('reset password email', () => {
+  it.each([
+    [{ origin: 'http://studio.localhost:48730' }, 'http://other.localhost:48730/reset-password'],
+    [{}, 'http://studio.localhost:48730/reset-password'],
+    [{ origin: 'http://studio.localhost:48730' }, 'not-a-url'],
+  ])('rejects a redirect outside the requesting origin', async (headers, redirectTo) => {
+    const { auth } = buildAuth();
+    const response = await auth.handler(new Request(
+      'http://studio.localhost:48730/api/auth/request-password-reset',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify({ email: 'reset-origin@together.dev', redirectTo }),
+      },
+    ));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'INVALID_PASSWORD_RESET_ORIGIN' });
+  });
+
   it('rebases the reset link onto the requesting host and sends an English email', async () => {
     const { auth, authPort, emails, flushEmails } = buildAuth();
     const email = `reset-en-${Date.now()}@together.dev`;
@@ -296,7 +676,10 @@ describe('reset password email', () => {
     });
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
-      headers: new Headers({ 'x-forwarded-for': '198.51.100.224' }),
+      headers: new Headers({
+        origin: 'http://studio.localhost:48730',
+        'x-forwarded-for': '198.51.100.224',
+      }),
     });
     await flushEmails();
 
@@ -322,7 +705,7 @@ describe('reset password email', () => {
     });
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
-      headers: new Headers(),
+      headers: new Headers({ origin: 'http://studio.localhost:48730' }),
     });
     await flushEmails();
 
@@ -381,7 +764,7 @@ describe('reset password email', () => {
 
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
-      headers: new Headers(),
+      headers: new Headers({ origin: 'http://studio.localhost:48730' }),
     });
     await flushEmails();
 
@@ -403,7 +786,7 @@ describe('reset password email', () => {
     const requestedAt = Date.now();
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: 'http://studio.localhost:48730/reset-password' },
-      headers: new Headers(),
+      headers: new Headers({ origin: 'http://studio.localhost:48730' }),
     });
     const users = await db.select({ id: user.id }).from(user).where(eq(user.email, email));
     const tokens = await db

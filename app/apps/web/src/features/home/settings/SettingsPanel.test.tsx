@@ -49,6 +49,10 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
 
   server.use(
     http.get('/api/tenant/settings', () => HttpResponse.json({ ok: true, data: { settings } })),
+    http.get('*', ({ request }) =>
+      new URL(request.url).pathname.endsWith('/passkey/list-user-passkeys')
+        ? HttpResponse.json([])
+        : undefined),
     http.post('/api/tenant/settings', async ({ request }) => {
       const body = await request.json();
       updates.push(body);
@@ -130,6 +134,15 @@ describe('SettingsPanel build information', () => {
 });
 
 describe('SettingsPanel security', () => {
+  it('mounts passkey and two-factor management on the creator surface', async () => {
+    renderPanel();
+
+    expect(await screen.findByTestId('passkeys-empty')).toHaveTextContent(pl.security.noPasskeys);
+    expect(screen.getByLabelText(pl.security.passkeyPasswordLabel)).toBeInTheDocument();
+    expect(screen.getByTestId('regenerate-backup-codes')).toBeInTheDocument();
+    expect(screen.getByTestId('disable-2fa')).toBeInTheDocument();
+  });
+
   it('changes the creator password and keeps the reset path mounted', async () => {
     let body: unknown;
     server.use(
@@ -156,6 +169,27 @@ describe('SettingsPanel security', () => {
     });
     expect(screen.getByText(pl.security.setOrResetPasswordHeading)).toBeInTheDocument();
     expect(screen.getByTestId('security-reset-password')).toBeInTheDocument();
+  });
+
+  it('requests password setup from creator passkey management', async () => {
+    let body: unknown;
+    server.use(
+      http.post('*', async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ status: true });
+      }),
+    );
+    renderPanel();
+
+    await userEvent.click(await screen.findByTestId('passkey-set-password'));
+
+    expect(await screen.findByTestId('passkey-password-setup-sent')).toHaveTextContent(
+      pl.security.resetSent,
+    );
+    expect(body).toEqual({
+      email: 'creator3@together.dev',
+      redirectTo: 'http://localhost:3000/reset-password',
+    });
   });
 });
 

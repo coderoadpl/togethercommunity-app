@@ -223,6 +223,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
 
     await page.getByTestId('section-settings').click();
     await page.getByTestId('passkey-name').fill('E2E Passkey');
+    await page.getByTestId('passkey-proof-password').fill('demo1234');
     await page.getByTestId('add-passkey').click();
     try {
       await page.getByTestId('passkey-added').waitFor({ state: 'visible', timeout: 15000 });

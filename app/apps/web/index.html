@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAF8F5" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141210" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAFAF9" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101113" />
     <script>
       (() => {
         let preference;
@@ -13,14 +13,14 @@
         } catch {}
         const media = matchMedia('(prefers-color-scheme: dark)');
         const dark = preference === 'dark' || (preference !== 'light' && media.matches);
-        document.documentElement.style.backgroundColor = dark ? '#141210' : '#FAF8F5';
+        document.documentElement.style.backgroundColor = dark ? '#101113' : '#FAFAF9';
         document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
         if ((preference === 'light' || preference === 'dark') && dark !== media.matches) {
           const activeMedia = media.matches
             ? '(prefers-color-scheme: dark)'
             : '(prefers-color-scheme: light)';
           const meta = document.querySelector(`meta[name="theme-color"][media="${activeMedia}"]`);
-          if (meta) meta.content = dark ? '#141210' : '#FAF8F5';
+          if (meta) meta.content = dark ? '#101113' : '#FAFAF9';
         }
       })();
     </script>

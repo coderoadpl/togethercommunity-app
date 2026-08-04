@@ -112,15 +112,15 @@ export const ThemeModeProvider = ({ children }: { children: ReactNode }) => {
     : colorScheme;
 
   useEffect(() => {
-    document.documentElement.style.backgroundColor = resolvedScheme === 'dark' ? '#141210' : '#FAF8F5';
+    document.documentElement.style.backgroundColor = resolvedScheme === 'dark' ? '#101113' : '#FAFAF9';
     document.documentElement.style.colorScheme = resolvedScheme;
     const lightMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
     const darkMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
-    if (lightMeta !== null) lightMeta.content = '#FAF8F5';
-    if (darkMeta !== null) darkMeta.content = '#141210';
+    if (lightMeta !== null) lightMeta.content = '#FAFAF9';
+    if (darkMeta !== null) darkMeta.content = '#101113';
     if (colorScheme === 'auto' || (resolvedScheme === 'dark') === prefersDark) return;
     const activeMeta = prefersDark ? darkMeta : lightMeta;
-    if (activeMeta !== null) activeMeta.content = resolvedScheme === 'dark' ? '#141210' : '#FAF8F5';
+    if (activeMeta !== null) activeMeta.content = resolvedScheme === 'dark' ? '#101113' : '#FAFAF9';
   }, [colorScheme, prefersDark, resolvedScheme]);
 
   const theme = useMemo(() => createThemeForMode('shadcn', undefined, resolvedScheme), [resolvedScheme]);

@@ -35,6 +35,7 @@ import {
   CheckoutPrice,
   CheckoutPriceOption,
   DataValue,
+  EmberCtaButton,
   FinePrint,
 } from '../../theme.js';
 import { createCheckoutState, reduceCheckoutState } from './index.web.js';
@@ -571,10 +572,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               </Stack>
             </FormControl>
           ) : null}
-          <Button
+          <EmberCtaButton
             type="submit"
             variant="contained"
             fullWidth
+            data-testid="checkout-pay-cta"
             disabled={
               simulatePurchase.isPending ||
               checkoutSession.isPending ||
@@ -594,7 +596,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               : simulatePurchase.isPending
                 ? t.checkout.submitPending
                 : t.checkout.payIdle({ price: formattedPayable })}
-          </Button>
+          </EmberCtaButton>
           {payableCents > 0
           && !paymentConfig.data.stripeConfigured
           && paymentConfig.data.simulatedPaymentsEnabled ? (

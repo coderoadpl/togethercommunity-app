@@ -41,14 +41,22 @@ const DashboardTile = ({
       aria-label={t.dashboard.openSection({ section: label })}
       onClick={() => void navigate({ to })}
     >
-      <StatTileIcon aria-hidden viewBox="0 0 24 24">
-        <path d={iconPath} />
-      </StatTileIcon>
-      <Box sx={{ display: 'grid' }}>
+      <Stack
+        direction="row"
+        useFlexGap
+        spacing="0.55rem"
+        sx={{ alignItems: 'baseline' }}
+        data-testid={`${testId}-headline`}
+      >
+        <StatTileIcon aria-hidden viewBox="0 0 24 24">
+          <path d={iconPath} />
+        </StatTileIcon>
         <StatTileValue component="span">{value}</StatTileValue>
-        <StatTileLabel component="span">{label}</StatTileLabel>
-        {detail === undefined ? null : <Typography variant="caption">{detail}</Typography>}
-      </Box>
+      </Stack>
+      <StatTileLabel component="span" data-testid={`${testId}-label`}>{label}</StatTileLabel>
+      <Typography variant="caption" sx={{ minHeight: '1.125rem' }} data-testid={`${testId}-detail`}>
+        {detail ?? ''}
+      </Typography>
     </StatTileButton>
   );
 };
@@ -95,6 +103,7 @@ export const DashboardPanel = ({ topContent }: { topContent?: ReactNode } = {}) 
         sx={{
           display: 'grid',
           gap: '0.9rem',
+          gridAutoRows: '1fr',
           gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' },
         }}
       >

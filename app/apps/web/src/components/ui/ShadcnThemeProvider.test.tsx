@@ -22,6 +22,6 @@ describe('ThemeModeProvider', () => {
       </ThemeModeProvider>,
     );
 
-    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^light:8:#FAF8F5:'Inter'/);
+    expect(screen.getByTestId('theme-probe')).toHaveTextContent(/^light:8:#FAFAF9:'Inter'/);
   });
 });

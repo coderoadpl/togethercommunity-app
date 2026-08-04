@@ -76,5 +76,7 @@ describe('StatusView', () => {
 
     expect(screen.getByTestId('inline-empty')).toHaveAttribute('data-state', 'empty');
     expect(screen.getByTestId('inline-empty')).not.toHaveClass('MuiPaper-root');
+    expect(screen.getByTestId('inline-empty').querySelector('svg')).toBeInTheDocument();
+    expect(screen.getByText('Brak danych')).toHaveClass('MuiTypography-body2');
   });
 });

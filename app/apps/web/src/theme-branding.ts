@@ -47,8 +47,8 @@ export interface BrandPalette {
 
 const AA_MIN = 4.5;
 const NON_TEXT_MIN = 3;
-const DARK_BACKGROUND = '#141210';
-const DARK_SURFACE = '#1E1B18';
+const DARK_BACKGROUND = '#101113';
+const DARK_SURFACE = '#17181B';
 
 const nudgeToward = (
   color: string,

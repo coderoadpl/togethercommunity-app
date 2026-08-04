@@ -1,4 +1,4 @@
-import { Stack, SvgIcon, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Stack, SvgIcon, ToggleButton, ToggleButtonGroup, Tooltip } from '@mui/material';
 
 import { useTranslations } from '../../i18n/index.js';
 import { COLOR_SCHEMES, useColorScheme, type ColorScheme } from '../../theme-mode.js';
@@ -26,7 +26,7 @@ const SchemeIcon = ({ scheme }: { scheme: ColorScheme }) => {
   }
 };
 
-export const ColorSchemeSwitcher = () => {
+export const ColorSchemeSwitcher = ({ compact = false }: { compact?: boolean }) => {
   const t = useTranslations();
   const { colorScheme, setColorScheme } = useColorScheme();
   const labels = t.common.colorScheme;
@@ -38,11 +38,18 @@ export const ColorSchemeSwitcher = () => {
       exclusive
       value={colorScheme}
       aria-label={labels.label}
+      sx={compact ? { '& .MuiToggleButton-root': { minHeight: '44px', minWidth: '44px', px: 0 } } : undefined}
       onChange={(_event, next: ColorScheme | null) => {
         if (next !== null) setColorScheme(next);
       }}
     >
-      {COLOR_SCHEMES.map((scheme) => (
+      {COLOR_SCHEMES.map((scheme) => compact ? (
+        <Tooltip key={scheme} title={labels[scheme]}>
+          <ToggleButton value={scheme} aria-label={labels[scheme]}>
+            <SchemeIcon scheme={scheme} />
+          </ToggleButton>
+        </Tooltip>
+      ) : (
         <ToggleButton key={scheme} value={scheme} aria-label={labels[scheme]}>
           <Stack direction="row" useFlexGap spacing="0.35rem" sx={{ alignItems: 'center' }}>
             <SchemeIcon scheme={scheme} />

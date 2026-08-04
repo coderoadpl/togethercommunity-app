@@ -6,6 +6,7 @@ import pkg from '../../package.json' with { type: 'json' };
 const commitSha =
   (process.env['APP_COMMIT_SHA'] ?? process.env['VERCEL_GIT_COMMIT_SHA'])?.slice(0, 7) ||
   'unknown';
+const appBaseDomain = process.env['APP_BASE_DOMAIN'];
 
 export default defineConfig({
   root: 'apps/web',
@@ -13,6 +14,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_COMMIT_SHA__: JSON.stringify(commitSha),
+    ...(appBaseDomain ? { 'import.meta.env.VITE_APP_BASE_DOMAIN': JSON.stringify(appBaseDomain) } : {}),
   },
   build: {
     outDir: '../../dist/web',

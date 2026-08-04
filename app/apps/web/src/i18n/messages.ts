@@ -15,6 +15,12 @@ export interface Messages {
     languageEnglish: string;
     loading: string;
     theme: string;
+    colorScheme: {
+      label: string;
+      light: string;
+      dark: string;
+      auto: string;
+    };
     home: string;
     reload: string;
     cancel: string;
@@ -1390,12 +1396,13 @@ export interface Messages {
     buyPrice: (params: { price: string }) => string;
     subscribeMonthlyPrice: (params: { price: string }) => string;
     subscribeYearlyPrice: (params: { price: string }) => string;
-    submitIdle: string;
+    submitIdle: (params: { price: string }) => string;
     submitPending: string;
-    freeIdle: string;
+    freeIdle: (params: { price: string }) => string;
     freePending: string;
-    payIdle: string;
+    payIdle: (params: { price: string }) => string;
     payPending: string;
+    simulatedPaymentDevNote: string;
     successEyebrow: string;
     successTitle: string;
     successBody: string;

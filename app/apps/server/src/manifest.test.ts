@@ -103,7 +103,7 @@ describe('PWA manifest', () => {
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      background_color: '#fafafa',
+      background_color: '#FAF8F5',
       theme_color: '#E8682A',
       icons: [
         { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png' },

@@ -23,6 +23,7 @@ import { ApiError } from '#core/client/index.js';
 
 import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
+import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -31,6 +32,7 @@ import { AppShell, BrandSplash, StatusView } from '../../components/layout/index
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
+import { useColorScheme } from '../../theme-mode.js';
 import {
   AppBarTitle,
   AppBarWordmark,
@@ -296,7 +298,12 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
       navigation={nav}
-      footer={<BuildStamp />}
+      footer={(
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <ColorSchemeSwitcher />
+          <BuildStamp />
+        </Box>
+      )}
       header={
         <>
           {isDesktop ? null : (
@@ -318,7 +325,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
             <AppBarTitle component="span" noWrap data-testid="tenant-name">
               {tenant.name}
             </AppBarTitle>
-            <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+            <AppBarWordmark component="span" variant="h3">{t.common.appName}</AppBarWordmark>
           </Box>
           <Box sx={{ flex: 1 }} />
           <Box
@@ -358,7 +365,12 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
       onMobileNavigationClose={() => setMobileOpen(false)}
       state={{ kind: 'error', message, retry: { label: t.common.retry, onRetry } }}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
-      footer={<BuildStamp />}
+      footer={(
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <ColorSchemeSwitcher />
+          <BuildStamp />
+        </Box>
+      )}
       header={
         <>
           {isDesktop ? null : (
@@ -376,7 +388,7 @@ const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () =>
             </Tooltip>
           )}
           <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
-          <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+          <AppBarWordmark component="span" variant="h3">{t.common.appName}</AppBarWordmark>
         </>
       }
     />
@@ -387,6 +399,7 @@ export const PanelLayout = () => {
   const navigate = useNavigate();
   const t = useTranslations();
   const me = useQuery(actions.me);
+  const { resolvedScheme } = useColorScheme();
 
   useSuppressGlobalChrome();
 
@@ -403,8 +416,11 @@ export const PanelLayout = () => {
 
   const branding = useTenantBranding();
   const theme = useMemo(
-    () => applyBranding(createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0), branding),
-    [tenant, branding],
+    () => applyBranding(
+      createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0, resolvedScheme),
+      branding,
+    ),
+    [tenant, branding, resolvedScheme],
   );
 
   if (me.isPending || unauthorized || noTenant || memberOnly) {

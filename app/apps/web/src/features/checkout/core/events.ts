@@ -1,4 +1,4 @@
 export type CheckoutEvent =
   | { type: 'priceSelected'; priceId: string }
-  | { type: 'couponOpened' }
+  | { type: 'couponVisibilityChanged'; visible: boolean }
   | { type: 'couponCodeChanged'; couponCode: string };

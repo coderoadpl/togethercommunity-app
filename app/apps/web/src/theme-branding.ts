@@ -1,14 +1,6 @@
-import type { Theme } from '@mui/material/styles';
+import type { PaletteMode, Theme } from '@mui/material/styles';
 
 import type { TenantBranding } from '#core/domain/index.js';
-
-/**
- * Branding is a thin token overlay on the theme system, never a theme fork:
- * a tenant accent replaces the palette primary of an already-built mode theme
- * and everything else stays untouched. Without an accent the input theme is
- * returned as-is (same reference), so unbranded tenants keep today's look
- * byte-for-byte.
- */
 
 const hexChannel = (hex: string, offset: number): number =>
   Number.parseInt(hex.slice(offset + 1, offset + 3), 16);
@@ -54,6 +46,22 @@ export interface BrandPalette {
 }
 
 const AA_MIN = 4.5;
+const NON_TEXT_MIN = 3;
+const DARK_BACKGROUND = '#141210';
+const DARK_SURFACE = '#1E1B18';
+
+const nudgeToward = (
+  color: string,
+  target: string,
+  background: string,
+  minimum: number,
+): string => {
+  let result = color;
+  for (let step = 0; step < 24 && contrastRatio(result, background) < minimum; step += 1) {
+    result = mix(result, target, 0.08);
+  }
+  return result;
+};
 
 /**
  * Text on the accent picks whichever of white/near-black clears the higher
@@ -62,7 +70,32 @@ const AA_MIN = 4.5;
  * hue-derived accent. Hover ("dark") shifts further in the same direction,
  * falling back to lightening if that would drop the hover pair under AA.
  */
-export const deriveBrandPalette = (accentColor: string): BrandPalette => {
+export const deriveBrandPalette = (
+  accentColor: string,
+  scheme: PaletteMode = 'light',
+): BrandPalette => {
+  if (scheme === 'dark') {
+    let main = nudgeToward(accentColor, '#ffffff', DARK_BACKGROUND, NON_TEXT_MIN);
+    for (
+      let step = 0;
+      step < 24
+      && Math.max(contrastRatio(main, LIGHT_TEXT), contrastRatio(main, DARK_TEXT)) < AA_MIN;
+      step += 1
+    ) {
+      main = mix(main, '#ffffff', 0.08);
+    }
+    const dark = nudgeToward(accentColor, '#ffffff', DARK_SURFACE, AA_MIN);
+    const contrastText =
+      contrastRatio(main, LIGHT_TEXT) >= contrastRatio(main, DARK_TEXT)
+        ? LIGHT_TEXT
+        : DARK_TEXT;
+    return {
+      main,
+      dark,
+      light: mix(main, '#ffffff', 0.14),
+      contrastText,
+    };
+  }
   const contrastText =
     contrastRatio(accentColor, LIGHT_TEXT) >= contrastRatio(accentColor, DARK_TEXT)
       ? LIGHT_TEXT
@@ -84,13 +117,17 @@ export const deriveBrandPalette = (accentColor: string): BrandPalette => {
 
 export const applyBranding = (theme: Theme, branding: TenantBranding | null | undefined): Theme => {
   if (branding === null || branding === undefined || branding.accentColor === null) return theme;
-  const primary = deriveBrandPalette(branding.accentColor);
+  const primary = deriveBrandPalette(branding.accentColor, theme.palette.mode);
   return {
     ...theme,
     focusRing: primary.main,
+    ...(theme.primaryActive === undefined ? {} : { primaryActive: primary.light }),
     palette: {
       ...theme.palette,
       primary: { ...theme.palette.primary, ...primary },
+      secondary: theme.primaryActive === undefined
+        ? theme.palette.secondary
+        : { ...theme.palette.secondary, ...primary },
     },
   };
 };

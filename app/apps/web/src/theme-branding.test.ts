@@ -32,17 +32,23 @@ describe('applyBranding', () => {
       expect(branded.palette.primary.main).toBe(derived.main);
       expect(branded.palette.primary.dark).toBe(derived.dark);
       expect(branded.palette.primary.contrastText).toBe(derived.contrastText);
+      if (mode.id === 'shadcn') {
+        expect(branded.palette.secondary).toMatchObject(derived);
+        expect(branded.primaryActive).toBe(derived.light);
+      } else {
+        expect(branded.palette.secondary).toBe(theme.palette.secondary);
+        expect(branded.primaryActive).toBeUndefined();
+      }
     }
   });
 
-  it('leaves everything except the primary color untouched', () => {
+  it('leaves non-accent theme tokens untouched', () => {
     for (const mode of MODES) {
       const theme = createThemeForMode(mode.id);
       const branded = applyBranding(theme, branding(ACCENT));
       expect(branded.typography).toBe(theme.typography);
       expect(branded.components).toBe(theme.components);
       expect(branded.shape).toBe(theme.shape);
-      expect(branded.palette.secondary).toBe(theme.palette.secondary);
       expect(branded.palette.background).toBe(theme.palette.background);
     }
   });
@@ -73,5 +79,21 @@ describe('deriveBrandPalette', () => {
   it('picks white text on dark accents and dark text on light accents', () => {
     expect(deriveBrandPalette('#000000').contrastText).toBe('#ffffff');
     expect(deriveBrandPalette('#ffffff').contrastText).toBe('#111111');
+  });
+
+  it('derives visible fills and links against dark Together surfaces', () => {
+    const accents = [ACCENT, '#000000', '#172554', '#B3261E', '#1C8A5A'];
+    for (const accent of accents) {
+      const palette = deriveBrandPalette(accent, 'dark');
+      expect(contrastRatio(palette.main, '#141210')).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(palette.dark, '#1E1B18')).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(palette.main, palette.contrastText)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('uses dark derivation when branding a dark theme', () => {
+    const theme = createThemeForMode('shadcn', undefined, 'dark');
+    const branded = applyBranding(theme, branding('#172554'));
+    expect(branded.palette.primary).toMatchObject(deriveBrandPalette('#172554', 'dark'));
   });
 });

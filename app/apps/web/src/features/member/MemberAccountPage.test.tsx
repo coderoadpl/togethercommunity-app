@@ -9,6 +9,7 @@ import { PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 import { pl } from '../../i18n/pl.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { ThemeModeProvider } from '../../theme-mode.js';
 import { MemberAccountPage } from './MemberAccountPage.js';
 
 const VALID_PASSWORD = 'x'.repeat(PASSWORD_MIN_LENGTH);
@@ -58,7 +59,11 @@ const renderAccount = async () => {
     history: createMemoryHistory({ initialEntries: ['/account'] }),
   });
   await router.load();
-  return renderWithProviders(<RouterProvider router={router} />);
+  return renderWithProviders(
+    <ThemeModeProvider>
+      <RouterProvider router={router} />
+    </ThemeModeProvider>,
+  );
 };
 
 describe('MemberAccountPage', () => {

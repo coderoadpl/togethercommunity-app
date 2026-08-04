@@ -7,6 +7,9 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
+  List,
+  ListItem,
+  ListItemText,
   MenuItem,
   OutlinedInput,
   Select,
@@ -25,7 +28,7 @@ import { priceMajorSchema, SUPPORTED_CURRENCIES, type PriceKind, type Product, t
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatPrice } from '../../../lib/format.js';
+import { formatFileSize, formatPrice } from '../../../lib/format.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
 
 const PriceRow = ({ price, onDeactivate }: { price: ProductPrice; onDeactivate: (price: ProductPrice) => void }) => {
@@ -63,7 +66,7 @@ const PricesSection = ({ product }: { product: Product }) => {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const prices = useQuery(actions.productPrices(product.id));
-  const [kind, setKind] = useState<PriceKind>('one_time');
+  const [kind, setKind] = useState<PriceKind>(product.type === 'membership' ? 'recurring' : 'one_time');
   const [interval, setInterval] = useState<'month' | 'year'>('month');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<string>(product.currency);
@@ -106,7 +109,9 @@ const PricesSection = ({ product }: { product: Product }) => {
     <>
       <SectionCard
         title={t.products.pricesHeading}
-        description={t.products.pricesDescription}
+        description={product.type === 'membership'
+          ? t.products.membershipPricesDescription
+          : t.products.pricesDescription}
         onSubmit={submit}
         actions={
           <Button type="submit" variant="contained" disabled={createPrice.isPending}>
@@ -162,6 +167,7 @@ const PricesSection = ({ product }: { product: Product }) => {
             <Select
               id="price-kind"
               value={kind}
+              disabled={product.type === 'membership'}
               onChange={(event) => setKind(event.target.value === 'recurring' ? 'recurring' : 'one_time')}
               inputProps={{ 'aria-label': t.products.kindLabel }}
             >
@@ -285,12 +291,103 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
   );
 };
 
+const DownloadAssetsSection = ({ productId }: { productId: string }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const queryClient = useQueryClient();
+  const assets = useQuery(actions.productDownloadAssets(productId));
+  const refresh = async () => {
+    await queryClient.invalidateQueries(actions.productDownloadAssetsInvalidates(productId));
+  };
+  const upload = useMutation({
+    ...actions.uploadProductDownload,
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    ...actions.deleteProductDownload,
+    onSuccess: refresh,
+  });
+  const selectFile = (file: File | undefined) => {
+    if (file === undefined) return;
+    upload.mutate({
+      productId,
+      fileName: file.name,
+      contentType: file.type || 'application/octet-stream',
+      sizeBytes: file.size,
+      body: file,
+    });
+  };
+
+  return (
+    <SectionCard
+      title={t.products.downloadsHeading}
+      description={t.products.downloadsDescription}
+      data-testid="product-download-assets"
+    >
+      {assets.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.common.loading }} surface={false} />
+      ) : assets.isError ? (
+        <Alert>{localizeError(assets.error, t)}</Alert>
+      ) : assets.data.assets.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" data-testid="product-download-assets-empty">
+          {t.products.downloadsEmpty}
+        </Typography>
+      ) : (
+        <List disablePadding>
+          {assets.data.assets.map((asset) => (
+            <ListItem key={asset.id} disableGutters>
+              <ListItemText
+                primary={asset.fileName}
+                secondary={formatFileSize(asset.sizeBytes, language)}
+              />
+              <Chip
+                size="small"
+                color={asset.status === 'ready' ? 'success' : 'warning'}
+                variant="outlined"
+                label={asset.status === 'ready'
+                  ? t.products.downloadStatusReady
+                  : t.products.downloadStatusPending}
+              />
+              <Button
+                size="small"
+                color="error"
+                aria-label={t.products.deleteDownload({ name: asset.fileName })}
+                disabled={remove.isPending}
+                onClick={() => remove.mutate({ productId, assetId: asset.id })}
+              >
+                {t.common.remove}
+              </Button>
+            </ListItem>
+          ))}
+        </List>
+      )}
+      <Box>
+        <Button component="label" variant="outlined" disabled={upload.isPending}>
+          {upload.isPending ? t.products.uploadingDownload : t.products.uploadDownload}
+          <input
+            hidden
+            type="file"
+            aria-label={t.products.downloadFileInput}
+            onChange={(event) => {
+              selectFile(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+        </Button>
+      </Box>
+      {upload.isError ? <Alert>{localizeError(upload.error, t)}</Alert> : null}
+      {remove.isError ? <Alert>{localizeError(remove.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
+
 export const ProductEditorPage = ({ product }: { product: Product }) => {
   const t = useTranslations();
 
   return (
     <PanelPage title={product.title} backTo={{ label: t.products.allProducts, href: '/panel/products' }}>
       <PricesSection product={product} />
+      {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
       <CheckoutConsentsSection product={product} />
       <SectionCard title={t.access.heading}>
         <ProductAccessEditor product={product} />

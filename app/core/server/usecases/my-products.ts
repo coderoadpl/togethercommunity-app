@@ -8,20 +8,30 @@ import {
   type MemberGrant,
   type MemberSubscription,
   type MemberSubscriptionSummary,
+  type ProductDownloadAsset,
   type Result,
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { Clock, MemberSubscriptionRepository, ProductGrantRepository } from '../ports.js';
+import type {
+  Clock,
+  MemberSubscriptionRepository,
+  ProductDownloadAssetRepository,
+  ProductGrantRepository,
+} from '../ports.js';
 
 export interface MyProductsDeps {
   grants: ProductGrantRepository;
   subscriptions: MemberSubscriptionRepository;
+  downloadAssets: ProductDownloadAssetRepository;
   clock: Clock;
 }
 
-export type MyProduct = GrantedProduct & { subscription: MemberSubscriptionSummary | null };
+export type MyProduct = GrantedProduct & {
+  subscription: MemberSubscriptionSummary | null;
+  downloads: ProductDownloadAsset[];
+};
 
 const statusRank: Record<GrantWindowStatus, number> = { active: 0, upcoming: 1, expired: 2 };
 
@@ -79,6 +89,16 @@ export const listMyProducts = async (
     }
   }
 
+  const downloadsByProduct = new Map<string, ProductDownloadAsset[]>();
+  await Promise.all(products.map(async (product) => {
+    const grant = bestGrantByProduct.get(product.id);
+    if (product.type !== 'digital_download' || grant === undefined || grantStatus(grant, nowMs) !== 'active') return;
+    downloadsByProduct.set(
+      product.id,
+      await deps.downloadAssets.listReadyByProduct(tenantId, product.id),
+    );
+  }));
+
   const seen = new Set<string>();
   const result: MyProduct[] = [];
   for (const product of products) {
@@ -93,6 +113,7 @@ export const listMyProducts = async (
       grantStartsAt: grant.startsAt,
       grantExpiresAt: grant.expiresAt,
       subscription: subscription ? toSubscriptionSummary(subscription) : null,
+      downloads: downloadsByProduct.get(product.id) ?? [],
     });
   }
   return ok(result);

@@ -8,14 +8,18 @@ import {
   type PriceKind,
   type Product,
   type ProductPrice,
+  type ProductType,
   type Result,
   type Tenant,
   type TenantBranding,
+  type TenantSocialLink,
   type TenantSupportPublic,
 } from '#core/domain/index.js';
 
 import type {
   ConsentDefinitionRepository,
+  CourseLessonPreview,
+  CourseLessonRepository,
   ProductPriceRepository,
   ProductRepository,
   TenantDocumentRepository,
@@ -27,14 +31,16 @@ export interface PublicOffer {
     slug: string;
     name: string;
     branding: TenantBranding;
+    socialLinks: TenantSocialLink[];
     legal: LegalUrls;
     support: TenantSupportPublic;
   };
   contentVersion: number;
+  previewLessons: CourseLessonPreview[];
   products: PublicOfferProduct[];
 }
 
-export interface PublicOfferPrice {
+interface PublicOfferPrice {
   id: string;
   kind: PriceKind;
   interval: PriceInterval | null;
@@ -42,10 +48,13 @@ export interface PublicOfferPrice {
   currency: string;
 }
 
-export interface PublicOfferProduct {
+interface PublicOfferProduct {
   id: string;
+  type: ProductType;
+  slug: string;
   title: string;
   description: string;
+  coverUrl: string | null;
   priceCents: number;
   currency: string;
   prices: PublicOfferPrice[];
@@ -58,6 +67,7 @@ export interface PublicOfferProduct {
 }
 
 export interface PublicOfferDeps {
+  lessons: Pick<CourseLessonRepository, 'listPreviews'>;
   products: ProductRepository;
   prices: ProductPriceRepository;
   tenants: TenantRepository;
@@ -69,7 +79,10 @@ export const getPublicOffer = async (
   tenant: Tenant,
   deps: PublicOfferDeps,
 ): Promise<Result<PublicOffer, AppError>> => {
-  const products = await deps.products.listPublishedByTenant(tenant.id);
+  const [products, lessons] = await Promise.all([
+    deps.products.listPublishedByTenant(tenant.id),
+    deps.lessons.listPreviews(tenant.id),
+  ]);
   const activePrices = await deps.prices.listActiveByProducts(
     tenant.id,
     products.map((product) => product.id),
@@ -89,6 +102,7 @@ export const getPublicOffer = async (
         settings === null
           ? EMPTY_TENANT_BRANDING
           : { logoUrl: settings.logoUrl, accentColor: settings.accentColor, faviconUrl: settings.faviconUrl },
+      socialLinks: settings?.socialLinks ?? [],
       legal:
         settings === null
           ? EMPTY_LEGAL_URLS
@@ -96,6 +110,7 @@ export const getPublicOffer = async (
       support: { url: settings?.supportUrl ?? null },
     },
     contentVersion: tenant.contentVersion,
+    previewLessons: lessons,
     products: await Promise.all(products.map(async (product) => ({
       ...toPublicProduct(product, pricesByProduct.get(product.id) ?? []),
       marketingConsents: await checkoutConsents(tenant.id, product, deps.definitions, deps.documents),
@@ -113,8 +128,11 @@ const toPublicPrice = (price: ProductPrice): PublicOfferPrice => ({
 
 const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOfferProduct => ({
   id: product.id,
+  type: product.type,
+  slug: product.slug,
   title: product.title,
   description: product.description,
+  coverUrl: product.coverUrl,
   priceCents: product.priceCents,
   currency: product.currency,
   prices,

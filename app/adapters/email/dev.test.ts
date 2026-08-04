@@ -10,6 +10,17 @@ const connectionString =
   process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 
 describe('createDevEmailPort', () => {
+  it('reports the development sink through the shared provider contract', async () => {
+    const db = createDb('node-postgres', connectionString);
+    const port = createDevEmailPort(db);
+
+    await expect(port.healthcheck()).resolves.toEqual({ ok: true, value: { healthy: true } });
+    await expect(port.test()).resolves.toEqual({
+      ok: true,
+      value: { code: 'email.available', message: 'Development email storage is available.' },
+    });
+  });
+
   it('stores a magic-link email for a recipient that the dev reader can read back', async () => {
     const db = createDb('node-postgres', connectionString);
     const port = createDevEmailPort(db, { nowIso: () => '2026-07-01T12:00:00.000Z' });

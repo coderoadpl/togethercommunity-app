@@ -57,6 +57,7 @@ const lesson = (id: string): CourseLesson => ({
   id,
   tenantId: 't1',
   name: `Lesson ${id}`,
+  isPreview: false,
   contents: [],
   legacyId: null,
   createdAt: '1998-01-01T00:00:00.000Z',
@@ -93,8 +94,11 @@ const course = (id: string, moduleOrder: string[] = []): Course => ({
 const product = (id: string, accessItems: Product['accessItems']): Product => ({
   id,
   tenantId: 't1',
+  type: 'course',
+  slug: id,
   title: `Product ${id}`,
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,
@@ -179,6 +183,7 @@ const modulesRepo = (rows: CourseModule[]): CourseModuleRepository => ({
 
 const lessonsRepo = (rows: CourseLesson[]): CourseLessonRepository => ({
   list: async () => rows,
+  listPreviews: async () => [],
   findById: async (_t, id) => rows.find((r) => r.id === id) ?? null,
   findByIds: async (_t, ids) => rows.filter((r) => ids.includes(r.id)),
   create: async () => undefined,
@@ -238,7 +243,7 @@ const productsRepo = (rows: Product[]): ProductRepository => ({
   listPublishedByTenant: async (tenantId) =>
     rows.filter((p) => p.tenantId === tenantId && p.published),
   findById: async (tenantId, id) => rows.find((p) => p.tenantId === tenantId && p.id === id) ?? null,
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,
@@ -673,6 +678,21 @@ describe('getAccessibleLesson', () => {
       [pCourse],
     );
     expect(await getAccessibleLesson(ctx({}), 'l1', expired)).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('serves a free preview lesson to a member without a matching grant', async () => {
+    const withPreview = deps([], [], [c1], [m1, m2], [], lessons.map(
+      (row) => (row.id === 'l4' ? { ...row, isPreview: true } : row),
+    ));
+
+    expect(await getAccessibleLesson(ctx({}), 'l4', withPreview)).toMatchObject({
+      ok: true,
+      value: { id: 'l4', isPreview: true },
+    });
+    expect(await getAccessibleLesson(ctx({}), 'l1', withPreview)).toMatchObject({
       ok: false,
       error: { code: 'forbidden' },
     });

@@ -53,14 +53,20 @@ export const validation = (message: string, details?: unknown): AppError =>
 export const tenantNotFound = (message = 'Unknown tenant'): AppError =>
   appError('tenant_not_found', message);
 
-export const integrationNotConfigured = (message = 'Integration is not configured'): AppError =>
-  appError('integration_not_configured', message);
+export const integrationNotConfigured = (
+  message = 'Integration is not configured',
+  details?: unknown,
+): AppError => appError('integration_not_configured', message, details);
 
-export const integrationAuth = (message = 'The integration rejected the stored credentials'): AppError =>
-  appError('integration_auth', message);
+export const integrationAuth = (
+  message = 'The integration rejected the stored credentials',
+  details?: unknown,
+): AppError => appError('integration_auth', message, details);
 
-export const integrationUnavailable = (message = 'The integration is unreachable'): AppError =>
-  appError('integration_unavailable', message);
+export const integrationUnavailable = (
+  message = 'The integration is unreachable',
+  details?: unknown,
+): AppError => appError('integration_unavailable', message, details);
 
 export const unavailable = (message = 'Service unavailable'): AppError =>
   appError('unavailable', message);

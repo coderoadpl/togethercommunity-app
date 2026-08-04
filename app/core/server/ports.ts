@@ -2,6 +2,7 @@ import type {
   AppError,
   Course,
   CourseLesson,
+  LessonAttachment,
   CourseModule,
   EntityHistoryEntry,
   EntityKind,
@@ -10,12 +11,14 @@ import type {
   EmailLayout,
   EmailEvent,
   EmailEventMailKind,
+  EmailIntegrationTransport,
   EmailReputationCounts,
   EmailSendListQuery,
   EmailSendProjection,
   TransactionalEmailTransport,
   EmailOutboxPayload,
   Member,
+  MemberBanEvent,
   MemberEvent,
   MemberGrant,
   MemberCourseProgress,
@@ -32,6 +35,7 @@ import type {
   OrderStatus,
   PriceKind,
   Product,
+  ProductDownloadAsset,
   ProductGrant,
   ProductPrice,
   ProcessedPaymentEvent,
@@ -44,10 +48,12 @@ import type {
   PostReport,
   PostReportEvent,
   PostReportStatus,
+  ProviderDiagnostic,
   ReactionEmoji,
   ReactionSummary,
   Space,
   SpaceStats,
+  StorageConfiguration,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -121,14 +127,14 @@ export interface EntityVersionRepository {
 }
 
 export interface UserDisplayReader {
-  findDisplayNames(userIds: string[]): Promise<Map<string, string>>;
+  findDisplayNames(tenantId: string, userIds: string[]): Promise<Map<string, string>>;
 }
 
 export interface ProductRepository {
   listByTenant(tenantId: string): Promise<Product[]>;
   listPublishedByTenant(tenantId: string): Promise<Product[]>;
   findById(tenantId: string, id: string): Promise<Product | null>;
-  create(tenantId: string, product: Product): Promise<void>;
+  create(tenantId: string, product: Product): Promise<'created' | 'slug_taken'>;
   updateAccessItems(
     tenantId: string,
     id: string,
@@ -138,6 +144,10 @@ export interface ProductRepository {
   ): Promise<Product | null>;
   setPublished(tenantId: string, id: string, published: boolean): Promise<void>;
   bumpContentVersion(tenantId: string): Promise<void>;
+}
+
+export interface ProductBatchReader {
+  findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
 }
 
 export interface CourseRepository {
@@ -160,11 +170,36 @@ export interface CourseModuleRepository {
 
 export interface CourseLessonRepository {
   list(tenantId: string): Promise<CourseLesson[]>;
+  listPreviews(tenantId: string): Promise<CourseLessonPreview[]>;
   findById(tenantId: string, id: string): Promise<CourseLesson | null>;
   findByIds(tenantId: string, ids: string[]): Promise<CourseLesson[]>;
   create(tenantId: string, lesson: CourseLesson): Promise<void>;
   update(tenantId: string, lesson: CourseLesson, version?: EntityVersionRecord): Promise<CourseLesson | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface CourseLessonPreview {
+  id: string;
+  name: string;
+  courseId: string;
+}
+
+export interface LessonAttachmentRepository {
+  create(tenantId: string, attachment: LessonAttachment): Promise<void>;
+  findById(tenantId: string, attachmentId: string): Promise<LessonAttachment | null>;
+  listByLesson(tenantId: string, lessonId: string): Promise<LessonAttachment[]>;
+  listReadyByLesson(tenantId: string, lessonId: string): Promise<LessonAttachment[]>;
+  markReady(tenantId: string, attachmentId: string, sizeBytes: number): Promise<LessonAttachment | null>;
+  delete(tenantId: string, attachmentId: string): Promise<boolean>;
+}
+
+export interface ProductDownloadAssetRepository {
+  create(tenantId: string, asset: ProductDownloadAsset): Promise<void>;
+  findById(tenantId: string, assetId: string): Promise<ProductDownloadAsset | null>;
+  listByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
+  listReadyByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
+  markReady(tenantId: string, assetId: string, sizeBytes: number): Promise<ProductDownloadAsset | null>;
+  delete(tenantId: string, assetId: string): Promise<boolean>;
 }
 
 export interface PostSearchRow {
@@ -368,8 +403,16 @@ export interface MemberRepository {
       reason: string | null;
       actorUserId: string;
     },
-    event: MemberEvent,
+    event: MemberBanEvent,
   ): Promise<Member | null>;
+}
+
+export interface MemberEventRepository {
+  append(
+    tenantId: string,
+    event: Omit<MemberEvent, 'tenantId'>,
+  ): Promise<void>;
+  listForMember(tenantId: string, memberId: string): Promise<MemberEvent[]>;
 }
 
 export interface MemberPseudonymization {
@@ -380,6 +423,7 @@ export interface MemberPseudonymization {
   postAuthorDisplay: string;
 }
 
+/** @public */
 export interface MemberPseudonymizationResult {
   alreadyDeleted: boolean;
   authUserErased: boolean;
@@ -438,7 +482,7 @@ export interface ProductGrantRepository {
   setGrantWindow(
     tenantId: string,
     grantId: string,
-    window: { startsAt: string; expiresAt: string | null },
+    window: { startsAt: string; expiresAt: string | null; occurredAt: string },
   ): Promise<ProductGrant | null>;
   revokeGrant(tenantId: string, grantId: string, expiresAt: string): Promise<ProductGrant | null>;
   listForMemberWithProductNames(tenantId: string, memberId: string, now: string): Promise<MemberGrant[]>;
@@ -508,10 +552,20 @@ export interface PaymentWebhookEvent {
     status: string | null;
     cancelAtPeriodEnd: boolean;
     currentPeriodEnd: string | null;
+    endedAt: string | null;
   } | null;
 }
 
 export interface PaymentProvider {
+  configureWebhook?(input: {
+    tenantId: string;
+    restrictedKey: string;
+    webhookUrl: string;
+  }): Promise<Result<{ webhookEndpointId: string; webhookSecret: string }, AppError>>;
+  deleteWebhookEndpoint?(input: {
+    restrictedKey: string;
+    webhookEndpointId: string;
+  }): Promise<Result<{ deleted: true }, AppError>>;
   createCheckoutSession(input: {
     tenantId: string;
     productId: string;
@@ -553,6 +607,10 @@ export interface PaymentProvider {
     signatureHeader: string;
     webhookSecret: string;
   }): Promise<Result<PaymentWebhookEvent, AppError>>;
+  test(input: {
+    tenantId: string;
+    appBaseUrl: string;
+  }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface InvoicingPort {
@@ -610,6 +668,7 @@ export interface InvoiceRepository {
   ): Promise<Invoice | null>;
 }
 
+/** @public */
 export interface KsefNumberAllocation {
   p2: string;
   sequence: number;
@@ -622,6 +681,7 @@ export interface KsefNumberRepository {
   ): Promise<KsefNumberAllocation>;
 }
 
+/** @public */
 export interface KsefSubmissionJob {
   id: string;
   tenantId: string;
@@ -838,19 +898,37 @@ export interface BunnyEmbedTokenSigner {
   sign(input: { securityKey: string; videoId: string; expires: number }): string;
 }
 
-/**
- * Signs object-storage GET URLs (SigV4 presign in production) so imported
- * media on private buckets stays reachable. Credentials arrive per call so
- * the adapter stays stateless and the use-case controls which tenant secret
- * is decrypted.
- */
-export interface FileUrlSigner {
+export interface StorageProvider {
+  objectUrl(configuration: StorageConfiguration, key: string): URL;
+  probe(input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>>;
+  presignPut(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+    expiresInSeconds: number;
+  }): Result<string, AppError>;
   presignGet(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
+    region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
+  delete(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+  }): Promise<Result<{ deleted: true }, AppError>>;
+  head(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+  }): Promise<Result<{ sizeBytes: number }, AppError>>;
+  healthcheck(input: { tenantId: string }): Promise<Result<{ healthy: true }, AppError>>;
+  test(input: { tenantId: string }): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface ProductPriceRepository {
@@ -895,6 +973,10 @@ export interface OrderRepository {
     tenantId: string,
     query: { paidBefore: string; limit: number },
   ): Promise<PaidWithoutGrantRow[]>;
+}
+
+export interface MemberOrderListReader {
+  listForMember(tenantId: string, memberId: string): Promise<OrderListItem[]>;
 }
 
 export interface OrderDetailRepository {
@@ -964,6 +1046,8 @@ export interface PurchaseRepository {
 
 export interface EmailPort {
   send(message: { to: string; headers?: Record<string, string>; messageId?: string } & EmailMessage): Promise<Result<{ messageId: string }, AppError>>;
+  healthcheck(): Promise<Result<{ healthy: true }, AppError>>;
+  test(): Promise<Result<ProviderDiagnostic, AppError>>;
 }
 
 export interface TransactionalEmailSender {
@@ -977,6 +1061,10 @@ export interface TransactionalEmailSender {
 
 export interface TransactionalEmailTransportResolver {
   resolve(tenantId: string): Promise<EmailPort | null>;
+}
+
+export interface EmailIntegrationTransportResolver {
+  resolve(tenantId: string, transport: EmailIntegrationTransport): Promise<EmailPort | null>;
 }
 
 export interface PlatformTransactionalPool {
@@ -1058,7 +1146,10 @@ export interface PaymentTransactionPort {
   ): Promise<Result<T, AppError>>;
 }
 
-/** Dev-only sink so tests and the CLI can read magic links without a mailer. */
+/**
+ * Dev-only sink so tests and the CLI can read magic links without a mailer.
+ * @public
+ */
 export interface DevMagicLink {
   email: string;
   url: string;
@@ -1069,6 +1160,7 @@ export interface DevMagicLinkReader {
   findByEmail(email: string): Promise<DevMagicLink | null>;
 }
 
+/** @public */
 export interface DevEmail {
   to: string;
   subject: string;
@@ -1099,21 +1191,27 @@ export interface OnboardingStateRepository {
   dismiss(tenantId: string, dismissedAt: string): Promise<void>;
 }
 
+/** @public */
 export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 
 export interface TenantRepository {
   findById(tenantId: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
+  findSole(): Promise<Tenant | null>;
   findSettings(tenantId: string): Promise<TenantSettings | null>;
   updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
-  createTenantWithOwnerGrant(input: {
-    tenant: { id: string; slug: string; name: string; createdAt: string };
-    ownerGrant: {
-      id: string;
-      userId: string;
-      staffRole: Extract<StaffRole, 'owner'>;
-    };
-  }): Promise<Tenant>;
+  createTenantWithOwnerGrant(
+    input: {
+      tenant: { id: string; slug: string; name: string; createdAt: string };
+      ownerGrant: {
+        id: string;
+        userId: string;
+        staffRole: Extract<StaffRole, 'owner'>;
+      };
+    },
+    options?: { requireEmpty: boolean },
+  ): Promise<Tenant | null>;
+  hasAny(): Promise<boolean>;
 }
 
 /** Append-only: consent records are audit evidence and are never updated or deleted. */
@@ -1128,6 +1226,15 @@ export interface MarketingConsentRepository {
   latestByEmail(tenantId: string, email: string, definitionId: string): Promise<MarketingConsent | null>;
   findById(tenantId: string, consentId: string): Promise<MarketingConsent | null>;
   purgeStalePending(tenantId: string, olderThan: string, doubleOptInDefinitionIds: string[]): Promise<number>;
+}
+
+export interface ConsentEvidenceRetentionRepository {
+  listExpiredTenantIds(retentionStartedBefore: string): Promise<string[]>;
+  purgeExpired(
+    tenantId: string,
+    retentionStartedBefore: string,
+    options: { batchSize: number; deadlineMs: number },
+  ): Promise<number>;
 }
 
 export interface TenantDocumentRepository {
@@ -1436,7 +1543,7 @@ export interface TenantAccessReader {
   listTenantsForStaff(userId: string): Promise<Membership[]>;
   listStaffForTenant(tenantId: string): Promise<Array<{ userId: string; email: string }>>;
   findStaffGrant(userId: string, lookup: TenantLookup): Promise<Membership | null>;
-  findMember(userId: string, tenantId: string): Promise<Member | null>;
+  findMember(tenantId: string, userId: string): Promise<Member | null>;
 }
 
 /** Established authenticated session, before tenant resolution. */

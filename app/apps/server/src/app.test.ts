@@ -19,11 +19,17 @@ import {
   internal,
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
+  type Course,
+  type CourseLesson,
+  type CourseModule,
   type Member,
   type Membership,
+  type LessonAttachment,
   type Order,
   type Post,
   type Product,
+  type ProductDownloadAsset,
+  type ProductGrant,
   type Tenant,
   type TenantDomain,
   type TermsConsent,
@@ -51,8 +57,12 @@ import {
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
 
-const acme: Tenant = { id: 't-acme', slug: 'acme', name: 'Acme', contentVersion: 4 };
-const globex: Tenant = { id: 't-globex', slug: 'globex', name: 'Globex', contentVersion: 2 };
+const acme: Tenant = {
+  id: 't-acme', slug: 'acme', name: 'Acme', status: 'active', plan: 'hosted', contentVersion: 4,
+};
+const globex: Tenant = {
+  id: 't-globex', slug: 'globex', name: 'Globex', status: 'active', plan: 'hosted_pro', contentVersion: 2,
+};
 
 const product = (input: {
   id: string;
@@ -62,8 +72,11 @@ const product = (input: {
 }): Product => ({
   id: input.id,
   tenantId: input.tenantId,
+  type: 'course',
+  slug: input.id,
   title: input.title,
   description: '',
+  coverUrl: null,
   priceCents: 1000,
   currency: 'PLN',
   published: input.published,
@@ -76,6 +89,8 @@ const deps = (input: {
   tenants?: Tenant[];
   domains?: TenantDomain[];
   products?: Product[];
+  lessons?: CourseLesson[];
+  getAuthenticatedUser?: AppDeps['authPort']['getAuthenticatedUser'];
   authenticated?: boolean;
   databaseUp?: boolean;
   dispatchEmails?: AppDeps['dispatchEmails'];
@@ -99,10 +114,10 @@ const deps = (input: {
       setResetPasswordDeliveryContext: () => undefined,
     },
     authPort: {
-      getAuthenticatedUser: async () => {
+      getAuthenticatedUser: input.getAuthenticatedUser ?? (async () => {
         if (!input.authenticated) throw new Error('Public route must not authenticate');
         return null;
-      },
+      }),
       ensureUser: async () => ({ userId: 'user-id', created: true }),
       requestMagicLink: async () => undefined,
       createEnrollmentMagicLink: async () => ({ url: 'https://example.com/magic' }),
@@ -114,6 +129,10 @@ const deps = (input: {
       create: async () => undefined,
       updateEmail: async () => null,
       setBanned: async () => null,
+    },
+    memberEvents: {
+      append: async () => undefined,
+      listForMember: async () => [],
     },
     memberErasure: {
       pseudonymize: async () => null,
@@ -144,6 +163,14 @@ const deps = (input: {
       listActiveForMember: async () => [],
       listGrantedProducts: async () => [],
     },
+    downloadAssets: {
+      create: async () => undefined,
+      findById: async () => null,
+      listByProduct: async () => [],
+      listReadyByProduct: async () => [],
+      markReady: async () => null,
+      delete: async () => false,
+    },
     prices: {
       listByProduct: async () => [],
       listActiveByProducts: async () => [],
@@ -154,6 +181,7 @@ const deps = (input: {
     orders: {
       create: async () => undefined,
       list: async () => ({ orders: [], total: 0 }),
+      listForMember: async () => [],
       revenueSince: async () => [],
       countSince: async () => 0,
       listPaidWithoutGrant: async () => [],
@@ -196,6 +224,7 @@ const deps = (input: {
       resolve: async () => ok('plaintext'),
     },
     payment: {
+      test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
       createCheckoutSession: async () => ok({ url: 'https://checkout.local/cs', sessionId: 'cs' }),
       expireCheckoutSession: async () => ok({ expired: true }),
       cancelSubscription: async () => ok({ canceled: true, alreadySettled: false }),
@@ -237,8 +266,15 @@ const deps = (input: {
     bunnyEmbedTokenSigner: {
       sign: ({ videoId, expires }) => `${videoId}-${expires}`,
     },
-    fileUrlSigner: {
+    storage: {
+      objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+      probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
+      delete: async () => ok({ deleted: true }),
+      head: async () => ok({ sizeBytes: 1 }),
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
     processedPaymentEvents: {
       claim: async () => 'claimed',
@@ -266,7 +302,19 @@ const deps = (input: {
       }),
     },
     email: {
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
       send: async () => ({ ok: true, value: { messageId: 'test-message-id' } }),
+    },
+    emailSender: {
+      send: async () => ok({ messageId: 'test-message-id', transport: 'platform' }),
+    },
+    emailTransports: {
+      resolve: async () => ({
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'email.available', message: 'Email is available.' }),
+        send: async () => ok({ messageId: 'transport-test-message-id' }),
+      }),
     },
     emailOutbox: {
       enqueue: async (message) => ok({ id: message.id }),
@@ -336,7 +384,9 @@ const deps = (input: {
         products.filter((candidate) => candidate.tenantId === tenantId && candidate.published),
       findById: async (tenantId, id) =>
         products.find((candidate) => candidate.tenantId === tenantId && candidate.id === id) ?? null,
-      create: async () => undefined,
+      findByIds: async (tenantId, ids) =>
+        products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)),
+      create: async () => 'created',
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,
@@ -358,11 +408,22 @@ const deps = (input: {
       delete: async () => false,
     },
     lessons: {
-      list: async () => [],
-      findById: async () => null,
-      findByIds: async () => [],
+      list: async (tenantId) => (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId),
+      listPreviews: async () => [],
+      findById: async (tenantId, id) =>
+        (input.lessons ?? []).find((lesson) => lesson.tenantId === tenantId && lesson.id === id) ?? null,
+      findByIds: async (tenantId, ids) =>
+        (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)),
       create: async () => undefined,
       update: async () => null,
+      delete: async () => false,
+    },
+    attachments: {
+      create: async () => undefined,
+      findById: async () => null,
+      listByLesson: async () => [],
+      listReadyByLesson: async () => [],
+      markReady: async () => null,
       delete: async () => false,
     },
     entityVersions: {
@@ -465,8 +526,12 @@ const deps = (input: {
     tenants: {
       findById: async (tenantId) => tenants.find((tenant) => tenant.id === tenantId) ?? null,
       findBySlug: async (slug) => tenants.find((tenant) => tenant.slug === slug) ?? null,
+      findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
+      hasAny: async () => tenants.length > 0,
       findSettings: async (tenantId) =>
         tenants.some((tenant) => tenant.id === tenantId) ? {
+          name: tenants.find((tenant) => tenant.id === tenantId)?.name ?? '',
+          socialLinks: [],
           billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
           accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
           ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -477,6 +542,8 @@ const deps = (input: {
         id: tenant.tenant.id,
         slug: tenant.tenant.slug,
         name: tenant.tenant.name,
+        status: 'active',
+        plan: 'self_hosted',
         contentVersion: 1,
       }),
     },
@@ -492,7 +559,7 @@ const deps = (input: {
       listTenantsForStaff: async () => memberships,
       listStaffForTenant: async () => [],
       findStaffGrant: async () => null,
-      findMember: async (_userId, tenantId) =>
+      findMember: async (tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
     health: { pingDatabase: async () => input.databaseUp ?? true },
@@ -508,6 +575,7 @@ const deps = (input: {
       },
     },
     baseDomain: 'localhost',
+    singleTenantMode: false,
     appBaseUrl: 'http://localhost:48730',
     devEndpoints: { simulatedPayments: false, exposeMagicLinks: false },
     authConfig: { googleEnabled: false },
@@ -519,8 +587,8 @@ const requestPublicOffer = (app: ReturnType<typeof buildApp>, headers: Record<st
   app.request(API_PATHS.publicOffer, { headers });
 
 const scopedApp = (
-  scope: 'none' | 'member' | 'banned-member' | 'staff',
-  options: { memberDeletedAt?: string; marketing?: MarketingAppDeps } = {},
+  scope: 'none' | 'member' | 'banned-member' | 'staff' | 'owner',
+  options: { memberDeletedAt?: string; marketing?: MarketingAppDeps; overrides?: Partial<AppDeps> } = {},
 ) => {
   const base = deps();
   const member: Member = {
@@ -538,7 +606,7 @@ const scopedApp = (
     bannedReason: null,
     bannedByUserId: null,
   };
-  const staffGrant: Membership = { tenant: acme, staffRole: 'admin' };
+  const staffGrant: Membership = { tenant: acme, staffRole: scope === 'owner' ? 'owner' : 'admin' };
   const post: Post = {
     id: 'post-1',
     tenantId: acme.id,
@@ -567,7 +635,7 @@ const scopedApp = (
     },
     tenantAccess: {
       ...base.tenantAccess,
-      findStaffGrant: async () => (scope === 'staff' ? staffGrant : null),
+      findStaffGrant: async () => (scope === 'staff' || scope === 'owner' ? staffGrant : null),
       findMember: async () => (scope === 'member' || scope === 'banned-member' ? member : null),
     },
     members: {
@@ -649,6 +717,7 @@ const scopedApp = (
       listPaidWithoutGrant: async () => [],
     },
     marketing: options.marketing ?? marketingDeps(),
+    ...options.overrides,
   });
 };
 
@@ -675,7 +744,6 @@ const marketingDeps = (): MarketingAppDeps => ({
     reserve: async () => true,
     settle: async () => undefined,
   },
-  smtpTest: { resolve: async () => null },
   documents: {
     create: async () => undefined,
     findById: async () => null,
@@ -1398,10 +1466,27 @@ describe('server edge security baseline', () => {
     const result = await app.request(API_PATHS.health);
 
     expect(result.headers.get('content-security-policy')).toContain("default-src 'self'");
-    expect(result.headers.get('content-security-policy')).toContain('https://*.sentry.io');
+    expect(result.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
+    expect(result.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
     expect(result.headers.get('x-content-type-options')).toBe('nosniff');
     expect(result.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
     expect(result.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('allows tenant bucket connections for SPA entries without widening server-rendered documents', async () => {
+    const app = buildApp(deps());
+    const panel = await app.request('/panel/lessons/lesson-1');
+    const checkout = await app.request('/checkout/product-1');
+    const unsubscribe = await app.request('/u/unsubscribe_token_123456789012345');
+    const confirmation = await app.request('/marketing/confirm/confirmation_token_123456789012345');
+    const legal = await app.request('/legal/terms');
+
+    expect(panel.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
+    expect(checkout.headers.get('content-security-policy')).toContain("connect-src 'self' https:;");
+    for (const response of [unsubscribe, confirmation, legal]) {
+      expect(response.headers.get('content-security-policy')).toContain("connect-src 'self' https://*.sentry.io");
+      expect(response.headers.get('content-security-policy')).not.toContain("connect-src 'self' https:;");
+    }
   });
 
   it('rejects API request bodies over 100KB with a taxonomy envelope', async () => {
@@ -1470,11 +1555,193 @@ describe('server edge security baseline', () => {
   });
 });
 
+describe('lesson attachment download route', () => {
+  const lesson: CourseLesson = {
+    id: 'lesson-download',
+    tenantId: acme.id,
+    name: 'Download lesson',
+    isPreview: false,
+    contents: [],
+    legacyId: null,
+    createdAt: '2026-07-12T00:00:00.000Z',
+  };
+  const attachment: LessonAttachment = {
+    id: 'attachment-download',
+    tenantId: acme.id,
+    lessonId: lesson.id,
+    fileName: 'private.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 4096,
+    storageKey: 'lesson-attachments/private.pdf',
+    status: 'ready',
+    createdAt: '2026-07-12T00:00:00.000Z',
+  };
+  const app = scopedApp('owner', {
+    overrides: {
+      lessons: {
+        list: async () => [lesson],
+        listPreviews: async () => [],
+        findById: async (tenantId, lessonId) =>
+          tenantId === acme.id && lessonId === lesson.id ? lesson : null,
+        findByIds: async () => [lesson],
+        create: async () => undefined,
+        update: async () => null,
+        delete: async () => false,
+      },
+      attachments: {
+        create: async () => undefined,
+        findById: async (tenantId, attachmentId) =>
+          tenantId === acme.id && attachmentId === attachment.id ? attachment : null,
+        listByLesson: async () => [attachment],
+        listReadyByLesson: async () => [attachment],
+        markReady: async () => attachment,
+        delete: async () => false,
+      },
+      secretResolver: {
+        resolve: async () => ok(JSON.stringify({
+          provider: 'minio',
+          endpoint: 'https://storage.example.test',
+          region: 'eu-central-1',
+          bucket: 'creator-files',
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        })),
+      },
+      storage: {
+        objectUrl: (configuration, key) =>
+          new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
+        probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        presignPut: (input) => ok(input.url),
+        presignGet: () => ok('https://download.example.test/signed'),
+        delete: async () => ok({ deleted: true }),
+        head: async () => ok({ sizeBytes: attachment.sizeBytes }),
+        healthcheck: async () => ok({ healthy: true }),
+        test: async () => ok({ code: 'storage.available', message: 'ok' }),
+      },
+    },
+  });
+  const path = API_PATHS.studentLessonAttachmentDownload
+    .replace(':lessonId', lesson.id)
+    .replace(':attachmentId', attachment.id);
+
+  it('redirects an authorized request to the signed object URL', async () => {
+    const response = await app.request(path, { headers: { host: 'acme.localhost:48730' } });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('returns an API envelope when the use-case rejects the attachment', async () => {
+    const response = await app.request(path.replace(attachment.id, 'missing'), {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+});
+
+describe('purchased product download route', () => {
+  const downloadProduct: Product = {
+    ...product({ id: 'digital-download', tenantId: acme.id, title: 'Creator workbook', published: true }),
+    type: 'digital_download',
+  };
+  const asset: ProductDownloadAsset = {
+    id: 'download-asset',
+    tenantId: acme.id,
+    productId: downloadProduct.id,
+    fileName: 'workbook.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 4096,
+    storageKey: 'product-downloads/digital-download/download-asset/workbook.pdf',
+    status: 'ready',
+    createdAt: '2026-07-12T00:00:00.000Z',
+  };
+  const grant: ProductGrant = {
+    id: 'download-grant',
+    tenantId: acme.id,
+    memberId: 'member-1',
+    productId: downloadProduct.id,
+    source: 'stripe',
+    startsAt: '2026-07-01T00:00:00.000Z',
+    expiresAt: null,
+    legacyId: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+  };
+  const path = API_PATHS.memberProductDownload
+    .replace(':productId', downloadProduct.id)
+    .replace(':assetId', asset.id);
+  const overrides = (entitled: boolean): Partial<AppDeps> => ({
+    grants: {
+      ...deps().grants,
+      listActiveForMember: async () => entitled ? [grant] : [],
+    },
+    downloadAssets: {
+      ...deps().downloadAssets,
+      findById: async () => asset,
+    },
+    secretResolver: {
+      resolve: async () => ok(JSON.stringify({
+        provider: 'minio',
+        endpoint: 'https://storage.example.test',
+        region: 'eu-central-1',
+        bucket: 'creator-files',
+        accessKeyId: 'access-key',
+        secretAccessKey: 'secret-key',
+      })),
+    },
+    storage: {
+      ...deps().storage,
+      presignGet: () => ok('https://download.example.test/signed-workbook'),
+    },
+  });
+
+  it('redirects a purchased download to its signed object URL', async () => {
+    const response = await scopedApp('member', { overrides: overrides(true) }).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('returns 403 for an unentitled member', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+});
+
 describe('new route authorization', () => {
   const headers = {
     host: 'acme.localhost:48730',
     'content-type': 'application/json',
   };
+
+  it('denies members on product-download creator routes', async () => {
+    const uploadPath = API_PATHS.productDownloadUpload.replace(':productId', 'download-1');
+    const deletePath = API_PATHS.productDownloadDelete
+      .replace(':productId', 'download-1')
+      .replace(':assetId', 'asset-1');
+    const upload = await scopedApp('member').request(uploadPath, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        fileName: 'workbook.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: 4096,
+      }),
+    });
+    const remove = await scopedApp('member').request(deletePath, { method: 'DELETE', headers });
+
+    expect(upload.status).toBe(403);
+    expect(remove.status).toBe(403);
+  });
 
   it('denies members and permits staff on post pinning', async () => {
     const request = {
@@ -1667,6 +1934,35 @@ describe('new route authorization', () => {
       (await scopedApp('staff').request(API_PATHS.ordersReconciliation, { headers })).status,
     ).toBe(200);
   });
+
+  it('restricts storage probing and configuration to an owner', async () => {
+    const body = JSON.stringify({
+      provider: 'minio',
+      endpoint: 'http://127.0.0.1:19000',
+      region: 'us-east-1',
+      bucket: 'together-test',
+      accessKeyId: 'minio-access',
+      secretAccessKey: 'minio-secret',
+    });
+    const request = { method: 'POST', headers, body };
+
+    expect((await scopedApp('staff').request(API_PATHS.storageProbe, request)).status).toBe(403);
+    expect((await scopedApp('staff').request(API_PATHS.storageConfigure, request)).status).toBe(403);
+    expect((await scopedApp('owner').request(API_PATHS.storageProbe, request)).status).toBe(200);
+
+    const configured = await scopedApp('owner').request(API_PATHS.storageConfigure, request);
+    expect(configured.status).toBe(200);
+    const payload = await configured.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      data: {
+        diagnostic: { code: 'storage.available' },
+        secret: { key: 's3.configuration', maskedPreview: '••••' },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('minio-access');
+    expect(JSON.stringify(payload)).not.toContain('minio-secret');
+  });
 });
 
 describe('public route manifest', () => {
@@ -1707,6 +2003,45 @@ describe('social preview route', () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('single-tenant mode', () => {
+  const singleTenantApp = (tenant: Tenant) => {
+    const base = deps({ tenants: [tenant], authenticated: true });
+    return buildApp({
+      ...base,
+      singleTenantMode: true,
+      authPort: {
+        ...base.authPort,
+        getAuthenticatedUser: async () => ({ userId: 'user-1', email: 'owner@acme.test', name: 'Owner' }),
+      },
+      tenantAccess: {
+        ...base.tenantAccess,
+        findStaffGrant: async () => ({ tenant, staffRole: 'owner' }),
+      },
+    });
+  };
+
+  it('serves the panel on the bare base host when no base domain is configured', async () => {
+    const response = await singleTenantApp(acme).request(API_PATHS.products, {
+      headers: { host: 'localhost:48730' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { products: [{ id: 'acme-published' }, { id: 'acme-draft' }] },
+    });
+  });
+
+  it('refuses a suspended sole tenant', async () => {
+    const response = await singleTenantApp({ ...acme, status: 'suspended' }).request(API_PATHS.products, {
+      headers: { host: 'localhost:48730' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'tenant_not_found' } });
   });
 });
 
@@ -1810,6 +2145,135 @@ describe('public offer route', () => {
   });
 });
 
+describe('free lesson preview route', () => {
+  const lesson = (id: string, isPreview: boolean): CourseLesson => ({
+    id,
+    tenantId: acme.id,
+    name: `Lesson ${id}`,
+    isPreview,
+    contents: [{ type: 'html', html: `<p>${id}</p>` }],
+    legacyId: null,
+    createdAt: '2026-07-12T00:00:00.000Z',
+  });
+
+  it('serves an anonymous preview and returns 401 for a non-preview lesson', async () => {
+    const preview = lesson('preview', true);
+    const paid = lesson('paid', false);
+    const getAuthenticatedUser = vi.fn(async () => null);
+    const app = buildApp(deps({ lessons: [preview, paid], getAuthenticatedUser }));
+    const request = (lessonId: string) => app.request(
+      API_PATHS.studentLesson.replace(':lessonId', lessonId),
+      { headers: { [TENANT_HEADER]: acme.slug } },
+    );
+
+    const previewResponse = await request(preview.id);
+    expect(previewResponse.status).toBe(200);
+    expect(await previewResponse.json()).toMatchObject({
+      ok: true,
+      data: { lesson: { id: preview.id, isPreview: true }, authenticated: false },
+    });
+
+    const paidResponse = await request(paid.id);
+    expect(paidResponse.status).toBe(401);
+    expect(await paidResponse.json()).toMatchObject({
+      ok: false,
+      error: { code: 'unauthorized' },
+    });
+    expect(getAuthenticatedUser).toHaveBeenCalledTimes(2);
+
+    const nextResponse = await buildApp(deps({ authenticated: true })).request(API_PATHS.studentLessonNext, {
+      headers: { [TENANT_HEADER]: acme.slug },
+    });
+    expect(nextResponse.status).toBe(401);
+    expect(await nextResponse.json()).toMatchObject({
+      ok: false,
+      error: { code: 'unauthorized' },
+    });
+    expect(nextResponse.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('returns 403 for an authenticated member without a lesson entitlement', async () => {
+    const paid = lesson('paid', false);
+    const course: Course = {
+      id: 'course-paid',
+      tenantId: acme.id,
+      name: 'Paid course',
+      description: '',
+      imageUrl: null,
+      moduleOrder: ['module-paid'],
+      legacyId: null,
+      createdAt: '2026-07-12T00:00:00.000Z',
+    };
+    const courseModule: CourseModule = {
+      id: 'module-paid',
+      tenantId: acme.id,
+      courseIds: [course.id],
+      title: 'Paid module',
+      prefix: null,
+      name: 'Paid module',
+      chapters: [{
+        id: 'chapter-paid',
+        name: 'Paid chapter',
+        contents: [{ id: 'content-paid', name: paid.name, lessonId: paid.id }],
+      }],
+      legacyId: null,
+      createdAt: '2026-07-12T00:00:00.000Z',
+    };
+    const base = deps({ lessons: [paid] });
+    const app = scopedApp('member', {
+      overrides: {
+        lessons: base.lessons,
+        courses: { ...base.courses, list: async () => [course] },
+        modules: { ...base.modules, list: async () => [courseModule] },
+      },
+    });
+
+    const response = await app.request(
+      API_PATHS.studentLesson.replace(':lessonId', paid.id),
+      { headers: { [TENANT_HEADER]: acme.slug } },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+
+  it('serves a preview as public to a user authenticated in another tenant', async () => {
+    const preview = lesson('preview', true);
+    const paid = lesson('paid', false);
+    const app = buildApp(
+      deps({
+        lessons: [preview, paid],
+        getAuthenticatedUser: async () => ({
+          userId: 'other-tenant-user',
+          email: 'other@example.com',
+          name: 'Other Tenant User',
+        }),
+      }),
+    );
+    const request = (lessonId: string) => app.request(
+      API_PATHS.studentLesson.replace(':lessonId', lessonId),
+      { headers: { [TENANT_HEADER]: acme.slug } },
+    );
+
+    const previewResponse = await request(preview.id);
+    expect(previewResponse.status).toBe(200);
+    expect(await previewResponse.json()).toMatchObject({
+      ok: true,
+      data: { lesson: { id: preview.id, isPreview: true }, authenticated: false },
+    });
+
+    const paidResponse = await request(paid.id);
+    expect(paidResponse.status).toBe(403);
+    expect(await paidResponse.json()).toMatchObject({
+      ok: false,
+      error: { code: 'forbidden' },
+    });
+  });
+});
+
 describe('public auth-config route', () => {
   it('reports public capabilities with CORS headers when no credentials are configured', async () => {
     const app = buildApp(deps());
@@ -1852,6 +2316,17 @@ describe('public auth-config route', () => {
     const body: unknown = await response.json();
 
     expect(body).toMatchObject({ ok: true, data: { googleEnabled: true } });
+  });
+
+  it('reports bootstrap tenant creation only while no tenant exists', async () => {
+    const empty = buildApp({ ...deps({ tenants: [] }), tenantCreationMode: 'bootstrap' });
+    const populated = buildApp({ ...deps(), tenantCreationMode: 'bootstrap' });
+
+    const emptyBody: unknown = await (await empty.request(API_PATHS.authConfig)).json();
+    const populatedBody: unknown = await (await populated.request(API_PATHS.authConfig)).json();
+
+    expect(emptyBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: true } });
+    expect(populatedBody).toMatchObject({ ok: true, data: { tenantCreationEnabled: false } });
   });
 });
 
@@ -1921,6 +2396,8 @@ const consentApp = (simulatedPayments: boolean) => {
       findSettings: async (tenantId) =>
         tenantId === acme.id
           ? {
+              name: acme.name,
+              socialLinks: [],
               billingPortalUrl: null,
               bunnyStreamLibraryId: null,
               logoUrl: null,
@@ -2127,6 +2604,8 @@ describe('checkout consent ordering', () => {
         findSettings: async (tenantId) =>
           tenantId === acme.id
             ? {
+                name: acme.name,
+                socialLinks: [],
                 billingPortalUrl: null,
                 bunnyStreamLibraryId: null,
                 logoUrl: null,

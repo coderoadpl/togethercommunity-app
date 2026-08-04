@@ -1,14 +1,16 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import {
   SUBSCRIPTION_GRACE_DAYS,
   computeCourseModuleName,
   billingDataSchema,
   courseLessonSchema,
+  lessonAttachmentSchema,
   courseModuleSchema,
   courseSchema,
   entityHistoryEntrySchema,
   memberCourseProgressSchema,
+  memberEventSchema,
   memberGrantSchema,
   memberSubscriptionSchema,
   notificationSchema,
@@ -16,6 +18,7 @@ import {
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
+  productDownloadAssetSchema,
   postSchema,
   postReportSchema,
   REACTION_EMOJIS,
@@ -30,6 +33,7 @@ import {
   termsConsentSchema,
   type Course,
   type CourseLesson,
+  type LessonAttachment,
   type CourseModule,
   type CheckoutConsentCapture,
   type MemberCourseProgress,
@@ -40,6 +44,7 @@ import {
   type Order,
   type OrderListItem,
   type ProductPrice,
+  type ProductDownloadAsset,
   type Post,
   type PostReport,
   type Product,
@@ -47,12 +52,14 @@ import {
   type Space,
   type ProductGrant,
   type StaffRole,
+  type Tenant,
   type TenantApiKey,
   type TenantSecret,
   type TenantSettings,
 } from '#core/domain/index.js';
 import type {
   CourseLessonRepository,
+  LessonAttachmentRepository,
   CourseModuleRepository,
   CourseRepository,
   CheckoutConsentCaptureRepository,
@@ -70,8 +77,10 @@ import type {
   NotificationRepository,
   OrderRepository,
   OrderDetailRepository,
+  MemberOrderListReader,
   PaymentRefundRepository,
   ProductPriceRepository,
+  ProductDownloadAssetRepository,
   PostRepository,
   PostReportRepository,
   PostSearchRow,
@@ -79,6 +88,7 @@ import type {
   ProductGrantRepository,
   ProcessedPaymentEventRepository,
   ProductRepository,
+  ProductBatchReader,
   OnboardingStateRepository,
   PostReactionRepository,
   SpaceRepository,
@@ -95,6 +105,7 @@ import type {
 
 import type { Db } from './client.js';
 import { uniqueViolation } from './pg-errors.js';
+import { appendMemberEvent } from './member-events.js';
 import { buildPrefixTsquery } from './post-search-query.js';
 import {
   consents,
@@ -104,6 +115,7 @@ import {
   couponRedemptions,
   coupons,
   courseLessons,
+  lessonAttachments,
   courseModules,
   courses,
   devEmails,
@@ -115,9 +127,9 @@ import {
   memberCourseProgress,
   memberErasureRequestEvents,
   memberErasureRequests,
-  memberEvents,
   members,
   memberSubscriptions,
+  marketingConsents,
   notifications,
   orders,
   postReactions,
@@ -126,6 +138,7 @@ import {
   posts,
   productGrants,
   productPrices,
+  productDownloadAssets,
   processedPaymentEvents,
   products,
   spaces,
@@ -146,6 +159,12 @@ const parseStaffRole = (raw: string): StaffRole | null => {
 };
 
 const parseProduct = (product: Product): Product => productSchema.parse(product);
+
+const parseLessonAttachment = (attachment: LessonAttachment): LessonAttachment =>
+  lessonAttachmentSchema.parse(attachment);
+
+const parseProductDownloadAsset = (asset: ProductDownloadAsset): ProductDownloadAsset =>
+  productDownloadAssetSchema.parse(asset);
 
 const parseGrant = (grant: ProductGrant): ProductGrant => productGrantSchema.parse(grant);
 
@@ -281,9 +300,9 @@ const insertEntityVersion = async (executor: Db, tenantId: string, version: Enti
   });
 };
 
-export const createProductRepository = (db: Db): ProductRepository => ({
+export const createProductRepository = (db: Db): ProductRepository & ProductBatchReader => ({
   listByTenant: async (tenantId) =>
-    (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt))).map(
+    (await db.select().from(products).where(eq(products.tenantId, tenantId)).orderBy(asc(products.createdAt), asc(products.id))).map(
       parseProduct,
     ),
   listPublishedByTenant: async (tenantId) =>
@@ -292,7 +311,7 @@ export const createProductRepository = (db: Db): ProductRepository => ({
         .select()
         .from(products)
         .where(and(eq(products.tenantId, tenantId), eq(products.published, true)))
-        .orderBy(asc(products.createdAt))
+        .orderBy(asc(products.createdAt), asc(products.id))
     ).map(parseProduct),
   findById: async (tenantId, id) => {
     const rows = await db
@@ -303,20 +322,38 @@ export const createProductRepository = (db: Db): ProductRepository => ({
     const row = rows[0];
     return row ? parseProduct(row) : null;
   },
+  findByIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select()
+        .from(products)
+        .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
+    ).map(parseProduct);
+  },
   create: async (tenantId, product) => {
-    await db.insert(products).values({
-      id: product.id,
-      tenantId,
-      title: product.title,
-      description: product.description,
-      priceCents: product.priceCents,
-      currency: product.currency,
-      published: product.published,
-      accessItems: product.accessItems,
-      checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
-      legacyId: product.legacyId,
-      createdAt: product.createdAt,
-    });
+    try {
+      await db.insert(products).values({
+        id: product.id,
+        tenantId,
+        type: product.type,
+        slug: product.slug,
+        title: product.title,
+        description: product.description,
+        coverUrl: product.coverUrl,
+        priceCents: product.priceCents,
+        currency: product.currency,
+        published: product.published,
+        accessItems: product.accessItems,
+        checkoutConsentDefinitionIds: product.checkoutConsentDefinitionIds ?? [],
+        legacyId: product.legacyId,
+        createdAt: product.createdAt,
+      });
+      return 'created';
+    } catch (cause) {
+      if (uniqueViolation(cause, 'products_tenant_slug_uidx')) return 'slug_taken';
+      throw cause;
+    }
   },
   updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const apply = async (executor: Db): Promise<Product | null> => {
@@ -487,6 +524,38 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .where(eq(courseLessons.tenantId, tenantId))
         .orderBy(asc(courseLessons.createdAt))
     ).map(parseLesson),
+  listPreviews: async (tenantId) => {
+    const [lessonRows, moduleRows] = await Promise.all([
+      db
+        .select({ id: courseLessons.id, name: courseLessons.name })
+        .from(courseLessons)
+        .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.isPreview, true)))
+        .orderBy(asc(courseLessons.createdAt)),
+      db
+        .select({ courseIds: courseModules.courseIds, chapters: courseModules.chapters })
+        .from(courseModules)
+        .where(eq(courseModules.tenantId, tenantId))
+        .orderBy(asc(courseModules.createdAt)),
+    ]);
+    const lessonById = new Map(lessonRows.map((lesson) => [lesson.id, lesson]));
+    const seen = new Set<string>();
+    const previews = [];
+    for (const module of moduleRows) {
+      for (const chapter of module.chapters) {
+        for (const content of chapter.contents) {
+          const lesson = lessonById.get(content.lessonId);
+          if (lesson === undefined) continue;
+          for (const courseId of module.courseIds) {
+            const key = `${courseId}:${lesson.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            previews.push({ ...lesson, courseId });
+          }
+        }
+      }
+    }
+    return previews;
+  },
   findById: async (tenantId, id) => {
     const rows = await db
       .select()
@@ -514,6 +583,7 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .update(courseLessons)
         .set({
           name: lesson.name,
+          isPreview: lesson.isPreview,
           contents: lesson.contents,
           durationMinutes: lesson.durationMinutes ?? null,
           legacyId: lesson.legacyId,
@@ -534,6 +604,114 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
       .delete(courseLessons)
       .where(and(eq(courseLessons.tenantId, tenantId), eq(courseLessons.id, id)))
       .returning({ id: courseLessons.id });
+    return rows.length > 0;
+  },
+});
+
+export const createLessonAttachmentRepository = (db: Db): LessonAttachmentRepository => ({
+  create: async (tenantId, attachment) => {
+    await db.insert(lessonAttachments).values({ ...attachment, tenantId });
+  },
+  findById: async (tenantId, attachmentId) => {
+    const rows = await db
+      .select()
+      .from(lessonAttachments)
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseLessonAttachment(row) : null;
+  },
+  listByLesson: async (tenantId, lessonId) =>
+    (
+      await db
+        .select()
+        .from(lessonAttachments)
+        .where(and(
+          eq(lessonAttachments.tenantId, tenantId),
+          eq(lessonAttachments.lessonId, lessonId),
+        ))
+        .orderBy(asc(lessonAttachments.createdAt))
+    ).map(parseLessonAttachment),
+  listReadyByLesson: async (tenantId, lessonId) =>
+    (
+      await db
+        .select()
+        .from(lessonAttachments)
+        .where(and(
+          eq(lessonAttachments.tenantId, tenantId),
+          eq(lessonAttachments.lessonId, lessonId),
+          eq(lessonAttachments.status, 'ready'),
+        ))
+        .orderBy(asc(lessonAttachments.createdAt))
+    ).map(parseLessonAttachment),
+  markReady: async (tenantId, attachmentId, sizeBytes) => {
+    const rows = await db
+      .update(lessonAttachments)
+      .set({ status: 'ready', sizeBytes })
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseLessonAttachment(row) : null;
+  },
+  delete: async (tenantId, attachmentId) => {
+    const rows = await db
+      .delete(lessonAttachments)
+      .where(and(eq(lessonAttachments.tenantId, tenantId), eq(lessonAttachments.id, attachmentId)))
+      .returning({ id: lessonAttachments.id });
+    return rows.length > 0;
+  },
+});
+
+export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAssetRepository => ({
+  create: async (tenantId, asset) => {
+    await db.insert(productDownloadAssets).values({ ...asset, tenantId });
+  },
+  findById: async (tenantId, assetId) => {
+    const rows = await db
+      .select()
+      .from(productDownloadAssets)
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .limit(1);
+    const row = rows[0];
+    return row ? parseProductDownloadAsset(row) : null;
+  },
+  listByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productDownloadAssets)
+        .where(and(
+          eq(productDownloadAssets.tenantId, tenantId),
+          eq(productDownloadAssets.productId, productId),
+        ))
+        .orderBy(asc(productDownloadAssets.createdAt))
+    ).map(parseProductDownloadAsset),
+  listReadyByProduct: async (tenantId, productId) =>
+    (
+      await db
+        .select()
+        .from(productDownloadAssets)
+        .where(and(
+          eq(productDownloadAssets.tenantId, tenantId),
+          eq(productDownloadAssets.productId, productId),
+          eq(productDownloadAssets.status, 'ready'),
+        ))
+        .orderBy(asc(productDownloadAssets.createdAt))
+    ).map(parseProductDownloadAsset),
+  markReady: async (tenantId, assetId, sizeBytes) => {
+    const rows = await db
+      .update(productDownloadAssets)
+      .set({ status: 'ready', sizeBytes })
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .returning();
+    const row = rows[0];
+    return row ? parseProductDownloadAsset(row) : null;
+  },
+  delete: async (tenantId, assetId) => {
+    const rows = await db
+      .delete(productDownloadAssets)
+      .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, assetId)))
+      .returning({ id: productDownloadAssets.id });
     return rows.length > 0;
   },
 });
@@ -583,12 +761,32 @@ export const createEntityVersionRepository = (db: Db): EntityVersionRepository =
 });
 
 export const createUserDisplayReader = (db: Db): UserDisplayReader => ({
-  findDisplayNames: async (userIds) => {
+  findDisplayNames: async (tenantId, userIds) => {
     if (userIds.length === 0) return new Map();
     const rows = await db
       .select({ id: user.id, name: user.name, email: user.email })
       .from(user)
-      .where(inArray(user.id, userIds));
+      .where(
+        and(
+          inArray(user.id, userIds),
+          or(
+            exists(
+              db
+                .select({ id: tenantAdmins.id })
+                .from(tenantAdmins)
+                .where(
+                  and(eq(tenantAdmins.tenantId, tenantId), eq(tenantAdmins.userId, user.id)),
+                ),
+            ),
+            exists(
+              db
+                .select({ id: members.id })
+                .from(members)
+                .where(and(eq(members.tenantId, tenantId), eq(members.userId, user.id))),
+            ),
+          ),
+        ),
+      );
     return new Map(
       rows.map((row) => [row.id, row.name.trim().length > 0 ? row.name.trim() : row.email]),
     );
@@ -675,8 +873,13 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       lastViewedChapterId: row.lastViewedChapterId ?? undefined,
     });
   },
-  update: async (tenantId, progress) => {
-    const rows = await db
+  update: async (tenantId, progress) => db.transaction(async (tx) => {
+    const [current] = await tx
+      .select({ completedLessonIds: memberCourseProgress.completedLessonIds })
+      .from(memberCourseProgress)
+      .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, progress.id)))
+      .for('update');
+    const rows = await tx
       .update(memberCourseProgress)
       .set({
         lastViewedLessonId: progress.lastViewedLessonId ?? null,
@@ -688,15 +891,26 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, progress.id)))
       .returning();
     const row = rows[0];
-    return row
-      ? parseProgress({
-          ...row,
-          lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-          lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-          lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-        })
-      : null;
-  },
+    if (row === undefined) return null;
+    const previous = new Set(current?.completedLessonIds ?? []);
+    for (const lessonId of progress.completedLessonIds) {
+      if (previous.has(lessonId)) continue;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `lesson-completion:${progress.id}:${lessonId}:${progress.updatedAt}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'lesson-completion',
+        payload: { courseId: progress.courseId, lessonId },
+        occurredAt: progress.updatedAt,
+      }));
+    }
+    return parseProgress({
+      ...row,
+      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+    });
+  }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db
       .select({ value: sql<number>`count(*)::int` })
@@ -1466,7 +1680,7 @@ export const createMemberRepository = (db: Db): MemberRepository => ({
         .returning();
       const row = rows[0];
       if (!row) return null;
-      await tx.insert(memberEvents).values({ ...event, tenantId });
+      await appendMemberEvent(tx, memberEventSchema.parse({ ...event, tenantId }));
       return row;
     }),
 });
@@ -1507,6 +1721,17 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         emailHmac: emailHmac.compute(tenantId, member.email),
         erasedAt: input.deletedAt,
       }).onConflictDoNothing({ target: erasedMemberImports.memberId });
+
+      await tx.update(consents).set({ retentionStartedAt: input.deletedAt }).where(and(
+        eq(consents.tenantId, tenantId),
+        or(eq(consents.userId, member.userId), eq(consents.email, member.email)),
+        isNull(consents.retentionStartedAt),
+      ));
+      await tx.update(marketingConsents).set({ retentionStartedAt: input.deletedAt }).where(and(
+        eq(marketingConsents.tenantId, tenantId),
+        or(eq(marketingConsents.memberId, member.id), eq(marketingConsents.email, member.email)),
+        isNull(marketingConsents.retentionStartedAt),
+      ));
 
       await tx
         .update(productGrants)
@@ -1688,8 +1913,8 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
     const row = rows[0];
     return row ? parseGrant(row) : null;
   },
-  createGrant: async (tenantId, grant) => {
-    const rows = await db
+  createGrant: async (tenantId, grant) => db.transaction(async (tx) => {
+    const rows = await tx
       .insert(productGrants)
       .values({
         id: grant.id,
@@ -1705,27 +1930,67 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
       .onConflictDoNothing({
         target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
       })
-      .returning({ id: productGrants.id });
-    return rows.length > 0;
-  },
-  setGrantWindow: async (tenantId, grantId, window) => {
-    const rows = await db
+      .returning();
+    const row = rows[0];
+    if (row === undefined) return false;
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+      tenantId,
+      memberId: row.memberId,
+      type: 'grant',
+      payload: {
+        grantId: row.id,
+        productId: row.productId,
+        source: row.source,
+        startsAt: row.startsAt,
+        expiresAt: row.expiresAt,
+      },
+      occurredAt: row.createdAt,
+    }));
+    return true;
+  }),
+  setGrantWindow: async (tenantId, grantId, window) => db.transaction(async (tx) => {
+    const rows = await tx
       .update(productGrants)
       .set({ startsAt: window.startsAt, expiresAt: window.expiresAt })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
-    return row ? parseGrant(row) : null;
-  },
-  revokeGrant: async (tenantId, grantId, expiresAt) => {
-    const rows = await db
+    if (row === undefined) return null;
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `grant:${row.id}:${row.startsAt}:${row.expiresAt ?? 'perpetual'}`,
+      tenantId,
+      memberId: row.memberId,
+      type: 'grant',
+      payload: {
+        grantId: row.id,
+        productId: row.productId,
+        source: row.source,
+        startsAt: row.startsAt,
+        expiresAt: row.expiresAt,
+      },
+      occurredAt: window.occurredAt,
+    }));
+    return parseGrant(row);
+  }),
+  revokeGrant: async (tenantId, grantId, expiresAt) => db.transaction(async (tx) => {
+    const rows = await tx
       .update(productGrants)
       .set({ expiresAt })
       .where(and(eq(productGrants.tenantId, tenantId), eq(productGrants.id, grantId)))
       .returning();
     const row = rows[0];
-    return row ? parseGrant(row) : null;
-  },
+    if (row === undefined) return null;
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `revoke:${row.id}:${expiresAt}`,
+      tenantId,
+      memberId: row.memberId,
+      type: 'revoke',
+      payload: { grantId: row.id, productId: row.productId, expiresAt },
+      occurredAt: expiresAt,
+    }));
+    return parseGrant(row);
+  }),
   listForMemberWithProductNames: async (tenantId, memberId, now) =>
     (
       await db
@@ -1764,8 +2029,11 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
         .select({
           id: products.id,
           tenantId: products.tenantId,
+          type: products.type,
+          slug: products.slug,
           title: products.title,
           description: products.description,
+          coverUrl: products.coverUrl,
           priceCents: products.priceCents,
           currency: products.currency,
           published: products.published,
@@ -1846,7 +2114,9 @@ export const createProductPriceRepository = (db: Db): ProductPriceRepository => 
   },
 });
 
-export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepository => {
+export const createOrderRepository = (
+  db: Db,
+): OrderRepository & OrderDetailRepository & MemberOrderListReader => {
   const conditionsFor = (tenantId: string, query: Parameters<OrderRepository['list']>[1]): SQL[] => {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
     if (query.status !== undefined) conditions.push(eq(orders.status, query.status));
@@ -1866,8 +2136,8 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
   };
 
   return {
-    create: async (tenantId, order) => {
-      await db
+    create: async (tenantId, order) => db.transaction(async (tx) => {
+      const rows = await tx
         .insert(orders)
         .values({
           id: order.id,
@@ -1886,8 +2156,27 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
           billing: order.billing ?? null,
           createdAt: order.createdAt,
         })
-        .onConflictDoNothing();
-    },
+        .onConflictDoNothing()
+        .returning();
+      const row = rows[0];
+      if (row === undefined) return;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `purchase:${row.id}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'purchase',
+        payload: {
+          orderId: row.id,
+          productId: row.productId,
+          kind: row.kind,
+          status: row.status,
+          amountCents: row.amountCents,
+          currency: row.currency,
+          provider: row.provider,
+        },
+        occurredAt: row.createdAt,
+      }));
+    }),
     findById: async (tenantId, id) => {
       const rows = await db
         .select({
@@ -1944,14 +2233,23 @@ export const createOrderRepository = (db: Db): OrderRepository & OrderDetailRepo
         total: totals[0]?.value ?? 0,
       };
     },
-    listForMember: async (tenantId, memberId) =>
-      (
-        await db
-          .select()
-          .from(orders)
-          .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
-          .orderBy(desc(orders.createdAt), desc(orders.id))
-      ).map(parseOrder),
+    listForMember: async (tenantId, memberId) => {
+      const rows = await db
+        .select({
+          order: orders,
+          memberEmail: members.email,
+          memberName: members.displayName,
+          productTitle: products.title,
+          couponCode: coupons.code,
+        })
+        .from(orders)
+        .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
+        .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
+        .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
+        .orderBy(desc(orders.createdAt), desc(orders.id));
+      return rows.map((row) => orderListItemSchema.parse({ ...row.order, ...row }));
+    },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(
         eq(orders.tenantId, tenantId),
@@ -2185,11 +2483,27 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
           .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.memberId, memberId)))
           .orderBy(asc(memberSubscriptions.createdAt))
       ).map(parseSubscription),
-    create: async (tenantId, subscription) => {
-      await db.insert(memberSubscriptions).values(toRow(tenantId, subscription));
-    },
-    update: async (tenantId, subscription) => {
-      const rows = await db
+    create: async (tenantId, subscription) => db.transaction(async (tx) => {
+      const [row] = await tx.insert(memberSubscriptions).values(toRow(tenantId, subscription)).returning();
+      if (row === undefined) return;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `subscription-change:${row.id}:${row.updatedAt}:${row.status}:${row.currentPeriodEnd}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'subscription-change',
+        payload: {
+          subscriptionId: row.id,
+          productId: row.productId,
+          status: row.status,
+          currentPeriodEnd: row.currentPeriodEnd,
+          cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+          provider: row.provider,
+        },
+        occurredAt: row.updatedAt,
+      }));
+    }),
+    update: async (tenantId, subscription) => db.transaction(async (tx) => {
+      const rows = await tx
         .update(memberSubscriptions)
         .set({
           status: subscription.status,
@@ -2201,8 +2515,24 @@ export const createMemberSubscriptionRepository = (db: Db): MemberSubscriptionRe
         .where(and(eq(memberSubscriptions.tenantId, tenantId), eq(memberSubscriptions.id, subscription.id)))
         .returning();
       const row = rows[0];
-      return row ? parseSubscription(row) : null;
-    },
+      if (row === undefined) return null;
+      await appendMemberEvent(tx, memberEventSchema.parse({
+        id: `subscription-change:${row.id}:${row.updatedAt}:${row.status}:${row.currentPeriodEnd}`,
+        tenantId,
+        memberId: row.memberId,
+        type: 'subscription-change',
+        payload: {
+          subscriptionId: row.id,
+          productId: row.productId,
+          status: row.status,
+          currentPeriodEnd: row.currentPeriodEnd,
+          cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+          provider: row.provider,
+        },
+        occurredAt: row.updatedAt,
+      }));
+      return parseSubscription(row);
+    }),
     countActive: async (tenantId, now) => {
       const graceCutoff = new Date(
         Date.parse(now) - SUBSCRIPTION_GRACE_DAYS * 24 * 60 * 60 * 1000,
@@ -2429,7 +2759,25 @@ export const createPurchaseRepository = (db: Db): PurchaseRepository => ({
         .onConflictDoNothing({
           target: [productGrants.tenantId, productGrants.memberId, productGrants.productId],
         })
-        .returning({ id: productGrants.id });
+        .returning();
+
+      const grant = grantRows[0];
+      if (grant !== undefined) {
+        await appendMemberEvent(tx, memberEventSchema.parse({
+          id: `grant:${grant.id}:${grant.startsAt}:${grant.expiresAt ?? 'perpetual'}`,
+          tenantId: input.tenantId,
+          memberId: grant.memberId,
+          type: 'grant',
+          payload: {
+            grantId: grant.id,
+            productId: grant.productId,
+            source: grant.source,
+            startsAt: grant.startsAt,
+            expiresAt: grant.expiresAt,
+          },
+          occurredAt: grant.createdAt,
+        }));
+      }
 
       return { member, grantCreated: grantRows.length > 0 };
     }),
@@ -2476,7 +2824,10 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
     db.select().from(tenantDomains).where(eq(tenantDomains.verified, true)),
 });
 
-export const createTenantRepository = (db: Db): TenantRepository => ({
+export const createTenantRepository = (
+  db: Db,
+  options: { onMultipleTenants?(): void } = {},
+): TenantRepository => ({
   findById: async (tenantId) => {
     const rows = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     return rows[0] ?? null;
@@ -2485,9 +2836,16 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
     return rows[0] ?? null;
   },
+  findSole: async () => {
+    const rows = await db.select().from(tenants).limit(2);
+    if (rows.length > 1) options.onMultipleTenants?.();
+    return rows.length === 1 ? rows[0] ?? null : null;
+  },
   findSettings: async (tenantId) => {
     const rows = await db
       .select({
+        name: tenants.name,
+        socialLinks: tenants.socialLinks,
         billingPortalUrl: tenants.billingPortalUrl,
         bunnyStreamLibraryId: tenants.bunnyStreamLibraryId,
         logoUrl: tenants.logoUrl,
@@ -2516,6 +2874,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     const row = rows[0];
     return row
       ? {
+          name: row.name,
+          socialLinks: row.socialLinks,
           billingPortalUrl: row.billingPortalUrl,
           bunnyStreamLibraryId: row.bunnyStreamLibraryId,
           logoUrl: row.logoUrl,
@@ -2559,6 +2919,9 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
     await db
       .update(tenants)
       .set({
+        name: settings.name,
+        socialLinks: settings.socialLinks,
+        contentVersion: sql`${tenants.contentVersion} + 1`,
         billingPortalUrl: settings.billingPortalUrl,
         bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
         logoUrl: settings.logoUrl,
@@ -2583,6 +2946,8 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       })
       .where(eq(tenants.id, tenantId));
     return {
+      name: settings.name,
+      socialLinks: settings.socialLinks,
       billingPortalUrl: settings.billingPortalUrl,
       bunnyStreamLibraryId: settings.bunnyStreamLibraryId,
       logoUrl: settings.logoUrl,
@@ -2606,22 +2971,38 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
       invoiceSellerAddress: settings.invoiceSellerAddress,
     };
   },
-  createTenantWithOwnerGrant: async (input) =>
+  createTenantWithOwnerGrant: async (input, options) =>
     db.transaction(async (tx) => {
-      await tx.insert(tenants).values(input.tenant);
+      if (options?.requireEmpty === true) {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('together:first-tenant'))`);
+        const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
+        if (existing.length > 0) return null;
+      }
+      const rows = await tx
+        .insert(tenants)
+        .values(input.tenant)
+        .returning({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          status: tenants.status,
+          plan: tenants.plan,
+          contentVersion: tenants.contentVersion,
+        });
+      const tenant = rows[0];
+      if (tenant === undefined) throw new Error('Tenant insert did not return a row');
       await tx.insert(tenantAdmins).values({
         id: input.ownerGrant.id,
         tenantId: input.tenant.id,
         userId: input.ownerGrant.userId,
         role: input.ownerGrant.staffRole,
       });
-      return {
-        id: input.tenant.id,
-        slug: input.tenant.slug,
-        name: input.tenant.name,
-        contentVersion: 1,
-      };
+      return tenant;
     }),
+  hasAny: async () => {
+    const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
+    return rows.length > 0;
+  },
 });
 
 export const createTermsConsentRepository = (db: Db): TermsConsentRepository => ({
@@ -2683,22 +3064,28 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
         id: tenants.id,
         slug: tenants.slug,
         name: tenants.name,
+        status: tenants.status,
+        plan: tenants.plan,
         contentVersion: tenants.contentVersion,
         staffRole: tenantAdmins.role,
       })
       .from(tenantAdmins)
       .innerJoin(tenants, eq(tenantAdmins.tenantId, tenants.id));
 
-  const toMembership = (row: {
-    id: string;
-    slug: string;
-    name: string;
-    contentVersion: number;
-    staffRole: string;
-  }): Membership | null => {
+  const toMembership = (row: Tenant & { staffRole: string }): Membership | null => {
     const staffRole = parseStaffRole(row.staffRole);
     return staffRole
-      ? { tenant: { id: row.id, slug: row.slug, name: row.name, contentVersion: row.contentVersion }, staffRole }
+      ? {
+          tenant: {
+            id: row.id,
+            slug: row.slug,
+            name: row.name,
+            status: row.status,
+            plan: row.plan,
+            contentVersion: row.contentVersion,
+          },
+          staffRole,
+        }
       : null;
   };
 
@@ -2731,7 +3118,7 @@ export const createTenantAccessReader = (db: Db): TenantAccessReader => {
       const row = rows[0];
       return row ? toMembership(row) : null;
     },
-    findMember: async (userId, tenantId) => {
+    findMember: async (tenantId, userId) => {
       const rows = await db
         .select()
         .from(members)

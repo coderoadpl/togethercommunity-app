@@ -409,7 +409,7 @@ export const notifySpaceFollowers = async (
     if (follower.userId === post.authorUserId) continue;
     const [staffGrant, member] = await Promise.all([
       deps.tenantAccess.findStaffGrant(follower.userId, { tenantId }),
-      deps.tenantAccess.findMember(follower.userId, tenantId),
+      deps.tenantAccess.findMember(tenantId, follower.userId),
     ]);
     const memberCanAccess =
       member !== null &&

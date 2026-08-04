@@ -128,7 +128,7 @@ const polluteDemoTenants = async (client: pg.Client): Promise<void> => {
     [now],
   );
   await client.query(
-    `insert into products (id, tenant_id, title, description, price_cents, currency, created_at) values ('AUDYT-produkt', 'tenant-studio', 'AUDYT produkt', '', 12300, 'PLN', $1)`,
+    `insert into products (id, tenant_id, type, slug, title, description, price_cents, currency, created_at) values ('AUDYT-produkt', 'tenant-studio', 'course', 'audyt-produkt', 'AUDYT produkt', '', 12300, 'PLN', $1)`,
     [now],
   );
   await client.query(
@@ -222,6 +222,7 @@ const publishSchema = z.object({ product: productItemSchema });
 const publicOfferSchema = z.object({
   tenant: z.object({ slug: z.string(), name: z.string() }),
   contentVersion: z.number().int().positive(),
+  previewLessons: z.array(z.object({ id: z.string(), name: z.string(), courseId: z.string() })),
   products: z.array(
     z.object({
       id: z.string(),
@@ -905,6 +906,35 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
   assert(
     uncompleted.progress.completedLessonIds.length === 0,
     'un-marking the lesson should remove it from progress',
+  );
+
+  const anonHome = mkdtempSync(join(tmpdir(), 'smoke-anon-student-'));
+  homes.push(anonHome);
+  expectOk(
+    await acme(['lesson', 'update', '--data', `{"id":"${lessonTwo.lesson.id}","isPreview":true}`], creatorHome),
+    'student flow: flag lesson two as a free preview',
+  );
+  const preview = lessonSchema.parse(
+    expectOk(await acme(['student', 'lesson', lessonTwo.lesson.id], anonHome), 'student flow: anonymous preview lesson'),
+  );
+  assert(
+    preview.lesson.contents.length === 1,
+    'the free preview lesson should serve its contents without a session',
+  );
+  expectError(
+    await acme(['student', 'lesson', lessonOne.lesson.id], anonHome),
+    'student flow: anonymous non-preview lesson',
+    EXIT_CODE_BY_ERROR_CODE.unauthorized,
+    'unauthorized',
+  );
+  const offerWithPreview = publicOfferSchema.parse(
+    expectOk(await acme(['public', 'offer'], anonHome), 'student flow: public offer with preview lessons'),
+  );
+  assert(
+    offerWithPreview.previewLessons.some(
+      (item) => item.id === lessonTwo.lesson.id && item.courseId === course.course.id,
+    ),
+    'the public offer should link the free preview lesson to its course',
   );
 };
 

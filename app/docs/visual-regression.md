@@ -9,11 +9,17 @@ is the only baseline-authoring command.
 
 The harness fixes the seed time, browser clock, locale, timezone, color scheme,
 device scale, and motion preference. It blocks non-local resources and persistent
-browser streams, waits for the screen's explicit ready condition, network idle,
-and loaded fonts, then freezes animations, transitions, and the caret before
-capture. Captures are sequential and comparison has no retry. Pixelmatch excludes
-pixels it classifies as anti-aliasing; every remaining pixel has a zero threshold
-and zero mismatch budget.
+browser streams, waits for the screen's explicit ready condition and loaded fonts,
+then freezes animations, transitions, and the caret before capture. By default it
+also waits for network idle and rejects captures at or below 10 KiB. A screen may
+set `waitForNetworkIdle: false` when an intentionally held request makes network
+idle unreachable, and may set `minBytes` when a legitimate stable capture is
+smaller than the global floor. The boot splash uses both exceptions because it
+holds `/api/me` open to preserve the pending state; it separately waits for the
+public-offer response that supplies its final branding input and retains a 7 KiB
+floor to reject blank output. Captures are sequential and comparison has no retry.
+Pixelmatch excludes pixels it classifies as anti-aliasing; every remaining pixel
+has a zero threshold and zero mismatch budget.
 
 Only stable surfaces belong in the screen list. A route needs deterministic seed
 data, controlled external resources, and an explicit readiness condition for its
@@ -41,12 +47,36 @@ and show review evidence for every changed image, using a side-by-side compariso
 or diff artifact. The reviewer must confirm that each baseline change is an
 intentional consequence of the product change before approval. The directory
 name `tasks/visual-goldens/`, the `out/visual/current` and `out/visual/diff`
-paths, and the separate Lost Pixel failure semantics remain unchanged.
+paths, and the `visual` and `visual:update` command names remain unchanged.
 
 The Linux CI visual job remains deferred. Enabling it requires a deliberate,
 reviewed migration that switches the authoring platform guard and regenerates
 the complete golden set on the pinned Linux renderer. Until then, CI continues
 to run the existing non-visual gates.
+
+## Pull request gallery
+
+Pull requests targeting `main` that change committed PNGs in
+`tasks/visual-goldens/` receive one sticky Before/After comment from
+`.github/workflows/visual-golden-gallery.yml`. Added, removed, renamed, and
+modified baselines use URLs pinned to the pull request's merge base and head
+commits. If GitHub cannot compare a fork's head commit in the base repository,
+the workflow uses the pull request's base commit instead. The gallery caps its
+rows and points reviewers to the Files tab when further changes are omitted.
+When a pull request reverts all baseline changes, an existing sticky comment
+reports that none remain.
+
+The parity map's upstream public-repository design uses
+`raw.githubusercontent.com` image URLs. This private repository instead uses
+authenticated `github.com` raw URLs and wraps each preview in a commit-pinned
+blob link. GitHub's comment image proxy cannot use a signed-in reviewer's
+credentials, so inline previews do not render for this private repository. Use
+the pinned blob links for gallery review.
+
+The publisher runs only trusted base-ref workflow code, never checks out or
+executes pull-request head code, and is the only gallery job with
+`pull-requests: write`. It supplements the required exact-commit review evidence
+and remains separate from the advisory Linux Argos capture.
 
 ## Argos parallel track (evaluation)
 
@@ -54,9 +84,8 @@ Argos is a second, advisory-only visual track that runs in Linux CI. It captures
 the same canonical routes, themes, and viewports into `out/visual/argos/` without
 reading, writing, or comparing `tasks/visual-goldens/`, then uploads those PNGs
 to an independent Argos-hosted Linux baseline. It does not replace the
-lost-pixel or committed-golden workflows, and no existing visual command changes
-meaning. The evaluation exists only so the owner can compare both workflows in
-practice.
+committed-golden workflow, and no existing visual command changes meaning. The
+evaluation exists only so the owner can compare both workflows in practice.
 
 The `argos-advisory` job is not a gate. Its upload step tolerates Argos service
 failures, and it is skipped when `ARGOS_TOKEN` is absent. Argos may post commit
@@ -84,13 +113,14 @@ empirically:
   its review-workflow documentation does not state a plan restriction.
 - The actual screenshot and build retention period. Argos did not document this
   period when this evaluation track was added.
-- The Hobby plan's screenshot quota. Each build captures 70 screenshots (35
+- The Hobby plan's screenshot quota. Each build captures 80 screenshots (40
   scenarios times the one maintained theme times two viewports), and every push
   to every open pull request can consume another build's allocation.
 
-## Story shots
+## Storybook
 
-Storybook's scope, drift gate, and the advisory non-golden status of
-`tasks/lost-pixel-baselines/` are documented in
-[Storybook](storybook.md). The determinism and platform rules above apply to
-`tasks/visual-goldens/`; story shots are not a merge signal.
+Storybook has no committed screenshot baseline or comparison command. Lost
+Pixel and its copied story baselines are retired. The catalogue is checked by
+its module tests and static build; all committed pixel comparison and baseline
+authoring use the canonical route workflow above. Storybook's scope is
+documented in [Storybook](storybook.md).

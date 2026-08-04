@@ -5,7 +5,7 @@ import { useTheme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 import { useRouterState } from '@tanstack/react-router';
 
-import { TenantLogo } from '../../branding.js';
+import { TenantLogo, TenantSocialLinks } from '../../branding.js';
 import { actions } from '../../api.js';
 import { MemberPage } from '../../components/layout/index.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
@@ -104,14 +104,16 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
   );
 };
 
-type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav'>;
+type Props = Omit<ComponentProps<typeof MemberPage>, 'logo' | 'nav' | 'bottomNav'> & {
+  authenticated?: boolean;
+};
 
-export const MemberSurface = (props: Props) => {
+export const MemberSurface = ({ authenticated = true, ...props }: Props) => {
   useSuppressGlobalChrome();
   const theme = useTheme();
   const mobile = useMediaQuery(theme.breakpoints.down('sm'));
   const t = useTranslations();
-  const me = useQuery(actions.me);
+  const me = useQuery({ ...actions.me, enabled: authenticated });
   return (
     <MemberPage
       {...props}
@@ -119,11 +121,14 @@ export const MemberSurface = (props: Props) => {
         <>
           {me.data?.tenant?.banned === true ? <Alert severity="info">{t.community.bannedBanner}</Alert> : null}
           {props.children}
+          <TenantSocialLinks />
         </>
       )}
       logo={<TenantLogo />}
-      nav={<HeaderNavigation liveNotifications={!mobile} />}
-      bottomNav={<BottomNavigation liveNotifications={mobile} />}
+      nav={authenticated
+        ? <HeaderNavigation liveNotifications={!mobile} />
+        : <Link href="/login">{t.auth.signInLink}</Link>}
+      bottomNav={authenticated ? <BottomNavigation liveNotifications={mobile} /> : undefined}
     />
   );
 };

@@ -29,20 +29,26 @@ import {
   detachModuleFromCourseInputSchema,
   discussionSchema,
   lessonReferencesSchema,
+  lessonAttachmentMetadataSchema,
+  lessonAttachmentUploadInputSchema,
+  lessonAttachmentViewSchema,
+  productDownloadAssetMetadataSchema,
+  productDownloadAssetViewSchema,
+  productDownloadUploadInputSchema,
   listDiscussionInputSchema,
   listReportsInputSchema,
   createApiKeyInputSchema,
   creatorOnboardingSchema,
   courseHistoryEntrySchema,
-  courseHistoryQuerySchema,
   entityVersionDetailSchema,
   grantProductToMemberInputSchema,
   grantWindowStatusSchema,
   languageSchema,
-  listOrdersQuerySchema,
+  type listOrdersQuerySchema,
   listStreamVideosInputSchema,
   m2mEnrollInputSchema,
   memberSubscriptionSchema,
+  memberSubscriptionListItemSchema,
   memberSubscriptionSummarySchema,
   newProductPriceSchema,
   orderListItemSchema,
@@ -62,9 +68,9 @@ import {
   memberErasureRequestStatusSchema,
   memberErasureRequestWithMemberSchema,
   memberLearningSummarySchema,
+  memberTimelineEventSchema,
   memberWithProductIdsSchema,
   memberSchema,
-  muteThreadInputSchema,
   setMemberBannedInputSchema,
   revokeGrantInputSchema,
   membershipSchema,
@@ -75,6 +81,11 @@ import {
   notificationMarkReadInputSchema,
   notificationSchema,
   pinPostInputSchema,
+  emailIntegrationTransportSchema,
+  integrationProviderSchema,
+  providerDiagnosticSchema,
+  configureStripeInputSchema,
+  stripeModeSchema,
   postReportSchema,
   reportPostInputSchema,
   reportQueueSchema,
@@ -84,20 +95,24 @@ import {
   publicPostSchema,
   postSearchHitSchema,
   productAccessIssuesSchema,
+  productCoverUrlSchema,
+  productSlugSchema,
   productSchema,
+  productTypeSchema,
   progressViewSchema,
   searchPostsInputSchema,
   sendSupportMessageInputSchema,
   setTenantSecretInputSchema,
   staffRoleSchema,
+  storageConfigurationSchema,
   streamVideoPageSchema,
-  subscribeThreadInputSchema,
   tenantApiKeyPublicSchema,
   tenantBrandingSchema,
   tenantSchema,
   tenantSecretKeySchema,
   tenantSecretMaskedSchema,
   tenantSettingsSchema,
+  tenantSocialLinkSchema,
   tenantSupportPublicSchema,
   campaignSchema,
   campaignEngagementStatsSchema,
@@ -137,7 +152,7 @@ import {
  * or response types anywhere else.
  */
 
-export const attestationSchema = z.object({
+const attestationSchema = z.object({
   version: z.string(),
   sha: z.string(),
 });
@@ -192,8 +207,6 @@ export const memberBillingOrdersQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(25),
 });
-export type MemberBillingOrdersQueryInput = z.input<typeof memberBillingOrdersQuerySchema>;
-
 export const memberBillingOrdersOutputSchema = z.object({
   orders: z.array(z.object({
     id: z.string(),
@@ -214,7 +227,7 @@ export const productsListOutputSchema = z.object({
   products: z.array(productSchema),
 });
 
-export const publicOfferPriceSchema = z.object({
+const publicOfferPriceSchema = z.object({
   id: z.string(),
   kind: priceKindSchema,
   interval: priceIntervalSchema.nullable(),
@@ -222,7 +235,7 @@ export const publicOfferPriceSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/),
 });
 
-export const publicLegalUrlsSchema = z.object({
+const publicLegalUrlsSchema = z.object({
   termsUrl: z.string().nullable().default(null),
   privacyUrl: z.string().nullable().default(null),
 });
@@ -232,15 +245,24 @@ export const publicOfferOutputSchema = z.object({
     slug: z.string(),
     name: z.string(),
     branding: tenantBrandingSchema.default({}),
+    socialLinks: z.array(tenantSocialLinkSchema).default([]),
     legal: publicLegalUrlsSchema.default({}),
     support: tenantSupportPublicSchema.default({ url: null }),
   }),
   contentVersion: z.number().int().positive(),
+  previewLessons: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    courseId: z.string(),
+  })).default([]),
   products: z.array(
     z.object({
       id: z.string(),
+      type: productTypeSchema,
+      slug: productSlugSchema,
       title: z.string(),
       description: z.string(),
+      coverUrl: productCoverUrlSchema.nullable(),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       prices: z.array(publicOfferPriceSchema),
@@ -302,6 +324,7 @@ export const myProductsOutputSchema = z.object({
   products: z.array(
     z.object({
       id: z.string(),
+      type: productTypeSchema,
       title: z.string(),
       description: z.string(),
       priceCents: z.number().int().nonnegative(),
@@ -310,6 +333,7 @@ export const myProductsOutputSchema = z.object({
       grantStartsAt: z.string().datetime(),
       grantExpiresAt: z.string().datetime().nullable(),
       subscription: memberSubscriptionSummarySchema.nullable(),
+      downloads: z.array(productDownloadAssetViewSchema),
     }),
   ),
 });
@@ -354,7 +378,7 @@ export const memberRemoveInputSchema = z.object({
 
 export type MemberRemoveInput = z.input<typeof memberRemoveInputSchema>;
 
-export const memberSubscriptionCancellationSchema = z.object({
+const memberSubscriptionCancellationSchema = z.object({
   subscriptionId: z.string(),
   providerSubscriptionId: z.string().nullable(),
   outcome: z.enum(['canceled', 'already_canceled', 'skipped', 'failed']),
@@ -377,6 +401,15 @@ export const memberGrantsOutputSchema = z.object({
 
 export const memberLearningSummaryOutputSchema = z.object({
   summary: memberLearningSummarySchema,
+});
+
+export const memberTimelineOutputSchema = z.object({
+  events: z.array(memberTimelineEventSchema),
+});
+
+export const memberCommerceOutputSchema = z.object({
+  purchases: z.array(orderListItemSchema),
+  activeSubscriptions: z.array(memberSubscriptionListItemSchema),
 });
 
 export const memberProgressResetInputSchema = z.object({
@@ -413,7 +446,7 @@ export const grantRevokeOutputSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 
-export const magicLinkSchema = z.object({
+const magicLinkSchema = z.object({
   email: z.string(),
   url: z.string(),
   token: z.string(),
@@ -463,9 +496,7 @@ export const productPriceDeactivateOutputSchema = z.object({
   price: productPriceSchema,
 });
 
-export const ordersListQuerySchema = listOrdersQuerySchema;
-
-export type OrdersListQueryInput = z.input<typeof ordersListQuerySchema>;
+export type OrdersListQueryInput = z.input<typeof listOrdersQuerySchema>;
 
 export const ordersListOutputSchema = z.object({
   orders: z.array(orderListItemSchema),
@@ -554,7 +585,7 @@ export const devMagicLinkOutputSchema = z.object({
   magicLink: magicLinkSchema.nullable(),
 });
 
-export const devEmailSchema = z.object({
+const devEmailSchema = z.object({
   to: z.string(),
   subject: z.string(),
   html: z.string(),
@@ -570,7 +601,7 @@ export const devEmailOutputSchema = z.object({
 
 export const tenantCreateInputSchema = z.object({
   slug: z.string(),
-  name: z.string(),
+  name: tenantSchema.shape.name,
 });
 
 export type TenantCreateInput = z.input<typeof tenantCreateInputSchema>;
@@ -671,9 +702,55 @@ export const lessonDeleteOutputSchema = z.object({
   references: lessonReferencesSchema,
 });
 
-export const contentHistoryQuerySchema = courseHistoryQuerySchema;
+export const lessonAttachmentUploadRequestSchema = lessonAttachmentUploadInputSchema;
 
-export type ContentHistoryQueryInput = z.input<typeof contentHistoryQuerySchema>;
+export type LessonAttachmentUploadRequest = z.input<typeof lessonAttachmentUploadRequestSchema>;
+
+export const lessonAttachmentUploadOutputSchema = z.object({
+  attachment: lessonAttachmentMetadataSchema,
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const lessonAttachmentCompleteOutputSchema = z.object({
+  attachment: lessonAttachmentViewSchema,
+});
+
+export const lessonAttachmentsOutputSchema = z.object({
+  attachments: z.array(lessonAttachmentViewSchema),
+});
+
+export const lessonAttachmentDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
+
+export const productDownloadUploadRequestSchema = productDownloadUploadInputSchema;
+
+export type ProductDownloadUploadRequest = z.input<typeof productDownloadUploadRequestSchema>;
+
+export const productDownloadUploadOutputSchema = z.object({
+  asset: productDownloadAssetMetadataSchema,
+  upload: z.object({
+    url: z.string().url(),
+    headers: z.record(z.string()),
+    expiresAt: z.string().datetime(),
+  }),
+});
+
+export const productDownloadCompleteOutputSchema = z.object({
+  asset: productDownloadAssetMetadataSchema,
+});
+
+export const productDownloadAssetsOutputSchema = z.object({
+  assets: z.array(productDownloadAssetMetadataSchema),
+});
+
+export const productDownloadDeleteOutputSchema = z.object({
+  deleted: z.literal(true),
+});
 
 export const contentHistoryOutputSchema = z.object({
   versions: z.array(courseHistoryEntrySchema),
@@ -693,6 +770,7 @@ export const courseStructureOutputSchema = z.object({
 
 export const studentLessonOutputSchema = z.object({
   lesson: playableCourseLessonSchema,
+  authenticated: z.boolean(),
 });
 
 export const lessonCompleteInputSchema = z.object({
@@ -742,14 +820,6 @@ export type DiscussionGetInput = z.input<typeof discussionGetInputSchema>;
 export const discussionOutputSchema = z.object({
   discussion: discussionSchema,
 });
-
-export const threadSubscribeInputSchema = subscribeThreadInputSchema;
-
-export type ThreadSubscribeInput = z.input<typeof threadSubscribeInputSchema>;
-
-export const threadMuteInputSchema = muteThreadInputSchema;
-
-export type ThreadMuteInput = z.input<typeof threadMuteInputSchema>;
 
 export const threadSubscriptionOutputSchema = z.object({
   rootPostId: z.string(),
@@ -898,6 +968,8 @@ export const apiKeyRevokeOutputSchema = z.object({
 
 export const tenantSecretsListOutputSchema = z.object({
   secrets: z.array(tenantSecretMaskedSchema),
+  stripeMode: stripeModeSchema.nullable(),
+  stripeWebhookUrl: z.string().url(),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;
@@ -936,9 +1008,49 @@ export type SupportMessageInput = z.input<typeof supportMessageInputSchema>;
 
 export const supportMessageOutputSchema = z.object({ queued: z.literal(true) });
 
-export const stripeTestConnectionOutputSchema = z.object({
-  ok: z.literal(true),
-  diagnostic: z.string(),
+export const integrationTestInputSchema = z.object({
+  provider: integrationProviderSchema,
+  emailTransport: emailIntegrationTransportSchema.optional(),
+}).superRefine((input, ctx) => {
+  if (input.emailTransport !== undefined && input.provider !== 'email') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'An email transport can only be selected for the email provider',
+      path: ['emailTransport'],
+    });
+  }
+});
+
+export type IntegrationTestInput = z.input<typeof integrationTestInputSchema>;
+
+export const integrationTestOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+});
+
+export const storageProbeInputSchema = storageConfigurationSchema;
+
+export type StorageProbeInput = z.input<typeof storageProbeInputSchema>;
+
+export const storageProbeOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+});
+
+export const storageConfigureInputSchema = storageConfigurationSchema;
+
+export type StorageConfigureInput = z.input<typeof storageConfigureInputSchema>;
+
+export const storageConfigureOutputSchema = z.object({
+  diagnostic: providerDiagnosticSchema,
+  secret: tenantSecretMaskedSchema,
+});
+
+export const stripeConfigureInputSchema = configureStripeInputSchema;
+
+export type StripeConfigureInput = z.input<typeof stripeConfigureInputSchema>;
+
+export const stripeConfigureOutputSchema = z.object({
+  mode: stripeModeSchema,
+  webhookUrl: z.string().url(),
 });
 
 export const ifirmaTestConnectionOutputSchema = z.object({
@@ -1042,6 +1154,7 @@ export const marketingSesSettingsOutputSchema = z.object({
   settings: tenantSesSettingsSchema.nullable(),
   credentialsConfigured: z.boolean(),
   smtpConfigured: z.boolean(),
+  resendConfigured: z.boolean(),
   platformPool: z.object({ used: z.number().int().nonnegative(), limit: z.literal(1000) }),
   webhookUrl: z.string().url().nullable(),
 });
@@ -1057,7 +1170,6 @@ export const marketingSesSettingsUpdateInputSchema = z.object({
   footerLegalName: z.string(),
   footerAddress: z.string(),
 });
-export const marketingSmtpTestOutputSchema = z.object({ sent: z.literal(true) });
 export const marketingSesIdentityStartInputSchema = z.object({
   kind: z.enum(['domain', 'email']),
 });
@@ -1212,9 +1324,19 @@ export const API_ROUTES = {
   lessonsUpdate: { method: 'POST', path: '/api/lessons/update' },
   lessonReferences: { method: 'GET', path: '/api/lessons/references' },
   lessonsDelete: { method: 'DELETE', path: '/api/lessons/:lessonId' },
+  lessonAttachments: { method: 'GET', path: '/api/lessons/:lessonId/attachments' },
+  lessonAttachmentUpload: { method: 'POST', path: '/api/lessons/:lessonId/attachments/upload' },
+  lessonAttachmentComplete: { method: 'POST', path: '/api/lessons/:lessonId/attachments/:attachmentId/complete' },
+  lessonAttachmentDelete: { method: 'DELETE', path: '/api/lessons/:lessonId/attachments/:attachmentId' },
+  productDownloadAssets: { method: 'GET', path: '/api/products/:productId/downloads' },
+  productDownloadUpload: { method: 'POST', path: '/api/products/:productId/downloads/upload' },
+  productDownloadComplete: { method: 'POST', path: '/api/products/:productId/downloads/:assetId/complete' },
+  productDownloadDelete: { method: 'DELETE', path: '/api/products/:productId/downloads/:assetId' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
   studentCourseStructure: { method: 'GET', path: '/api/student/courses/:courseId/structure' },
   studentLesson: { method: 'GET', path: '/api/student/lessons/:lessonId' },
+  studentLessonAttachments: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments' },
+  studentLessonAttachmentDownload: { method: 'GET', path: '/api/student/lessons/:lessonId/attachments/:attachmentId/download' },
   studentLessonComplete: { method: 'POST', path: '/api/student/lessons/complete' },
   studentLessonUncomplete: { method: 'POST', path: '/api/student/lessons/uncomplete' },
   studentLessonNext: { method: 'GET', path: '/api/student/lessons/next' },
@@ -1249,6 +1371,7 @@ export const API_ROUTES = {
   notificationsStream: { method: 'GET', path: '/api/notifications/stream' },
   devGrant: { method: 'POST', path: '/api/dev/grant' },
   myProducts: { method: 'GET', path: '/api/my/products' },
+  memberProductDownload: { method: 'GET', path: '/api/my/products/:productId/downloads/:assetId' },
   members: { method: 'GET', path: '/api/members' },
   memberErasureRequests: { method: 'GET', path: '/api/members/erasure-requests' },
   memberErasureReject: {
@@ -1257,6 +1380,8 @@ export const API_ROUTES = {
   },
   membersExport: { method: 'GET', path: '/api/members/export' },
   memberGrants: { method: 'GET', path: '/api/members/:memberId/grants' },
+  memberCommerce: { method: 'GET', path: '/api/members/:memberId/commerce' },
+  memberTimeline: { method: 'GET', path: '/api/members/:memberId/timeline' },
   memberLearningSummary: { method: 'GET', path: '/api/members/:memberId/learning-summary' },
   memberProgressReset: { method: 'POST', path: '/api/members/:memberId/progress-reset' },
   memberRemove: { method: 'DELETE', path: '/api/members/:memberId' },
@@ -1274,7 +1399,10 @@ export const API_ROUTES = {
   tenantSecrets: { method: 'GET', path: '/api/tenant-secrets' },
   tenantSecretSet: { method: 'POST', path: '/api/tenant-secrets' },
   tenantSecretDelete: { method: 'DELETE', path: '/api/tenant-secrets/:key' },
-  stripeTestConnection: { method: 'POST', path: '/api/integrations/stripe/test' },
+  integrationTest: { method: 'POST', path: '/api/integrations/test' },
+  storageProbe: { method: 'POST', path: '/api/integrations/storage/probe' },
+  storageConfigure: { method: 'POST', path: '/api/integrations/storage/configure' },
+  stripeConfigure: { method: 'POST', path: '/api/integrations/stripe/configure' },
   ifirmaTestConnection: { method: 'POST', path: '/api/integrations/ifirma/test' },
   ksefTestConnection: { method: 'POST', path: '/api/integrations/ksef/test' },
   bunnyVideos: { method: 'GET', path: '/api/integrations/bunny/videos' },
@@ -1315,7 +1443,6 @@ export const API_ROUTES = {
   marketingSesIdentityStart: { method: 'POST', path: '/api/marketing/ses-onboarding/identity' },
   marketingSesProvision: { method: 'POST', path: '/api/marketing/ses-onboarding/infrastructure' },
   marketingSesSimulator: { method: 'POST', path: '/api/marketing/ses-onboarding/simulator' },
-  marketingSmtpTest: { method: 'POST', path: '/api/marketing/smtp/test' },
   marketingReputation: { method: 'GET', path: '/api/marketing/reputation' },
   marketingStaffSuppressions: { method: 'GET', path: '/api/marketing/suppressions' },
   marketingStaffSuppressionsCreate: { method: 'POST', path: '/api/marketing/suppressions' },
@@ -1392,9 +1519,19 @@ export const API_PATHS = {
   lessonsUpdate: API_ROUTES.lessonsUpdate.path,
   lessonReferences: API_ROUTES.lessonReferences.path,
   lessonsDelete: API_ROUTES.lessonsDelete.path,
+  lessonAttachments: API_ROUTES.lessonAttachments.path,
+  lessonAttachmentUpload: API_ROUTES.lessonAttachmentUpload.path,
+  lessonAttachmentComplete: API_ROUTES.lessonAttachmentComplete.path,
+  lessonAttachmentDelete: API_ROUTES.lessonAttachmentDelete.path,
+  productDownloadAssets: API_ROUTES.productDownloadAssets.path,
+  productDownloadUpload: API_ROUTES.productDownloadUpload.path,
+  productDownloadComplete: API_ROUTES.productDownloadComplete.path,
+  productDownloadDelete: API_ROUTES.productDownloadDelete.path,
   studentCourses: API_ROUTES.studentCourses.path,
   studentCourseStructure: API_ROUTES.studentCourseStructure.path,
   studentLesson: API_ROUTES.studentLesson.path,
+  studentLessonAttachments: API_ROUTES.studentLessonAttachments.path,
+  studentLessonAttachmentDownload: API_ROUTES.studentLessonAttachmentDownload.path,
   studentLessonComplete: API_ROUTES.studentLessonComplete.path,
   studentLessonUncomplete: API_ROUTES.studentLessonUncomplete.path,
   studentLessonNext: API_ROUTES.studentLessonNext.path,
@@ -1428,11 +1565,14 @@ export const API_PATHS = {
   notificationsStream: API_ROUTES.notificationsStream.path,
   devGrant: API_ROUTES.devGrant.path,
   myProducts: API_ROUTES.myProducts.path,
+  memberProductDownload: API_ROUTES.memberProductDownload.path,
   members: API_ROUTES.members.path,
   memberErasureRequests: API_ROUTES.memberErasureRequests.path,
   memberErasureReject: API_ROUTES.memberErasureReject.path,
   membersExport: API_ROUTES.membersExport.path,
   memberGrants: API_ROUTES.memberGrants.path,
+  memberCommerce: API_ROUTES.memberCommerce.path,
+  memberTimeline: API_ROUTES.memberTimeline.path,
   memberLearningSummary: API_ROUTES.memberLearningSummary.path,
   memberProgressReset: API_ROUTES.memberProgressReset.path,
   memberRemove: API_ROUTES.memberRemove.path,
@@ -1449,7 +1589,10 @@ export const API_PATHS = {
   apiKeyRevoke: API_ROUTES.apiKeyRevoke.path,
   tenantSecrets: API_ROUTES.tenantSecrets.path,
   tenantSecretDelete: API_ROUTES.tenantSecretDelete.path,
-  stripeTestConnection: API_ROUTES.stripeTestConnection.path,
+  integrationTest: API_ROUTES.integrationTest.path,
+  storageProbe: API_ROUTES.storageProbe.path,
+  storageConfigure: API_ROUTES.storageConfigure.path,
+  stripeConfigure: API_ROUTES.stripeConfigure.path,
   ifirmaTestConnection: API_ROUTES.ifirmaTestConnection.path,
   ksefTestConnection: API_ROUTES.ksefTestConnection.path,
   bunnyVideos: API_ROUTES.bunnyVideos.path,
@@ -1485,7 +1628,6 @@ export const API_PATHS = {
   marketingSesIdentityStart: API_ROUTES.marketingSesIdentityStart.path,
   marketingSesProvision: API_ROUTES.marketingSesProvision.path,
   marketingSesSimulator: API_ROUTES.marketingSesSimulator.path,
-  marketingSmtpTest: API_ROUTES.marketingSmtpTest.path,
   marketingReputation: API_ROUTES.marketingReputation.path,
   marketingStaffSuppressions: API_ROUTES.marketingStaffSuppressions.path,
   emailSends: API_ROUTES.emailSends.path,

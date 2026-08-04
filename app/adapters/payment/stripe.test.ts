@@ -2,16 +2,203 @@ import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
 
 import {
+  STRIPE_WEBHOOK_EVENTS,
   createStripePaymentProvider,
   stripeCancelAlreadySettled,
   stripeCheckoutSessionParams,
   stripeCouponParams,
 } from './stripe.js';
+import { HANDLED_EVENT_TYPES } from '#core/server/index.js';
 
 const webhookSecret = 'whsec_test_secret';
 const stripe = new Stripe('sk_test_unused');
 const provider = createStripePaymentProvider({
   resolver: { resolve: async () => { throw new Error('unused'); } },
+});
+
+const webhookUrl = 'https://app.example.test/api/webhooks/stripe/tenant-1';
+
+const providerOverHttp = (
+  respond: (request: Request) => Response,
+  registered: unknown[] = [],
+) => {
+  const requests: Request[] = [];
+  const httpClient = Stripe.createFetchHttpClient(async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const request = new Request(input, init);
+    requests.push(request);
+    if (request.method === 'GET') {
+      return stripeJson({
+        object: 'list',
+        data: registered,
+        has_more: false,
+        url: '/v1/webhook_endpoints',
+      });
+    }
+    return respond(request);
+  });
+  const created = createStripePaymentProvider({
+    resolver: { resolve: async () => { throw new Error('unused'); } },
+    clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
+  });
+  if (created.configureWebhook === undefined) throw new Error('configureWebhook missing');
+  if (created.deleteWebhookEndpoint === undefined) throw new Error('deleteWebhookEndpoint missing');
+  return {
+    configureWebhook: created.configureWebhook,
+    deleteWebhookEndpoint: created.deleteWebhookEndpoint,
+    requests,
+  };
+};
+
+const stripeJson = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json', 'request-id': 'req_123' },
+  });
+
+describe('configureWebhook', () => {
+  it('creates the endpoint through the Stripe client using a mocked HTTP transport', async () => {
+    const stripeApi = providerOverHttp(() => stripeJson({
+      id: 'we_123',
+      object: 'webhook_endpoint',
+      secret: 'whsec_generated',
+      status: 'enabled',
+      url: webhookUrl,
+      enabled_events: STRIPE_WEBHOOK_EVENTS,
+    }));
+
+    await expect(stripeApi.configureWebhook({
+      tenantId: 'tenant-1',
+      restrictedKey: 'rk_test_private',
+      webhookUrl,
+    })).resolves.toEqual({
+      ok: true,
+      value: { webhookEndpointId: 'we_123', webhookSecret: 'whsec_generated' },
+    });
+
+    expect(stripeApi.requests).toHaveLength(2);
+    expect(stripeApi.requests[0]?.method).toBe('GET');
+    const request = stripeApi.requests[1];
+    if (request === undefined) throw new Error('Stripe request missing');
+    expect(request.method).toBe('POST');
+    expect(request.url).toBe('https://api.stripe.com/v1/webhook_endpoints');
+    expect(request.headers.get('authorization')).toBe('Bearer rk_test_private');
+    const body = new URLSearchParams(await request.text());
+    expect(body.get('url')).toBe(webhookUrl);
+    expect(body.get('metadata[tenantId]')).toBe('tenant-1');
+    expect(STRIPE_WEBHOOK_EVENTS.every((event) => [...body.values()].includes(event))).toBe(true);
+  });
+
+  it('deletes endpoints matching the tenant metadata or URL before creating one', async () => {
+    const stripeApi = providerOverHttp((request) => {
+      if (request.method === 'DELETE') {
+        const id = new URL(request.url).pathname.split('/').at(-1);
+        return stripeJson({ id, object: 'webhook_endpoint', deleted: true });
+      }
+      return stripeJson({
+        id: 'we_new',
+        object: 'webhook_endpoint',
+        secret: 'whsec_new',
+        status: 'enabled',
+        url: webhookUrl,
+        enabled_events: STRIPE_WEBHOOK_EVENTS,
+      });
+    }, [
+      {
+        id: 'we_metadata',
+        object: 'webhook_endpoint',
+        metadata: { tenantId: 'tenant-1' },
+        status: 'enabled',
+        url: 'https://old.example.test/stripe',
+      },
+      {
+        id: 'we_manual',
+        object: 'webhook_endpoint',
+        status: 'enabled',
+        url: webhookUrl,
+      },
+      {
+        id: 'we_other',
+        object: 'webhook_endpoint',
+        metadata: { tenantId: 'tenant-2' },
+        status: 'enabled',
+        url: 'https://app.example.test/api/webhooks/stripe/tenant-2',
+      },
+    ]);
+
+    await expect(stripeApi.configureWebhook({
+      tenantId: 'tenant-1',
+      restrictedKey: 'rk_live_private',
+      webhookUrl,
+    })).resolves.toEqual({
+      ok: true,
+      value: { webhookEndpointId: 'we_new', webhookSecret: 'whsec_new' },
+    });
+    expect(stripeApi.requests.map((request) => `${request.method} ${new URL(request.url).pathname}`))
+      .toEqual([
+        'GET /v1/webhook_endpoints',
+        'DELETE /v1/webhook_endpoints/we_metadata',
+        'DELETE /v1/webhook_endpoints/we_manual',
+        'POST /v1/webhook_endpoints',
+      ]);
+  });
+
+  it('keeps the registered event list equal to the fulfillment handler set', () => {
+    expect([...HANDLED_EVENT_TYPES]).toEqual([...STRIPE_WEBHOOK_EVENTS]);
+  });
+
+  it('deletes a newly registered endpoint during persistence cleanup', async () => {
+    const stripeApi = providerOverHttp(() => stripeJson({
+      id: 'we_created',
+      object: 'webhook_endpoint',
+      deleted: true,
+    }));
+
+    await expect(stripeApi.deleteWebhookEndpoint({
+      restrictedKey: 'rk_test_private',
+      webhookEndpointId: 'we_created',
+    })).resolves.toEqual({ ok: true, value: { deleted: true } });
+    expect(stripeApi.requests).toHaveLength(1);
+    expect(stripeApi.requests[0]?.method).toBe('DELETE');
+    expect(new URL(stripeApi.requests[0]?.url ?? '').pathname)
+      .toBe('/v1/webhook_endpoints/we_created');
+  });
+
+  it('turns a rejected registration into a readable diagnostic', async () => {
+    const stripeApi = providerOverHttp(() => stripeJson({
+      error: { type: 'invalid_request_error', message: 'The key lacks webhook_endpoint write access' },
+    }, 403));
+
+    await expect(stripeApi.configureWebhook({
+      tenantId: 'tenant-1',
+      restrictedKey: 'rk_live_private',
+      webhookUrl,
+    })).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: 'validation',
+        message: 'Stripe rejected webhook registration: The key lacks webhook_endpoint write access',
+      },
+    });
+  });
+
+  it('rejects a registration Stripe answers without a signing secret', async () => {
+    const stripeApi = providerOverHttp(() => stripeJson({
+      id: 'we_123',
+      object: 'webhook_endpoint',
+      status: 'enabled',
+      url: webhookUrl,
+      enabled_events: STRIPE_WEBHOOK_EVENTS,
+    }));
+
+    await expect(stripeApi.configureWebhook({
+      tenantId: 'tenant-1',
+      restrictedKey: 'rk_live_private',
+      webhookUrl,
+    })).resolves.toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });
 
 const verify = (
@@ -233,7 +420,7 @@ describe('verifyWebhookEvent', () => {
       subscription: 'sub_1',
       charge: 'ch_1',
       payment_intent: 'pi_1',
-      period_end: 1_800_000_000,
+      period_end: 916_387_200,
     }, { invoice: { subscriptionId: 'sub_1', amountCents: 4900, currency: 'PLN' } }],
     ['invoice.payment_failed', {
       id: 'in_2',
@@ -245,13 +432,23 @@ describe('verifyWebhookEvent', () => {
       id: 'sub_1',
       status: 'active',
       cancel_at_period_end: false,
-      current_period_end: 1_800_000_000,
+      current_period_end: 916_387_200,
     }, { subscription: { id: 'sub_1', status: 'active', cancelAtPeriodEnd: false } }],
     ['customer.subscription.deleted', {
       id: 'sub_2',
       status: 'canceled',
       cancel_at_period_end: true,
-    }, { subscription: { id: 'sub_2', status: 'canceled', cancelAtPeriodEnd: true } }],
+      current_period_end: 916_387_200,
+      ended_at: 916_387_200,
+    }, {
+      subscription: {
+        id: 'sub_2',
+        status: 'canceled',
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: '1999-01-15T08:00:00.000Z',
+        endedAt: '1999-01-15T08:00:00.000Z',
+      },
+    }],
     ['charge.refunded', {
       id: 'ch_1',
       payment_intent: 'pi_1',

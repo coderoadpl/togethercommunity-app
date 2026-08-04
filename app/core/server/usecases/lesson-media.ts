@@ -9,12 +9,12 @@ import {
 
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
-import type { BunnyEmbedTokenSigner, FileUrlSigner, TenantSecretResolver } from '../ports.js';
+import type { BunnyEmbedTokenSigner, StorageProvider, TenantSecretResolver } from '../ports.js';
 import { getAccessibleLesson, type CourseAccessDeps } from './entitlements.js';
 
 export interface PlayableLessonDeps extends CourseAccessDeps {
   secretResolver: TenantSecretResolver;
-  fileUrlSigner: FileUrlSigner;
+  storage: StorageProvider;
   bunnyEmbedTokenSigner: BunnyEmbedTokenSigner;
 }
 
@@ -55,7 +55,7 @@ const signBunnyEmbedUrl = (
 };
 
 /**
- * The member-facing lesson read: entitlement-checked content with S3-hosted
+ * The learner-facing lesson read: entitlement-checked content with S3-hosted
  * PDF pointers exchanged for short-lived presigned URLs, because imported
  * legacy documents live on a private bucket that rejects anonymous reads.
  * Tenants without stored S3 credentials get the blocks untouched.
@@ -101,7 +101,7 @@ export const getPlayableLesson = async (
 
   contents = contents.map((block): PlayableLessonBlock => {
     if (!needsPdfSigning(block) || block.type !== 'pdf') return block;
-    const signed = deps.fileUrlSigner.presignGet({
+    const signed = deps.storage.presignGet({
       url: block.pdfUrl,
       accessKeyId: accessKeyId.value,
       secretAccessKey: secretAccessKey.value,

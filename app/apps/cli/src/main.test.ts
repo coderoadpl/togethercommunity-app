@@ -11,9 +11,11 @@ interface Hoisted {
   loadError: Error | null;
   saved: CliConfig[];
   health: ReturnType<typeof vi.fn>;
+  configureStorage: ReturnType<typeof vi.fn>;
   changePassword: ReturnType<typeof vi.fn>;
   requestPasswordReset: ReturnType<typeof vi.fn>;
   signOut: ReturnType<typeof vi.fn>;
+  configureStripe: ReturnType<typeof vi.fn>;
 }
 
 const h = vi.hoisted(
@@ -29,9 +31,11 @@ const h = vi.hoisted(
     loadError: null,
     saved: [],
     health: vi.fn(),
+    configureStorage: vi.fn(),
     changePassword: vi.fn(),
     requestPasswordReset: vi.fn(),
     signOut: vi.fn(),
+    configureStripe: vi.fn(),
   }),
 );
 
@@ -77,6 +81,8 @@ vi.mock('./config.js', () => ({
 vi.mock('#core/client/index.js', () => ({
   createApiClient: () => ({
     health: h.health,
+    configureStorage: h.configureStorage,
+    configureStripe: h.configureStripe,
   }),
 }));
 
@@ -113,12 +119,22 @@ beforeEach(() => {
     version: '0.1.0',
     sha: 'cafe1234',
   }));
+  h.configureStorage.mockReset();
+  h.configureStorage.mockResolvedValue(ok({
+    diagnostic: { code: 'storage.available', message: 'Storage completed the probe.' },
+    secret: { key: 's3.configuration', maskedPreview: '••••', updatedAt: '2026-08-03T12:00:00.000Z' },
+  }));
   h.signOut.mockReset();
   h.signOut.mockResolvedValue(ok(undefined));
   h.changePassword.mockReset();
   h.changePassword.mockResolvedValue(ok(undefined));
   h.requestPasswordReset.mockReset();
   h.requestPasswordReset.mockResolvedValue(ok(undefined));
+  h.configureStripe.mockReset();
+  h.configureStripe.mockResolvedValue(ok({
+    mode: 'test',
+    webhookUrl: 'https://app.example.test/base/api/webhooks/stripe/tenant-1',
+  }));
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   process.exitCode = 0;
@@ -260,6 +276,60 @@ describe('origin profiles', () => {
   });
 });
 
+describe('storage configure', () => {
+  it('sends the whole connection to the probing endpoint and prints its diagnostic', async () => {
+    await run(
+      'storage',
+      'configure',
+      '--provider',
+      'minio',
+      '--endpoint',
+      'http://localhost:9000',
+      '--region',
+      'us-east-1',
+      '--bucket',
+      'studio-files',
+      '--access-key-id',
+      'minio-access',
+      '--secret-access-key',
+      'minio-secret',
+    );
+
+    expect(h.configureStorage).toHaveBeenCalledExactlyOnceWith({
+      provider: 'minio',
+      endpoint: 'http://localhost:9000',
+      region: 'us-east-1',
+      bucket: 'studio-files',
+      accessKeyId: 'minio-access',
+      secretAccessKey: 'minio-secret',
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('Storage completed the probe.');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('rejects an unknown provider before calling the API', async () => {
+    await run(
+      'storage',
+      'configure',
+      '--provider',
+      'dropbox',
+      '--endpoint',
+      'http://localhost:9000',
+      '--region',
+      'us-east-1',
+      '--bucket',
+      'studio-files',
+      '--access-key-id',
+      'minio-access',
+      '--secret-access-key',
+      'minio-secret',
+    );
+
+    expect(h.configureStorage).not.toHaveBeenCalled();
+    expect(process.exitCode).not.toBe(0);
+  });
+});
+
 describe('change-password', () => {
   it('emits the documented JSON result without exposing transport state', async () => {
     await run(
@@ -354,5 +424,16 @@ describe('request-password-reset', () => {
     });
     expect(soleJson()).toEqual({ ok: true });
     expect(process.exitCode).toBe(0);
+  });
+});
+
+describe('stripe configure', () => {
+  it('registers the webhook through the same API used by the integrations panel', async () => {
+    await run('stripe', 'configure', 'rk_test_private');
+
+    expect(h.configureStripe).toHaveBeenCalledExactlyOnceWith({ restrictedKey: 'rk_test_private' });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith(
+      'configured Stripe in test mode\nwebhook https://app.example.test/base/api/webhooks/stripe/tenant-1',
+    );
   });
 });

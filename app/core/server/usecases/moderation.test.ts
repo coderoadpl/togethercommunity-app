@@ -295,6 +295,7 @@ const makeDeps = (
     },
     lessons: {
       list: async () => [],
+      listPreviews: async () => [],
       findById: async () => null,
       findByIds: async () => [],
       create: async () => undefined,

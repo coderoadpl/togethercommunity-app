@@ -9,11 +9,13 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/health/ready` | public | read | Database readiness check |
 | `GET /api/health` | public | read | Runtime health check |
 | `OPTIONS /api/public/offer` | public | read | Public offer discovery |
+| `OPTIONS /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `OPTIONS /api/public/payment-config` | public | read | Checkout capability discovery |
 | `OPTIONS /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `OPTIONS /api/public/checkout/session` | public | read | Checkout session start preflight |
 | `OPTIONS /api/public/auth-config` | public | read | Login capability discovery |
 | `GET /api/public/offer` | public | read | Public offer discovery |
+| `GET /api/student/lessons/:lessonId` | public | read | Free lesson preview |
 | `GET /api/public/payment-config` | public | read | Checkout capability discovery |
 | `POST /api/public/checkout/coupon` | public | read | Read-only coupon validation |
 | `POST /api/public/checkout/session` | public | mutating | Checkout session start |
@@ -86,7 +88,6 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/marketing/ses-onboarding/identity` | authenticated | mutating | marketing ses identity start |
 | `POST /api/marketing/ses-onboarding/infrastructure` | authenticated | mutating | marketing ses provision |
 | `POST /api/marketing/ses-onboarding/simulator` | authenticated | mutating | marketing ses simulator |
-| `POST /api/marketing/smtp/test` | authenticated | mutating | marketing smtp test |
 | `GET /api/marketing/suppressions` | authenticated | read | marketing staff suppressions |
 | `GET /api/marketing/sends/export` | authenticated | read | email sends export |
 | `GET /api/marketing/sends` | authenticated | read | email sends |
@@ -103,11 +104,18 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/members/erasure-requests/:requestId/reject` | authenticated | mutating | member erasure reject |
 | `GET /api/tenants` | authenticated | read | tenants |
 | `GET /api/products` | authenticated | read | products |
+| `GET /api/products/:productId/downloads` | authenticated | read | product download assets |
+| `POST /api/products/:productId/downloads/upload` | authenticated | mutating | product download upload |
+| `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
+| `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
 | `GET /api/my/products` | authenticated | read | my products |
+| `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |
 | `POST /api/members/ban` | authenticated | mutating | member ban |
 | `GET /api/members/:memberId/grants` | authenticated | read | member grants |
+| `GET /api/members/:memberId/commerce` | authenticated | read | member commerce |
+| `GET /api/members/:memberId/timeline` | authenticated | read | member timeline |
 | `GET /api/members/:memberId/learning-summary` | authenticated | read | member learning summary |
 | `POST /api/members/:memberId/progress-reset` | authenticated | mutating | member progress reset |
 | `DELETE /api/members/:memberId` | authenticated | mutating | member remove |
@@ -123,7 +131,10 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/tenant/settings` | authenticated | mutating | tenant settings update |
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
-| `POST /api/integrations/stripe/test` | authenticated | mutating | stripe test connection |
+| `POST /api/integrations/test` | authenticated | mutating | integration test |
+| `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
+| `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
+| `POST /api/integrations/stripe/configure` | authenticated | mutating | stripe configure |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |
 | `GET /api/integrations/bunny/videos` | authenticated | read | bunny videos |
@@ -166,14 +177,19 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/lessons/update` | authenticated | mutating | lessons update |
 | `GET /api/lessons/references` | authenticated | read | lesson references |
 | `DELETE /api/lessons/:lessonId` | authenticated | mutating | lessons delete |
+| `GET /api/lessons/:lessonId/attachments` | authenticated | read | lesson attachments |
+| `POST /api/lessons/:lessonId/attachments/upload` | authenticated | mutating | lesson attachment upload |
+| `POST /api/lessons/:lessonId/attachments/:attachmentId/complete` | authenticated | mutating | lesson attachment complete |
+| `DELETE /api/lessons/:lessonId/attachments/:attachmentId` | authenticated | mutating | lesson attachment delete |
 | `GET /api/student/courses` | authenticated | read | student courses |
 | `GET /api/student/courses/:courseId/structure` | authenticated | read | student course structure |
+| `GET /api/student/lessons/:lessonId/attachments` | authenticated | read | student lesson attachments |
+| `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | authenticated | read | student lesson attachment download |
 | `POST /api/student/lessons/complete` | authenticated | mutating | student lesson complete |
 | `POST /api/student/lessons/uncomplete` | authenticated | mutating | student lesson uncomplete |
 | `POST /api/student/progress/last-viewed` | authenticated | mutating | student last viewed |
 | `GET /api/student/lessons/next` | authenticated | read | student lesson next |
 | `GET /api/student/progress` | authenticated | read | student progress |
-| `GET /api/student/lessons/:lessonId` | authenticated | read | student lesson |
 | `POST /api/posts` | authenticated | mutating | posts create |
 | `POST /api/support/message` | authenticated | mutating | support message |
 | `POST /api/posts/pin` | authenticated | mutating | posts pin |

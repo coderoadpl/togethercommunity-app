@@ -24,6 +24,7 @@ import type {
   TenantAccessReader,
   TenantRepository,
 } from '../ports.js';
+import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 import { tenantStaffRecipients } from './tenant-staff-recipients.js';
 
 export interface MemberErasureRequestDeps {
@@ -31,12 +32,10 @@ export interface MemberErasureRequestDeps {
   erasureRequests: MemberErasureRequestRepository;
   ids: IdGenerator;
   clock: Clock;
-  notifications?: {
+  notifications?: TenantUrlDeps & {
     tenants: TenantRepository;
     tenantAccess: TenantAccessReader;
     emailOutbox: EmailOutboxRepository;
-    appBaseUrl: string;
-    baseDomain: string;
     dispatchEmail(): void;
   };
 }
@@ -97,10 +96,7 @@ export const requestMyErasure = async (
   if (deps.notifications !== undefined) {
     try {
       const recipients = await tenantStaffRecipients(tenant.value, deps.notifications);
-      const panelUrl = new URL('/panel/members', deps.notifications.appBaseUrl);
-      if (ctx.identity.tenantSlug !== null) {
-        panelUrl.hostname = `${ctx.identity.tenantSlug}.${deps.notifications.baseDomain}`;
-      }
+      const panelUrl = tenantUrl(ctx.identity.tenantSlug, '/panel/members', deps.notifications);
       let queuedCount = 0;
       for (const recipient of recipients) {
         const queued = await deps.notifications.emailOutbox.enqueue({
@@ -114,7 +110,7 @@ export const requestMyErasure = async (
             memberEmail: member.value.email,
             requestedAt,
             dueAt: request.dueAt,
-            panelUrl: panelUrl.toString(),
+            panelUrl,
           },
           now: requestedAt,
         });

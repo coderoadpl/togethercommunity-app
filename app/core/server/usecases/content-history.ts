@@ -66,7 +66,7 @@ export const getContentHistory = async (
   const creatorIds = [
     ...new Set(merged.flatMap((version) => (version.createdBy === null ? [] : [version.createdBy]))),
   ];
-  const creatorNames = await deps.userDisplays.findDisplayNames(creatorIds);
+  const creatorNames = await deps.userDisplays.findDisplayNames(tenant.value, creatorIds);
   return ok(
     merged.map((version) => ({
       ...version,

@@ -150,6 +150,10 @@ export interface ProductBatchReader {
   findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
 }
 
+export interface ProductMetadataRepository {
+  update(tenantId: string, product: Product, version: EntityVersionRecord): Promise<Product | null>;
+}
+
 export interface CourseRepository {
   list(tenantId: string): Promise<Course[]>;
   findById(tenantId: string, id: string): Promise<Course | null>;

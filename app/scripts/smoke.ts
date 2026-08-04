@@ -425,11 +425,24 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
     expectOk(await cli(['--json', '--api-url', url, '--tenant', 'acme', 'product', 'list'], authedHome), 'product list (before)'),
   );
 
+  const accessCourse = courseSchema.parse(
+    expectOk(
+      await cli(
+        ['--json', '--api-url', url, '--tenant', 'acme', 'course', 'create', '--name', `Smoke access ${randomUUID()}`],
+        authedHome,
+      ),
+      'product access course create',
+    ),
+  );
+  const accessItems = JSON.stringify([{ level: 'course', courseId: accessCourse.course.id }]);
   const title = `smoke product ${randomUUID()}`;
   const created = createSchema.parse(
     expectOk(
       await cli(
-        ['--json', '--api-url', url, '--tenant', 'acme', 'product', 'create', '--title', title, '--price-cents', '1234'],
+        [
+          '--json', '--api-url', url, '--tenant', 'acme', 'product', 'create', '--title', title,
+          '--price-cents', '1234', '--access-items', accessItems,
+        ],
         authedHome,
       ),
       'product create',
@@ -437,6 +450,16 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   );
   assert(created.product.title === title, `product create echoed the wrong title: ${created.product.title}`);
   assert(created.product.published === false, 'a newly created product should start as a draft');
+  expectOk(
+    await cli(
+      [
+        '--json', '--api-url', url, '--tenant', 'acme', 'price', 'add', '--product', created.product.id,
+        '--kind', 'one_time', '--price-cents', '1234', '--currency', 'PLN',
+      ],
+      authedHome,
+    ),
+    'product active price create',
+  );
 
   const published = publishSchema.parse(
     expectOk(
@@ -874,6 +897,20 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
       'student flow: create product 2',
     ),
   );
+  expectOk(
+    await acme(
+      ['price', 'add', '--product', productOne.product.id, '--kind', 'one_time', '--price-cents', '1000'],
+      creatorHome,
+    ),
+    'student flow: create active price 1',
+  );
+  expectOk(
+    await acme(
+      ['price', 'add', '--product', productTwo.product.id, '--kind', 'one_time', '--price-cents', '1000'],
+      creatorHome,
+    ),
+    'student flow: create active price 2',
+  );
   expectOk(await acme(['product', 'publish', productOne.product.id], creatorHome), 'student flow: publish product 1');
   expectOk(await acme(['product', 'publish', productTwo.product.id], creatorHome), 'student flow: publish product 2');
 
@@ -1038,6 +1075,13 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
       await acme(['product', 'create', '--title', `M2M access ${randomUUID()}`, '--price-cents', '1000', '--access-items', accessItems], creatorHome),
       'm2m flow: create product',
     ),
+  );
+  expectOk(
+    await acme(
+      ['price', 'add', '--product', product.product.id, '--kind', 'one_time', '--price-cents', '1000'],
+      creatorHome,
+    ),
+    'm2m flow: create active price',
   );
   expectOk(await acme(['product', 'publish', product.product.id], creatorHome), 'm2m flow: publish product');
 

@@ -72,6 +72,8 @@ import {
   productsAccessItemsInputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
+  productsUnpublishInputSchema,
+  productsUpdateInputSchema,
   productDownloadUploadRequestSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   schedulerRunsQuerySchema,
@@ -290,6 +292,8 @@ import {
   updateMarketingConsentDefinition,
   updateModule,
   updateProductAccessItems,
+  unpublishProduct,
+  updateProduct,
   updateSpace,
   updateTenantSesMarketingSettings,
   updateTenantSettings,
@@ -1495,6 +1499,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
             type: product.type,
             title: product.title,
             description: product.description,
+            accessItems: product.accessItems,
             priceCents: product.priceCents,
             currency: product.currency,
             grantStatus: product.grantStatus,
@@ -1759,6 +1764,16 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ product: result.value }) : result);
   });
 
+  app.post(API_PATHS.productsUpdate, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productsUpdateInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid product update payload', parsed.error.flatten())));
+    }
+    const result = await updateProduct({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
   app.post(API_PATHS.productsPublish, async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = productsPublishInputSchema.safeParse(body);
@@ -1766,6 +1781,16 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       return respond(err(validation('Invalid publish payload', parsed.error.flatten())));
     }
     const result = await publishProduct({ identity: c.get('identity') }, parsed.data, deps);
+    return respond(result.ok ? ok({ product: result.value }) : result);
+  });
+
+  app.post(API_PATHS.productsUnpublish, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productsUnpublishInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid unpublish payload', parsed.error.flatten())));
+    }
+    const result = await unpublishProduct({ identity: c.get('identity') }, parsed.data, deps);
     return respond(result.ok ? ok({ product: result.value }) : result);
   });
 

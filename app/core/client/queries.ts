@@ -70,6 +70,8 @@ import type {
   SupportMessageInput,
   ProductsAccessItemsInput,
   ProductsPublishInput,
+  ProductsUnpublishInput,
+  ProductsUpdateInput,
   ProductPriceCreateInput,
   ProductPriceDeactivateInput,
   OrdersListQueryInput,
@@ -514,6 +516,18 @@ export const publishProductMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...productsScopes.all(), 'publish'],
     call: (input: ProductsPublishInput) => api.publishProduct(input),
+  });
+
+export const unpublishProductMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productsScopes.all(), 'unpublish'],
+    call: (input: ProductsUnpublishInput) => api.unpublishProduct(input),
+  });
+
+export const updateProductMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...productsScopes.all(), 'update'],
+    call: (input: ProductsUpdateInput) => api.updateProduct(input),
   });
 
 export const myProductsQuery = (api: ApiClient) =>

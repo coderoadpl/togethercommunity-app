@@ -419,6 +419,7 @@ const deps = (input: {
       findByIds: async (tenantId, ids) =>
         products.filter((candidate) => candidate.tenantId === tenantId && ids.includes(candidate.id)),
       create: async () => 'created',
+      update: async () => null,
       updateAccessItems: async () => null,
       setPublished: async () => undefined,
       bumpContentVersion: async () => undefined,

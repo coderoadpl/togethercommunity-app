@@ -77,7 +77,12 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
         <TabLink
           href="/my"
           label={t.student.myCourses}
-          current={pathname === '/my'}
+          current={
+            pathname === '/my'
+            || pathname === '/my/courses'
+            || pathname.startsWith('/my/courses/')
+            || pathname.startsWith('/my/course/')
+          }
           icon={<CoursesIcon />}
         />
         <TabLink
@@ -89,7 +94,7 @@ const BottomNavigation = ({ liveNotifications }: { liveNotifications: boolean })
         <TabLink
           href="/my/products"
           label={t.student.myProducts}
-          current={pathname.startsWith('/my/products') || pathname.startsWith('/my/course/')}
+          current={pathname === '/my/products' || pathname.startsWith('/my/products/')}
           icon={<ProductsIcon />}
         />
         <NotificationBell tabLabel={t.notifications.heading} live={liveNotifications} />

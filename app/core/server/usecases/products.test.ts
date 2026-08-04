@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, Product, StaffRole } from '#core/domain/index.js';
+import type {
+  Identity,
+  Product,
+  ProductDownloadAsset,
+  ProductPrice,
+  Space,
+  StaffRole,
+} from '#core/domain/index.js';
 
-import type { ProductRepository } from '../ports.js';
-import { createProduct, listProducts, publishProduct } from './products.js';
+import type { EntityVersionRecord, ProductMetadataRepository, ProductRepository } from '../ports.js';
+import { createProduct, listProducts, publishProduct, unpublishProduct, updateProduct } from './products.js';
 
 const identity = (tenantId: string | null, staffRole: StaffRole | null): Identity => ({
   userId: 'u1',
@@ -21,7 +28,8 @@ memberBannedAt: null,
 const fakeRepo = (initial: Product[] = []) => {
   const store = [...initial];
   const versions = new Map<string, number>();
-  const repo: ProductRepository = {
+  const entityVersions: EntityVersionRecord[] = [];
+  const repo: ProductRepository & ProductMetadataRepository = {
     listByTenant: async (tenantId) => store.filter((p) => p.tenantId === tenantId),
     listPublishedByTenant: async (tenantId) =>
       store.filter((p) => p.tenantId === tenantId && p.published),
@@ -33,6 +41,13 @@ const fakeRepo = (initial: Product[] = []) => {
       }
       store.push(product);
       return 'created';
+    },
+    update: async (tenantId, product, version) => {
+      const index = store.findIndex((candidate) => candidate.tenantId === tenantId && candidate.id === product.id);
+      if (index === -1) return null;
+      store[index] = product;
+      entityVersions.push(version);
+      return product;
     },
     updateAccessItems: async (tenantId, id, accessItems) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
@@ -48,10 +63,10 @@ const fakeRepo = (initial: Product[] = []) => {
       versions.set(tenantId, (versions.get(tenantId) ?? 1) + 1);
     },
   };
-  return { repo, store, versions };
+  return { repo, store, versions, entityVersions };
 };
 
-const deps = (repo: ProductRepository, ids: string[] = ['product-1']) => ({
+const deps = <T extends ProductRepository>(repo: T, ids: string[] = ['product-1']) => ({
   products: repo,
   ids: {
     nextId: () => {
@@ -77,6 +92,65 @@ const draft = (id: string, tenantId: string, published = false): Product => ({
   accessItems: [],
   legacyId: null,
   createdAt: '2026-07-01T00:00:00.000Z',
+});
+
+const price = (productId: string): ProductPrice => ({
+  id: `price-${productId}`,
+  tenantId: 't-acme',
+  productId,
+  kind: 'one_time',
+  interval: null,
+  amountCents: 1000,
+  currency: 'PLN',
+  active: true,
+  createdAt: '2026-07-01T00:00:00.000Z',
+});
+
+const download = (productId: string): ProductDownloadAsset => ({
+  id: `download-${productId}`,
+  tenantId: 't-acme',
+  productId,
+  fileName: 'workbook.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 1024,
+  storageKey: `product-downloads/${productId}/workbook.pdf`,
+  status: 'ready',
+  createdAt: '2026-07-01T00:00:00.000Z',
+});
+
+const gatedSpace = (productId: string): Space => ({
+  id: `space-${productId}`,
+  tenantId: 't-acme',
+  slug: `space-${productId}`,
+  name: `Space ${productId}`,
+  description: null,
+  visibility: 'product',
+  productIds: [productId],
+  position: 0,
+  archivedAt: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+});
+
+const publicationDeps = (
+  repo: ProductRepository,
+  activePrices: ProductPrice[] = [price('p1')],
+  readyDownloads: ProductDownloadAsset[] = [],
+  spaces: Space[] = [],
+) => ({
+  products: repo,
+  prices: {
+    listActiveByProducts: async (tenantId: string, productIds: string[]) =>
+      activePrices.filter((candidate) =>
+        candidate.tenantId === tenantId && productIds.includes(candidate.productId) && candidate.active),
+  },
+  downloadAssets: {
+    listReadyByProduct: async (tenantId: string, productId: string) =>
+      readyDownloads.filter((candidate) =>
+        candidate.tenantId === tenantId && candidate.productId === productId && candidate.status === 'ready'),
+  },
+  spaces: {
+    list: async (tenantId: string) => spaces.filter((candidate) => candidate.tenantId === tenantId),
+  },
 });
 
 describe('products use-cases', () => {
@@ -191,8 +265,16 @@ describe('products use-cases', () => {
   });
 
   it('publishes a draft product and bumps the version', async () => {
-    const { repo, store, versions } = fakeRepo([draft('p1', 't-acme')]);
-    const result = await publishProduct({ identity: identity('t-acme', 'owner') }, { id: 'p1' }, deps(repo));
+    const publishable: Product = {
+      ...draft('p1', 't-acme'),
+      accessItems: [{ level: 'course', courseId: 'c1' }],
+    };
+    const { repo, store, versions } = fakeRepo([publishable]);
+    const result = await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      publicationDeps(repo),
+    );
     expect(result).toMatchObject({ ok: true, value: { id: 'p1', published: true } });
     expect(store[0]?.published).toBe(true);
     expect(versions.get('t-acme')).toBe(2);
@@ -200,14 +282,107 @@ describe('products use-cases', () => {
 
   it('treats publishing an already-published product as a no-op success', async () => {
     const { repo, versions } = fakeRepo([draft('p1', 't-acme', true)]);
-    const result = await publishProduct({ identity: identity('t-acme', 'owner') }, { id: 'p1' }, deps(repo));
+    const result = await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      publicationDeps(repo, []),
+    );
     expect(result).toMatchObject({ ok: true, value: { id: 'p1', published: true } });
     expect(versions.has('t-acme')).toBe(false);
   });
 
   it('returns not_found when publishing an unknown product', async () => {
     const { repo } = fakeRepo();
-    const result = await publishProduct({ identity: identity('t-acme', 'owner') }, { id: 'ghost' }, deps(repo));
+    const result = await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'ghost' },
+      publicationDeps(repo),
+    );
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('blocks publishing without a delivery mechanism or active price', async () => {
+    const noDelivery = fakeRepo([draft('p1', 't-acme')]);
+    expect(await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      publicationDeps(noDelivery.repo),
+    )).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('delivery mechanism') } });
+
+    const withAccess: Product = {
+      ...draft('p1', 't-acme'),
+      accessItems: [{ level: 'course', courseId: 'c1' }],
+    };
+    const noPrice = fakeRepo([withAccess]);
+    expect(await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      publicationDeps(noPrice.repo, []),
+    )).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('active price') } });
+  });
+
+  it('publishes a digital product with a ready download and no course access items', async () => {
+    const product: Product = { ...draft('p1', 't-acme'), type: 'digital_download' };
+    const { repo } = fakeRepo([product]);
+
+    expect(await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      publicationDeps(repo, [price('p1')], [download('p1')]),
+    )).toMatchObject({ ok: true, value: { id: 'p1', published: true } });
+  });
+
+  it('publishes a membership delivered through a product-gated space', async () => {
+    const product: Product = { ...draft('p1', 't-acme'), type: 'membership' };
+    const recurringPrice: ProductPrice = {
+      ...price('p1'),
+      kind: 'recurring',
+      interval: 'month',
+    };
+    const { repo } = fakeRepo([product]);
+
+    expect(await publishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      publicationDeps(repo, [recurringPrice], [], [gatedSpace('p1')]),
+    )).toMatchObject({ ok: true, value: { id: 'p1', published: true } });
+  });
+
+  it('returns a published product to draft and bumps the version', async () => {
+    const { repo, store, versions } = fakeRepo([draft('p1', 't-acme', true)]);
+    const result = await unpublishProduct(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1' },
+      { products: repo },
+    );
+    expect(result).toMatchObject({ ok: true, value: { id: 'p1', published: false } });
+    expect(store[0]?.published).toBe(false);
+    expect(versions.get('t-acme')).toBe(2);
+  });
+
+  it('updates editable metadata, preserves the slug and snapshots the previous product', async () => {
+    const { repo, store, entityVersions } = fakeRepo([draft('p1', 't-acme')]);
+    const result = await updateProduct(
+      { identity: identity('t-acme', 'owner') },
+      {
+        id: 'p1',
+        title: 'Updated product',
+        description: 'Updated description',
+        coverUrl: 'https://cdn.test/updated.jpg',
+      },
+      deps(repo, ['version-1']),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        title: 'Updated product',
+        description: 'Updated description',
+        coverUrl: 'https://cdn.test/updated.jpg',
+        slug: 'product-p1',
+      },
+    });
+    expect(store[0]?.slug).toBe('product-p1');
+    expect(entityVersions).toHaveLength(1);
+    expect(entityVersions[0]).toMatchObject({ id: 'version-1', entityKind: 'product', entityId: 'p1' });
   });
 });

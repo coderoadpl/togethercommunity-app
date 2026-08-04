@@ -30,7 +30,7 @@ const granted: Product = {
   priceCents: 9900,
   currency: 'PLN',
   published: true,
-  accessItems: [],
+  accessItems: [{ level: 'course', courseId: 'course-1' }],
   legacyId: null,
   createdAt: '2026-07-12T00:00:00.000Z',
 };
@@ -87,7 +87,11 @@ describe('listMyProducts', () => {
     });
     expect(result).toMatchObject({
       ok: true,
-      value: [{ id: 'p1', grantStatus: 'active' }],
+      value: [{
+        id: 'p1',
+        grantStatus: 'active',
+        accessItems: [{ level: 'course', courseId: 'course-1' }],
+      }],
     });
   });
 

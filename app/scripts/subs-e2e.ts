@@ -10,6 +10,7 @@ import {
   API_PATHS,
   EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
+  courseOutputSchema,
   emailSendDetailOutputSchema,
   emailSendsOutputSchema,
   looseEnvelopeSchema,
@@ -226,12 +227,19 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     assert(tenant.slug === 'subs', 'tenant slug mismatch');
     steps += 1;
 
+    const course = expectOk(
+      await staff(['course', 'create', '--name', 'Klub Subs']),
+      'course create',
+      courseOutputSchema,
+    ).course;
     const product = expectOk(
-      await staff(['product', 'create', '--title', 'Klub Subs', '--price-cents', '9900', '--currency', 'PLN']),
+      await staff([
+        'product', 'create', '--title', 'Klub Subs', '--price-cents', '9900', '--currency', 'PLN',
+        '--access-items', JSON.stringify([{ level: 'course', courseId: course.id }]),
+      ]),
       'product create',
       productsCreateOutputSchema,
     ).product;
-    expectOk(await staff(['product', 'publish', product.id]), 'product publish', productsPublishOutputSchema);
     const oneTimePrice = expectOk(
       await staff(['price', 'add', '--product', product.id, '--kind', 'one_time', '--price-cents', '9900']),
       'one-time price add',
@@ -251,6 +259,7 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
       EXIT_CODE_BY_ERROR_CODE.validation,
       'validation',
     );
+    expectOk(await staff(['product', 'publish', product.id]), 'product publish', productsPublishOutputSchema);
     const offer = expectOk(
       await cli(['--tenant', 'subs', 'public', 'offer'], anonHome),
       'public offer',

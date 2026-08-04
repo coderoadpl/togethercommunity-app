@@ -57,6 +57,7 @@ interface StorageResponse {
   ok: boolean;
   status: number;
   headers: { get(name: string): string | null };
+  body: { cancel(): Promise<void> } | null;
   text(): Promise<string>;
 }
 
@@ -87,6 +88,10 @@ const probeError = (
   providerCode === 'storage.credentials'
     ? integrationAuth(message, { providerCode })
     : integrationUnavailable(message, { providerCode });
+
+const discardStorageResponseBody = async (response: StorageResponse): Promise<void> => {
+  await response.body?.cancel();
+};
 
 export const mapStorageProbeFailure = (status: number, body: string): AppError => {
   if (
@@ -127,16 +132,25 @@ const sendProbeRequest = async (
   url: string,
   init: { method: 'DELETE' | 'GET' | 'PUT'; body?: string },
   dispatcher: Dispatcher,
-): Promise<Result<StorageResponse, AppError>> => {
+  readBody: boolean,
+): Promise<Result<{ body: string }, AppError>> => {
   let response: StorageResponse;
   try {
     response = await fetchStorage(url, { ...init, dispatcher, redirect: 'error' });
   } catch {
     return err(probeError('storage.unavailable', 'The storage endpoint is unreachable.'));
   }
-  if (response.ok) return ok(response);
-  const body = await response.text().catch(() => '');
-  return err(mapStorageProbeFailure(response.status, body));
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    return err(mapStorageProbeFailure(response.status, body));
+  }
+  try {
+    const body = readBody ? await response.text() : '';
+    if (!readBody) await discardStorageResponseBody(response);
+    return ok({ body });
+  } catch {
+    return err(probeError('storage.unavailable', 'The storage endpoint response could not be read.'));
+  }
 };
 
 const privateIpv4 = (address: string): boolean => {
@@ -244,6 +258,11 @@ const verifyCors = async (
   const allowedHeaders = response.headers.get('access-control-allow-headers')
     ?.split(',')
     .map((header) => header.trim().toLowerCase()) ?? [];
+  try {
+    await discardStorageResponseBody(response);
+  } catch {
+    return err(probeError('storage.unavailable', 'The storage endpoint response could not be read.'));
+  }
   if (
     !response.ok ||
     (allowedOrigin !== '*' && allowedOrigin !== corsOrigin) ||
@@ -292,12 +311,12 @@ const liveProbe = async (
   const uploaded = await sendProbeRequest(fetchStorage, signed('PUT'), {
     method: 'PUT',
     body: expected,
-  }, dispatcher);
+  }, dispatcher, false);
   if (!uploaded.ok) return uploaded;
 
-  const read = await sendProbeRequest(fetchStorage, signed('GET'), { method: 'GET' }, dispatcher);
-  const readBack = read.ok ? await read.value.text() : null;
-  const removed = await sendProbeRequest(fetchStorage, signed('DELETE'), { method: 'DELETE' }, dispatcher);
+  const read = await sendProbeRequest(fetchStorage, signed('GET'), { method: 'GET' }, dispatcher, true);
+  const readBack = read.ok ? read.value.body : null;
+  const removed = await sendProbeRequest(fetchStorage, signed('DELETE'), { method: 'DELETE' }, dispatcher, false);
 
   if (!read.ok) return read;
   if (readBack !== expected) {
@@ -459,11 +478,13 @@ export const createS3StorageProvider = (
     if (!safeTarget.ok) return safeTarget;
     const dispatcher = pinnedDispatcher(safeTarget.value);
     try {
-      return ok(await fetchStorage(url, { method, dispatcher, redirect: 'error' }));
+      const response = await fetchStorage(url, { method, dispatcher, redirect: 'error' });
+      await discardStorageResponseBody(response);
+      return ok(response);
     } catch {
       return err(integrationUnavailable('Could not reach S3.'));
     } finally {
-      await dispatcher.close();
+      await dispatcher.destroy();
     }
   };
   const probe = async (input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>> => {
@@ -474,7 +495,7 @@ export const createS3StorageProvider = (
     try {
       return await liveProbe(input, fetchStorage, now, probeKey, corsOrigin, dispatcher);
     } finally {
-      await dispatcher.close();
+      await dispatcher.destroy();
     }
   };
 

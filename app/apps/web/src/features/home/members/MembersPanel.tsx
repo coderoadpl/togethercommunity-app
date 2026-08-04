@@ -226,7 +226,7 @@ export const MembersPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
-      {exportError !== null ? <Alert>{exportError}</Alert> : null}
+      {exportError !== null ? <Alert severity="error">{exportError}</Alert> : null}
       {failedSubscriptionIds.length > 0 ? (
         <Alert severity="warning" data-testid="member-remove-cancellation-warning">
           {t.members.removeCancellationWarning({
@@ -234,7 +234,7 @@ export const MembersPanel = () => {
           })}
         </Alert>
       ) : null}
-      {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
+      {removeMember.isError ? <Alert severity="error">{errorMessage(removeMember.error, t)}</Alert> : null}
       <ConfirmDialog
         open={removing !== null}
         title={t.members.removeConfirmTitle}
@@ -271,7 +271,7 @@ export const MembersPanel = () => {
                 })}
               </Typography>
             )}
-            {removeMember.isError ? <Alert>{errorMessage(removeMember.error, t)}</Alert> : null}
+            {removeMember.isError ? <Alert severity="error">{errorMessage(removeMember.error, t)}</Alert> : null}
           </>
         }
         confirmLabel={removeMember.isPending ? t.members.removing : t.members.remove}

@@ -84,7 +84,7 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
         )}
       </Stack>
 
-      {setArchived.isError ? <Alert>{localizeError(setArchived.error, t)}</Alert> : null}
+      {setArchived.isError ? <Alert severity="error">{localizeError(setArchived.error, t)}</Alert> : null}
 
       <ConfirmDialog
         open={confirmArchive}

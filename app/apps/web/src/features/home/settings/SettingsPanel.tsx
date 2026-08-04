@@ -111,7 +111,7 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             {t.billing.saved}
           </Typography>
         ) : null}
-        {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+        {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -167,7 +167,7 @@ const SupportSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           {t.support.save}
         </Button>
       ) : null}
-      {update.isError ? <Alert>{localizeError(update.error, t)}</Alert> : null}
+      {update.isError ? <Alert severity="error">{localizeError(update.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -231,7 +231,7 @@ const KsefSettings = ({ canEdit }: { canEdit: boolean }) => {
         </Typography>
       ) : null}
       {testConnection.isError ? (
-        <Alert data-testid="ksef-test-error">{localizeError(testConnection.error, t)}</Alert>
+        <Alert severity="error" data-testid="ksef-test-error">{localizeError(testConnection.error, t)}</Alert>
       ) : null}
     </Stack>
   );
@@ -418,7 +418,7 @@ const InvoiceSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         {t.billing.saveSeller}
       </Button>
       {provider === 'ksef' ? <KsefSettings canEdit={canEdit} /> : null}
-      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -502,7 +502,7 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           {t.legal.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -783,7 +783,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           {t.branding.saved}
         </Typography>
       ) : null}
-      {updateSettings.isError ? <Alert>{localizeError(updateSettings.error, t)}</Alert> : null}
+      {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -849,7 +849,7 @@ const SecurityPanel = () => {
               </Typography>
             ) : null}
             {requestPasswordReset.isError ? (
-              <Alert>{localizeError(requestPasswordReset.error, t)}</Alert>
+              <Alert severity="error">{localizeError(requestPasswordReset.error, t)}</Alert>
             ) : null}
           </Box>
         </Box>

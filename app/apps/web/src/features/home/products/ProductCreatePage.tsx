@@ -141,7 +141,7 @@ export const ProductCreatePage = () => {
           {createProduct.isPending ? t.products.creating : t.products.create}
         </Button>
         {createProduct.isError && slugError === null
-          ? <Alert>{localizeError(createProduct.error, t)}</Alert>
+          ? <Alert severity="error">{localizeError(createProduct.error, t)}</Alert>
           : null}
       </SectionCard>
     </PanelPage>

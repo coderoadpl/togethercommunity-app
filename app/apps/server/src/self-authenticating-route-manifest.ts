@@ -23,6 +23,8 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: API_PATHS.devSubscriptionSimulateCycle, methods: ['POST'], mechanism: 'Development-only composition flag' },
   { path: API_PATHS.devSubscriptionSimulateFailure, methods: ['POST'], mechanism: 'Development-only composition flag' },
   { path: API_PATHS.m2mEnroll, methods: ['POST'], mechanism: 'Tenant API key' },
+  { path: API_PATHS.m2mTransactionalMessagesCreate, methods: ['POST'], mechanism: 'Tenant API key' },
+  { path: API_PATHS.m2mTransactionalMessage, methods: ['GET'], mechanism: 'Tenant API key' },
   { path: '/api/m2m/marketing/messages', methods: ['GET', 'POST'], mechanism: 'Tenant API key' },
   { path: '/api/m2m/marketing/messages/:id', methods: ['GET'], mechanism: 'Tenant API key' },
   { path: '/api/m2m/marketing/eligibility', methods: ['GET'], mechanism: 'Tenant API key' },

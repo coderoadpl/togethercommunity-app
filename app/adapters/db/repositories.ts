@@ -101,6 +101,7 @@ import type {
   TermsConsentRepository,
   ThreadSubscriptionRepository,
   UserDisplayReader,
+  ApiKeyRateLimitRepository,
 } from '#core/server/index.js';
 
 import type { Db } from './client.js';
@@ -146,6 +147,7 @@ import {
   spaceSubscriptions,
   tenantAdmins,
   tenantApiKeys,
+  apiKeyRateLimitBuckets,
   tenantDomains,
   tenantSecrets,
   tenants,
@@ -2582,6 +2584,7 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
       tenantId,
       name: apiKey.name,
       keyHash: apiKey.keyHash,
+      scopes: apiKey.scopes,
       createdAt: apiKey.createdAt,
       revokedAt: apiKey.revokedAt,
     });
@@ -2615,6 +2618,33 @@ export const createTenantApiKeyRepository = (db: Db): TenantApiKeyRepository => 
       .returning();
     const row = rows[0];
     return row ? parseApiKey(row) : null;
+  },
+});
+
+export const createApiKeyRateLimitRepository = (db: Db): ApiKeyRateLimitRepository => ({
+  claim: async (tenantId, input) => {
+    const [owned] = await db.select({ id: tenantApiKeys.id }).from(tenantApiKeys).where(and(
+      eq(tenantApiKeys.tenantId, tenantId),
+      eq(tenantApiKeys.id, input.apiKeyId),
+    )).limit(1);
+    if (owned === undefined) return false;
+    const [row] = await db.insert(apiKeyRateLimitBuckets).values({
+      apiKeyId: input.apiKeyId,
+      period: input.period,
+      windowStartedAt: input.windowStartedAt,
+      count: 1,
+    }).onConflictDoUpdate({
+      target: [apiKeyRateLimitBuckets.apiKeyId, apiKeyRateLimitBuckets.period],
+      set: {
+        windowStartedAt: input.windowStartedAt,
+        count: sql`case when ${apiKeyRateLimitBuckets.windowStartedAt} = ${input.windowStartedAt}::timestamptz then ${apiKeyRateLimitBuckets.count} + 1 else 1 end`,
+      },
+      setWhere: or(
+        ne(apiKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
+        sql`${apiKeyRateLimitBuckets.count} < ${input.limit}`,
+      ) ?? sql`false`,
+    }).returning({ count: apiKeyRateLimitBuckets.count });
+    return row !== undefined;
   },
 });
 

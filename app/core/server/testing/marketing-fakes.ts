@@ -758,7 +758,7 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
     private readonly attemptsCap = 3,
   ) {}
 
-  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>> {
+  async enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean }): Promise<Result<{ id: string }, AppError>> {
     this.items.push({
       ...structuredClone(input),
       attempts: 0,
@@ -767,6 +767,8 @@ export class InMemoryEmailOutboxRepository implements EmailOutboxRepository {
       transport: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
+      sourceApp: input.sourceApp ?? null,
+      tenantTransportRequired: input.tenantTransportRequired ?? false,
     });
     if (input.tenantId !== null) {
       this.events.associateEmail(input.tenantId, 'transactional', input.id, input.to);

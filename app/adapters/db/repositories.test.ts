@@ -50,6 +50,7 @@ import {
   createProductRepository,
   createTenantAccessReader,
   createTenantApiKeyRepository,
+  createApiKeyRateLimitRepository,
   createTenantRepository,
   createTenantSecretRepository,
   createUserDisplayReader,
@@ -1107,12 +1108,18 @@ describe('tenant, api-key, secret and processed-event repositories', () => {
       tenantId: ACME,
       name: 'CI',
       keyHash: 'hash-abc',
+      scopes: null,
       createdAt: NOW,
       revokedAt: null,
     };
     await repo.create(ACME, apiKey);
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toMatchObject({ id: 'key-acme' });
     expect(await repo.findActiveByHash(GLOBEX, 'hash-abc')).toBeNull();
+    const rateLimits = createApiKeyRateLimitRepository(db);
+    const claim = { apiKeyId: apiKey.id, period: 'minute' as const, windowStartedAt: NOW, limit: 1 };
+    expect(await rateLimits.claim(ACME, claim)).toBe(true);
+    expect(await rateLimits.claim(ACME, claim)).toBe(false);
+    expect(await rateLimits.claim(ACME, { ...claim, windowStartedAt: '1998-07-22T00:01:00.000Z' })).toBe(true);
     await repo.revoke(ACME, 'key-acme', NOW);
     expect(await repo.findActiveByHash(ACME, 'hash-abc')).toBeNull();
   });

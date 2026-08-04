@@ -547,6 +547,13 @@
       "when": 1785868380000,
       "tag": "0077_classy_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1785868440000,
+      "tag": "0078_awesome_gladiator",
+      "breakpoints": true
     }
   ]
 }

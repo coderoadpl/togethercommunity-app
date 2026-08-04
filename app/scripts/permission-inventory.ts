@@ -50,6 +50,7 @@ const owner = ['owner'] as const;
 const member = ['member'] as const;
 const publicPrincipal = ['public'] as const;
 const apiKey = ['api-key'] as const;
+const transactionalApiKey = ['transactional-api-key'] as const;
 const operatorSecret = ['operator-secret'] as const;
 const webhook = ['webhook'] as const;
 const token = ['token'] as const;
@@ -89,6 +90,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/tenants' && method === 'POST') return 'tenant:create';
   if (path.startsWith('/api/dev/')) return method === 'GET' ? 'development:inspect' : 'development:mutate';
   if (path === '/api/m2m/enroll') return 'enrollment:create';
+  if (path.startsWith('/api/m2m/transactional/messages')) return method === 'GET' ? 'transactional:message:read' : 'transactional:message:send';
   if (path.startsWith('/api/m2m/marketing/messages')) return method === 'GET' ? 'marketing:message:read' : 'marketing:message:send';
   if (path === '/api/m2m/marketing/eligibility') return 'marketing:consent:read';
   if (path === '/api/m2m/marketing/consents') return 'marketing:consent:write';
@@ -197,7 +199,9 @@ const beforeForRoute = (
   }
   const selfAuthenticatingEntry = selfAuthenticatingRouteManifestEntry(route);
   if (selfAuthenticatingEntry !== undefined) {
-    if (selfAuthenticatingEntry.mechanism === 'Tenant API key') return apiKey;
+    if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
+      return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
+    }
     if (selfAuthenticatingEntry.mechanism.includes('secret')) return operatorSecret;
     if (selfAuthenticatingEntry.mechanism.includes('session')) return authenticated;
     return publicPrincipal;
@@ -419,6 +423,7 @@ const beforeForUseCase = (
   if (file === 'marketing-email.ts') {
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
+  if (file === 'm2m-transactional-email.ts') return transactionalApiKey;
   if (file === 'create-tenant.ts') return allHumans;
   if (file === 'member-billing-orders.ts' || file === 'member-data-export.ts' || file === 'member-erasure-requests.ts' || file === 'my-products.ts' || capability === 'invoice:member-read') return member;
   if (file === 'entitlements.ts') {
@@ -450,7 +455,9 @@ const beforeForUseCase = (
 const useCaseRows = (): PermissionRow[] =>
   collectCtxUseCases().map(({ file, name, capability }) => {
     const before = beforeForUseCase(file, name, capability);
-    const reachable = before === allHumans ? allHumans : tenantActors;
+    const reachable = before === allHumans
+      ? allHumans
+      : before === transactionalApiKey ? transactionalApiKey : tenantActors;
     return {
       subject: `${file}#${name}`,
       capability,

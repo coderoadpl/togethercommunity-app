@@ -49,6 +49,8 @@ import {
   productDownloadDeleteOutputSchema,
   productDownloadUploadOutputSchema,
   m2mEnrollOutputSchema,
+  m2mTransactionalMessageOutputSchema,
+  m2mTransactionalMessageStatusOutputSchema,
   marketingConsentDefinitionOutputSchema,
   marketingConsentDefinitionDetailOutputSchema,
   marketingConsentDefinitionsOutputSchema,
@@ -175,6 +177,7 @@ import {
   type LessonAttachmentUploadRequest,
   type ProductDownloadUploadRequest,
   type M2mEnrollRequest,
+  type M2mTransactionalMessageRequest,
   type MarketingConsentDefinitionCreateInput,
   type MarketingConsentDefinitionUpdateInput,
   type MarketingAudiencePreviewInput,
@@ -410,6 +413,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.transport !== undefined) params.set('transport', input.transport);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
+    if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
     if (input.search !== undefined) params.set('search', input.search);
     if (input.cursor !== undefined) params.set('cursor', input.cursor);
     if (input.limit !== undefined) params.set('limit', String(input.limit));
@@ -493,8 +497,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.kind !== undefined) params.set('kind', input.kind);
     if (input.status !== undefined) params.set('status', input.status);
     if (input.deliveryStatus !== undefined) params.set('deliveryStatus', input.deliveryStatus);
+    if (input.transport !== undefined) params.set('transport', input.transport);
     if (input.campaignId !== undefined) params.set('campaignId', input.campaignId);
     if (input.runId !== undefined) params.set('runId', input.runId);
+    if (input.sourceApp !== undefined) params.set('sourceApp', input.sourceApp);
     if (input.search !== undefined) params.set('search', input.search);
     return request(
       options,
@@ -1614,6 +1620,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   m2mEnroll: (input: M2mEnrollRequest, signal?: AbortSignal) =>
     request(options, API_ROUTES.m2mEnroll.method, API_ROUTES.m2mEnroll.path, m2mEnrollOutputSchema, input, signal),
+  sendM2mTransactionalMessage: (input: M2mTransactionalMessageRequest, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mTransactionalMessagesCreate.method,
+      API_ROUTES.m2mTransactionalMessagesCreate.path,
+      m2mTransactionalMessageOutputSchema,
+      input,
+      signal,
+    ),
+  getM2mTransactionalMessage: (id: string, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.m2mTransactionalMessage.method,
+      API_ROUTES.m2mTransactionalMessage.path.replace(':id', encodeURIComponent(id)),
+      m2mTransactionalMessageStatusOutputSchema,
+      undefined,
+      signal,
+    ),
   getTenantSettings: (signal?: AbortSignal) =>
     request(
       options,

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, check, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, check, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 import type {
   AccessItem,
@@ -856,6 +856,7 @@ export const tenantApiKeys = pgTable(
       .references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
+    scopes: jsonb('scopes').$type<Array<'enrollment' | 'marketing' | 'transactional'>>(),
     createdAt: text('created_at').notNull(),
     revokedAt: text('revoked_at'),
   },
@@ -1343,6 +1344,8 @@ export const emailOutbox = pgTable(
     transport: text('transport', { enum: ['tenant-ses', 'smtp', 'resend', 'platform'] }),
     deliveryStatus: text('delivery_status', { enum: ['delivered', 'bounced', 'complained'] }),
     deliveryOccurredAt: timestamp('delivery_occurred_at', { withTimezone: true, mode: 'string' }),
+    sourceApp: text('source_app'),
+    tenantTransportRequired: boolean('tenant_transport_required').notNull().default(false),
   },
   (table) => [
     index('email_outbox_dispatch_idx').on(table.status, table.nextAttemptAt),
@@ -1636,6 +1639,7 @@ export const marketingIdempotencyKeys = pgTable(
     requestMethod: text('request_method').notNull(),
     requestPath: text('request_path').notNull(),
     requestHash: text('request_hash').notNull(),
+    resourceId: text('resource_id'),
     claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'string' }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
   },
@@ -1643,4 +1647,15 @@ export const marketingIdempotencyKeys = pgTable(
     uniqueIndex('marketing_idempotency_keys_tenant_key_uidx').on(table.tenantId, table.key),
     index('marketing_idempotency_keys_expiry_idx').on(table.expiresAt),
   ],
+);
+
+export const apiKeyRateLimitBuckets = pgTable(
+  'api_key_rate_limit_buckets',
+  {
+    apiKeyId: text('api_key_id').notNull().references(() => tenantApiKeys.id, { onDelete: 'cascade' }),
+    period: text('period', { enum: ['minute', 'day'] }).notNull(),
+    windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'string' }).notNull(),
+    count: integer('count').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.apiKeyId, table.period] })],
 );

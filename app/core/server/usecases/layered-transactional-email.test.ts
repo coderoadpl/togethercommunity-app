@@ -142,6 +142,28 @@ describe('layered transactional e-mail sender', () => {
     expect(pool.sent).toBe(1000);
   });
 
+  it('never uses the platform pool when a tenant transport is required', async () => {
+    const calls: string[] = [];
+    const pool = new MemoryPool();
+    const sender = createLayeredTransactionalEmailSender({
+      tenantSes: resolver(null),
+      smtp: resolver(null),
+      resend: resolver(null),
+      platform: port('platform', calls),
+      pool,
+      platformLimit: 1000,
+    });
+    const sent = await sender.send({
+      tenantId: 'tenant-1',
+      to: 'member@example.test',
+      tenantTransportRequired: true,
+      ...message,
+    });
+    expect(sent).toMatchObject({ ok: false, error: { code: 'integration_not_configured' } });
+    expect(calls).toEqual([]);
+    expect(pool.sent).toBe(0);
+  });
+
   it('allows only the remaining platform slots under concurrent sends', async () => {
     const pool = new MemoryPool(998);
     const calls: string[] = [];

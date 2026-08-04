@@ -55,6 +55,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/dev/subscriptions/simulate-cycle` | development-only | mutating | dev subscription simulate cycle |
 | `POST /api/dev/subscriptions/simulate-failure` | development-only | mutating | dev subscription simulate failure |
 | `POST /api/m2m/enroll` | self-authenticating | mutating | m2m enroll |
+| `POST /api/m2m/transactional/messages` | self-authenticating | mutating | m2m transactional messages create |
+| `GET /api/m2m/transactional/messages/:id` | self-authenticating | read | m2m transactional message |
 | `POST /api/m2m/marketing/messages` | self-authenticating | mutating | marketing messages create |
 | `GET /api/m2m/marketing/eligibility` | self-authenticating | read | marketing eligibility |
 | `POST /api/m2m/marketing/consents` | self-authenticating | mutating | marketing consents |

@@ -356,7 +356,10 @@ describe('marketing database repositories', () => {
       expiresAt: '1998-07-23T00:00:00.000Z',
     };
     expect(await repository.claim('tenant-a', record)).toBeNull();
-    expect(await repository.claim('tenant-a', { ...record, id: 'idem-2' })).toEqual(record);
+    expect(await repository.claim('tenant-a', { ...record, id: 'idem-2' })).toEqual({
+      ...record,
+      resourceId: null,
+    });
     expect(await repository.claim('tenant-b', { ...record, id: 'idem-3', tenantId: 'tenant-b' })).toBeNull();
   });
 
@@ -606,6 +609,7 @@ describe('marketing database repositories', () => {
       status: 'sent', attempts: 1, nextAttemptAt: '1998-07-22T03:00:00.000Z', lastError: null,
       createdAt: '1998-07-22T03:00:00.000Z', sentAt: '1998-07-22T03:00:30.000Z',
       sesMessageId: 'ses-transactional-view', deliveryStatus: null, deliveryOccurredAt: null,
+      sourceApp: 'orders-app', tenantTransportRequired: true,
     });
     await createEmailEventRepository(db).append(tenantId, emailEventSchema.parse({
       id: 'transactional-send-view-accepted',
@@ -634,6 +638,8 @@ describe('marketing database repositories', () => {
       .toHaveLength(2);
     expect((await repository.listPage(tenantId, { runId: 'other-run', limit: 25 })).sends)
       .toHaveLength(0);
+    expect((await repository.listPage(tenantId, { sourceApp: 'orders-app', limit: 25 })).sends)
+      .toMatchObject([{ id: 'transactional-send-view', sourceApp: 'orders-app' }]);
     expect(await repository.findById('tenant-b', 'marketing', 'marketing-send-view')).toBeNull();
   });
 

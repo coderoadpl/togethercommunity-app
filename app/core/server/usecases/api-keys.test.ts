@@ -65,7 +65,21 @@ describe('createTenantApiKey', () => {
     expect(result.value.apiKey.name).toBe('CI key');
     expect(h.rows).toHaveLength(1);
     expect(h.rows[0]?.keyHash).toBe('hash:super-secret-value');
+    expect(h.rows[0]?.scopes).toBeNull();
     expect('keyHash' in result.value.apiKey).toBe(false);
+  });
+
+  it('creates a key limited to transactional e-mail', async () => {
+    const h = harness();
+    const result = await createTenantApiKey(ctx('owner'), {
+      name: 'Orders',
+      scopes: ['transactional'],
+    }, h.deps);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { apiKey: { name: 'Orders', scopes: ['transactional'] } },
+    });
+    expect(h.rows[0]?.scopes).toEqual(['transactional']);
   });
 
   it('forbids an admin from creating a key', async () => {
@@ -85,7 +99,7 @@ describe('createTenantApiKey', () => {
 describe('listTenantApiKeys', () => {
   it('lists keys without hashes for staff', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', createdAt: NOW, revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: null, createdAt: NOW, revokedAt: null },
     ]);
     const result = await listTenantApiKeys(ctx('admin'), h.deps);
     expect(result.ok).toBe(true);
@@ -104,7 +118,7 @@ describe('listTenantApiKeys', () => {
 describe('revokeTenantApiKey', () => {
   it('lets the owner revoke a key', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', createdAt: NOW, revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: null, createdAt: NOW, revokedAt: null },
     ]);
     const result = await revokeTenantApiKey(ctx('owner'), { id: 'key-a' }, h.deps);
     expect(result).toMatchObject({ ok: true, value: { id: 'key-a', revokedAt: NOW } });
@@ -119,7 +133,7 @@ describe('revokeTenantApiKey', () => {
 
   it('forbids an admin from revoking', async () => {
     const h = harness([
-      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', createdAt: NOW, revokedAt: null },
+      { id: 'key-a', tenantId: 't1', name: 'A', keyHash: 'hash:a', scopes: null, createdAt: NOW, revokedAt: null },
     ]);
     const result = await revokeTenantApiKey(ctx('admin'), { id: 'key-a' }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });

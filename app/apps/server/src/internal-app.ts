@@ -95,7 +95,9 @@ import {
 } from '#core/contract/index.js';
 import {
   devGrantInputSchema,
+  apiKeyHasCapability,
   err,
+  forbidden,
   internal,
   memberExportFormatSchema,
   ok,
@@ -847,6 +849,9 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (presentedKey === undefined) return respond(err(unauthorized('Missing API key')));
     const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);
     if (!authed.ok) return respond(authed);
+    if (!apiKeyHasCapability(authed.value, 'enrollment:create')) {
+      return respond(err(forbidden('enrollment:create is not permitted')));
+    }
 
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = m2mEnrollRequestSchema.safeParse(body);
@@ -1205,8 +1210,10 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
+      ...(c.req.query('transport') === undefined ? {} : { transport: c.req.query('transport') }),
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
+      ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
     });
     if (!parsed.success) return respond(err(validation('Invalid e-mail sends export query', parsed.error.flatten())));
@@ -1223,8 +1230,10 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       ...(c.req.query('kind') === undefined ? {} : { kind: c.req.query('kind') }),
       ...(c.req.query('status') === undefined ? {} : { status: c.req.query('status') }),
       ...(c.req.query('deliveryStatus') === undefined ? {} : { deliveryStatus: c.req.query('deliveryStatus') }),
+      ...(c.req.query('transport') === undefined ? {} : { transport: c.req.query('transport') }),
       ...(c.req.query('campaignId') === undefined ? {} : { campaignId: c.req.query('campaignId') }),
       ...(c.req.query('runId') === undefined ? {} : { runId: c.req.query('runId') }),
+      ...(c.req.query('sourceApp') === undefined ? {} : { sourceApp: c.req.query('sourceApp') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
       ...(c.req.query('cursor') === undefined ? {} : { cursor: c.req.query('cursor') }),
       ...(c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') }),
@@ -1232,7 +1241,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     if (!parsed.success) return respond(err(validation('Invalid e-mail sends query', parsed.error.flatten())));
     return respond(await listEmailSends(
       { identity: c.get('identity') },
-      parsed.data.status === undefined ? {} : { status: parsed.data.status },
+      parsed.data,
       { sends: deps.marketing.emailSends },
     ));
   });

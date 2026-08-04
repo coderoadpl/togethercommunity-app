@@ -1401,6 +1401,7 @@ export interface Messages {
     recipient: string;
     subject: string;
     source: string;
+    sourceApp: string;
     sentTime: string;
     createdTime: string;
     notSent: string;

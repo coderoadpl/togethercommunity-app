@@ -1526,7 +1526,7 @@ export const en: Messages = {
     deliveryStatusLabel: 'delivery', transportLabel: 'transport', transportTenantSes: 'tenant SES',
     transportSmtp: 'SMTP', transportResend: 'Resend', transportPlatform: 'platform SES', limitedTracking: 'limited tracking',
     campaignLabel: 'campaign', recipient: 'Recipient', subject: 'Subject',
-    source: 'Source', sentTime: 'Sent', createdTime: 'Created', notSent: 'not sent',
+    source: 'Source', sourceApp: 'Source app', sentTime: 'Sent', createdTime: 'Created', notSent: 'not sent',
     noDeliveryStatus: 'no delivery event', deliveryDelivered: 'delivered', deliveryBounced: 'bounced',
     deliveryComplained: 'complained', statusQueued: 'queued', statusPending: 'pending', statusSending: 'sending',
     statusSent: 'sent', statusFailed: 'failed', statusSkipped: 'skipped', projection: 'Current state',

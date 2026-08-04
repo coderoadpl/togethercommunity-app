@@ -44,6 +44,15 @@ export const createLayeredTransactionalEmailSender = (
     if (smtp !== null) return sendWith('smtp', smtp, message);
     const resend = await deps.resend.resolve(message.tenantId);
     if (resend !== null) return sendWith('resend', resend, message);
+    if (message.tenantTransportRequired === true) {
+      return {
+        ok: false,
+        error: appError(
+          'integration_not_configured',
+          'A tenant SES, SMTP or Resend transport is required for API-submitted e-mail',
+        ),
+      };
+    }
     const reserved = await deps.pool.reserve(message.tenantId, deps.platformLimit);
     if (!reserved) {
       return {

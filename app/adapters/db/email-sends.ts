@@ -57,6 +57,7 @@ const transactionalProjection = (
     recipient: row.to,
     subject: rendered.data.subject,
     source: row.kind,
+    sourceApp: row.sourceApp,
     status: row.status,
     skipReason: null,
     failureCode: row.lastErrorCode,
@@ -83,6 +84,7 @@ const marketingProjection = (
   recipient: send.email,
   subject: send.subject,
   source: send.source,
+  sourceApp: null,
   status: send.status,
     skipReason: send.skipReason,
     failureCode: null,
@@ -110,6 +112,7 @@ const transactionalRows = async (
   if (query.status !== undefined) filters.push(eq(emailOutbox.status, query.status));
   if (query.deliveryStatus !== undefined) filters.push(eq(emailOutbox.deliveryStatus, query.deliveryStatus));
   if (query.transport !== undefined) filters.push(eq(emailOutbox.transport, query.transport));
+  if (query.sourceApp !== undefined) filters.push(eq(emailOutbox.sourceApp, query.sourceApp));
   if (query.runId !== undefined) filters.push(sql`exists (
     select 1 from ${emailEvents}
     where ${emailEvents.tenantId} = ${tenantId}
@@ -138,6 +141,7 @@ const marketingRows = async (
 ): Promise<EmailSendProjection[]> => {
   if (query.kind === 'transactional' || (query.status !== undefined && !marketingStatus(query.status))) return [];
   if (query.transport !== undefined && query.transport !== 'tenant-ses') return [];
+  if (query.sourceApp !== undefined) return [];
   const filters: SQL[] = [eq(campaignSends.tenantId, tenantId)];
   if (sendId !== undefined) filters.push(eq(campaignSends.id, sendId));
   if (query.status !== undefined) filters.push(eq(campaignSends.status, query.status));

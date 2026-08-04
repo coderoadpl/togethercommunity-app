@@ -13,6 +13,7 @@ describe('unified email send projection', () => {
       tenantId: 'tenant-1',
       recipient: 'member@example.test',
       subject: 'Welcome',
+      sourceApp: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
       campaignId: null,
@@ -49,10 +50,11 @@ describe('unified email send projection', () => {
       deliveryStatus: 'delivered',
       campaignId: 'campaign-1',
       runId: 'run-1',
+      sourceApp: 'orders-app',
       search: 'member@example.test',
       cursor: '2026-07-25T10%3A00%3A00.000Z~marketing~send-1',
       limit: '25',
-    })).toMatchObject({ kind: 'marketing', runId: 'run-1', limit: 25 });
+    })).toMatchObject({ kind: 'marketing', runId: 'run-1', sourceApp: 'orders-app', limit: 25 });
     expect(emailSendListQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
     expect(emailSendExportQuerySchema.safeParse({ format: 'json' }).success).toBe(false);
     expect(emailSendExportQuerySchema.parse({ format: 'csv' })).toEqual({ format: 'csv' });

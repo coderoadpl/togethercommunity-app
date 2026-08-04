@@ -1130,6 +1130,8 @@ describe('marketing e-mail use-case integration', () => {
       transport: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
+      sourceApp: null,
+      tenantTransportRequired: false,
     });
     expect(await campaignTick(ctx, { campaignId: 'campaign-1', workerId: 'worker', tickSeconds: 1 }, deps)).toMatchObject({ ok: true, value: { yieldedToTransactional: true } });
     expect(deps.ses.sent).toHaveLength(0);
@@ -1152,6 +1154,8 @@ describe('marketing e-mail use-case integration', () => {
       transport: null,
       deliveryStatus: null,
       deliveryOccurredAt: null,
+      sourceApp: null,
+      tenantTransportRequired: false,
     });
     expect(
       await campaignTick(

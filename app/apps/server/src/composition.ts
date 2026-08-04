@@ -71,6 +71,7 @@ import {
   createOnboardingStateRepository,
   createTenantAccessReader,
   createTenantApiKeyRepository,
+  createApiKeyRateLimitRepository,
   createTenantDomainRepository,
   createTenantRepository,
   createTenantSecretRepository,
@@ -197,6 +198,7 @@ import type {
   SpaceSubscriptionRepository,
   TenantAccessReader,
   TenantApiKeyRepository,
+  ApiKeyRateLimitRepository,
   TenantDomainRepository,
   TenantRepository,
   TermsConsentRepository,
@@ -298,6 +300,8 @@ export interface AppDeps {
   processedPaymentEvents: ProcessedPaymentEventRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
+  apiKeyRateLimits: ApiKeyRateLimitRepository;
+  m2mTransactionalRateLimits: { perMinute: number; perDay: number };
   apiKeyCrypto: ApiKeyCrypto;
   tenantSecrets: TenantSecretRepository;
   secretCrypto: SecretCrypto;
@@ -899,6 +903,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
+    apiKeyRateLimits: createApiKeyRateLimitRepository(db),
+    m2mTransactionalRateLimits: {
+      perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
+      perDay: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY,
+    },
     apiKeyCrypto: createApiKeyCrypto(),
     tenantSecrets,
     secretCrypto,

@@ -497,6 +497,15 @@ export interface TenantApiKeyRepository {
   revoke(tenantId: string, id: string, revokedAt: string): Promise<TenantApiKey | null>;
 }
 
+export interface ApiKeyRateLimitRepository {
+  claim(tenantId: string, input: {
+    apiKeyId: string;
+    period: 'minute' | 'day';
+    windowStartedAt: string;
+    limit: number;
+  }): Promise<boolean>;
+}
+
 export interface TenantSecretRepository {
   listByTenant(tenantId: string): Promise<TenantSecret[]>;
   findByKey(tenantId: string, key: TenantSecretKey): Promise<TenantSecret | null>;
@@ -1086,6 +1095,7 @@ export interface TransactionalEmailSender {
     to: string;
     headers?: Record<string, string>;
     messageId?: string;
+    tenantTransportRequired?: boolean;
   } & EmailMessage): Promise<Result<{ messageId: string; transport: TransactionalEmailTransport }, AppError>>;
 }
 
@@ -1137,10 +1147,12 @@ export interface EmailOutboxItem {
   transport: TransactionalEmailTransport | null;
   deliveryStatus: 'delivered' | 'bounced' | 'complained' | null;
   deliveryOccurredAt: string | null;
+  sourceApp: string | null;
+  tenantTransportRequired: boolean;
 }
 
 export interface EmailOutboxRepository {
-  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string }): Promise<Result<{ id: string }, AppError>>;
+  enqueue(input: { id: string; tenantId: string | null; to: string; payload: EmailOutboxPayload; now: string; sourceApp?: string | null; tenantTransportRequired?: boolean }): Promise<Result<{ id: string }, AppError>>;
   claimBatch(input: { now: string; limit: number; attemptsCap: number; runId: string }): Promise<Result<EmailOutboxItem[], AppError>>;
   markSent(input: { id: string; sentAt: string; sesMessageId: string; transport: TransactionalEmailTransport; runId: string }): Promise<Result<void, AppError>>;
   markFailed(input: { id: string; attempts: number; nextAttemptAt: string; failedAt: string; error: string; errorCode: AppError['code']; transport: TransactionalEmailTransport | null; runId: string }): Promise<Result<void, AppError>>;

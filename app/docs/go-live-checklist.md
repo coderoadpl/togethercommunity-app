@@ -107,6 +107,13 @@ it. `EMAIL_FROM` becomes required only for `ses` or `smtp`
 Set `EMAIL_PROVIDER=ses` or `EMAIL_PROVIDER=smtp`, set `EMAIL_FROM`, and send a
 transactional test message from the production deployment.
 
+Queued messages leave the outbox only when something drains it. A Node
+deployment drains it in-process every `EMAIL_DISPATCH_INTERVAL_MS`
+(`apps/server/src/entry.node.ts`); on Vercel the drain is the every-minute cron
+for `GET /api/internal/dispatch-email` declared in `vercel.json`, authenticated
+with `Authorization: Bearer $CRON_SECRET`. Confirm the job appears under Cron
+Jobs and that a test message reaches the inbox rather than staying queued.
+
 ### 7. Secure cookies
 
 **STATUS:** owner-action
@@ -463,7 +470,9 @@ release its own work.
 
 Before launch, create `production` from the owner-approved `main` commit, and
 add a rule that requires a pull request, independent owner approval, and the
-required CI checks. Disallow direct pushes, force pushes, deletion, and
+required CI checks. `.github/workflows/ci.yml` triggers on both `main` and
+`production`, so a promotion pull request produces the required statuses.
+Disallow direct pushes, force pushes, deletion, and
 unreviewed bypasses. Inspect the live rule through the GitHub UI or API and
 record the rule, approving owner, pull request, `main` SHA, and resulting
 `production` SHA in the launch record.

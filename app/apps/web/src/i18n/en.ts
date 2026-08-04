@@ -1278,7 +1278,10 @@ export const en: Messages = {
   },
   changePassword: {
     heading: 'Change password',
-    intro: 'Enter your current password and choose a new one.',
+    intro: ({ min }) => format(
+      'Enter your current password and choose a new one with at least {min} characters. No character types are required.',
+      { min },
+    ),
     currentPasswordLabel: 'current password',
     newPasswordLabel: 'new password',
     confirmPasswordLabel: 'repeat new password',

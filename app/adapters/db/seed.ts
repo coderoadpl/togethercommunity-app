@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
 import type { AccessItem, Chapter, LessonBlock, ProductType } from '#core/domain/index.js';
@@ -59,7 +59,7 @@ const connectionString =
 const db = createDb('node-postgres', connectionString);
 const seedIds = { nextId: () => crypto.randomUUID() };
 
-const PASSWORD = 'demo1234';
+const PASSWORD = 'demo-password-15';
 
 /**
  * SEED_BASE_TIME (ISO timestamp) pins all relative seed dates, so the visual
@@ -125,9 +125,17 @@ const ensureCreator = async (email: string, name: string): Promise<string> => {
   const existing = await db.select().from(user).where(eq(user.email, email)).limit(1);
   if (existing.length === 0) {
     await auth.api.signUpEmail({ body: { name, email, password: PASSWORD } });
+  } else {
+    const password = await (await auth.$context).password.hash(PASSWORD);
+    await db
+      .update(account)
+      .set({ password })
+      .where(and(
+        eq(account.userId, existing[0]?.id ?? ''),
+        eq(account.providerId, 'credential'),
+      ));
   }
-  const rows = await db.select().from(user).where(eq(user.email, email)).limit(1);
-  const row = rows[0];
+  const [row] = await db.select().from(user).where(eq(user.email, email)).limit(1);
   if (!row) throw new Error(`Seeded creator not found: ${email}`);
   const seededAt = new Date(seedClock.nowIso());
   await db.update(user).set({ createdAt: seededAt, updatedAt: seededAt }).where(eq(user.id, row.id));

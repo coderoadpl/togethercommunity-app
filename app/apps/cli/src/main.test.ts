@@ -1,10 +1,13 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
-import { appError, err, ok } from '#core/domain/index.js';
+import { appError, err, ok, PASSWORD_MIN_LENGTH } from '#core/domain/index.js';
 
 import pkg from '../../../package.json' with { type: 'json' };
 
 import type { CliConfig, CliProfile, ResolveCliConfigInput } from './config.js';
+
+const OLD_PASSWORD = 'old-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
+const NEW_PASSWORD = 'new-password'.padEnd(PASSWORD_MIN_LENGTH, 'x');
 
 interface Hoisted {
   config: CliConfig;
@@ -351,15 +354,15 @@ describe('change-password', () => {
       '--json',
       'change-password',
       '--current-password',
-      'old-password',
+      OLD_PASSWORD,
       '--new-password',
-      'new-password',
+      NEW_PASSWORD,
       '--sign-out-other-sessions',
     );
 
     expect(h.changePassword).toHaveBeenCalledExactlyOnceWith({
-      currentPassword: 'old-password',
-      newPassword: 'new-password',
+      currentPassword: OLD_PASSWORD,
+      newPassword: NEW_PASSWORD,
       revokeOtherSessions: true,
     });
     const output = soleJson();
@@ -380,7 +383,7 @@ describe('change-password', () => {
       '--current-password',
       'wrong-password',
       '--new-password',
-      'new-password',
+      NEW_PASSWORD,
     );
 
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
@@ -394,9 +397,9 @@ describe('change-password', () => {
       '--json',
       'change-password',
       '--current-password',
-      'old-password',
+      OLD_PASSWORD,
       '--new-password',
-      'new-password',
+      NEW_PASSWORD,
     );
 
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
@@ -408,7 +411,7 @@ describe('change-password', () => {
       '--json',
       'change-password',
       '--current-password',
-      'old-password',
+      OLD_PASSWORD,
       '--new-password',
       'short',
     );

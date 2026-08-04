@@ -17,6 +17,7 @@ import {
   importM2mContent,
   validateM2mImport,
   type M2mImportContentDeps,
+  type M2mImportValidationDeps,
 } from './m2m-import.js';
 
 const NOW = '1998-08-14T10:00:00.000Z';
@@ -79,9 +80,12 @@ const harness = () => {
     if (mutation.kind === 'product') products.set(mutation.resource.id, mutation.resource);
     audits.set(`${mutation.kind}:${mutation.event.importKey}`, mutation.event);
   };
-  const deps: M2mImportContentDeps = {
+  const deps: M2mImportContentDeps & M2mImportValidationDeps = {
     courses: { findById: async (_tenantId, id) => courses.get(id) ?? null },
-    modules: { findById: async (_tenantId, id) => modules.get(id) ?? null },
+    modules: {
+      findById: async (_tenantId, id) => modules.get(id) ?? null,
+      list: async () => [...modules.values()],
+    },
     lessons: { findById: async (_tenantId, id) => lessons.get(id) ?? null },
     products: {
       findById: async (_tenantId, id) => products.get(id) ?? null,
@@ -96,6 +100,15 @@ const harness = () => {
         save(mutation);
         return 'saved';
       },
+    },
+    importUsers: {
+      findAuthUserByEmail: async () => null,
+      findMemberById: async () => null,
+      findMemberByEmail: async () => null,
+      findGrantById: async () => null,
+      findGrantByPair: async () => null,
+      findProgressById: async () => null,
+      findProgressByPair: async () => null,
     },
     ids: { nextId: () => `id-${sequence += 1}` },
     clock: { nowIso: () => NOW },
@@ -238,9 +251,15 @@ describe('m2m content import', () => {
       ok: true,
       value: {
         plan: {
-          create: { course: 1, module: 1, lesson: 0, product: 1 },
-          update: { course: 0, module: 0, lesson: 0, product: 0 },
-          unchanged: { course: 0, module: 0, lesson: 0, product: 0 },
+          create: {
+            course: 1, module: 1, lesson: 0, product: 1, member: 0, grant: 0, progress: 0,
+          },
+          update: {
+            course: 0, module: 0, lesson: 0, product: 0, member: 0, grant: 0, progress: 0,
+          },
+          unchanged: {
+            course: 0, module: 0, lesson: 0, product: 0, member: 0, grant: 0, progress: 0,
+          },
         },
         errors: [],
         warnings: [],
@@ -273,5 +292,24 @@ describe('m2m import rate limits', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
     expect(claims).toEqual([{ period: 'minute', cost: 1 }, { period: 'day', cost: 200 }]);
     expect(releases).toEqual(['minute']);
+  });
+
+  it('uses the lower daily record budget for member imports', async () => {
+    const limits: number[] = [];
+    const result = await claimM2mImportRateLimit(TENANT_ID, apiKey, {
+      mode: 'users', kind: 'member', recordCount: 200,
+    }, {
+      clock: { nowIso: () => NOW },
+      rateLimits: {
+        claim: async (_tenantId, input) => {
+          limits.push(input.limit);
+          return true;
+        },
+        release: async () => undefined,
+      },
+    });
+
+    expect(result).toEqual({ ok: true, value: undefined });
+    expect(limits).toEqual([60, 2_000]);
   });
 });

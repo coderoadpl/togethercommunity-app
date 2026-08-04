@@ -17,6 +17,7 @@ import {
 import {
   claimM2mImportRateLimit,
   importM2mContent,
+  importM2mUsers,
   validateM2mImport,
   validateM2mImportForUsers,
 } from '#core/server/index.js';
@@ -69,7 +70,9 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
       lessons: deps.lessons,
       products: deps.products,
       importAuditEvents: deps.importAuditEvents,
+      importUsers: deps.importUsers,
       hash: deps.contentHash,
+      clock: deps.clock,
     }));
   });
 
@@ -119,4 +122,50 @@ export const registerM2mImportRoutes = (app: Hono<Vars>, deps: AppDeps): void =>
   writeRoute(API_PATHS.m2mImportModules, 'module');
   writeRoute(API_PATHS.m2mImportLessons, 'lesson');
   writeRoute(API_PATHS.m2mImportProducts, 'product');
+
+  const writeUsersRoute = (
+    path: string,
+    kind: 'member' | 'grant' | 'progress',
+  ): void => {
+    app.post(path, async (c) => {
+      const authenticated = await authenticateMarketingApiKey(c.req.raw.headers, deps);
+      if (!authenticated.ok) return respond(authenticated);
+      if (!apiKeyHasCapability(authenticated.value.apiKey, 'import:users-write')) {
+        return respond(err(forbidden('import:users-write is not permitted')));
+      }
+      const parsed = m2mImportWriteRequestSchema.safeParse(await readJson(c.req.raw));
+      if (!parsed.success) return respond(err(validation('Invalid import batch', parsed.error.flatten())));
+      const limited = await claimM2mImportRateLimit(
+        authenticated.value.tenant.id,
+        authenticated.value.apiKey,
+        { mode: 'users', kind, recordCount: parsed.data.records.length },
+        { rateLimits: deps.apiKeyRateLimits, clock: deps.clock },
+      );
+      if (!limited.ok) {
+        const responseHeaders = retryHeaders(limited);
+        return respond(limited, responseHeaders === undefined ? {} : { headers: responseHeaders });
+      }
+      return respond(await importM2mUsers(
+        authenticated.value.ctx,
+        authenticated.value.apiKey,
+        kind,
+        parsed.data,
+        {
+          courses: deps.courses,
+          modules: deps.modules,
+          lessons: deps.lessons,
+          products: deps.products,
+          importAuditEvents: deps.importAuditEvents,
+          importUsers: deps.importUsers,
+          ids: deps.ids,
+          clock: deps.clock,
+          hash: deps.contentHash,
+        },
+      ));
+    });
+  };
+
+  writeUsersRoute(API_PATHS.m2mImportMembers, 'member');
+  writeUsersRoute(API_PATHS.m2mImportGrants, 'grant');
+  writeUsersRoute(API_PATHS.m2mImportProgress, 'progress');
 };

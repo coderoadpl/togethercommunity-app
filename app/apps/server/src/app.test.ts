@@ -227,6 +227,16 @@ const deps = (input: {
     importContent: {
       commit: async () => 'saved',
     },
+    importUsers: {
+      findAuthUserByEmail: async () => null,
+      findMemberById: async () => null,
+      findMemberByEmail: async () => null,
+      findGrantById: async () => null,
+      findGrantByPair: async () => null,
+      findProgressById: async () => null,
+      findProgressByPair: async () => null,
+      commit: async () => 'saved',
+    },
     contentHash: {
       sha256: () => 'a'.repeat(64),
     },
@@ -894,9 +904,12 @@ const transactionalM2mApp = (options: {
 const importM2mApp = (options: {
   scopes?: readonly TenantApiKeyScope[] | null;
   rateLimited?: boolean;
+  importUsers?: Partial<AppDeps['importUsers']>;
+  overrides?: Partial<AppDeps>;
 } = {}) => {
-  const configured = deps();
+  const configured = { ...deps(), ...options.overrides };
   const mutations: Parameters<AppDeps['importContent']['commit']>[1][] = [];
+  const userMutations: Parameters<AppDeps['importUsers']['commit']>[1][] = [];
   configured.tenantApiKeys = {
     listByTenant: async () => [],
     create: async () => undefined,
@@ -918,12 +931,20 @@ const importM2mApp = (options: {
       return 'saved';
     },
   };
+  configured.importUsers = {
+    ...configured.importUsers,
+    ...options.importUsers,
+    commit: async (_tenantId, mutation) => {
+      userMutations.push(mutation);
+      return 'saved';
+    },
+  };
   configured.contentHash = { sha256: (content) => String(content) };
   configured.apiKeyRateLimits = {
     claim: async () => options.rateLimited !== true,
     release: async () => undefined,
   };
-  return { app: buildApp(configured), mutations };
+  return { app: buildApp(configured), mutations, userMutations };
 };
 
 const ksefApp = (
@@ -1017,7 +1038,7 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
   return marketing;
 };
 
-describe('content import HTTP surfaces', () => {
+describe('migration import HTTP surfaces', () => {
   const headers = {
     host: 'acme.localhost:48730',
     'x-api-key': 'import-key',
@@ -1121,6 +1142,162 @@ describe('content import HTTP surfaces', () => {
     expect(limitedResponse.status).toBe(429);
     expect(limitedResponse.headers.get('retry-after')).toBe('60');
     expect(await limitedResponse.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+  });
+
+  it('imports members through the users-scoped envelope without echoing credentials', async () => {
+    const marker = `pbkdf2$25000$${'ab'.repeat(32)}$${'cd'.repeat(512)}`;
+    const { app, userMutations } = importM2mApp({ scopes: ['import:users'] });
+    const response = await app.request(API_PATHS.m2mImportMembers, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{
+          importKey: 'member-source',
+          email: 'USER@example.test',
+          displayName: 'Jan Kowalski',
+          legacyPasswordHash: marker,
+        }],
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      ok: true,
+      data: {
+        results: [{ importKey: 'member-source', action: 'created', id: 'member-source' }],
+        summary: { created: 1, updated: 0, unchanged: 0, failed: 0 },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain(marker);
+    expect(userMutations[0]).toMatchObject({
+      kind: 'member',
+      resource: { email: 'user@example.test' },
+      authUser: { emailVerified: true, legacyPasswordHash: marker },
+    });
+  });
+
+  it('keeps user import writes isolated from content-scoped keys', async () => {
+    const response = await importM2mApp({ scopes: ['import:content'] }).app.request(
+      API_PATHS.m2mImportMembers,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          datasetVersion: 'together-import/v1',
+          records: [{
+            importKey: 'member-source',
+            email: 'user@example.test',
+            displayName: 'User',
+          }],
+        }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  });
+
+  it('resolves member and product references for users-scoped grant imports', async () => {
+    const member = {
+      id: 'member-native', tenantId: 't-acme', userId: 'user-native',
+      email: 'member@example.test', displayName: 'Member', legacyId: null,
+      createdAt: '1998-08-01T00:00:00.000Z',
+    };
+    const { app, userMutations } = importM2mApp({
+      scopes: ['import:users'],
+      importUsers: { findMemberById: async (_tenantId, id) => id === member.id ? member : null },
+    });
+    const response = await app.request(API_PATHS.m2mImportGrants, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{
+          importKey: 'grant-source',
+          memberKey: 'member-native',
+          productKey: 'acme-draft',
+          startsAt: '1998-08-01T00:00:00.000Z',
+          expiresAt: null,
+        }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { results: [{ importKey: 'grant-source', action: 'created', id: 'grant-source' }] },
+    });
+    expect(userMutations[0]).toMatchObject({
+      kind: 'grant',
+      resource: { memberId: 'member-native', productId: 'acme-draft', source: 'import' },
+    });
+  });
+
+  it('activates the progress endpoint with the minimal completion-state schema', async () => {
+    const progressCourse: Course = {
+      id: 'course-native', tenantId: 't-acme', name: 'Course', description: '', imageUrl: null,
+      moduleOrder: ['module-native'], legacyId: null, createdAt: '1998-08-01T00:00:00.000Z',
+    };
+    const progressLesson: CourseLesson = {
+      id: 'lesson-native', tenantId: 't-acme', name: 'Lesson', isPreview: false, contents: [],
+      legacyId: null, createdAt: '1998-08-01T00:00:00.000Z',
+    };
+    const progressModule: CourseModule = {
+      id: 'module-native', tenantId: 't-acme', courseIds: [progressCourse.id], title: 'Module',
+      prefix: null, name: 'Module', legacyId: null, createdAt: '1998-08-01T00:00:00.000Z',
+      chapters: [{ id: 'chapter-native', name: 'Chapter', contents: [{
+        id: 'content-native', name: 'Lesson', lessonId: progressLesson.id,
+      }] }],
+    };
+    const member = {
+      id: 'member-native', tenantId: 't-acme', userId: 'user-native',
+      email: 'member@example.test', displayName: 'Member', legacyId: null,
+      createdAt: '1998-08-01T00:00:00.000Z',
+    };
+    const base = deps({ lessons: [progressLesson] });
+    const { app, userMutations } = importM2mApp({
+      scopes: ['import:users'],
+      overrides: {
+        courses: {
+          ...base.courses,
+          list: async () => [progressCourse],
+          findById: async (_tenantId, id) => id === progressCourse.id ? progressCourse : null,
+        },
+        modules: {
+          ...base.modules,
+          list: async () => [progressModule],
+          findById: async (_tenantId, id) => id === progressModule.id ? progressModule : null,
+        },
+        lessons: base.lessons,
+      },
+      importUsers: { findMemberById: async (_tenantId, id) => id === member.id ? member : null },
+    });
+    const response = await app.request(API_PATHS.m2mImportProgress, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{
+          importKey: 'progress-source',
+          memberKey: member.id,
+          courseKey: progressCourse.id,
+          completedLessonKeys: [progressLesson.id],
+          updatedAt: '1998-08-10T00:00:00.000Z',
+        }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { results: [{ importKey: 'progress-source', action: 'created' }] },
+    });
+    expect(userMutations[0]).toMatchObject({
+      kind: 'progress',
+      resource: { completedLessonIds: ['lesson-native'], courseId: 'course-native' },
+    });
   });
 });
 

@@ -526,6 +526,67 @@ export interface ImportContentRepository {
   ): Promise<'saved' | 'conflict' | 'slug_taken'>;
 }
 
+export interface ImportAuthUserState {
+  id: string;
+  email: string;
+  credentialPassword: string | null;
+  hasCredentialAccount: boolean;
+}
+
+export interface ImportMemberResource {
+  id: string;
+  tenantId: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  legacyId: string | null;
+  createdAt: string;
+}
+
+export type ImportUsersMutation =
+  | {
+      kind: 'member';
+      action: 'created' | 'updated' | 'unchanged';
+      resource: ImportMemberResource;
+      authUser: {
+        action: 'create' | 'keep';
+        name: string;
+        emailVerified: true;
+        credentialAccountId: string;
+        legacyPasswordHash: string | null;
+      };
+      event: ImportAuditEvent;
+    }
+  | {
+      kind: 'grant';
+      action: 'created' | 'updated' | 'unchanged';
+      resource: ProductGrant;
+      event: ImportAuditEvent;
+    }
+  | {
+      kind: 'progress';
+      action: 'created' | 'updated' | 'unchanged';
+      resource: MemberCourseProgress;
+      event: ImportAuditEvent;
+    };
+
+export interface ImportUsersRepository {
+  findAuthUserByEmail(tenantId: string, email: string): Promise<ImportAuthUserState | null>;
+  findMemberById(tenantId: string, memberId: string): Promise<ImportMemberResource | null>;
+  findMemberByEmail(tenantId: string, email: string): Promise<ImportMemberResource | null>;
+  findGrantById(tenantId: string, grantId: string): Promise<ProductGrant | null>;
+  findGrantByPair(
+    tenantId: string,
+    input: { memberId: string; productId: string },
+  ): Promise<ProductGrant | null>;
+  findProgressById(tenantId: string, progressId: string): Promise<MemberCourseProgress | null>;
+  findProgressByPair(
+    tenantId: string,
+    input: { memberId: string; courseId: string },
+  ): Promise<MemberCourseProgress | null>;
+  commit(tenantId: string, mutation: ImportUsersMutation): Promise<'saved' | 'conflict'>;
+}
+
 export interface ApiKeyRateLimitRepository {
   claim(tenantId: string, input: {
     apiKeyId: string;

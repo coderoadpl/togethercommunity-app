@@ -94,6 +94,11 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.startsWith('/api/dev/')) return method === 'GET' ? 'development:inspect' : 'development:mutate';
   if (path === '/api/m2m/enroll') return 'enrollment:create';
   if (path.startsWith('/api/m2m/transactional/messages')) return method === 'GET' ? 'transactional:message:read' : 'transactional:message:send';
+  if (
+    path === '/api/m2m/import/members'
+    || path === '/api/m2m/import/grants'
+    || path === '/api/m2m/import/progress'
+  ) return 'import:users-write';
   if (path.startsWith('/api/m2m/import/')) return 'import:content-write';
   if (path.startsWith('/api/m2m/marketing/messages')) return method === 'GET' ? 'marketing:message:read' : 'marketing:message:send';
   if (path === '/api/m2m/marketing/eligibility') return 'marketing:consent:read';
@@ -207,6 +212,11 @@ const beforeForRoute = (
   if (selfAuthenticatingEntry !== undefined) {
     if (selfAuthenticatingEntry.mechanism === 'Tenant API key') {
       if (path === '/api/m2m/import/validate') return importApiKeys;
+      if (
+        path === '/api/m2m/import/members'
+        || path === '/api/m2m/import/grants'
+        || path === '/api/m2m/import/progress'
+      ) return importUsersApiKey;
       if (path.startsWith('/api/m2m/import/')) return importContentApiKey;
       return path.startsWith('/api/m2m/transactional/messages') ? transactionalApiKey : apiKey;
     }
@@ -438,7 +448,7 @@ const beforeForUseCase = (
     return marketingTenantContextUseCases.has(name) ? allHumans : staff;
   }
   if (file === 'm2m-transactional-email.ts') return transactionalApiKey;
-  if (file === 'm2m-import.ts') {
+  if (file === 'm2m-import.ts' || file === 'm2m-import-users.ts') {
     return capability === 'import:users-write' ? importUsersApiKey : importContentApiKey;
   }
   if (file === 'create-tenant.ts') return allHumans;

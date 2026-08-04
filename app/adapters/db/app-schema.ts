@@ -825,7 +825,7 @@ export const productGrants = pgTable(
     productId: text('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
-    source: text('source', { enum: ['simulated', 'manual', 'stripe'] }).notNull(),
+    source: text('source', { enum: ['simulated', 'manual', 'stripe', 'import'] }).notNull(),
     startsAt: text('starts_at')
       .notNull()
       .default(sql`to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`),

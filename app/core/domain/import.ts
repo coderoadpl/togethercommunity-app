@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ERROR_CODES, type AppError } from './errors.js';
 import { chapterSchema, lessonBlockSchema } from './course.js';
+import { normalizeEmail } from './email.js';
 import {
   currencySchema,
   productCoverUrlSchema,
@@ -16,6 +17,20 @@ const IMPORT_VALIDATE_MAX_RECORDS = 5_000;
 export const importContentKindSchema = z.enum(['course', 'module', 'lesson', 'product']);
 
 export type ImportContentKind = z.output<typeof importContentKindSchema>;
+
+export type ImportUsersKind = 'member' | 'grant' | 'progress';
+
+export const importKindSchema = z.enum([
+  'course',
+  'module',
+  'lesson',
+  'product',
+  'member',
+  'grant',
+  'progress',
+]);
+
+export type ImportKind = z.output<typeof importKindSchema>;
 
 const importKeySchema = z
   .string()
@@ -145,24 +160,108 @@ export const importProductRecordSchema = z
 
 export type ImportProductRecord = z.output<typeof importProductRecordSchema>;
 
-const contentRecordSchemas = {
+const legacyPasswordHashSchema = z.string().regex(
+  /^pbkdf2\$25000\$[0-9a-fA-F]{64}\$[0-9a-fA-F]{1024}$/u,
+  'Legacy password hash must use the supported PBKDF2 marker format',
+);
+
+export const importMemberRecordSchema = z
+  .object({
+    ...importedRecordFields,
+    email: z.string().email().transform(normalizeEmail),
+    displayName: z.string().trim().min(1).max(200),
+    legacyPasswordHash: legacyPasswordHashSchema.optional(),
+  })
+  .strict();
+
+export type ImportMemberRecord = z.output<typeof importMemberRecordSchema>;
+
+const importGrantRecordObjectSchema = z
+  .object({
+    importKey: importKeySchema,
+    legacyId: z.string().optional(),
+    memberKey: importKeySchema,
+    productKey: importKeySchema,
+    startsAt: z.string().datetime(),
+    expiresAt: z.string().datetime().nullable(),
+  })
+  .strict();
+
+const refineGrantRecord = (
+  record: z.output<typeof importGrantRecordObjectSchema>,
+  ctx: z.RefinementCtx,
+): void => {
+  if (record.expiresAt !== null && Date.parse(record.expiresAt) < Date.parse(record.startsAt)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['expiresAt'],
+      message: 'Grant expiry must not be earlier than its start',
+    });
+  }
+};
+
+export const importGrantRecordSchema = importGrantRecordObjectSchema.superRefine(refineGrantRecord);
+
+export type ImportGrantRecord = z.output<typeof importGrantRecordSchema>;
+
+const importProgressRecordObjectSchema = z
+  .object({
+    importKey: importKeySchema,
+    memberKey: importKeySchema,
+    courseKey: importKeySchema,
+    completedLessonKeys: z.array(importKeySchema),
+    lastViewedLessonKey: importKeySchema.optional(),
+    lastViewedModuleKey: importKeySchema.optional(),
+    lastViewedChapterId: z.string().min(1).optional(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+const refineProgressRecord = (
+  record: z.output<typeof importProgressRecordObjectSchema>,
+  ctx: z.RefinementCtx,
+): void => {
+  if (new Set(record.completedLessonKeys).size !== record.completedLessonKeys.length) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['completedLessonKeys'],
+      message: 'Completed lesson keys must be unique',
+    });
+  }
+};
+
+export const importProgressRecordSchema = importProgressRecordObjectSchema.superRefine(
+  refineProgressRecord,
+);
+
+export type ImportProgressRecord = z.output<typeof importProgressRecordSchema>;
+
+const recordSchemas = {
   course: importCourseRecordSchema,
   module: importModuleRecordSchema,
   lesson: importLessonRecordSchema,
   product: importProductRecordSchema,
+  member: importMemberRecordSchema,
+  grant: importGrantRecordSchema,
+  progress: importProgressRecordSchema,
 };
 
-export const importContentRecordSchema = z.discriminatedUnion('kind', [
+export const importRecordSchema = z.discriminatedUnion('kind', [
   importCourseRecordObjectSchema.extend({ kind: z.literal('course') }).strict(),
   importModuleRecordObjectSchema.extend({ kind: z.literal('module') }).strict(),
   importLessonRecordSchema.extend({ kind: z.literal('lesson') }).strict(),
   importProductRecordSchema.extend({ kind: z.literal('product') }).strict(),
+  importMemberRecordSchema.extend({ kind: z.literal('member') }).strict(),
+  importGrantRecordObjectSchema.extend({ kind: z.literal('grant') }).strict(),
+  importProgressRecordObjectSchema.extend({ kind: z.literal('progress') }).strict(),
 ]).superRefine((record, ctx) => {
   if (record.kind === 'course') refineCourseRecord(record, ctx);
   if (record.kind === 'module') refineModuleRecord(record, ctx);
+  if (record.kind === 'grant') refineGrantRecord(record, ctx);
+  if (record.kind === 'progress') refineProgressRecord(record, ctx);
 });
 
-export type ImportContentRecord = z.output<typeof importContentRecordSchema>;
+export type ImportRecord = z.output<typeof importRecordSchema>;
 
 export const importWriteRequestSchema = z
   .object({
@@ -182,7 +281,7 @@ export const importValidateRequestSchema = z
 
 export type ImportValidateRequest = z.output<typeof importValidateRequestSchema>;
 
-export const importRecordSchemaFor = (kind: ImportContentKind) => contentRecordSchemas[kind];
+export const importRecordSchemaFor = (kind: ImportKind) => recordSchemas[kind];
 
 const importRecordErrorSchema = z.object({
   code: z.enum(ERROR_CODES),
@@ -213,7 +312,7 @@ export const importBatchResponseSchema = z.object({
 
 export type ImportBatchResponse = z.output<typeof importBatchResponseSchema>;
 
-const importPlanCountsSchema = z.record(importContentKindSchema, z.number().int().nonnegative());
+const importPlanCountsSchema = z.record(importKindSchema, z.number().int().nonnegative());
 
 export const importValidationResponseSchema = z.object({
   plan: z.object({
@@ -223,13 +322,13 @@ export const importValidationResponseSchema = z.object({
   }),
   errors: z.array(z.object({
     index: z.number().int().nonnegative(),
-    kind: importContentKindSchema.optional(),
+    kind: importKindSchema.optional(),
     importKey: z.string().optional(),
     error: importRecordErrorSchema,
   })),
   warnings: z.array(z.object({
     index: z.number().int().nonnegative(),
-    kind: importContentKindSchema,
+    kind: importKindSchema,
     importKey: importKeySchema,
     message: z.string(),
   })),

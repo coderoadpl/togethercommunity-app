@@ -1,0 +1,55 @@
+{
+  "name": "@together-community/client-sdk",
+  "version": "0.1.0",
+  "description": "Typed API client for the Together platform: fetch + zod client, contract routes and schemas, domain types, TanStack Query descriptors, and a headless bearer-auth adapter",
+  "license": "FSL-1.1-ALv2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coderoadpl/togethercommunity-app.git",
+    "directory": "app/packages/client-sdk"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/core/client/index.d.ts",
+      "default": "./dist/core/client/index.js"
+    },
+    "./contract": {
+      "types": "./dist/core/contract/index.d.ts",
+      "default": "./dist/core/contract/index.js"
+    },
+    "./domain": {
+      "types": "./dist/core/domain/index.d.ts",
+      "default": "./dist/core/domain/index.js"
+    },
+    "./auth-client": {
+      "types": "./dist/adapters/auth/client-adapter.d.ts",
+      "default": "./dist/adapters/auth/client-adapter.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "imports": {
+    "#core/*": "./dist/core/*",
+    "#adapters/*": "./dist/adapters/*"
+  },
+  "dependencies": {
+    "@better-auth/passkey": "^1.6.25",
+    "better-auth": "^1.6.25",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "@tanstack/query-core": "^5.101.4"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/query-core": {
+      "optional": true
+    }
+  }
+}

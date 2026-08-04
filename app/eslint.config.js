@@ -150,7 +150,14 @@ const ISLAND_CORE_PORTABILITY_PATTERN = {
  */
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', 'dist/**', 'drizzle/**', 'storybook-static/**', 'out/**'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'packages/client-sdk/dist/**',
+      'drizzle/**',
+      'storybook-static/**',
+      'out/**',
+    ],
   },
   {
     linterOptions: { reportUnusedDisableDirectives: 'error' },

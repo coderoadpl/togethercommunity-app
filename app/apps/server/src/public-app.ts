@@ -24,6 +24,7 @@ import {
   MAGIC_LINK_LANGUAGE_HEADER,
   ok,
   tenantNotFound,
+  unauthorized,
   unavailable,
   validation,
   type EmailBranding,
@@ -129,7 +130,11 @@ const magicLinkBaseUrl = (
 
 const emailBranding = async (deps: AppDeps, tenantId: string): Promise<EmailBranding | undefined> => {
   const settings = await deps.tenants.findSettings(tenantId);
-  return settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+  return settings === null ? undefined : {
+    logoUrl: settings.logoUrl,
+    accentColor: settings.accentColor,
+    socialLinks: settings.socialLinks,
+  };
 };
 
 const magicLinkRequestBodySchema = z.object({ email: z.string().email() });
@@ -376,7 +381,11 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
       }
     }
     const result = await getPlayableLesson(ctx, c.req.param('lessonId'), deps);
-    if (!result.ok) return respondPublic(result);
+    if (!result.ok) {
+      return respondPublic(user === null && result.error.code === 'forbidden'
+        ? err(unauthorized())
+        : result);
+    }
     const parsed = studentLessonOutputSchema.safeParse({ lesson: result.value, authenticated });
     return parsed.success
       ? respondPublic(ok(parsed.data))
@@ -535,14 +544,16 @@ export const registerPublicRoutes = (app: Hono<Vars>, deps: AppDeps): void => {
     return respondPublic(session);
   });
 
-  app.get(API_PATHS.authConfig, () =>
+  app.get(API_PATHS.authConfig, async () =>
     respondPublic(
       ok({
         googleEnabled: deps.authConfig.googleEnabled,
         passkeysEnabled: true,
         totpEnabled: true,
         exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
-        tenantCreationEnabled: deps.tenantCreationMode === 'open',
+        tenantCreationEnabled:
+          deps.tenantCreationMode === 'open' ||
+          (deps.tenantCreationMode === 'bootstrap' && !(await deps.tenants.hasAny())),
       }),
     ),
   );

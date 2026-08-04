@@ -18,6 +18,7 @@ const adapterPaymentTestExternal = 'node_modules/(stripe|vitest)(/|$)';
 const adapterVideoExternal = 'node_modules/zod(/|$)';
 const adapterVideoTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const adapterNotificationsTestExternal = 'node_modules/vitest(/|$)';
+const adapterStorageExternal = 'node_modules/undici(/|$)';
 const adapterStorageTestExternal = 'node_modules/vitest(/|$)';
 const coreDomainTestExternal = 'node_modules/(vitest|zod)(/|$)';
 const coreContractTestExternal = 'node_modules/(vitest|zod)(/|$)';
@@ -28,7 +29,7 @@ const webExternal =
   'node_modules/(@fontsource/(fraunces|inter|jetbrains-mono|manrope|space-grotesk)|@mui/material|@opentelemetry/api|@sentry/react|@tanstack/react-query|@tanstack/react-query-devtools|@tanstack/react-router|@testing-library/(jest-dom|react|user-event)|@vitejs/plugin-react|dompurify|marked|msw|react|react-dom|vite|vitest|zod)(/|$)';
 const cliExternal = 'node_modules/(commander|zod)(/|$)';
 const scriptsExternal =
-  'node_modules/(axe-core|drizzle-orm|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|typescript|yaml|zod)(/|$)';
+  'node_modules/(drizzle-orm|mongodb|otplib|pg|pixelmatch|playwright-core|pngjs|typescript|yaml|zod)(/|$)';
 const scriptsTestExternal =
   'node_modules/(vitest|zod)(/|$)';
 
@@ -268,7 +269,7 @@ module.exports = {
       name: 'adapter-storage-external-allowlist',
       severity: 'error',
       from: { path: '^adapters/storage', pathNot: '\\.test\\.tsx?$' },
-      to: { path: external },
+      to: { path: external, pathNot: adapterStorageExternal },
     },
     {
       name: 'adapter-storage-test-external-allowlist',

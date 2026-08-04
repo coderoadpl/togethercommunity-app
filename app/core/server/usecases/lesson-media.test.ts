@@ -21,7 +21,7 @@ import type {
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
-  FileUrlSigner,
+  StorageProvider,
   MemberCourseProgressRepository,
   ProductGrantRepository,
   ProductRepository,
@@ -96,8 +96,11 @@ const c1: Course = {
 const pCourse: Product = {
   id: 'p-course',
   tenantId: 't1',
+  type: 'course',
+  slug: 'full-access',
   title: 'Full access',
   description: '',
+  coverUrl: null,
   priceCents: 0,
   currency: 'PLN',
   published: true,
@@ -185,7 +188,7 @@ const productsRepo: ProductRepository = {
   listByTenant: async () => [pCourse],
   listPublishedByTenant: async () => [pCourse],
   findById: async () => pCourse,
-  create: async () => undefined,
+  create: async () => 'created',
   updateAccessItems: async () => null,
   setPublished: async () => undefined,
   bumpContentVersion: async () => undefined,
@@ -198,15 +201,22 @@ const secretsOf = (values: Record<string, string>): TenantSecretResolver => ({
   },
 });
 
-const recordingSigner = (): { signer: FileUrlSigner; calls: { url: string; expiresInSeconds: number }[] } => {
+const recordingSigner = (): { signer: StorageProvider; calls: { url: string; expiresInSeconds: number }[] } => {
   const calls: { url: string; expiresInSeconds: number }[] = [];
   return {
     calls,
     signer: {
+      objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
+      probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      presignPut: (input) => ok(input.url),
       presignGet: (input) => {
         calls.push({ url: input.url, expiresInSeconds: input.expiresInSeconds });
         return ok(`${input.url}?X-Amz-Signature=test`);
       },
+      delete: async () => ok({ deleted: true }),
+      head: async () => ok({ sizeBytes: 1 }),
+      healthcheck: async () => ok({ healthy: true }),
+      test: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
     },
   };
 };
@@ -226,7 +236,7 @@ const deps = (over: Partial<PlayableLessonDeps> = {}): PlayableLessonDeps => ({
     's3.accessKeyId': 'AKIA-TEST',
     's3.secretAccessKey': 'secret-test',
   }),
-  fileUrlSigner: recordingSigner().signer,
+  storage: recordingSigner().signer,
   ...over,
 });
 
@@ -279,7 +289,7 @@ describe('getPlayableLesson', () => {
 
   it('signs only S3-hosted pdf blocks and passes the TTL', async () => {
     const { signer, calls } = recordingSigner();
-    const result = await getPlayableLesson(ctx(), 'l1', deps({ fileUrlSigner: signer }));
+    const result = await getPlayableLesson(ctx(), 'l1', deps({ storage: signer }));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.contents).toEqual([
       { type: 'pdf', pdfUrl: `${S3_PDF_URL}?X-Amz-Signature=test`, name: 'Handout' },
@@ -305,8 +315,17 @@ describe('getPlayableLesson', () => {
   });
 
   it('keeps the original url when the signer fails', async () => {
-    const failing: FileUrlSigner = { presignGet: () => err(validation('bad url')) };
-    const result = await getPlayableLesson(ctx(), 'l1', deps({ fileUrlSigner: failing }));
+    const failing: StorageProvider = {
+      objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
+      probe: async () => err(validation('bad url')),
+      presignPut: () => err(validation('bad url')),
+      presignGet: () => err(validation('bad url')),
+      delete: async () => err(validation('bad url')),
+      head: async () => err(validation('bad url')),
+      healthcheck: async () => err(validation('bad url')),
+      test: async () => err(validation('bad url')),
+    };
+    const result = await getPlayableLesson(ctx(), 'l1', deps({ storage: failing }));
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.contents[0]).toEqual({ type: 'pdf', pdfUrl: S3_PDF_URL, name: 'Handout' });
   });

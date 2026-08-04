@@ -14,11 +14,14 @@ import { ApiError } from '#core/client/index.js';
 import type {
   GrantWindowStatus,
   MemberSubscriptionSummary,
+  ProductDownloadAssetView,
+  ProductType,
   SubscriptionStatus,
 } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
+import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { formatDate, formatPrice } from '../../lib/format.js';
 import { DataValue, MemberProductLink } from '../../theme.js';
@@ -32,6 +35,7 @@ const isForbidden = (error: Error | null) =>
 
 type GrantedProductRow = {
   id: string;
+  type: ProductType;
   title: string;
   description: string;
   priceCents: number;
@@ -40,6 +44,7 @@ type GrantedProductRow = {
   grantStartsAt: string;
   grantExpiresAt: string | null;
   subscription: MemberSubscriptionSummary | null;
+  downloads: ProductDownloadAssetView[];
 };
 
 const chipColor = (status: GrantWindowStatus): 'success' | 'warning' | 'default' =>
@@ -116,8 +121,31 @@ const ProductRow = ({
       </Stack>
       <Typography variant="body2" component="p" sx={{ opacity: inactive ? 0.72 : 1 }}>
         <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
-        {product.description ? <> · {product.description}</> : null}
       </Typography>
+      {product.description ? <RichTextContent html={product.description} /> : null}
+      {product.downloads.length > 0 ? (
+        <Stack useFlexGap spacing="0.5rem" data-testid={`product-downloads-${product.id}`}>
+          <Typography variant="overline" component="h3">
+            {t.student.downloadsHeading}
+          </Typography>
+          <Box>
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+              {product.downloads.map((download) => (
+                <Button
+                  key={download.id}
+                  variant="outlined"
+                  size="small"
+                  component="a"
+                  href={download.downloadPath}
+                  data-testid={`download-${download.id}`}
+                >
+                  {t.student.downloadFile({ name: download.fileName })}
+                </Button>
+              ))}
+            </Stack>
+          </Box>
+        </Stack>
+      ) : null}
       {product.grantStatus === 'upcoming' ? (
         <Typography variant="caption" color="text.secondary">
           {t.student.grantUpcomingNote({ date: formatDate(product.grantStartsAt, language) })}

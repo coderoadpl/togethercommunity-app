@@ -25,7 +25,7 @@ export const spaceSchema = z.object({
 
 export type Space = z.output<typeof spaceSchema>;
 
-export const spaceStatsSchema = z.object({
+const spaceStatsSchema = z.object({
   posts: z.number().int().nonnegative(),
   followers: z.number().int().nonnegative(),
 });
@@ -55,7 +55,6 @@ export const createSpaceInputSchema = z.object({
   position: z.number().int().nonnegative().optional(),
 });
 
-export type CreateSpaceInput = z.input<typeof createSpaceInputSchema>;
 
 export const updateSpaceInputSchema = z.object({
   id: z.string().min(1),
@@ -66,20 +65,17 @@ export const updateSpaceInputSchema = z.object({
   position: z.number().int().nonnegative().optional(),
 });
 
-export type UpdateSpaceInput = z.input<typeof updateSpaceInputSchema>;
 
 export const deleteSpaceInputSchema = z.object({
   id: z.string().min(1),
 });
 
-export type DeleteSpaceInput = z.input<typeof deleteSpaceInputSchema>;
 
 export const setSpaceArchivedInputSchema = z.object({
   id: z.string().min(1),
   archived: z.boolean(),
 });
 
-export type SetSpaceArchivedInput = z.input<typeof setSpaceArchivedInputSchema>;
 
 export const REACTION_EMOJIS = ['👍', '❤️', '🎉', '💡', '😂'] as const;
 
@@ -100,9 +96,8 @@ export const reactToPostInputSchema = z.object({
   emoji: reactionEmojiSchema,
 });
 
-export type ReactToPostInput = z.input<typeof reactToPostInputSchema>;
 
-export const spaceFeedItemSchema = publicPostSchema.extend({
+const spaceFeedItemSchema = publicPostSchema.extend({
   replyCount: z.number().int().nonnegative(),
   reactions: z.array(reactionSummarySchema),
 });
@@ -125,10 +120,7 @@ export const listSpaceFeedInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(20),
 });
 
-export type ListSpaceFeedInput = z.input<typeof listSpaceFeedInputSchema>;
 
 export const followSpaceInputSchema = z.object({
   spaceId: z.string().min(1),
 });
-
-export type FollowSpaceInput = z.input<typeof followSpaceInputSchema>;

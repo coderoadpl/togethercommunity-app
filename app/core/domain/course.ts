@@ -2,15 +2,13 @@ import { z } from 'zod';
 
 const requiredNameSchema = z.string().trim().min(1);
 
-export const chapterContentSchema = z
+const chapterContentSchema = z
   .object({
     id: z.string().min(1),
     name: requiredNameSchema,
     lessonId: z.string().min(1),
   })
   .strict();
-
-export type ChapterContent = z.infer<typeof chapterContentSchema>;
 
 export const chapterSchema = z
   .object({
@@ -32,10 +30,118 @@ const videoLessonBlockSchema = z
   })
   .strict();
 
+type VideoEmbedProvider = 'youtube' | 'vimeo';
+
+export const VIDEO_EMBED_URL_MESSAGE = {
+  url: 'Must be an absolute http(s) video or embed URL',
+  youtube: 'Must be a YouTube watch, youtu.be, Shorts, live or embed URL with an 11-character video id',
+  vimeo: 'Must be a Vimeo video, channel, group or player URL with a numeric video id',
+} as const;
+
+export type VideoEmbedUrlInspection =
+  | { kind: 'supported'; provider: VideoEmbedProvider; embedUrl: string }
+  | { kind: 'invalid-provider'; provider: VideoEmbedProvider }
+  | { kind: 'unsupported' }
+  | { kind: 'invalid-url' };
+
+const youtubeHosts = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'youtu.be',
+  'youtube-nocookie.com',
+  'www.youtube-nocookie.com',
+]);
+const vimeoHosts = new Set(['vimeo.com', 'www.vimeo.com', 'player.vimeo.com']);
+const youtubeVideoIdSchema = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
+const vimeoVideoIdSchema = z.string().regex(/^\d+$/);
+const vimeoPrivacyHashSchema = z.string().regex(/^[A-Fa-f0-9]{6,16}$/);
+
+const youtubeVideoId = (url: URL): string | null => {
+  const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
+  if (url.hostname === 'youtu.be') return segments.length === 1 ? segments[0] ?? null : null;
+  if (segments.length === 0) return null;
+  if (segments[0] === 'watch') return segments.length === 1 ? url.searchParams.get('v') : null;
+  if (segments[0] === 'embed' || segments[0] === 'shorts' || segments[0] === 'live') {
+    const videoId = segments.length === 2 ? segments[1] ?? null : null;
+    return videoId === 'videoseries' ? null : videoId;
+  }
+  return null;
+};
+
+const inspectYoutubeUrl = (url: URL): VideoEmbedUrlInspection => {
+  const videoId = youtubeVideoId(url);
+  if (!youtubeVideoIdSchema.safeParse(videoId).success) {
+    return { kind: 'invalid-provider', provider: 'youtube' };
+  }
+  return {
+    kind: 'supported',
+    provider: 'youtube',
+    embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+  };
+};
+
+const inspectVimeoUrl = (url: URL): VideoEmbedUrlInspection => {
+  const segments = url.pathname.split('/').filter((segment) => segment.length > 0);
+  const playerUrl = url.hostname === 'player.vimeo.com';
+  const channelUrl = segments[0] === 'channels' && segments.length === 3;
+  const groupUrl = segments[0] === 'groups' && segments[2] === 'videos' && segments.length === 4;
+  const videoId = playerUrl
+    ? segments[0] === 'video' && segments.length === 2
+      ? segments[1]
+      : undefined
+    : channelUrl
+      ? segments[2]
+      : groupUrl
+        ? segments[3]
+        : segments.length === 1 || segments.length === 2
+          ? segments[0]
+          : undefined;
+  const pathPrivacyHash = !playerUrl && segments.length === 2 ? segments[1] : undefined;
+  const privacyHash = url.searchParams.get('h') ?? pathPrivacyHash;
+  const validPrivacyHash =
+    privacyHash === null || privacyHash === undefined || vimeoPrivacyHashSchema.safeParse(privacyHash).success;
+  if (!vimeoVideoIdSchema.safeParse(videoId).success || !validPrivacyHash) {
+    return { kind: 'invalid-provider', provider: 'vimeo' };
+  }
+  const embedUrl = new URL(`https://player.vimeo.com/video/${videoId}`);
+  if (privacyHash !== null && privacyHash !== undefined) embedUrl.searchParams.set('h', privacyHash);
+  return { kind: 'supported', provider: 'vimeo', embedUrl: embedUrl.toString() };
+};
+
+/**
+ * `z.string().url()` accepts every parseable scheme, including `javascript:`,
+ * and embed URLs land in an iframe `src` — so schemes are pinned to http(s).
+ */
+export const inspectVideoEmbedUrl = (value: string): VideoEmbedUrlInspection => {
+  const parsed = z.string().url().safeParse(value);
+  if (!parsed.success) return { kind: 'invalid-url' };
+  const url = new URL(parsed.data);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { kind: 'invalid-url' };
+  const hostname = url.hostname.toLowerCase();
+  if (youtubeHosts.has(hostname)) return inspectYoutubeUrl(url);
+  if (vimeoHosts.has(hostname)) return inspectVimeoUrl(url);
+  return { kind: 'unsupported' };
+};
+
+const videoEmbedUrlSchema = z.string().url().transform((value, ctx) => {
+  const inspection = inspectVideoEmbedUrl(value);
+  if (inspection.kind === 'supported') return inspection.embedUrl;
+  if (inspection.kind === 'unsupported') return value;
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message:
+      inspection.kind === 'invalid-url'
+        ? VIDEO_EMBED_URL_MESSAGE.url
+        : VIDEO_EMBED_URL_MESSAGE[inspection.provider],
+  });
+  return z.NEVER;
+});
+
 const embedLessonBlockSchema = z
   .object({
     type: z.literal('embed'),
-    embedUrl: z.string().url(),
+    embedUrl: videoEmbedUrlSchema,
   })
   .strict();
 
@@ -115,7 +221,7 @@ export const courseModuleSchema = z
 
 export type CourseModule = z.infer<typeof courseModuleSchema>;
 
-export const lessonDurationSchema = z.number().int().positive();
+const lessonDurationSchema = z.number().int().positive();
 
 export const courseLessonSchema = z.object({
   id: z.string(),
@@ -134,7 +240,7 @@ const playableVideoLessonBlockSchema = videoLessonBlockSchema.extend({
   embedUrl: z.string().url().optional(),
 });
 
-export const playableLessonBlockSchema = z.discriminatedUnion('type', [
+const playableLessonBlockSchema = z.discriminatedUnion('type', [
   playableVideoLessonBlockSchema,
   embedLessonBlockSchema,
   pdfLessonBlockSchema,
@@ -164,7 +270,7 @@ export const memberCourseProgressSchema = z.object({
 
 export type MemberCourseProgress = z.infer<typeof memberCourseProgressSchema>;
 
-export const memberCourseLearningSummarySchema = z.object({
+const memberCourseLearningSummarySchema = z.object({
   courseId: z.string(),
   courseName: z.string(),
   completedLessonCount: z.number().int().nonnegative(),
@@ -182,7 +288,7 @@ export const memberLearningSummarySchema = z.object({
 
 export type MemberLearningSummary = z.infer<typeof memberLearningSummarySchema>;
 
-export const accessStatusSchema = z.enum([
+const accessStatusSchema = z.enum([
   'not-accessible',
   'partially-accessible',
   'fully-accessible',
@@ -190,7 +296,7 @@ export const accessStatusSchema = z.enum([
 
 export type AccessStatus = z.infer<typeof accessStatusSchema>;
 
-export const completionStatusSchema = z.enum([
+const completionStatusSchema = z.enum([
   'not-completed',
   'partially-completed',
   'fully-completed',
@@ -198,7 +304,7 @@ export const completionStatusSchema = z.enum([
 
 export type CompletionStatus = z.infer<typeof completionStatusSchema>;
 
-export const courseStructureLessonSchema = z.object({
+const courseStructureLessonSchema = z.object({
   contentId: z.string(),
   lessonId: z.string(),
   name: z.string(),
@@ -210,7 +316,7 @@ export const courseStructureLessonSchema = z.object({
 
 export type CourseStructureLesson = z.infer<typeof courseStructureLessonSchema>;
 
-export const courseStructureChapterSchema = z.object({
+const courseStructureChapterSchema = z.object({
   id: z.string(),
   name: z.string(),
   accessStatus: accessStatusSchema,
@@ -220,7 +326,7 @@ export const courseStructureChapterSchema = z.object({
 
 export type CourseStructureChapter = z.infer<typeof courseStructureChapterSchema>;
 
-export const courseStructureModuleSchema = z.object({
+const courseStructureModuleSchema = z.object({
   id: z.string(),
   name: z.string(),
   accessStatus: accessStatusSchema,
@@ -259,18 +365,6 @@ export const progressViewSchema = z.object({
 
 export type ProgressView = z.infer<typeof progressViewSchema>;
 
-export const courseIdInputSchema = z.object({
-  courseId: z.string().min(1),
-});
-
-export type CourseIdInput = z.input<typeof courseIdInputSchema>;
-
-export const lessonIdInputSchema = z.object({
-  lessonId: z.string().min(1),
-});
-
-export type LessonIdInput = z.input<typeof lessonIdInputSchema>;
-
 export const updateLastViewedInputSchema = z.object({
   courseId: z.string().min(1),
   lessonId: z.string().min(1).optional(),
@@ -287,8 +381,6 @@ export const newCourseSchema = z.object({
   legacyId: z.string().nullable().default(null),
 });
 
-export type NewCourseInput = z.input<typeof newCourseSchema>;
-
 export const updateCourseInputSchema = z.object({
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
@@ -296,8 +388,6 @@ export const updateCourseInputSchema = z.object({
   imageUrl: z.string().url().nullable().optional(),
   moduleOrder: z.array(z.string().min(1)).optional(),
 });
-
-export type UpdateCourseInput = z.input<typeof updateCourseInputSchema>;
 
 export const newCourseModuleSchema = z.object({
   courseIds: z.array(z.string().min(1)).default([]),
@@ -307,16 +397,12 @@ export const newCourseModuleSchema = z.object({
   legacyId: z.string().nullable().default(null),
 });
 
-export type NewCourseModuleInput = z.input<typeof newCourseModuleSchema>;
-
 export const updateCourseModuleInputSchema = z.object({
   id: z.string().min(1),
   title: requiredNameSchema.optional(),
   prefix: z.string().nullable().optional(),
   chapters: z.array(chapterSchema).optional(),
 });
-
-export type UpdateCourseModuleInput = z.input<typeof updateCourseModuleInputSchema>;
 
 export const newCourseLessonSchema = z.object({
   name: requiredNameSchema,
@@ -326,8 +412,6 @@ export const newCourseLessonSchema = z.object({
   legacyId: z.string().nullable().default(null),
 });
 
-export type NewCourseLessonInput = z.input<typeof newCourseLessonSchema>;
-
 export const updateCourseLessonInputSchema = z.object({
   id: z.string().min(1),
   name: requiredNameSchema.optional(),
@@ -336,29 +420,21 @@ export const updateCourseLessonInputSchema = z.object({
   durationMinutes: lessonDurationSchema.nullable().optional(),
 });
 
-export type UpdateCourseLessonInput = z.input<typeof updateCourseLessonInputSchema>;
-
 export const attachModuleToCourseInputSchema = z.object({
   courseId: z.string().min(1),
   moduleId: z.string().min(1),
 });
-
-export type AttachModuleToCourseInput = z.input<typeof attachModuleToCourseInputSchema>;
 
 export const detachModuleFromCourseInputSchema = z.object({
   courseId: z.string().min(1),
   moduleId: z.string().min(1),
 });
 
-export type DetachModuleFromCourseInput = z.input<typeof detachModuleFromCourseInputSchema>;
-
 export const deleteCourseLessonInputSchema = z.object({
   id: z.string().min(1),
 });
 
-export type DeleteCourseLessonInput = z.input<typeof deleteCourseLessonInputSchema>;
-
-export const lessonReferenceChapterSchema = z.object({
+const lessonReferenceChapterSchema = z.object({
   moduleId: z.string(),
   moduleName: z.string(),
   chapterId: z.string(),
@@ -369,7 +445,7 @@ export const lessonReferenceChapterSchema = z.object({
 
 export type LessonReferenceChapter = z.infer<typeof lessonReferenceChapterSchema>;
 
-export const lessonReferenceProductSchema = z.object({
+const lessonReferenceProductSchema = z.object({
   productId: z.string(),
   productTitle: z.string(),
 });

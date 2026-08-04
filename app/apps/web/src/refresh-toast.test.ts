@@ -4,6 +4,9 @@ import { ApiError } from '#core/client/index.js';
 
 import { refreshToastStore } from './refresh-toast.js';
 
+const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
+vi.mock('./observability.js', () => ({ reportError }));
+
 const { queryClient } = await import('./query-client.js');
 
 const failingQuery = async (error: Error): Promise<never> => {
@@ -13,6 +16,7 @@ const failingQuery = async (error: Error): Promise<never> => {
 afterEach(() => {
   queryClient.clear();
   refreshToastStore.dismiss();
+  reportError.mockClear();
 });
 
 describe('query retry policy', () => {
@@ -71,5 +75,36 @@ describe('refresh error policy', () => {
     ).rejects.toThrow('Offline');
 
     expect(refreshToastStore.snapshot()).toBeNull();
+  });
+});
+
+describe('query error reporting', () => {
+  it('does not report an expected missing public offer', async () => {
+    const error = new ApiError({ code: 'tenant_not_found', message: 'Unknown tenant' });
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['public-offer'],
+        queryFn: () => failingQuery(error),
+        retry: false,
+      }),
+    ).rejects.toThrow('Unknown tenant');
+
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it('reports other query failures', async () => {
+    const error = new ApiError({ code: 'tenant_not_found', message: 'Unknown tenant' });
+
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: ['another-query'],
+        queryFn: () => failingQuery(error),
+        retry: false,
+      }),
+    ).rejects.toThrow('Unknown tenant');
+
+    expect(reportError).toHaveBeenCalledOnce();
+    expect(reportError).toHaveBeenCalledWith(error);
   });
 });

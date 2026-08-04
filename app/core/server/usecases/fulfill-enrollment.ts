@@ -15,18 +15,17 @@ import type {
   ProductRepository,
   TenantRepository,
 } from '../ports.js';
+import { tenantUrl, type TenantUrlDeps } from '../tenant-url.js';
 import { ensureMember, type EnsureMemberDeps } from './ensure-member.js';
 import { createOrRenewGrant } from './grant-window.js';
 
-export interface FulfillEnrollmentDeps extends EnsureMemberDeps {
+export interface FulfillEnrollmentDeps extends EnsureMemberDeps, TenantUrlDeps {
   products: ProductRepository;
   grants: ProductGrantRepository;
   tenants: TenantRepository;
   enrollmentTransaction: EnrollmentTransactionPort;
   dispatchEmail(): void;
   devMagicLinks: DevMagicLinkReader;
-  appBaseUrl: string;
-  baseDomain: string;
   exposeMagicLinks: boolean;
 }
 
@@ -64,12 +63,11 @@ export const fulfillEnrollment = async (
       { ...deps, grants: transaction.grants },
     );
     if (input.sendEmail) {
-      const tenantBaseUrl = new URL(deps.appBaseUrl);
-      tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
+      const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
       const created = await deps.authPort.createEnrollmentMagicLink({
         email: member.value.email,
-        callbackURL: tenantBaseUrl.toString(),
-        baseUrl: tenantBaseUrl.toString(),
+        callbackURL: tenantBaseUrl,
+        baseUrl: tenantBaseUrl,
         tenantName: tenant.name,
         language: input.language,
       });
@@ -83,7 +81,11 @@ export const fulfillEnrollment = async (
           language: input.language,
           tenantName: tenant.name,
           actionUrl: created.url,
-          ...(settings === null ? {} : { branding: { logoUrl: settings.logoUrl, accentColor: settings.accentColor } }),
+          ...(settings === null ? {} : { branding: {
+            logoUrl: settings.logoUrl,
+            accentColor: settings.accentColor,
+            socialLinks: settings.socialLinks,
+          } }),
         },
         now: deps.clock.nowIso(),
       });

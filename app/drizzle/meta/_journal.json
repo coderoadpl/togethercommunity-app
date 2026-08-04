@@ -446,8 +446,78 @@
     {
       "idx": 63,
       "version": "7",
-      "when": 1785739514638,
-      "tag": "0063_lesson_free_preview",
+      "when": 1785720000000,
+      "tag": "0063_upcast_lesson_embed_urls",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785739795211,
+      "tag": "0064_member_domain_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1785781147307,
+      "tag": "0065_product_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1785783558415,
+      "tag": "0066_consent_evidence_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1785797500975,
+      "tag": "0067_tenant_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1785798504302,
+      "tag": "0068_branding_social_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1785799504302,
+      "tag": "0069_consent_evidence_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1785800504302,
+      "tag": "0070_tenant_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1785804340777,
+      "tag": "0071_lesson_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1785804349551,
+      "tag": "0072_product_download_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1785813418520,
+      "tag": "0073_lesson_free_preview",
       "breakpoints": true
     }
   ]

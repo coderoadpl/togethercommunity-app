@@ -8,12 +8,25 @@ const output = (messageId: string | undefined): SendEmailCommandOutput => ({
   $metadata: {},
 });
 
-const recordingSender = (result: SendEmailCommandOutput | Error) => {
+const isSendEmailOutput = (value: unknown): value is SendEmailCommandOutput =>
+  typeof value === 'object' &&
+  value !== null &&
+  'MessageId' in value &&
+  (typeof value.MessageId === 'string' || value.MessageId === undefined) &&
+  '$metadata' in value &&
+  typeof value.$metadata === 'object' &&
+  value.$metadata !== null;
+
+const recordingSender = (result: SendEmailCommandOutput | Error | Record<string, unknown>) => {
   const commands: SendEmailCommand[] = [];
   const sender: SesSender = {
+    healthcheck: async () => {
+      if (!(result instanceof Error) && 'MessageId' in result) return;
+      throw result;
+    },
     send: async (command) => {
       commands.push(command);
-      if (result instanceof Error) throw result;
+      if (!isSendEmailOutput(result)) throw result;
       return result;
     },
   };
@@ -68,5 +81,31 @@ describe('createSesEmailPort', () => {
       expect(result.error.code).toBe('internal');
       expect(result.error.message).toContain('throttled');
     }
+  });
+
+  it('exposes healthcheck and test through the shared provider diagnostic contract', async () => {
+    const { sender } = recordingSender(output('unused'));
+    const port = createSesEmailPort({ from: 'Together <kontakt@together.dev>' }, sender);
+
+    await expect(port.healthcheck()).resolves.toEqual({ ok: true, value: { healthy: true } });
+    await expect(port.test()).resolves.toEqual({
+      ok: true,
+      value: { code: 'email.available', message: 'SES accepted the connection settings.' },
+    });
+  });
+
+  it.each([
+    { name: 'ExpiredTokenException' },
+    { name: 'InvalidSignatureException' },
+    { name: 'AuthFailure' },
+    { $metadata: { httpStatusCode: 403 } },
+  ])('classifies SES authentication failures without exposing provider text', async (failure) => {
+    const { sender } = recordingSender(failure);
+    const port = createSesEmailPort({ from: 'Together <kontakt@together.dev>' }, sender);
+
+    await expect(port.test()).resolves.toEqual({
+      ok: false,
+      error: { code: 'integration_auth', message: 'SES rejected the credentials.' },
+    });
   });
 });

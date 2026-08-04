@@ -4,7 +4,7 @@
 
 - **Cadence:** monthly, after any workflow or repository-ruleset change, and
   before a release. The advisory Scorecard and CodeQL collections run weekly;
-  CodeQL also runs on pull requests to `main`.
+  CodeQL also runs on pull requests to `staging` and `main`.
 - **Owner:** the repository owner is accountable; a maintainer with GitHub
   ruleset and Actions visibility performs the external-state review.
 - **Output format:** a Markdown audit record using the fields required by the

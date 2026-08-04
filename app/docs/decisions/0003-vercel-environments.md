@@ -2,7 +2,7 @@
 
 Status: accepted, 2026-07-28. Amended 2026-08-04 to add the deployment-risk
 profile and distinguish the target production topology from its outstanding
-owner actions.
+owner actions and adopt the platform-default branch model.
 
 ## Context
 
@@ -24,23 +24,32 @@ the migration path to another driver are defined in
 | Environment | Source | Vercel deployment | Database |
 |---|---|---|---|
 | Development | local worktree | local Node entry | local Docker Postgres |
-| Preview | pull request | automatic Preview | disposable Neon preview branch |
-| Staging | `main` | stable Preview alias | Neon staging branch |
-| Production | `production` | Vercel Production Branch | Neon production branch |
+| Preview | pull request to `staging` | automatic Preview | disposable Neon preview branch |
+| Staging | `staging` | stable Preview alias | automatic integration-managed Neon staging branch |
+| Production | `main` | Vercel Production Branch | Neon production branch |
 
 This table is the target release topology, not evidence of live configuration.
-Earlier on 2026-08-04, the remote has no `production` branch and no ruleset. GitHub
-enforces rulesets and branch protection on public repositories on the Free plan,
-so the wall is available as soon as the owner configures it.
-Creation of the branch and wall, verification of the hosting boundary, and
-manual SHA attestation are tracked in items 16–18 of the
-[go-live checklist](../go-live-checklist.md#16-production-branch-and-approval-wall).
+Earlier on 2026-08-04, the remote had no `production` branch and no
+ruleset; that was
+a recorded launch blocker under the former topology. Later that day, the
+model
+was switched to the platform's default convention because the inverted model
+(`main` as staging and `production` as production) fought the hosting and
+database integrations, which assume that the default branch is production.
 
-`main` is trunk and staging (graduated from the `poc-together` PoC branch on
-2026-07-29). A production release is an owner-approved pull request from
-`main` to `production`. Vercel Production Branch
-Tracking must point to `production`; merges to trunk must never create a
-production deployment.
+`main` is now the default and production branch. `staging` is the integration
+trunk where feature pull requests merge, and a production release is an
+owner-approved pull request from `staging` to `main`. Vercel Production Branch
+Tracking must point to `main`; merges to `staging` must create Preview
+deployments only. The database integration automatically creates and manages
+the `staging` database branch used by that stable staging deployment. The
+legacy `production` branch is not a deployment or promotion target.
+
+GitHub enforces rulesets and branch protection on public repositories on the
+Free plan, but repository files cannot prove that the live approval wall is
+configured. Creation of `staging` and the rulesets, verification of the hosting
+boundary, and manual SHA attestation are tracked in items 16–18 of the
+[go-live checklist](../go-live-checklist.md#16-production-branch-and-approval-wall).
 
 The Vercel project root is `app`. `api/index.ts` delegates to
 `apps/server/src/entry.vercel.ts`, while local and smoke processes keep using

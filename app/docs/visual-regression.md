@@ -56,7 +56,7 @@ to run the existing non-visual gates.
 
 ## Pull request gallery
 
-Pull requests targeting `main` that change committed PNGs in
+Pull requests targeting `staging` that change committed PNGs in
 `tasks/visual-goldens/` receive one sticky Before/After comment from
 `.github/workflows/visual-golden-gallery.yml`. Added, removed, renamed, and
 modified baselines use URLs pinned to the pull request's merge base and head
@@ -99,7 +99,7 @@ Owner setup checklist:
    integration.
 3. Copy the project token into the repository Actions secret named
    `ARGOS_TOKEN`.
-4. In the Argos project settings, set the reference branch to `main` (the repository default).
+4. In the Argos project settings, set the reference branch to `staging` (the integration trunk).
 5. Re-run the `ci` workflow or push a commit to produce the first build.
 6. In Argos, open the project, select the build from the Builds list, review its
    screenshot changes, and open the review control in the build header to choose

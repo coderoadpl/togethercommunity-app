@@ -217,7 +217,7 @@ Not in the PR, not simulated, not worked around:
 3. **Base-domain DNS** — Together's own zone: wildcard `*.{APP_BASE_DOMAIN}`
    attached to the Vercel project (NS delegation or registrar records). In the
    nested fallback topology: the single wildcard CNAME in the parent zone.
-4. **`main` → `production` promotion** — gated by the branch ruleset approval the
+4. **`staging` → `main` promotion** — gated by the branch ruleset approval the
    agent cannot give.
 5. **Live tenant-domain test** — registering a real domain via CLI, creating live
    test tenants, browser verification of TLS + cookie isolation. Runs only after

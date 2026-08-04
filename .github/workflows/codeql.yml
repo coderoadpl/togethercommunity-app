@@ -2,9 +2,9 @@ name: codeql-advisory
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
-    branches: [main]
+    branches: [main, staging]
   schedule:
     - cron: '17 3 * * 1'
 

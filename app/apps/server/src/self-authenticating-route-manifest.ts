@@ -10,6 +10,7 @@ type SelfAuthenticatingRouteManifestEntry = {
 
 export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRouteManifestEntry[] = [
   { path: API_PATHS.emailDispatch, methods: ['GET', 'POST'], mechanism: 'E-mail dispatch secret' },
+  { path: API_PATHS.autoInvoiceDispatch, methods: ['GET', 'POST'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.ksefDispatch, methods: ['GET', 'POST'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.globalSchedulerRuns, methods: ['GET'], mechanism: 'Scheduler operator secret' },
   { path: API_PATHS.globalSchedulerRun, methods: ['GET'], mechanism: 'Scheduler operator secret' },

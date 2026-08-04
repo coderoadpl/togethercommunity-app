@@ -5,6 +5,25 @@ import { describe, expect, it } from 'vitest';
 const appRoot = join(import.meta.dirname, '..');
 const doctrine = readFileSync(join(appRoot, 'docs', 'data-atomicity.md'), 'utf8');
 const ports = readFileSync(join(appRoot, 'core', 'server', 'ports.ts'), 'utf8');
+const vercelConfig: unknown = JSON.parse(readFileSync(join(appRoot, 'vercel.json'), 'utf8'));
+
+const cronPaths = (): string[] => {
+  if (
+    typeof vercelConfig !== 'object'
+    || vercelConfig === null
+    || !('crons' in vercelConfig)
+    || !Array.isArray(vercelConfig.crons)
+  ) throw new Error('vercel.json crons array is missing');
+  return vercelConfig.crons.map((entry: unknown) => {
+    if (
+      typeof entry !== 'object'
+      || entry === null
+      || !('path' in entry)
+      || typeof entry.path !== 'string'
+    ) throw new Error('vercel.json cron path is invalid');
+    return entry.path;
+  });
+};
 
 const entries = (): Array<{ interfaceName: string; methodName: string }> => {
   const block = /<!-- MUST-ATOMIC:begin -->([\s\S]*?)<!-- MUST-ATOMIC:end -->/.exec(doctrine);
@@ -58,4 +77,15 @@ describe('MUST-ATOMIC port inventory', () => {
       expect(occurrences).toBe(1);
     },
   );
+});
+
+describe('durable queue cron inventory', () => {
+  it.each([
+    ['email-outbox', '/api/internal/dispatch-email'],
+    ['ksef-jobs', '/api/internal/dispatch-ksef'],
+    ['marketing-jobs', '/api/internal/marketing/tick'],
+    ['auto-invoice-jobs', '/api/internal/dispatch-auto-invoices'],
+  ])('%s has a Vercel cron entry', (_queue, path) => {
+    expect(cronPaths()).toContain(path);
+  });
 });

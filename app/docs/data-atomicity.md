@@ -30,7 +30,8 @@ at all.
   `TenantRepository.createTenantWithOwnerGrant` prevent partial grants,
   members, outbox messages, or ownerless tenants.
 - Payments and webhooks: `PaymentTransactionPort.run` keeps every payment
-  projection write and webhook finalization in one commit.
+  projection write, automatic invoice job enqueue, and webhook finalization in
+  one commit.
 - Invoicing and KSeF: `InvoiceRepository.create`,
   `InvoiceRepository.claimRetry`, `InvoiceRepository.update`,
   `InvoiceRepository.createFrozenKsef`, `InvoiceRepository.checkpointKsef`,
@@ -63,6 +64,17 @@ at all.
 The legacy importer also uses interactive transactions for each import unit and
 for each repair batch. It is a maintenance boundary rather than a core port, but
 it is subject to the same `node-postgres` constraint.
+
+Automatic invoice requests use a dedicated `auto_invoice_jobs` table. Extending
+`ksef_submission_jobs` would require nullable invoice references and a second
+job lifecycle before an invoice or its frozen KSeF artifact exists. The separate
+queue preserves the existing KSeF invariants with fewer schema and dispatcher
+changes. Its webhook event uniqueness constraint prevents duplicate enqueue,
+and its order foreign key keeps each job attached to the transactionally created
+order. Workers claim rows with `FOR UPDATE SKIP LOCKED`; abandoned running rows
+return to the queue after their lease expires. Invoice issuance remains
+idempotent by order, so a worker crash after issuance but before job completion
+is safe to retry.
 
 ## Data conventions
 

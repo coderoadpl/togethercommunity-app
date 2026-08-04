@@ -533,6 +533,13 @@
       "when": 1785868260000,
       "tag": "0075_welcome_sign_in_payload",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1785868320000,
+      "tag": "0076_jazzy_shape",
+      "breakpoints": true
     }
   ]
 }

@@ -523,24 +523,32 @@ export const requestInvoice = async (
   return issue(tenant.value, order, order.billing ?? null, deps);
 };
 
+export const issueAutoInvoiceOnPayment = async (
+  tenantId: string,
+  order: Order,
+  deps: InvoiceDeps,
+): Promise<void> => {
+  const settings = await deps.tenants.findSettings(tenantId);
+  if (settings?.autoIssueInvoices !== true) return;
+  if ((settings.autoIssueInvoiceScope ?? 'b2b_only') === 'b2b_only' && order.billing?.nip == null) {
+    const skipped = eventFor(deps, tenantId, order.id, null, 'skipped', null, {
+      reason: 'b2b_only',
+    });
+    await deps.invoices.appendEvent(tenantId, skipped);
+    return;
+  }
+  const detail = await deps.orderDetails.findById(tenantId, order.id);
+  if (detail === null) return;
+  await issue(tenantId, detail, order.billing ?? null, deps);
+};
+
 export const autoIssueOnPayment = async (
   tenantId: string,
   order: Order,
   deps: InvoiceDeps,
 ): Promise<void> => {
   try {
-    const settings = await deps.tenants.findSettings(tenantId);
-    if (settings?.autoIssueInvoices !== true) return;
-    if ((settings.autoIssueInvoiceScope ?? 'b2b_only') === 'b2b_only' && order.billing?.nip == null) {
-      const skipped = eventFor(deps, tenantId, order.id, null, 'skipped', null, {
-        reason: 'b2b_only',
-      });
-      await deps.invoices.appendEvent(tenantId, skipped);
-      return;
-    }
-    const detail = await deps.orderDetails.findById(tenantId, order.id);
-    if (detail === null) return;
-    await issue(tenantId, detail, order.billing ?? null, deps);
+    await issueAutoInvoiceOnPayment(tenantId, order, deps);
   } catch {
     return;
   }

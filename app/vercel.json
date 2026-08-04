@@ -81,6 +81,10 @@
     {
       "path": "/api/internal/dispatch-email",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/dispatch-auto-invoices",
+      "schedule": "* * * * *"
     }
   ]
 }

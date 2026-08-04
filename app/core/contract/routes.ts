@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  accessItemSchema,
   attachModuleToCourseInputSchema,
   checkoutSessionInputSchema,
   couponCheckoutBreakdownSchema,
@@ -26,6 +27,7 @@ import {
   spaceSchema,
   staffSpaceSchema,
   updateSpaceInputSchema,
+  updateProductInputSchema,
   detachModuleFromCourseInputSchema,
   discussionSchema,
   lessonReferencesSchema,
@@ -333,6 +335,7 @@ export const myProductsOutputSchema = z.object({
       type: productTypeSchema,
       title: z.string(),
       description: z.string(),
+      accessItems: z.array(accessItemSchema),
       priceCents: z.number().int().nonnegative(),
       currency: z.string().regex(/^[A-Z]{3}$/),
       grantStatus: grantWindowStatusSchema,
@@ -622,6 +625,14 @@ export const productsCreateOutputSchema = z.object({
   product: productSchema,
 });
 
+export const productsUpdateInputSchema = updateProductInputSchema;
+
+export type ProductsUpdateInput = z.input<typeof productsUpdateInputSchema>;
+
+export const productsUpdateOutputSchema = z.object({
+  product: productSchema,
+});
+
 export const productsPublishInputSchema = z.object({
   id: z.string().min(1),
 });
@@ -629,6 +640,16 @@ export const productsPublishInputSchema = z.object({
 export type ProductsPublishInput = z.input<typeof productsPublishInputSchema>;
 
 export const productsPublishOutputSchema = z.object({
+  product: productSchema,
+});
+
+export const productsUnpublishInputSchema = z.object({
+  id: z.string().min(1),
+});
+
+export type ProductsUnpublishInput = z.input<typeof productsUnpublishInputSchema>;
+
+export const productsUnpublishOutputSchema = z.object({
   product: productSchema,
 });
 
@@ -1344,7 +1365,9 @@ export const API_ROUTES = {
   tenantsCreate: { method: 'POST', path: '/api/tenants' },
   products: { method: 'GET', path: '/api/products' },
   productsCreate: { method: 'POST', path: '/api/products' },
+  productsUpdate: { method: 'POST', path: '/api/products/update' },
   productsPublish: { method: 'POST', path: '/api/products/publish' },
+  productsUnpublish: { method: 'POST', path: '/api/products/unpublish' },
   productsAccessItems: { method: 'POST', path: '/api/products/access-items' },
   productsAccessIssues: { method: 'GET', path: '/api/products/access-issues' },
   productPricesCreate: { method: 'POST', path: '/api/products/prices' },
@@ -1544,7 +1567,9 @@ export const API_PATHS = {
   memberErasureRequest: API_ROUTES.memberErasureRequest.path,
   tenants: API_ROUTES.tenants.path,
   products: API_ROUTES.products.path,
+  productsUpdate: API_ROUTES.productsUpdate.path,
   productsPublish: API_ROUTES.productsPublish.path,
+  productsUnpublish: API_ROUTES.productsUnpublish.path,
   productsAccessItems: API_ROUTES.productsAccessItems.path,
   productsAccessIssues: API_ROUTES.productsAccessIssues.path,
   productPricesCreate: API_ROUTES.productPricesCreate.path,

@@ -1,12 +1,12 @@
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, SvgIcon, Tooltip, Typography } from '@mui/material';
+import { Alert, Badge, Box, Button, ButtonBase, Divider, IconButton, Menu, Snackbar, SvgIcon, Tooltip, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import type { Notification } from '#core/domain/index.js';
 
 import { actions } from './api.js';
-import { useLanguage, useTranslations } from './i18n/index.js';
+import { localizeError, useLanguage, useTranslations } from './i18n/index.js';
 import { formatDate } from './lib/format.js';
 import { connectNotificationsStream } from './notifications-stream.js';
 import {
@@ -135,7 +135,7 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
       <Badge badgeContent={unreadCount} color="error" data-testid="notification-tab-badge">
         <TabBellIcon />
       </Badge>
-      <Typography variant="caption" component="span">{tabLabel}</Typography>
+      <Typography variant="caption" component="span" noWrap title={tabLabel} sx={{ maxWidth: '100%' }}>{tabLabel}</Typography>
     </ButtonBase>
   );
 
@@ -160,6 +160,13 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
             <NotificationSnippet variant="body2" component="p">
               {t.notifications.loading}
             </NotificationSnippet>
+          </Box>
+        ) : list.isError ? (
+          <Box sx={{ px: '1rem', py: '0.75rem' }}>
+            <Alert severity="error">{localizeError(list.error, t)}</Alert>
+            <Button size="small" sx={{ mt: '0.5rem' }} onClick={() => void list.refetch()}>
+              {t.common.retry}
+            </Button>
           </Box>
         ) : notifications.length === 0 ? (
           <Box sx={{ px: '1rem', py: '0.75rem' }} data-testid="notifications-empty">
@@ -193,13 +200,28 @@ export const NotificationBell = ({ tabLabel, live = true }: { tabLabel?: string;
           <Button
             size="small"
             data-testid="notifications-mark-all-read"
-            disabled={markAllRead.isPending}
+            disabled={markAllRead.isPending || unreadCount === 0}
             onClick={() => markAllRead.mutate()}
           >
             {t.notifications.markAllRead}
           </Button>
+          {unread.isError ? (
+            <Box>
+              <Alert severity="error">{localizeError(unread.error, t)}</Alert>
+              <Button size="small" sx={{ mt: '0.5rem' }} onClick={() => void unread.refetch()}>
+                {t.common.retry}
+              </Button>
+            </Box>
+          ) : null}
+          {markAllRead.isError ? <Alert severity="error">{localizeError(markAllRead.error, t)}</Alert> : null}
         </Box>
       </Menu>
+      <Snackbar open={markRead.isError} autoHideDuration={6000} onClose={() => markRead.reset()}>
+        <Alert severity="error" onClose={() => markRead.reset()}>{markRead.isError ? localizeError(markRead.error, t) : ''}</Alert>
+      </Snackbar>
+      <Snackbar open={markAllRead.isSuccess} autoHideDuration={4000} onClose={() => markAllRead.reset()}>
+        <Alert severity="success" onClose={() => markAllRead.reset()}>{t.notifications.markedAllRead}</Alert>
+      </Snackbar>
     </>
   );
 };

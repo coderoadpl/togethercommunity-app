@@ -6,28 +6,28 @@ import {
   Divider,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-
-import { lessonPath } from '#core/contract/index.js';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
 import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
 import { EmailVerificationResult } from '../../components/ui/EmailVerificationStatus.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
+import { isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { CardTitle, DemoValue, FinePrint } from '../../theme.js';
 
 const invalidTokenFromLocation = (): boolean =>
   new URLSearchParams(window.location.search).get('error') === 'INVALID_TOKEN';
 
-export const LoginPage = () => {
+export const LoginPage = ({ hostname = window.location.hostname }: { hostname?: string } = {}) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const magicLinkExpired = invalidTokenFromLocation();
@@ -43,7 +43,11 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   const authConfig = useQuery(actions.authConfig);
-  const publicOffer = useQuery(actions.publicOffer);
+  const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
+  const publicOffer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
+  const eyebrow = usesPlatformAuthSurface(hostname)
+    ? t.auth.signInPlatformEyebrow
+    : t.auth.signInEyebrow({ host: hostname });
 
   const signIn = useMutation({
     ...actions.signIn,
@@ -115,6 +119,12 @@ export const LoginPage = () => {
 
   const footer = (
     <>
+      {authConfig.isError || publicOffer.isError ? (
+        <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1.25rem' }}>
+          {authConfig.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(authConfig.error, t), retry: { label: t.common.retry, onRetry: () => void authConfig.refetch() } }} /> : null}
+          {publicOffer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(publicOffer.error, t), retry: { label: t.common.retry, onRetry: () => void publicOffer.refetch() } }} /> : null}
+        </Stack>
+      ) : null}
       {authConfig.data?.exposeMagicLinks ? (
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
           {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
@@ -122,7 +132,7 @@ export const LoginPage = () => {
         </FinePrint>
       ) : null}
       <FinePrint variant="caption" component="p">
-        {t.auth.registerPrompt} <Link href="/register">{t.auth.registerLink}</Link>
+        {t.auth.registerPrompt} <MuiLink component={Link} to="/register">{t.auth.registerLink}</MuiLink>
       </FinePrint>
       {publicOffer.data !== undefined && publicOffer.data.previewLessons.length > 0 ? (
         <Box sx={{ mt: '1em' }}>
@@ -131,16 +141,16 @@ export const LoginPage = () => {
           </FinePrint>
           <Stack useFlexGap spacing="0.25em">
             {publicOffer.data.previewLessons.map((lesson) => (
-              <Link key={`${lesson.courseId}:${lesson.id}`} href={lessonPath(lesson.courseId, lesson.id)}>
+              <MuiLink key={`${lesson.courseId}:${lesson.id}`} component={Link} to={`/my/courses/${encodeURIComponent(lesson.courseId)}/lessons/${encodeURIComponent(lesson.id)}`}>
                 {lesson.name}
-              </Link>
+              </MuiLink>
             ))}
           </Stack>
         </Box>
       ) : null}
       {publicOffer.data?.tenant.support.url ? (
         <FinePrint variant="caption" component="p">
-          <Link href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</Link>
+          <MuiLink href={publicOffer.data.tenant.support.url}>{t.support.externalLink}</MuiLink>
         </FinePrint>
       ) : null}
       {publicOffer.data?.tenant.socialLinks.length ? (
@@ -154,7 +164,7 @@ export const LoginPage = () => {
 
   if (requestedMagicEmail) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         <Stack useFlexGap spacing="1rem" data-testid="magic-link-sent">
           <CardTitle variant="h1">{t.auth.magicLinkRequested}</CardTitle>
           <Typography variant="body1">
@@ -170,7 +180,7 @@ export const LoginPage = () => {
               {t.auth.openMagicLink}
             </Button>
           ) : null}
-          {devMagicLink.isError ? <Alert severity="error">{localizeError(devMagicLink.error, t)}</Alert> : null}
+          {devMagicLink.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(devMagicLink.error, t), retry: { label: t.common.retry, onRetry: () => void devMagicLink.refetch() } }} /> : null}
         </Stack>
       </FocusCard>
     );
@@ -178,7 +188,7 @@ export const LoginPage = () => {
 
   if (twoFactorRequired) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+      <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         <Stack component="form" onSubmit={submitTwoFactor} useFlexGap spacing="1rem" data-testid="two-factor-challenge">
           <CardTitle variant="h1">{t.auth.twoFactorTitle}</CardTitle>
           <Typography variant="body1">{t.auth.twoFactorIntro}</Typography>
@@ -220,7 +230,7 @@ export const LoginPage = () => {
   }
 
   return (
-    <FocusCard brand={<BrandMark />} eyebrow={t.auth.signInEyebrow({ host: window.location.hostname })} footer={footer}>
+    <FocusCard brand={<BrandMark tenantAware={resolveTenantOffer} />} eyebrow={eyebrow} footer={footer}>
         {magicLinkExpired ? (
           <Alert severity="error" sx={{ mb: '1rem' }}>
             {t.auth.magicLinkExpired}
@@ -290,6 +300,7 @@ export const LoginPage = () => {
               {t.auth.continueWithGoogle}
             </Button>
           ) : null}
+          {signInWithGoogle.isError ? <Alert severity="error">{localizeError(signInWithGoogle.error, t)}</Alert> : null}
         </Stack>
         {signInWithPasskey.isError ? (
           <Alert severity="error" sx={{ mt: '0.6rem' }}>
@@ -298,7 +309,7 @@ export const LoginPage = () => {
         ) : null}
         <Divider sx={{ mt: '1.4rem', mb: '0.9rem' }} />
         <FinePrint variant="caption" component="p" sx={{ mb: '0.6rem' }} data-testid="forgot-password">
-          {t.auth.forgotPassword} <Link href="/forgot-password">{t.auth.forgotPasswordLink}</Link>
+          {t.auth.forgotPassword} <MuiLink component={Link} to="/forgot-password">{t.auth.forgotPasswordLink}</MuiLink>
         </FinePrint>
         <Stack component="form" onSubmit={submitMagicLink} useFlexGap spacing="1rem">
           <FormControl fullWidth>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, OutlinedInput, Stack, Typography } from '@mui/material';
+import { Alert, Button, OutlinedInput, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
@@ -18,14 +18,18 @@ export const ErasureRequestsSection = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const requests = useQuery(actions.erasureRequests);
-  const [note, setNote] = useState('');
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [removing, setRemoving] = useState<MemberErasureRequestWithMember | null>(
     null,
   );
   const reject = useMutation({
     ...actions.rejectErasureRequest,
-    onSuccess: () => {
-      setNote('');
+    onSuccess: (_data, variables) => {
+      setNotes((current) => {
+        return Object.fromEntries(
+          Object.entries(current).filter(([requestId]) => requestId !== variables.requestId),
+        );
+      });
       void requests.refetch();
     },
   });
@@ -40,6 +44,8 @@ export const ErasureRequestsSection = () => {
     },
   });
 
+  if (requests.isSuccess && requests.data.requests.length === 0) return null;
+
   return (
     <>
       <SectionCard title={t.members.erasureRequestsHeading}>
@@ -47,13 +53,13 @@ export const ErasureRequestsSection = () => {
           <StatusView state={{ kind: 'loading', label: t.common.loading }} />
         ) : requests.isError ? (
           <StatusView
-            state={{ kind: 'error', message: localizeError(requests.error, t) }}
+            state={{ kind: 'error', message: localizeError(requests.error, t), retry: { label: t.common.retry, onRetry: () => void requests.refetch() } }}
           />
-        ) : requests.data.requests.length === 0 ? (
-          <Typography>{t.members.erasureRequestsEmpty}</Typography>
         ) : (
           <Stack useFlexGap spacing="1rem">
-            {requests.data.requests.map((request) => (
+            {requests.data.requests.map((request) => {
+              const note = notes[request.id] ?? '';
+              return (
               <Stack key={request.id} useFlexGap spacing="0.5rem">
                 <Typography>
                   {request.member.email} · {t.members.erasureRequestStatus[request.status]} · {request.dueAt.slice(0, 10)}
@@ -76,7 +82,7 @@ export const ErasureRequestsSection = () => {
                         size="small"
                         placeholder={t.members.erasureRejectNote}
                         value={note}
-                        onChange={(event) => setNote(event.target.value)}
+                        onChange={(event) => setNotes((current) => ({ ...current, [request.id]: event.target.value }))}
                       />
                       <Button
                         size="small"
@@ -100,17 +106,22 @@ export const ErasureRequestsSection = () => {
                   ) : null}
                 </Stack>
               </Stack>
-            ))}
+              );
+            })}
           </Stack>
         )}
+        {reject.isError ? <Alert severity="error">{localizeError(reject.error, t)}</Alert> : null}
       </SectionCard>
       <ConfirmDialog
         open={removing !== null}
         title={t.members.removeConfirmTitle}
         body={
-          <Typography>
-            {t.members.removeConfirmIntro({ email: removing?.member.email ?? '' })}
-          </Typography>
+          <>
+            <Typography>
+              {t.members.removeConfirmIntro({ email: removing?.member.email ?? '' })}
+            </Typography>
+            {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+          </>
         }
         confirmLabel={remove.isPending ? t.members.removing : t.members.remove}
         cancelLabel={t.common.cancel}

@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { SpaceVisibility } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { SectionCard } from '../../../components/layout/index.js';
+import { SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 
 export interface SpaceFormValues {
@@ -181,6 +181,8 @@ export const SpaceForm = ({ mode, initial, pending, error, onSubmit }: SpaceForm
           </FormHelperText>
         </FormControl>
       ) : null}
+
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
 
       {mode === 'edit' ? (
         <FormControl sx={{ maxWidth: '10rem' }}>

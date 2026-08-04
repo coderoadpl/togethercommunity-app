@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { Link, Stack } from '@mui/material';
+import { Link as MuiLink, Stack } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -47,6 +47,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
         state={{
           kind: 'error',
           message: isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t),
+          retry: { label: t.common.retry, onRetry: () => void products.refetch() },
         }}
       />
     );
@@ -63,17 +64,28 @@ export const CoursePage = ({ productId }: { productId: string }) => {
           kind: 'not-found',
           title: t.student.courseNotFound,
           body: t.student.productNotInLibrary,
-          action: <Link href="/my/products">{t.student.backToMyProducts}</Link>,
+          action: <MuiLink component={Link} to="/my/products">{t.student.backToMyProducts}</MuiLink>,
         }}
       />
     );
   }
 
-  const accessibleCourses = courses.data?.courses ?? [];
+  const grantedCourseIds = new Set(product.accessItems.map((item) => item.courseId));
+  const accessibleCourses = (courses.data?.courses ?? []).filter((course) => grantedCourseIds.has(course.id));
 
   return (
     <MemberSurface title={product.title} eyebrow={t.student.courseEyebrow}>
-      {accessibleCourses.length === 0 ? (
+      {courses.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.student.loadingCourses }} />
+      ) : courses.isError ? (
+        <StatusView
+          state={{
+            kind: 'error',
+            message: localizeError(courses.error, t),
+            retry: { label: t.student.retryCourses, onRetry: () => void courses.refetch() },
+          }}
+        />
+      ) : accessibleCourses.length === 0 ? (
         <StatusView
           state={{
             kind: 'empty',
@@ -89,9 +101,9 @@ export const CoursePage = ({ productId }: { productId: string }) => {
         >
           <Stack useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
             {accessibleCourses.map((course) => (
-              <Link key={course.id} href={`/my/courses/${course.id}`}>
+              <MuiLink key={course.id} component={Link} to={`/my/courses/${encodeURIComponent(course.id)}`}>
                 {course.name}
-              </Link>
+              </MuiLink>
             ))}
           </Stack>
         </SectionCard>

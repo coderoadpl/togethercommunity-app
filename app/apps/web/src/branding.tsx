@@ -7,19 +7,20 @@ import type { TenantBranding, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from './api.js';
 import { useTranslations } from './i18n/index.js';
+import { isConfiguredBaseDomainHost } from './lib/tenant.js';
 import { applyBranding } from './theme-branding.js';
-import { Wordmark } from './theme.js';
+import { CompactWordmark, Wordmark } from './theme.js';
 
 /**
  * Branding rides on the public offer the SPA already fetches at boot
  * (TenantGate), so reading it here costs no extra request.
  */
-const useTenantOffer = (): {
+const useTenantOffer = (enabled = !isConfiguredBaseDomainHost(window.location.hostname)): {
   name: string;
   branding: TenantBranding;
   socialLinks: TenantSocialLink[];
 } | null => {
-  const offer = useQuery(actions.publicOffer);
+  const offer = useQuery({ ...actions.publicOffer, enabled });
   if (offer.data === undefined) return null;
   return {
     name: offer.data.tenant.name,
@@ -37,7 +38,7 @@ export const TenantSocialLinks = ({
   links?: TenantSocialLink[];
 } = {}) => {
   const t = useTranslations();
-  const tenantLinks = useTenantOffer()?.socialLinks ?? [];
+  const tenantLinks = useTenantOffer(providedLinks === undefined)?.socialLinks ?? [];
   const links = providedLinks ?? tenantLinks;
   if (links.length === 0) return null;
   return (
@@ -65,7 +66,7 @@ export const TenantLogo = () => {
     return (
       <Wordmark
         component="p"
-        variant="h6"
+        variant="h3"
         data-testid="tenant-name-mark"
         sx={{ mb: '0.9rem' }}
       >
@@ -91,20 +92,34 @@ export const TenantLogo = () => {
   );
 };
 
-export const BrandMark = () => {
+export const BrandMark = ({
+  size = 'display',
+  tenantAware = true,
+}: {
+  size?: 'display' | 'compact';
+  tenantAware?: boolean;
+}) => {
   const theme = useTheme();
-  const tenant = useTenantOffer();
+  const tenant = useTenantOffer(tenantAware);
+  const compact = size === 'compact';
   if (tenant === null) {
     return (
       <Box
         component="img"
         src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
         alt="Together"
-        sx={{ display: 'block', height: '2.5rem', mb: '0.6rem' }}
+        sx={{ display: 'block', height: compact ? '1.5rem' : '2.5rem', mb: compact ? '0.2rem' : '0.6rem' }}
       />
     );
   }
   if (tenant.branding.logoUrl === null) {
+    if (compact) {
+      return (
+        <CompactWordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
+          {tenant.name}
+        </CompactWordmark>
+      );
+    }
     return (
       <Wordmark variant="h1" data-testid="tenant-brand-name" sx={{ mb: '0.2rem' }}>
         {tenant.name}
@@ -119,7 +134,7 @@ export const BrandMark = () => {
       data-testid="tenant-brand-logo"
       sx={{
         display: 'block',
-        height: '2.25rem',
+        height: compact ? '1.5rem' : '2.25rem',
         maxWidth: '16rem',
         objectFit: 'contain',
         objectPosition: 'left center',

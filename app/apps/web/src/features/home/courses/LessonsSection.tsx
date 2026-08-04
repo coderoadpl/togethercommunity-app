@@ -38,6 +38,8 @@ import { ListPagination, usePagedList } from '../../../components/ui/ListPaginat
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
+import { useUnsavedChanges } from '../use-unsaved-changes.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import {
   Eyebrow,
   LessonMediaClip,
@@ -197,14 +199,14 @@ const VideoBlockFields = ({
           {t.lessons.videoPickFromBunny}
         </Button>
       </Box>
-      {field('storageKey', 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
-      {field('streamVideoId', 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
+      {field(`${t.lessons.storageKeyLabel} — ${t.lessons.technicalFieldHint({ field: 'storageKey' })}`, 'storageKey', draft.storageKey, (storageKey) => onChange({ ...draft, storageKey }))}
+      {field(`${t.lessons.streamVideoIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamVideoId' })}`, 'streamVideoId', draft.streamVideoId, (streamVideoId) =>
         onChange({ ...draft, streamVideoId }),
       )}
-      {field('streamLibraryId', 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
+      {field(`${t.lessons.streamLibraryIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamLibraryId' })}`, 'streamLibraryId', draft.streamLibraryId, (streamLibraryId) =>
         onChange({ ...draft, streamLibraryId }),
       )}
-      {field('streamCollectionId', 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
+      {field(`${t.lessons.streamCollectionIdLabel} — ${t.lessons.technicalFieldHint({ field: 'streamCollectionId' })}`, 'streamCollectionId', draft.streamCollectionId, (streamCollectionId) =>
         onChange({ ...draft, streamCollectionId }),
       )}
       {pickerOpen ? (
@@ -312,15 +314,15 @@ const BlockFields = ({
     case 'pdf':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field('pdfUrl', 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }))}
-          {field('name', 'name', draft.name, (name) => onChange({ ...draft, name }))}
+          {field(`${t.lessons.pdfUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'pdfUrl' })}`, 'pdfUrl', draft.pdfUrl, (pdfUrl) => onChange({ ...draft, pdfUrl }))}
+          {field(`${t.lessons.fileNameLabel} — ${t.lessons.technicalFieldHint({ field: 'name' })}`, 'name', draft.name, (name) => onChange({ ...draft, name }))}
         </Stack>
       );
     case 'link':
       return (
         <Stack useFlexGap spacing="0.6rem">
-          {field('url', 'url', draft.url, (url) => onChange({ ...draft, url }))}
-          {field('description', 'description', draft.description, (description) => onChange({ ...draft, description }))}
+          {field(`${t.lessons.linkUrlLabel} — ${t.lessons.technicalFieldHint({ field: 'url' })}`, 'url', draft.url, (url) => onChange({ ...draft, url }))}
+          {field(`${t.lessons.linkDescriptionLabel} — ${t.lessons.technicalFieldHint({ field: 'description' })}`, 'description', draft.description, (description) => onChange({ ...draft, description }))}
         </Stack>
       );
     case 'html':
@@ -375,7 +377,7 @@ const LessonAttachmentsEditor = ({ lessonId }: { lessonId: string }) => {
       {attachments.isPending ? (
         <Typography variant="caption">{t.common.loading}</Typography>
       ) : attachments.isError ? (
-        <MutationError error={attachments.error} />
+        <StatusView surface={false} state={{ kind: 'error', message: errorMessage(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} />
       ) : attachments.data.attachments.length === 0 ? (
         <Typography variant="caption" data-testid="lesson-attachments-empty">
           {t.lessons.attachmentsEmpty}
@@ -433,6 +435,16 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const [blocks, setBlocks] = useState<BlockDraft[]>(lesson ? lesson.contents.map(toDraft) : []);
   const [addType, setAddType] = useState<BlockType>('video');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const errorId = 'lesson-form-error';
+  const initialSnapshot = JSON.stringify([
+    lesson?.name ?? '',
+    lesson?.durationMinutes === undefined ? '' : String(lesson.durationMinutes),
+    lesson?.isPreview ?? false,
+    lesson ? lesson.contents.map(toDraft) : [],
+  ]);
+  const currentSnapshot = JSON.stringify([name, duration, isPreview, blocks]);
+  const dirty = currentSnapshot !== initialSnapshot;
+  const allowNavigation = useUnsavedChanges(dirty, t.common.unsavedChangesConfirm);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const showBunnyPrivacyNote =
     tenantSecrets.isSuccess && !tenantSecrets.data.secrets.some((secret) => secret.key === 'bunny.securityKey');
@@ -444,6 +456,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const createLesson = useMutation({
     ...actions.createLesson,
     onSuccess: async ({ lesson: created }) => {
+      allowNavigation();
       await invalidate();
       onSaved(created.id);
     },
@@ -451,6 +464,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
   const updateLesson = useMutation({
     ...actions.updateLesson,
     onSuccess: async ({ lesson: updated }) => {
+      allowNavigation();
       await invalidate();
       onSaved(updated.id);
     },
@@ -506,6 +520,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           inputRef={nameInputRef}
           onChange={(event) => setName(event.target.value)}
           required
+          aria-describedby={mutationError ? errorId : undefined}
         />
       </FormControl>
       <FormControl sx={{ maxWidth: '14rem' }}>
@@ -517,6 +532,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
           value={duration}
           onChange={(event) => setDuration(event.target.value)}
           inputProps={{ min: 1, step: 1, 'data-testid': 'lesson-duration-input' }}
+          aria-describedby={mutationError ? errorId : undefined}
         />
         <FormHelperText>{t.lessons.durationHelper}</FormHelperText>
       </FormControl>
@@ -540,7 +556,7 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
             <Paper key={index} variant="outlined" sx={{ p: '0.9rem', display: 'grid', gap: '0.6rem' }} data-testid="lesson-block">
               <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
                 <Eyebrow variant="overline" component="span" data-testid="block-type">
-                  {block.type}
+                  {blockTypeLabel(t, block.type)}
                 </Eyebrow>
                 <Box sx={{ flex: 1 }} />
                 <Tooltip title={t.lessons.moveUp({ index })}>
@@ -627,7 +643,19 @@ const LessonForm = ({ lesson, onSaved }: { lesson: CourseLesson | null; onSaved:
       </Stack>
 
       {validationError ? <Typography variant="caption" role="alert">{validationError}</Typography> : null}
-      {mutationError ? <MutationError error={mutationError} /> : null}
+      {mutationError ? (
+        <MutationError
+          error={mutationError}
+          id={errorId}
+          fields={[
+            { name: 'name', id: 'lesson-name', label: t.common.name },
+            { name: 'durationMinutes', id: 'lesson-duration', label: t.lessons.durationLabel },
+            { name: 'contents', id: 'lesson-name', label: t.lessons.contentBlocks },
+          ]}
+        />
+      ) : null}
+      {tenantSecrets.isError ? <StatusView surface={false} state={{ kind: 'error', message: errorMessage(tenantSecrets.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSecrets.refetch() } }} /> : null}
+      {dirty ? <Typography variant="caption" color="warning.main">{t.common.unsavedChanges}</Typography> : null}
     </SectionCard>
   );
 };
@@ -646,7 +674,7 @@ const LessonDeleteDialog = ({ lesson, onClose }: { lesson: CourseLesson; onClose
 
   const summary = () => {
     if (references.isPending) return <Typography variant="body2">{t.lessons.deleteReferencesLoading}</Typography>;
-    if (references.isError) return <MutationError error={references.error} />;
+    if (references.isError) return <StatusView surface={false} state={{ kind: 'error', message: errorMessage(references.error, t), retry: { label: t.common.retry, onRetry: () => void references.refetch() } }} />;
     const { chapters, products, progressCount } = references.data.references;
     if (chapters.length === 0 && products.length === 0 && progressCount === 0) {
       return <Typography variant="body2">{t.lessons.deleteReferencesNone}</Typography>;
@@ -714,6 +742,7 @@ export const LessonsSection = () => {
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.lessons.searchPlaceholder}
             placeholder={t.lessons.searchPlaceholder}
             testId="lessons-search"
           />
@@ -744,7 +773,7 @@ export const LessonsSection = () => {
         {lessons.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.lessons.loading }} />
         ) : lessons.isError ? (
-          <StatusView state={{ kind: 'error', message: errorMessage(lessons.error, t) }} />
+          <StatusView state={{ kind: 'error', message: errorMessage(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />
         ) : (
           <List disablePadding dense>
             {paged.pageItems.map((lesson) => (
@@ -795,7 +824,7 @@ export const LessonCreatePage = () => {
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={t.lessons.newLesson} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }}>
+    <PanelPage title={t.lessons.newLesson} backTo={<PanelBackLink to="/panel/lessons">{t.lessons.allLessons}</PanelBackLink>}>
       <LessonForm
         lesson={null}
         onSaved={(lessonId) => void navigate({ to: '/panel/lessons/$lessonId', params: { lessonId } })}
@@ -809,7 +838,7 @@ export const LessonEditPage = ({ lesson }: { lesson: CourseLesson }) => {
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={lesson.name} backTo={{ label: t.lessons.allLessons, href: '/panel/lessons' }}>
+    <PanelPage title={lesson.name} backTo={<PanelBackLink to="/panel/lessons">{t.lessons.allLessons}</PanelBackLink>}>
       <LessonForm
         key={lesson.id}
         lesson={lesson}

@@ -30,8 +30,10 @@ const notification = (input: { id: string; read: boolean }) => ({
   createdAt: '2026-07-15T08:00:00.000Z',
 });
 
-const renderBell = async () => {
-  const rootRoute = createRootRoute({ component: NotificationBell });
+const renderBell = async ({ tabLabel, live = true }: { tabLabel?: string; live?: boolean } = {}) => {
+  const rootRoute = createRootRoute({
+    component: () => <NotificationBell {...(tabLabel === undefined ? {} : { tabLabel })} live={live} />,
+  });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -41,6 +43,14 @@ const renderBell = async () => {
 };
 
 describe('NotificationBell', () => {
+  it('adds an ellipsis and native title to the narrow notification tab label', async () => {
+    await renderBell({ tabLabel: pl.notifications.mobileTab, live: false });
+
+    const label = screen.getByTitle(pl.notifications.mobileTab);
+    expect(label).toHaveClass('MuiTypography-noWrap');
+    expect(label).toHaveAttribute('title', pl.notifications.mobileTab);
+  });
+
   it('shows the unread badge and marks a notification read on open', async () => {
     const readIds: string[] = [];
     server.use(

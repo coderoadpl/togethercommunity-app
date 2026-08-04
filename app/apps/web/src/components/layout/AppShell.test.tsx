@@ -10,6 +10,7 @@ describe('AppShell', () => {
         isDesktop
         mobileNavigationOpen={false}
         onMobileNavigationClose={vi.fn()}
+        mobileNavigationCloseLabel="Close navigation"
         header={<span>Acme header</span>}
         navigation={<nav><a href="/panel/products">Products</a></nav>}
         footer={<span data-testid="shell-footer">v0.1.0</span>}
@@ -25,11 +26,13 @@ describe('AppShell', () => {
   });
 
   it('renders the temporary navigation when opened on mobile', () => {
+    const onClose = vi.fn();
     render(
       <AppShell
         isDesktop={false}
         mobileNavigationOpen
-        onMobileNavigationClose={vi.fn()}
+        onMobileNavigationClose={onClose}
+        mobileNavigationCloseLabel="Close navigation"
         header={<span>Mobile header</span>}
         navigation={<nav><a href="/panel/products">Products</a></nav>}
       >
@@ -38,6 +41,8 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByRole('navigation')).toHaveTextContent('Products');
+    screen.getByRole('button', { name: 'Close navigation' }).click();
+    expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
 
@@ -47,9 +52,10 @@ describe('AppShell', () => {
         isDesktop
         mobileNavigationOpen={false}
         onMobileNavigationClose={vi.fn()}
+        mobileNavigationCloseLabel="Close navigation"
         header={<span>Acme header</span>}
         navigation={<nav><a href="/panel/products">Products</a></nav>}
-        state={{ kind: 'error', message: 'Could not open workspace' }}
+        state={{ kind: 'error', message: 'Could not open workspace', retry: { label: 'Retry', onRetry: vi.fn() } }}
       >
         <p>Panel content</p>
       </AppShell>,

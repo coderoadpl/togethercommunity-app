@@ -117,8 +117,8 @@ describe('scheduler activity panel', () => {
       '/panel/marketing/activity/run-marketing-1',
     );
 
-    await userEvent.click(screen.getByLabelText('status'));
-    await userEvent.click(screen.getByRole('option', { name: 'nieudane' }));
+    await userEvent.click(screen.getByLabelText('Status'));
+    await userEvent.click(screen.getByRole('option', { name: 'Nieudane' }));
 
     expect(await screen.findByText('18')).toBeInTheDocument();
     expect(requests.some((request) => new URL(request).searchParams.get('status') === 'failed')).toBe(true);

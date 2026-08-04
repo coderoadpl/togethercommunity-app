@@ -5,21 +5,22 @@ import {
   Button,
   FormControl,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Stack,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
-import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
+import { appBaseDomain, hostHasTenantSubdomain, isConfiguredBaseDomainHost, usesPlatformAuthSurface } from '../../lib/tenant.js';
 import { FinePrint } from '../../theme.js';
 
 const baseDomainUrl = (): string => {
@@ -39,7 +40,8 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const offer = useQuery(actions.publicOffer);
+  const resolveTenantOffer = !isConfiguredBaseDomainHost(hostname);
+  const offer = useQuery({ ...actions.publicOffer, enabled: resolveTenantOffer });
   const onOtherTenantHost = hostHasTenantSubdomain(hostname);
   const legal = offer.data?.tenant.legal ?? null;
   const consentRequired = legal !== null && (legal.termsUrl !== null || legal.privacyUrl !== null);
@@ -87,7 +89,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
               <FinePrint variant="caption" component="p" sx={{ mb: '0.4rem' }}>
                 {t.auth.registeredBoughtHint}
               </FinePrint>
-              <Link href="/login">{t.auth.registeredUseMagicLinkCta}</Link>
+              <MuiLink component={Link} to="/login">{t.auth.registeredUseMagicLinkCta}</MuiLink>
             </Box>
           </Stack>
       </FocusCard>
@@ -96,14 +98,17 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
 
   return (
     <FocusCard
-      eyebrow={t.auth.createAccountEyebrow({ host: hostname })}
+      eyebrow={usesPlatformAuthSurface(hostname)
+        ? t.auth.createAccountPlatformEyebrow
+        : t.auth.createAccountEyebrow({ host: hostname })}
       onSubmit={submit}
       footer={
         <FinePrint variant="caption" component="p">
-          {t.auth.alreadyHaveAccount} <Link href="/login">{t.auth.signInLink}</Link>
+          {t.auth.alreadyHaveAccount} <MuiLink component={Link} to="/login">{t.auth.signInLink}</MuiLink>
         </FinePrint>
       }
     >
+      {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="register-name">{t.auth.nameLabel}</FormLabel>
@@ -144,7 +149,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
             type="submit"
             variant="contained"
             fullWidth
-            disabled={signUp.isPending || offer.isPending}
+            disabled={signUp.isPending || (resolveTenantOffer && offer.isPending)}
             sx={{ mt: '0.4rem' }}
           >
             {signUp.isPending ? t.auth.creatingAccount : t.auth.createAccount}

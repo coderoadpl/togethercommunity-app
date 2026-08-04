@@ -32,7 +32,7 @@ describe('TenantLogo', () => {
   it('renders the tenant logo in the member header slot', async () => {
     server.use(offerHandler(BRANDED));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo />} />,
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" logo={<TenantLogo />} />,
     );
 
     const logo = await screen.findByTestId('tenant-logo');
@@ -44,7 +44,7 @@ describe('TenantLogo', () => {
   it('renders the tenant name without a logo', async () => {
     server.use(offerHandler({ logoUrl: null, accentColor: null, faviconUrl: null }));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" logo={<TenantLogo />} />,
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" logo={<TenantLogo />} />,
     );
 
     expect(await screen.findByTestId('tenant-name-mark')).toHaveTextContent('Akademia Samouka');
@@ -79,6 +79,13 @@ describe('BrandMark', () => {
     expect(await screen.findByTestId('tenant-brand-name')).toHaveTextContent('Akademia Samouka');
     expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
+  });
+
+  it('renders the compact checkout brand at the specified size', async () => {
+    server.use(offerHandler(BRANDED));
+    renderWithProviders(<BrandMark size="compact" />);
+
+    expect(await screen.findByTestId('tenant-brand-logo')).toHaveStyle({ height: '1.5rem' });
   });
 
   it('falls back to the stock wordmark when the offer is not found', async () => {
@@ -116,7 +123,7 @@ describe('TenantSocialLinks', () => {
       { label: 'Instagram', url: 'https://instagram.com/akademia' },
     ]));
     renderWithProviders(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka">
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
         <TenantSocialLinks />
       </MemberPage>,
     );

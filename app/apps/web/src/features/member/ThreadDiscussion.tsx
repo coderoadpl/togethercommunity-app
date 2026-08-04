@@ -6,7 +6,7 @@ import { ApiError } from '#core/client/index.js';
 import type { DiscussionPost, PostContextKind, ThreadSubscriptionState } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { ConfirmDialog } from '../../components/layout/index.js';
+import { ConfirmDialog, StatusView } from '../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatRelativeTime } from '../../lib/format.js';
 import {
@@ -469,7 +469,7 @@ export const ThreadDiscussion = ({
   };
 
   const forbidden = isForbidden(discussion.error);
-  const mutationError = [create, update, remove].find((mutation) => mutation.isError)?.error ?? null;
+  const mutationError = [create, update, remove, subscribe, mute].find((mutation) => mutation.isError)?.error ?? null;
   const mutationErrorMessage = mutationError instanceof ApiError && mutationError.appError.code === 'rate_limited'
     ? t.community.postTooFast
     : mutationError === null
@@ -503,6 +503,8 @@ export const ThreadDiscussion = ({
         </Stack>
       )}
 
+      {me.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /> : null}
+
       {forbidden ? (
         <Paper elevation={1} sx={{ p: '1.5rem' }} data-testid="discussion-locked-note">
           <Typography variant="body1">{lockedNote ?? t.discussion.lockedNote}</Typography>
@@ -510,29 +512,14 @@ export const ThreadDiscussion = ({
       ) : discussion.isPending ? (
         <Typography variant="body2">{t.discussion.loading}</Typography>
       ) : discussion.isError ? (
-        <Alert
-          severity="error"
+        <StatusView
           data-testid="discussion-error"
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              disabled={discussion.isFetching}
-              onClick={() => {
-                void discussion.refetch();
-              }}
-            >
-              {discussion.isFetching ? t.discussion.retrying : t.discussion.retry}
-            </Button>
-          }
-        >
-          <Typography variant="subtitle2" component="p">
-            {t.discussion.errorTitle}
-          </Typography>
-          <Typography variant="body2" component="p">
-            {t.discussion.errorBody}
-          </Typography>
-        </Alert>
+          state={{
+            kind: 'error',
+            message: <><strong>{t.discussion.errorTitle}</strong><br />{t.discussion.errorBody}</>,
+            retry: { label: discussion.isFetching ? t.discussion.retrying : t.discussion.retry, onRetry: () => void discussion.refetch() },
+          }}
+        />
       ) : focus !== undefined && subthreadRoot === null ? (
         <Stack useFlexGap sx={{ rowGap: '1rem' }} data-testid="thread-not-found">
           <Typography variant="body1">{t.discussion.deletedPost}</Typography>

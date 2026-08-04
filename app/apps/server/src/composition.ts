@@ -186,6 +186,7 @@ import type {
   PostReportRepository,
   PurchaseRepository,
   ProductBatchReader,
+  ProductMetadataRepository,
   ProductGrantRepository,
   ProductPriceRepository,
   ProductPriceHistoryRepository,
@@ -267,7 +268,7 @@ interface KsefAppDeps {
 export interface AppDeps {
   auth: Pick<Auth, 'handler' | 'setMagicLinkDeliveryContext' | 'setResetPasswordDeliveryContext' | 'setEmailVerificationDeliveryContext'>;
   authPort: AuthPort;
-  products: ProductRepository & ProductBatchReader;
+  products: ProductRepository & ProductBatchReader & ProductMetadataRepository;
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;

@@ -127,6 +127,15 @@ export const newProductSchema = z.object({
 
 export type NewProductInput = z.input<typeof newProductSchema>;
 
+export const updateProductInputSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long').optional(),
+  description: newProductDescriptionSchema.optional(),
+  coverUrl: productCoverUrlSchema.nullable().optional(),
+});
+
+export type UpdateProductInput = z.input<typeof updateProductInputSchema>;
+
 export const updateProductAccessItemsInputSchema = z.object({
   id: z.string().min(1),
   accessItems: z.array(accessItemSchema),

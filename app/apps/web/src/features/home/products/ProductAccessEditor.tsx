@@ -24,7 +24,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AccessItem, Course, CourseModule, Product } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { useTranslations, type Messages } from '../../../i18n/index.js';
+import { StatusView } from '../../../components/layout/index.js';
+import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
 import { MutationError } from '../courses/feedback.js';
 
 type AccessLevel = 'course' | 'modules' | 'lessons';
@@ -144,9 +145,9 @@ export const ProductAccessEditor = ({ product }: { product: Product }) => {
   if (courses.isPending || modules.isPending || lessons.isPending) {
     return <Typography variant="body2">{t.access.loading}</Typography>;
   }
-  if (courses.isError) return <MutationError error={courses.error} />;
-  if (modules.isError) return <MutationError error={modules.error} />;
-  if (lessons.isError) return <MutationError error={lessons.error} />;
+  if (courses.isError) return <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />;
+  if (modules.isError) return <StatusView surface={false} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
+  if (lessons.isError) return <StatusView surface={false} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const dirty = JSON.stringify(items) !== JSON.stringify(product.accessItems);
 

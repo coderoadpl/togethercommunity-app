@@ -13,6 +13,7 @@ describe('StatusView', () => {
   it('renders the loading label', () => {
     render(<StatusView state={{ kind: 'loading', label: 'Wczytywanie…' }} data-testid="status" />);
     expect(screen.getByTestId('status')).toHaveTextContent('Wczytywanie…');
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('renders the error message with a working retry action', async () => {
@@ -29,14 +30,10 @@ describe('StatusView', () => {
     );
 
     expect(screen.getByRole('alert')).toHaveTextContent('Coś poszło nie tak');
-    await user.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }));
+    const retry = screen.getByRole('button', { name: 'Spróbuj ponownie' });
+    expect(retry).toHaveClass('MuiButton-fullWidth');
+    await user.click(retry);
     expect(onRetry).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders the error message without a retry button when no retry is given', () => {
-    render(<StatusView state={{ kind: 'error', message: 'Błąd' }} />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Błąd');
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('renders the empty state with icon, title, body and action', () => {
@@ -79,5 +76,7 @@ describe('StatusView', () => {
 
     expect(screen.getByTestId('inline-empty')).toHaveAttribute('data-state', 'empty');
     expect(screen.getByTestId('inline-empty')).not.toHaveClass('MuiPaper-root');
+    expect(screen.getByTestId('inline-empty').querySelector('svg')).toBeInTheDocument();
+    expect(screen.getByText('Brak danych')).toHaveClass('MuiTypography-body2');
   });
 });

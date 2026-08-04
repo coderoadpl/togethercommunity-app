@@ -55,8 +55,8 @@ const SpaceRow = ({ space }: { space: StaffSpace }) => {
         <Button
           size="small"
           variant="text"
-          component="a"
-          href={`/panel/spaces/${encodeURIComponent(space.id)}`}
+          component={Link}
+          to={`/panel/spaces/${encodeURIComponent(space.id)}`}
           data-testid={`space-manage-${space.id}`}
         >
           {t.spacesPanel.manage}
@@ -168,7 +168,7 @@ export const SpacesPanel = () => {
         {spaces.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.spacesPanel.loading }} />
         ) : spaces.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {visible.map((space) => (

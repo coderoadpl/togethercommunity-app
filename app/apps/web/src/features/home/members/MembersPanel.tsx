@@ -100,6 +100,8 @@ export const MembersPanel = () => {
 
   const openMember = (memberId: string) =>
     void navigate({ to: '/panel/members/$memberId', params: { memberId } });
+  const openCheckoutLinks = () =>
+    void navigate({ to: '/panel/products', hash: 'product-actions' });
 
   const visibleMembers = (members.data?.members ?? [])
     .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -131,13 +133,14 @@ export const MembersPanel = () => {
         </Stack>
       }
     >
-      <ErasureRequestsSection />
+      <Stack id="invite-members" sx={{ scrollMarginTop: '1rem' }}>
       <ListSection
         toolbar={{
           search: (
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.members.searchPlaceholder}
             placeholder={t.members.searchPlaceholder}
             testId="members-search"
           />
@@ -162,13 +165,25 @@ export const MembersPanel = () => {
         }}
         pagination={members.isSuccess && visibleMembers.length > 0 ? <ListPagination paged={paged} testId="members-pagination" /> : undefined}
         isEmpty={members.isSuccess && members.data.members.length === 0}
-        empty={<StatusView state={{ kind: 'empty', title: t.members.empty }} />}
+        empty={(
+          <StatusView
+            state={{
+              kind: 'empty',
+              title: t.members.empty,
+              action: (
+                <Button onClick={openCheckoutLinks}>
+                  {t.members.checkoutLinkAction}
+                </Button>
+              ),
+            }}
+          />
+        )}
         noMatches={members.isSuccess && members.data.members.length > 0 && visibleMembers.length === 0 ? <Typography variant="body1">{t.members.noMatches}</Typography> : undefined}
       >
         {members.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.members.loading }} />
         ) : members.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(members.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(members.error, t), retry: { label: t.common.retry, onRetry: () => void members.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <TableContainer>
@@ -226,6 +241,8 @@ export const MembersPanel = () => {
           </ResponsiveTable>
         )}
       </ListSection>
+      </Stack>
+      <ErasureRequestsSection />
       {exportError !== null ? <Alert severity="error">{exportError}</Alert> : null}
       {failedSubscriptionIds.length > 0 ? (
         <Alert severity="warning" data-testid="member-remove-cancellation-warning">

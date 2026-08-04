@@ -23,13 +23,119 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { priceMajorSchema, SUPPORTED_CURRENCIES, type PriceKind, type Product, type ProductPrice } from '#core/domain/index.js';
+import {
+  priceMajorSchema,
+  productCoverUrlSchema,
+  SUPPORTED_CURRENCIES,
+  type PriceKind,
+  type Product,
+  type ProductPrice,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatFileSize, formatPrice } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { ProductAccessEditor } from './ProductAccessEditor.js';
+
+const ProductDetailsSection = ({ product }: { product: Product }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState(product.title);
+  const [description, setDescription] = useState(product.description);
+  const [coverUrl, setCoverUrl] = useState(product.coverUrl ?? '');
+  const save = useMutation({
+    ...actions.updateProduct,
+    onSuccess: async () => queryClient.invalidateQueries(actions.productsInvalidates()),
+  });
+  const parsedCoverUrl = productCoverUrlSchema.safeParse(coverUrl);
+  const coverPreviewUrl = parsedCoverUrl.success ? parsedCoverUrl.data : null;
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    save.mutate({
+      id: product.id,
+      title: title.trim(),
+      description,
+      coverUrl: coverUrl.trim() === '' ? null : coverUrl.trim(),
+    });
+  };
+
+  const resetFeedback = () => {
+    if (save.isSuccess || save.isError) save.reset();
+  };
+
+  return (
+    <SectionCard
+      title={t.products.detailsHeading}
+      onSubmit={submit}
+      actions={(
+        <Button type="submit" variant="contained" disabled={save.isPending || title.trim().length === 0}>
+          {save.isPending ? t.products.savingDetails : t.products.saveDetails}
+        </Button>
+      )}
+      data-testid="product-details-section"
+    >
+      <FormControl fullWidth>
+        <FormLabel htmlFor="product-title">{t.products.titleLabel}</FormLabel>
+        <OutlinedInput
+          id="product-title"
+          value={title}
+          required
+          onChange={(event) => {
+            resetFeedback();
+            setTitle(event.target.value);
+          }}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="product-slug">{t.products.slugLabel}</FormLabel>
+        <OutlinedInput
+          id="product-slug"
+          value={product.slug}
+          readOnly
+          inputProps={{ 'aria-describedby': 'product-slug-helper' }}
+        />
+        <FormHelperText id="product-slug-helper">{t.products.slugImmutableHint}</FormHelperText>
+      </FormControl>
+      <HtmlEditor
+        id="product-description"
+        value={description}
+        onChange={(value) => {
+          resetFeedback();
+          setDescription(value);
+        }}
+        fieldLabel={t.common.description}
+      />
+      <FormControl fullWidth>
+        <FormLabel htmlFor="product-cover-url">{t.products.coverUrlLabel}</FormLabel>
+        <OutlinedInput
+          id="product-cover-url"
+          type="url"
+          value={coverUrl}
+          onChange={(event) => {
+            resetFeedback();
+            setCoverUrl(event.target.value);
+          }}
+        />
+        <FormHelperText>{t.products.coverUrlHint}</FormHelperText>
+      </FormControl>
+      {coverPreviewUrl === null ? null : (
+        <CoverPreview
+          key={coverPreviewUrl}
+          src={coverPreviewUrl}
+          label={title}
+          testId="product-cover-preview"
+        />
+      )}
+      {save.isSuccess ? <Alert severity="success">{t.products.detailsSaved}</Alert> : null}
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
+    </SectionCard>
+  );
+};
 
 const PriceRow = ({ price, onDeactivate }: { price: ProductPrice; onDeactivate: (price: ProductPrice) => void }) => {
   const t = useTranslations();
@@ -123,7 +229,7 @@ const PricesSection = ({ product }: { product: Product }) => {
         {prices.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.products.loading }} surface={false} />
         ) : prices.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(prices.error, t) }} surface={false} />
+          <StatusView state={{ kind: 'error', message: localizeError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} surface={false} />
         ) : prices.data.prices.length === 0 ? (
           <Typography>{t.products.pricesEmpty}</Typography>
         ) : (
@@ -284,9 +390,8 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
           ))}
         </Select>
       </FormControl>
-      {definitions.isError || save.isError ? (
-        <Alert severity="error">{localizeError(definitions.error ?? save.error, t)}</Alert>
-      ) : null}
+      {definitions.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(definitions.error, t), retry: { label: t.common.retry, onRetry: () => void definitions.refetch() } }} /> : null}
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -327,7 +432,7 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
       {assets.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} surface={false} />
       ) : assets.isError ? (
-        <Alert severity="error">{localizeError(assets.error, t)}</Alert>
+        <StatusView surface={false} state={{ kind: 'error', message: localizeError(assets.error, t), retry: { label: t.common.retry, onRetry: () => void assets.refetch() } }} />
       ) : assets.data.assets.length === 0 ? (
         <Typography variant="body2" color="text.secondary" data-testid="product-download-assets-empty">
           {t.products.downloadsEmpty}
@@ -385,8 +490,11 @@ export const ProductEditorPage = ({ product }: { product: Product }) => {
   const t = useTranslations();
 
   return (
-    <PanelPage title={product.title} backTo={{ label: t.products.allProducts, href: '/panel/products' }}>
-      <PricesSection product={product} />
+    <PanelPage title={product.title} backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}>
+      <ProductDetailsSection product={product} />
+      <Box id="prices" sx={{ scrollMarginTop: '1rem' }}>
+        <PricesSection product={product} />
+      </Box>
       {product.type === 'digital_download' ? <DownloadAssetsSection productId={product.id} /> : null}
       <CheckoutConsentsSection product={product} />
       <SectionCard title={t.access.heading}>

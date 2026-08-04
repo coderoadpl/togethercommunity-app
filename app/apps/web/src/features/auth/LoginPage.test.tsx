@@ -1,8 +1,8 @@
-import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import pkg from '../../../../../package.json' with { type: 'json' };
 
@@ -26,10 +26,16 @@ const stubAuthConfig = (exposeMagicLinks = false) =>
     ),
   );
 
-const renderLoginPage = async (exposeMagicLinks = false, initialEntry = '/login') => {
+const renderLoginPage = async (
+  exposeMagicLinks = false,
+  initialEntry = '/login',
+  hostname?: string,
+) => {
   stubAuthConfig(exposeMagicLinks);
   window.history.pushState({}, '', initialEntry);
-  const rootRoute = createRootRoute({ component: LoginPage });
+  const rootRoute = createRootRoute({
+    component: () => hostname === undefined ? <LoginPage /> : <LoginPage hostname={hostname} />,
+  });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
@@ -38,12 +44,101 @@ const renderLoginPage = async (exposeMagicLinks = false, initialEntry = '/login'
   return renderWithProviders(<RouterProvider router={router} />);
 };
 
+afterEach(() => vi.unstubAllEnvs());
+
 const fillCredentials = async () => {
   await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'creator@together.dev');
   await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'wrong-password');
 };
 
 describe('LoginPage', () => {
+  it('uses platform login on the configured base domain without resolving a tenant', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'togethercommunity.app');
+    let offerCalls = 0;
+    server.use(
+      http.get('*/api/public/offer', () => {
+        offerCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } },
+          { status: 404 },
+        );
+      }),
+    );
+
+    await renderLoginPage(false, '/login', 'togethercommunity.app');
+
+    expect(screen.getByText(pl.auth.signInPlatformEyebrow)).toBeInTheDocument();
+    expect(screen.queryByText(/przestrzeń togethercommunity\.app/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(pl.errors.messageTenantNotFound)).not.toBeInTheDocument();
+    await waitFor(() => expect(offerCalls).toBe(0));
+  });
+
+  it('keeps single-tenant login usable with a platform caption when no sole tenant exists', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', '');
+    server.use(
+      http.get('*/api/public/offer', () =>
+        HttpResponse.json(
+          { ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    await renderLoginPage(false, '/login', 'preview.example');
+
+    const error = await screen.findByText(pl.errors.messageTenantNotFound);
+    const retry = screen.getByRole('button', { name: pl.common.retry });
+    const signupPrompt = screen.getByText(pl.auth.registerPrompt);
+    expect(screen.getByText(pl.auth.signInPlatformEyebrow)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.auth.signInIdle })).toBeEnabled();
+    expect(retry).toHaveClass('MuiButton-fullWidth');
+    expect(error.compareDocumentPosition(signupPrompt)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('lands a successful base-domain login on the workspace picker', async () => {
+    vi.stubEnv('VITE_APP_BASE_DOMAIN', 'localhost');
+    let offerCalls = 0;
+    stubAuthConfig();
+    server.use(
+      http.get('*/api/public/offer', () => {
+        offerCalls += 1;
+        return HttpResponse.json(
+          { ok: false, error: { code: 'tenant_not_found', message: 'Unknown tenant' } },
+          { status: 404 },
+        );
+      }),
+      http.post('*', () =>
+        HttpResponse.json({ user: { id: 'u1', email: 'creator@together.dev' } }),
+      ),
+    );
+    window.history.pushState({}, '', '/login');
+    const rootRoute = createRootRoute({ component: Outlet });
+    const indexRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/',
+      component: () => <div>{pl.tenant.choose}</div>,
+    });
+    const loginRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/login',
+      component: () => <LoginPage hostname="localhost" />,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([indexRoute, loginRoute]),
+      history: createMemoryHistory({ initialEntries: ['/login'] }),
+    });
+    await router.load();
+    renderWithProviders(<RouterProvider router={router} />);
+
+    await userEvent.type(screen.getByLabelText(pl.auth.emailLabel), 'creator@together.dev');
+    await userEvent.type(screen.getByLabelText(pl.auth.passwordLabel), 'demo-password-15');
+    await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
+
+    expect(await screen.findByText(pl.tenant.choose)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/');
+    expect(offerCalls).toBe(0);
+  });
+
   it('renders labeled login inputs', async () => {
     await renderLoginPage();
 
@@ -186,7 +281,8 @@ describe('LoginPage', () => {
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
 
-    const alert = await screen.findByRole('alert');
+    const alert = (await screen.findByText(pl.errors.messageInvalidCredentials)).closest('[role="alert"]');
+    expect(alert).not.toBeNull();
     expect(alert).toHaveTextContent(pl.errors.messageInvalidCredentials);
     expect(alert).not.toHaveTextContent(pl.errors.messageUnauthorized);
   });

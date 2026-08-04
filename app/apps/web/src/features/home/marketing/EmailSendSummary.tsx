@@ -1,4 +1,5 @@
 import { Box, Button, Chip, Paper, Stack, Typography } from '@mui/material';
+import { Link } from '@tanstack/react-router';
 
 import type {
   EmailDeliveryStatus,
@@ -54,9 +55,9 @@ export const EmailSendSummary = ({ send }: { send: EmailSendProjection }) => {
           <Typography variant="body2">{deliveryStatusLabel(send.deliveryStatus, t)}</Typography>
           <Box sx={{ flex: 1 }} />
           <Button
-            component="a"
+            component={Link}
             size="small"
-            href={`/panel/marketing/sends/${send.kind}/${encodeURIComponent(send.id)}`}
+            to={`/panel/marketing/sends/${encodeURIComponent(send.kind)}/${encodeURIComponent(send.id)}`}
           >
             {t.marketing.sendDetails}
           </Button>

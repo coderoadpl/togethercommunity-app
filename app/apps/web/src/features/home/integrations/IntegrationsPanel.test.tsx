@@ -431,6 +431,8 @@ describe('IntegrationsPanel', () => {
     expect(field).not.toBeNull();
     if (!field) return;
     await userEvent.click(within(field).getByTestId('secret-remove-ifirma.invoiceApiKey'));
+    expect(await screen.findByText(pl.integrations.removeSecretConfirmBody({ label: pl.integrations.ifirmaInvoiceApiKeyLabel }))).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('secret-remove-confirm-ifirma.invoiceApiKey'));
 
     await waitFor(() => {
       expect(screen.getByTestId('secret-status-ifirma.invoiceApiKey')).toHaveTextContent(
@@ -448,6 +450,8 @@ describe('IntegrationsPanel', () => {
     expect(field).not.toBeNull();
     if (!field) return;
     await userEvent.click(within(field).getByTestId('secret-remove-ifirma.username'));
+    expect(await screen.findByText(pl.integrations.removeSecretConfirmBody({ label: pl.integrations.ifirmaUsernameLabel }))).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('secret-remove-confirm-ifirma.username'));
 
     await waitFor(() => {
       expect(screen.getByTestId('secret-status-ifirma.username')).toHaveTextContent(
@@ -463,6 +467,8 @@ describe('IntegrationsPanel', () => {
     ], defaultSettings, 'live');
 
     await userEvent.click(await screen.findByTestId('stripe-remove'));
+    expect(await screen.findByText(pl.integrations.stripeDisconnectConfirmBody)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('stripe-remove-confirm'));
 
     await waitFor(() => {
       expect(screen.getByTestId('stripe-key-status')).toHaveTextContent(

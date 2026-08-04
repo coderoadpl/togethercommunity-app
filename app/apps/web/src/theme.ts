@@ -1,6 +1,6 @@
 import type { ElementType } from 'react';
-import { Box, ButtonBase, LinearProgress, Link, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
-import { alpha, createTheme, keyframes, styled, type Theme } from '@mui/material/styles';
+import { Box, Button, ButtonBase, LinearProgress, ListItem, ListItemButton, ListItemText, MenuItem, Paper, Stack, SvgIcon, Typography } from '@mui/material';
+import { alpha, createTheme, styled, type Theme } from '@mui/material/styles';
 
 /**
  * The entire "engineer's logbook" visual language lives in this theme:
@@ -23,6 +23,13 @@ declare module '@mui/material/styles' {
     numericFontFamily?: string;
     statusAccent?: string;
     moneyColor?: string;
+    primaryActive?: string;
+    emberCta?: {
+      main: string;
+      hover: string;
+      active: string;
+      contrastText: string;
+    };
     /** Focus-ring base color; themes that set it let applyBranding tint focus with the tenant accent. */
     focusRing?: string;
   }
@@ -31,6 +38,13 @@ declare module '@mui/material/styles' {
     numericFontFamily?: string;
     statusAccent?: string;
     moneyColor?: string;
+    primaryActive?: string;
+    emberCta?: {
+      main: string;
+      hover: string;
+      active: string;
+      contrastText: string;
+    };
     focusRing?: string;
   }
 }
@@ -51,8 +65,8 @@ const CONTRAST_THRESHOLD = 4.5;
 
 /**
  * Shadcn is the only maintained base theme (owner decision 2026-07-29); the
- * other six stay compiled and selectable as unmaintained BYO-theme examples
- * for future tenant theming, with Steady Frame as the showcase reference.
+ * other six stay compiled as unmaintained Storybook-only BYO-theme examples,
+ * with Steady Frame as the showcase reference.
  * See docs/decisions/0010-shadcn-base-theme.md.
  */
 export const MODES = [
@@ -67,6 +81,7 @@ export const MODES = [
 
 type ThemeModeOption = (typeof MODES)[number];
 export type ThemeMode = ThemeModeOption['id'];
+export type ResolvedColorScheme = 'light' | 'dark';
 
 /**
  * Stock Material UI look. Only the per-tenant accent carries over as the
@@ -124,7 +139,12 @@ const createPlainTheme = (accentHue?: number): Theme =>
     },
   });
 
-export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme => {
+export const createThemeForMode = (
+  mode: ThemeMode,
+  accentHue?: number,
+  scheme: ResolvedColorScheme = 'light',
+): Theme => {
+  if (scheme === 'dark') return createShadcnTheme('dark');
   switch (mode) {
     case 'logbook':
       return createAppTheme(accentHue);
@@ -133,7 +153,7 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
     case 'scoreboard':
       return createScoreboardTheme();
     case 'shadcn':
-      return createShadcnTheme();
+      return createShadcnTheme('light');
     case 'signal-mono':
       return createSignalMonoTheme();
     case 'steady-frame':
@@ -145,45 +165,218 @@ export const createThemeForMode = (mode: ThemeMode, accentHue?: number): Theme =
 
 const SHADCN_FONT =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const SHADCN_FONT_DISPLAY = `'Poppins', ${SHADCN_FONT}`;
 
-const SHADCN_BG = '#fafafa';
-const SHADCN_SURFACE = '#ffffff';
-const SHADCN_INK = '#09090b';
-const SHADCN_INK_SOFT = '#64646b';
-const SHADCN_PRIMARY = '#18181b';
-const SHADCN_PRIMARY_HOVER = '#27272a';
-const SHADCN_MUTED = '#f4f4f5';
-const SHADCN_BORDER = '#e4e4e7';
-const SHADCN_BORDER_STRONG = '#d4d4d8';
-const SHADCN_RING = '#a1a1aa';
-const SHADCN_DESTRUCTIVE = '#dc2626';
-const SHADCN_SUCCESS = '#15803d';
-const SHADCN_SHADOW_XS = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
-const SHADCN_SHADOW_MD = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)';
-const SHADCN_SHADOW_LG = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)';
+interface ShadcnTokens {
+  background: string;
+  surface: string;
+  overlay: string;
+  muted: string;
+  pressed: string;
+  input: string;
+  toggleSelected: string;
+  ink: string;
+  inkSoft: string;
+  disabledText: string;
+  border: string;
+  borderStrong: string;
+  ember: string;
+  emberHover: string;
+  emberActive: string;
+  emberInk: string;
+  primary: string;
+  primaryHover: string;
+  primaryActive: string;
+  primaryType: string;
+  primaryInk: string;
+  ring: string;
+  destructive: string;
+  destructiveDark: string;
+  destructiveContrast: string;
+  success: string;
+  successContrast: string;
+  warning: string;
+  warningText: string;
+  warningContrast: string;
+  info: string;
+  infoContrast: string;
+  shadowXs: string;
+  shadowMd: string;
+  shadowLg: string;
+  tooltipBackground: string;
+  tooltipText: string;
+}
 
-const createShadcnTheme = (): Theme =>
-  createTheme({
+const SHADCN_LIGHT: ShadcnTokens = {
+  background: '#FAFAF9',
+  surface: '#FFFFFF',
+  overlay: '#FFFFFF',
+  muted: '#F4F4F2',
+  pressed: '#ECEBE9',
+  input: '#FFFFFF',
+  toggleSelected: '#FFFFFF',
+  ink: '#1B1A18',
+  inkSoft: '#63615C',
+  disabledText: '#8A8781',
+  border: '#E6E5E2',
+  borderStrong: '#D6D4D0',
+  ember: '#E8682A',
+  emberHover: '#DA5D22',
+  emberActive: '#D8571F',
+  emberInk: '#1C120B',
+  primary: '#1B1A18',
+  primaryHover: '#2F2D2A',
+  primaryActive: '#3B3936',
+  primaryType: '#1B1A18',
+  primaryInk: '#FFFFFF',
+  ring: '#E8682A',
+  destructive: '#C21E1E',
+  destructiveDark: '#A81A1A',
+  destructiveContrast: '#FFFFFF',
+  success: '#147036',
+  successContrast: '#FFFFFF',
+  warning: '#D97706',
+  warningText: '#A34D08',
+  warningContrast: '#231303',
+  info: '#0E7490',
+  infoContrast: '#FFFFFF',
+  shadowXs: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+  shadowMd: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)',
+  shadowLg: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+  tooltipBackground: '#1B1A18',
+  tooltipText: '#FFFFFF',
+};
+
+const SHADCN_DARK: ShadcnTokens = {
+  background: '#101113',
+  surface: '#17181B',
+  overlay: '#1D1F22',
+  muted: '#1B1D20',
+  pressed: '#26282D',
+  input: '#101113',
+  toggleSelected: '#26282D',
+  ink: '#EDEEF0',
+  inkSoft: '#A0A3A8',
+  disabledText: '#686C72',
+  border: '#26282C',
+  borderStrong: '#33363C',
+  ember: '#E8682A',
+  emberHover: '#EE7B40',
+  emberActive: '#EE7B40',
+  emberInk: '#1C120B',
+  primary: '#EDEEF0',
+  primaryHover: '#D9DBDE',
+  primaryActive: '#C9CCD0',
+  primaryType: '#EDEEF0',
+  primaryInk: '#101113',
+  ring: '#E8682A',
+  destructive: '#F0857A',
+  destructiveDark: '#F0857A',
+  destructiveContrast: '#2A0F0B',
+  success: '#55C382',
+  successContrast: '#0C1F15',
+  warning: '#E5A84B',
+  warningText: '#E5A84B',
+  warningContrast: '#231303',
+  info: '#85B8DC',
+  infoContrast: '#1B1815',
+  shadowXs: '0 1px 2px 0 rgba(0, 0, 0, 0.45)',
+  shadowMd: '0 4px 10px -2px rgba(0, 0, 0, 0.55)',
+  shadowLg: '0 12px 24px -6px rgba(0, 0, 0, 0.60)',
+  tooltipBackground: '#EDEEF0',
+  tooltipText: '#16171A',
+};
+
+const createShadcnTheme = (scheme: ResolvedColorScheme): Theme => {
+  const tokens = scheme === 'dark' ? SHADCN_DARK : SHADCN_LIGHT;
+  const {
+    background: SHADCN_BG,
+    surface: SHADCN_SURFACE,
+    overlay: SHADCN_OVERLAY,
+    muted: SHADCN_MUTED,
+    pressed: SHADCN_PRESSED,
+    input: SHADCN_INPUT,
+    toggleSelected: SHADCN_TOGGLE_SELECTED,
+    ink: SHADCN_INK,
+    inkSoft: SHADCN_INK_SOFT,
+    disabledText: SHADCN_DISABLED_TEXT,
+    border: SHADCN_BORDER,
+    borderStrong: SHADCN_BORDER_STRONG,
+    ember: SHADCN_EMBER,
+    emberHover: SHADCN_EMBER_HOVER,
+    emberActive: SHADCN_EMBER_ACTIVE,
+    emberInk: SHADCN_EMBER_INK,
+    primary: SHADCN_PRIMARY,
+    primaryHover: SHADCN_PRIMARY_HOVER,
+    primaryActive: SHADCN_PRIMARY_ACTIVE,
+    primaryType: SHADCN_PRIMARY_TYPE,
+    primaryInk: SHADCN_PRIMARY_INK,
+    ring: SHADCN_RING,
+    destructive: SHADCN_DESTRUCTIVE,
+    destructiveDark: SHADCN_DESTRUCTIVE_DARK,
+    destructiveContrast: SHADCN_DESTRUCTIVE_CONTRAST,
+    success: SHADCN_SUCCESS,
+    successContrast: SHADCN_SUCCESS_CONTRAST,
+    warning: SHADCN_WARNING,
+    warningText: SHADCN_WARNING_TEXT,
+    warningContrast: SHADCN_WARNING_CONTRAST,
+    info: SHADCN_INFO,
+    infoContrast: SHADCN_INFO_CONTRAST,
+    shadowXs: SHADCN_SHADOW_XS,
+    shadowMd: SHADCN_SHADOW_MD,
+    shadowLg: SHADCN_SHADOW_LG,
+    tooltipBackground: SHADCN_TOOLTIP_BACKGROUND,
+    tooltipText: SHADCN_TOOLTIP_TEXT,
+  } = tokens;
+  return createTheme({
     headerRule: `1px solid ${SHADCN_BORDER}`,
     focusRing: SHADCN_RING,
+    primaryActive: SHADCN_PRIMARY_ACTIVE,
+    emberCta: {
+      main: SHADCN_EMBER,
+      hover: SHADCN_EMBER_HOVER,
+      active: SHADCN_EMBER_ACTIVE,
+      contrastText: SHADCN_EMBER_INK,
+    },
     palette: {
-      mode: 'light',
+      mode: scheme,
       contrastThreshold: CONTRAST_THRESHOLD,
       primary: {
         main: SHADCN_PRIMARY,
         light: SHADCN_PRIMARY_HOVER,
-        dark: SHADCN_INK,
-        contrastText: SHADCN_SURFACE,
+        dark: SHADCN_PRIMARY_TYPE,
+        contrastText: SHADCN_PRIMARY_INK,
       },
       secondary: {
         main: SHADCN_PRIMARY,
-        dark: SHADCN_INK,
-        contrastText: SHADCN_SURFACE,
+        light: SHADCN_PRIMARY_HOVER,
+        dark: SHADCN_PRIMARY_TYPE,
+        contrastText: SHADCN_PRIMARY_INK,
       },
-      success: { main: SHADCN_SUCCESS, contrastText: SHADCN_SURFACE },
-      error: { main: SHADCN_DESTRUCTIVE, contrastText: SHADCN_SURFACE },
+      success: { main: SHADCN_SUCCESS, contrastText: SHADCN_SUCCESS_CONTRAST },
+      error: {
+        main: SHADCN_DESTRUCTIVE,
+        dark: SHADCN_DESTRUCTIVE_DARK,
+        contrastText: SHADCN_DESTRUCTIVE_CONTRAST,
+      },
+      warning: {
+        main: SHADCN_WARNING,
+        dark: SHADCN_WARNING_TEXT,
+        contrastText: SHADCN_WARNING_CONTRAST,
+      },
+      info: { main: SHADCN_INFO, contrastText: SHADCN_INFO_CONTRAST },
       background: { default: SHADCN_BG, paper: SHADCN_SURFACE },
-      text: { primary: SHADCN_INK, secondary: SHADCN_INK_SOFT },
+      text: {
+        primary: SHADCN_INK,
+        secondary: SHADCN_INK_SOFT,
+        disabled: SHADCN_DISABLED_TEXT,
+      },
+      action: {
+        disabled: SHADCN_DISABLED_TEXT,
+        disabledBackground: SHADCN_PRESSED,
+        hover: SHADCN_MUTED,
+        selected: SHADCN_PRESSED,
+      },
       divider: SHADCN_BORDER,
     },
     shape: { borderRadius: 8 },
@@ -192,18 +385,21 @@ const createShadcnTheme = (): Theme =>
       body1: { fontSize: '0.875rem', lineHeight: 1.6 },
       body2: { fontSize: '0.8125rem', lineHeight: 1.55 },
       h1: {
+        fontFamily: SHADCN_FONT_DISPLAY,
         fontSize: '1.875rem',
         fontWeight: 700,
         letterSpacing: '-0.025em',
         lineHeight: 1.2,
       },
       h2: {
+        fontFamily: SHADCN_FONT_DISPLAY,
         fontSize: '1.125rem',
         fontWeight: 600,
         letterSpacing: '-0.015em',
         lineHeight: 1.4,
       },
       h3: {
+        fontFamily: SHADCN_FONT_DISPLAY,
         fontSize: '1rem',
         fontWeight: 600,
         lineHeight: 1.45,
@@ -228,6 +424,10 @@ const createShadcnTheme = (): Theme =>
     components: {
       MuiCssBaseline: {
         styleOverrides: {
+          ':root': {
+            colorScheme: scheme,
+            backgroundColor: SHADCN_BG,
+          },
           body: {
             backgroundColor: SHADCN_BG,
             WebkitFontSmoothing: 'antialiased',
@@ -256,10 +456,26 @@ const createShadcnTheme = (): Theme =>
             color: theme.palette.primary.contrastText,
             boxShadow: SHADCN_SHADOW_XS,
             '&:hover': { backgroundColor: theme.palette.primary.light, boxShadow: SHADCN_SHADOW_XS },
+            '&:active': {
+              backgroundColor: theme.primaryActive ?? theme.palette.primary.light,
+              boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.18)',
+            },
+            '&.MuiButton-colorError': {
+              backgroundColor: theme.palette.error.main,
+              color: theme.palette.error.contrastText,
+              '&:hover': { backgroundColor: theme.palette.error.dark },
+              '&:active': {
+                backgroundColor: theme.palette.error.dark,
+                boxShadow: 'inset 0 1px 2px rgba(0, 0, 0, 0.18)',
+              },
+            },
             '&.Mui-disabled': {
-              backgroundColor: theme.palette.primary.main,
-              color: theme.palette.primary.contrastText,
-              opacity: 0.5,
+              backgroundColor: SHADCN_PRESSED,
+              color: SHADCN_DISABLED_TEXT,
+              boxShadow: 'none',
+              cursor: 'not-allowed',
+              opacity: 1,
+              pointerEvents: 'auto',
             },
           }),
           outlined: {
@@ -268,13 +484,28 @@ const createShadcnTheme = (): Theme =>
             backgroundColor: SHADCN_SURFACE,
             boxShadow: SHADCN_SHADOW_XS,
             '&:hover': {
-              border: `1px solid ${SHADCN_BORDER}`,
+              border: `1px solid ${SHADCN_BORDER_STRONG}`,
               backgroundColor: SHADCN_MUTED,
+            },
+            '&:active': { backgroundColor: SHADCN_PRESSED },
+            '&.Mui-disabled': {
+              border: `1px solid ${SHADCN_BORDER}`,
+              backgroundColor: SHADCN_SURFACE,
+              color: SHADCN_DISABLED_TEXT,
+              boxShadow: 'none',
+              cursor: 'not-allowed',
+              pointerEvents: 'auto',
             },
           },
           text: {
             color: SHADCN_INK,
             '&:hover': { backgroundColor: SHADCN_MUTED },
+            '&:active': { backgroundColor: SHADCN_PRESSED },
+            '&.Mui-disabled': {
+              color: SHADCN_DISABLED_TEXT,
+              cursor: 'not-allowed',
+              pointerEvents: 'auto',
+            },
           },
         },
       },
@@ -307,6 +538,7 @@ const createShadcnTheme = (): Theme =>
           elevation8: {
             border: `1px solid ${SHADCN_BORDER}`,
             borderRadius: 8,
+            backgroundColor: SHADCN_OVERLAY,
             boxShadow: SHADCN_SHADOW_MD,
           },
         },
@@ -315,7 +547,7 @@ const createShadcnTheme = (): Theme =>
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            backgroundColor: SHADCN_SURFACE,
+            backgroundColor: SHADCN_INPUT,
             '& .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER },
             '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: SHADCN_BORDER_STRONG },
             '&.Mui-focused': { boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? SHADCN_RING, 0.35)}` },
@@ -355,7 +587,8 @@ const createShadcnTheme = (): Theme =>
           root: ({ theme }) => ({
             color: theme.palette.primary.dark,
             fontWeight: 500,
-            textDecorationColor: SHADCN_BORDER_STRONG,
+            textDecorationColor: alpha(theme.palette.primary.dark, 0.35),
+            '&:hover': { textDecorationColor: theme.palette.primary.dark },
             '&[aria-current="true"]': { fontWeight: 600 },
             '&:focus-visible': {
               outline: 'none',
@@ -375,6 +608,10 @@ const createShadcnTheme = (): Theme =>
             lineHeight: 1.45,
           },
           label: { padding: '0.16rem 0.6rem' },
+          colorWarning: {
+            backgroundColor: alpha(SHADCN_WARNING, 0.2),
+            color: SHADCN_WARNING_TEXT,
+          },
           outlined: {
             border: `1px solid ${SHADCN_BORDER}`,
             color: SHADCN_INK,
@@ -383,7 +620,10 @@ const createShadcnTheme = (): Theme =>
               borderColor: alpha(SHADCN_SUCCESS, 0.4),
               color: SHADCN_SUCCESS,
             },
-            '&.MuiChip-colorWarning': { borderColor: alpha('#d97706', 0.4), color: '#b45309' },
+            '&.MuiChip-colorWarning': {
+              borderColor: alpha(SHADCN_WARNING, 0.4),
+              color: SHADCN_WARNING_TEXT,
+            },
           },
         },
       },
@@ -416,10 +656,10 @@ const createShadcnTheme = (): Theme =>
             textTransform: 'none',
             '&:hover': { backgroundColor: 'transparent', color: SHADCN_INK },
             '&.Mui-selected': {
-              backgroundColor: SHADCN_SURFACE,
+              backgroundColor: SHADCN_TOGGLE_SELECTED,
               color: SHADCN_INK,
               boxShadow: SHADCN_SHADOW_XS,
-              '&:hover': { backgroundColor: SHADCN_SURFACE },
+              '&:hover': { backgroundColor: SHADCN_TOGGLE_SELECTED },
             },
             '&:focus-visible': {
               outline: 'none',
@@ -431,7 +671,7 @@ const createShadcnTheme = (): Theme =>
       MuiTabs: {
         styleOverrides: {
           root: { minHeight: 40 },
-          indicator: ({ theme }) => ({ backgroundColor: theme.palette.primary.dark, height: 2 }),
+          indicator: { backgroundColor: SHADCN_INK, height: 2 },
         },
       },
       MuiTab: {
@@ -514,11 +754,26 @@ const createShadcnTheme = (): Theme =>
         defaultProps: { severity: 'error', variant: 'outlined' },
         styleOverrides: {
           root: {
-            border: `1px solid ${alpha(SHADCN_DESTRUCTIVE, 0.5)}`,
             borderRadius: 10,
             backgroundColor: SHADCN_SURFACE,
-            color: SHADCN_DESTRUCTIVE,
             boxShadow: 'none',
+            '& .MuiAlert-icon': { color: 'inherit' },
+            '&.MuiAlert-colorError': {
+              border: `1px solid ${alpha(SHADCN_DESTRUCTIVE, 0.5)}`,
+              color: SHADCN_DESTRUCTIVE,
+            },
+            '&.MuiAlert-colorSuccess': {
+              border: `1px solid ${alpha(SHADCN_SUCCESS, 0.5)}`,
+              color: SHADCN_SUCCESS,
+            },
+            '&.MuiAlert-colorWarning': {
+              border: `1px solid ${alpha(SHADCN_WARNING, 0.4)}`,
+              color: SHADCN_WARNING_TEXT,
+            },
+            '&.MuiAlert-colorInfo': {
+              border: `1px solid ${alpha(SHADCN_INFO, 0.5)}`,
+              color: SHADCN_INFO,
+            },
           },
         },
       },
@@ -548,6 +803,7 @@ const createShadcnTheme = (): Theme =>
           paper: {
             border: `1px solid ${SHADCN_BORDER}`,
             borderRadius: 12,
+            backgroundColor: SHADCN_OVERLAY,
             boxShadow: SHADCN_SHADOW_LG,
           },
         },
@@ -557,6 +813,7 @@ const createShadcnTheme = (): Theme =>
           paper: {
             border: `1px solid ${SHADCN_BORDER}`,
             borderRadius: 8,
+            backgroundColor: SHADCN_OVERLAY,
             boxShadow: SHADCN_SHADOW_MD,
           },
           option: {
@@ -571,24 +828,28 @@ const createShadcnTheme = (): Theme =>
       MuiLinearProgress: {
         styleOverrides: {
           root: { height: 6, borderRadius: 999, backgroundColor: SHADCN_BORDER },
-          bar: { borderRadius: 999, backgroundColor: SHADCN_PRIMARY },
+          bar: {
+            borderRadius: 999,
+            backgroundColor: SHADCN_INK,
+          },
         },
       },
       MuiTooltip: {
         styleOverrides: {
           tooltip: {
-            backgroundColor: SHADCN_PRIMARY,
-            color: SHADCN_SURFACE,
+            backgroundColor: SHADCN_TOOLTIP_BACKGROUND,
+            color: SHADCN_TOOLTIP_TEXT,
             fontSize: '0.75rem',
             fontWeight: 500,
             borderRadius: 6,
             padding: '0.35rem 0.65rem',
           },
-          arrow: { color: SHADCN_PRIMARY },
+          arrow: { color: SHADCN_TOOLTIP_BACKGROUND },
         },
       },
     },
   });
+};
 
 const SIGNAL_FONT_UI =
   "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
@@ -679,12 +940,12 @@ const createSignalMonoTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 4,
             padding: '0.62rem 1.1rem',
             boxShadow: 'none',
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
           contained: {
             backgroundColor: SIGNAL_INK,
             color: SIGNAL_SURFACE,
@@ -821,14 +1082,14 @@ const createSignalMonoTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'none' },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             color: SIGNAL_INK,
             fontWeight: 600,
             borderBottom: `1px solid ${SIGNAL_DIVIDER}`,
             '&[aria-current="true"]': { borderBottom: `2px solid ${SIGNAL_ACCENT}` },
             '&:hover': { borderBottomColor: SIGNAL_ACCENT },
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiChip: {
@@ -870,7 +1131,7 @@ const createSignalMonoTheme = (): Theme =>
       },
       MuiToggleButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             border: 0,
             borderRadius: 0,
             padding: '0.75rem 0 0.65rem',
@@ -888,8 +1149,8 @@ const createSignalMonoTheme = (): Theme =>
               boxShadow: `inset 0 -2px 0 ${SIGNAL_ACCENT}`,
               '&:hover': { backgroundColor: 'transparent' },
             },
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiList: {
@@ -930,22 +1191,22 @@ const createSignalMonoTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 0,
             color: SIGNAL_INK,
             '&:hover': { backgroundColor: alpha(SIGNAL_INK, 0.04) },
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: -3 },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: -3 },
             '& .MuiListItemText-secondary': {
               color: SIGNAL_INK_SOFT,
             },
-          },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `3px solid ${SIGNAL_ACCENT}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SIGNAL_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiListItemText: {
@@ -1145,13 +1406,13 @@ const createSteadyFrameTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             padding: '0.55rem 1.2rem',
             boxShadow: 'none',
             '&:hover': { boxShadow: 'none' },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
           contained: {
             '&.Mui-disabled': {
               backgroundColor: FRAME_PRIMARY,
@@ -1235,12 +1496,12 @@ const createSteadyFrameTheme = (): Theme =>
       MuiLink: {
         defaultProps: { underline: 'hover' },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             color: FRAME_PRIMARY,
             fontWeight: 600,
             '&[aria-current="true"]': { fontWeight: 700 },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiChip: {
@@ -1273,7 +1534,7 @@ const createSteadyFrameTheme = (): Theme =>
       },
       MuiToggleButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             border: 0,
             borderRadius: 8,
             padding: '0.5rem 1rem',
@@ -1289,8 +1550,8 @@ const createSteadyFrameTheme = (): Theme =>
               color: FRAME_PRIMARY,
               '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.16) },
             },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiList: {
@@ -1313,20 +1574,20 @@ const createSteadyFrameTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 10,
             color: FRAME_INK,
             '&:hover': { backgroundColor: alpha(FRAME_PRIMARY, 0.05) },
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: -2 },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: -2 },
             '& .MuiListItemText-secondary': { color: FRAME_INK_SOFT },
-          },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${FRAME_PRIMARY}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? FRAME_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiListItemText: {
@@ -1511,11 +1772,11 @@ const createScoreboardTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 8,
             padding: '0.6rem 1.15rem',
-            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SCORE_ACCENT}`, outlineOffset: 2 },
+          }),
           contained: {
             backgroundColor: SCORE_INK,
             color: SCORE_SURFACE,
@@ -1712,19 +1973,19 @@ const createScoreboardTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 6,
             color: SCORE_INK,
             '&:hover': { backgroundColor: alpha(SCORE_INK, 0.05) },
-            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: -3 },
-          },
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SCORE_ACCENT}`, outlineOffset: -3 },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `3px solid ${SCORE_ACCENT}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `3px solid ${theme.focusRing ?? SCORE_ACCENT}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiListItemText: {
@@ -1911,11 +2172,11 @@ const createQuietStudioTheme = (): Theme =>
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 10,
             padding: '0.55rem 1.25rem',
-            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: 2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? STUDIO_PRIMARY}`, outlineOffset: 2 },
+          }),
           contained: {
             boxShadow: STUDIO_SHADOW_REST,
             '&:hover': { boxShadow: STUDIO_SHADOW_FLOAT },
@@ -2054,18 +2315,18 @@ const createQuietStudioTheme = (): Theme =>
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             borderRadius: 10,
             '&:hover': { backgroundColor: alpha(STUDIO_PRIMARY, 0.05) },
-            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: -2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? STUDIO_PRIMARY}`, outlineOffset: -2 },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${STUDIO_PRIMARY}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? STUDIO_PRIMARY}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiTableCell: {
@@ -2200,9 +2461,9 @@ const createAppTheme = (accentHue = 24): Theme => {
       MuiButton: {
         defaultProps: { disableElevation: true, disableRipple: true },
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? accentInk}`, outlineOffset: 2 },
+          }),
           contained: {
             backgroundColor: INK,
             color: PAPER,
@@ -2337,17 +2598,17 @@ const createAppTheme = (accentHue = 24): Theme => {
       },
       MuiListItemButton: {
         styleOverrides: {
-          root: {
+          root: ({ theme }) => ({
             '&:hover': { backgroundColor: accentWash },
-            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: -2 },
-          },
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? accentInk}`, outlineOffset: -2 },
+          }),
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: {
-            '&:focus-visible': { outline: `2px solid ${accentInk}`, outlineOffset: 2 },
-          },
+          root: ({ theme }) => ({
+            '&:focus-visible': { outline: `2px solid ${theme.focusRing ?? accentInk}`, outlineOffset: 2 },
+          }),
         },
       },
       MuiAlert: {
@@ -2417,33 +2678,53 @@ export const CardTitle = styled(Typography)<AsElement>({ fontSize: '1.6rem' });
 
 export const Wordmark = styled(CardTitle)({ letterSpacing: 'normal' });
 
+export const CompactWordmark = styled(Wordmark)(({ theme }) => ({
+  color: theme.palette.text.primary,
+  fontSize: '0.95rem',
+  fontWeight: 600,
+}));
+
+export const CheckoutPrice = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.primary,
+  fontSize: '1.375rem',
+  fontWeight: 650,
+  fontVariantNumeric: 'tabular-nums',
+  lineHeight: 1.3,
+}));
+
+export const CheckoutPriceOption = styled(Paper, {
+  shouldForwardProp: (prop) => prop !== 'selected',
+})<{ selected: boolean }>(({ selected, theme }) => ({
+  ...(selected
+    ? {
+        borderColor: theme.palette.text.primary,
+        backgroundColor: theme.palette.action.selected,
+      }
+    : {}),
+}));
+
+export const CheckoutDisclosureButton = styled(Button)(({ theme }) => ({
+  color: theme.palette.text.primary,
+}));
+
+export const EmberCtaButton = styled(Button)(({ theme }) => ({
+  backgroundColor: theme.emberCta?.main ?? theme.palette.primary.main,
+  color: theme.emberCta?.contrastText ?? theme.palette.primary.contrastText,
+  '&:hover': {
+    backgroundColor: theme.emberCta?.hover ?? theme.palette.primary.light,
+  },
+  '&:active': {
+    backgroundColor: theme.emberCta?.active ?? theme.palette.primary.dark,
+  },
+  '&.Mui-disabled': {
+    backgroundColor: theme.palette.action.disabledBackground,
+    color: theme.palette.action.disabled,
+  },
+}));
+
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
 
 export const FinePrint = styled(Typography)<AsElement>({ fontSize: '0.75rem' });
-
-const bootSweep = keyframes({
-  from: { transform: 'translateX(-100%)' },
-  to: { transform: 'translateX(400%)' },
-});
-
-export const BootIndicator = styled('div')(({ theme }) => ({
-  position: 'relative',
-  width: '100%',
-  height: '1px',
-  overflow: 'hidden',
-  backgroundColor: theme.palette.divider,
-  '&::after': {
-    content: '""',
-    position: 'absolute',
-    inset: 0,
-    width: '20%',
-    backgroundColor: theme.palette.primary.dark,
-    animation: `${bootSweep} 1.6s ease-in-out infinite`,
-  },
-  '@media (prefers-reduced-motion: reduce)': {
-    '&::after': { width: '100%', animation: 'none' },
-  },
-}));
 
 
 export const EntryDate = styled(Typography)<AsElement & { dateTime?: string }>(({ theme }) => ({
@@ -2458,7 +2739,7 @@ export const DataValue = styled('span')(({ theme }) => ({
   color: theme.moneyColor,
 }));
 
-export const MemberProductLink = styled(Link)(({ theme }) => ({
+export const MemberProductLink = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
   fontWeight: 700,
   color: theme.palette.text.primary,
   textDecorationColor: alpha(theme.palette.text.primary, 0.4),
@@ -2487,15 +2768,10 @@ export const ChecklistDoneLabel = styled('span')(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.primary.dark }));
+export const DemoValue = styled('code')(({ theme }) => ({ color: theme.palette.text.primary }));
 
 export const LedgerHeader = styled(Box)<AsElement>(({ theme }) => ({
   borderBottom: theme.headerRule ?? `3px double ${alpha(theme.palette.text.primary, 0.55)}`,
-}));
-
-export const TenantSwatch = styled(Box)(({ theme }) => ({
-  backgroundColor: theme.palette.primary.main,
-  boxShadow: `0.3rem 0.3rem 0 ${alpha(theme.palette.primary.main, 0.09)}`,
 }));
 
 /** Live accent preview in the branding settings; transparent until a valid color is typed. */
@@ -2516,10 +2792,11 @@ export const AppBarTitle = styled(Typography)<AsElement>({
   lineHeight: 1.2,
 });
 
-export const AppBarWordmark = styled(Typography)<AsElement>({
-  fontSize: '0.68rem',
-  letterSpacing: '0.16em',
-  textTransform: 'uppercase',
+export const AppBarWordmark = styled('img')({
+  display: 'block',
+  height: 20,
+  width: 'auto',
+  alignSelf: 'flex-start',
   opacity: 0.62,
 });
 
@@ -2529,11 +2806,6 @@ export const TenantListItemText = styled(ListItemText)({
 
 export const BreakAllText = styled(Typography)<AsElement>({ wordBreak: 'break-all' });
 
-/**
- * Sidebar section entry. The selected state derives entirely from the active
- * theme's primary token (tint fill + accent rail + accent text), so it reads
- * coherently across all registered modes without any hard-coded color.
- */
 export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
   marginBottom: 2,
@@ -2541,13 +2813,12 @@ export const PanelNavItem = styled(ListItemButton)(({ theme }) => ({
   paddingBottom: 8,
   color: theme.palette.text.secondary,
   '& .MuiListItemIcon-root': { color: 'inherit', minWidth: 34 },
-  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.06) },
+  '&:hover': { backgroundColor: theme.palette.action.hover },
   '&.Mui-selected': {
-    color: theme.palette.primary.dark,
-    backgroundColor: alpha(theme.palette.primary.main, 0.1),
-    boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
-    '& .MuiListItemIcon-root': { color: theme.palette.primary.dark },
-    '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.16) },
+    color: theme.palette.text.primary,
+    backgroundColor: theme.palette.action.selected,
+    '& .MuiListItemIcon-root': { color: theme.palette.text.primary },
+    '&:hover': { backgroundColor: theme.palette.action.hover },
   },
 }));
 
@@ -2574,7 +2845,7 @@ export const UnreadDot = styled('span')(({ theme }) => ({
   height: 8,
   marginTop: 6,
   borderRadius: '50%',
-  backgroundColor: theme.palette.primary.main,
+  backgroundColor: theme.palette.text.primary,
   flexShrink: 0,
 }));
 
@@ -2603,7 +2874,7 @@ export const CompletionPartialIcon = styled(SvgIcon)(({ theme }) => ({
 }));
 
 export const SearchHighlight = styled('mark')(({ theme }) => ({
-  backgroundColor: alpha(theme.palette.primary.main, 0.28),
+  backgroundColor: alpha(theme.palette.text.primary, theme.palette.mode === 'dark' ? 0.22 : 0.14),
   color: 'inherit',
   borderRadius: 2,
   padding: '0 1px',
@@ -2616,14 +2887,14 @@ export const TreeChapterTitle = styled(Typography)<AsElement>({ fontSize: '0.92r
 export const ReorderCard = styled(Paper, {
   shouldForwardProp: (prop) => prop !== 'dropTarget',
 })<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
-  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.text.primary, 0.08) : undefined,
 }));
 
 export const ReorderRow = styled(ListItem, {
   shouldForwardProp: (prop) => prop !== 'dropTarget',
 })<{ dropTarget?: boolean }>(({ theme, dropTarget }) => ({
   borderRadius: theme.shape.borderRadius,
-  backgroundColor: dropTarget === true ? alpha(theme.palette.primary.main, 0.1) : undefined,
+  backgroundColor: dropTarget === true ? alpha(theme.palette.text.primary, 0.08) : undefined,
 }));
 
 export const ReorderDragHandle = styled('span', {
@@ -2645,7 +2916,7 @@ export const TreeCaret = styled(SvgIcon)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ theme }) => ({
+export const CourseCardRoot = styled(Box)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'block',
   height: '100%',
   overflow: 'hidden',
@@ -2655,10 +2926,26 @@ export const CourseCardRoot = styled(Box)<AsElement & { href?: string }>(({ them
   borderRadius: theme.shape.borderRadius,
   transition: 'border-color 120ms ease, box-shadow 120ms ease',
   '&:hover': {
-    borderColor: alpha(theme.palette.primary.main, 0.55),
-    boxShadow: `0 1px 0 ${alpha(theme.palette.primary.main, 0.18)}`,
+    borderColor: theme.palette.text.primary,
+    boxShadow: `0 1px 0 ${alpha(theme.palette.text.primary, 0.12)}`,
+  },
+  '&:focus-visible': {
+    outline: 'none',
+    boxShadow: `0 0 0 3px ${alpha(theme.focusRing ?? theme.palette.primary.main, 0.5)}`,
   },
 }));
+
+export const VisuallyHidden = styled('span')({
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+});
 
 export const CourseCardCover = styled('img')(({ theme }) => ({
   display: 'block',
@@ -2673,8 +2960,8 @@ export const CourseCardCoverFallback = styled(Box)(({ theme }) => ({
   alignItems: 'center',
   justifyContent: 'center',
   aspectRatio: '16 / 9',
-  backgroundColor: alpha(theme.palette.primary.main, 0.08),
-  color: theme.palette.primary.main,
+  backgroundColor: alpha(theme.palette.text.primary, 0.06),
+  color: theme.palette.text.primary,
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
@@ -2693,6 +2980,34 @@ export const CourseCoverImage = styled('img')(({ theme }) => ({
   borderRadius: theme.shape.borderRadius,
 }));
 
+export const CoverPreviewSurface = styled(Box)(({ theme }) => ({
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  maxWidth: '30rem',
+  aspectRatio: '16 / 9',
+  overflow: 'hidden',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+  color: theme.palette.text.secondary,
+}));
+
+export const CoverPreviewIcon = styled(SvgIcon)({
+  fontSize: '2.5rem',
+});
+
+export const CoverPreviewImage = styled('img')({
+  position: 'absolute',
+  inset: 0,
+  display: 'block',
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+});
+
 export const StatTile = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
@@ -2705,9 +3020,12 @@ export const StatTile = styled(Box)(({ theme }) => ({
 
 export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
   display: 'flex',
-  alignItems: 'center',
+  alignItems: 'stretch',
+  flexDirection: 'column',
   justifyContent: 'flex-start',
-  gap: '0.75rem',
+  gap: '0.2rem',
+  height: '100%',
+  minHeight: '7rem',
   padding: '0.9rem 1rem',
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
@@ -2717,14 +3035,14 @@ export const StatTileButton = styled(ButtonBase)(({ theme }) => ({
   transition: 'border-color 120ms ease',
   '&:hover': { borderColor: theme.palette.text.primary },
   '&:focus-visible': {
-    outline: `2px solid ${theme.palette.primary.main}`,
+    outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`,
     outlineOffset: 2,
   },
 }));
 
 export const StatTileIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.3rem',
-  color: theme.palette.primary.main,
+  color: theme.palette.text.primary,
 }));
 
 export const StatTileValue = styled(Typography)<AsElement>(({ theme }) => ({
@@ -2736,17 +3054,36 @@ export const StatTileValue = styled(Typography)<AsElement>(({ theme }) => ({
 }));
 
 export const StatTileLabel = styled(Typography)<AsElement>(({ theme }) => ({
-  fontSize: '0.68rem',
-  letterSpacing: '0.09em',
-  textTransform: 'uppercase',
+  fontSize: '0.75rem',
+  letterSpacing: '0.02em',
+  textTransform: 'none',
   color: theme.palette.text.secondary,
+}));
+
+export const ResponsiveTableRoot = styled(Box)(({ theme }) => ({
+  overflowX: 'auto',
+  '& th:first-of-type, & td:first-of-type': {
+    position: 'sticky',
+    left: 0,
+    zIndex: 1,
+    backgroundColor: theme.palette.background.paper,
+    boxShadow: `2px 0 0 ${alpha(theme.palette.common.black, 0.08)}`,
+    [theme.breakpoints.up('sm')]: {
+      position: 'static',
+      boxShadow: 'none',
+    },
+  },
+  '& th:first-of-type': { zIndex: 2 },
 }));
 
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => ({
   height: 6,
   borderRadius: 999,
-  backgroundColor: alpha(theme.palette.primary.main, 0.14),
-  '& .MuiLinearProgress-bar': { borderRadius: 999 },
+  backgroundColor: theme.palette.divider,
+  '& .MuiLinearProgress-bar': {
+    borderRadius: 999,
+    backgroundColor: theme.palette.text.primary,
+  },
 }));
 
 export const LessonDurationText = styled('span')(({ theme }) => ({
@@ -2763,8 +3100,8 @@ export const CourseCompletedNote = styled(Typography)<AsElement>(({ theme }) => 
 }));
 
 export const EmptyStateIcon = styled(SvgIcon)(({ theme }) => ({
-  fontSize: '2.6rem',
-  color: theme.palette.text.disabled,
+  fontSize: '1.15rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const EmptyStateContent = styled(Stack)({
@@ -2813,7 +3150,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   overflowWrap: 'anywhere',
   '& img': { maxWidth: '100%', height: 'auto' },
   '& iframe': { maxWidth: '100%' },
-  '& a': { color: theme.palette.primary.main },
+  '& a': { color: theme.palette.text.primary },
   '& pre': {
     overflowX: 'auto',
     padding: '0.75rem',
@@ -2843,7 +3180,7 @@ export const DiscussionThread = styled(Box)(({ theme }) => ({
 }));
 
 export const ReplyIndent = styled(Box)(({ theme }) => ({
-  borderLeft: `2px solid ${alpha(theme.palette.primary.main, 0.25)}`,
+  borderLeft: `2px solid ${alpha(theme.palette.text.primary, 0.2)}`,
   paddingLeft: '1rem',
   marginLeft: '0.35rem',
 }));
@@ -2856,9 +3193,9 @@ export const AuthorChip = styled('span')(({ theme }) => ({
   fontWeight: 700,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: theme.palette.primary.dark,
-  backgroundColor: alpha(theme.palette.primary.main, 0.12),
-  border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+  color: theme.palette.text.primary,
+  backgroundColor: alpha(theme.palette.text.primary, 0.08),
+  border: `1px solid ${alpha(theme.palette.text.primary, 0.25)}`,
 }));
 
 export const PostAuthorName = styled(Typography)<AsElement>({

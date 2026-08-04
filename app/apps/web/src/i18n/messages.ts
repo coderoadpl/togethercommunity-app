@@ -13,8 +13,15 @@ export interface Messages {
     language: string;
     languagePolish: string;
     languageEnglish: string;
+    breadcrumbs: string;
     loading: string;
     theme: string;
+    colorScheme: {
+      label: string;
+      light: string;
+      dark: string;
+      auto: string;
+    };
     home: string;
     reload: string;
     cancel: string;
@@ -26,6 +33,9 @@ export interface Messages {
     add: string;
     open: string;
     status: string;
+    retry: string;
+    unsavedChanges: string;
+    unsavedChangesConfirm: string;
   };
   bootSplash: {
     opening: string;
@@ -88,10 +98,14 @@ export interface Messages {
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
+    validationField: (params: { field: string }) => string;
+    validationForm: string;
   };
   auth: {
     signInTitle: string;
+    signInPlatformEyebrow: string;
     signInEyebrow: (params: { host: string }) => string;
+    createAccountPlatformEyebrow: string;
     createAccountEyebrow: (params: { host: string }) => string;
     emailLabel: string;
     passwordLabel: string;
@@ -179,6 +193,13 @@ export interface Messages {
     aria: string;
     comingSoon: string;
   };
+  navigationGroups: {
+    content: string;
+    offer: string;
+    community: string;
+    sales: string;
+    marketing: string;
+  };
   reports: {
     heading: string;
     loading: string;
@@ -215,6 +236,8 @@ export interface Messages {
     title: string;
     progress: (params: { done: number; total: number }) => string;
     dismiss: string;
+    showSteps: string;
+    hideSteps: string;
     stepDone: string;
     stepOpen: string;
     steps: {
@@ -224,6 +247,14 @@ export interface Messages {
       firstMember: string;
       paymentsConfigured: string;
     };
+  };
+  settingsNavigation: {
+    aria: string;
+    company: string;
+    legal: string;
+    brand: string;
+    security: string;
+    diagnostics: string;
   };
   sales: {
     loading: string;
@@ -320,6 +351,8 @@ export interface Messages {
     maxPerMember: string;
     optional: string;
     valuePercent: string;
+    invalidValue: string;
+    invalidDateRange: string;
     valueCents: string;
     currency: string;
     products: string;
@@ -347,9 +380,11 @@ export interface Messages {
   notifications: {
     bell: string;
     heading: string;
+    mobileTab: string;
     empty: string;
     loading: string;
     markAllRead: string;
+    markedAllRead: string;
     threadReply: (params: { author: string; lesson: string }) => string;
     lessonQuestion: (params: { author: string; lesson: string }) => string;
     spacePost: (params: { author: string; space: string }) => string;
@@ -429,6 +464,10 @@ export interface Messages {
     saved: string;
     remove: string;
     removing: string;
+    removeSecretConfirmTitle: string;
+    removeSecretConfirmBody: (params: { label: string }) => string;
+    stripeDisconnectConfirmTitle: string;
+    stripeDisconnectConfirmBody: string;
     testConnection: string;
     testing: string;
     testFailed: string;
@@ -510,6 +549,7 @@ export interface Messages {
     typeMembership: string;
     slugLabel: string;
     slugHint: string;
+    slugImmutableHint: string;
     coverUrlLabel: string;
     coverUrlHint: string;
     priceLabel: string;
@@ -518,18 +558,39 @@ export interface Messages {
     currencyLabel: string;
     creating: string;
     create: string;
+    saveDetails: string;
+    savingDetails: string;
+    detailsSaved: string;
     heading: string;
     loading: string;
     empty: string;
     searchPlaceholder: string;
     noMatches: string;
     publish: string;
+    unpublish: string;
+    publishNeedsDelivery: string;
+    publishCheckingDelivery: string;
+    publishDeliveryUnavailable: string;
+    publishNeedsActivePrice: string;
+    publishCheckingPrice: string;
+    publishPriceUnavailable: string;
+    publishConfirmTitle: string;
+    publishConfirmIntro: string;
+    publishPublicUrl: string;
+    publishActivePrice: string;
+    publishConfirm: string;
+    unpublishConfirmTitle: string;
+    unpublishConfirmBody: string;
+    unpublishConfirm: string;
+    publishing: string;
+    unpublishing: string;
     published: string;
     draft: string;
     accessItemNoun: (params: { count: number }) => string;
     hideAccess: string;
     editAccess: string;
     accessIssuesChip: string;
+    accessIssuesUnknownChip: string;
     accessIssuesHeading: string;
     missingCoursesLabel: string;
     missingModulesLabel: string;
@@ -538,6 +599,8 @@ export interface Messages {
     unreachableLessonsLabel: string;
     copyCheckoutLink: string;
     checkoutLinkCopied: string;
+    checkoutLinkCopyFailed: string;
+    checkoutLinkManualHint: string;
     statusFilterAria: string;
     filterAll: string;
     filterPublished: string;
@@ -618,8 +681,12 @@ export interface Messages {
     detailsHeading: string;
     titleLabel: string;
     imageUrl: string;
+    imagePreview: string;
     creating: string;
     create: string;
+    saveDetails: string;
+    savingDetails: string;
+    detailsSaved: string;
     heading: string;
     loading: string;
     empty: string;
@@ -708,6 +775,15 @@ export interface Messages {
     previewLabel: string;
     previewHelper: string;
     htmlLabel: string;
+    storageKeyLabel: string;
+    streamVideoIdLabel: string;
+    streamLibraryIdLabel: string;
+    streamCollectionIdLabel: string;
+    pdfUrlLabel: string;
+    fileNameLabel: string;
+    linkUrlLabel: string;
+    linkDescriptionLabel: string;
+    technicalFieldHint: (params: { field: string }) => string;
     addBlock: string;
     saving: string;
     saveLesson: string;
@@ -771,6 +847,7 @@ export interface Messages {
     exporting: string;
     loading: string;
     empty: string;
+    checkoutLinkAction: string;
     searchPlaceholder: string;
     noMatches: string;
     grantFilterAria: string;
@@ -884,9 +961,12 @@ export interface Messages {
   student: {
     myCourses: string;
     myProducts: string;
+    mobileCourses: string;
+    mobileProducts: string;
     courseLibrary: string;
     productsLibrary: string;
     loadingCourses: string;
+    retryCourses: string;
     noCourses: string;
     coursesWillAppear: string;
     loadingProducts: string;
@@ -934,6 +1014,10 @@ export interface Messages {
     courseNotFound: string;
     lessonDuration: (params: { minutes: number }) => string;
     unlockAccess: string;
+    accessLocked: string;
+    accessPartiallyUnlocked: string;
+    completionComplete: string;
+    completionPartial: string;
   };
   courseOverview: {
     progressTitle: string;
@@ -1354,12 +1438,13 @@ export interface Messages {
     buyPrice: (params: { price: string }) => string;
     subscribeMonthlyPrice: (params: { price: string }) => string;
     subscribeYearlyPrice: (params: { price: string }) => string;
-    submitIdle: string;
+    submitIdle: (params: { price: string }) => string;
     submitPending: string;
-    freeIdle: string;
+    freeIdle: (params: { price: string }) => string;
     freePending: string;
-    payIdle: string;
+    payIdle: (params: { price: string }) => string;
     payPending: string;
+    simulatedPaymentDevNote: string;
     successEyebrow: string;
     successTitle: string;
     successBody: string;
@@ -1505,6 +1590,8 @@ export interface Messages {
     pause: string;
     resume: string;
     cancelCampaign: string;
+    cancelCampaignConfirmTitle: string;
+    cancelCampaignConfirmBody: string;
     testSend: string;
     testing: string;
     lockedHint: string;
@@ -1543,6 +1630,9 @@ export interface Messages {
     archived: string;
     versions: string;
     versionEntry: (params: { version: number; date: string }) => string;
+    versionLabel: (params: { version: number }) => string;
+    viewVersion: string;
+    hideVersion: string;
     documentsTitle: string;
     documentsDescription: string;
     documentsEmpty: string;
@@ -1556,6 +1646,7 @@ export interface Messages {
     createDocumentAction: string;
     saveDocumentAction: string;
     publish: string;
+    saveAndPublish: string;
     publishing: string;
     publicUrls: string;
     latestUrl: string;

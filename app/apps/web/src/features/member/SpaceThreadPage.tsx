@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
-import { Link } from '@mui/material';
+import { Link as MuiLink } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { MemberSurface } from './MemberSurface.js';
 import { ThreadDiscussion } from './ThreadDiscussion.js';
 
@@ -36,7 +36,18 @@ export const SpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: 
 
   if (unauthorized) return null;
 
-  const space = spaces.isError ? undefined : spaces.data.spaces.find((candidate) => candidate.id === spaceId);
+  if (spaces.isError) {
+    return (
+      <MemberSurface
+        title={t.community.threadTitle}
+        eyebrow={t.community.threadEyebrow}
+        width="wide"
+        state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }}
+      />
+    );
+  }
+
+  const space = spaces.data.spaces.find((candidate) => candidate.id === spaceId);
 
   if (space === undefined) {
     return (
@@ -48,7 +59,7 @@ export const SpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: 
           kind: 'not-found',
           title: t.community.spaceNotFoundTitle,
           body: t.community.spaceNotFoundBody,
-          action: <Link href="/community">{t.community.backToSpaces}</Link>,
+          action: <MuiLink component={Link} to="/community">{t.community.backToSpaces}</MuiLink>,
         }}
       />
     );
@@ -60,8 +71,8 @@ export const SpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: 
       eyebrow={t.community.threadEyebrow}
       width="wide"
       breadcrumbs={[
-        { label: t.community.heading, href: '/community' },
-        { label: space.name, href: `/community/${spaceId}` },
+        { label: t.community.heading, link: <MuiLink component={Link} to="/community">{t.community.heading}</MuiLink> },
+        { label: space.name, link: <MuiLink component={Link} to={`/community/${encodeURIComponent(spaceId)}`}>{space.name}</MuiLink> },
         { label: t.community.threadTitle },
       ]}
     >

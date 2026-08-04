@@ -9,7 +9,7 @@ import { LanguageSwitcher } from './LanguageSwitcher.js';
 
 const Probe = () => {
   const t = useTranslations();
-  return <p data-testid="checkout-cta">{t.checkout.submitIdle}</p>;
+  return <p data-testid="checkout-cta">{t.checkout.submitPending}</p>;
 };
 
 const renderSwitcher = () =>
@@ -26,11 +26,11 @@ describe('LanguageSwitcher', () => {
     renderSwitcher();
 
     expect(screen.getByTestId('language-switcher')).toBeInTheDocument();
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(pl.checkout.submitIdle);
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(pl.checkout.submitPending);
 
     await user.click(screen.getByRole('button', { name: 'en' }));
 
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitIdle);
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
   });
 
   it('restores the persisted language on a fresh mount', async () => {
@@ -38,10 +38,10 @@ describe('LanguageSwitcher', () => {
     const first = renderSwitcher();
 
     await user.click(screen.getByRole('button', { name: 'en' }));
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitIdle);
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
     first.unmount();
 
     renderSwitcher();
-    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitIdle);
+    expect(screen.getByTestId('checkout-cta')).toHaveTextContent(en.checkout.submitPending);
   });
 });

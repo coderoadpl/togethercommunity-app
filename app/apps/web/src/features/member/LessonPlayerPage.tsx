@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
-  Link,
+  Link as MuiLink,
   Paper,
   Skeleton,
   Stack,
@@ -11,7 +12,7 @@ import {
 } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import DOMPurify from 'dompurify';
 
 import { ApiError } from '#core/client/index.js';
@@ -46,14 +47,6 @@ const isForbidden = (error: Error | null) =>
 
 const VIDEO_ALLOW = 'accelerometer;gyroscope;autoplay;encrypted-media;picture-in-picture;';
 
-const BLOCK_RANK: Record<LessonBlock['type'], number> = {
-  video: 0,
-  pdf: 1,
-  embed: 2,
-  html: 3,
-  link: 4,
-};
-
 const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
   switch (type) {
     case 'video':
@@ -68,12 +61,6 @@ const blockLabel = (t: Messages, type: LessonBlock['type']): string => {
       return t.lesson.labelLink;
   }
 };
-
-const sortBlocks = (blocks: readonly PlayableLessonBlock[]): PlayableLessonBlock[] =>
-  blocks
-    .map((block, index) => ({ block, index }))
-    .sort((a, b) => BLOCK_RANK[a.block.type] - BLOCK_RANK[b.block.type] || a.index - b.index)
-    .map((entry) => entry.block);
 
 const MediaIframe = ({
   frameSx,
@@ -214,7 +201,10 @@ const LockedView = ({
         ? {}
         : {
             breadcrumbs: [
-              { label: courseName, href: `/my/courses/${courseId}` },
+              {
+                label: courseName,
+                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{courseName}</MuiLink>,
+              },
               { label: lessonName ?? t.lesson.contentLocked },
             ],
           })}
@@ -223,14 +213,15 @@ const LockedView = ({
         : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
       mobileRail="after"
     >
+      {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
       <SectionCard
         title={product?.title ?? t.lesson.contentLocked}
         description={t.lesson.noAccessYet}
         actions={
           unlockProductId === undefined ? undefined : (
             <Button
-              component="a"
-              href={`/checkout/${unlockProductId}`}
+              component={Link}
+              to={`/checkout/${encodeURIComponent(unlockProductId)}`}
               variant="contained"
               data-testid="unlock-lesson-cta"
             >
@@ -247,7 +238,7 @@ const LockedView = ({
               <DataValue>{formatPrice(product.priceCents, product.currency, language)}</DataValue>
             </Typography>
           )}
-          <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>
+          <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
         </Stack>
       </SectionCard>
     </MemberSurface>
@@ -347,6 +338,17 @@ export const LessonPlayerPage = ({
 
   if (lesson.isError) {
     if (isForbidden(lesson.error)) {
+      if (structure.isError) {
+        return (
+          <MemberSurface
+            authenticated
+            title={t.lesson.unavailable}
+            eyebrow={t.lesson.eyebrow}
+            width="wide"
+            state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }}
+          />
+        );
+      }
       const lockedRow = structure.data?.structure.modules
         .flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons))
         .find((entry) => entry.lessonId === lessonId);
@@ -369,16 +371,15 @@ export const LessonPlayerPage = ({
         eyebrow={t.lesson.eyebrow}
         width="wide"
         state={{
-          kind: 'not-found',
-          title: t.lesson.unavailable,
-          body: localizeError(lesson.error, t),
-          action: <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>,
+          kind: 'error',
+          message: localizeError(lesson.error, t),
+          retry: { label: t.common.retry, onRetry: () => void lesson.refetch() },
         }}
       />
     );
   }
 
-  const blocks = sortBlocks(lesson.data.lesson.contents);
+  const blocks = lesson.data.lesson.contents;
   const nextLesson = next.data?.next ?? null;
   const nextHref = nextLesson === null ? null : `/my/courses/${courseId}/lessons/${nextLesson.id}`;
 
@@ -403,7 +404,10 @@ export const LessonPlayerPage = ({
         ? {}
         : {
             breadcrumbs: [
-              { label: location.courseName, href: `/my/courses/${courseId}` },
+              {
+                label: location.courseName,
+                link: <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{location.courseName}</MuiLink>,
+              },
               ...(location.module === null ? [] : [{ label: location.module.name }]),
               ...(location.chapter === null ? [] : [{ label: location.chapter.name }]),
               { label: lesson.data.lesson.name },
@@ -423,6 +427,15 @@ export const LessonPlayerPage = ({
       mobileRail="after"
     >
       <Box sx={{ minWidth: 0 }}>
+        <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
+          {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
+          {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
+          {next.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(next.error, t), retry: { label: t.common.retry, onRetry: () => void next.refetch() } }} /> : null}
+          {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
+          {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
+          {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
+          {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
+        </Stack>
         <Stack component="section" useFlexGap spacing="1.5rem">
           {blocks.length === 0 ? (
             <StatusView
@@ -436,7 +449,13 @@ export const LessonPlayerPage = ({
             />
           ) : (
             blocks.map((block, index) => (
-              <Paper key={index} elevation={1} sx={{ p: '1.5rem' }}>
+              <Paper
+                key={index}
+                elevation={1}
+                sx={{ p: '1.5rem' }}
+                data-testid={`lesson-block-${index}`}
+                data-block-type={block.type}
+              >
                 <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
                   {blockLabel(t, block.type)}
                 </Eyebrow>
@@ -512,9 +531,9 @@ export const LessonPlayerPage = ({
                   <Chip variant="outlined" data-testid="course-end" label={t.lesson.lastLesson} />
                 )
               ) : (
-                <Link href={nextHref ?? ''} data-testid="next-lesson">
+                <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}/lessons/${encodeURIComponent(nextLesson.id)}`} data-testid="next-lesson">
                   {t.lesson.next({ name: nextLesson.name })}
-                </Link>
+                </MuiLink>
               ))}
           </Stack>
         </LessonFooterBar>}

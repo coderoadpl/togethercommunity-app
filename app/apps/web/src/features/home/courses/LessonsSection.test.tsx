@@ -186,8 +186,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.type(await screen.findByLabelText(pl.common.name), 'Reordered Lesson');
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.addBlock }));
-    await userEvent.type(await screen.findByLabelText('storageKey'), 'videos/intro.mp4');
-    await userEvent.type(screen.getByLabelText('streamVideoId'), 'vid-1');
+    await userEvent.type(await screen.findByLabelText(/storageKey/), 'videos/intro.mp4');
+    await userEvent.type(screen.getByLabelText(/streamVideoId/), 'vid-1');
 
     await userEvent.click(screen.getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: pl.lessons.typeEmbed }));
@@ -195,11 +195,17 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     const embedUrlInput = await screen.findByLabelText(pl.lessons.embedUrlLabel);
     await userEvent.type(embedUrlInput, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
-    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual(['video', 'embed']);
+    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
+      pl.lessons.typeVideo,
+      pl.lessons.typeEmbed,
+    ]);
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.moveUp({ index: 1 }) }));
 
-    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual(['embed', 'video']);
+    expect(screen.getAllByTestId('block-type').map((node) => node.textContent)).toEqual([
+      pl.lessons.typeEmbed,
+      pl.lessons.typeVideo,
+    ]);
 
     await userEvent.click(screen.getByRole('button', { name: pl.lessons.createLesson }));
 
@@ -356,9 +362,9 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     await userEvent.click(await screen.findByTestId('block-0-bunny-picker'));
     await userEvent.click(await screen.findByTestId('bunny-picker-video'));
 
-    expect(screen.getByLabelText('streamVideoId')).toHaveValue('guid-1');
-    expect(screen.getByLabelText('streamLibraryId')).toHaveValue('lib-9');
-    expect(screen.getByLabelText('storageKey')).toHaveValue('guid-1');
+    expect(screen.getByLabelText(/streamVideoId/)).toHaveValue('guid-1');
+    expect(screen.getByLabelText(/streamLibraryId/)).toHaveValue('lib-9');
+    expect(screen.getByLabelText(/storageKey/)).toHaveValue('guid-1');
   });
 
   it('keeps manual fields and shows a settings hint when Bunny Stream is not configured', async () => {
@@ -389,8 +395,8 @@ describe('LessonsSection blocks editor', { timeout: 15000 }, () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: pl.common.cancel }));
-    expect(screen.getByLabelText('storageKey')).toBeInTheDocument();
-    expect(screen.getByLabelText('streamVideoId')).toBeInTheDocument();
+    expect(screen.getByLabelText(/storageKey/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/streamVideoId/)).toBeInTheDocument();
   });
 
   it('inserts markup via the toolbar and renders a sanitized live preview', async () => {

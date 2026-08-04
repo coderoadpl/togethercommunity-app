@@ -1,5 +1,6 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +18,7 @@ const productsBody = {
       type: 'course',
       title: 'Intro Course',
       description: 'Start here.',
+      accessItems: [{ level: 'course', courseId: 'c1' }],
       priceCents: 4900,
       currency: 'PLN',
       grantStatus: 'active',
@@ -200,6 +202,16 @@ describe('member pages', () => {
                 legacyId: null,
                 createdAt: '1998-01-01T00:00:00.000Z',
               },
+              {
+                id: 'c2',
+                tenantId: 't1',
+                name: 'A different product course',
+                description: '',
+                imageUrl: null,
+                moduleOrder: [],
+                legacyId: null,
+                createdAt: '1998-01-02T00:00:00.000Z',
+              },
             ],
           },
         }),
@@ -213,8 +225,51 @@ describe('member pages', () => {
       'href',
       '/my/courses/c1',
     );
+    expect(screen.queryByRole('link', { name: 'A different product course' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: pl.student.myCourses }).some((link) =>
+      link.getAttribute('aria-current') === 'page')).toBe(true);
+    expect(screen.getAllByRole('link', { name: pl.student.myProducts }).every((link) =>
+      link.getAttribute('aria-current') === null)).toBe(true);
     expect(
       screen.queryByRole('heading', { name: pl.student.courseContentComingSoon }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows a course loading error with retry instead of a coming-soon state', async () => {
+    let requests = 0;
+    server.use(
+      http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u1',
+            email: 'free@together.dev',
+            emailVerified: true,
+            name: 'Free',
+            tenant: null,
+          },
+        }),
+      ),
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 0 } }),
+      ),
+      http.get('/api/student/courses', () => {
+        requests += 1;
+        return requests === 1
+          ? HttpResponse.json(
+              { ok: false, error: { code: 'unavailable', message: 'Courses unavailable' } },
+              { status: 503 },
+            )
+          : HttpResponse.json({ ok: true, data: { courses: [] } });
+      }),
+    );
+
+    await renderPage(() => <CoursePage productId="course-1" />, '/my/course/course-1');
+
+    expect(await screen.findByText(pl.errors.messageIntegrationUnavailable)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: pl.student.courseContentComingSoon })).not.toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: pl.student.retryCourses }));
+    expect(await screen.findByRole('heading', { name: pl.student.courseContentComingSoon })).toBeInTheDocument();
   });
 });

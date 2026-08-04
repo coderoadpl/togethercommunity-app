@@ -30,6 +30,7 @@ import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { EmailEventTimeline } from '../email/index.js';
 import { deliveryStatusLabel, sendKindLabel, sendStatusLabel } from './EmailSendSummary.js';
@@ -141,6 +142,7 @@ export const SendsPanel = () => {
 
   return (
     <PanelPage title={t.marketing.sendsTitle} description={t.marketing.sendsDescription}>
+      {campaigns.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(campaigns.error, t), retry: { label: t.common.retry, onRetry: () => void campaigns.refetch() } }} /> : null}
       <ListSection
         data-testid="email-sends-list"
         isEmpty={sends.isSuccess && rows.length === 0 && !filtered && cursor === undefined}
@@ -156,6 +158,7 @@ export const SendsPanel = () => {
                 setSearch(value);
                 resetPagination();
               }}
+              label={t.marketing.sendsSearch}
               placeholder={t.marketing.sendsSearch}
               testId="email-sends-search"
             />
@@ -338,7 +341,7 @@ export const SendsPanel = () => {
         {sends.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.marketing.sendsLoading }} />
         ) : sends.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(sends.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(sends.error, t), retry: { label: t.common.retry, onRetry: () => void sends.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table size="small" aria-label={t.marketing.sendsTitle}>
@@ -384,9 +387,9 @@ export const SendsPanel = () => {
                     <TableCell>{send.sentAt === null ? t.marketing.notSent : formatDateTime(send.sentAt, language)}</TableCell>
                     <TableCell align="right">
                       <Button
-                        component="a"
+                        component={Link}
                         size="small"
-                        href={`/panel/marketing/sends/${send.kind}/${encodeURIComponent(send.id)}`}
+                        to={`/panel/marketing/sends/${encodeURIComponent(send.kind)}/${encodeURIComponent(send.id)}`}
                       >
                         {t.marketing.sendDetails}
                       </Button>
@@ -415,12 +418,12 @@ export const SendDetailPage = () => {
   });
 
   if (kind === null || sendId === undefined) return <Navigate to="/panel/marketing/sends" />;
-  if (detail.isPending) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'loading', label: t.marketing.sendsLoading }} /></PanelPage>;
-  if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t) }} /></PanelPage>;
+  if (detail.isPending) return <PanelPage title={t.marketing.sendDetails} state={{ kind: 'loading', label: t.marketing.sendsLoading }} />;
+  if (detail.isError) return <PanelPage title={t.marketing.sendDetails}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
 
   const send = detail.data.send;
   return (
-    <PanelPage title={send.subject} backTo={{ label: t.marketing.allSends, href: '/panel/marketing/sends' }}>
+    <PanelPage title={send.subject} backTo={<PanelBackLink to="/panel/marketing/sends">{t.marketing.allSends}</PanelBackLink>}>
       <SectionCard title={t.marketing.projection}>
         <Stack component="dl" useFlexGap spacing="0.75rem" sx={{ m: 0 }}>
           {[

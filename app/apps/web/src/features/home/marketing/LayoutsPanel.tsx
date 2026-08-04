@@ -9,6 +9,7 @@ import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { MarketingSummaryRow } from './MarketingSummaryRow.js';
 
 const LayoutForm = ({ layout }: { layout?: EmailLayout | undefined }) => {
@@ -51,7 +52,7 @@ export const LayoutsPanel = () => {
   return (
     <PanelPage title={t.marketing.layoutsTitle} description={t.marketing.layoutsDescription} action={<Button component={Link} to="/panel/marketing/layouts/new" variant="contained">+ {t.common.add}</Button>}>
       <ListSection isEmpty={layouts.isSuccess && layouts.data.layouts.length === 0} empty={<StatusView state={{ kind: 'empty', title: t.marketing.layoutsEmpty, action: <Button component={Link} to="/panel/marketing/layouts/new">+ {t.common.add}</Button> }} />}>
-        {layouts.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.layoutsLoading }} /> : layouts.isError ? <StatusView state={{ kind: 'error', message: localizeError(layouts.error, t) }} /> : (
+        {layouts.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.layoutsLoading }} /> : layouts.isError ? <StatusView state={{ kind: 'error', message: localizeError(layouts.error, t), retry: { label: t.common.retry, onRetry: () => void layouts.refetch() } }} /> : (
           <Stack spacing="1rem">
             {layouts.data.layouts.map((layout) => (
               <MarketingSummaryRow key={layout.id} title={layout.name} summary={t.marketing.layoutSlotHint} date={formatDateTime(layout.updatedAt, language)} actions={<Button onClick={() => void navigate({ to: '/panel/marketing/layouts/$layoutId', params: { layoutId: layout.id } })}>{t.marketing.layoutEditor}</Button>} testId="marketing-layout-row" />
@@ -65,7 +66,7 @@ export const LayoutsPanel = () => {
 
 export const LayoutCreatePage = () => {
   const t = useTranslations();
-  return <PanelPage title={t.marketing.newLayout} backTo={{ label: t.marketing.allLayouts, href: '/panel/marketing/layouts' }}><LayoutForm /></PanelPage>;
+  return <PanelPage title={t.marketing.newLayout} backTo={<PanelBackLink to="/panel/marketing/layouts">{t.marketing.allLayouts}</PanelBackLink>}><LayoutForm /></PanelPage>;
 };
 
 export const LayoutDetailPage = () => {
@@ -73,8 +74,8 @@ export const LayoutDetailPage = () => {
   const params = useParams({ strict: false });
   const layouts = useQuery(actions.marketingLayouts);
   if (layouts.isPending) return <PanelPage title={t.marketing.layoutsTitle} state={{ kind: 'loading', label: t.marketing.layoutsLoading }} />;
-  if (layouts.isError) return <PanelPage title={t.marketing.layoutsTitle} state={{ kind: 'error', message: localizeError(layouts.error, t) }} />;
+  if (layouts.isError) return <PanelPage title={t.marketing.layoutsTitle} state={{ kind: 'error', message: localizeError(layouts.error, t), retry: { label: t.common.retry, onRetry: () => void layouts.refetch() } }} />;
   const layout = layouts.data.layouts.find((entry) => entry.id === params.layoutId);
   if (layout === undefined) return <Navigate to="/panel/marketing/layouts" />;
-  return <PanelPage title={layout.name} backTo={{ label: t.marketing.allLayouts, href: '/panel/marketing/layouts' }}><LayoutForm layout={layout} /></PanelPage>;
+  return <PanelPage title={layout.name} backTo={<PanelBackLink to="/panel/marketing/layouts">{t.marketing.allLayouts}</PanelBackLink>}><LayoutForm layout={layout} /></PanelPage>;
 };

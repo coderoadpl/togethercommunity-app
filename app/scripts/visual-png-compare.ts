@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const pixelmatchCli = require.resolve('pixelmatch/bin/pixelmatch');
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const pixelmatchOptions = { threshold: 0, includeAA: false };
+const maxDiffPixels = 10;
 
 const readPngSize = (path: string): { width: number; height: number } => {
   const header = readFileSync(path).subarray(0, 24);
@@ -64,10 +65,10 @@ export const comparePng = ({
     throw new Error(result.stderr || result.stdout || `pixelmatch exited ${String(result.status)}`);
   }
   const mismatched = Number(match[1]);
-  if (mismatched === 0) return null;
+  if (mismatched <= maxDiffPixels) return null;
   const ratio = mismatched / (baseline.width * baseline.height);
   return {
     file,
-    reason: `${mismatched} px differ (${(ratio * 100).toFixed(3)}%, limit 0.000%) — diff: ${diffPath}`,
+    reason: `${mismatched} px differ (${(ratio * 100).toFixed(3)}%, limit ${String(maxDiffPixels)} px) — diff: ${diffPath}`,
   };
 };

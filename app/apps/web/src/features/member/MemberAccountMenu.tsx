@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
+import { Alert, Box, Divider, IconButton, ListItemIcon, ListItemText, Menu, MenuItem, Snackbar, Tooltip } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { StatusView } from '../../components/layout/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { BreakAllText, Eyebrow } from '../../theme.js';
 import { AccountIcon, ManageAccountIcon, SignOutIcon } from './account-icons.js';
 
@@ -47,6 +48,7 @@ export const MemberAccountMenu = () => {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
+        {me.isError ? <Box sx={{ p: '0.75rem' }}><StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /></Box> : null}
         {email !== null ? (
           <Box sx={{ px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
             <Eyebrow variant="overline" component="p">
@@ -84,6 +86,9 @@ export const MemberAccountMenu = () => {
           <ListItemText primary={t.tenant.signOut} />
         </MenuItem>
       </Menu>
+      <Snackbar open={signOut.isError} autoHideDuration={6000} onClose={() => signOut.reset()}>
+        <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizeError(signOut.error, t) : ''}</Alert>
+      </Snackbar>
     </>
   );
 };

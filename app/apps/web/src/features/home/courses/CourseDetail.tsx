@@ -1,5 +1,6 @@
 import { useState, type DragEvent, type FormEvent } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Divider,
@@ -22,7 +23,9 @@ import type { Chapter, Course, CourseLesson, CourseModule } from '#core/domain/i
 
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { localizeError, useTranslations, type Messages } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import {
   Eyebrow,
   ReorderCard,
@@ -676,6 +679,107 @@ const orderAttachedModules = (course: Course, attached: CourseModule[]): CourseM
   });
 };
 
+const CourseDetailsSection = ({ course }: { course: Course }) => {
+  const t = useTranslations();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState(course.name);
+  const [description, setDescription] = useState(course.description);
+  const [imageUrl, setImageUrl] = useState(course.imageUrl ?? '');
+  const errorId = 'course-details-error';
+  const save = useMutation({
+    ...actions.updateCourse,
+    onSuccess: async () => queryClient.invalidateQueries(actions.coursesInvalidates()),
+  });
+
+  const resetFeedback = () => {
+    if (save.isSuccess || save.isError) save.reset();
+  };
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    save.mutate({
+      id: course.id,
+      name: name.trim(),
+      description,
+      imageUrl: imageUrl.trim() === '' ? null : imageUrl.trim(),
+    });
+  };
+
+  return (
+    <SectionCard
+      title={t.courses.detailsHeading}
+      onSubmit={submit}
+      actions={(
+        <Button type="submit" variant="contained" disabled={save.isPending || name.trim().length === 0}>
+          {save.isPending ? t.courses.savingDetails : t.courses.saveDetails}
+        </Button>
+      )}
+      data-testid="course-details-section"
+    >
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-name">{t.courses.titleLabel}</FormLabel>
+        <OutlinedInput
+          id="course-name"
+          value={name}
+          required
+          aria-describedby={save.isError ? errorId : undefined}
+          onChange={(event) => {
+            resetFeedback();
+            setName(event.target.value);
+          }}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-description">{t.common.description}</FormLabel>
+        <OutlinedInput
+          id="course-description"
+          value={description}
+          multiline
+          minRows={3}
+          aria-describedby={save.isError ? errorId : undefined}
+          onChange={(event) => {
+            resetFeedback();
+            setDescription(event.target.value);
+          }}
+        />
+      </FormControl>
+      <FormControl fullWidth>
+        <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
+        <OutlinedInput
+          id="course-image"
+          type="url"
+          value={imageUrl}
+          aria-describedby={save.isError ? errorId : undefined}
+          onChange={(event) => {
+            resetFeedback();
+            setImageUrl(event.target.value);
+          }}
+        />
+        {imageUrl.trim() === '' ? null : (
+          <CoverPreview
+            key={imageUrl.trim()}
+            src={imageUrl.trim()}
+            label={t.courses.imagePreview}
+            testId="course-image-preview"
+          />
+        )}
+      </FormControl>
+      {save.isSuccess ? <Alert severity="success">{t.courses.detailsSaved}</Alert> : null}
+      {save.isError ? (
+        <MutationError
+          error={save.error}
+          id={errorId}
+          fields={[
+            { name: 'name', id: 'course-name', label: t.courses.titleLabel },
+            { name: 'description', id: 'course-description', label: t.common.description },
+            { name: 'imageUrl', id: 'course-image', label: t.courses.imageUrl },
+          ]}
+        />
+      ) : null}
+    </SectionCard>
+  );
+};
+
 export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () => void }) => {
   const t = useTranslations();
   const navigate = useNavigate();
@@ -726,10 +830,10 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   const detachModule = useMutation({ ...actions.detachModule, onSuccess: invalidateTree });
 
   if (modules.isPending || lessons.isPending) {
-    return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
+    return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'loading', label: t.courses.loadingCourse }} />;
   }
-  if (modules.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(modules.error, t) }} />;
-  if (lessons.isError) return <PanelPage title={course.name} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }} state={{ kind: 'error', message: localizeError(lessons.error, t) }} />;
+  if (modules.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} />;
+  if (lessons.isError) return <PanelPage title={course.name} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>} state={{ kind: 'error', message: localizeError(lessons.error, t), retry: { label: t.common.retry, onRetry: () => void lessons.refetch() } }} />;
 
   const attached = orderAttachedModules(
     course,
@@ -758,14 +862,13 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
   return (
     <PanelPage
       title={course.name}
-      backTo={{
-        label: t.courses.allCourses,
-        href: '/panel/courses',
-        onClick: (event) => {
+      backTo={<PanelBackLink
+        to="/panel/courses"
+        onClick={(event) => {
           event.preventDefault();
           onBack();
-        },
-      }}
+        }}
+      >{t.courses.allCourses}</PanelBackLink>}
       action={
         <Button
           variant="contained"
@@ -778,11 +881,12 @@ export const CourseDetail = ({ course, onBack }: { course: Course; onBack: () =>
         </Button>
       }
     >
+      <CourseDetailsSection course={course} />
       <AttachModuleForm courseId={course.id} modules={unattached} />
       <HistoryPanel courseId={course.id} />
 
       <Box component="section">
-        <Typography variant="h2" component="h3" sx={{ mb: '1rem' }}>
+        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
           {t.courses.modulesHeading}
         </Typography>
         {reorderModules.isError ? <MutationError error={reorderModules.error} /> : null}

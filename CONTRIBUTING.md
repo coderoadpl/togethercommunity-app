@@ -18,8 +18,11 @@ Thank you for helping improve Together.
 6. Run the static gate `pnpm run check` and the runtime gate `pnpm run smoke`
    from `app/`; both must be green.
 7. Open a pull request into `staging` that explains the problem, the solution,
-   and how it was verified. Production promotion is a separate owner-approved
-   pull request from `staging` to the default branch, `main`.
+   and how it was verified. Every pull request gets its own preview deployment;
+   merged changes deploy to the staging environment at
+   <https://togethercommunity-app-git-staging-coderoad.vercel.app>. Production
+   promotion is a separate owner-approved pull request from `staging` to the
+   default branch, `main`.
 8. Address review feedback and keep the branch current until all required
    checks pass.
 

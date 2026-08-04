@@ -8,7 +8,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type {
@@ -97,7 +97,7 @@ const ProductRow = ({
       sx={{ p: '1.1rem 1.25rem', display: 'grid', gap: '0.6rem' }}
     >
       <Stack direction="row" useFlexGap sx={{ alignItems: 'baseline', columnGap: '0.75rem', flexWrap: 'wrap' }}>
-        <MemberProductLink href={`/my/course/${product.id}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
+        <MemberProductLink component={Link} to={`/my/course/${encodeURIComponent(product.id)}`} sx={{ opacity: inactive ? 0.72 : 1 }}>
           {product.title}
         </MemberProductLink>
         <Chip
@@ -178,8 +178,8 @@ const ProductRow = ({
           <Button
             variant="contained"
             size="small"
-            component="a"
-            href={`/checkout/${product.id}`}
+            component={Link}
+            to={`/checkout/${encodeURIComponent(product.id)}`}
             data-testid={`renew-${product.id}`}
           >
             {t.student.renewAccess}
@@ -221,6 +221,7 @@ export const MyProductsPage = () => {
         state={{
           kind: 'error',
           message: isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t),
+          retry: { label: t.common.retry, onRetry: () => void products.refetch() },
         }}
       />
     );
@@ -228,6 +229,7 @@ export const MyProductsPage = () => {
 
   return (
     <MemberSurface title={t.student.myProducts} eyebrow={t.student.productsLibrary}>
+        {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
         {products.data.products.length === 0 ? (
           <StatusView
             state={{

@@ -25,7 +25,7 @@ const coupon = (overrides: Partial<Coupon> = {}): Coupon => ({
   partnerLabel: 'Partner',
   stripeCouponId: null,
   stripePromotionCodeId: null,
-  createdAt: '2026-07-01T00:00:00.000Z',
+  createdAt: '1998-07-01T00:00:00.000Z',
   ...overrides,
 });
 
@@ -58,14 +58,52 @@ describe('coupon validation', () => {
     expect(couponCreateInputSchema.safeParse({ ...input, currency: 'PLN' }).success).toBe(true);
   });
 
+  it('rejects zero-value discounts and unsupported currencies', () => {
+    const input = {
+      code: 'SAVE',
+      kind: 'percent',
+      value: 0,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+    };
+    expect(couponCreateInputSchema.safeParse(input).success).toBe(false);
+    expect(
+      couponCreateInputSchema.safeParse({
+        ...input,
+        kind: 'amount',
+        value: 500,
+        currency: 'GBP',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires the end date to be later than the start date', () => {
+    const input = {
+      code: 'SUMMER',
+      kind: 'percent',
+      value: 10,
+      scope: { kind: 'all' },
+      appliesTo: 'both',
+      startsAt: '1998-08-20T00:00:00.000Z',
+      endsAt: '1998-08-19T00:00:00.000Z',
+    };
+    expect(couponCreateInputSchema.safeParse(input).success).toBe(false);
+    expect(
+      couponCreateInputSchema.safeParse({
+        ...input,
+        endsAt: '1998-08-21T00:00:00.000Z',
+      }).success,
+    ).toBe(true);
+  });
+
   it('normalizes codes case-insensitively', () => {
     expect(normalizeCouponCode('  partner20 ')).toBe('PARTNER20');
   });
 
   it.each([
     ['archived', coupon({ status: 'archived' }), 'inactive'],
-    ['not started', coupon({ startsAt: '2026-08-01T00:00:00.000Z' }), 'not_started'],
-    ['expired', coupon({ endsAt: '2026-07-20T00:00:00.000Z' }), 'expired'],
+    ['not started', coupon({ startsAt: '1998-08-01T00:00:00.000Z' }), 'not_started'],
+    ['expired', coupon({ endsAt: '1998-07-20T00:00:00.000Z' }), 'expired'],
     ['wrong product', coupon({ scope: { kind: 'products', productIds: ['other'] } }), 'scope'],
     ['wrong purchase kind', coupon({ appliesTo: 'recurring' }), 'purchase_kind'],
     ['wrong currency', coupon({ kind: 'amount', value: 500, currency: 'EUR' }), 'currency'],
@@ -74,7 +112,7 @@ describe('coupon validation', () => {
   ] as const)('rejects %s', (_label, candidate, reason) => {
     expect(
       validateCoupon(candidate, {
-        now: '2026-07-27T00:00:00.000Z',
+        now: '1998-07-27T00:00:00.000Z',
         productId: 'product-1',
         priceKind: 'one_time',
         currency: 'PLN',
@@ -85,11 +123,11 @@ describe('coupon validation', () => {
   });
 
   it('honors expiry after a session started while still re-checking limits', () => {
-    const expiring = coupon({ endsAt: '2026-07-26T00:00:00.000Z', maxRedemptions: 2 });
+    const expiring = coupon({ endsAt: '1998-07-26T00:00:00.000Z', maxRedemptions: 2 });
     expect(
       validateCoupon(expiring, {
-        now: '2026-07-27T00:00:00.000Z',
-        sessionStartedAt: '2026-07-25T00:00:00.000Z',
+        now: '1998-07-27T00:00:00.000Z',
+        sessionStartedAt: '1998-07-25T00:00:00.000Z',
         productId: 'product-1',
         priceKind: 'one_time',
         currency: 'PLN',
@@ -99,8 +137,8 @@ describe('coupon validation', () => {
     ).toEqual({ valid: true });
     expect(
       validateCoupon(expiring, {
-        now: '2026-07-27T00:00:00.000Z',
-        sessionStartedAt: '2026-07-25T00:00:00.000Z',
+        now: '1998-07-27T00:00:00.000Z',
+        sessionStartedAt: '1998-07-25T00:00:00.000Z',
         productId: 'product-1',
         priceKind: 'one_time',
         currency: 'PLN',

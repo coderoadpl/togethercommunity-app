@@ -7,15 +7,17 @@ import {
   FormControl,
   FormControlLabel,
   FormLabel,
-  Link,
+  Link as MuiLink,
   OutlinedInput,
   Paper,
   Radio,
   RadioGroup,
   Stack,
+  SvgIcon,
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -27,7 +29,15 @@ import { RichTextContent } from '../../components/ui/RichTextContent.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CardTitle, DataValue, FinePrint } from '../../theme.js';
+import {
+  CardTitle,
+  CheckoutDisclosureButton,
+  CheckoutPrice,
+  CheckoutPriceOption,
+  DataValue,
+  EmberCtaButton,
+  FinePrint,
+} from '../../theme.js';
 import { createCheckoutState, reduceCheckoutState } from './index.web.js';
 
 type OfferPrice = {
@@ -37,6 +47,12 @@ type OfferPrice = {
   amountCents: number;
   currency: string;
 };
+
+const DisclosureIcon = ({ expanded }: { expanded: boolean }) => (
+  <SvgIcon fontSize="small" aria-hidden>
+    <path d={expanded ? 'M5 11h14v2H5z' : 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z'} />
+  </SvgIcon>
+);
 
 const priceLabel = (
   price: OfferPrice,
@@ -205,7 +221,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.successEyebrow} footer={socialFooter}>
+      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.successEyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">
             {subscriptionSuccess ? t.checkout.subscriptionSuccessTitle : t.checkout.successTitle}
@@ -213,7 +229,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
           <Typography variant="body1">
             {subscriptionSuccess ? t.checkout.subscriptionSuccessBody : t.checkout.successBody}
           </Typography>
-          <Button component="a" href="/login" variant="contained" fullWidth>
+          <Button component={Link} to="/login" variant="contained" fullWidth>
             {t.checkout.goToLogin}
           </Button>
         </Stack>
@@ -223,7 +239,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (checkoutStatus === 'cancelled') {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.cancelledEyebrow} footer={socialFooter}>
+      <FocusCard brand={<BrandMark size="compact" />} eyebrow={t.checkout.cancelledEyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
@@ -236,7 +252,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   if (offer.isPending || paymentConfig.isPending) {
     return (
       <FocusCard
-        brand={<BrandMark />}
+        brand={<BrandMark size="compact" />}
         eyebrow={t.checkout.checkoutEyebrow}
         footer={socialFooter}
         width="wide"
@@ -249,13 +265,23 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   if (offer.isError || paymentConfig.isError) {
     return (
       <FocusCard
-        brand={<BrandMark />}
+        brand={<BrandMark size="compact" />}
         eyebrow={t.checkout.checkoutEyebrow}
         footer={socialFooter}
         width="wide"
       >
         <StatusView
-          state={{ kind: 'error', message: localizeError(offer.error ?? paymentConfig.error, t) }}
+          state={{
+            kind: 'error',
+            message: localizeError(offer.error ?? paymentConfig.error, t),
+            retry: {
+              label: t.common.retry,
+              onRetry: () => {
+                void offer.refetch();
+                void paymentConfig.refetch();
+              },
+            },
+          }}
         />
       </FocusCard>
     );
@@ -264,8 +290,8 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   if (!product) {
     return (
       <FocusCard
-        brand={<BrandMark />}
-        eyebrow={offer.data.tenant.name}
+        brand={<BrandMark size="compact" />}
+        eyebrow={t.checkout.checkoutEyebrow}
         footer={socialFooter}
       >
         <StatusView
@@ -274,7 +300,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             title: t.checkout.unavailableTitle,
             body: t.checkout.unavailableBody,
             action: (
-              <Button component="a" href="/login" variant="contained">
+              <Button component={Link} to="/login" variant="contained">
                 {t.checkout.goToLogin}
               </Button>
             ),
@@ -287,11 +313,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
   const selectedAmountCents = selectedPrice?.amountCents ?? product.priceCents;
   const selectedCurrency = selectedPrice?.currency ?? product.currency;
   const payableCents = couponValidation.data?.breakdown.finalCents ?? selectedAmountCents;
+  const formattedPayable = formatPrice(payableCents, selectedCurrency, language);
 
   if (purchaseComplete) {
     return (
       <FocusCard
-        brand={<BrandMark />}
+        brand={<BrandMark size="compact" />}
         eyebrow={t.checkout.paymentSimulatedEyebrow}
         footer={socialFooter}
       >
@@ -307,7 +334,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             <Typography variant="body1">{t.checkout.alreadyOwnedNote}</Typography>
           ) : null}
           <Typography variant="body1">{product.title}</Typography>
-          {magicLinkUrl ? <Link href={magicLinkUrl}>{t.checkout.openCourse}</Link> : null}
+          {magicLinkUrl ? <MuiLink href={magicLinkUrl}>{t.checkout.openCourse}</MuiLink> : null}
           <FinePrint variant="caption" component="p">
             {magicLinkUrl ? t.checkout.productionNote : t.checkout.noMagicLinkNote}
           </FinePrint>
@@ -318,14 +345,19 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   return (
     <FocusCard
-      brand={<BrandMark />}
-      eyebrow={t.checkout.eyebrow({ tenant: offer.data.tenant.name })}
+      brand={<BrandMark size="compact" />}
+      eyebrow={t.checkout.checkoutEyebrow}
       footer={socialFooter}
       width="wide"
       onSubmit={submit}
     >
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{product.title}</CardTitle>
+          {product.prices.length <= 1 ? (
+            <CheckoutPrice component="p">
+              <DataValue>{formatPrice(selectedAmountCents, selectedCurrency, language)}</DataValue>
+            </CheckoutPrice>
+          ) : null}
           {product.coverUrl === null ? null : (
             <Box
               component="img"
@@ -348,22 +380,23 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 }}
               >
                 {product.prices.map((price) => (
-                  <Paper key={price.id} variant="outlined" sx={{ px: '0.75rem', my: '0.3rem' }}>
+                  <CheckoutPriceOption
+                    key={price.id}
+                    variant="outlined"
+                    selected={price.id === selectedPrice?.id}
+                    sx={{ px: '0.75rem', my: '0.3rem' }}
+                  >
                     <FormControlLabel
                       value={price.id}
                       control={<Radio />}
                       label={priceLabel(price, formatPrice(price.amountCents, price.currency, language), t)}
                       data-testid={`checkout-price-${price.id}`}
                     />
-                  </Paper>
+                  </CheckoutPriceOption>
                 ))}
               </RadioGroup>
             </FormControl>
-          ) : (
-            <Typography variant="h2" component="p">
-              <DataValue>{formatPrice(selectedAmountCents, selectedCurrency, language)}</DataValue>
-            </Typography>
-          )}
+          ) : null}
           <FormControl fullWidth>
             <FormLabel htmlFor="checkout-email">{t.checkout.emailLabel}</FormLabel>
             <OutlinedInput
@@ -378,14 +411,18 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               required
             />
           </FormControl>
-          <Button
+          <CheckoutDisclosureButton
             type="button"
             variant="text"
+            size="small"
+            color="primary"
+            startIcon={<DisclosureIcon expanded={invoiceVisible} />}
             onClick={() => setInvoiceVisible((current) => !current)}
             aria-expanded={invoiceVisible}
+            sx={{ alignSelf: 'flex-start' }}
           >
             {t.checkout.invoiceReveal}
-          </Button>
+          </CheckoutDisclosureButton>
           {invoiceVisible ? (
             <Stack useFlexGap spacing="0.75rem">
               {[
@@ -411,16 +448,23 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               ))}
             </Stack>
           ) : null}
-          {!couponVisible ? (
-            <Button
-              type="button"
-              variant="text"
-              data-testid="checkout-coupon-reveal"
-              onClick={() => dispatchCheckout({ type: 'couponOpened' })}
-            >
-              {t.checkout.couponReveal}
-            </Button>
-          ) : (
+          <CheckoutDisclosureButton
+            type="button"
+            variant="text"
+            size="small"
+            color="primary"
+            startIcon={<DisclosureIcon expanded={couponVisible} />}
+            data-testid="checkout-coupon-reveal"
+            onClick={() => dispatchCheckout({
+              type: 'couponVisibilityChanged',
+              visible: !couponVisible,
+            })}
+            aria-expanded={couponVisible}
+            sx={{ alignSelf: 'flex-start' }}
+          >
+            {t.checkout.couponReveal}
+          </CheckoutDisclosureButton>
+          {couponVisible ? (
             <Stack useFlexGap spacing="0.5rem">
               <FormControl fullWidth>
                 <FormLabel htmlFor="checkout-coupon">{t.checkout.couponLabel}</FormLabel>
@@ -490,7 +534,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                 </Alert>
               ) : null}
             </Stack>
-          )}
+          ) : null}
           {consentRequired ? (
             <TermsConsentField legal={legal} checked={termsAccepted} onChange={setTermsAccepted} />
           ) : null}
@@ -514,9 +558,9 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
                       <Stack useFlexGap spacing="0.2rem">
                         <Typography>{definition.label}</Typography>
                         {definition.documentUrl === null ? null : (
-                          <Link href={definition.documentUrl} target="_blank" rel="noreferrer">
+                          <MuiLink href={definition.documentUrl} target="_blank" rel="noreferrer">
                             {t.checkout.marketingConsentDocument}
-                          </Link>
+                          </MuiLink>
                         )}
                         {definition.doubleOptIn ? (
                           <FinePrint component="span" variant="caption">{t.checkout.marketingConsentDoiHint}</FinePrint>
@@ -528,10 +572,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
               </Stack>
             </FormControl>
           ) : null}
-          <Button
+          <EmberCtaButton
             type="submit"
             variant="contained"
-            color="secondary"
+            fullWidth
+            data-testid="checkout-pay-cta"
             disabled={
               simulatePurchase.isPending ||
               checkoutSession.isPending ||
@@ -543,41 +588,53 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
             {payableCents === 0
               ? simulatePurchase.isPending || checkoutSession.isPending
                 ? t.checkout.freePending
-                : t.checkout.freeIdle
+                : t.checkout.freeIdle({ price: formattedPayable })
               : paymentConfig.data.stripeConfigured
               ? checkoutSession.isPending
                 ? t.checkout.payPending
-                : t.checkout.payIdle
+                : t.checkout.payIdle({ price: formattedPayable })
               : simulatePurchase.isPending
                 ? t.checkout.submitPending
-                : t.checkout.submitIdle}
-          </Button>
+                : t.checkout.payIdle({ price: formattedPayable })}
+          </EmberCtaButton>
+          {payableCents > 0
+          && !paymentConfig.data.stripeConfigured
+          && paymentConfig.data.simulatedPaymentsEnabled ? (
+            <FinePrint component="p" variant="caption">
+              {t.checkout.simulatedPaymentDevNote}
+            </FinePrint>
+          ) : null}
           {selectedAmountCents > 0 &&
           paymentConfig.data.stripeConfigured &&
           paymentConfig.data.simulatedPaymentsEnabled ? (
-            <Button
-              type="button"
-              variant="outlined"
-              disabled={simulatePurchase.isPending || checkoutSession.isPending}
-              onClick={() => simulatePurchase.mutate({
-                email,
-                productId,
-                language,
-                ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
-                ...consent,
-                ...billing,
-                ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
-                ...(couponValidation.data === undefined ? {} : { couponCode }),
-              })}
-            >
-              {payableCents === 0
-                ? simulatePurchase.isPending
-                  ? t.checkout.freePending
-                  : t.checkout.freeIdle
-                : simulatePurchase.isPending
-                  ? t.checkout.submitPending
-                  : t.checkout.submitIdle}
-            </Button>
+            <Stack useFlexGap spacing="0.35rem">
+              <Button
+                type="button"
+                variant="outlined"
+                disabled={simulatePurchase.isPending || checkoutSession.isPending}
+                onClick={() => simulatePurchase.mutate({
+                  email,
+                  productId,
+                  language,
+                  ...(marketingConsentDefinitionIds.length === 0 ? {} : { marketingConsentDefinitionIds }),
+                  ...consent,
+                  ...billing,
+                  ...(selectedPrice === null ? {} : { priceId: selectedPrice.id }),
+                  ...(couponValidation.data === undefined ? {} : { couponCode }),
+                })}
+              >
+                {payableCents === 0
+                  ? simulatePurchase.isPending
+                    ? t.checkout.freePending
+                    : t.checkout.freeIdle({ price: formattedPayable })
+                  : simulatePurchase.isPending
+                    ? t.checkout.submitPending
+                    : t.checkout.submitIdle({ price: formattedPayable })}
+              </Button>
+              <FinePrint component="p" variant="caption">
+                {t.checkout.simulatedPaymentDevNote}
+              </FinePrint>
+            </Stack>
           ) : null}
           {!paymentConfig.data.stripeConfigured && !paymentConfig.data.simulatedPaymentsEnabled ? (
             <Alert severity="error">{t.checkout.paymentUnavailable}</Alert>

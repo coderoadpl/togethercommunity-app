@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, Chip, Link, Paper, Stack } from '@mui/material';
+import { Alert, Box, Button, Chip, Link as MuiLink, Paper, Stack } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import { REACTION_EMOJIS, type ReactionEmoji, type ReactionSummary, type SpaceFeedItem } from '#core/domain/index.js';
@@ -128,9 +128,9 @@ const FeedPost = ({
           <PostMetaText component="span" data-testid={`reply-count-${item.id}`}>
             {t.discussion.replyCount({ count: item.replyCount })}
           </PostMetaText>
-          <Link href={`/community/${spaceId}/posts/${item.id}`} data-testid={`open-thread-${item.id}`}>
+          <MuiLink component={Link} to={`/community/${encodeURIComponent(spaceId)}/posts/${encodeURIComponent(item.id)}`} data-testid={`open-thread-${item.id}`}>
             {t.community.openThread}
-          </Link>
+          </MuiLink>
           {canPin ? (
             <Button
               size="small"
@@ -189,7 +189,18 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
 
   if (unauthorized) return null;
 
-  const space = spaces.isError ? undefined : spaces.data.spaces.find((candidate) => candidate.id === spaceId);
+  if (spaces.isError) {
+    return (
+      <MemberSurface
+        title={t.community.heading}
+        eyebrow={t.community.feedEyebrow}
+        width="wide"
+        state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }}
+      />
+    );
+  }
+
+  const space = spaces.data.spaces.find((candidate) => candidate.id === spaceId);
 
   if (space === undefined) {
     return (
@@ -201,7 +212,7 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           kind: 'not-found',
           title: t.community.spaceNotFoundTitle,
           body: t.community.spaceNotFoundBody,
-          action: <Link href="/community">{t.community.backToSpaces}</Link>,
+          action: <MuiLink component={Link} to="/community">{t.community.backToSpaces}</MuiLink>,
         }}
       />
     );
@@ -272,19 +283,12 @@ export const SpaceFeedPage = ({ spaceId }: { spaceId: string }) => {
           />
         </Paper>
 
-        {create.isError && (
-          <StatusView
-            surface={false}
-            state={{
-              kind: 'error',
-              message: create.error instanceof ApiError && create.error.appError.code === 'rate_limited'
-                ? t.community.postTooFast
-                : localizeError(create.error, t),
-            }}
-          />
-        )}
-        {pin.isError ? (
-          <StatusView surface={false} state={{ kind: 'error', message: localizeError(pin.error, t) }} />
+        {create.isError ? <Alert severity="error">{create.error instanceof ApiError && create.error.appError.code === 'rate_limited' ? t.community.postTooFast : localizeError(create.error, t)}</Alert> : null}
+        {pin.isError ? <Alert severity="error">{localizeError(pin.error, t)}</Alert> : null}
+        {follow.isError || unfollow.isError ? <Alert severity="error">{localizeError(follow.error ?? unfollow.error, t)}</Alert> : null}
+        {react.isError || unreact.isError ? <Alert severity="error">{localizeError(react.error ?? unreact.error, t)}</Alert> : null}
+        {me.isError ? (
+          <StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} />
         ) : null}
 
         {feed.isPending ? (

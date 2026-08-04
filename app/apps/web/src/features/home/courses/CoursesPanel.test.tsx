@@ -152,7 +152,56 @@ describe('CoursesPanel courses tab', () => {
     await userEvent.type(screen.getByLabelText(pl.common.name), 'X');
     await userEvent.click(screen.getByRole('button', { name: pl.courses.create }));
 
-    expect(await screen.findByText('Name is required')).toBeInTheDocument();
+    const name = screen.getByLabelText(pl.common.name);
+    expect(await screen.findByText(pl.errors.validationField({ field: pl.common.name }))).toBeInTheDocument();
+    expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
+    expect(name).toHaveAttribute('aria-describedby', 'create-course-error');
+    expect(name).toHaveFocus();
+  });
+
+  it('updates course title, description and image from the details card', async () => {
+    let courses = [course()];
+    let updatedInput: ReturnType<typeof updateCourseInputSchema.parse> | null = null;
+    server.use(
+      http.get('/api/courses', () => HttpResponse.json({ ok: true, data: { courses } })),
+      http.get('/api/modules', () => HttpResponse.json({ ok: true, data: { modules: [] } })),
+      http.get('/api/lessons', () => HttpResponse.json({ ok: true, data: { lessons: [] } })),
+      http.get('/api/courses/history', () => HttpResponse.json({ ok: true, data: { versions: [] } })),
+      http.post('/api/courses/update', async ({ request }) => {
+        const input = updateCourseInputSchema.parse(await request.json());
+        updatedInput = input;
+        const existing = courses[0];
+        if (existing === undefined) {
+          return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } });
+        }
+        const updated: Course = {
+          ...existing,
+          name: input.name ?? existing.name,
+          description: input.description ?? existing.description,
+          imageUrl: input.imageUrl === undefined ? existing.imageUrl : input.imageUrl,
+        };
+        courses = [updated];
+        return HttpResponse.json({ ok: true, data: { course: updated } });
+      }),
+    );
+
+    await renderCoursesPanel('/panel/courses/course-1');
+
+    const title = await screen.findByLabelText(pl.courses.titleLabel);
+    await userEvent.clear(title);
+    await userEvent.type(title, 'Updated Launch Kit');
+    await userEvent.clear(screen.getByLabelText(pl.common.description));
+    await userEvent.type(screen.getByLabelText(pl.common.description), 'Updated description');
+    await userEvent.type(screen.getByLabelText(pl.courses.imageUrl), 'https://cdn.test/course.jpg');
+    await userEvent.click(screen.getByRole('button', { name: pl.courses.saveDetails }));
+
+    expect(await screen.findByText(pl.courses.detailsSaved)).toBeInTheDocument();
+    expect(updatedInput).toMatchObject({
+      id: 'course-1',
+      name: 'Updated Launch Kit',
+      description: 'Updated description',
+      imageUrl: 'https://cdn.test/course.jpg',
+    });
   });
 
   it('adds a chapter and a content entry through the module editor', async () => {

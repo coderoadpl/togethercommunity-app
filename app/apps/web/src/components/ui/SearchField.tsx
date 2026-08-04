@@ -21,11 +21,13 @@ export const matchesQuery = (query: string, ...haystacks: (string | null)[]): bo
 export const SearchField = ({
   value,
   onChange,
+  label,
   placeholder,
   testId,
 }: {
   value: string;
   onChange: (next: string) => void;
+  label: string;
   placeholder: string;
   testId: string;
 }) => (
@@ -35,7 +37,7 @@ export const SearchField = ({
     value={value}
     onChange={(event) => onChange(event.target.value)}
     placeholder={placeholder}
-    inputProps={{ 'aria-label': placeholder, 'data-testid': testId }}
+    inputProps={{ 'aria-label': label, 'data-testid': testId }}
     sx={{ minWidth: { xs: '100%', sm: '15rem' } }}
   />
 );

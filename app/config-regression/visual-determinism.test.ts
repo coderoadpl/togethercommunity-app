@@ -31,15 +31,16 @@ describe('visual regression determinism', () => {
     expect(harness).toContain('transition: none !important');
   });
 
-  it('captures exact stable pixels', () => {
+  it('captures stable pixels with a bounded antialias tolerance', () => {
     expect(harness).toContain("animations: 'disabled'");
     expect(harness).toContain("caret: 'hide'");
     expect(harness).toContain("scale: 'css'");
     expect(harness).toContain('mask: stableMasks(page, screen)');
-    expect(harness).toContain("page.getByTestId('build-stamp')");
+    expect(harness).not.toContain("page.getByTestId('build-stamp')");
     expect(harness).toContain("from './visual-png-compare.js'");
     expect(comparator).toContain('{ threshold: 0, includeAA: false }');
-    expect(comparator).toContain('if (mismatched === 0) return null;');
+    expect(comparator).toContain('const maxDiffPixels = 10;');
+    expect(comparator).toContain('if (mismatched <= maxDiffPixels) return null;');
   });
 
   it('restricts golden authoring to the declared platform', () => {

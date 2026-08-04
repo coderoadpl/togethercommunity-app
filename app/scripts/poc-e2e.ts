@@ -10,6 +10,7 @@ import {
   API_PATHS,
   EXIT_CODE_BY_ERROR_CODE,
   TENANT_HEADER,
+  courseOutputSchema,
   healthOutputSchema,
   looseEnvelopeSchema,
   meOutputSchema,
@@ -21,6 +22,7 @@ import {
   membersExportOutputSchema,
   myProductsOutputSchema,
   ordersReconciliationOutputSchema,
+  productPriceCreateOutputSchema,
   productsCreateOutputSchema,
   productsListOutputSchema,
   productsPublishOutputSchema,
@@ -216,15 +218,31 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     'alfa space create',
     spaceOutputSchema,
   ).space;
+  const alfaCourse = expectOk(
+    await cli(['--tenant', 'alfa', 'course', 'create', '--name', 'Kurs Alfa'], alfaHome),
+    'kurs alfa course create',
+    courseOutputSchema,
+  ).course;
   const kursAlfa = expectOk(
     await cli(
-      ['--tenant', 'alfa', 'product', 'create', '--title', 'Kurs Alfa', '--price-cents', '19900', '--currency', 'PLN'],
+      [
+        '--tenant', 'alfa', 'product', 'create', '--title', 'Kurs Alfa', '--price-cents', '19900',
+        '--currency', 'PLN', '--access-items', JSON.stringify([{ level: 'course', courseId: alfaCourse.id }]),
+      ],
       alfaHome,
     ),
     'kurs alfa create',
     productsCreateOutputSchema,
   ).product;
   assert(kursAlfa.title === 'Kurs Alfa' && kursAlfa.priceCents === 19900 && !kursAlfa.published, 'Kurs Alfa create mismatch');
+  expectOk(
+    await cli(
+      ['--tenant', 'alfa', 'price', 'add', '--product', kursAlfa.id, '--kind', 'one_time', '--price-cents', '19900'],
+      alfaHome,
+    ),
+    'kurs alfa price add',
+    productPriceCreateOutputSchema,
+  );
   const publishedAlfa = expectOk(
     await cli(['--tenant', 'alfa', 'product', 'publish', kursAlfa.id], alfaHome),
     'kurs alfa publish',
@@ -288,14 +306,30 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     tenantCreateOutputSchema,
   );
   assert(betaTenant.tenant.slug === 'beta' && betaTenant.tenant.name === 'Beta School', 'beta tenant mismatch');
+  const betaCourse = expectOk(
+    await cli(['--tenant', 'beta', 'course', 'create', '--name', 'Kurs Beta'], betaHome),
+    'kurs beta course create',
+    courseOutputSchema,
+  ).course;
   const kursBeta = expectOk(
     await cli(
-      ['--tenant', 'beta', 'product', 'create', '--title', 'Kurs Beta', '--price-cents', '4900', '--currency', 'PLN'],
+      [
+        '--tenant', 'beta', 'product', 'create', '--title', 'Kurs Beta', '--price-cents', '4900',
+        '--currency', 'PLN', '--access-items', JSON.stringify([{ level: 'course', courseId: betaCourse.id }]),
+      ],
       betaHome,
     ),
     'kurs beta create',
     productsCreateOutputSchema,
   ).product;
+  expectOk(
+    await cli(
+      ['--tenant', 'beta', 'price', 'add', '--product', kursBeta.id, '--kind', 'one_time', '--price-cents', '4900'],
+      betaHome,
+    ),
+    'kurs beta price add',
+    productPriceCreateOutputSchema,
+  );
   const publishedBeta = expectOk(
     await cli(['--tenant', 'beta', 'product', 'publish', kursBeta.id], betaHome),
     'kurs beta publish',

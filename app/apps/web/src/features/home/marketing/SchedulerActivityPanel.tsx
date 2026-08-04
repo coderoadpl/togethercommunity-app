@@ -15,7 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useParams } from '@tanstack/react-router';
+import { Link, Navigate, useParams } from '@tanstack/react-router';
 
 import type { SchedulerRunKind, SchedulerRunStatus } from '#core/domain/index.js';
 
@@ -23,6 +23,7 @@ import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { SchedulerActivitySummary, SchedulerRunStatusChip } from './SchedulerActivitySummary.js';
 
 const PAGE_SIZES = [10, 25, 50, 100];
@@ -161,7 +162,7 @@ export const SchedulerActivityPanel = () => {
         {activity.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.marketing.activity.loading }} />
         ) : activity.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(activity.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(activity.error, t), retry: { label: t.common.retry, onRetry: () => void activity.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table size="small" aria-label={t.marketing.activity.title}>
@@ -188,7 +189,7 @@ export const SchedulerActivityPanel = () => {
                       : t.marketing.activity.counts(tenant)}</TableCell>
                     <TableCell><SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} /></TableCell>
                     <TableCell align="right">
-                      <Button component="a" size="small" href={`/panel/marketing/activity/${encodeURIComponent(run.id)}`}>
+                      <Button component={Link} size="small" to={`/panel/marketing/activity/${encodeURIComponent(run.id)}`}>
                         {t.marketing.activity.details}
                       </Button>
                     </TableCell>
@@ -214,17 +215,17 @@ export const SchedulerActivityDetailPage = () => {
 
   if (runId === undefined) return <Navigate to="/panel/marketing/activity" />;
   if (detail.isPending) {
-    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'loading', label: t.marketing.activity.loading }} /></PanelPage>;
+    return <PanelPage title={t.marketing.activity.details} state={{ kind: 'loading', label: t.marketing.activity.loading }} />;
   }
   if (detail.isError) {
-    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t) }} /></PanelPage>;
+    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
   }
 
   const { run, tenant } = detail.data;
   return (
     <PanelPage
       title={t.marketing.activity.kinds[run.kind]}
-      backTo={{ label: t.marketing.activity.allRuns, href: '/panel/marketing/activity' }}
+      backTo={<PanelBackLink to="/panel/marketing/activity">{t.marketing.activity.allRuns}</PanelBackLink>}
       action={<SchedulerRunStatusChip status={run.status} label={t.marketing.activity.statuses[run.status]} />}
     >
       <SectionCard title={t.marketing.activity.details}>
@@ -273,7 +274,7 @@ export const SchedulerActivityDetailPage = () => {
           )}
       </SectionCard>
       {run.kind === 'consent_evidence_purge' ? null : (
-        <Button component="a" variant="outlined" href={`/panel/marketing/sends?runId=${encodeURIComponent(run.id)}`}>
+        <Button component={Link} variant="outlined" to={`/panel/marketing/sends?runId=${encodeURIComponent(run.id)}`}>
           {t.marketing.activity.viewSends}
         </Button>
       )}

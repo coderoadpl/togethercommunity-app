@@ -19,10 +19,12 @@ import type { Course } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { ListPagination, usePagedList } from '../../../components/ui/ListPagination.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { matchesQuery, SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate } from '../../../lib/format.js';
 import { DataValue, EntryDate } from '../../../theme.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { MutationError } from './feedback.js';
 
 const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void }) => {
@@ -31,6 +33,7 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const errorId = 'create-course-error';
 
   const createCourse = useMutation({
     ...actions.createCourse,
@@ -53,7 +56,7 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
     <SectionCard title={t.courses.detailsHeading} onSubmit={submit}>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-name">{t.common.name}</FormLabel>
-        <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required />
+        <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required aria-describedby={createCourse.isError ? errorId : undefined} />
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-description">{t.common.description}</FormLabel>
@@ -63,21 +66,42 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
           onChange={(event) => setDescription(event.target.value)}
           multiline
           minRows={3}
+          aria-describedby={createCourse.isError ? errorId : undefined}
         />
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-image">{t.courses.imageUrl}</FormLabel>
         <OutlinedInput
           id="course-image"
+          type="url"
           value={imageUrl}
           onChange={(event) => setImageUrl(event.target.value)}
           placeholder="https://…"
+          aria-describedby={createCourse.isError ? errorId : undefined}
         />
+        {imageUrl.trim() === '' ? null : (
+          <CoverPreview
+            key={imageUrl.trim()}
+            src={imageUrl.trim()}
+            label={t.courses.imagePreview}
+            testId="course-image-preview"
+          />
+        )}
       </FormControl>
       <Button type="submit" variant="contained" disabled={createCourse.isPending || name.trim().length === 0}>
         {createCourse.isPending ? t.courses.creating : t.courses.create}
       </Button>
-      {createCourse.isError ? <MutationError error={createCourse.error} /> : null}
+      {createCourse.isError ? (
+        <MutationError
+          error={createCourse.error}
+          id={errorId}
+          fields={[
+            { name: 'name', id: 'course-name', label: t.common.name },
+            { name: 'description', id: 'course-description', label: t.common.description },
+            { name: 'imageUrl', id: 'course-image', label: t.courses.imageUrl },
+          ]}
+        />
+      ) : null}
     </SectionCard>
   );
 };
@@ -117,12 +141,14 @@ export const CoursesListPanel = () => {
       title={t.sections.courses}
       action={<Button component={Link} to="/panel/courses/new" variant="contained">+ {t.common.add}</Button>}
     >
+      {modules.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} /> : null}
       <ListSection
         toolbar={{
           search: (
           <SearchField
             value={search}
             onChange={setSearch}
+            label={t.courses.searchPlaceholder}
             placeholder={t.courses.searchPlaceholder}
             testId="courses-search"
           />
@@ -152,7 +178,7 @@ export const CoursesListPanel = () => {
         {courses.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.courses.loading }} />
         ) : courses.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />
         ) : (
           <List disablePadding dense>
             {paged.pageItems.map((course) => (
@@ -194,7 +220,7 @@ export const CourseCreatePage = () => {
   const navigate = useNavigate();
 
   return (
-    <PanelPage title={t.courses.newCourse} backTo={{ label: t.courses.allCourses, href: '/panel/courses' }}>
+    <PanelPage title={t.courses.newCourse} backTo={<PanelBackLink to="/panel/courses">{t.courses.allCourses}</PanelBackLink>}>
       <CreateCourseForm
         onCreated={(courseId) => void navigate({ to: '/panel/courses/$courseId', params: { courseId } })}
       />

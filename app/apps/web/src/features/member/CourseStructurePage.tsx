@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { Box, Link, Paper, Stack, Typography } from '@mui/material';
+import { Box, Link as MuiLink, Paper, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 import { ApiError } from '#core/client/index.js';
 import type { CourseStructureWithAccess } from '#core/domain/index.js';
@@ -120,11 +120,12 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
               kind: 'not-found',
               title: t.courseTree.courseNotFound,
               body: t.courseTree.courseNotInLibrary,
-              action: <Link href="/my">{t.courseTree.backToMyCourses}</Link>,
+              action: <MuiLink component={Link} to="/my">{t.courseTree.backToMyCourses}</MuiLink>,
             }
           : {
               kind: 'error',
               message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
+              retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
             }}
       />
     );
@@ -139,19 +140,32 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
       title={course.name}
       eyebrow={t.courseTree.courseSyllabus}
       width="wide"
+      mobileRail="split"
+      railLeading={
+        <CourseProgressCard
+          courseId={courseId}
+          structure={course}
+          lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
+        />
+      }
       rail={
         <>
-          <CourseProgressCard
-            courseId={courseId}
-            structure={course}
-            lastViewedLessonId={progress.data?.progress.lastViewedLessonId}
-          />
-          {hasModules && <CourseDiscussionSearch courseId={courseId} structure={course} />}
-          {hasModules && <CurriculumCard courseId={courseId} structure={course} />}
+          {hasModules && (
+            <Box sx={{ order: { md: 2 } }}>
+              <CurriculumCard courseId={courseId} structure={course} />
+            </Box>
+          )}
+          {hasModules && (
+            <Box sx={{ order: { md: 1 } }}>
+              <CourseDiscussionSearch courseId={courseId} structure={course} />
+            </Box>
+          )}
         </>
       }
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
+        {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
+        {courses.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} /> : null}
         <CourseStatTiles structure={course} />
         {catalogEntry?.imageUrl != null && (
           <CourseCoverImage

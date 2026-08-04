@@ -9,6 +9,7 @@ describe('MemberPage', () => {
       <MemberPage
         title="Moje kursy"
         eyebrow="biblioteka kursów"
+        breadcrumbLabel="Okruszki"
         nav={<a href="/my/products">Moje produkty</a>}
         data-testid="page"
       >
@@ -27,14 +28,15 @@ describe('MemberPage', () => {
       <MemberPage
         title="Deklarowanie zmiennych"
         eyebrow="lekcja"
+        breadcrumbLabel="Okruszki"
         breadcrumbs={[
-          { label: 'Kurs JS', href: '/my/courses/course-js' },
+          { label: 'Kurs JS', link: <a href="/my/courses/course-js">Kurs JS</a> },
           { label: 'Deklarowanie zmiennych' },
         ]}
       />,
     );
 
-    expect(screen.getByLabelText('breadcrumb')).toBeInTheDocument();
+    expect(screen.getByLabelText('Okruszki')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Kurs JS' })).toHaveAttribute(
       'href',
       '/my/courses/course-js',
@@ -43,7 +45,7 @@ describe('MemberPage', () => {
 
   it('renders the rail alongside the content', () => {
     render(
-      <MemberPage title="Kurs" eyebrow="program kursu" rail={<aside>Postęp</aside>}>
+      <MemberPage title="Kurs" eyebrow="program kursu" breadcrumbLabel="Okruszki" rail={<aside>Postęp</aside>}>
         <p>Opis kursu</p>
       </MemberPage>,
     );
@@ -52,11 +54,33 @@ describe('MemberPage', () => {
     expect(screen.getByText('Opis kursu')).toBeInTheDocument();
   });
 
+  it('splits leading and trailing rail content around the main column on mobile', () => {
+    render(
+      <MemberPage
+        title="Kurs"
+        eyebrow="program kursu"
+        breadcrumbLabel="Okruszki"
+        mobileRail="split"
+        railLeading={<div>Postęp</div>}
+        rail={<div>Program</div>}
+      >
+        <p>Opis kursu</p>
+      </MemberPage>,
+    );
+
+    expect(screen.getByTestId('member-rail-leading')).toHaveTextContent('Postęp');
+    expect(screen.getByRole('main')).toHaveTextContent('Opis kursu');
+    expect(screen.getByTestId('member-rail-trailing')).toHaveTextContent('Program');
+    expect(screen.getAllByText('Postęp')).toHaveLength(1);
+    expect(screen.getAllByText('Program')).toHaveLength(1);
+  });
+
   it('renders a StatusView inside the skeleton instead of children for non-ready states', () => {
     render(
       <MemberPage
         title="Moje kursy"
         eyebrow="biblioteka"
+        breadcrumbLabel="Okruszki"
         state={{ kind: 'loading', label: 'Wczytywanie kursów…' }}
       >
         <p>Nie powinno się pojawić</p>
@@ -70,7 +94,7 @@ describe('MemberPage', () => {
 
   it('renders the bottom tab bar slot inside a fixed nav landmark', () => {
     render(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka" bottomNav={<div>Zakładki</div>}>
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki" bottomNav={<div>Zakładki</div>}>
         <p>Treść</p>
       </MemberPage>,
     );
@@ -82,7 +106,7 @@ describe('MemberPage', () => {
 
   it('omits the bottom nav container when no slot is passed', () => {
     render(
-      <MemberPage title="Moje kursy" eyebrow="biblioteka">
+      <MemberPage title="Moje kursy" eyebrow="biblioteka" breadcrumbLabel="Okruszki">
         <p>Treść</p>
       </MemberPage>,
     );

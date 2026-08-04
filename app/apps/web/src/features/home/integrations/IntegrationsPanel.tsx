@@ -16,7 +16,7 @@ import type { IntegrationTestInput } from '#core/contract/index.js';
 import type { ProviderDiagnosticCode, StripeMode, TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
+import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 import { SecretField } from './SecretField.js';
 import { StorageWizard } from './StorageWizard.js';
@@ -38,6 +38,7 @@ const StripeConfiguration = ({
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [restrictedKey, setRestrictedKey] = useState('');
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const configure = useMutation({
     ...actions.configureStripe,
     onSuccess: async () => {
@@ -47,6 +48,7 @@ const StripeConfiguration = ({
   });
   const remove = useMutation({
     ...actions.deleteStripeSecrets,
+    onSuccess: () => setConfirmingRemove(false),
     onSettled: async () => {
       await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
     },
@@ -104,7 +106,7 @@ const StripeConfiguration = ({
             color="error"
             data-testid="stripe-remove"
             disabled={remove.isPending}
-            onClick={() => remove.mutate(undefined)}
+            onClick={() => setConfirmingRemove(true)}
           >
             {remove.isPending ? t.integrations.removing : t.integrations.remove}
           </Button>
@@ -117,6 +119,22 @@ const StripeConfiguration = ({
       ) : null}
       {configure.isError ? <Alert severity="error">{localizeError(configure.error, t)}</Alert> : null}
       {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+      <ConfirmDialog
+        open={confirmingRemove}
+        title={t.integrations.stripeDisconnectConfirmTitle}
+        body={(
+          <>
+            <Typography>{t.integrations.stripeDisconnectConfirmBody}</Typography>
+            {remove.isError ? <Alert severity="error">{localizeError(remove.error, t)}</Alert> : null}
+          </>
+        )}
+        confirmLabel={remove.isPending ? t.integrations.removing : t.integrations.remove}
+        cancelLabel={t.common.cancel}
+        pending={remove.isPending}
+        onClose={() => setConfirmingRemove(false)}
+        onConfirm={() => remove.mutate(undefined)}
+        confirmTestId="stripe-remove-confirm"
+      />
     </Box>
   );
 };
@@ -173,7 +191,7 @@ const BunnyLibraryIdField = () => {
         </Typography>
       ) : null}
       {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
-      {settings.isError ? <Alert severity="error">{localizeError(settings.error, t)}</Alert> : null}
+      {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
     </Box>
   );
 };
@@ -231,7 +249,7 @@ const BunnyCdnHostnameField = () => {
         </Typography>
       ) : null}
       {updateSettings.isError ? <Alert severity="error">{localizeError(updateSettings.error, t)}</Alert> : null}
-      {settings.isError ? <Alert severity="error">{localizeError(settings.error, t)}</Alert> : null}
+      {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
     </Box>
   );
 };
@@ -375,12 +393,14 @@ export const IntegrationsPanel = () => {
 
   return (
     <PanelPage title={t.integrations.heading} description={t.integrations.intro}>
+        {settings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} /> : null}
+        <Box id="payments" sx={{ scrollMarginTop: '1rem' }}>
         <SectionCard title={t.integrations.stripeHeading} description={t.integrations.stripeDescription}>
 
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
           ) : (
             <StripeConfiguration
               maskedPreview={previewFor(secrets.data.secrets, 'stripe.restrictedKey')}
@@ -409,6 +429,7 @@ export const IntegrationsPanel = () => {
             showHint={!secrets.isPending && !secrets.isError}
           />
         </SectionCard>
+        </Box>
 
         <SectionCard title={t.integrations.emailHeading} description={t.integrations.emailDescription}>
           <ProviderTest provider="email" ready />
@@ -421,7 +442,7 @@ export const IntegrationsPanel = () => {
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
           ) : (
             <Stack useFlexGap spacing="1.25rem">
               <SecretField
@@ -446,7 +467,7 @@ export const IntegrationsPanel = () => {
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
           ) : (
             <Stack useFlexGap spacing="1.25rem">
               <SecretField
@@ -471,7 +492,7 @@ export const IntegrationsPanel = () => {
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
           ) : (
             <Stack useFlexGap spacing="1.25rem">
               <SecretField
@@ -499,7 +520,7 @@ export const IntegrationsPanel = () => {
           {secrets.isPending ? (
             <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
           ) : secrets.isError ? (
-            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+            <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
           ) : (
             <StorageWizard configured={storageReady} />
           )}

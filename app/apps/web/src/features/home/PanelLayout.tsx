@@ -1,36 +1,43 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
+  Alert,
   Box,
   Chip,
+  Collapse,
   Divider,
   IconButton,
   List,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
+  Snackbar,
+  SvgIcon,
   ThemeProvider,
   Tooltip,
+  Typography,
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
+import { z } from 'zod';
 
 import { ApiError } from '#core/client/index.js';
 
 import { useTenantBranding } from '../../branding.js';
 import { BuildStamp } from '../../components/ui/BuildStamp.js';
+import { ColorSchemeSwitcher } from '../../components/ui/ColorSchemeSwitcher.js';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
-import { ThemeSwitcher } from '../../components/ui/ThemeSwitcher.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { AppShell, BrandSplash } from '../../components/layout/index.js';
+import { AppShell, BrandLoader, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
-import { useThemeMode } from '../../theme-mode.js';
+import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
 import {
   AppBarTitle,
   AppBarWordmark,
@@ -38,17 +45,25 @@ import {
   createThemeForMode,
   Eyebrow,
   PanelNavItem,
-  TenantSwatch,
 } from '../../theme.js';
 import {
   AccountIcon,
+  CouponsIcon,
   CoursesIcon,
   DashboardIcon,
   IntegrationsIcon,
   LessonsIcon,
+  MarketingActivityIcon,
+  MarketingCampaignsIcon,
+  MarketingConsentsIcon,
+  MarketingDocumentsIcon,
+  MarketingLayoutsIcon,
+  MarketingSendsIcon,
+  MarketingSettingsIcon,
   MembersIcon,
   MenuIcon,
   ProductsIcon,
+  ReportsIcon,
   SalesIcon,
   SettingsIcon,
   SignOutIcon,
@@ -82,25 +97,90 @@ interface SectionDescriptor {
   exact?: boolean;
 }
 
-const sectionDescriptors: SectionDescriptor[] = [
-  { id: 'dashboard', to: '/panel', exact: true },
-  { id: 'products', to: '/panel/products' },
-  { id: 'courses', to: '/panel/courses' },
-  { id: 'lessons', to: '/panel/lessons' },
-  { id: 'members', to: '/panel/members' },
-  { id: 'reports', to: '/panel/reports' },
-  { id: 'spaces', to: '/panel/spaces' },
-  { id: 'sales', to: '/panel/sales' },
-  { id: 'coupons', to: '/panel/sales/coupons' },
-  { id: 'integrations', to: '/panel/integrations' },
-  { id: 'marketingActivity', to: '/panel/marketing/activity' },
-  { id: 'marketingSends', to: '/panel/marketing/sends' },
-  { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
-  { id: 'marketingConsents', to: '/panel/marketing/consents' },
-  { id: 'marketingDocuments', to: '/panel/marketing/documents' },
-  { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
-  { id: 'marketingSettings', to: '/panel/marketing/settings' },
-  { id: 'settings', to: '/panel/settings' },
+type NavigationGroupId =
+  | 'content'
+  | 'offer'
+  | 'community'
+  | 'sales'
+  | 'marketing';
+
+interface NavigationGroupDescriptor {
+  id: NavigationGroupId;
+  sections: SectionDescriptor[];
+}
+
+const navigationGroupStateSchema = z.object({
+  content: z.boolean(),
+  offer: z.boolean(),
+  community: z.boolean(),
+  sales: z.boolean(),
+  marketing: z.boolean(),
+});
+
+type NavigationGroupState = z.infer<typeof navigationGroupStateSchema>;
+
+const defaultNavigationGroupState: NavigationGroupState = {
+  content: true,
+  offer: true,
+  community: true,
+  sales: true,
+  marketing: false,
+};
+
+const navigationGroupPreference = persistedJsonPreference(
+  'together-nav-groups',
+  (value) => {
+    const result = navigationGroupStateSchema.safeParse(value);
+    return result.success ? result.data : undefined;
+  },
+  defaultNavigationGroupState,
+);
+
+const overviewDescriptor: SectionDescriptor = { id: 'dashboard', to: '/panel', exact: true };
+const settingsDescriptor: SectionDescriptor = { id: 'settings', to: '/panel/settings' };
+
+const sectionDescriptors: NavigationGroupDescriptor[] = [
+  {
+    id: 'content',
+    sections: [
+      { id: 'courses', to: '/panel/courses' },
+      { id: 'lessons', to: '/panel/lessons' },
+    ],
+  },
+  {
+    id: 'offer',
+    sections: [
+      { id: 'products', to: '/panel/products' },
+      { id: 'coupons', to: '/panel/sales/coupons' },
+    ],
+  },
+  {
+    id: 'community',
+    sections: [
+      { id: 'members', to: '/panel/members' },
+      { id: 'spaces', to: '/panel/spaces' },
+      { id: 'reports', to: '/panel/reports' },
+    ],
+  },
+  {
+    id: 'sales',
+    sections: [
+      { id: 'sales', to: '/panel/sales' },
+      { id: 'integrations', to: '/panel/integrations' },
+    ],
+  },
+  {
+    id: 'marketing',
+    sections: [
+      { id: 'marketingCampaigns', to: '/panel/marketing/campaigns' },
+      { id: 'marketingActivity', to: '/panel/marketing/activity' },
+      { id: 'marketingSends', to: '/panel/marketing/sends' },
+      { id: 'marketingLayouts', to: '/panel/marketing/layouts' },
+      { id: 'marketingConsents', to: '/panel/marketing/consents' },
+      { id: 'marketingDocuments', to: '/panel/marketing/documents' },
+      { id: 'marketingSettings', to: '/panel/marketing/settings' },
+    ],
+  },
 ];
 
 const roleLabel = (t: Messages, role: PanelTenant['staffRole']): string =>
@@ -126,57 +206,161 @@ const SectionIcon = ({ id }: { id: PanelSection }) => {
     case 'members':
       return <MembersIcon />;
     case 'reports':
-      return <MembersIcon />;
+      return <ReportsIcon />;
     case 'spaces':
       return <SpacesIcon />;
     case 'sales':
-    case 'coupons':
       return <SalesIcon />;
+    case 'coupons':
+      return <CouponsIcon />;
     case 'integrations':
       return <IntegrationsIcon />;
     case 'marketingActivity':
+      return <MarketingActivityIcon />;
     case 'marketingSends':
+      return <MarketingSendsIcon />;
     case 'marketingCampaigns':
+      return <MarketingCampaignsIcon />;
     case 'marketingConsents':
+      return <MarketingConsentsIcon />;
     case 'marketingDocuments':
+      return <MarketingDocumentsIcon />;
     case 'marketingLayouts':
+      return <MarketingLayoutsIcon />;
     case 'marketingSettings':
-      return <IntegrationsIcon />;
+      return <MarketingSettingsIcon />;
     case 'settings':
       return <SettingsIcon />;
   }
+};
+
+const ExpandIcon = ({ expanded }: { expanded: boolean }) => (
+  <SvgIcon
+    fontSize="small"
+    aria-hidden
+    viewBox="0 0 24 24"
+    sx={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms ease' }}
+  >
+    <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z" />
+  </SvgIcon>
+);
+
+const navigationGroupHeaderSx = {
+  alignItems: 'center',
+  display: 'flex',
+  minHeight: '2rem',
+  mt: '0.5rem',
+  px: '1rem',
+  py: 0,
+};
+
+const NavigationGroupLabel = ({ label }: { label: string }) => (
+  <Typography variant="overline" component="span">
+    {label}
+  </Typography>
+);
+
+const NavigationItem = ({
+  descriptor,
+  pathname,
+  onNavigate,
+  openReportCount,
+}: {
+  descriptor: SectionDescriptor;
+  pathname: string;
+  onNavigate: (to: string) => void;
+  openReportCount: number | undefined;
+}) => {
+  const t = useTranslations();
+  const { id, to, exact } = descriptor;
+  const active = isActive(pathname, to, exact ?? false);
+
+  return (
+    <PanelNavItem
+      data-testid={`section-${id}`}
+      selected={active}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => onNavigate(to)}
+      sx={{ pl: id === 'dashboard' ? undefined : '1rem' }}
+    >
+      <ListItemIcon>
+        <SectionIcon id={id} />
+      </ListItemIcon>
+      <ListItemText primary={t.sections[id]} />
+      {id === 'reports' && openReportCount !== undefined ? (
+        <Chip data-testid="reports-open-count" size="small" label={openReportCount} />
+      ) : null}
+    </PanelNavItem>
+  );
 };
 
 const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
   const t = useTranslations();
   const { pathname } = useLocation();
   const openReports = useQuery(actions.reports({ status: 'open', limit: 1 }));
+  const [groupState, setGroupState] = useState<NavigationGroupState>(navigationGroupPreference.load);
+
+  const toggleGroup = (groupId: NavigationGroupId) => {
+    const next = { ...groupState, [groupId]: !groupState[groupId] };
+    navigationGroupPreference.save(next);
+    setGroupState(next);
+  };
+
   return (
     <List component="nav" aria-label={t.sections.aria} sx={{ px: '0.6rem', py: '0.5rem' }}>
-      {sectionDescriptors.map(({ id, to, exact }) => {
-        const active = isActive(pathname, to, exact ?? false);
+      <NavigationItem
+        descriptor={overviewDescriptor}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        openReportCount={undefined}
+      />
+      {sectionDescriptors.map((group) => {
+        const active = group.sections.some((descriptor) =>
+          isActive(pathname, descriptor.to, descriptor.exact ?? false));
+        const expanded = active || groupState[group.id];
+        const controlsId = `panel-navigation-${group.id}`;
+
         return (
-          <PanelNavItem
-            key={id}
-            data-testid={`section-${id}`}
-            selected={active}
-            aria-current={active ? 'page' : undefined}
-            onClick={() => onNavigate(to)}
-          >
-            <ListItemIcon>
-              <SectionIcon id={id} />
-            </ListItemIcon>
-            <ListItemText primary={t.sections[id]} />
-            {id === 'reports' && openReports.data !== undefined ? (
-              <Chip
-                data-testid="reports-open-count"
-                size="small"
-                label={openReports.data.openCount}
-              />
-            ) : null}
-          </PanelNavItem>
+          <Box component="li" key={group.id} sx={{ listStyle: 'none' }}>
+            <ListItemButton
+              data-testid={`group-${group.id}`}
+              aria-expanded={expanded}
+              aria-controls={controlsId}
+              onClick={() => toggleGroup(group.id)}
+              sx={navigationGroupHeaderSx}
+            >
+              <NavigationGroupLabel label={t.navigationGroups[group.id]} />
+              <ExpandIcon expanded={expanded} />
+            </ListItemButton>
+            <Collapse in={expanded} timeout="auto" unmountOnExit>
+              <List
+                component="div"
+                disablePadding
+                id={controlsId}
+              >
+                {group.sections.map((descriptor) => (
+                  <NavigationItem
+                    key={descriptor.id}
+                    descriptor={descriptor}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                    openReportCount={openReports.data?.openCount}
+                  />
+                ))}
+              </List>
+            </Collapse>
+          </Box>
         );
       })}
+      <NavigationItem
+        descriptor={settingsDescriptor}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        openReportCount={undefined}
+      />
+      {openReports.isError ? (
+        <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
+      ) : null}
     </List>
   );
 };
@@ -218,20 +402,30 @@ const UserMenu = ({
         onClose={() => setAnchorEl(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{
+          paper: { sx: { minWidth: '15rem', maxWidth: '20rem', mt: '0.35rem' } },
+          list: { sx: { py: '0.35rem' } },
+        }}
       >
-        <Box sx={{ px: '1rem', py: '0.5rem', maxWidth: '18rem' }}>
+        <Box sx={{ px: '1rem', py: '0.75rem' }}>
           <Eyebrow variant="overline" component="p">
             {t.panel.signedInAs}
           </Eyebrow>
           <BreakAllText variant="body2" data-testid="user-menu-email">
             {email}
           </BreakAllText>
-          <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.5rem' }} />
+          <Chip variant="outlined" size="small" label={roleLabel(t, role)} sx={{ mt: '0.625rem' }} />
         </Box>
         <Divider />
+        <Box sx={{ display: { xs: 'grid', sm: 'none' }, gap: '0.5rem', px: '1rem', py: '0.75rem' }}>
+          <LanguageSwitcher inline />
+          <ColorSchemeSwitcher compact />
+        </Box>
+        <Divider sx={{ display: { xs: 'block', sm: 'none' } }} />
         <MenuItem
           data-testid="sign-out"
           disabled={pending}
+          sx={{ minHeight: '44px', px: '1rem' }}
           onClick={() => {
             setAnchorEl(null);
             onSignOut();
@@ -271,12 +465,16 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   const nav = <PanelNav onNavigate={goTo} />;
 
   return (
+    <>
     <AppShell
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
+      mobileNavigationCloseLabel={t.panel.closeNavigation}
       navigation={nav}
-      footer={<BuildStamp />}
+      footer={(
+        <BuildStamp />
+      )}
       header={
         <>
           {isDesktop ? null : (
@@ -293,19 +491,24 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
               </IconButton>
             </Tooltip>
           )}
-          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
           <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <AppBarTitle component="span" noWrap data-testid="tenant-name">
               {tenant.name}
             </AppBarTitle>
-            <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+            <AppBarWordmark
+              src={theme.palette.mode === 'dark'
+                ? '/brand/together-horizontal-dark.svg'
+                : '/brand/together-horizontal-light.svg'}
+              alt={t.common.appName}
+              data-testid="panel-brand-lockup"
+            />
           </Box>
           <Box sx={{ flex: 1 }} />
           <Box
             sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: '0.75rem' }}
           >
+            <ColorSchemeSwitcher compact />
             <LanguageSwitcher inline />
-            <ThemeSwitcher inline />
           </Box>
           <NotificationBell />
           <UserMenu
@@ -319,10 +522,14 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
     >
       <Outlet />
     </AppShell>
+    <Snackbar open={signOut.isError} autoHideDuration={6000} onClose={() => signOut.reset()}>
+      <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizeError(signOut.error, t) : ''}</Alert>
+    </Snackbar>
+    </>
   );
 };
 
-const PanelErrorShell = ({ message }: { message: string }) => {
+const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () => void }) => {
   const t = useTranslations();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
@@ -333,9 +540,12 @@ const PanelErrorShell = ({ message }: { message: string }) => {
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
-      state={{ kind: 'error', message }}
+      mobileNavigationCloseLabel={t.panel.closeNavigation}
+      state={{ kind: 'error', message, retry: { label: t.common.retry, onRetry } }}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
-      footer={<BuildStamp />}
+      footer={(
+        <BuildStamp />
+      )}
       header={
         <>
           {isDesktop ? null : (
@@ -352,8 +562,12 @@ const PanelErrorShell = ({ message }: { message: string }) => {
               </IconButton>
             </Tooltip>
           )}
-          <TenantSwatch aria-hidden sx={{ width: '0.8rem', height: '0.8rem' }} />
-          <AppBarWordmark component="span">{t.common.appName}</AppBarWordmark>
+          <AppBarWordmark
+            src={theme.palette.mode === 'dark'
+              ? '/brand/together-horizontal-dark.svg'
+              : '/brand/together-horizontal-light.svg'}
+            alt={t.common.appName}
+          />
         </>
       }
     />
@@ -363,8 +577,8 @@ const PanelErrorShell = ({ message }: { message: string }) => {
 export const PanelLayout = () => {
   const navigate = useNavigate();
   const t = useTranslations();
-  const { mode } = useThemeMode();
   const me = useQuery(actions.me);
+  const { resolvedScheme } = useColorScheme();
 
   useSuppressGlobalChrome();
 
@@ -381,27 +595,24 @@ export const PanelLayout = () => {
 
   const branding = useTenantBranding();
   const theme = useMemo(
-    () => applyBranding(createThemeForMode(mode, tenant ? tenantHue(tenant.slug) : 0), branding),
-    [mode, tenant, branding],
+    () => applyBranding(
+      createThemeForMode('shadcn', tenant ? tenantHue(tenant.slug) : 0, resolvedScheme),
+      branding,
+    ),
+    [tenant, branding, resolvedScheme],
   );
 
   if (me.isPending || unauthorized || noTenant || memberOnly) {
     return (
       <ThemeProvider theme={theme}>
-        <BrandSplash
-          ariaLabel={t.bootSplash.opening}
-          buildStamp={<BuildStamp />}
-          tenantLabel={t.bootSplash.tenant({ host: window.location.hostname })}
-          warmingLabel={t.bootSplash.warming}
-          wordmark={t.common.appName}
-        />
+        <BrandLoader caption={t.bootSplash.opening} />
       </ThemeProvider>
     );
   }
   if (me.isError) {
     return (
       <ThemeProvider theme={theme}>
-        <PanelErrorShell message={localizeError(me.error, t)} />
+        <PanelErrorShell message={localizeError(me.error, t)} onRetry={() => void me.refetch()} />
       </ThemeProvider>
     );
   }

@@ -14,7 +14,7 @@ type ManifestDeps = Pick<
 
 const PLATFORM_NAME = 'Together';
 const SHORT_NAME_MAX = 12;
-const BACKGROUND = '#fafafa';
+const BACKGROUND = '#FAFAF9';
 const EMBER = '#E8682A';
 
 const shortName = (name: string): string =>

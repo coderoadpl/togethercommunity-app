@@ -50,10 +50,10 @@ describe('HistoryPanel', () => {
     expect(await screen.findByText(pl.courses.historyHeading)).toBeInTheDocument();
     expect(screen.getByText(pl.courses.historyRestoreNote)).toBeInTheDocument();
     expect(
-      await screen.findAllByText((content) => content.includes('schemat v1') && content.includes('Ada Creator')),
+      await screen.findAllByText((content) => content.includes('Schemat v1') && content.includes('Ada Creator')),
     ).toHaveLength(2);
-    expect(screen.getByText((content) => content.includes('kurs: Course one') && content.includes('version-1'))).toBeInTheDocument();
-    expect(screen.getByText((content) => content.includes('moduł: Foundations') && content.includes('version-2'))).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes('Kurs: Course one') && content.includes('version-1'))).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes('Moduł: Foundations') && content.includes('version-2'))).toBeInTheDocument();
   });
 
   it('shows the empty state when a course has no snapshots yet', async () => {

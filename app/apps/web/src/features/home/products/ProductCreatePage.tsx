@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import {
   Alert,
-  Box,
   Button,
   FormControl,
   FormHelperText,
@@ -11,7 +10,7 @@ import {
   Select,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useLocation, useNavigate } from '@tanstack/react-router';
 
 import {
   PRODUCT_TYPES,
@@ -23,12 +22,15 @@ import {
 import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { HtmlEditor } from '../../../components/ui/HtmlEditor.js';
+import { CoverPreview } from '../../../components/ui/CoverPreview.js';
 import { errorCodeOf, localizeError, useTranslations } from '../../../i18n/index.js';
+import { PanelBackLink } from '../PanelBackLink.js';
 import { productTypeLabel } from './product-type.js';
 
 export const ProductCreatePage = () => {
   const t = useTranslations();
   const navigate = useNavigate();
+  const { hash } = useLocation();
   const queryClient = useQueryClient();
   const [type, setType] = useState<ProductType>('course');
   const [title, setTitle] = useState('');
@@ -41,7 +43,11 @@ export const ProductCreatePage = () => {
     ...actions.createProduct,
     onSuccess: async ({ product }) => {
       await queryClient.invalidateQueries(actions.productsInvalidates());
-      await navigate({ to: '/panel/products/$productId', params: { productId: product.id } });
+      await navigate({
+        to: '/panel/products/$productId',
+        params: { productId: product.id },
+        hash: hash === 'prices' ? 'prices' : '',
+      });
     },
   });
   const parsedCoverUrl = productCoverUrlSchema.safeParse(coverUrl);
@@ -66,7 +72,7 @@ export const ProductCreatePage = () => {
   return (
     <PanelPage
       title={t.products.newProduct}
-      backTo={{ label: t.products.allProducts, href: '/panel/products' }}
+      backTo={<PanelBackLink to="/panel/products">{t.products.allProducts}</PanelBackLink>}
     >
       <SectionCard title={t.products.detailsHeading} onSubmit={submit}>
         <FormControl fullWidth>
@@ -129,12 +135,11 @@ export const ProductCreatePage = () => {
           <FormHelperText>{t.products.coverUrlHint}</FormHelperText>
         </FormControl>
         {coverPreviewUrl === null ? null : (
-          <Box
-            component="img"
+          <CoverPreview
+            key={coverPreviewUrl}
             src={coverPreviewUrl}
-            alt={title === '' ? t.products.coverUrlLabel : title}
-            data-testid="product-cover-preview"
-            sx={{ width: '100%', maxHeight: 320, objectFit: 'cover' }}
+            label={title === '' ? t.products.coverUrlLabel : title}
+            testId="product-cover-preview"
           />
         )}
         <Button type="submit" variant="contained" disabled={createProduct.isPending}>

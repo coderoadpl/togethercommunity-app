@@ -18,6 +18,7 @@ import { ApiError } from '#core/client/index.js';
 import type { PostReportReason } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 
 export const ReportPostButton = ({ postId, disabled = false }: { postId: string; disabled?: boolean }) => {
@@ -27,7 +28,7 @@ export const ReportPostButton = ({ postId, disabled = false }: { postId: string;
   const [note, setNote] = useState('');
   const [sent, setSent] = useState(false);
   const me = useQuery(actions.me);
-  const unavailable = disabled || me.data?.tenant?.banned === true;
+  const unavailable = disabled || me.isError || me.data?.tenant?.banned === true;
   const report = useMutation({
     ...actions.reportPost,
     onSuccess: () => setSent(true),
@@ -71,6 +72,7 @@ export const ReportPostButton = ({ postId, disabled = false }: { postId: string;
             slotProps={{ htmlInput: { maxLength: 1000 } }}
           />
           {sent ? <Alert severity="success" sx={{ mt: '1rem' }}>{t.community.reportSent}</Alert> : null}
+          {me.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(me.error, t), retry: { label: t.common.retry, onRetry: () => void me.refetch() } }} /> : null}
           {error === null ? null : <Alert severity="error" sx={{ mt: '1rem' }}>{error}</Alert>}
         </DialogContent>
         <DialogActions>

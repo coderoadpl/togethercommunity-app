@@ -35,7 +35,7 @@ const baseCoupon: Coupon = {
   partnerLabel: 'Partner A',
   stripeCouponId: null,
   stripePromotionCodeId: null,
-  createdAt: '2026-07-27T12:00:00.000Z',
+  createdAt: '1998-07-27T12:00:00.000Z',
 };
 
 const harness = () => {
@@ -74,7 +74,7 @@ describe('coupon management', () => {
       {
         coupons: h.repository,
         ids: { nextId: () => (h.created.length === 0 ? 'coupon-1' : 'event-1') },
-        clock: { nowIso: () => '2026-07-27T12:00:00.000Z' },
+        clock: { nowIso: () => '1998-07-27T12:00:00.000Z' },
       },
     );
 
@@ -99,11 +99,47 @@ describe('coupon management', () => {
       {
         coupons: h.repository,
         ids: { nextId: () => 'unused' },
-        clock: { nowIso: () => '2026-07-27T12:00:00.000Z' },
+        clock: { nowIso: () => '1998-07-27T12:00:00.000Z' },
       },
     );
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.created).toEqual([]);
+  });
+
+  it('rejects zero discounts and inverted date ranges before persistence', async () => {
+    const invalidInputs = [
+      {
+        code: 'ZERO',
+        kind: 'percent' as const,
+        value: 0,
+        scope: { kind: 'all' as const },
+        appliesTo: 'both' as const,
+      },
+      {
+        code: 'DATES',
+        kind: 'percent' as const,
+        value: 10,
+        scope: { kind: 'all' as const },
+        appliesTo: 'both' as const,
+        startsAt: '1998-08-20T00:00:00.000Z',
+        endsAt: '1998-08-19T00:00:00.000Z',
+      },
+    ];
+
+    for (const input of invalidInputs) {
+      const h = harness();
+      const result = await createCoupon(
+        { identity },
+        input,
+        {
+          coupons: h.repository,
+          ids: { nextId: () => 'unused' },
+          clock: { nowIso: () => '1998-07-27T12:00:00.000Z' },
+        },
+      );
+      expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(h.created).toEqual([]);
+    }
   });
 
   it('archives a tenant coupon and records the transition', async () => {
@@ -115,7 +151,7 @@ describe('coupon management', () => {
       {
         coupons: h.repository,
         ids: { nextId: () => 'event-2' },
-        clock: { nowIso: () => '2026-07-27T12:00:00.000Z' },
+        clock: { nowIso: () => '1998-07-27T12:00:00.000Z' },
       },
     );
     expect(result).toMatchObject({ ok: true, value: { coupon: { status: 'archived' } } });

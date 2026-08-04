@@ -10,13 +10,13 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { OnboardingChecklist } from './OnboardingChecklist.js';
 
-const onboarding = (dismissed = false): CreatorOnboarding => ({
+const onboarding = (dismissed = false, complete = false): CreatorOnboarding => ({
   steps: [
-    { id: 'course_with_lesson', done: true, target: '/panel/courses' },
-    { id: 'product_with_price', done: false, target: '/panel/products' },
-    { id: 'published_product', done: false, target: '/panel/products' },
-    { id: 'first_member', done: false, target: '/panel/members' },
-    { id: 'payments_configured', done: false, target: '/panel/integrations' },
+    { id: 'course_with_lesson', done: true, target: '/panel/courses/new' },
+    { id: 'product_with_price', done: complete, target: '/panel/products/new#prices' },
+    { id: 'published_product', done: complete, target: '/panel/products#product-actions' },
+    { id: 'first_member', done: complete, target: '/panel/members#invite-members' },
+    { id: 'payments_configured', done: complete, target: '/panel/integrations#payments' },
   ],
   dismissed,
 });
@@ -49,6 +49,24 @@ describe('OnboardingChecklist', () => {
     const { container } = renderWithProviders(<OnboardingChecklist />);
 
     await waitFor(() => expect(container).toBeEmptyDOMElement());
+  });
+
+  it('removes the completed step list from layout until it is expanded', async () => {
+    server.use(
+      http.get('/api/onboarding', () =>
+        HttpResponse.json({ ok: true, data: { onboarding: onboarding(false, true) } }),
+      ),
+    );
+
+    renderWithProviders(<OnboardingChecklist />);
+
+    const checklist = await screen.findByTestId('onboarding-checklist');
+    expect(screen.queryByTestId('onboarding-step-course_with_lesson')).not.toBeInTheDocument();
+    expect(checklist.querySelector('.MuiCollapse-root')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('onboarding-toggle'));
+
+    expect(screen.getByTestId('onboarding-step-course_with_lesson')).toBeInTheDocument();
   });
 
   it('dismisses the checklist and hides the card', async () => {

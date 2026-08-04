@@ -92,6 +92,9 @@ export const SalesPanel = () => {
 
   return (
     <PanelPage title={t.sections.sales}>
+      {products.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} /> : null}
+      {coupons.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(coupons.error, t), retry: { label: t.common.retry, onRetry: () => void coupons.refetch() } }} /> : null}
+      {reconciliation.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(reconciliation.error, t), retry: { label: t.common.retry, onRetry: () => void reconciliation.refetch() } }} /> : null}
       {reconciliation.data !== undefined && reconciliation.data.rows.length > 0 ? (
         <Alert severity="warning" data-testid="order-reconciliation">
           <Typography variant="subtitle2">{t.sales.reconciliationHeading}</Typography>
@@ -245,7 +248,7 @@ export const SalesPanel = () => {
         {orders.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.sales.loading }} />
         ) : orders.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(orders.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(orders.error, t), retry: { label: t.common.retry, onRetry: () => void orders.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table>

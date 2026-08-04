@@ -92,7 +92,7 @@ const BillingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
           )}
         </FormControl>
         {settings.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(settings.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
         ) : null}
         {canEdit ? (
           <Box>
@@ -193,7 +193,7 @@ const KsefSettings = ({ canEdit }: { canEdit: boolean }) => {
       {secrets.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.integrations.loading }} />
       ) : secrets.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t) }} />
+        <StatusView state={{ kind: 'error', message: localizeError(secrets.error, t), retry: { label: t.common.retry, onRetry: () => void secrets.refetch() } }} />
       ) : canEdit ? (
         <>
           <SecretField
@@ -483,7 +483,7 @@ const LegalSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </>
       )}
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t) }} />
+        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {canEdit ? (
         <Box>
@@ -764,7 +764,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
         </>
       )}
       {settings.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t) }} />
+        <StatusView state={{ kind: 'error', message: localizeError(settings.error, t), retry: { label: t.common.retry, onRetry: () => void settings.refetch() } }} />
       ) : null}
       {canEdit ? (
         <Box>
@@ -855,7 +855,7 @@ const SecurityPanel = () => {
         </Box>
 
         <AuthenticationMethods
-          passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error }}
+          passkeys={{ data: passkeys.data, pending: passkeys.isPending, error: passkeys.error, retry: () => void passkeys.refetch() }}
           registerPasskey={{
             pending: registerPasskey.isPending,
             success: registerPasskey.isSuccess,
@@ -926,6 +926,7 @@ const BuildInfoPanel = () => {
           </>
         )}
       </Stack>
+      {health.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(health.error, t), retry: { label: t.common.retry, onRetry: () => void health.refetch() } }} /> : null}
       {mismatch ? (
         <Alert severity="warning" data-testid="build-mismatch-warning">
           {t.buildInfo.mismatch}

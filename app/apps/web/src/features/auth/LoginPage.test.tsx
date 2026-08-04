@@ -186,7 +186,8 @@ describe('LoginPage', () => {
     await fillCredentials();
     await userEvent.click(screen.getByRole('button', { name: pl.auth.signInIdle }));
 
-    const alert = await screen.findByRole('alert');
+    const alert = (await screen.findByText(pl.errors.messageInvalidCredentials)).closest('[role="alert"]');
+    expect(alert).not.toBeNull();
     expect(alert).toHaveTextContent(pl.errors.messageInvalidCredentials);
     expect(alert).not.toHaveTextContent(pl.errors.messageUnauthorized);
   });

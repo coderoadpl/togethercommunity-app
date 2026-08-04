@@ -47,6 +47,7 @@ export const CoursePage = ({ productId }: { productId: string }) => {
         state={{
           kind: 'error',
           message: isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t),
+          retry: { label: t.common.retry, onRetry: () => void products.refetch() },
         }}
       />
     );

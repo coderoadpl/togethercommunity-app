@@ -712,10 +712,7 @@ const screenUrl = (studioBaseUrl: string, screen: ScreenSpec): string => {
   return `${url.origin}${screen.path}`;
 };
 
-const stableMasks = (page: Page, screen: ScreenSpec): Locator[] => [
-  page.getByTestId('build-stamp'),
-  ...(screen.mask?.(page) ?? []),
-];
+const stableMasks = (page: Page, screen: ScreenSpec): Locator[] => screen.mask?.(page) ?? [];
 
 const startedAt = Date.now();
 let server: ChildProcess | null = null;

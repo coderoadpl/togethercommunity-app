@@ -236,6 +236,8 @@ const ProductRow = ({
         </EntryDate>
       </Stack>
       {issue ? <AccessIssues issue={issue} /> : null}
+      {prices.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} /> : null}
+      {downloads.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(downloads.error, t), retry: { label: t.common.retry, onRetry: () => void downloads.refetch() } }} /> : null}
       {!product.published && publishBlockers.length > 0 ? (
         <Stack useFlexGap spacing="0.25rem" data-testid={`publish-blockers-${product.id}`}>
           {publishBlockers.map((reason) => (
@@ -329,6 +331,8 @@ export const ProductsPanel = () => {
       title={t.sections.products}
       action={<Button component={Link} to="/panel/products/new" variant="contained">+ {t.common.add}</Button>}
     >
+      {accessIssues.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(accessIssues.error, t), retry: { label: t.common.retry, onRetry: () => void accessIssues.refetch() } }} /> : null}
+      {spaces.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }} /> : null}
       <ListSection
         toolbar={{
           search: (
@@ -364,7 +368,7 @@ export const ProductsPanel = () => {
         {products.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.products.loading }} />
         ) : products.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(products.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(products.error, t), retry: { label: t.common.retry, onRetry: () => void products.refetch() } }} />
         ) : (
           <Stack useFlexGap spacing="1rem">
             {paged.pageItems.map((product) => (

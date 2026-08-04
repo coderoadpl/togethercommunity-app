@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -209,6 +210,7 @@ const LockedView = ({
         : { rail: <CurriculumCard courseId={courseId} structure={structure} /> })}
       mobileRail="after"
     >
+      {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
       <SectionCard
         title={product?.title ?? t.lesson.contentLocked}
         description={t.lesson.noAccessYet}
@@ -333,6 +335,17 @@ export const LessonPlayerPage = ({
 
   if (lesson.isError) {
     if (isForbidden(lesson.error)) {
+      if (structure.isError) {
+        return (
+          <MemberSurface
+            authenticated
+            title={t.lesson.unavailable}
+            eyebrow={t.lesson.eyebrow}
+            width="wide"
+            state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }}
+          />
+        );
+      }
       const lockedRow = structure.data?.structure.modules
         .flatMap((module) => module.chapters.flatMap((chapter) => chapter.lessons))
         .find((entry) => entry.lessonId === lessonId);
@@ -355,10 +368,9 @@ export const LessonPlayerPage = ({
         eyebrow={t.lesson.eyebrow}
         width="wide"
         state={{
-          kind: 'not-found',
-          title: t.lesson.unavailable,
-          body: localizeError(lesson.error, t),
-          action: <Link href={`/my/courses/${courseId}`}>{t.lesson.backToCourse}</Link>,
+          kind: 'error',
+          message: localizeError(lesson.error, t),
+          retry: { label: t.common.retry, onRetry: () => void lesson.refetch() },
         }}
       />
     );
@@ -409,6 +421,15 @@ export const LessonPlayerPage = ({
       mobileRail="after"
     >
       <Box sx={{ minWidth: 0 }}>
+        <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
+          {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
+          {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
+          {next.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(next.error, t), retry: { label: t.common.retry, onRetry: () => void next.refetch() } }} /> : null}
+          {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
+          {lastViewed.isError ? <Alert severity="error">{localizeError(lastViewed.error, t)}</Alert> : null}
+          {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
+          {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
+        </Stack>
         <Stack component="section" useFlexGap spacing="1.5rem">
           {blocks.length === 0 ? (
             <StatusView

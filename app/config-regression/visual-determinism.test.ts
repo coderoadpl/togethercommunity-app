@@ -36,7 +36,7 @@ describe('visual regression determinism', () => {
     expect(harness).toContain("caret: 'hide'");
     expect(harness).toContain("scale: 'css'");
     expect(harness).toContain('mask: stableMasks(page, screen)');
-    expect(harness).toContain("page.getByTestId('build-stamp')");
+    expect(harness).not.toContain("page.getByTestId('build-stamp')");
     expect(harness).toContain("from './visual-png-compare.js'");
     expect(comparator).toContain('{ threshold: 0, includeAA: false }');
     expect(comparator).toContain('if (mismatched === 0) return null;');

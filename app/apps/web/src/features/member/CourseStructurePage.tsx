@@ -125,6 +125,7 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
           : {
               kind: 'error',
               message: isForbidden(structure.error) ? t.student.staffNoMember : localizeError(structure.error, t),
+              retry: { label: t.common.retry, onRetry: () => void structure.refetch() },
             }}
       />
     );
@@ -152,6 +153,8 @@ export const CourseStructurePage = ({ courseId }: { courseId: string }) => {
       }
     >
       <Stack useFlexGap sx={{ rowGap: '1.5rem', minWidth: 0 }}>
+        {progress.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(progress.error, t), retry: { label: t.common.retry, onRetry: () => void progress.refetch() } }} /> : null}
+        {courses.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} /> : null}
         <CourseStatTiles structure={course} />
         {catalogEntry?.imageUrl != null && (
           <CourseCoverImage

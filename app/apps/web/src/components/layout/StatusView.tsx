@@ -6,7 +6,7 @@ import { CardTitle, EmptyStateContent } from '../../theme.js';
 export type PageState =
   | { kind: 'ready' }
   | { kind: 'loading'; label: ReactNode }
-  | { kind: 'error'; message: ReactNode; retry?: { label: ReactNode; onRetry: () => void } }
+  | { kind: 'error'; message: ReactNode; retry: { label: ReactNode; onRetry: () => void } }
   | { kind: 'empty'; icon?: ReactNode; title: ReactNode; body?: ReactNode; action?: ReactNode }
   | { kind: 'not-found'; icon?: ReactNode; title: ReactNode; body?: ReactNode; action?: ReactNode };
 
@@ -30,13 +30,11 @@ export const StatusView = ({ state, surface = true, 'data-testid': testId }: Sta
       return (
         <Box data-testid={testId}>
           <Alert severity="error">{state.message}</Alert>
-          {state.retry !== undefined && (
-            <Box sx={{ mt: '0.75rem' }}>
-              <Button variant="outlined" onClick={state.retry.onRetry}>
-                {state.retry.label}
-              </Button>
-            </Box>
-          )}
+          <Box sx={{ mt: '0.75rem' }}>
+            <Button variant="outlined" onClick={state.retry.onRetry}>
+              {state.retry.label}
+            </Button>
+          </Box>
         </Box>
       );
     case 'empty':

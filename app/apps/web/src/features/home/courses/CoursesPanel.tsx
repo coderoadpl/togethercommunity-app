@@ -31,6 +31,7 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const errorId = 'create-course-error';
 
   const createCourse = useMutation({
     ...actions.createCourse,
@@ -53,7 +54,7 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
     <SectionCard title={t.courses.detailsHeading} onSubmit={submit}>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-name">{t.common.name}</FormLabel>
-        <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required />
+        <OutlinedInput id="course-name" value={name} onChange={(event) => setName(event.target.value)} required aria-describedby={createCourse.isError ? errorId : undefined} />
       </FormControl>
       <FormControl fullWidth>
         <FormLabel htmlFor="course-description">{t.common.description}</FormLabel>
@@ -63,6 +64,7 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
           onChange={(event) => setDescription(event.target.value)}
           multiline
           minRows={3}
+          aria-describedby={createCourse.isError ? errorId : undefined}
         />
       </FormControl>
       <FormControl fullWidth>
@@ -72,12 +74,23 @@ const CreateCourseForm = ({ onCreated }: { onCreated: (courseId: string) => void
           value={imageUrl}
           onChange={(event) => setImageUrl(event.target.value)}
           placeholder="https://…"
+          aria-describedby={createCourse.isError ? errorId : undefined}
         />
       </FormControl>
       <Button type="submit" variant="contained" disabled={createCourse.isPending || name.trim().length === 0}>
         {createCourse.isPending ? t.courses.creating : t.courses.create}
       </Button>
-      {createCourse.isError ? <MutationError error={createCourse.error} /> : null}
+      {createCourse.isError ? (
+        <MutationError
+          error={createCourse.error}
+          id={errorId}
+          fields={[
+            { name: 'name', id: 'course-name', label: t.common.name },
+            { name: 'description', id: 'course-description', label: t.common.description },
+            { name: 'imageUrl', id: 'course-image', label: t.courses.imageUrl },
+          ]}
+        />
+      ) : null}
     </SectionCard>
   );
 };
@@ -117,6 +130,7 @@ export const CoursesListPanel = () => {
       title={t.sections.courses}
       action={<Button component={Link} to="/panel/courses/new" variant="contained">+ {t.common.add}</Button>}
     >
+      {modules.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(modules.error, t), retry: { label: t.common.retry, onRetry: () => void modules.refetch() } }} /> : null}
       <ListSection
         toolbar={{
           search: (
@@ -152,7 +166,7 @@ export const CoursesListPanel = () => {
         {courses.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.courses.loading }} />
         ) : courses.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(courses.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(courses.error, t), retry: { label: t.common.retry, onRetry: () => void courses.refetch() } }} />
         ) : (
           <List disablePadding dense>
             {paged.pageItems.map((course) => (

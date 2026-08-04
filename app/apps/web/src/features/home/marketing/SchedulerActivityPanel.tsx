@@ -161,7 +161,7 @@ export const SchedulerActivityPanel = () => {
         {activity.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.marketing.activity.loading }} />
         ) : activity.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(activity.error, t) }} />
+          <StatusView state={{ kind: 'error', message: localizeError(activity.error, t), retry: { label: t.common.retry, onRetry: () => void activity.refetch() } }} />
         ) : (
           <ResponsiveTable>
             <Table size="small" aria-label={t.marketing.activity.title}>
@@ -217,7 +217,7 @@ export const SchedulerActivityDetailPage = () => {
     return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'loading', label: t.marketing.activity.loading }} /></PanelPage>;
   }
   if (detail.isError) {
-    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t) }} /></PanelPage>;
+    return <PanelPage title={t.marketing.activity.details}><StatusView state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }} /></PanelPage>;
   }
 
   const { run, tenant } = detail.data;

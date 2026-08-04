@@ -33,12 +33,6 @@ describe('StatusView', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the error message without a retry button when no retry is given', () => {
-    render(<StatusView state={{ kind: 'error', message: 'Błąd' }} />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Błąd');
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-  });
-
   it('renders the empty state with icon, title, body and action', () => {
     render(
       <StatusView

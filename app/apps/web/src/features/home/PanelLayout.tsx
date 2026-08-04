@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
+  Alert,
   Box,
   Chip,
   Divider,
@@ -9,6 +10,7 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  Snackbar,
   ThemeProvider,
   Tooltip,
   useMediaQuery,
@@ -25,7 +27,7 @@ import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher.js';
 import { NotificationBell } from '../../NotificationBell.js';
 import { useSuppressGlobalChrome } from '../../components/ui/app-chrome.js';
 import { actions } from '../../api.js';
-import { AppShell, BrandSplash } from '../../components/layout/index.js';
+import { AppShell, BrandSplash, StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { tenantHue } from '../../lib/tenant.js';
 import { applyBranding } from '../../theme-branding.js';
@@ -191,6 +193,9 @@ const PanelNav = ({ onNavigate }: { onNavigate: (to: string) => void }) => {
           </PanelNavItem>
         );
       })}
+      {openReports.isError ? (
+        <StatusView surface={false} state={{ kind: 'error', message: localizeError(openReports.error, t), retry: { label: t.common.retry, onRetry: () => void openReports.refetch() } }} />
+      ) : null}
     </List>
   );
 };
@@ -285,6 +290,7 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
   const nav = <PanelNav onNavigate={goTo} />;
 
   return (
+    <>
     <AppShell
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
@@ -332,10 +338,14 @@ const PanelShell = ({ tenant, email }: { tenant: PanelTenant; email: string }) =
     >
       <Outlet />
     </AppShell>
+    <Snackbar open={signOut.isError} autoHideDuration={6000} onClose={() => signOut.reset()}>
+      <Alert severity="error" onClose={() => signOut.reset()}>{signOut.isError ? localizeError(signOut.error, t) : ''}</Alert>
+    </Snackbar>
+    </>
   );
 };
 
-const PanelErrorShell = ({ message }: { message: string }) => {
+const PanelErrorShell = ({ message, onRetry }: { message: string; onRetry: () => void }) => {
   const t = useTranslations();
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'), { noSsr: true });
@@ -346,7 +356,7 @@ const PanelErrorShell = ({ message }: { message: string }) => {
       isDesktop={isDesktop}
       mobileNavigationOpen={mobileOpen}
       onMobileNavigationClose={() => setMobileOpen(false)}
-      state={{ kind: 'error', message }}
+      state={{ kind: 'error', message, retry: { label: t.common.retry, onRetry } }}
       navigation={<List component="nav" aria-label={t.sections.aria} />}
       footer={<BuildStamp />}
       header={
@@ -413,7 +423,7 @@ export const PanelLayout = () => {
   if (me.isError) {
     return (
       <ThemeProvider theme={theme}>
-        <PanelErrorShell message={localizeError(me.error, t)} />
+        <PanelErrorShell message={localizeError(me.error, t)} onRetry={() => void me.refetch()} />
       </ThemeProvider>
     );
   }

@@ -221,6 +221,7 @@ export const MyProductsPage = () => {
         state={{
           kind: 'error',
           message: isForbidden(products.error) ? t.student.staffNoMember : localizeError(products.error, t),
+          retry: { label: t.common.retry, onRetry: () => void products.refetch() },
         }}
       />
     );
@@ -228,6 +229,7 @@ export const MyProductsPage = () => {
 
   return (
     <MemberSurface title={t.student.myProducts} eyebrow={t.student.productsLibrary}>
+        {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
         {products.data.products.length === 0 ? (
           <StatusView
             state={{

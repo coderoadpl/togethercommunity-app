@@ -228,7 +228,7 @@ const PricesSection = ({ product }: { product: Product }) => {
         {prices.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.products.loading }} surface={false} />
         ) : prices.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(prices.error, t) }} surface={false} />
+          <StatusView state={{ kind: 'error', message: localizeError(prices.error, t), retry: { label: t.common.retry, onRetry: () => void prices.refetch() } }} surface={false} />
         ) : prices.data.prices.length === 0 ? (
           <Typography>{t.products.pricesEmpty}</Typography>
         ) : (
@@ -389,9 +389,8 @@ const CheckoutConsentsSection = ({ product }: { product: Product }) => {
           ))}
         </Select>
       </FormControl>
-      {definitions.isError || save.isError ? (
-        <Alert severity="error">{localizeError(definitions.error ?? save.error, t)}</Alert>
-      ) : null}
+      {definitions.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(definitions.error, t), retry: { label: t.common.retry, onRetry: () => void definitions.refetch() } }} /> : null}
+      {save.isError ? <Alert severity="error">{localizeError(save.error, t)}</Alert> : null}
     </SectionCard>
   );
 };
@@ -432,7 +431,7 @@ const DownloadAssetsSection = ({ productId }: { productId: string }) => {
       {assets.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.common.loading }} surface={false} />
       ) : assets.isError ? (
-        <Alert severity="error">{localizeError(assets.error, t)}</Alert>
+        <StatusView surface={false} state={{ kind: 'error', message: localizeError(assets.error, t), retry: { label: t.common.retry, onRetry: () => void assets.refetch() } }} />
       ) : assets.data.assets.length === 0 ? (
         <Typography variant="body2" color="text.secondary" data-testid="product-download-assets-empty">
           {t.products.downloadsEmpty}

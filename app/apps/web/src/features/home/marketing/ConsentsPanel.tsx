@@ -136,7 +136,7 @@ export const ConsentForm = ({ definition, versions = [] }: { definition?: Consen
           </Select>
         </FormControl>
       )}
-      {documents.isError ? <Alert severity="error">{localizeError(documents.error, t)}</Alert> : null}
+      {documents.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(documents.error, t), retry: { label: t.common.retry, onRetry: () => void documents.refetch() } }} /> : null}
       {create.isError || update.isError ? <Alert severity="error">{localizeError(create.error ?? update.error, t)}</Alert> : null}
     </SectionCard>
   );
@@ -169,7 +169,7 @@ export const ConsentsPanel = () => {
   return (
     <PanelPage title={t.marketing.consentsTitle} description={t.marketing.consentsDescription} action={<Button component={Link} to="/panel/marketing/consents/new" variant="contained">+ {t.common.add}</Button>}>
       <ListSection isEmpty={consents.isSuccess && consents.data.definitions.length === 0} empty={<StatusView state={{ kind: 'empty', title: t.marketing.consentsEmpty, action: <Button component={Link} to="/panel/marketing/consents/new">+ {t.common.add}</Button> }} />}>
-        {consents.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.consentsLoading }} /> : consents.isError ? <StatusView state={{ kind: 'error', message: localizeError(consents.error, t) }} /> : (
+        {consents.isPending ? <StatusView state={{ kind: 'loading', label: t.marketing.consentsLoading }} /> : consents.isError ? <StatusView state={{ kind: 'error', message: localizeError(consents.error, t), retry: { label: t.common.retry, onRetry: () => void consents.refetch() } }} /> : (
           <Stack useFlexGap spacing="1rem">
             {consents.data.definitions.map((definition) => (
               <MarketingSummaryRow
@@ -199,7 +199,7 @@ export const ConsentDetailPage = () => {
   const params = useParams({ strict: false });
   const consent = useQuery(actions.marketingConsent(params.consentId ?? ''));
   if (consent.isPending) return <PanelPage title={t.marketing.consentsTitle} state={{ kind: 'loading', label: t.marketing.consentsLoading }} />;
-  if (consent.isError) return <PanelPage title={t.marketing.consentsTitle} state={{ kind: 'error', message: localizeError(consent.error, t) }} />;
+  if (consent.isError) return <PanelPage title={t.marketing.consentsTitle} state={{ kind: 'error', message: localizeError(consent.error, t), retry: { label: t.common.retry, onRetry: () => void consent.refetch() } }} />;
   if (params.consentId === undefined) return <Navigate to="/panel/marketing/consents" />;
   return (
     <PanelPage title={consent.data.definition.key} backTo={{ label: t.marketing.allConsents, href: '/panel/marketing/consents' }}>

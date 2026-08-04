@@ -26,6 +26,9 @@ export interface Messages {
     add: string;
     open: string;
     status: string;
+    retry: string;
+    unsavedChanges: string;
+    unsavedChangesConfirm: string;
   };
   bootSplash: {
     opening: string;
@@ -88,6 +91,8 @@ export interface Messages {
     messageSlugReserved: (params: { slug: string }) => string;
     messageInternal: string;
     messageUnknown: string;
+    validationField: (params: { field: string }) => string;
+    validationForm: string;
   };
   auth: {
     signInTitle: string;
@@ -429,6 +434,10 @@ export interface Messages {
     saved: string;
     remove: string;
     removing: string;
+    removeSecretConfirmTitle: string;
+    removeSecretConfirmBody: (params: { label: string }) => string;
+    stripeDisconnectConfirmTitle: string;
+    stripeDisconnectConfirmBody: string;
     testConnection: string;
     testing: string;
     testFailed: string;
@@ -1532,6 +1541,8 @@ export interface Messages {
     pause: string;
     resume: string;
     cancelCampaign: string;
+    cancelCampaignConfirmTitle: string;
+    cancelCampaignConfirmBody: string;
     testSend: string;
     testing: string;
     lockedHint: string;
@@ -1583,6 +1594,7 @@ export interface Messages {
     createDocumentAction: string;
     saveDocumentAction: string;
     publish: string;
+    saveAndPublish: string;
     publishing: string;
     publicUrls: string;
     latestUrl: string;

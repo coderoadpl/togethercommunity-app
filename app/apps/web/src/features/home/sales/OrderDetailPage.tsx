@@ -1,4 +1,4 @@
-import { Button, Chip, Link, Stack, Typography } from '@mui/material';
+import { Alert, Button, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../../api.js';
@@ -36,7 +36,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     return (
       <PanelPage
         title={t.sections.sales}
-        state={{ kind: 'error', message: localizeError(detail.error, t) }}
+        state={{ kind: 'error', message: localizeError(detail.error, t), retry: { label: t.common.retry, onRetry: () => void detail.refetch() } }}
       />
     );
   }
@@ -177,6 +177,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
             </Button>
           ) : null}
         </Stack>
+        {issueInvoice.isError ? <Alert severity="error">{localizeError(issueInvoice.error, t)}</Alert> : null}
+        {refreshInvoice.isError ? <Alert severity="error">{localizeError(refreshInvoice.error, t)}</Alert> : null}
       </SectionCard>
     </PanelPage>
   );

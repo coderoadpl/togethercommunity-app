@@ -17,6 +17,7 @@ import { PASSWORD_MIN_LENGTH, passwordMeetsMinimumLength } from '#core/domain/in
 
 import { actions } from '../../api.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
+import { StatusView } from '../../components/layout/StatusView.js';
 import { TermsConsentField } from '../../components/ui/TermsConsentField.js';
 import { localizeError, useLanguage, useTranslations } from '../../i18n/index.js';
 import { appBaseDomain, hostHasTenantSubdomain } from '../../lib/tenant.js';
@@ -104,6 +105,7 @@ export const RegisterPage = ({ hostname = window.location.hostname }: { hostname
         </FinePrint>
       }
     >
+      {offer.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(offer.error, t), retry: { label: t.common.retry, onRetry: () => void offer.refetch() } }} /> : null}
         <Stack useFlexGap spacing="1rem">
           <FormControl fullWidth>
             <FormLabel htmlFor="register-name">{t.auth.nameLabel}</FormLabel>

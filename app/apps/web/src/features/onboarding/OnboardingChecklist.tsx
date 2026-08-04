@@ -1,12 +1,12 @@
-import { Button, List, ListItem, ListItemButton, ListItemIcon, ListItemText, SvgIcon } from '@mui/material';
+import { Alert, Button, List, ListItem, ListItemButton, ListItemIcon, ListItemText, SvgIcon } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 
 import type { OnboardingStepId } from '#core/domain/index.js';
 
 import { actions } from '../../api.js';
-import { SectionCard } from '../../components/layout/index.js';
-import { useTranslations, type Messages } from '../../i18n/index.js';
+import { SectionCard, StatusView } from '../../components/layout/index.js';
+import { localizeError, useTranslations, type Messages } from '../../i18n/index.js';
 import { ChecklistDoneLabel } from '../../theme.js';
 
 const DONE_ICON_PATH =
@@ -41,7 +41,11 @@ export const OnboardingChecklist = () => {
     },
   });
 
-  if (!onboarding.isSuccess || onboarding.data.onboarding.dismissed) return null;
+  if (onboarding.isPending) return <StatusView state={{ kind: 'loading', label: t.common.loading }} />;
+  if (onboarding.isError) {
+    return <StatusView state={{ kind: 'error', message: localizeError(onboarding.error, t), retry: { label: t.common.retry, onRetry: () => void onboarding.refetch() } }} />;
+  }
+  if (onboarding.data.onboarding.dismissed) return null;
 
   const steps = onboarding.data.onboarding.steps;
   const done = steps.filter((step) => step.done).length;
@@ -89,6 +93,7 @@ export const OnboardingChecklist = () => {
           </ListItem>
         ))}
       </List>
+      {dismiss.isError ? <Alert severity="error">{localizeError(dismiss.error, t)}</Alert> : null}
     </SectionCard>
   );
 };

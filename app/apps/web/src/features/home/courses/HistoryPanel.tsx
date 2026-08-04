@@ -26,7 +26,7 @@ export const HistoryPanel = ({ courseId }: { courseId: string }) => {
       {history.isPending ? (
         <StatusView state={{ kind: 'loading', label: t.courses.historyLoading }} />
       ) : history.isError ? (
-        <StatusView state={{ kind: 'error', message: localizeError(history.error, t) }} />
+        <StatusView state={{ kind: 'error', message: localizeError(history.error, t), retry: { label: t.common.retry, onRetry: () => void history.refetch() } }} />
       ) : history.data.versions.length === 0 ? (
         <StatusView
           state={{ kind: 'empty', title: t.courses.historyEmpty, body: t.courses.historyEmptyBody }}

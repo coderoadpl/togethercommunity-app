@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert } from '@mui/material';
+import { Alert, Typography } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import type { TenantSecretKey } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
+import { ConfirmDialog } from '../../../components/layout/index.js';
 import { SecretField as SecretFieldView } from '../../../components/ui/SecretField.js';
 import { localizeError, useTranslations } from '../../../i18n/index.js';
 
@@ -20,6 +21,7 @@ export const SecretField = ({
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [value, setValue] = useState('');
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const invalidate = async () => {
     await queryClient.invalidateQueries(actions.tenantSecretsInvalidates());
   };
@@ -32,7 +34,10 @@ export const SecretField = ({
   });
   const removeSecret = useMutation({
     ...actions.deleteTenantSecret,
-    onSuccess: invalidate,
+    onSuccess: async () => {
+      setConfirmingRemove(false);
+      await invalidate();
+    },
   });
 
   return (
@@ -57,10 +62,26 @@ export const SecretField = ({
         saved={setSecret.isSuccess}
         onValueChange={setValue}
         onSave={() => setSecret.mutate({ key: secretKey, value })}
-        onRemove={() => removeSecret.mutate({ key: secretKey })}
+        onRemove={() => setConfirmingRemove(true)}
       />
       {setSecret.isError ? <Alert severity="error">{localizeError(setSecret.error, t)}</Alert> : null}
       {removeSecret.isError ? <Alert severity="error">{localizeError(removeSecret.error, t)}</Alert> : null}
+      <ConfirmDialog
+        open={confirmingRemove}
+        title={t.integrations.removeSecretConfirmTitle}
+        body={(
+          <>
+            <Typography>{t.integrations.removeSecretConfirmBody({ label })}</Typography>
+            {removeSecret.isError ? <Alert severity="error">{localizeError(removeSecret.error, t)}</Alert> : null}
+          </>
+        )}
+        confirmLabel={removeSecret.isPending ? t.integrations.removing : t.integrations.remove}
+        cancelLabel={t.common.cancel}
+        pending={removeSecret.isPending}
+        onClose={() => setConfirmingRemove(false)}
+        onConfirm={() => removeSecret.mutate({ key: secretKey })}
+        confirmTestId={`secret-remove-confirm-${secretKey}`}
+      />
     </>
   );
 };

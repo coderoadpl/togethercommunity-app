@@ -1,5 +1,5 @@
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
@@ -239,6 +239,21 @@ describe('member pages', () => {
     let requests = 0;
     server.use(
       http.get('/api/my/products', () => HttpResponse.json({ ok: true, data: productsBody })),
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u1',
+            email: 'free@together.dev',
+            emailVerified: true,
+            name: 'Free',
+            tenant: null,
+          },
+        }),
+      ),
+      http.get('/api/notifications/unread-count', () =>
+        HttpResponse.json({ ok: true, data: { unread: 0 } }),
+      ),
       http.get('/api/student/courses', () => {
         requests += 1;
         return requests === 1
@@ -254,7 +269,7 @@ describe('member pages', () => {
 
     expect(await screen.findByText(pl.errors.messageIntegrationUnavailable)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: pl.student.courseContentComingSoon })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: pl.student.retryCourses }));
+    await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: pl.student.retryCourses }));
     expect(await screen.findByRole('heading', { name: pl.student.courseContentComingSoon })).toBeInTheDocument();
   });
 });

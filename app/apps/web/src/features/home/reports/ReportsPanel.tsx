@@ -30,7 +30,7 @@ export const ReportsPanel = () => {
     return <PanelPage title={t.reports.heading} state={{ kind: 'loading', label: t.reports.loading }} />;
   }
   if (reports.isError) {
-    return <PanelPage title={t.reports.heading} state={{ kind: 'error', message: localizeError(reports.error, t) }} />;
+    return <PanelPage title={t.reports.heading} state={{ kind: 'error', message: localizeError(reports.error, t), retry: { label: t.common.retry, onRetry: () => void reports.refetch() } }} />;
   }
 
   const statusLabel = (value: PostReportStatus): string =>

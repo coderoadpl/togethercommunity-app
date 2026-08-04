@@ -6,7 +6,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { useTranslations } from '../../i18n/index.js';
+import { localizeError, useTranslations } from '../../i18n/index.js';
 import { MemberSurface } from './MemberSurface.js';
 import { ThreadDiscussion } from './ThreadDiscussion.js';
 
@@ -36,7 +36,18 @@ export const SpaceThreadPage = ({ spaceId, postId }: { spaceId: string; postId: 
 
   if (unauthorized) return null;
 
-  const space = spaces.isError ? undefined : spaces.data.spaces.find((candidate) => candidate.id === spaceId);
+  if (spaces.isError) {
+    return (
+      <MemberSurface
+        title={t.community.threadTitle}
+        eyebrow={t.community.threadEyebrow}
+        width="wide"
+        state={{ kind: 'error', message: localizeError(spaces.error, t), retry: { label: t.common.retry, onRetry: () => void spaces.refetch() } }}
+      />
+    );
+  }
+
+  const space = spaces.data.spaces.find((candidate) => candidate.id === spaceId);
 
   if (space === undefined) {
     return (

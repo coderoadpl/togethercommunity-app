@@ -6,7 +6,8 @@ architecture spec is normative).
 ## The two gates
 
 - `pnpm run check` = `typecheck` + `typecheck:islands` + `lint` + `lock-lint` +
-  `license-lint` + `migration-lint` + `depcruise` + `knip` + `doc-lint` + `test` —
+  `license-lint` + `migration-lint` + `tenant-scope-check` + `depcruise` + `knip` +
+  `doc-lint` + `test` —
   the **static** gate.
 - `pnpm run smoke` = the **runtime** gate: it verifies the installed dependency
   tree matches `pnpm-lock.yaml`, drops+recreates an isolated

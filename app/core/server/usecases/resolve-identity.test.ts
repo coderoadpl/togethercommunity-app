@@ -37,7 +37,7 @@ const fakeTenantAccess = (memberships: Membership[], members: Member[] = []): Te
     memberships.find((m) =>
       'tenantId' in lookup ? m.tenant.id === lookup.tenantId : m.tenant.slug === lookup.tenantSlug,
     ) ?? null,
-  findMember: async (_userId, tenantId) =>
+  findMember: async (tenantId) =>
     members.find((candidate) => candidate.tenantId === tenantId) ?? null,
 });
 

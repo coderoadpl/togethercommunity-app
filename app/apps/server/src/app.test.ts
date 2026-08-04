@@ -529,7 +529,7 @@ const deps = (input: {
       listTenantsForStaff: async () => memberships,
       listStaffForTenant: async () => [],
       findStaffGrant: async () => null,
-      findMember: async (_userId, tenantId) =>
+      findMember: async (tenantId) =>
         members.find((candidate) => candidate.tenantId === tenantId) ?? null,
     },
     health: { pingDatabase: async () => input.databaseUp ?? true },

@@ -157,6 +157,8 @@ const cliConfigSchema = z.object({
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
+const epochSeconds = (isoString: string): number => Math.floor(Date.parse(isoString) / 1000);
+
 const expectCalendarMonthAway = (fromMs: number, periodEnd: string, label: string): void => {
   const expected = new Date(fromMs);
   expected.setUTCMonth(expected.getUTCMonth() + 1);
@@ -176,6 +178,7 @@ interface WebhookObject {
   currency?: string;
   period_end?: number;
   cancel_at_period_end?: boolean;
+  current_period_end?: number;
   status?: string;
 }
 
@@ -461,10 +464,12 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     );
     steps += 1;
 
+    const cancelPeriodEnd = iso(epochSeconds(pastDuePeriodEnd) * 1000);
     const cancelEvent = webhookPayload('evt_subs_e2e_cancel', 'customer.subscription.updated', {
       id: providerSubscriptionId,
       cancel_at_period_end: true,
       status: 'active',
+      current_period_end: epochSeconds(cancelPeriodEnd),
     });
     const cancelDelivery = expectOk(await deliver(cancelEvent), 'cancel webhook', stripeWebhookOutputSchema);
     assert(cancelDelivery.processed, 'cancel webhook should process');
@@ -475,8 +480,12 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     const cancelling = cancellingProducts.products.find((item) => item.id === product.id);
     assert(cancelling?.subscription?.cancelAtPeriodEnd === true, 'member should see cancelAtPeriodEnd');
     assert(
-      cancelling.subscription.currentPeriodEnd === pastDuePeriodEnd,
-      'cancel webhook must not move the period end',
+      cancelling.subscription.currentPeriodEnd === cancelPeriodEnd,
+      'cancel webhook must adopt the paid period end it reports',
+    );
+    assert(
+      cancelling.grantExpiresAt === cancelPeriodEnd,
+      'cancel webhook must expire the grant at the paid period end',
     );
 
     const finalCycle = expectOk(
@@ -518,7 +527,11 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     const canceledProducts = expectOk(await member(['my', 'products']), 'my products canceled', myProductsOutputSchema);
     const canceled = canceledProducts.products.find((item) => item.id === product.id);
     assert(canceled?.subscription?.status === 'canceled', 'member should see the canceled chip');
-    assert(canceled.grantStatus === 'active', 'access should persist until period end + grace after cancel');
+    assert(canceled.grantStatus === 'active', 'access should persist until the paid period ends after cancel');
+    assert(
+      canceled.grantExpiresAt === cancelPeriodEnd,
+      'canceled access must retain the paid period end without grace',
+    );
     steps += 1;
 
     const pastPeriodEnd = iso(Date.now() - 5 * DAY_MS);
@@ -529,13 +542,13 @@ const driveScenario = async (port: number, homes: string[]): Promise<number> => 
     assert(subUpdate.rowCount === 1, 'time travel should update exactly one subscription');
     const grantUpdate = await db.query(
       'update product_grants set expires_at = $1 where tenant_id = $2 and product_id = $3 and member_id = $4',
-      [graceIso(pastPeriodEnd), tenant.id, product.id, purchase.memberId],
+      [pastPeriodEnd, tenant.id, product.id, purchase.memberId],
     );
     assert(grantUpdate.rowCount === 1, 'time travel should update exactly one grant');
 
     const expiredProducts = expectOk(await member(['my', 'products']), 'my products expired', myProductsOutputSchema);
     const expired = expiredProducts.products.find((item) => item.id === product.id);
-    assert(expired?.grantStatus === 'expired', 'access must expire at read time after period end + grace');
+    assert(expired?.grantStatus === 'expired', 'access must expire at read time after the paid period ends');
     const finalSummary = expectOk(await staff(['orders', 'summary']), 'final summary', salesSummaryOutputSchema).summary;
     assert(
       finalSummary.activeSubscriptions === 0,

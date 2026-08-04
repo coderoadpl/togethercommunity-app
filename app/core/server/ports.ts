@@ -524,6 +524,7 @@ export interface PaymentWebhookEvent {
     status: string | null;
     cancelAtPeriodEnd: boolean;
     currentPeriodEnd: string | null;
+    endedAt: string | null;
   } | null;
 }
 

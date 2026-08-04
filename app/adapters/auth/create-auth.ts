@@ -1,8 +1,12 @@
 import { passkey } from '@better-auth/passkey';
 import { betterAuth } from 'better-auth';
-import { createAuthMiddleware } from 'better-auth/api';
+import {
+  APIError,
+  createAuthMiddleware,
+  getAuthoritativeSessionFromCtx,
+  sensitiveSessionMiddleware,
+} from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { APIError } from 'better-auth/api';
 import { bearer, magicLink, twoFactor } from 'better-auth/plugins';
 import { z } from 'zod';
 
@@ -55,6 +59,161 @@ export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset
 export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export const RESET_PASSWORD_CONTEXT_MAX_ENTRIES = 512;
+
+export const PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS = 5 * 60;
+
+const PASSKEY_SENSITIVE_COOKIE = 'passkey_sensitive';
+
+const passwordResetRequestSchema = z.object({ redirectTo: z.string().url() });
+
+export const passwordResetOriginMatches = (
+  body: unknown,
+  headers: Headers | undefined,
+): boolean => {
+  const parsed = passwordResetRequestSchema.safeParse(body);
+  const origin = headers?.get('origin');
+  if (!parsed.success || origin === null || origin === undefined) return false;
+  try {
+    return new URL(parsed.data.redirectTo).origin === new URL(origin).origin;
+  } catch {
+    return false;
+  }
+};
+
+const resetRedirectConfinement = () => ({
+  id: 'reset-redirect-confinement',
+  hooks: {
+    before: [{
+      matcher: (context: { path?: string }) => context.path === '/request-password-reset',
+      handler: createAuthMiddleware(async (ctx) => {
+        if (passwordResetOriginMatches(ctx.body, ctx.headers)) return;
+        throw APIError.from('BAD_REQUEST', {
+          code: 'INVALID_PASSWORD_RESET_ORIGIN',
+          message: 'Password reset must return to the origin that requested it',
+        });
+      }),
+    }],
+  },
+});
+
+const sensitivePasskeyPaths = new Set([
+  '/passkey/generate-register-options',
+  '/passkey/verify-registration',
+  '/passkey/delete-passkey',
+]);
+
+export const isSensitivePasskeyPath = (path: string | undefined): boolean =>
+  path !== undefined && sensitivePasskeyPaths.has(path);
+
+export const isSuccessfulPasswordVerification = (result: unknown): boolean =>
+  z.object({ status: z.literal(true) }).safeParse(result).success;
+
+const passkeyProofMiddleware = createAuthMiddleware(async (ctx) => {
+  const session = await getAuthoritativeSessionFromCtx(ctx);
+  const cookie = ctx.context.createAuthCookie(PASSKEY_SENSITIVE_COOKIE, {
+    maxAge: PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
+  });
+  const verifiedUserId = await ctx.getSignedCookie(cookie.name, ctx.context.secret);
+  if (!session || verifiedUserId !== session.user.id) {
+    throw APIError.from('FORBIDDEN', {
+      code: 'PASSKEY_REAUTHENTICATION_REQUIRED',
+      message: 'Verify your account password before managing passkeys',
+    });
+  }
+  return { session };
+});
+
+const sensitivePasskeyManagement = () => ({
+  id: 'sensitive-passkey-management',
+  hooks: {
+    after: [{
+      matcher: (context: { path?: string }) => context.path === '/verify-password',
+      handler: createAuthMiddleware(async (ctx) => {
+        if (!isSuccessfulPasswordVerification(ctx.context.returned)) return;
+        const session = await getAuthoritativeSessionFromCtx(ctx);
+        const verifiedUserId = session?.user.id ?? null;
+        if (verifiedUserId === null) return;
+        const cookie = ctx.context.createAuthCookie(PASSKEY_SENSITIVE_COOKIE, {
+          maxAge: PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
+        });
+        await ctx.setSignedCookie(
+          cookie.name,
+          verifiedUserId,
+          ctx.context.secret,
+          cookie.attributes,
+        );
+      }),
+    }],
+  },
+});
+
+const passkeyWithSensitiveManagement = () => {
+  const plugin = passkey({ rpName: 'Together' });
+  plugin.endpoints.generatePasskeyRegistrationOptions.options.use.push(
+    sensitiveSessionMiddleware,
+    passkeyProofMiddleware,
+  );
+  plugin.endpoints.verifyPasskeyRegistration.options.use.push(
+    sensitiveSessionMiddleware,
+    passkeyProofMiddleware,
+  );
+  plugin.endpoints.deletePasskey.options.use.push(
+    sensitiveSessionMiddleware,
+    passkeyProofMiddleware,
+  );
+  return plugin;
+};
+
+const additionalTwoFactorPaths = new Set([
+  '/sign-in/social',
+  '/magic-link/verify',
+  '/passkey/verify-authentication',
+]);
+
+export const isAdditionalTwoFactorPath = (path: string | undefined): boolean =>
+  path !== undefined && (additionalTwoFactorPaths.has(path) || path.startsWith('/callback/'));
+
+const twoFactorForEverySignIn = () => {
+  const plugin = twoFactor({ trustDeviceMaxAge: 0 });
+  return {
+    ...plugin,
+    hooks: {
+      ...plugin.hooks,
+      after: plugin.hooks.after.map((hook) => ({
+        ...hook,
+        matcher: (context: Parameters<typeof hook.matcher>[0]) =>
+          hook.matcher(context) || isAdditionalTwoFactorPath(context.path),
+      })),
+    },
+  };
+};
+
+const twoFactorRedirectSchema = z.object({ twoFactorRedirect: z.literal(true) });
+
+const redirectOrigin = (location: string | null, fallback: string): string => {
+  if (location === null) return fallback;
+  try {
+    return new URL(location).origin;
+  } catch {
+    return fallback;
+  }
+};
+
+const redirectTwoFactorNavigation = (baseUrl: string) => ({
+  id: 'two-factor-navigation',
+  hooks: {
+    after: [{
+      matcher: (context: { path?: string }) =>
+        context.path === '/magic-link/verify' || context.path?.startsWith('/callback/') === true,
+      handler: createAuthMiddleware(async (ctx) => {
+        if (!twoFactorRedirectSchema.safeParse(ctx.context.returned).success) return;
+        const location = ctx.context.responseHeaders?.get('location');
+        const origin = redirectOrigin(location ?? null, new URL(baseUrl).origin);
+        throw ctx.redirect(new URL('/login?twoFactor=required', origin).toString());
+      }),
+    }],
+  },
+});
 
 const signUpConsentSchema = z.object({
   email: z.string().email(),
@@ -177,6 +336,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       : {}),
     plugins: [
       bearer(),
+      resetRedirectConfinement(),
       // Magic-link auto-signup intentionally defers consent until first checkout because enrollment and login share this path.
       magicLink({
         sendMagicLink: async ({ email, url, token }) => {
@@ -219,8 +379,10 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
           }
         },
       }),
-      passkey(),
-      twoFactor(),
+      twoFactorForEverySignIn(),
+      sensitivePasskeyManagement(),
+      redirectTwoFactorNavigation(settings.baseUrl),
+      passkeyWithSensitiveManagement(),
     ],
     advanced: {
       useSecureCookies: settings.secureCookies,

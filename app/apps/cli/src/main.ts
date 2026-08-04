@@ -101,6 +101,20 @@ const centsSchema = z
 
 const emailOptionSchema = z.object({ email: z.string().email() });
 const authPasswordOptionsSchema = emailOptionSchema.extend({ password: z.string().min(1) });
+const loginOptionsSchema = authPasswordOptionsSchema.extend({
+  totpCode: z.string().min(1).optional(),
+  backupCode: z.string().min(1).optional(),
+}).refine(
+  ({ totpCode, backupCode }) => totpCode === undefined || backupCode === undefined,
+  'Use either --totp-code or --backup-code, not both',
+);
+const magicLoginOptionsSchema = emailOptionSchema.extend({
+  totpCode: z.string().min(1).optional(),
+  backupCode: z.string().min(1).optional(),
+}).refine(
+  ({ totpCode, backupCode }) => totpCode === undefined || backupCode === undefined,
+  'Use either --totp-code or --backup-code, not both',
+);
 const registerOptionsSchema = authPasswordOptionsSchema.extend({
   name: z.string().min(1),
   password: z.string().min(PASSWORD_MIN_LENGTH),
@@ -604,11 +618,28 @@ program
   .description('Sign in and store the session token')
   .requiredOption('--email <email>')
   .requiredOption('--password <password>')
+  .option('--totp-code <code>', 'authenticator code when two-factor authentication is enabled')
+  .option('--backup-code <code>', 'single-use backup code when two-factor authentication is enabled')
   .action(
-    withInput(z.tuple([authPasswordOptionsSchema]), async (ctx, [options]) => {
-      const result = await ctx.auth.signIn(options);
+    withInput(z.tuple([loginOptionsSchema]), async (ctx, [options]) => {
+      const signedIn = await ctx.auth.signIn({ email: options.email, password: options.password });
+      let result = signedIn;
+      if (signedIn.ok && signedIn.value.twoFactorRedirect) {
+        if (options.totpCode !== undefined) {
+          result = await ctx.auth.verifyTotp(options.totpCode);
+        } else if (options.backupCode !== undefined) {
+          result = await ctx.auth.verifyBackupCode(options.backupCode);
+        } else {
+          emit(
+            err(validation('Two-factor verification requires --totp-code or --backup-code')),
+            ctx.json,
+            () => '',
+          );
+          return;
+        }
+      }
       if (result.ok) {
-        if (!result.value.token) {
+        if (!result.value.token || result.value.twoFactorRedirect) {
           emit(err(internal('Server did not return a session token')), ctx.json, () => '');
           return;
         }
@@ -2318,8 +2349,10 @@ program
   .command('login-magic')
   .description('Sign in via magic link through the dev endpoints')
   .requiredOption('--email <email>')
+  .option('--totp-code <code>', 'authenticator code when two-factor authentication is enabled')
+  .option('--backup-code <code>', 'single-use backup code when two-factor authentication is enabled')
   .action(
-    withInput(z.tuple([emailOptionSchema]), async (ctx, [options]) => {
+    withInput(z.tuple([magicLoginOptionsSchema]), async (ctx, [options]) => {
       const requested = await ctx.auth.requestMagicLink({ email: options.email, callbackURL: ctx.apiUrl });
       if (!requested.ok) {
         emit(requested, ctx.json, () => '');
@@ -2338,8 +2371,23 @@ program
         );
         return;
       }
-      const verified = await ctx.auth.verifyMagicLinkToken(link.value.magicLink.token);
-      if (verified.ok && !verified.value.token) {
+      const verifiedLink = await ctx.auth.verifyMagicLinkToken(link.value.magicLink.token);
+      let verified = verifiedLink;
+      if (verifiedLink.ok && verifiedLink.value.twoFactorRedirect) {
+        if (options.totpCode !== undefined) {
+          verified = await ctx.auth.verifyTotp(options.totpCode);
+        } else if (options.backupCode !== undefined) {
+          verified = await ctx.auth.verifyBackupCode(options.backupCode);
+        } else {
+          emit(
+            err(validation('Two-factor verification requires --totp-code or --backup-code')),
+            ctx.json,
+            () => '',
+          );
+          return;
+        }
+      }
+      if (verified.ok && (!verified.value.token || verified.value.twoFactorRedirect)) {
         emit(err(internal('Magic-link verification returned no session token')), ctx.json, () => '');
         return;
       }

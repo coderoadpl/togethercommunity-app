@@ -15,6 +15,9 @@ interface Hoisted {
   changePassword: ReturnType<typeof vi.fn>;
   requestPasswordReset: ReturnType<typeof vi.fn>;
   signOut: ReturnType<typeof vi.fn>;
+  signIn: ReturnType<typeof vi.fn>;
+  verifyTotp: ReturnType<typeof vi.fn>;
+  verifyBackupCode: ReturnType<typeof vi.fn>;
   configureStripe: ReturnType<typeof vi.fn>;
 }
 
@@ -35,6 +38,9 @@ const h = vi.hoisted(
     changePassword: vi.fn(),
     requestPasswordReset: vi.fn(),
     signOut: vi.fn(),
+    signIn: vi.fn(),
+    verifyTotp: vi.fn(),
+    verifyBackupCode: vi.fn(),
     configureStripe: vi.fn(),
   }),
 );
@@ -91,6 +97,9 @@ vi.mock('#adapters/auth/client-adapter.js', () => ({
     changePassword: h.changePassword,
     requestPasswordReset: h.requestPasswordReset,
     signOut: h.signOut,
+    signIn: h.signIn,
+    verifyTotp: h.verifyTotp,
+    verifyBackupCode: h.verifyBackupCode,
   }),
 }));
 
@@ -126,6 +135,12 @@ beforeEach(() => {
   }));
   h.signOut.mockReset();
   h.signOut.mockResolvedValue(ok(undefined));
+  h.signIn.mockReset();
+  h.signIn.mockResolvedValue(ok({ token: 'session-token', twoFactorRedirect: false }));
+  h.verifyTotp.mockReset();
+  h.verifyTotp.mockResolvedValue(ok({ token: 'two-factor-token', twoFactorRedirect: false }));
+  h.verifyBackupCode.mockReset();
+  h.verifyBackupCode.mockResolvedValue(ok({ token: 'backup-token', twoFactorRedirect: false }));
   h.changePassword.mockReset();
   h.changePassword.mockResolvedValue(ok(undefined));
   h.requestPasswordReset.mockReset();
@@ -424,6 +439,58 @@ describe('request-password-reset', () => {
     });
     expect(soleJson()).toEqual({ ok: true });
     expect(process.exitCode).toBe(0);
+  });
+});
+
+describe('login two-factor challenge', () => {
+  it('completes a password challenge with a TOTP code before storing the session', async () => {
+    h.signIn.mockResolvedValue(ok({ token: null, twoFactorRedirect: true }));
+
+    await run(
+      'login',
+      '--email',
+      'member@example.com',
+      '--password',
+      'secret12',
+      '--totp-code',
+      '123456',
+    );
+
+    expect(h.verifyTotp).toHaveBeenCalledExactlyOnceWith('123456');
+    expect(h.saved.at(-1)?.profiles['https://one.example']?.token).toBe('two-factor-token');
+  });
+
+  it('supports a backup code and refuses to persist the provisional result', async () => {
+    h.signIn.mockResolvedValue(ok({ token: null, twoFactorRedirect: true }));
+
+    await run(
+      'login',
+      '--email',
+      'member@example.com',
+      '--password',
+      'secret12',
+      '--backup-code',
+      'backup-once',
+    );
+
+    expect(h.verifyBackupCode).toHaveBeenCalledExactlyOnceWith('backup-once');
+    expect(h.saved.at(-1)?.profiles['https://one.example']?.token).toBe('backup-token');
+  });
+
+  it('requires a second-factor option when the provider returns a challenge', async () => {
+    h.signIn.mockResolvedValue(ok({ token: null, twoFactorRedirect: true }));
+
+    await run(
+      '--json',
+      'login',
+      '--email',
+      'member@example.com',
+      '--password',
+      'secret12',
+    );
+
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.saved).toHaveLength(0);
   });
 });
 

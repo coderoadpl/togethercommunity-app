@@ -3,6 +3,7 @@ ALTER TABLE "campaign_sends" DROP CONSTRAINT "campaign_sends_consent_row_id_mark
 ALTER TABLE "campaign_sends" ALTER COLUMN "consent_row_id" DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE "consents" ADD COLUMN "retention_started_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "marketing_consents" ADD COLUMN "retention_started_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "scheduler_run_tenants" ADD COLUMN "purged" integer;--> statement-breakpoint
 UPDATE "marketing_consents" AS "evidence"
 SET "retention_started_at" = (
 	SELECT min("withdrawal"."occurred_at")

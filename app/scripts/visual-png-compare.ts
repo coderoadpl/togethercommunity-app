@@ -1,7 +1,19 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
 
-import pixelmatch from 'pixelmatch';
-import { PNG } from 'pngjs';
+const require = createRequire(import.meta.url);
+const pixelmatchCli = require.resolve('pixelmatch/bin/pixelmatch');
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const pixelmatchOptions = { threshold: 0, includeAA: false };
+
+const readPngSize = (path: string): { width: number; height: number } => {
+  const header = readFileSync(path).subarray(0, 24);
+  if (header.length < 24 || !header.subarray(0, 8).equals(pngSignature)) {
+    throw new Error(`Invalid PNG: ${path}`);
+  }
+  return { width: header.readUInt32BE(16), height: header.readUInt32BE(20) };
+};
 
 export interface PngComparisonFailure {
   file: string;
@@ -25,8 +37,8 @@ export const comparePng = ({
 }: ComparePngOptions): PngComparisonFailure | null => {
   if (!existsSync(baselinePath)) return { file, reason: missingBaselineReason };
 
-  const baseline = PNG.sync.read(readFileSync(baselinePath));
-  const current = PNG.sync.read(readFileSync(currentPath));
+  const baseline = readPngSize(baselinePath);
+  const current = readPngSize(currentPath);
   if (baseline.width !== current.width || baseline.height !== current.height) {
     return {
       file,
@@ -34,18 +46,25 @@ export const comparePng = ({
     };
   }
 
-  const diff = new PNG({ width: baseline.width, height: baseline.height });
-  const mismatched = pixelmatch(
-    baseline.data,
-    current.data,
-    diff.data,
-    baseline.width,
-    baseline.height,
-    { threshold: 0, includeAA: false },
+  const result = spawnSync(
+    process.execPath,
+    [
+      pixelmatchCli,
+      baselinePath,
+      currentPath,
+      diffPath,
+      String(pixelmatchOptions.threshold),
+      String(pixelmatchOptions.includeAA),
+    ],
+    { encoding: 'utf8' },
   );
+  if (result.error !== undefined) throw result.error;
+  const match = /different pixels: (\d+)/.exec(result.stdout);
+  if ((result.status !== 0 && result.status !== 66) || match?.[1] === undefined) {
+    throw new Error(result.stderr || result.stdout || `pixelmatch exited ${String(result.status)}`);
+  }
+  const mismatched = Number(match[1]);
   if (mismatched === 0) return null;
-
-  writeFileSync(diffPath, PNG.sync.write(diff));
   const ratio = mismatched / (baseline.width * baseline.height);
   return {
     file,

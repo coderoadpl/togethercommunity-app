@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Box, Link, Stack } from '@mui/material';
-import { ThemeProvider, type Theme } from '@mui/material/styles';
+import { ThemeProvider, useTheme, type Theme } from '@mui/material/styles';
 import { useQuery } from '@tanstack/react-query';
 
 import type { TenantBranding, TenantSocialLink } from '#core/domain/index.js';
@@ -92,12 +92,16 @@ export const TenantLogo = () => {
 };
 
 export const BrandMark = () => {
+  const theme = useTheme();
   const tenant = useTenantOffer();
   if (tenant === null) {
     return (
-      <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-        Together
-      </Wordmark>
+      <Box
+        component="img"
+        src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
+        alt="Together"
+        sx={{ display: 'block', height: '2.5rem', mb: '0.6rem' }}
+      />
     );
   }
   if (tenant.branding.logoUrl === null) {

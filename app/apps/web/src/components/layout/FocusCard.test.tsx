@@ -12,7 +12,7 @@ describe('FocusCard', () => {
       </FocusCard>,
     );
 
-    expect(screen.getByText('Together')).toBeInTheDocument();
+    expect(screen.getByAltText('Together')).toBeInTheDocument();
     expect(screen.getByText('logowanie · studio')).toBeInTheDocument();
     expect(screen.getByText('Pola formularza')).toBeInTheDocument();
   });
@@ -24,7 +24,7 @@ describe('FocusCard', () => {
       </FocusCard>,
     );
 
-    expect(screen.queryByText('Together')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
     expect(screen.getByText('Inna marka')).toBeInTheDocument();
   });
 

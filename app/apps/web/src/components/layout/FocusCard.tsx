@@ -1,7 +1,8 @@
 import type { FormEvent, ReactNode } from 'react';
 import { Box, Divider, Paper } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 
-import { Eyebrow, Wordmark } from '../../theme.js';
+import { Eyebrow } from '../../theme.js';
 import { PAGE_WIDTH } from './widths.js';
 
 interface FocusCardProps {
@@ -16,11 +17,19 @@ interface FocusCardProps {
 
 const CARD_WIDTH = { narrow: PAGE_WIDTH.focusNarrow, wide: PAGE_WIDTH.focusWide } as const;
 
-const defaultBrand = (
-  <Wordmark variant="h1" sx={{ mb: '0.2rem' }}>
-    Together
-  </Wordmark>
-);
+const DefaultBrand = () => {
+  const theme = useTheme();
+  return (
+    <Box
+      component="img"
+      src={`/brand/together-horizontal-${theme.palette.mode}.svg`}
+      alt="Together"
+      sx={{ display: 'block', height: '2.5rem', mb: '0.6rem' }}
+    />
+  );
+};
+
+const defaultBrand = <DefaultBrand />;
 
 export const FocusCard = ({
   eyebrow,

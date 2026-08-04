@@ -69,7 +69,7 @@ describe('BrandMark', () => {
 
     const logo = await screen.findByTestId('tenant-brand-logo');
     expect(logo).toHaveAttribute('src', '/assets/akademia-logo.svg');
-    expect(screen.queryByText('Together')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
   });
 
   it('falls back to the tenant name when unbranded', async () => {
@@ -77,7 +77,7 @@ describe('BrandMark', () => {
     renderWithProviders(<BrandMark />);
 
     expect(await screen.findByTestId('tenant-brand-name')).toHaveTextContent('Akademia Samouka');
-    expect(screen.queryByText('Together')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Together')).not.toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 
@@ -95,7 +95,7 @@ describe('BrandMark', () => {
     renderWithProviders(<BrandMark />);
 
     await waitFor(() => expect(requested).toHaveBeenCalledOnce());
-    expect(screen.getByText('Together')).toBeInTheDocument();
+    expect(screen.getByAltText('Together')).toBeInTheDocument();
     expect(screen.queryByTestId('tenant-brand-logo')).not.toBeInTheDocument();
   });
 

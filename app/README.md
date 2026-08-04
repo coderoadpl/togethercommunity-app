@@ -149,7 +149,7 @@ pnpm run check   # typecheck + lint + dependency graph + tests — the static ga
 pnpm run smoke   # runtime gate: fresh DB, real server boot, CLI roundtrip
 ```
 
-The Vitest projects currently discover <!--count:test-files-->234<!--/count-->
+The Vitest projects currently discover <!--count:test-files-->235<!--/count-->
 test files across the Node and browser suites.
 
 ## Tenant resolution

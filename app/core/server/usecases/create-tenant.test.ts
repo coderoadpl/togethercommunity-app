@@ -34,6 +34,7 @@ const fakeTenants = (initialTenants: Tenant[] = []) => {
     findSole: async () => tenants.length === 1 ? tenants[0] ?? null : null,
     hasAny: async () => tenants.length > 0,
     findSettings: async () => ({
+      name: 'Acme', socialLinks: [],
       billingPortalUrl: null, bunnyStreamLibraryId: null, logoUrl: null,
       accentColor: null, faviconUrl: null, ogTitle: null, ogDescription: null,
       ogImageUrl: null, supportEmail: null, supportUrl: null, termsUrl: null,
@@ -178,6 +179,23 @@ describe('createTenant', () => {
     expect(result).toMatchObject({
       ok: false,
       error: { code: 'validation', message: 'Tenant slug must be 3-63 lowercase letters, numbers or hyphens' },
+    });
+    expect(store.tenants).toEqual([]);
+    expect(store.ownerGrants).toEqual([]);
+  });
+
+  it('rejects tenant names that cannot be returned by the tenant schema', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity },
+      { slug: 'new-co', name: 'A'.repeat(101) },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: 'Tenant name must be 1-100 characters' },
     });
     expect(store.tenants).toEqual([]);
     expect(store.ownerGrants).toEqual([]);

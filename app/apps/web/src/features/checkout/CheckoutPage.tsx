@@ -20,7 +20,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '#core/client/index.js';
 
 import { actions } from '../../api.js';
-import { BrandMark } from '../../branding.js';
+import { BrandMark, TenantSocialLinks } from '../../branding.js';
 import { FocusCard } from '../../components/layout/FocusCard.js';
 import { StatusView } from '../../components/layout/StatusView.js';
 import { RichTextContent } from '../../components/ui/RichTextContent.js';
@@ -197,10 +197,15 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     setCheckoutStatus(null);
   };
 
+  const socialLinks = offer.data?.tenant.socialLinks ?? [];
+  const socialFooter = socialLinks.length > 0
+    ? <TenantSocialLinks links={socialLinks} />
+    : undefined;
+
   if (checkoutStatus === 'success') {
     const subscriptionSuccess = new URLSearchParams(window.location.search).get('purchase_kind') === 'subscription';
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.successEyebrow}>
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.successEyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">
             {subscriptionSuccess ? t.checkout.subscriptionSuccessTitle : t.checkout.successTitle}
@@ -218,7 +223,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (checkoutStatus === 'cancelled') {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.cancelledEyebrow}>
+      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.cancelledEyebrow} footer={socialFooter}>
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">{t.checkout.cancelledTitle}</CardTitle>
           <Typography variant="body1">{t.checkout.cancelledBody}</Typography>
@@ -230,7 +235,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (offer.isPending || paymentConfig.isPending) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.checkoutEyebrow} width="wide">
+      <FocusCard
+        brand={<BrandMark />}
+        eyebrow={t.checkout.checkoutEyebrow}
+        footer={socialFooter}
+        width="wide"
+      >
         <StatusView state={{ kind: 'loading', label: t.checkout.loading }} />
       </FocusCard>
     );
@@ -238,7 +248,12 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (offer.isError || paymentConfig.isError) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.checkoutEyebrow} width="wide">
+      <FocusCard
+        brand={<BrandMark />}
+        eyebrow={t.checkout.checkoutEyebrow}
+        footer={socialFooter}
+        width="wide"
+      >
         <StatusView
           state={{ kind: 'error', message: localizeError(offer.error ?? paymentConfig.error, t) }}
         />
@@ -248,7 +263,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (!product) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={offer.data.tenant.name}>
+      <FocusCard
+        brand={<BrandMark />}
+        eyebrow={offer.data.tenant.name}
+        footer={socialFooter}
+      >
         <StatusView
           state={{
             kind: 'not-found',
@@ -271,7 +290,11 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
 
   if (purchaseComplete) {
     return (
-      <FocusCard brand={<BrandMark />} eyebrow={t.checkout.paymentSimulatedEyebrow}>
+      <FocusCard
+        brand={<BrandMark />}
+        eyebrow={t.checkout.paymentSimulatedEyebrow}
+        footer={socialFooter}
+      >
         <Stack useFlexGap spacing="1rem">
           <CardTitle variant="h1">
             {simulatePurchase.data?.alreadyOwned
@@ -297,6 +320,7 @@ export const CheckoutPage = ({ productId }: { productId: string }) => {
     <FocusCard
       brand={<BrandMark />}
       eyebrow={t.checkout.eyebrow({ tenant: offer.data.tenant.name })}
+      footer={socialFooter}
       width="wide"
       onSubmit={submit}
     >

@@ -25,6 +25,8 @@ const harness = (supportEmail: string | null) => {
       findSole: async () => null,
       hasAny: async () => false,
       findSettings: async () => ({
+        name: 'Acme',
+        socialLinks: [],
         billingPortalUrl: null,
         bunnyStreamLibraryId: null,
         logoUrl: null,

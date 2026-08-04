@@ -2,6 +2,7 @@ import type {
   AppError,
   Course,
   CourseLesson,
+  LessonAttachment,
   CourseModule,
   EntityHistoryEntry,
   EntityKind,
@@ -34,6 +35,7 @@ import type {
   OrderStatus,
   PriceKind,
   Product,
+  ProductDownloadAsset,
   ProductGrant,
   ProductPrice,
   ProcessedPaymentEvent,
@@ -51,6 +53,7 @@ import type {
   ReactionSummary,
   Space,
   SpaceStats,
+  StorageConfiguration,
   Tenant,
   TenantApiKey,
   TenantDomain,
@@ -172,6 +175,24 @@ export interface CourseLessonRepository {
   create(tenantId: string, lesson: CourseLesson): Promise<void>;
   update(tenantId: string, lesson: CourseLesson, version?: EntityVersionRecord): Promise<CourseLesson | null>;
   delete(tenantId: string, id: string): Promise<boolean>;
+}
+
+export interface LessonAttachmentRepository {
+  create(tenantId: string, attachment: LessonAttachment): Promise<void>;
+  findById(tenantId: string, attachmentId: string): Promise<LessonAttachment | null>;
+  listByLesson(tenantId: string, lessonId: string): Promise<LessonAttachment[]>;
+  listReadyByLesson(tenantId: string, lessonId: string): Promise<LessonAttachment[]>;
+  markReady(tenantId: string, attachmentId: string, sizeBytes: number): Promise<LessonAttachment | null>;
+  delete(tenantId: string, attachmentId: string): Promise<boolean>;
+}
+
+export interface ProductDownloadAssetRepository {
+  create(tenantId: string, asset: ProductDownloadAsset): Promise<void>;
+  findById(tenantId: string, assetId: string): Promise<ProductDownloadAsset | null>;
+  listByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
+  listReadyByProduct(tenantId: string, productId: string): Promise<ProductDownloadAsset[]>;
+  markReady(tenantId: string, assetId: string, sizeBytes: number): Promise<ProductDownloadAsset | null>;
+  delete(tenantId: string, assetId: string): Promise<boolean>;
 }
 
 export interface PostSearchRow {
@@ -871,23 +892,34 @@ export interface BunnyEmbedTokenSigner {
 }
 
 export interface StorageProvider {
+  objectUrl(configuration: StorageConfiguration, key: string): URL;
+  probe(input: StorageConfiguration): Promise<Result<ProviderDiagnostic, AppError>>;
   presignPut(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
+    region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
   presignGet(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
+    region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
   delete(input: {
     url: string;
     accessKeyId: string;
     secretAccessKey: string;
+    region?: string;
   }): Promise<Result<{ deleted: true }, AppError>>;
+  head(input: {
+    url: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    region?: string;
+  }): Promise<Result<{ sizeBytes: number }, AppError>>;
   healthcheck(input: { tenantId: string }): Promise<Result<{ healthy: true }, AppError>>;
   test(input: { tenantId: string }): Promise<Result<ProviderDiagnostic, AppError>>;
 }

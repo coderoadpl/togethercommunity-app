@@ -102,7 +102,12 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/members/erasure-requests/:requestId/reject` | authenticated | mutating | member erasure reject |
 | `GET /api/tenants` | authenticated | read | tenants |
 | `GET /api/products` | authenticated | read | products |
+| `GET /api/products/:productId/downloads` | authenticated | read | product download assets |
+| `POST /api/products/:productId/downloads/upload` | authenticated | mutating | product download upload |
+| `POST /api/products/:productId/downloads/:assetId/complete` | authenticated | mutating | product download complete |
+| `DELETE /api/products/:productId/downloads/:assetId` | authenticated | mutating | product download delete |
 | `GET /api/my/products` | authenticated | read | my products |
+| `GET /api/my/products/:productId/downloads/:assetId` | authenticated | read | member product download |
 | `GET /api/members` | authenticated | read | members |
 | `GET /api/members/export` | authenticated | read | members export |
 | `POST /api/members/ban` | authenticated | mutating | member ban |
@@ -125,6 +130,8 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `GET /api/onboarding` | authenticated | read | onboarding |
 | `POST /api/onboarding/dismiss` | authenticated | mutating | onboarding dismiss |
 | `POST /api/integrations/test` | authenticated | mutating | integration test |
+| `POST /api/integrations/storage/probe` | authenticated | mutating | storage probe |
+| `POST /api/integrations/storage/configure` | authenticated | mutating | storage configure |
 | `POST /api/integrations/stripe/configure` | authenticated | mutating | stripe configure |
 | `POST /api/integrations/ifirma/test` | authenticated | mutating | ifirma test connection |
 | `POST /api/integrations/ksef/test` | authenticated | mutating | ksef test connection |
@@ -168,8 +175,14 @@ Self-authenticating routes enforce a session, API key, or operator secret before
 | `POST /api/lessons/update` | authenticated | mutating | lessons update |
 | `GET /api/lessons/references` | authenticated | read | lesson references |
 | `DELETE /api/lessons/:lessonId` | authenticated | mutating | lessons delete |
+| `GET /api/lessons/:lessonId/attachments` | authenticated | read | lesson attachments |
+| `POST /api/lessons/:lessonId/attachments/upload` | authenticated | mutating | lesson attachment upload |
+| `POST /api/lessons/:lessonId/attachments/:attachmentId/complete` | authenticated | mutating | lesson attachment complete |
+| `DELETE /api/lessons/:lessonId/attachments/:attachmentId` | authenticated | mutating | lesson attachment delete |
 | `GET /api/student/courses` | authenticated | read | student courses |
 | `GET /api/student/courses/:courseId/structure` | authenticated | read | student course structure |
+| `GET /api/student/lessons/:lessonId/attachments` | authenticated | read | student lesson attachments |
+| `GET /api/student/lessons/:lessonId/attachments/:attachmentId/download` | authenticated | read | student lesson attachment download |
 | `POST /api/student/lessons/complete` | authenticated | mutating | student lesson complete |
 | `POST /api/student/lessons/uncomplete` | authenticated | mutating | student lesson uncomplete |
 | `POST /api/student/progress/last-viewed` | authenticated | mutating | student last viewed |

@@ -107,6 +107,14 @@ describe('tenant routing mode', () => {
   });
 });
 
+describe('private storage endpoint policy', () => {
+  it('requires an explicit opt-in', () => {
+    expect(envSchema.parse({}).STORAGE_ALLOW_PRIVATE_ENDPOINTS).toBe(false);
+    expect(envSchema.parse({ STORAGE_ALLOW_PRIVATE_ENDPOINTS: 'true' }).STORAGE_ALLOW_PRIVATE_ENDPOINTS).toBe(true);
+    expect(envSchema.safeParse({ STORAGE_ALLOW_PRIVATE_ENDPOINTS: 'yes' }).success).toBe(false);
+  });
+});
+
 describe('database driver policy', () => {
   it('rejects neon-http while runtime adapters require interactive transactions', () => {
     const parsed = envSchema.safeParse({ DB_DRIVER: 'neon-http' });

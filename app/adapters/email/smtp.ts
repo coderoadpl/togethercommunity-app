@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-import { err, integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
+import { err, integrationAuth, integrationUnavailable, ok, type AppError, type Result } from '#core/domain/index.js';
 import type { EmailPort } from '#core/server/index.js';
 
 export interface SmtpEmailSettings {
@@ -31,6 +31,17 @@ export type SmtpTransportFactory = (settings: {
   auth?: { user: string; pass: string };
 }) => SmtpTransport;
 
+const smtpConnectionFailure = (cause: unknown): AppError => {
+  if (typeof cause === 'object' && cause !== null) {
+    const code = 'code' in cause ? cause.code : null;
+    const responseCode = 'responseCode' in cause ? cause.responseCode : null;
+    if (code === 'EAUTH' || [454, 534, 535, 538].includes(Number(responseCode))) {
+      return integrationAuth('SMTP rejected the credentials.');
+    }
+  }
+  return integrationUnavailable('Could not connect to SMTP.');
+};
+
 export const createSmtpEmailPort = (
   settings: SmtpEmailSettings,
   createTransport: SmtpTransportFactory = nodemailer.createTransport,
@@ -48,7 +59,7 @@ export const createSmtpEmailPort = (
       await transport.verify();
       return ok({ healthy: true });
     } catch (cause) {
-      return err(integrationUnavailable(`Could not connect to SMTP: ${String(cause)}`));
+      return err(smtpConnectionFailure(cause));
     }
   };
   return {

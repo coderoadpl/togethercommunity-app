@@ -14,6 +14,19 @@ export const formatDate = (value: string, language: string): string =>
 export const formatDateTime = (value: string, language: string): string =>
   new Intl.DateTimeFormat(localeFor(language), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 
+export const formatFileSize = (bytes: number, language: string): string => {
+  const units = [
+    { threshold: 1024 * 1024 * 1024, divisor: 1024 * 1024 * 1024, label: 'GB' },
+    { threshold: 1024 * 1024, divisor: 1024 * 1024, label: 'MB' },
+    { threshold: 0, divisor: 1024, label: 'KB' },
+  ];
+  const unit = units.find((candidate) => bytes >= candidate.threshold) ?? units[2];
+  if (unit === undefined) return `${String(bytes)} B`;
+  const value = Math.max(1, bytes / unit.divisor);
+  const formatted = new Intl.NumberFormat(localeFor(language), { maximumFractionDigits: 1 }).format(value);
+  return `${formatted} ${unit.label}`;
+};
+
 const RELATIVE_STEPS: Array<{ limitMs: number; unitMs: number; unit: Intl.RelativeTimeFormatUnit }> = [
   { limitMs: 60_000, unitMs: 1_000, unit: 'second' },
   { limitMs: 3_600_000, unitMs: 60_000, unit: 'minute' },

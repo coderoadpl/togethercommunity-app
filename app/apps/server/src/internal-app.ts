@@ -20,8 +20,11 @@ import {
   grantCreateInputSchema,
   grantRevokeInputSchema,
   integrationTestInputSchema,
+  storageConfigureInputSchema,
+  storageProbeInputSchema,
   lastViewedInputSchema,
   lessonCompleteInputSchema,
+  lessonAttachmentUploadRequestSchema,
   lessonCreateInputSchema,
   lessonUncompleteInputSchema,
   lessonUpdateInputSchema,
@@ -69,6 +72,7 @@ import {
   productsAccessItemsInputSchema,
   productsCreateInputSchema,
   productsPublishInputSchema,
+  productDownloadUploadRequestSchema,
   SCHEDULER_OPERATOR_SECRET_HEADER,
   schedulerRunsQuerySchema,
   simulatePurchaseInputSchema,
@@ -100,6 +104,12 @@ import {
   validation,
   type EmailBranding,
   type Identity,
+  type LessonAttachment,
+  type LessonAttachmentMetadata,
+  type LessonAttachmentView,
+  type ProductDownloadAsset,
+  type ProductDownloadAssetMetadata,
+  type ProductDownloadAssetView,
   type MemberCourseProgress,
   type ProgressView,
   type Result,
@@ -109,6 +119,8 @@ import {
   addManualSuppression,
   archiveCoupon,
   attachModuleToCourse,
+  beginLessonAttachmentUpload,
+  beginProductDownloadUpload,
   authenticateApiKey,
   autoIssueOnPayment,
   authorizeRequiredTenant,
@@ -128,8 +140,13 @@ import {
   createTenant,
   createTenantApiKey,
   createTenantDocument,
+  configureStorageConnection,
+  completeLessonAttachmentUpload,
+  completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
+  deleteLessonAttachment,
+  deleteProductDownloadAsset,
   deletePost,
   deleteSpace,
   deleteTenantSecret,
@@ -168,6 +185,8 @@ import {
   getNextLesson,
   getOrder,
   getPlayableLesson,
+  getLessonAttachmentDownload,
+  getProductDownload,
   getProgress,
   getSalesSummary,
   getSchedulerRunForTenant,
@@ -187,11 +206,13 @@ import {
   listEmailSends,
   listGlobalSchedulerRuns,
   listLessonReferences,
+  listLessonAttachments,
   listLessons,
   listMarketingConsentDefinitions,
   listMemberBillingOrders,
   listMemberEmailSends,
   listMemberGrants,
+  listMemberLessonAttachments,
   listMemberTimeline,
   listMembers,
   listModules,
@@ -202,6 +223,7 @@ import {
   listOrders,
   listPaidOrdersWithoutGrant,
   listProductAccessIssues,
+  listProductDownloadAssets,
   listProductPrices,
   listReports,
   listProducts,
@@ -218,6 +240,7 @@ import {
   pauseCampaign,
   pollSesOnboarding,
   previewMarketingAudience,
+  probeStorageConnection,
   provisionSesInfrastructure,
   publishProduct,
   publishTenantDocument,
@@ -330,6 +353,40 @@ const toProgressView = (progress: MemberCourseProgress): ProgressView => ({
   lastViewedLessonId: progress.lastViewedLessonId,
   lastViewedModuleId: progress.lastViewedModuleId,
   lastViewedChapterId: progress.lastViewedChapterId,
+});
+
+const lessonAttachmentMetadata = (attachment: LessonAttachment): LessonAttachmentMetadata => ({
+  id: attachment.id,
+  lessonId: attachment.lessonId,
+  fileName: attachment.fileName,
+  contentType: attachment.contentType,
+  sizeBytes: attachment.sizeBytes,
+  status: attachment.status,
+  createdAt: attachment.createdAt,
+});
+
+const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentView => ({
+  ...lessonAttachmentMetadata(attachment),
+  downloadPath: API_PATHS.studentLessonAttachmentDownload
+    .replace(':lessonId', encodeURIComponent(attachment.lessonId))
+    .replace(':attachmentId', encodeURIComponent(attachment.id)),
+});
+
+const productDownloadMetadata = (asset: ProductDownloadAsset): ProductDownloadAssetMetadata => ({
+  id: asset.id,
+  productId: asset.productId,
+  fileName: asset.fileName,
+  contentType: asset.contentType,
+  sizeBytes: asset.sizeBytes,
+  status: asset.status,
+  createdAt: asset.createdAt,
+});
+
+const productDownloadView = (asset: ProductDownloadAsset): ProductDownloadAssetView => ({
+  ...productDownloadMetadata(asset),
+  downloadPath: API_PATHS.memberProductDownload
+    .replace(':productId', encodeURIComponent(asset.productId))
+    .replace(':assetId', encodeURIComponent(asset.id)),
 });
 
 const tenantlessIdentity = (user: AuthenticatedUser): Identity => ({
@@ -1342,6 +1399,58 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ products: result.value }) : result);
   });
 
+  app.get(API_PATHS.productDownloadAssets, async (c) => {
+    const result = await listProductDownloadAssets(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      deps,
+    );
+    return respond(result.ok
+      ? ok({ assets: result.value.map(productDownloadMetadata) })
+      : result);
+  });
+
+  app.post(API_PATHS.productDownloadUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = productDownloadUploadRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid download payload', parsed.error.flatten())));
+    const result = await beginProductDownloadUpload(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok
+      ? ok({
+          asset: productDownloadMetadata(result.value.asset),
+          upload: {
+            url: result.value.uploadUrl,
+            headers: { 'content-type': result.value.asset.contentType },
+            expiresAt: result.value.expiresAt,
+          },
+        })
+      : result);
+  });
+
+  app.post(API_PATHS.productDownloadComplete, async (c) => {
+    const result = await completeProductDownloadUpload(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      c.req.param('assetId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ asset: productDownloadMetadata(result.value) }) : result);
+  });
+
+  app.delete(API_PATHS.productDownloadDelete, async (c) => {
+    return respond(await deleteProductDownloadAsset(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      c.req.param('assetId'),
+      deps,
+    ));
+  });
+
   app.get(API_PATHS.myProducts, async (c) => {
     const result = await listMyProducts({ identity: c.get('identity') }, deps);
     return respond(
@@ -1349,6 +1458,7 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         ? ok({
           products: result.value.map((product) => ({
             id: product.id,
+            type: product.type,
             title: product.title,
             description: product.description,
             priceCents: product.priceCents,
@@ -1357,10 +1467,23 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
             grantStartsAt: product.grantStartsAt,
             grantExpiresAt: product.grantExpiresAt,
             subscription: product.subscription,
+            downloads: product.downloads.map(productDownloadView),
           })),
         })
         : result,
     );
+  });
+
+  app.get(API_PATHS.memberProductDownload, async (c) => {
+    const result = await getProductDownload(
+      { identity: c.get('identity') },
+      c.req.param('productId'),
+      c.req.param('assetId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    c.header('Cache-Control', 'no-store');
+    return c.redirect(result.value, 302);
   });
 
   app.get(API_PATHS.members, async (c) => {
@@ -1524,6 +1647,28 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
         payment: deps.payment,
         storage: deps.storage,
       },
+    ));
+  });
+
+  app.post(API_PATHS.storageProbe, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = storageProbeInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid storage probe payload', parsed.error.flatten())));
+    return respond(await probeStorageConnection(
+      { identity: c.get('identity') },
+      parsed.data,
+      { storage: deps.storage },
+    ));
+  });
+
+  app.post(API_PATHS.storageConfigure, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = storageConfigureInputSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid storage configuration payload', parsed.error.flatten())));
+    return respond(await configureStorageConnection(
+      { identity: c.get('identity') },
+      parsed.data,
+      deps,
     ));
   });
 
@@ -2020,6 +2165,58 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(result.ok ? ok({ references: result.value }) : result);
   });
 
+  app.get(API_PATHS.lessonAttachments, async (c) => {
+    const result = await listLessonAttachments(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      deps,
+    );
+    return respond(result.ok
+      ? ok({ attachments: result.value.map(lessonAttachmentView) })
+      : result);
+  });
+
+  app.post(API_PATHS.lessonAttachmentUpload, async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    const parsed = lessonAttachmentUploadRequestSchema.safeParse(body);
+    if (!parsed.success) return respond(err(validation('Invalid attachment payload', parsed.error.flatten())));
+    const result = await beginLessonAttachmentUpload(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      parsed.data,
+      deps,
+    );
+    return respond(result.ok
+      ? ok({
+          attachment: lessonAttachmentMetadata(result.value.attachment),
+          upload: {
+            url: result.value.uploadUrl,
+            headers: { 'content-type': result.value.attachment.contentType },
+            expiresAt: result.value.expiresAt,
+          },
+        })
+      : result);
+  });
+
+  app.post(API_PATHS.lessonAttachmentComplete, async (c) => {
+    const result = await completeLessonAttachmentUpload(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      c.req.param('attachmentId'),
+      deps,
+    );
+    return respond(result.ok ? ok({ attachment: lessonAttachmentView(result.value) }) : result);
+  });
+
+  app.delete(API_PATHS.lessonAttachmentDelete, async (c) => {
+    return respond(await deleteLessonAttachment(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      c.req.param('attachmentId'),
+      deps,
+    ));
+  });
+
   app.get(API_PATHS.studentCourses, async (c) => {
     const result = await listMyCourses({ identity: c.get('identity') }, deps);
     return respond(result.ok ? ok({ courses: result.value }) : result);
@@ -2032,6 +2229,29 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
       deps,
     );
     return respond(result.ok ? ok({ structure: result.value }) : result);
+  });
+
+  app.get(API_PATHS.studentLessonAttachments, async (c) => {
+    const result = await listMemberLessonAttachments(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      deps,
+    );
+    return respond(result.ok
+      ? ok({ attachments: result.value.map(lessonAttachmentView) })
+      : result);
+  });
+
+  app.get(API_PATHS.studentLessonAttachmentDownload, async (c) => {
+    const result = await getLessonAttachmentDownload(
+      { identity: c.get('identity') },
+      c.req.param('lessonId'),
+      c.req.param('attachmentId'),
+      deps,
+    );
+    if (!result.ok) return respond(result);
+    c.header('Cache-Control', 'no-store');
+    return c.redirect(result.value, 302);
   });
 
   app.post(API_PATHS.studentLessonComplete, async (c) => {

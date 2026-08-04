@@ -40,6 +40,8 @@ import {
 } from '#adapters/db/coupon-repositories.js';
 import {
   createCourseLessonRepository,
+  createLessonAttachmentRepository,
+  createProductDownloadAssetRepository,
   createCourseModuleRepository,
   createCourseRepository,
   createCheckoutConsentCaptureRepository,
@@ -125,6 +127,8 @@ import type {
   TenantSecretRepository,
   TenantSecretResolver,
   CourseLessonRepository,
+  LessonAttachmentRepository,
+  ProductDownloadAssetRepository,
   CourseModuleRepository,
   CourseRepository,
   DevEmailReader,
@@ -252,6 +256,8 @@ export interface AppDeps {
   courses: CourseRepository;
   modules: CourseModuleRepository;
   lessons: CourseLessonRepository;
+  attachments: LessonAttachmentRepository;
+  downloadAssets: ProductDownloadAssetRepository;
   entityVersions: EntityVersionRepository;
   userDisplays: UserDisplayReader;
   members: MemberRepository;
@@ -530,13 +536,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     secretResolver,
     production ? createResendEmailPort : () => email,
   );
-  const sesTest = createTenantSesTransactionalResolver(sesSettings, tenantMarketingCredentials);
-  const smtpTest = createSmtpTransactionalResolver(sesSettings, secretResolver);
-  const resendTest = createResendTransactionalResolver(sesSettings, secretResolver);
   const emailTransports = createEmailIntegrationTransportResolver({
-    smtp: smtpTest,
-    ses: sesTest,
-    resend: resendTest,
+    smtp: smtpTransactional,
+    ses: tenantSesTransactional,
+    resend: resendTransactional,
   });
   const transactionalEmail = createLayeredTransactionalEmailSender({
     tenantSes: tenantSesTransactional,
@@ -770,6 +773,8 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     courses: createCourseRepository(db),
     modules: createCourseModuleRepository(db),
     lessons: createCourseLessonRepository(db),
+    attachments: createLessonAttachmentRepository(db),
+    downloadAssets: createProductDownloadAssetRepository(db),
     entityVersions: createEntityVersionRepository(db),
     userDisplays: createUserDisplayReader(db),
     members: createMemberRepository(db),
@@ -828,7 +833,10 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     couponStats: createCouponStatsRepository(db),
     videoLibrary: createBunnyVideoLibrary(),
     bunnyEmbedTokenSigner: createBunnyEmbedTokenSigner(),
-    storage: createS3StorageProvider(secretResolver),
+    storage: createS3StorageProvider(secretResolver, {
+      corsOrigin: env.APP_BASE_URL,
+      allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
+    }),
     email,
     emailSender: transactionalEmail,
     emailTransports,

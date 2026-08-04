@@ -477,7 +477,7 @@ export default tseslint.config(
             },
             {
               from: ['adapter-storage'],
-              allow: ['node:crypto'],
+              allow: ['node:crypto', 'node:dns', 'node:net', 'undici'],
             },
             {
               from: ['platform-entry'],

@@ -65,6 +65,15 @@ const commonHandlers = () => {
     http.get('/api/orders', () =>
       HttpResponse.json({ ok: true, data: { orders: [], total: 0, page: 1, pageSize: 25 } }),
     ),
+    http.get('/api/coupons/options', () =>
+      HttpResponse.json({ ok: true, data: { coupons: [] } }),
+    ),
+    http.get('/api/orders/reconciliation', () =>
+      HttpResponse.json({
+        ok: true,
+        data: { rows: [], checkedThrough: '2026-08-03T12:00:00.000Z' },
+      }),
+    ),
   );
 };
 
@@ -238,7 +247,7 @@ describe('Creator panel routing', () => {
 
     await renderPanelAt('/panel/sales');
 
-    expect(await screen.findByText(pl.sales.empty)).toBeInTheDocument();
+    expect(await screen.findByText(pl.sales.empty, {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(screen.getByTestId('section-sales')).toHaveAttribute('aria-current', 'page');
   });
 

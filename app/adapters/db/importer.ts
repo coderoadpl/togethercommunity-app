@@ -74,7 +74,7 @@ interface BundleUser {
   legacyId: string;
   email: string;
   name: string | null;
-  payloadPasswordMarker: string | null;
+  legacyPasswordMarker: string | null;
   role: 'admin' | 'student';
 }
 
@@ -514,7 +514,7 @@ const mergeBundleUsers = (
           subject: `users/${bundleUser.legacyId}`,
           detail: `email ${email} is already imported as user ${previous.legacyId}; keeping the first occurrence`,
         });
-      } else if (previous.payloadPasswordMarker !== bundleUser.payloadPasswordMarker) {
+      } else if (previous.legacyPasswordMarker !== bundleUser.legacyPasswordMarker) {
         report.anomalies.push({
           kind: 'user-marker-conflict',
           subject: `users/${bundleUser.legacyId}`,
@@ -634,8 +634,8 @@ const importUsers = async (
       });
       continue;
     }
-    if (bundleUser.payloadPasswordMarker !== null) {
-      markerByEmail.set(email, bundleUser.payloadPasswordMarker);
+    if (bundleUser.legacyPasswordMarker !== null) {
+      markerByEmail.set(email, bundleUser.legacyPasswordMarker);
     } else {
       report.anomalies.push({
         kind: 'user-without-credential',
@@ -646,7 +646,7 @@ const importUsers = async (
     const input = {
       email,
       name: bundleUser.name,
-      passwordMarker: bundleUser.payloadPasswordMarker,
+      passwordMarker: bundleUser.legacyPasswordMarker,
     };
     const state: ImportedUserOutcome | ImportedUserState = apply
       ? await gateway.ensureImportedUser(input)

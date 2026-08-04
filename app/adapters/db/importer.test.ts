@@ -71,10 +71,10 @@ const buildBundle = (): TenantBundle => ({
       legacyId: ids.u1,
       email: EMAIL_1,
       name: 'Jan Import',
-      payloadPasswordMarker: MARKER,
+      legacyPasswordMarker: MARKER,
       role: 'student',
     },
-    { legacyId: ids.u2, email: EMAIL_2, name: null, payloadPasswordMarker: null, role: 'student' },
+    { legacyId: ids.u2, email: EMAIL_2, name: null, legacyPasswordMarker: null, role: 'student' },
   ],
   courses: [
     {
@@ -713,7 +713,7 @@ describe('importer', () => {
         legacyId: nativeLegacyId,
         email: nativeEmail,
         name: 'Native Buyer',
-        payloadPasswordMarker: MARKER,
+        legacyPasswordMarker: MARKER,
         role: 'student',
       },
     ];

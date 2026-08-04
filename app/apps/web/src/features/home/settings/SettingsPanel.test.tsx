@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { pl } from '../../../i18n/pl.js';
 import { BUILD_VERSION } from '../../../lib/build-info.js';
@@ -77,7 +77,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
       })),
   );
 
-  renderWithProviders(
+  const { queryClient } = renderWithProviders(
     <PanelContextProvider
       value={{
         tenant: { id: 'tenant-akademia', slug: 'akademia', name: 'Akademia', staffRole: 'owner', memberId: null },
@@ -88,7 +88,7 @@ const renderPanel = (initial: StoredSettings = EMPTY_SETTINGS) => {
     </PanelContextProvider>,
   );
 
-  return { updates };
+  return { queryClient, updates };
 };
 
 describe('SettingsPanel build information', () => {
@@ -289,7 +289,8 @@ describe('SettingsPanel branding', () => {
   }, BRANDING_TEST_TIMEOUT);
 
   it('renames the tenant and round-trips social profiles without a slug field', async () => {
-    const { updates } = renderPanel();
+    const { queryClient, updates } = renderPanel();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
 
     const name = await screen.findByTestId('branding-name');
     await userEvent.clear(name);
@@ -309,6 +310,21 @@ describe('SettingsPanel branding', () => {
     }));
     expect(updates.some((update) => typeof update === 'object' && update !== null && 'slug' in update))
       .toBe(false);
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['public-offer'] });
+  }, BRANDING_TEST_TIMEOUT);
+
+  it('marks a non-http profile URL before sending settings', async () => {
+    const { updates } = renderPanel();
+
+    await screen.findByTestId('branding-name');
+    await userEvent.click(screen.getByTestId('branding-social-add'));
+    await userEvent.type(screen.getByTestId('branding-social-label-0'), 'Profile');
+    await userEvent.type(screen.getByTestId('branding-social-url-0'), 'ftp://social.example.com/acme');
+    await userEvent.click(screen.getByTestId('branding-save'));
+
+    expect(await screen.findByText(pl.branding.socialLinkUrlInvalid)).toBeInTheDocument();
+    expect(screen.getByTestId('branding-social-url-0')).toHaveAttribute('aria-invalid', 'true');
+    expect(updates).toHaveLength(0);
   }, BRANDING_TEST_TIMEOUT);
 
   it('previews the accent in the swatch as you type', async () => {

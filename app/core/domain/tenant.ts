@@ -61,7 +61,7 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
 
 const OG_TITLE_MAX_LENGTH = 70;
 const OG_DESCRIPTION_MAX_LENGTH = 200;
-const SOCIAL_LINKS_MAX_COUNT = 8;
+export const SOCIAL_LINKS_MAX_COUNT = 8;
 
 export const tenantSocialLinkSchema = z.object({
   label: z.string().trim().min(1).max(40),

@@ -441,6 +441,8 @@ export const publicOfferQuery = (api: ApiClient) =>
     call: ({ signal }) => api.publicOffer(signal),
   });
 
+export const publicOfferInvalidates = () => ({ queryKey: publicOfferScopes.all() });
+
 export const publicPaymentConfigQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: ['payment-config'] as const,

@@ -15,7 +15,11 @@ import {
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { accentColorSchema } from '#core/domain/index.js';
+import {
+  accentColorSchema,
+  SOCIAL_LINKS_MAX_COUNT,
+  tenantSocialLinkSchema,
+} from '#core/domain/index.js';
 import type { ExemptionBasisKind, TenantSecretKey, TenantSocialLink } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
@@ -510,6 +514,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const [ogImageUrl, setOgImageUrl] = useState<string | null>(null);
   const [socialLinks, setSocialLinks] = useState<TenantSocialLink[] | null>(null);
   const [accentError, setAccentError] = useState(false);
+  const [socialLinkUrlErrors, setSocialLinkUrlErrors] = useState<number[]>([]);
 
   const nameValue = name ?? settings.data?.settings.name ?? '';
   const logoValue = logoUrl ?? settings.data?.settings.logoUrl ?? '';
@@ -525,7 +530,10 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
   const updateSettings = useMutation({
     ...actions.updateTenantSettings,
     onSuccess: async () => {
-      await queryClient.invalidateQueries(actions.tenantSettingsInvalidates());
+      await Promise.all([
+        queryClient.invalidateQueries(actions.tenantSettingsInvalidates()),
+        queryClient.invalidateQueries(actions.publicOfferInvalidates()),
+      ]);
     },
   });
 
@@ -536,13 +544,21 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
       setAccentError(true);
       return;
     }
+    const normalizedSocialLinks = socialLinksValue.map((item) => ({
+      label: item.label.trim(),
+      url: item.url.trim(),
+    }));
+    const invalidSocialLinkUrls = normalizedSocialLinks.flatMap((item, index) =>
+      tenantSocialLinkSchema.shape.url.safeParse(item.url).success ? [] : [index]);
+    if (invalidSocialLinkUrls.length > 0) {
+      setSocialLinkUrlErrors(invalidSocialLinkUrls);
+      return;
+    }
     setAccentError(false);
+    setSocialLinkUrlErrors([]);
     updateSettings.mutate({
       name: nameValue.trim(),
-      socialLinks: socialLinksValue.map((item) => ({
-        label: item.label.trim(),
-        url: item.url.trim(),
-      })),
+      socialLinks: normalizedSocialLinks,
       logoUrl: logoValue.trim() === '' ? null : logoValue.trim(),
       accentColor: accent === '' ? null : accent,
       faviconUrl: faviconValue.trim() === '' ? null : faviconValue.trim(),
@@ -643,7 +659,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
                   inputProps={{ maxLength: 40, 'data-testid': `branding-social-label-${String(index)}` }}
                 />
               </FormControl>
-              <FormControl fullWidth>
+              <FormControl fullWidth error={socialLinkUrlErrors.includes(index)}>
                 <FormLabel htmlFor={`branding-social-url-${String(index)}`}>
                   {t.branding.socialLinkUrl}
                 </FormLabel>
@@ -654,10 +670,18 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
                   required
                   disabled={disabled}
                   placeholder={t.branding.socialLinkUrlPlaceholder}
-                  onChange={(event) => setSocialLinks(socialLinksValue.map((link, linkIndex) =>
-                    linkIndex === index ? { ...link, url: event.target.value } : link))}
+                  onChange={(event) => {
+                    setSocialLinks(socialLinksValue.map((link, linkIndex) =>
+                      linkIndex === index ? { ...link, url: event.target.value } : link));
+                    setSocialLinkUrlErrors(socialLinkUrlErrors.filter((errorIndex) => errorIndex !== index));
+                  }}
                   inputProps={{ 'data-testid': `branding-social-url-${String(index)}` }}
                 />
+                {socialLinkUrlErrors.includes(index) ? (
+                  <Typography variant="caption" component="p">
+                    {t.branding.socialLinkUrlInvalid}
+                  </Typography>
+                ) : null}
               </FormControl>
               <Button
                 type="button"
@@ -673,7 +697,7 @@ const BrandingSettingsPanel = ({ canEdit }: { canEdit: boolean }) => {
             <Button
               type="button"
               variant="text"
-              disabled={disabled || socialLinksValue.length >= 8}
+              disabled={disabled || socialLinksValue.length >= SOCIAL_LINKS_MAX_COUNT}
               onClick={() => setSocialLinks([...socialLinksValue, { label: '', url: '' }])}
               data-testid="branding-social-add"
             >

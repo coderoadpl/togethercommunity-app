@@ -1261,6 +1261,7 @@ export const pl: Messages = {
     socialLinkLabelPlaceholder: 'YouTube',
     socialLinkUrl: 'adres profilu',
     socialLinkUrlPlaceholder: 'https://youtube.com/@twoj-kanal',
+    socialLinkUrlInvalid: 'Podaj pełny adres zaczynający się od http:// lub https://.',
     addSocialLink: 'Dodaj profil społecznościowy',
     removeSocialLink: 'Usuń',
     socialLinksAria: 'Profile społecznościowe',

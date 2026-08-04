@@ -150,6 +150,23 @@ describe('createTenant', () => {
     expect(store.ownerGrants).toEqual([]);
   });
 
+  it('rejects tenant names that cannot be returned by the tenant schema', async () => {
+    const store = fakeTenants();
+
+    const result = await createTenant(
+      { identity },
+      { slug: 'new-co', name: 'A'.repeat(101) },
+      deps(store.repo),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'validation', message: 'Tenant name must be 1-100 characters' },
+    });
+    expect(store.tenants).toEqual([]);
+    expect(store.ownerGrants).toEqual([]);
+  });
+
   it('rejects reserved slugs and accepts a normal product space slug', async () => {
     const reserved = fakeTenants();
     const rejected = await createTenant(

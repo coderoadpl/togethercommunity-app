@@ -1188,6 +1188,15 @@ export interface MarketingConsentRepository {
   purgeStalePending(tenantId: string, olderThan: string, doubleOptInDefinitionIds: string[]): Promise<number>;
 }
 
+export interface ConsentEvidenceRetentionRepository {
+  listExpiredTenantIds(retentionStartedBefore: string): Promise<string[]>;
+  purgeExpired(
+    tenantId: string,
+    retentionStartedBefore: string,
+    options: { batchSize: number; deadlineMs: number },
+  ): Promise<number>;
+}
+
 export interface TenantDocumentRepository {
   create(tenantId: string, document: TenantDocument, draft: TenantDocumentVersion): Promise<void>;
   findById(tenantId: string, documentId: string): Promise<TenantDocument | null>;

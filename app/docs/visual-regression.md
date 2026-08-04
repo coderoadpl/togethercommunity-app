@@ -47,7 +47,7 @@ and show review evidence for every changed image, using a side-by-side compariso
 or diff artifact. The reviewer must confirm that each baseline change is an
 intentional consequence of the product change before approval. The directory
 name `tasks/visual-goldens/`, the `out/visual/current` and `out/visual/diff`
-paths, and the separate Lost Pixel failure semantics remain unchanged.
+paths, and the `visual` and `visual:update` command names remain unchanged.
 
 The Linux CI visual job remains deferred. Enabling it requires a deliberate,
 reviewed migration that switches the authoring platform guard and regenerates
@@ -84,9 +84,8 @@ Argos is a second, advisory-only visual track that runs in Linux CI. It captures
 the same canonical routes, themes, and viewports into `out/visual/argos/` without
 reading, writing, or comparing `tasks/visual-goldens/`, then uploads those PNGs
 to an independent Argos-hosted Linux baseline. It does not replace the
-lost-pixel or committed-golden workflows, and no existing visual command changes
-meaning. The evaluation exists only so the owner can compare both workflows in
-practice.
+committed-golden workflow, and no existing visual command changes meaning. The
+evaluation exists only so the owner can compare both workflows in practice.
 
 The `argos-advisory` job is not a gate. Its upload step tolerates Argos service
 failures, and it is skipped when `ARGOS_TOKEN` is absent. Argos may post commit
@@ -114,13 +113,14 @@ empirically:
   its review-workflow documentation does not state a plan restriction.
 - The actual screenshot and build retention period. Argos did not document this
   period when this evaluation track was added.
-- The Hobby plan's screenshot quota. Each build captures 70 screenshots (35
+- The Hobby plan's screenshot quota. Each build captures 80 screenshots (40
   scenarios times the one maintained theme times two viewports), and every push
   to every open pull request can consume another build's allocation.
 
-## Story shots
+## Storybook
 
-Storybook's scope, drift gate, and the advisory non-golden status of
-`tasks/lost-pixel-baselines/` are documented in
-[Storybook](storybook.md). The determinism and platform rules above apply to
-`tasks/visual-goldens/`; story shots are not a merge signal.
+Storybook has no committed screenshot baseline or comparison command. Lost
+Pixel and its copied story baselines are retired. The catalogue is checked by
+its module tests and static build; all committed pixel comparison and baseline
+authoring use the canonical route workflow above. Storybook's scope is
+documented in [Storybook](storybook.md).

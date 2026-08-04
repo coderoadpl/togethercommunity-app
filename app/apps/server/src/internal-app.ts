@@ -489,6 +489,20 @@ export const registerInternalRoutes = (app: Hono<Vars>, deps: AppDeps): void => 
     return respond(await deps.dispatchEmails('cron'));
   });
 
+  app.post(API_PATHS.autoInvoiceDispatch, async (c) => {
+    if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.autoInvoiceDispatchSecret) {
+      return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
+    }
+    return respond(await deps.dispatchAutoInvoices());
+  });
+
+  app.get(API_PATHS.autoInvoiceDispatch, async (c) => {
+    if (c.req.header('authorization') !== `Bearer ${deps.autoInvoiceDispatchSecret}`) {
+      return respond(err(unauthorized('Invalid automatic invoice dispatch secret')));
+    }
+    return respond(await deps.dispatchAutoInvoices());
+  });
+
   app.post(API_PATHS.ksefDispatch, async (c) => {
     if (deps.ksef === undefined) return respond(err(internal('KSeF is not configured')));
     if (c.req.header(SCHEDULER_OPERATOR_SECRET_HEADER) !== deps.ksef.dispatchSecret) {

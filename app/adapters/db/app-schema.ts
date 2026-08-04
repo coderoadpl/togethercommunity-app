@@ -1693,7 +1693,7 @@ export const apiKeyRateLimitBuckets = pgTable(
   'api_key_rate_limit_buckets',
   {
     apiKeyId: text('api_key_id').notNull().references(() => tenantApiKeys.id, { onDelete: 'cascade' }),
-    period: text('period', { enum: ['minute', 'day'] }).notNull(),
+    period: text('period', { enum: ['minute', 'hour', 'day'] }).notNull(),
     windowStartedAt: timestamp('window_started_at', { withTimezone: true, mode: 'string' }).notNull(),
     count: integer('count').notNull(),
   },

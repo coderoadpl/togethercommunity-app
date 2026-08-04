@@ -16,7 +16,7 @@ SPEC D5 deliberately delegates report resolution to `community:moderate`; a futu
 
 `member:commerce:read` is the union capability for the member commerce card: member profile, order, and subscription data. Any future role split must grant it only when that role may read every included slice.
 
-Closed capability count: 98. Route rows: 225. Exported `Ctx` use-case rows: 193.
+Closed capability count: 98. Route rows: 230. Exported `Ctx` use-case rows: 196.
 
 ## Human-readable diff
 
@@ -89,6 +89,11 @@ no changes
 | `GET /api/m2m/marketing/templates` | marketing:layout:read | api-key | api-key | yes | Tenant API key |
 | `POST /api/internal/marketing/tick` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
 | `GET /api/internal/marketing/tick` | scheduler:dispatch | operator-secret | operator-secret | yes | Scheduler operator secret |
+| `POST /api/m2m/import/validate` | import:content-write | import-content-api-key, import-users-api-key | import-content-api-key, import-users-api-key | review | Tenant API key + either import scope |
+| `POST /api/m2m/import/courses` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/modules` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/lessons` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
+| `POST /api/m2m/import/products` | import:content-write | import-content-api-key | import-content-api-key | yes | Tenant API key |
 | `GET /api/marketing/consent-definitions` | marketing:consent-definition:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/marketing/scheduler-runs/:id` | scheduler:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -331,6 +336,9 @@ no changes
 | `lesson-attachments.ts#deleteLessonAttachmentObjects` | course:write | owner, admin | owner, admin | yes | core/server/usecases/lesson-attachments.ts authorization call |
 | `lesson-media.ts#getPlayableLesson` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-media.ts authorization call |
 | `lesson-playback.ts#getLessonPlayback` | lesson:play | owner, admin, member | owner, admin, member | yes | core/server/usecases/lesson-playback.ts authorization call |
+| `m2m-import.ts#importM2mContent` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
+| `m2m-import.ts#validateM2mImport` | import:content-write | import-content-api-key | import-content-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
+| `m2m-import.ts#validateM2mImportForUsers` | import:users-write | import-users-api-key | import-users-api-key | yes | core/server/usecases/m2m-import.ts authorization call |
 | `m2m-transactional-email.ts#sendM2mTransactionalMessage` | transactional:message:send | transactional-api-key | transactional-api-key | yes | core/server/usecases/m2m-transactional-email.ts authorization call |
 | `m2m-transactional-email.ts#getM2mTransactionalMessage` | transactional:message:read | transactional-api-key | transactional-api-key | yes | core/server/usecases/m2m-transactional-email.ts authorization call |
 | `marketing-email.ts#createMarketingConsentDefinition` | marketing:consent-definition:write | owner, admin | owner, admin | yes | core/server/usecases/marketing-email.ts authorization call |
@@ -458,10 +466,10 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:5` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:129` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:852` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:854` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1296` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1296` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:853` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:855` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1298` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1298` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:7` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:38` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:79` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

@@ -35,6 +35,7 @@ import {
   type Tenant,
   type TenantDomain,
   type TermsConsent,
+  type TenantApiKeyScope,
 } from '#core/domain/index.js';
 import {
   authorize,
@@ -223,8 +224,15 @@ const deps = (input: {
       findLatestByImportKey: async () => null,
       listByApiKey: async () => [],
     },
+    importContent: {
+      commit: async () => 'saved',
+    },
+    contentHash: {
+      sha256: () => 'a'.repeat(64),
+    },
     apiKeyRateLimits: {
       claim: async () => true,
+      release: async () => undefined,
     },
     m2mTransactionalRateLimits: { perMinute: 60, perDay: 5000 },
     apiKeyCrypto: {
@@ -877,8 +885,44 @@ const transactionalM2mApp = (options: {
       counts.set(key, count + 1);
       return true;
     },
+    release: async () => undefined,
   };
   return { app: buildApp(configured), marketing, outbox };
+};
+
+const importM2mApp = (options: {
+  scopes?: readonly TenantApiKeyScope[] | null;
+  rateLimited?: boolean;
+} = {}) => {
+  const configured = deps();
+  const mutations: Parameters<AppDeps['importContent']['commit']>[1][] = [];
+  configured.tenantApiKeys = {
+    listByTenant: async () => [],
+    create: async () => undefined,
+    findActiveByHash: async (tenantId, hash) => tenantId === 't-acme' && hash === 'hash:import-key' ? {
+      id: 'import-key-id',
+      tenantId,
+      name: 'Migration',
+      keyHash: hash,
+      scopes: options.scopes === null ? null : [...(options.scopes ?? ['import:content'])],
+      createdAt: '1998-08-10T00:00:00.000Z',
+      expiresAt: '1998-08-20T00:00:00.000Z',
+      revokedAt: null,
+    } : null,
+    revoke: async () => null,
+  };
+  configured.importContent = {
+    commit: async (_tenantId, mutation) => {
+      mutations.push(mutation);
+      return 'saved';
+    },
+  };
+  configured.contentHash = { sha256: (content) => String(content) };
+  configured.apiKeyRateLimits = {
+    claim: async () => options.rateLimited !== true,
+    release: async () => undefined,
+  };
+  return { app: buildApp(configured), mutations };
 };
 
 const ksefApp = (
@@ -971,6 +1015,113 @@ const memberSurfaceMarketing = async (): Promise<MarketingAppDeps> => {
   });
   return marketing;
 };
+
+describe('content import HTTP surfaces', () => {
+  const headers = {
+    host: 'acme.localhost:48730',
+    'x-api-key': 'import-key',
+    'content-type': 'application/json',
+  };
+
+  it('authenticates, scope-checks, and imports a draft lesson through the M2M envelope', async () => {
+    const { app, mutations } = importM2mApp();
+    const response = await app.request(API_PATHS.m2mImportLessons, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{
+          importKey: 'lesson-source',
+          name: 'Lesson',
+          isPreview: false,
+          contents: [{ type: 'html', html: '<p>Lesson</p>' }],
+        }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        results: [{ importKey: 'lesson-source', action: 'created', id: 'lesson-source' }],
+        summary: { created: 1, updated: 0, unchanged: 0, failed: 0 },
+      },
+    });
+    expect(mutations).toHaveLength(1);
+    expect(mutations[0]).toMatchObject({
+      kind: 'lesson',
+      action: 'created',
+      resource: { id: 'lesson-source', tenantId: 't-acme' },
+      event: { apiKeyId: 'import-key-id', importKey: 'lesson-source' },
+    });
+  });
+
+  it('returns record-level validation for publish attempts and preserves HTTP 200', async () => {
+    const { app, mutations } = importM2mApp();
+    const response = await app.request(API_PATHS.m2mImportProducts, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{
+          importKey: 'product-source', type: 'course', slug: 'course', title: 'Course',
+          description: '', coverUrl: null, priceCents: 0, currency: 'PLN', accessItems: [], published: true,
+        }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        results: [{ importKey: 'product-source', action: 'error', error: { code: 'validation' } }],
+        summary: { failed: 1 },
+      },
+    });
+    expect(mutations).toEqual([]);
+  });
+
+  it('allows either import scope to dry-run and performs no content commit', async () => {
+    const { app, mutations } = importM2mApp({ scopes: ['import:users'] });
+    const response = await app.request(API_PATHS.m2mImportValidate, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{
+          kind: 'course', importKey: 'course-source', name: 'Course', description: '',
+          imageUrl: null, moduleOrder: [],
+        }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: { plan: { create: { course: 1 } }, errors: [], warnings: [], valid: true },
+    });
+    expect(mutations).toEqual([]);
+  });
+
+  it('rejects unscoped keys and returns retry metadata for exhausted import limits', async () => {
+    const request = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        datasetVersion: 'together-import/v1',
+        records: [{ importKey: 'lesson-source', name: 'Lesson', isPreview: false, contents: [] }],
+      }),
+    };
+    const forbiddenResponse = await importM2mApp({ scopes: null }).app.request(API_PATHS.m2mImportLessons, request);
+    const limitedResponse = await importM2mApp({ rateLimited: true }).app.request(API_PATHS.m2mImportLessons, request);
+
+    expect(forbiddenResponse.status).toBe(403);
+    expect(await forbiddenResponse.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(limitedResponse.status).toBe(429);
+    expect(limitedResponse.headers.get('retry-after')).toBe('60');
+    expect(await limitedResponse.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+  });
+});
 
 describe('marketing HTTP surfaces', () => {
   it('rejects staff sessions on machine-only marketing edges', async () => {

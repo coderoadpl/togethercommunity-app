@@ -477,8 +477,8 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |
 | member-scope | `core/server/usecases/member-data-export.ts:46` | `if (ctx.identity.memberId === null) {` |
 | member-scope | `core/server/usecases/member-data-export.ts:52` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
-| member-scope | `core/server/usecases/member-erasure-requests.ts:49` | `if (ctx.identity.memberId === null) {` |
-| member-scope | `core/server/usecases/member-erasure-requests.ts:54` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
+| member-scope | `core/server/usecases/member-erasure-requests.ts:48` | `if (ctx.identity.memberId === null) {` |
+| member-scope | `core/server/usecases/member-erasure-requests.ts:53` | `return err(notFound(\`No member "${ctx.identity.memberId}" in this tenant\`));` |
 | member-scope | `core/server/usecases/my-products.ts:63` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their products'));` |
 | member-scope | `core/server/usecases/product-downloads.ts:163` | `if (!ctx.identity.memberId) return err(forbidden('Only members can download purchased files'));` |
 | member-scope | `core/server/usecases/progress.ts:48` | `if (!ctx.identity.memberId) return err(forbidden('Only members have progress'));` |

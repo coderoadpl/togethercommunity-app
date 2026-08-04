@@ -2791,7 +2791,10 @@ export const createTenantDomainRepository = (db: Db): TenantDomainRepository => 
     db.select().from(tenantDomains).where(eq(tenantDomains.verified, true)),
 });
 
-export const createTenantRepository = (db: Db): TenantRepository => ({
+export const createTenantRepository = (
+  db: Db,
+  options: { onMultipleTenants?(): void } = {},
+): TenantRepository => ({
   findById: async (tenantId) => {
     const rows = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
     return rows[0] ?? null;
@@ -2802,6 +2805,7 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
   },
   findSole: async () => {
     const rows = await db.select().from(tenants).limit(2);
+    if (rows.length > 1) options.onMultipleTenants?.();
     return rows.length === 1 ? rows[0] ?? null : null;
   },
   findSettings: async (tenantId) => {
@@ -2941,21 +2945,26 @@ export const createTenantRepository = (db: Db): TenantRepository => ({
         const existing = await tx.select({ id: tenants.id }).from(tenants).limit(1);
         if (existing.length > 0) return null;
       }
-      await tx.insert(tenants).values(input.tenant);
+      const rows = await tx
+        .insert(tenants)
+        .values(input.tenant)
+        .returning({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          status: tenants.status,
+          plan: tenants.plan,
+          contentVersion: tenants.contentVersion,
+        });
+      const tenant = rows[0];
+      if (tenant === undefined) throw new Error('Tenant insert did not return a row');
       await tx.insert(tenantAdmins).values({
         id: input.ownerGrant.id,
         tenantId: input.tenant.id,
         userId: input.ownerGrant.userId,
         role: input.ownerGrant.staffRole,
       });
-      return {
-        id: input.tenant.id,
-        slug: input.tenant.slug,
-        name: input.tenant.name,
-        status: 'active',
-        plan: 'self_hosted',
-        contentVersion: 1,
-      };
+      return tenant;
     }),
   hasAny: async () => {
     const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);

@@ -31,6 +31,7 @@ import type {
   PaymentProvider,
   PaymentTransactionPort,
 } from '../ports.js';
+import { tenantUrl } from '../tenant-url.js';
 import { fulfillEnrollment, type FulfillEnrollmentDeps } from './fulfill-enrollment.js';
 import { validateCouponForCheckout } from './coupon-checkout.js';
 import {
@@ -72,8 +73,7 @@ const enqueueSubscriptionNotice = async (
     deps.tenants.findSettings(tenant.id),
   ]);
   if (member === null || member.deletedAt !== null || product === null) return ok(undefined);
-  const tenantBaseUrl = new URL(deps.appBaseUrl);
-  tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
+  const tenantBaseUrl = tenantUrl(tenant.slug, '/', deps);
   const branding =
     settings === null ? undefined : {
       logoUrl: settings.logoUrl,
@@ -97,7 +97,7 @@ const enqueueSubscriptionNotice = async (
           tenantName: tenant.name,
           productTitle: product.title,
           accessEndsAt,
-          offerUrl: tenantBaseUrl.toString(),
+          offerUrl: tenantBaseUrl,
           ...(branding === undefined ? {} : { branding }),
         };
   const queued = await deps.emailOutbox.enqueue({

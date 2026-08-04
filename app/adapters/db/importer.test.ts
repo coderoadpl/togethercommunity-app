@@ -214,6 +214,7 @@ beforeAll(async () => {
     secret: 'importer-test-secret-at-least-32-characters',
     baseUrl: 'http://localhost:48730',
     baseDomain: 'localhost',
+    singleTenantMode: false,
     trustedOrigins: ['http://localhost:48730'],
     secureCookies: false,
     exposeMagicLinks: false,

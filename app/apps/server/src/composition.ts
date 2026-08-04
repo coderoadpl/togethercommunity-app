@@ -215,7 +215,7 @@ import type {
   VideoLibraryPort,
   TenantCreationMode,
 } from '#core/server/index.js';
-import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
+import { campaignTick, CONSENT_EVIDENCE_PURGE_BATCH_SIZE, CONSENT_EVIDENCE_PURGE_INTERVAL_MS, CONSENT_EVIDENCE_PURGE_TIME_BUDGET_MS, createLayeredTransactionalEmailSender, dispatchEmailBatch, dispatchKsefJob, enforceTermsConsent, purgeExpiredConsentEvidence, refreshSesIdentity, resolveTenant, runMarketingRetentionJobs, runReputationAlerts, runScheduledMarketingJobs, SES_IDENTITY_REFRESH_INTERVAL_MS, tenantUrl, validateTermsConsent, type DispatchEmailBatchResult } from '#core/server/index.js';
 import { ok, type AppError, type KsefEnvironment, type Result } from '#core/domain/index.js';
 import { capabilitiesForPrincipal, communityPostPath, communitySpacePath, lessonPath, TENANT_HEADER } from '#core/contract/index.js';
 
@@ -382,11 +382,16 @@ export const selectDevSinkPurge = (
   env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? undefined : create();
 
 export const selectTenantRouting = (
-  env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL'>,
-): { baseDomain: string; singleTenantMode: boolean } => ({
-  baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
-  singleTenantMode: env.APP_BASE_DOMAIN === undefined,
-});
+  env: Pick<Env, 'APP_BASE_DOMAIN' | 'APP_BASE_URL' | 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
+): { baseDomain: string; singleTenantMode: boolean; tenantCreationMode: TenantCreationMode } => {
+  const singleTenantMode = env.APP_BASE_DOMAIN === undefined;
+  const creationMode = selectTenantCreationMode(env);
+  return {
+    baseDomain: env.APP_BASE_DOMAIN ?? new URL(env.APP_BASE_URL).hostname,
+    singleTenantMode,
+    tenantCreationMode: singleTenantMode && creationMode === 'open' ? 'closed' : creationMode,
+  };
+};
 
 export const selectTenantCreationMode = (
   env: Pick<Env, 'NODE_ENV' | 'APP_ENV' | 'TENANT_CREATION'>,
@@ -395,15 +400,46 @@ export const selectTenantCreationMode = (
   return env.NODE_ENV === 'production' || env.APP_ENV === 'production' ? 'bootstrap' : 'open';
 };
 
+export const createMultipleTenantsReporter = (
+  write: (message: string) => void = (message) => { process.stderr.write(message); },
+): (() => void) => {
+  let reported = false;
+  return () => {
+    if (reported) return;
+    reported = true;
+    write('[tenant-routing] single-tenant mode found multiple tenants; set APP_BASE_DOMAIN to enable tenant routing\n');
+  };
+};
+
+export const selectBaseTrustedOrigins = (input: {
+  appBaseUrl: string;
+  baseDomain: string;
+  port: number;
+  singleTenantMode: boolean;
+}): string[] => input.singleTenantMode
+  ? [input.appBaseUrl]
+  : [
+      input.appBaseUrl,
+      `http://*.${input.baseDomain}`,
+      `https://*.${input.baseDomain}`,
+      // Wildcard entries above don't match origins carrying an explicit port.
+      `http://*.${input.baseDomain}:${input.port}`,
+      `https://*.${input.baseDomain}:${input.port}`,
+    ];
+
 /**
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
  */
 export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps => {
-  const { baseDomain, singleTenantMode } = selectTenantRouting(env);
+  const { baseDomain, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
   const db = createDb(env.DB_DRIVER, env.DATABASE_URL);
   const tenantDomains = createTenantDomainRepository(db);
-  const tenants = createTenantRepository(db);
+  const tenants = createTenantRepository(db, singleTenantMode
+    ? {
+        onMultipleTenants: createMultipleTenantsReporter(),
+      }
+    : undefined);
   const tenantAccess = createTenantAccessReader(db);
   const consents = createTermsConsentRepository(db);
   const tenantSecrets = createTenantSecretRepository(db);
@@ -590,10 +626,11 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     tenantId, tenantSlug: null, tenantName: null, staffRole: null, memberId: null, memberBannedAt: null,
   });
   const reputationDashboardUrl = (tenantSlug: string): string => {
-    const url = new URL(env.APP_BASE_URL);
-    if (!singleTenantMode) url.hostname = `${tenantSlug}.${baseDomain}`;
-    url.pathname = '/panel/marketing';
-    return url.toString();
+    return tenantUrl(tenantSlug, '/panel/marketing', {
+      appBaseUrl: env.APP_BASE_URL,
+      baseDomain,
+      singleTenantMode,
+    });
   };
   const dispatchScheduledMarketing = async (trigger: 'cron' | 'dev' | 'manual') => {
     const now = clock.nowIso();
@@ -656,21 +693,17 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     return marketing;
   };
   const realtimeBus = createRealtimeBus();
-  const tenantUrl = (tenantSlug: string | null, pathname: string): string => {
-    const url = new URL(env.APP_BASE_URL);
-    if (!singleTenantMode && tenantSlug !== null) url.hostname = `${tenantSlug}.${baseDomain}`;
-    url.pathname = pathname;
-    return url.toString();
-  };
+  const routing = { appBaseUrl: env.APP_BASE_URL, baseDomain, singleTenantMode };
   const links: DiscussionLinkPort = {
     lessonDiscussionUrl: ({ tenantSlug, courseId, lessonId }) =>
-      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId)),
+      tenantUrl(tenantSlug, courseId === null ? '/my' : lessonPath(courseId, lessonId), routing),
     spaceUrl: ({ tenantSlug, spaceId, rootPostId }) =>
       tenantUrl(
         tenantSlug,
         rootPostId === undefined
           ? communitySpacePath(spaceId)
           : communityPostPath(spaceId, rootPostId),
+        routing,
       ),
   };
 
@@ -679,19 +712,18 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : null;
 
-  const baseTrustedOrigins = [
-    env.APP_BASE_URL,
-    `http://*.${baseDomain}`,
-    `https://*.${baseDomain}`,
-    // Wildcard entries above don't match origins carrying an explicit port.
-    `http://*.${baseDomain}:${env.PORT}`,
-    `https://*.${baseDomain}:${env.PORT}`,
-  ];
+  const baseTrustedOrigins = selectBaseTrustedOrigins({
+    appBaseUrl: env.APP_BASE_URL,
+    baseDomain,
+    port: env.PORT,
+    singleTenantMode,
+  });
 
   const auth = createAuth(db, {
     secret: env.BETTER_AUTH_SECRET,
     baseUrl: env.APP_BASE_URL,
     baseDomain,
+    singleTenantMode,
     secureCookies: env.SECURE_COOKIES,
     exposeMagicLinks: env.AUTH_DEV_EXPOSE_MAGIC_LINKS,
     emailOutbox,
@@ -825,7 +857,7 @@ export const createDeps = (env: Env, options: { clock?: Clock } = {}): AppDeps =
     health: createHealthPort(db),
     appVersion: APP_VERSION,
     commitSha: env.APP_COMMIT_SHA ?? 'unknown',
-    tenantCreationMode: selectTenantCreationMode(env),
+    tenantCreationMode,
     ids,
     clock,
     logger,

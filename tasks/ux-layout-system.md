@@ -323,10 +323,9 @@ all 7 theme modes.
 
 ### Shipped tooling
 
-- **Storybook + Lost Pixel (OSS)** (decision point 2/3) — available in
-  `app/.storybook/`, `app/lostpixel.config.ts`, and
-  `app/tasks/lost-pixel-baselines/`; the screenshot harness now covers 102
-  current goldens in `app/tasks/visual-goldens/`.
+- **Storybook catalogue** (decision point 2) — available in `app/.storybook/`
+  with module and static-build checks. The retired story-shot experiment has no
+  committed baselines; route pixels belong to `app/tasks/visual-goldens/`.
 - **A11y runtime scanning** — shipped via `app/scripts/a11y-scan.ts`, with the
   current findings recorded in `tasks/a11y-report.md`.
 - **PL/EN terminology glossary** — shipped as `tasks/terminology-glossary.md`.

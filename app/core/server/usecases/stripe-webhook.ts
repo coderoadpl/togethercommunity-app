@@ -71,7 +71,11 @@ const enqueueSubscriptionNotice = async (
   const tenantBaseUrl = new URL(deps.appBaseUrl);
   tenantBaseUrl.hostname = `${tenant.slug}.${deps.baseDomain}`;
   const branding =
-    settings === null ? undefined : { logoUrl: settings.logoUrl, accentColor: settings.accentColor };
+    settings === null ? undefined : {
+      logoUrl: settings.logoUrl,
+      accentColor: settings.accentColor,
+      socialLinks: settings.socialLinks,
+    };
   const payload =
     kind === 'subscription-payment-failed'
       ? {
@@ -104,7 +108,7 @@ const enqueueSubscriptionNotice = async (
   return ok(undefined);
 };
 
-const HANDLED_EVENT_TYPES = new Set([
+export const STRIPE_WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
   'invoice.paid',
   'invoice.payment_failed',
@@ -112,7 +116,9 @@ const HANDLED_EVENT_TYPES = new Set([
   'customer.subscription.deleted',
   'charge.refunded',
   'charge.dispute.created',
-]);
+] as const;
+
+export const HANDLED_EVENT_TYPES = new Set<string>(STRIPE_WEBHOOK_EVENT_TYPES);
 
 interface CouponPaymentContext {
   coupon: Coupon;

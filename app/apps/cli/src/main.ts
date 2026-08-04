@@ -238,7 +238,7 @@ const noOptionsSchema = z.object({});
 const emailDispatchOptionsSchema = z.object({ secret: z.string().min(1) });
 const schedulerRunsListOptionsSchema = z.object({
   secret: z.string().min(1),
-  kind: z.enum(['marketing_tick', 'outbox_dispatch']).optional(),
+  kind: z.enum(['marketing_tick', 'outbox_dispatch', 'consent_evidence_purge']).optional(),
   status: z.enum(['running', 'completed', 'failed']).optional(),
   since: z.string().datetime().optional(),
   cursor: z.string().min(1).optional(),
@@ -2173,7 +2173,7 @@ const schedulerRuns = program.command('scheduler-runs').description('Global sche
 schedulerRuns
   .command('list')
   .requiredOption('--secret <secret>', 'scheduler operator secret')
-  .option('--kind <kind>', 'marketing_tick or outbox_dispatch')
+  .option('--kind <kind>', 'marketing_tick, outbox_dispatch, or consent_evidence_purge')
   .option('--status <status>', 'running, completed, or failed')
   .option('--since <iso>', 'only runs started at or after this ISO datetime')
   .option('--cursor <cursor>', 'keyset pagination cursor')
@@ -2670,6 +2670,17 @@ storage
   );
 
 const stripe = program.command('stripe').description('Stripe payment integration (owner only)');
+
+stripe
+  .command('configure <restrictedKey>')
+  .description('Store a restricted key and register the tenant webhook')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [restrictedKey]) => {
+      emit(await ctx.api.configureStripe({ restrictedKey }), ctx.json, (data) =>
+        `configured Stripe in ${data.mode} mode\nwebhook ${data.webhookUrl}`,
+      );
+    }),
+  );
 
 stripe
   .command('test-connection')

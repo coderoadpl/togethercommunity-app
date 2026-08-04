@@ -146,6 +146,10 @@ export interface ProductRepository {
   bumpContentVersion(tenantId: string): Promise<void>;
 }
 
+export interface ProductBatchReader {
+  findByIds(tenantId: string, ids: string[]): Promise<Product[]>;
+}
+
 export interface CourseRepository {
   list(tenantId: string): Promise<Course[]>;
   findById(tenantId: string, id: string): Promise<Course | null>;
@@ -545,6 +549,15 @@ export interface PaymentWebhookEvent {
 }
 
 export interface PaymentProvider {
+  configureWebhook?(input: {
+    tenantId: string;
+    restrictedKey: string;
+    webhookUrl: string;
+  }): Promise<Result<{ webhookEndpointId: string; webhookSecret: string }, AppError>>;
+  deleteWebhookEndpoint?(input: {
+    restrictedKey: string;
+    webhookEndpointId: string;
+  }): Promise<Result<{ deleted: true }, AppError>>;
   createCheckoutSession(input: {
     tenantId: string;
     productId: string;
@@ -954,6 +967,10 @@ export interface OrderRepository {
   ): Promise<PaidWithoutGrantRow[]>;
 }
 
+export interface MemberOrderListReader {
+  listForMember(tenantId: string, memberId: string): Promise<OrderListItem[]>;
+}
+
 export interface OrderDetailRepository {
   findById(tenantId: string, id: string): Promise<OrderListItem | null>;
 }
@@ -1172,16 +1189,21 @@ export type TenantLookup = { tenantId: string } | { tenantSlug: string };
 export interface TenantRepository {
   findById(tenantId: string): Promise<Tenant | null>;
   findBySlug(slug: string): Promise<Tenant | null>;
+  findSole(): Promise<Tenant | null>;
   findSettings(tenantId: string): Promise<TenantSettings | null>;
   updateSettings(tenantId: string, settings: TenantSettings): Promise<TenantSettings>;
-  createTenantWithOwnerGrant(input: {
-    tenant: { id: string; slug: string; name: string; createdAt: string };
-    ownerGrant: {
-      id: string;
-      userId: string;
-      staffRole: Extract<StaffRole, 'owner'>;
-    };
-  }): Promise<Tenant>;
+  createTenantWithOwnerGrant(
+    input: {
+      tenant: { id: string; slug: string; name: string; createdAt: string };
+      ownerGrant: {
+        id: string;
+        userId: string;
+        staffRole: Extract<StaffRole, 'owner'>;
+      };
+    },
+    options?: { requireEmpty: boolean },
+  ): Promise<Tenant | null>;
+  hasAny(): Promise<boolean>;
 }
 
 /** Append-only: consent records are audit evidence and are never updated or deleted. */
@@ -1196,6 +1218,15 @@ export interface MarketingConsentRepository {
   latestByEmail(tenantId: string, email: string, definitionId: string): Promise<MarketingConsent | null>;
   findById(tenantId: string, consentId: string): Promise<MarketingConsent | null>;
   purgeStalePending(tenantId: string, olderThan: string, doubleOptInDefinitionIds: string[]): Promise<number>;
+}
+
+export interface ConsentEvidenceRetentionRepository {
+  listExpiredTenantIds(retentionStartedBefore: string): Promise<string[]>;
+  purgeExpired(
+    tenantId: string,
+    retentionStartedBefore: string,
+    options: { batchSize: number; deadlineMs: number },
+  ): Promise<number>;
 }
 
 export interface TenantDocumentRepository {

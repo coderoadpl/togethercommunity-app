@@ -1,6 +1,6 @@
 {
-  "id": "d5181fd4-8e39-4064-b9b3-ca68c6a1cf2f",
-  "prevId": "c117c4ce-e393-4ba7-96ae-4cf8b4b55203",
+  "id": "c80445a2-47c6-4f1b-a830-5caa72edba4a",
+  "prevId": "c0dc76db-6b6c-41ac-bd84-b8b91f0679f5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -648,7 +648,7 @@
           "name": "consent_row_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "unsubscribe_token_id": {
           "name": "unsubscribe_token_id",
@@ -712,6 +712,21 @@
         }
       },
       "indexes": {
+        "campaign_sends_consent_row_id_idx": {
+          "name": "campaign_sends_consent_row_id_idx",
+          "columns": [
+            {
+              "expression": "consent_row_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "campaign_sends_tenant_campaign_status_idx": {
           "name": "campaign_sends_tenant_campaign_status_idx",
           "columns": [
@@ -961,7 +976,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1691,6 +1706,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "retention_started_at": {
+          "name": "retention_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -1705,6 +1726,27 @@
             },
             {
               "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "consents_tenant_retention_started_idx": {
+          "name": "consents_tenant_retention_started_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "retention_started_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4484,144 +4526,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.lesson_attachments": {
-      "name": "lesson_attachments",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lesson_id": {
-          "name": "lesson_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_name": {
-          "name": "file_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "storage_key": {
-          "name": "storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "lesson_attachments_tenant_lesson_idx": {
-          "name": "lesson_attachments_tenant_lesson_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lesson_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lesson_attachments_tenant_storage_key_uidx": {
-          "name": "lesson_attachments_tenant_storage_key_uidx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "storage_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "lesson_attachments_tenant_id_tenants_id_fk": {
-          "name": "lesson_attachments_tenant_id_tenants_id_fk",
-          "tableFrom": "lesson_attachments",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "lesson_attachments_lesson_id_course_lessons_id_fk": {
-          "name": "lesson_attachments_lesson_id_course_lessons_id_fk",
-          "tableFrom": "lesson_attachments",
-          "tableTo": "course_lessons",
-          "columnsFrom": [
-            "lesson_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.marketing_consents": {
       "name": "marketing_consents",
       "schema": "",
@@ -4703,6 +4607,12 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "retention_started_at": {
+          "name": "retention_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -4731,6 +4641,27 @@
               "expression": "occurred_at",
               "isExpression": false,
               "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "marketing_consents_tenant_retention_started_idx": {
+          "name": "marketing_consents_tenant_retention_started_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "retention_started_at",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
@@ -7130,144 +7061,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.product_download_assets": {
-      "name": "product_download_assets",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_name": {
-          "name": "file_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_type": {
-          "name": "content_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "storage_key": {
-          "name": "storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "product_download_assets_tenant_product_idx": {
-          "name": "product_download_assets_tenant_product_idx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "product_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "product_download_assets_tenant_storage_key_uidx": {
-          "name": "product_download_assets_tenant_storage_key_uidx",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "storage_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "product_download_assets_tenant_id_tenants_id_fk": {
-          "name": "product_download_assets_tenant_id_tenants_id_fk",
-          "tableFrom": "product_download_assets",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "product_download_assets_product_id_products_id_fk": {
-          "name": "product_download_assets_product_id_products_id_fk",
-          "tableFrom": "product_download_assets",
-          "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.product_grants": {
       "name": "product_grants",
       "schema": "",
@@ -7918,6 +7711,12 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "purged": {
+          "name": "purged",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "sent": {
           "name": "sent",
@@ -9360,6 +9159,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "plan": {
+          "name": "plan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'self_hosted'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "text",
@@ -9540,6 +9353,14 @@
       },
       "policies": {},
       "checkConstraints": {
+        "tenants_status_check": {
+          "name": "tenants_status_check",
+          "value": "\"tenants\".\"status\" IN ('active', 'suspended')"
+        },
+        "tenants_plan_check": {
+          "name": "tenants_plan_check",
+          "value": "\"tenants\".\"plan\" IN ('self_hosted', 'hosted', 'hosted_pro')"
+        },
         "tenants_invoice_vat_mode_check": {
           "name": "tenants_invoice_vat_mode_check",
           "value": "\"tenants\".\"invoice_vat_mode\" IN ('rate', 'exempt')"

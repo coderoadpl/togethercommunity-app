@@ -51,10 +51,18 @@ describe('support message email', () => {
       subject: 'Help <now>',
       body: 'Please <script>alert(1)</script>',
     };
-    const pl = supportMessage('pl', input);
+    const branding = {
+      logoUrl: null,
+      accentColor: null,
+      socialLinks: [{ label: 'YouTube', url: 'https://youtube.com/@acme' }],
+    };
+    const pl = supportMessage('pl', { ...input, branding });
     expect(pl.html).toContain('Acme &lt;Studio&gt;');
     expect(pl.html).not.toContain('<script>');
-    expect(supportMessage('en', input).html).toContain('Reply to: member@example.com');
+    expect(pl.html).not.toContain('youtube.com');
+    const en = supportMessage('en', { ...input, branding });
+    expect(en.html).toContain('Reply to: member@example.com');
+    expect(en.text).not.toContain('youtube.com');
   });
 });
 
@@ -296,5 +304,20 @@ describe('email branding header', () => {
     });
     expect(message.html).toContain('<img src="https://x.dev/logo.svg?a=1&amp;b=2"');
     expect(message.html.startsWith('<div style="border-top:4px solid #191512;')).toBe(true);
+  });
+
+  it('renders social profiles in HTML and plain-text transactional mail', () => {
+    const message = welcomeSetPassword('en', {
+      ...input,
+      branding: {
+        logoUrl: null,
+        accentColor: null,
+        socialLinks: [{ label: 'YouTube & more', url: 'https://youtube.com/@akademia?a=1&b=2' }],
+      },
+    });
+
+    expect(message.html).toContain('YouTube &amp; more');
+    expect(message.html).toContain('https://youtube.com/@akademia?a=1&amp;b=2');
+    expect(message.text).toContain('YouTube & more: https://youtube.com/@akademia?a=1&b=2');
   });
 });

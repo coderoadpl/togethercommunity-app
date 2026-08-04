@@ -6,6 +6,7 @@ import {
   FormControl,
   FormLabel,
   LinearProgress,
+  Link as MuiLink,
   MenuItem,
   OutlinedInput,
   Select,
@@ -21,10 +22,12 @@ import {
   Typography,
 } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 
 import type {
   GrantSource,
   MemberCourseLearningSummary,
+  MemberTimelineEvent,
   MemberGrant,
   MemberWithProductIds,
 } from '#core/domain/index.js';
@@ -32,7 +35,7 @@ import type {
 import { actions } from '../../../api.js';
 import { ConfirmDialog, PanelPage, SectionCard, StatusView } from '../../../components/layout/index.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
-import { formatDate, formatRelativeTime } from '../../../lib/format.js';
+import { formatDate, formatDateTime, formatPrice, formatRelativeTime } from '../../../lib/format.js';
 import { EntryDate } from '../../../theme.js';
 import { MutationError } from '../courses/feedback.js';
 import { EmailSendSummary } from '../marketing/EmailSendSummary.js';
@@ -114,6 +117,200 @@ const ActivityTime = ({ value }: { value: string }) => {
     <EntryDate component="time" dateTime={value}>
       {formatRelativeTime(value, language)}
     </EntryDate>
+  );
+};
+
+const AccountSummary = ({ member }: { member: MemberWithProductIds }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  return (
+    <SectionCard title={t.members.accountHeading}>
+      <Stack useFlexGap spacing="0.4rem">
+        <Typography variant="body2">
+          {t.members.accountName}: {member.displayName ?? '—'}
+        </Typography>
+        <Typography variant="body2">{t.members.accountEmail}: {member.email}</Typography>
+        <Typography variant="body2">
+          {t.members.joined}:{' '}
+          <EntryDate component="time" dateTime={member.createdAt}>
+            {formatDate(member.createdAt, language)}
+          </EntryDate>
+        </Typography>
+      </Stack>
+    </SectionCard>
+  );
+};
+
+const CommerceSummary = ({ memberId }: { memberId: string }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const commerce = useQuery(actions.memberCommerce(memberId));
+  if (commerce.isPending) {
+    return <StatusView state={{ kind: 'loading', label: t.members.commerceLoading }} />;
+  }
+  if (commerce.isError) {
+    return <StatusView state={{ kind: 'error', message: localizeError(commerce.error, t) }} />;
+  }
+
+  return (
+    <Stack direction={{ xs: 'column', lg: 'row' }} useFlexGap spacing="1rem">
+      <Box component="section" sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
+          {t.members.purchasesHeading}
+        </Typography>
+        {commerce.data.purchases.length === 0 ? (
+          <StatusView state={{ kind: 'empty', title: t.members.purchasesEmpty }} />
+        ) : (
+          <TableContainer>
+            <Table size="small" aria-label={t.members.purchasesHeading}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t.sales.date}</TableCell>
+                  <TableCell>{t.sales.product}</TableCell>
+                  <TableCell>{t.sales.amount}</TableCell>
+                  <TableCell>{t.sales.status}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {commerce.data.purchases.map((purchase) => (
+                  <TableRow key={purchase.id} data-testid="member-purchase-row">
+                    <TableCell>
+                      <MuiLink
+                        component={Link}
+                        to={`/panel/sales/${purchase.id}`}
+                      >
+                        {formatDateTime(purchase.createdAt, language)}
+                      </MuiLink>
+                    </TableCell>
+                    <TableCell>{purchase.productTitle}</TableCell>
+                    <TableCell>{formatPrice(purchase.amountCents, purchase.currency, language)}</TableCell>
+                    <TableCell>{t.sales[purchase.status]}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
+
+      <Box component="section" sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
+          {t.members.subscriptionsHeading}
+        </Typography>
+        {commerce.data.activeSubscriptions.length === 0 ? (
+          <StatusView state={{ kind: 'empty', title: t.members.subscriptionsEmpty }} />
+        ) : (
+          <TableContainer>
+            <Table size="small" aria-label={t.members.subscriptionsHeading}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t.sales.product}</TableCell>
+                  <TableCell>{t.sales.status}</TableCell>
+                  <TableCell>{t.members.subscriptionProvider}</TableCell>
+                  <TableCell>{t.members.subscriptionPeriodEnd}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {commerce.data.activeSubscriptions.map((subscription) => (
+                  <TableRow key={subscription.id} data-testid="member-subscription-row">
+                    <TableCell>{subscription.productTitle}</TableCell>
+                    <TableCell>
+                      <Stack useFlexGap spacing="0.25rem">
+                        <Chip
+                          size="small"
+                          color={subscription.status === 'active' ? 'success' : 'warning'}
+                          label={t.members.subscriptionStatuses[subscription.status]}
+                          sx={{ alignSelf: 'flex-start' }}
+                        />
+                        {subscription.cancelAtPeriodEnd ? (
+                          <Typography variant="caption">{t.members.subscriptionWillCancel}</Typography>
+                        ) : null}
+                      </Stack>
+                    </TableCell>
+                    <TableCell>{t.members.providerLabels[subscription.provider]}</TableCell>
+                    <TableCell>{formatDate(subscription.currentPeriodEnd, language)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
+    </Stack>
+  );
+};
+
+const timelineDetails = (event: MemberTimelineEvent, t: Messages, language: 'pl' | 'en'): string => {
+  const product = 'productTitle' in event.payload
+    ? event.payload.productTitle ?? t.members.timelineUnavailableProduct
+    : t.members.timelineUnavailableProduct;
+  switch (event.type) {
+    case 'purchase':
+      return t.members.timelinePurchase({
+        product,
+        amount: formatPrice(event.payload.amountCents, event.payload.currency, language),
+        status: t.sales[event.payload.status],
+      });
+    case 'subscription-change':
+      return t.members.timelineSubscription({
+        product,
+        status: t.members.subscriptionStatuses[event.payload.status],
+        date: formatDate(event.payload.currentPeriodEnd, language),
+      });
+    case 'grant':
+      return t.members.timelineGrant({ product, date: formatDate(event.payload.startsAt, language) });
+    case 'revoke':
+      return t.members.timelineRevoke({ product, date: formatDate(event.payload.expiresAt, language) });
+    case 'lesson-completion':
+      return t.members.timelineLesson({
+        course: event.payload.courseTitle ?? t.members.timelineUnavailableCourse,
+        lesson: event.payload.lessonTitle ?? t.members.timelineUnavailableLesson,
+      });
+    case 'email-sent':
+      return t.members.timelineEmail({ subject: event.payload.subject });
+    case 'banned':
+      return t.members.timelineBan({ reason: event.payload.reason ?? '—' });
+    case 'unbanned':
+      return t.members.timelineUnban;
+  }
+};
+
+const MemberTimeline = ({ memberId }: { memberId: string }) => {
+  const t = useTranslations();
+  const { language } = useLanguage();
+  const timeline = useQuery(actions.memberTimeline(memberId));
+
+  return (
+    <Box component="section">
+      <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
+        {t.members.timelineHeading}
+      </Typography>
+      {timeline.isPending ? (
+        <StatusView state={{ kind: 'loading', label: t.members.timelineLoading }} />
+      ) : timeline.isError ? (
+        <StatusView state={{ kind: 'error', message: localizeError(timeline.error, t) }} />
+      ) : timeline.data.events.length === 0 ? (
+        <StatusView state={{ kind: 'empty', title: t.members.timelineEmpty }} />
+      ) : (
+        <TableContainer>
+          <Table size="small" aria-label={t.members.timelineHeading}>
+            <TableBody>
+              {timeline.data.events.map((event) => (
+                <TableRow key={event.id} data-testid="member-timeline-row">
+                  <TableCell>
+                    <EntryDate component="time" dateTime={event.occurredAt}>
+                      {formatDateTime(event.occurredAt, language)}
+                    </EntryDate>
+                  </TableCell>
+                  <TableCell>{t.members.timelineEventLabels[event.type]}</TableCell>
+                  <TableCell>{timelineDetails(event, t, language)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
   );
 };
 
@@ -346,13 +543,6 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
         },
       }}
     >
-      <Typography variant="body2">
-        {t.members.joined}{' '}
-        <EntryDate component="time" dateTime={member.createdAt}>
-          {formatDate(member.createdAt, language)}
-        </EntryDate>
-      </Typography>
-
       <Tabs
         value={tab}
         onChange={(_event, value: string) => setTab(value === 'emails' ? 'emails' : 'overview')}
@@ -383,6 +573,9 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
         </Box>
       ) : (
         <>
+          <AccountSummary member={member} />
+          <CommerceSummary memberId={member.id} />
+          <MemberTimeline memberId={member.id} />
           {member.deletedAt === null ? (
             <SectionCard title={t.members.moderationHeading}>
               <Stack useFlexGap spacing="0.75rem">
@@ -421,60 +614,72 @@ export const MemberDetail = ({ member, onBack }: { member: MemberWithProductIds;
           )}
 
           <Box component="section">
-        <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
-          {t.members.grantedProducts}
-        </Typography>
-        {grants.isPending ? (
-          <StatusView state={{ kind: 'loading', label: t.members.loadingGrants }} />
-        ) : grants.isError ? (
-          <StatusView state={{ kind: 'error', message: localizeError(grants.error, t) }} />
-        ) : grants.data.grants.length === 0 ? (
-          <StatusView state={{ kind: 'empty', title: t.members.noGrants }} />
-        ) : (
-          <TableContainer>
-            <Table size="small" aria-label={t.members.grantedProducts}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>{t.members.colProduct}</TableCell>
-                  <TableCell>{t.members.colWindow}</TableCell>
-                  <TableCell>{t.members.colSource}</TableCell>
-                  <TableCell>{t.members.colStatus}</TableCell>
-                  <TableCell align="right">{t.members.colActions}</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {grants.data.grants.map((grant) => (
-                  <TableRow key={grant.id} data-testid="grant-row">
-                    <TableCell>{grant.productName}</TableCell>
-                    <TableCell>
-                      {formatDate(grant.startsAt, language)} –{' '}
-                      {grant.expiresAt === null ? t.members.perpetual : formatDate(grant.expiresAt, language)}
-                    </TableCell>
-                    <TableCell>{grantSourceLabel(grant.source, t)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        variant="outlined"
-                        color={grant.active ? 'success' : 'default'}
-                        label={grant.active ? t.members.active : t.members.expired}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" useFlexGap spacing="0.4rem" sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        {member.deletedAt === null ? (
-                          <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
-                        ) : null}
-                        <Button size="small" variant="text" color="error" onClick={() => setRevoking(grant)}>
-                          {t.members.revoke}
-                        </Button>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-        {revoke.isError ? <MutationError error={revoke.error} /> : null}
+            <Typography variant="h2" component="h2" sx={{ mb: '1rem' }}>
+              {t.members.grantedProducts}
+            </Typography>
+            {grants.isPending ? (
+              <StatusView state={{ kind: 'loading', label: t.members.loadingGrants }} />
+            ) : grants.isError ? (
+              <StatusView state={{ kind: 'error', message: localizeError(grants.error, t) }} />
+            ) : grants.data.grants.length === 0 ? (
+              <StatusView state={{ kind: 'empty', title: t.members.noGrants }} />
+            ) : (
+              <TableContainer>
+                <Table size="small" aria-label={t.members.grantedProducts}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>{t.members.colProduct}</TableCell>
+                      <TableCell>{t.members.colWindow}</TableCell>
+                      <TableCell>{t.members.colSource}</TableCell>
+                      <TableCell>{t.members.colStatus}</TableCell>
+                      <TableCell align="right">{t.members.colActions}</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {grants.data.grants.map((grant) => (
+                      <TableRow key={grant.id} data-testid="grant-row">
+                        <TableCell>{grant.productName}</TableCell>
+                        <TableCell>
+                          {formatDate(grant.startsAt, language)} –{' '}
+                          {grant.expiresAt === null
+                            ? t.members.perpetual
+                            : formatDate(grant.expiresAt, language)}
+                        </TableCell>
+                        <TableCell>{grantSourceLabel(grant.source, t)}</TableCell>
+                        <TableCell>
+                          <Chip
+                            variant="outlined"
+                            color={grant.active ? 'success' : 'default'}
+                            label={grant.active ? t.members.active : t.members.expired}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack
+                            direction="row"
+                            useFlexGap
+                            spacing="0.4rem"
+                            sx={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
+                          >
+                            {member.deletedAt === null ? (
+                              <RenewControl grant={grant} memberId={member.id} onRenewed={refresh} />
+                            ) : null}
+                            <Button
+                              size="small"
+                              variant="text"
+                              color="error"
+                              onClick={() => setRevoking(grant)}
+                            >
+                              {t.members.revoke}
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+            {revoke.isError ? <MutationError error={revoke.error} /> : null}
           </Box>
 
           <ConfirmDialog

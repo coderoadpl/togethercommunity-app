@@ -2,10 +2,16 @@ import { z } from 'zod';
 
 import { staffRoleSchema } from './identity.js';
 
+export const TENANT_NAME_MAX_LENGTH = 100;
+const tenantStatusSchema = z.enum(['active', 'suspended']);
+const tenantPlanSchema = z.enum(['self_hosted', 'hosted', 'hosted_pro']);
+
 export const tenantSchema = z.object({
   id: z.string(),
   slug: z.string(),
-  name: z.string(),
+  name: z.string().trim().min(1).max(TENANT_NAME_MAX_LENGTH),
+  status: tenantStatusSchema,
+  plan: tenantPlanSchema,
   contentVersion: z.number().int().positive(),
 });
 
@@ -59,12 +65,21 @@ export const EMPTY_TENANT_BRANDING: TenantBranding = {
   faviconUrl: null,
 };
 
-const OG_TITLE_MAX_LENGTH = 70;
-const OG_DESCRIPTION_MAX_LENGTH = 200;
+export const TENANT_OG_TITLE_MAX_LENGTH = 70;
+export const TENANT_OG_DESCRIPTION_MAX_LENGTH = 200;
+export const SOCIAL_LINKS_MAX_COUNT = 8;
+export const SOCIAL_LINK_LABEL_MAX_LENGTH = 40;
+
+export const tenantSocialLinkSchema = z.object({
+  label: z.string().trim().min(1).max(SOCIAL_LINK_LABEL_MAX_LENGTH),
+  url: z.string().url().regex(/^https?:\/\//iu),
+});
+
+export type TenantSocialLink = z.output<typeof tenantSocialLinkSchema>;
 
 const tenantSocialSchema = z.object({
-  ogTitle: z.string().max(OG_TITLE_MAX_LENGTH).nullable().default(null),
-  ogDescription: z.string().max(OG_DESCRIPTION_MAX_LENGTH).nullable().default(null),
+  ogTitle: z.string().max(TENANT_OG_TITLE_MAX_LENGTH).nullable().default(null),
+  ogDescription: z.string().max(TENANT_OG_DESCRIPTION_MAX_LENGTH).nullable().default(null),
   ogImageUrl: brandingAssetUrlSchema.nullable().default(null),
 });
 
@@ -96,6 +111,8 @@ export type InvoiceVatResolution =
   | { ok: false; reason: 'unset' | 'exempt_basis_missing' };
 
 export const tenantSettingsSchema = z.object({
+  name: tenantSchema.shape.name,
+  socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).default([]),
   billingPortalUrl: z.string().url().nullable(),
   bunnyStreamLibraryId: z.string().nullable(),
   logoUrl: brandingAssetUrlSchema.nullable().default(null),
@@ -145,6 +162,8 @@ const clearableText = (max: number) => z
 
 /** Partial update: omitted fields keep their stored value; '' and null clear a field. */
 export const updateTenantSettingsInputSchema = z.object({
+  name: tenantSchema.shape.name.optional(),
+  socialLinks: z.array(tenantSocialLinkSchema).max(SOCIAL_LINKS_MAX_COUNT).optional(),
   billingPortalUrl: clearableUrl,
   bunnyStreamLibraryId: z
     .string()
@@ -159,8 +178,8 @@ export const updateTenantSettingsInputSchema = z.object({
     .transform((value) => (value === '' || value === null ? null : value))
     .optional(),
   faviconUrl: clearableBrandingAssetUrl,
-  ogTitle: clearableText(OG_TITLE_MAX_LENGTH),
-  ogDescription: clearableText(OG_DESCRIPTION_MAX_LENGTH),
+  ogTitle: clearableText(TENANT_OG_TITLE_MAX_LENGTH),
+  ogDescription: clearableText(TENANT_OG_DESCRIPTION_MAX_LENGTH),
   ogImageUrl: clearableBrandingAssetUrl,
   supportEmail: clearableEmail,
   supportUrl: clearableUrl,

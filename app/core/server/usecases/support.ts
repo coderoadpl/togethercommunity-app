@@ -69,7 +69,11 @@ export const sendSupportMessage = async (
       memberDisplay: member?.displayName ?? ctx.identity.name,
       subject: parsed.data.subject,
       body: parsed.data.body,
-      branding: { logoUrl: settings.logoUrl, accentColor: settings.accentColor },
+      branding: {
+        logoUrl: settings.logoUrl,
+        accentColor: settings.accentColor,
+        socialLinks: settings.socialLinks,
+      },
     },
     now: deps.clock.nowIso(),
   });

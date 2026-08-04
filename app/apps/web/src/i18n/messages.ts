@@ -1142,7 +1142,7 @@ export interface Messages {
   };
   changePassword: {
     heading: string;
-    intro: string;
+    intro: (params: { min: number }) => string;
     currentPasswordLabel: string;
     newPasswordLabel: string;
     confirmPasswordLabel: string;

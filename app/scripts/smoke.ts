@@ -20,6 +20,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { ensureWebBundleFresh } from './web-bundle-freshness.js';
+import { passwordFixture } from './password-fixture.js';
 
 const SMOKE_DB = uniqueTestDatabaseName('together_smoke');
 const baseDatabaseUrl =
@@ -28,7 +29,6 @@ const baseDatabaseUrl =
 const smokeUrlObject = new URL(baseDatabaseUrl);
 smokeUrlObject.pathname = `/${SMOKE_DB}`;
 const smokeDatabaseUrl = smokeUrlObject.toString();
-
 class SmokeFailure extends Error {}
 const fail = (message: string): never => {
   throw new SmokeFailure(message);
@@ -409,7 +409,7 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
 
   expectOk(
     await cli(
-      ['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo1234'],
+      ['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15'],
       authedHome,
     ),
     'login',
@@ -614,8 +614,8 @@ const proveCliPasswordRotation = async (port: number, homes: string[]): Promise<
   const cli = (args: string[], home: string): Promise<Run> =>
     run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
   const email = 'password-rotation-smoke@together.dev';
-  const oldPassword = 'old-password';
-  const newPassword = 'new-password';
+  const oldPassword = passwordFixture('old-password');
+  const newPassword = passwordFixture('new-password');
 
   expectOk(
     await cli([
@@ -674,8 +674,8 @@ const provePasswordReset = async (port: number, homes: string[]): Promise<void> 
     run(tsxBin, ['apps/cli/src/main.ts', '--json', '--api-url', url, ...args], { HOME: home });
   const email = 'password-reset-smoke@together.dev';
   const unknownEmail = 'password-reset-unknown-smoke@together.dev';
-  const oldPassword = 'old-password';
-  const newPassword = 'new-password';
+  const oldPassword = passwordFixture('old-password');
+  const newPassword = passwordFixture('new-password');
 
   expectOk(
     await cli(['register', '--name', 'Password Reset Smoke', '--email', email, '--password', oldPassword]),
@@ -753,7 +753,7 @@ const driveStudentFlow = async (port: number, homes: string[]): Promise<void> =>
     cli(['--json', '--api-url', url, '--tenant', 'acme', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo1234'], creatorHome),
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15'], creatorHome),
     'student flow: creator login',
   );
 
@@ -949,7 +949,7 @@ const driveM2mFlow = async (port: number, homes: string[]): Promise<void> => {
     cli(['--json', '--api-url', url, '--tenant', 'acme', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo1234'], creatorHome),
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator2@together.dev', '--password', 'demo-password-15'], creatorHome),
     'm2m flow: creator login',
   );
 
@@ -1120,7 +1120,7 @@ const driveSpacesFlow = async (port: number, homes: string[]): Promise<void> => 
     cli(['--json', '--api-url', url, '--tenant', 'studio', ...args], home);
 
   expectOk(
-    await cli(['--json', '--api-url', url, 'login', '--email', 'creator@together.dev', '--password', 'demo1234'], staffHome),
+    await cli(['--json', '--api-url', url, 'login', '--email', 'creator@together.dev', '--password', 'demo-password-15'], staffHome),
     'spaces: staff login',
   );
   expectOk(

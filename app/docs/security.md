@@ -9,6 +9,12 @@ POST routes, and its session cookies remain `HttpOnly` and `SameSite=Lax`;
 production enables the `Secure` flag. Sessions span tenant subdomains on a real
 base domain, while each custom domain remains a separate cookie world.
 
+New passwords require at least 15 characters, with no character-class rules.
+The 15-character floor is required because MFA remains optional; it applies to
+registration, password reset, and password change. Existing imported accounts
+with shorter passwords may still sign in, but any replacement password must
+meet the current floor.
+
 Open CORS covers public offer and payment configuration reads, coupon
 validation, checkout-session start, auth configuration, and free lesson
 previews so external creator sites can use the public checkout contract.

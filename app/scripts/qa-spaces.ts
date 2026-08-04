@@ -137,7 +137,7 @@ const signInMember = async (page: Page, baseUrl: string, email: string): Promise
 const signInCreator = async (page: Page, baseUrl: string): Promise<void> => {
   await page.goto(`${baseUrl}/login`, { waitUntil: 'load' });
   await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo1234');
+  await page.getByTestId('login-password').fill('demo-password-15');
   await page.getByTestId('signin-submit').click();
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
 };
@@ -152,7 +152,7 @@ const probeTenantSlug = `qa-spaces-${Date.now().toString(36)}`;
 
 try {
   const probeStaff = cliSession();
-  cli(probeStaff, apiUrl, ['login', '--email', 'creator3@together.dev', '--password', 'demo1234']);
+  cli(probeStaff, apiUrl, ['login', '--email', 'creator3@together.dev', '--password', 'demo-password-15']);
   cli(probeStaff, apiUrl, ['tenant', 'create', 'QA Spaces Probe', '--slug', probeTenantSlug]);
   const slug = `probe-${Date.now().toString(36)}`;
   const created = envelopeData(
@@ -361,7 +361,7 @@ try {
   await panelMobile.close();
 
   const studioStaff = cliSession();
-  cli(studioStaff, apiUrl, ['login', '--email', 'creator@together.dev', '--password', 'demo1234']);
+  cli(studioStaff, apiUrl, ['login', '--email', 'creator@together.dev', '--password', 'demo-password-15']);
   const staffToken = studioStaff.token();
   const pinArgs = [
     '-X', 'POST',

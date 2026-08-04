@@ -7,6 +7,7 @@ import pg from 'pg';
 import { chromium, type Browser } from 'playwright-core';
 import { z } from 'zod';
 
+import { AUTH_POLICY } from '#adapters/auth/create-auth.js';
 import { createAuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
@@ -21,6 +22,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { resolveE2eDatabaseUrl } from './e2e-config.js';
+import { passwordFixture } from './password-fixture.js';
 
 const viteBin = join(rootDir, 'node_modules/.bin/vite');
 const webDistDir = join(rootDir, 'dist/web');
@@ -31,7 +33,6 @@ const baseDatabaseUrl = resolveE2eDatabaseUrl(process.env);
 const e2eUrlObject = new URL(baseDatabaseUrl);
 e2eUrlObject.pathname = `/${E2E_DB}`;
 const e2eDatabaseUrl = e2eUrlObject.toString();
-
 class E2eFailure extends Error {}
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new E2eFailure(message);
@@ -90,8 +91,8 @@ const runPasswordResetPath = async (
   webBaseUrl: string,
 ): Promise<void> => {
   const email = 'password-reset-e2e@together.dev';
-  const oldPassword = 'old-password';
-  const newPassword = 'new-password';
+  const oldPassword = passwordFixture('old-password');
+  const newPassword = passwordFixture('new-password');
   const auth = createAuthE2eClient(transport);
   const signUp = await auth.signUpEmail({ name: 'Password Reset E2E', email, password: oldPassword });
   assert(signUp.status < 400, `reset sign-up failed (HTTP ${signUp.status}): ${JSON.stringify(signUp.json)}`);
@@ -154,7 +155,7 @@ const runPasswordResetPath = async (
 
 const runTotpPath = async (transport: { connectUrl: string; origin: string }): Promise<void> => {
   const email = 'totp-e2e@together.dev';
-  const password = 'demo1234!';
+  const password = passwordFixture('lowercaseonly');
   const auth = createAuthE2eClient(transport);
 
   const signUp = await auth.signUpEmail({ name: 'TOTP E2E', email, password });
@@ -169,12 +170,19 @@ const runTotpPath = async (transport: { connectUrl: string; origin: string }): P
   const totpParams = new URL(enrollment.totpURI).searchParams;
   const secret = totpParams.get('secret');
   assert(secret !== null && secret.length > 0, `totpURI did not contain a secret: ${enrollment.totpURI}`);
-  assert(enrollment.backupCodes.length > 0, 'two-factor enable returned no backup codes');
+  assert(
+    enrollment.backupCodes.length === AUTH_POLICY.twoFactorBackupCodeCount,
+    `two-factor enable returned ${enrollment.backupCodes.length} backup codes instead of ${AUTH_POLICY.twoFactorBackupCodeCount}`,
+  );
+  const digits = totpParams.get('digits');
+  const period = totpParams.get('period');
+  assert(digits === String(AUTH_POLICY.totpDigits), `totpURI digits was ${String(digits)}`);
+  assert(period === String(AUTH_POLICY.totpPeriodSeconds), `totpURI period was ${String(period)}`);
 
   const code = await generate({
     secret,
-    digits: Number(totpParams.get('digits') ?? '6'),
-    period: Number(totpParams.get('period') ?? '30'),
+    digits: Number(digits),
+    period: Number(period),
   });
   const verify = await auth.verifyTotp(token, code);
   assert(verify.status < 400, `verify-totp failed (HTTP ${verify.status}): ${JSON.stringify(verify.json)}`);
@@ -213,7 +221,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
 
     await page.goto(`${webBaseUrl}/login`, { waitUntil: 'networkidle' });
     await page.getByTestId('login-email').fill('creator2@together.dev');
-    await page.getByTestId('login-password').fill('demo1234');
+    await page.getByTestId('login-password').fill('demo-password-15');
     await page.getByTestId('signin-submit').click();
     await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 15000 });
     assert(
@@ -223,7 +231,7 @@ const runPasskeyPath = async (webBaseUrl: string): Promise<void> => {
 
     await page.getByTestId('section-settings').click();
     await page.getByTestId('passkey-name').fill('E2E Passkey');
-    await page.getByTestId('passkey-proof-password').fill('demo1234');
+    await page.getByTestId('passkey-proof-password').fill('demo-password-15');
     await page.getByTestId('add-passkey').click();
     try {
       await page.getByTestId('passkey-added').waitFor({ state: 'visible', timeout: 15000 });

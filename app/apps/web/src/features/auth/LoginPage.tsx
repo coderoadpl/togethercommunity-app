@@ -113,7 +113,7 @@ export const LoginPage = () => {
       {authConfig.data?.exposeMagicLinks ? (
         <FinePrint variant="caption" component="p" sx={{ mb: '1em' }}>
           {t.auth.demoAccount} <DemoValue>creator@together.dev</DemoValue> /{' '}
-          <DemoValue>demo1234</DemoValue>
+          <DemoValue>demo-password-15</DemoValue>
         </FinePrint>
       ) : null}
       <FinePrint variant="caption" component="p">

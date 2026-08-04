@@ -1,25 +1,11 @@
 import { useTheme } from '@mui/material/styles';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { pl } from '../../i18n/pl.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { ThemeSwitcher } from './ThemeSwitcher.js';
-
-/**
- * Node >= 25 exposes a non-functional global localStorage (methods are
- * undefined without --localstorage-file) that shadows jsdom's working one in
- * vitest, so the persistence assertions need a real in-memory stand-in.
- */
-const storage = new Map<string, string>();
-vi.stubGlobal('localStorage', {
-  getItem: (key: string) => storage.get(key) ?? null,
-  setItem: (key: string, value: string) => storage.set(key, value),
-  removeItem: (key: string) => storage.delete(key),
-  clear: () => storage.clear(),
-});
-afterAll(() => vi.unstubAllGlobals());
 
 const ThemeProbe = () => {
   const theme = useTheme();

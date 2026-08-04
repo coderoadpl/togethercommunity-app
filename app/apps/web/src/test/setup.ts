@@ -5,6 +5,28 @@ import { afterAll, afterEach } from 'vitest';
 
 import { server } from './server.js';
 
+const storage = new Map<string, string>();
+const localStorageStub = {
+  clear: () => storage.clear(),
+  getItem: (key: string) => storage.get(key) ?? null,
+  key: (index: number) => [...storage.keys()][index] ?? null,
+  get length() {
+    return storage.size;
+  },
+  removeItem: (key: string) => {
+    storage.delete(key);
+  },
+  setItem: (key: string, value: string) => {
+    storage.set(key, value);
+  },
+} satisfies Storage;
+
+// Node's non-functional storage global shadows jsdom's implementation in the web project.
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: localStorageStub,
+});
+
 /**
  * Start MSW at module scope, before any test file (and thus `api.ts`) is
  * imported: the Better Auth client grabs `globalThis.fetch` the moment its
@@ -35,6 +57,7 @@ globalThis.Request = class extends OriginalRequest {
 
 afterEach(() => {
   cleanup();
+  localStorageStub.clear();
   server.resetHandlers();
 });
 afterAll(() => server.close());

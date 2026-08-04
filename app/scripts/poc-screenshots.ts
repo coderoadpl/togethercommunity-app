@@ -167,7 +167,7 @@ const captureCreatorPanel = async (context: BrowserContext, studioBaseUrl: strin
   await shoot(page, '01-login.png');
 
   await page.getByTestId('login-email').fill('creator@together.dev');
-  await page.getByTestId('login-password').fill('demo1234');
+  await page.getByTestId('login-password').fill('demo-password-15');
   await page.getByTestId('signin-submit').click();
 
   await page.getByTestId('tenant-name').waitFor({ state: 'visible', timeout: 20000 });

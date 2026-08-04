@@ -75,7 +75,9 @@ export const ChangePasswordForm = ({
         <Eyebrow variant="overline" component="h3">
           {t.changePassword.heading}
         </Eyebrow>
-        <Typography variant="body2">{t.changePassword.intro}</Typography>
+        <Typography variant="body2">
+          {t.changePassword.intro({ min: PASSWORD_MIN_LENGTH })}
+        </Typography>
       </Box>
       <FormControl fullWidth>
         <FormLabel htmlFor="change-current-password">{t.changePassword.currentPasswordLabel}</FormLabel>

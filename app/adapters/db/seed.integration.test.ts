@@ -1,6 +1,11 @@
 import pg from 'pg';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import {
+  deriveLegacyPasswordHash,
+  verifyPasswordWithLegacyFallback,
+} from '#adapters/auth/legacy-password.js';
+
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl =
@@ -8,6 +13,8 @@ const baseDatabaseUrl =
 const { spawnSync } = process.getBuiltinModule('node:child_process');
 const { join } = process.getBuiltinModule('node:path');
 const tsxBin = join(process.cwd(), 'node_modules/.bin/tsx');
+const DEMO_PASSWORD = 'demo-password-15';
+const PREVIOUS_DEMO_PASSWORD = 'demo1234';
 let testDatabaseUrl: string;
 let closeTestDatabase: () => Promise<void>;
 
@@ -89,13 +96,61 @@ describe('demo seed lifecycle', () => {
     expect(accountTimestamp.rows[0]?.created_at).toBe('2026-07-15 08:00:00');
   }, 180_000);
 
-  it('does not add rows when the seed is repeated', async () => {
+  it('converges existing creator credentials without adding rows when repeated', async () => {
     runDatabaseScript('seed.ts');
     const firstCounts = await rowCounts(client);
+    const previousHash = deriveLegacyPasswordHash(
+      PREVIOUS_DEMO_PASSWORD,
+      'seed-convergence-legacy-salt',
+    );
+    await client.query(
+      `UPDATE account
+       SET password = $1
+       WHERE provider_id = 'credential'
+         AND user_id IN (SELECT id FROM "user" WHERE email LIKE 'creator%@together.dev')`,
+      [previousHash],
+    );
 
     runDatabaseScript('seed.ts');
 
     expect(await rowCounts(client)).toEqual(firstCounts);
+    const credentials = await client.query<{ password: string }>(
+      `SELECT a.password
+       FROM account a
+       JOIN "user" u ON u.id = a.user_id
+       WHERE a.provider_id = 'credential' AND u.email LIKE 'creator%@together.dev'
+       ORDER BY u.email`,
+    );
+    expect(credentials.rows).toHaveLength(3);
+    for (const { password } of credentials.rows) {
+      await expect(
+        verifyPasswordWithLegacyFallback({ hash: password, password: DEMO_PASSWORD }),
+      ).resolves.toBe(true);
+      await expect(
+        verifyPasswordWithLegacyFallback({ hash: password, password: PREVIOUS_DEMO_PASSWORD }),
+      ).resolves.toBe(false);
+    }
+  }, 180_000);
+
+  it('keeps seeding idempotent when an existing creator has only a social account', async () => {
+    runDatabaseScript('seed.ts');
+    const firstCounts = await rowCounts(client);
+    await client.query(
+      `UPDATE account
+       SET account_id = 'google-creator', provider_id = 'google', password = NULL
+       WHERE user_id = (SELECT id FROM "user" WHERE email = 'creator@together.dev')
+         AND provider_id = 'credential'`,
+    );
+
+    runDatabaseScript('seed.ts');
+
+    expect(await rowCounts(client)).toEqual(firstCounts);
+    const socialAccount = await client.query<{ password: string | null; provider_id: string }>(
+      `SELECT password, provider_id
+       FROM account
+       WHERE user_id = (SELECT id FROM "user" WHERE email = 'creator@together.dev')`,
+    );
+    expect(socialAccount.rows).toEqual([{ password: null, provider_id: 'google' }]);
   }, 180_000);
 
   it('restores the canonical demo state through reseed', async () => {

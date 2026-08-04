@@ -18,6 +18,7 @@ import {
   run,
   tsxBin,
 } from './server-harness.js';
+import { passwordFixture } from './password-fixture.js';
 
 const verifyContainer = 'together-marketing-verify-pg';
 const verifyPort = 49219;
@@ -324,7 +325,11 @@ const driveScenario = async (port: number, privateKey: string): Promise<number> 
   let steps = 0;
   try {
     const auth = createAuthE2eClient({ connectUrl: platformBaseUrl, origin: baseUrl });
-    const signUp = await auth.signUpEmail({ name: 'Marketing Owner', email: 'owner@marketing.test', password: 'Demo1234!' });
+    const signUp = await auth.signUpEmail({
+      name: 'Marketing Owner',
+      email: 'owner@marketing.test',
+      password: passwordFixture('Demo1234!'),
+    });
     assert(signUp.status < 400 && signUp.token !== null, `Owner registration failed: ${JSON.stringify(signUp.json)}`);
     const staffToken = signUp.token;
     const tenantResponse = await request(platformBaseUrl, '/api/tenants', jsonPost({

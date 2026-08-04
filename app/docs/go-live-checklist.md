@@ -351,9 +351,11 @@ Both results must be zero.
 **STATUS:** owner-action
 
 The seed creates `creator@together.dev` and `creator2@together.dev` with
-`demo1234` (`adapters/db/seed.ts:73`, `adapters/db/seed.ts:102`,
-`CLAUDE.md`). Seeding is manual. `vercel-build` runs only migration and build
-steps (`package.json:22`), so deployment does not call `db:seed` or `db:reseed`.
+`demo-password-15` (`adapters/db/seed.ts:62`; applied on creation at
+`adapters/db/seed.ts:127` and converged for existing local fixtures at
+`adapters/db/seed.ts:129`; `CLAUDE.md`). Seeding is manual. `vercel-build` runs
+only migration and build steps (`package.json:24`), so deployment does not call
+`db:seed` or `db:reseed`.
 
 Never point `db:seed` or `db:reseed` at the production `DATABASE_URL`. Verify:
 
